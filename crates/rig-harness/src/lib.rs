@@ -38,10 +38,6 @@
 #[doc = include_str!("../PLUGINS.md")]
 pub mod plugin_guide {}
 
-/// Where the plugin guide ([`plugin_guide`]) is on disk, for an agent
-/// that reads it: in this crate's own source, from a checkout or from
-/// crates.io alike.
-pub const PLUGIN_GUIDE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/PLUGINS.md");
 pub mod agent_title;
 pub mod ask;
 pub mod clock;
@@ -96,7 +92,7 @@ pub use rig_memory;
 /// The tool library this app is built on, for the process runner
 /// [`Processes`](services::Processes) hands out
 /// (`rig_harness::rig_tools::process::Spawn`) and the file tools' rules
-/// (`rig_harness::rig_tools::fs::place`).
+/// (`<dyn rig_harness::rig_tools::workspace::Workspace>::place`).
 pub use rig_tools;
 
 /// What a plugin needs, so a typical one imports only this: the kernel's
@@ -121,7 +117,7 @@ pub mod prelude {
     pub use crate::host::launcher::{self, Invoked};
     pub use crate::host::session::{
         AppStart, DeleteSession, Logged, LoggedQueue, Scratch, SessionDeleteFailed, SessionDeleted,
-        SessionPaths, StoreOpener, edit_stopped, rewrite_stopped,
+        SessionPaths, StoreOpener, rewrite_stopped,
     };
     pub use crate::host::signals::{self, ExitWhenUnread};
     pub use crate::main_agent::{

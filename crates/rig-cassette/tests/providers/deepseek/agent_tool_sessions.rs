@@ -5,20 +5,19 @@
 //! arguments, explicit tool choice, reasoning metadata, structured JSON output,
 //! and caller-owned long chat history.
 
-use std::sync::{Arc, Mutex};
-
 use anyhow::Result;
-use rig::completion::{GenerationOptions, Message, Reasoning};
-use rig::message::{AssistantContent, ToolChoice, UserContent};
+use rig::completion::{GenerationOptions, Reasoning};
+use rig::message::{AssistantContent, ToolChoice};
 use rig::providers::deepseek;
 use rig::tool::Tool;
-use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+use crate::matrix::agent_tool_sessions::{
+    ComplexSession, InvocationLog, chat_parallel_signals, stream_complex_session,
+};
 use crate::support::{
-    ALPHA_SIGNAL_OUTPUT, AlphaSignal, BETA_SIGNAL_OUTPUT, BetaSignal, TWO_TOOL_STREAM_PREAMBLE,
-    TWO_TOOL_STREAM_PROMPT, assert_contains_all_case_insensitive, assert_nonempty_response,
-    assistant_text_response, collect_raw_stream_observation, collect_stream_observation,
+    AlphaSignal, BetaSignal, TWO_TOOL_STREAM_PREAMBLE, assert_contains_all_case_insensitive,
+    assert_nonempty_response, assistant_text_response, collect_raw_stream_observation,
 };
 
 use super::support::with_deepseek_cassette_result;
@@ -37,334 +36,23 @@ fn thinking_params() -> serde_json::Value {
     })
 }
 
-pub(super) const COMPLEX_SESSION_PREAMBLE: &str = "\
+const COMPLEX_SESSION: ComplexSession = ComplexSession {
+    preamble: "\
 You are a deterministic DeepSeek tool orchestration test harness. Use the tools instead of inventing values. \
 For the production-readiness scenario, call exactly one tool at a time in this order: \
 1. ping_empty with an empty JSON object. \
 2. inspect_manifest with project rig-deepseek, flags critical=true and retries=2, steps plan weight=1 and verify weight=2, and the exact note from the user. \
 3. join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |. \
 4. escape_echo with the exact escaped text from the user. \
-After all tool results are available, answer in one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK.";
-
-pub(super) const COMPLEX_SESSION_PROMPT: &str = "\
+After all tool results are available, answer in one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK.",
+    prompt: "\
 Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\deepseek`. \
-The escaped text is `Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃`.";
-
-#[derive(Clone, Debug, PartialEq)]
-pub(super) struct ToolInvocation {
-    name: &'static str,
-    args: serde_json::Value,
-}
-
-type InvocationLog = Arc<Mutex<Vec<ToolInvocation>>>;
-
-fn push_invocation<T: Serialize>(log: &InvocationLog, name: &'static str, args: &T) {
-    log.lock()
-        .expect("tool invocation log lock should not be poisoned")
-        .push(ToolInvocation {
-            name,
-            args: serde_json::to_value(args).expect("tool args should serialize"),
-        });
-}
-
-#[derive(Clone)]
-pub(super) struct PingEmpty {
-    log: InvocationLog,
-}
-
-#[derive(Clone)]
-pub(super) struct InspectManifest {
-    log: InvocationLog,
-}
-
-#[derive(Clone)]
-pub(super) struct JoinLabels {
-    log: InvocationLog,
-}
-
-#[derive(Clone)]
-pub(super) struct EscapeEcho {
-    log: InvocationLog,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub(super) struct EmptyArgs {}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub(super) struct ManifestArgs {
-    project: String,
-    flags: ManifestFlags,
-    steps: Vec<ManifestStep>,
-    note: String,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub(super) struct ManifestFlags {
-    critical: bool,
-    retries: u8,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub(super) struct ManifestStep {
-    pub(super) name: String,
-    weight: i32,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub(super) struct JoinArgs {
-    labels: Vec<String>,
-    separator: String,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub(super) struct EchoArgs {
-    text: String,
-}
-
-#[derive(Debug, thiserror::Error)]
-#[error("session tool error")]
-pub(super) struct SessionToolError;
-
-impl Tool for PingEmpty {
-    const NAME: &'static str = "ping_empty";
-    type Error = SessionToolError;
-    type Args = EmptyArgs;
-    type Output = String;
-
-    fn description(&self) -> String {
-        "Return EMPTY-OK. This tool takes no arguments.".to_string()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {},
-            "required": []
-        })
-    }
-
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
-        push_invocation(&self.log, Self::NAME, &args);
-        Ok("EMPTY-OK".to_string())
-    }
-}
-
-impl Tool for InspectManifest {
-    const NAME: &'static str = "inspect_manifest";
-    type Error = SessionToolError;
-    type Args = ManifestArgs;
-    type Output = String;
-
-    fn description(&self) -> String {
-        "Validate a nested deployment manifest.".to_string()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "project": { "type": "string" },
-                "flags": {
-                    "type": "object",
-                    "properties": {
-                        "critical": { "type": "boolean" },
-                        "retries": { "type": "integer" }
-                    },
-                    "required": ["critical", "retries"]
-                },
-                "steps": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "name": { "type": "string" },
-                            "weight": { "type": "integer" }
-                        },
-                        "required": ["name", "weight"]
-                    }
-                },
-                "note": { "type": "string" }
-            },
-            "required": ["project", "flags", "steps", "note"]
-        })
-    }
-
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
-        push_invocation(&self.log, Self::NAME, &args);
-        Ok(format!(
-            "MANIFEST-OK project={} steps={} retries={}",
-            args.project,
-            args.steps.len(),
-            args.flags.retries
-        ))
-    }
-}
-
-impl Tool for JoinLabels {
-    const NAME: &'static str = "join_labels";
-    type Error = SessionToolError;
-    type Args = JoinArgs;
-    type Output = String;
-
-    fn description(&self) -> String {
-        "Join label strings with the requested separator.".to_string()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "labels": {
-                    "type": "array",
-                    "items": { "type": "string" }
-                },
-                "separator": { "type": "string" }
-            },
-            "required": ["labels", "separator"]
-        })
-    }
-
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
-        push_invocation(&self.log, Self::NAME, &args);
-        Ok(format!("LABELS-OK {}", args.labels.join(&args.separator)))
-    }
-}
-
-impl Tool for EscapeEcho {
-    const NAME: &'static str = "escape_echo";
-    type Error = SessionToolError;
-    type Args = EchoArgs;
-    type Output = String;
-
-    fn description(&self) -> String {
-        "Echo a string containing escaping-sensitive characters.".to_string()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "text": { "type": "string" }
-            },
-            "required": ["text"]
-        })
-    }
-
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
-        push_invocation(&self.log, Self::NAME, &args);
-        Ok(format!("ESCAPE-OK {}", args.text))
-    }
-}
-
-pub(super) fn complex_tools(
-    log: &InvocationLog,
-) -> (PingEmpty, InspectManifest, JoinLabels, EscapeEcho) {
-    (
-        PingEmpty { log: log.clone() },
-        InspectManifest { log: log.clone() },
-        JoinLabels { log: log.clone() },
-        EscapeEcho { log: log.clone() },
-    )
-}
-
-pub(super) fn assert_complex_invocations(log: &InvocationLog) {
-    let invocations = log
-        .lock()
-        .expect("tool invocation log lock should not be poisoned")
-        .clone();
-    let names = invocations.iter().map(|call| call.name).collect::<Vec<_>>();
-    assert_eq!(
-        names,
-        vec![
-            PingEmpty::NAME,
-            InspectManifest::NAME,
-            JoinLabels::NAME,
-            EscapeEcho::NAME,
-        ],
-        "expected one complex tool call of each shape in order"
-    );
-
-    assert_eq!(invocations[0].args, json!({}));
-    assert_eq!(invocations[1].args["project"], "rig-deepseek");
-    assert_eq!(
-        invocations[1].args["flags"],
-        json!({"critical": true, "retries": 2})
-    );
-    assert_eq!(
-        invocations[1].args["steps"].as_array().map(Vec::len),
-        Some(2)
-    );
-    assert_eq!(
-        invocations[1].args["note"],
-        "line one; line two says \"hello\" and path C:\\rig\\deepseek"
-    );
-    assert_eq!(
-        invocations[2].args,
-        json!({
-            "labels": ["north", "beta gamma", "quote:\"delta\"", "slash\\path"],
-            "separator": "|"
-        })
-    );
-    assert_eq!(
-        invocations[3].args["text"],
-        "Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃"
-    );
-}
-
-pub(super) struct ToolEvent {
-    pub(super) message_index: usize,
-    pub(super) name: String,
-}
-
-pub(super) fn history_tool_calls(history: &[Message]) -> Vec<ToolEvent> {
-    let mut calls = Vec::new();
-    for (message_index, message) in history.iter().enumerate() {
-        if let Message::Assistant(rig_core::message::AssistantMessage { content, .. }) = message {
-            for item in content.iter() {
-                if let AssistantContent::ToolCall(tool_call) = item {
-                    calls.push(ToolEvent {
-                        message_index,
-                        name: tool_call.function.name.clone().into(),
-                    });
-                }
-            }
-        }
-    }
-    calls
-}
-
-pub(super) fn history_tool_results(history: &[Message]) -> Vec<ToolEvent> {
-    let mut results = Vec::new();
-    for (message_index, message) in history.iter().enumerate() {
-        if let Message::User { content } = message {
-            for item in content.iter() {
-                if let UserContent::ToolResult(tool_result) = item {
-                    results.push(ToolEvent {
-                        message_index,
-                        name: tool_result.name.clone().into(),
-                    });
-                }
-            }
-        }
-    }
-    results
-}
+The escaped text is `Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃`.",
+    project: "rig-deepseek",
+    note: "line one; line two says \"hello\" and path C:\\rig\\deepseek",
+    escaped_text: "Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃",
+    optional_probe: None,
+};
 
 /// The provider-only facts of a completed turn, read off the captured `raw`.
 ///
@@ -410,57 +98,16 @@ async fn sequential_complex_tool_calls_streaming() -> Result<()> {
     with_deepseek_cassette_result(
         "agent_tool_sessions/sequential_complex_tool_calls_streaming",
         |client| async move {
-            let log = Arc::new(Mutex::new(Vec::new()));
-            let (ping, manifest, labels, echo) = complex_tools(&log);
-            let agent = rig::AgentBuilder::new(client.completion(SESSION_MODEL))
-                .preamble(COMPLEX_SESSION_PREAMBLE)
-                .tool(ping)
-                .tool(manifest)
-                .tool(labels)
-                .tool(echo)
+            let log = InvocationLog::default();
+            let agent = COMPLEX_SESSION
+                .equip(
+                    rig::AgentBuilder::new(client.completion(SESSION_MODEL)),
+                    &log,
+                )
                 .options(non_thinking())
                 .additional_params(json!({"parallel_tool_calls": false}))
                 .build();
-
-            let mut stream = agent
-                .prompt(COMPLEX_SESSION_PROMPT)
-                .history(Vec::<Message>::new())
-                .max_turns(10)
-                .stream();
-            let observation = collect_stream_observation(&mut stream).await;
-
-            anyhow::ensure!(
-                observation.errors.is_empty(),
-                "stream should not emit errors: {:?}",
-                observation.errors
-            );
-            anyhow::ensure!(
-                observation.tool_calls
-                    == vec![
-                        PingEmpty::NAME.to_string(),
-                        InspectManifest::NAME.to_string(),
-                        JoinLabels::NAME.to_string(),
-                        EscapeEcho::NAME.to_string(),
-                    ],
-                "stream should expose ordered tool calls, saw {:?}",
-                observation.tool_calls
-            );
-            anyhow::ensure!(
-                observation.tool_results == 4,
-                "expected 4 streamed tool results, saw {}",
-                observation.tool_results
-            );
-            let response = observation
-                .final_response_text
-                .as_deref()
-                .ok_or_else(|| anyhow::anyhow!("stream should produce final response text"))?;
-            assert_contains_all_case_insensitive(
-                response,
-                &["EMPTY-OK", "MANIFEST-OK", "LABELS-OK", "ESCAPE-OK"],
-            );
-            assert_complex_invocations(&log);
-
-            Ok(())
+            stream_complex_session(&agent, &COMPLEX_SESSION, &log).await
         },
     )
     .await
@@ -479,35 +126,7 @@ async fn parallel_tool_calls_single_turn_nonstreaming() -> Result<()> {
                 .additional_params(json!({"parallel_tool_calls": true}))
                 .default_max_turns(5)
                 .build();
-            let mut history = Vec::<Message>::new();
-
-            let response = agent.chat(TWO_TOOL_STREAM_PROMPT, &mut history).await?;
-
-            assert_contains_all_case_insensitive(
-                &response.output(),
-                &[ALPHA_SIGNAL_OUTPUT, BETA_SIGNAL_OUTPUT],
-            );
-            let calls = history_tool_calls(&history);
-            let call_names = calls
-                .iter()
-                .map(|call| call.name.as_str())
-                .collect::<Vec<_>>();
-            anyhow::ensure!(
-                calls.len() == 2
-                    && call_names.contains(&AlphaSignal::NAME)
-                    && call_names.contains(&BetaSignal::NAME),
-                "expected both zero-argument tools, saw {call_names:?}"
-            );
-            anyhow::ensure!(
-                calls[0].message_index == calls[1].message_index,
-                "parallel tool calls should be recorded on one assistant message"
-            );
-            anyhow::ensure!(
-                history_tool_results(&history).len() == 2,
-                "expected two tool results"
-            );
-
-            Ok(())
+            chat_parallel_signals(&agent).await
         },
     )
     .await

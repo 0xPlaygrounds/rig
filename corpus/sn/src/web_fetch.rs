@@ -1,15 +1,12 @@
-//! SN-06: a `web_fetch` tool with a domain policy. The tool reads a web
-//! page as clean text: HTML as Markdown without scripts, navigation or
-//! footers, JSON pretty-printed, text as it is, binary types refused. Long
-//! pages come in parts, and a page is reused for 15 minutes.
+//! A `web_fetch` tool with a domain policy. The tool reads a web page as clean text: HTML as
+//! Markdown without scripts, navigation or footers, JSON pretty-printed, text as it is, binary
+//! types refused. Long pages come in parts, and a page is reused for 15 minutes.
 //!
-//! Which hosts it reaches is `RIG_HOME/fetch.toml`'s ([`FetchConfig`]): a
-//! gate refuses a denied host, and asks the user about a host on neither
-//! list, once per domain: allow it for the session, allow this call, or
-//! deny it. A run nobody answers refuses it. Loopback, link-local and
-//! private addresses are refused unless the host is on the allow list by
-//! its exact name, checked again on every redirect and after every DNS
-//! lookup.
+//! Which hosts it reaches is `RIG_HOME/fetch.toml`'s ([`FetchConfig`]): a gate refuses a denied
+//! host, and asks the user about a host on neither list, once per domain: allow it for the
+//! session, allow this call, or deny it. A run nobody answers refuses it. Loopback, link-local
+//! and private addresses are refused unless the host is on the allow list by its exact name,
+//! checked again on every redirect and after every DNS lookup.
 
 use std::sync::{Arc, PoisonError};
 

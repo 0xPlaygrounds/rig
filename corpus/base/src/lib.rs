@@ -1,7 +1,5 @@
-//! The first plugin corpus: one plugin per module, each written only against the harness's public API.
-//!
-//! Each module was its own package; they share a crate so their tests
-//! link one binary instead of one each.
+//! The base plugins of the corpus: one plugin per module, each written only against the
+//! harness's public API. They share a crate so their tests link one binary instead of one each.
 
 pub mod agent_profiles;
 pub mod ask_user;

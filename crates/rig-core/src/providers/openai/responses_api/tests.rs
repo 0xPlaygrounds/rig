@@ -565,7 +565,7 @@ fn completion_response_with_unknown_output_keeps_usage() {
     assert_eq!(completion.usage.reasoning_tokens, Some(15));
 }
 
-// Regression tests for issue #1429: `file_url` and `filename` are mutually
+// `file_url` and `filename` are mutually
 // exclusive on OpenAI's Responses API (400 `mutually_exclusive_parameters`),
 // so URL-backed PDFs must not carry the hardcoded `filename`. These tests
 // cover the `TryFrom<crate::completion::Message> for Vec<InputItem>` path

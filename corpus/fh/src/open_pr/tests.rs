@@ -8,7 +8,7 @@ use rig_harness::settings::Settings;
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     AnswerAsks, Answers, Collected, Ended, app_on, calls, collect, first_agent, log_ended, reply,
-    run_until, scripted_models,
+    run_until, scratch_dir, scripted_models,
 };
 use rig_tools::workspace::Local;
 
@@ -36,11 +36,7 @@ exit 1
 /// the user's uncommitted `b.txt`, and the fake `gh`, under the test
 /// binary's directory.
 fn fixture(name: &str) -> Option<PathBuf> {
-    let exe = std::env::current_exe().ok()?;
-    let dir = exe
-        .parent()?
-        .join(format!("fh-open-pr-{name}-{}", std::process::id()));
-    fs::remove_dir_all(&dir).ok();
+    let dir = scratch_dir(&format!("fh-open-pr-{name}-{}", std::process::id()));
     let work = dir.join("work");
     fs::create_dir_all(&work).ok()?;
     let runner = local_runner();
@@ -244,7 +240,4 @@ fn an_open_pr_gets_the_push_and_its_description_not_a_second_pr() {
     fs::remove_dir_all(&dir).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(OpenPrPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(OpenPrPlugin);

@@ -1,20 +1,15 @@
-//! FH-08: language server tools. The agent asks a real language server
-//! for diagnostics, definitions, references, hover text and workspace
-//! symbols (`lsp_diagnostics`, `lsp_definition`, `lsp_references`,
-//! `lsp_hover`, `lsp_symbols`).
+//! Language server tools. The agent asks a real language server for diagnostics, definitions,
+//! references, hover text and workspace symbols (`lsp_diagnostics`, `lsp_definition`,
+//! `lsp_references`, `lsp_hover`, `lsp_symbols`).
 //!
-//! `RIG_HOME/lsp.toml`, then the project's `.rig/lsp.toml`, map file
-//! extensions to server commands (`rs = "rust-analyzer"`). A server starts
-//! the first time a call needs it, on a thread of the call's, and stays,
-//! shared by every agent working in the same directory ([`LspServers`]).
-//! Before each call the server is given every file it has open as it is on
-//! disk, so whatever changed a file, results describe it as it is now.
-//! While the server reports work in progress, a call waits for it (at
-//! most `[lsp] timeout_secs` of `settings.toml`, 60 s), showing it as the
-//! call's progress. A crashed server is reported with its last stderr
-//! lines and started again by the next call; three crashes in five
-//! minutes turn its language off for the session. The servers are shut
-//! down before the app exits, which waits for them.
+//! `RIG_HOME/lsp.toml`, then the project's `.rig/lsp.toml`, map file extensions to server commands
+//! (`rs = "rust-analyzer"`). A server starts the first time a call needs it and stays, shared by
+//! every agent working in the same directory ([`LspServers`]). Before each call the server is given
+//! every file it has open as it is on disk, so results describe each file as it is now. While the
+//! server reports work in progress, a call waits for it (at most `[lsp] timeout_secs` of
+//! `settings.toml`, 60 s), showing it as the call's progress. A crashed server is reported with its
+//! last stderr lines and started again by the next call; three crashes in five minutes turn its
+//! language off for the session. The servers are shut down before the app exits.
 
 mod client;
 
@@ -586,7 +581,11 @@ impl Job {
 
     /// `path` from the agent's directory, and its extension.
     fn file(&self, path: &str) -> (PathBuf, String) {
-        let path = rig_tools::fs::resolve(Some(&self.base), path);
+        let path = <dyn rig_tools::workspace::Workspace>::resolve(
+            &rig_tools::workspace::Local,
+            Some(&self.base),
+            path,
+        );
         let extension = path
             .extension()
             .map(|ext| ext.to_string_lossy().into_owned())

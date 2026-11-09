@@ -1,14 +1,12 @@
-//! Protected paths (corpus spec 02): the file tools never read secrets
-//! nor write outside the project or into `.git/`.
+//! Protected paths: the file tools never read secrets nor write outside the project or into
+//! `.git/`.
 //!
-//! The rules are `deny_read` and `deny_write` globs: defaults, then
-//! `RIG_HOME/paths.toml`, then the project's `.rig/paths.toml`. A Gate
-//! system checks every path a tool call names (its `path`, `file` and
-//! `paths` arguments) when the call is about to run, resolved first (`~`,
-//! `..` and symbolic links) so none sneaks past, and refuses a denied one.
-//! A Review system drops the matches in read-protected files from each
-//! search's result, read from the hits it published, before the model sees
-//! it. `/paths` lists the rules and what each blocked.
+//! The rules are `deny_read` and `deny_write` globs: defaults, then `RIG_HOME/paths.toml`, then the
+//! project's `.rig/paths.toml`. A Gate system checks every path a tool call names (its `path`,
+//! `file` and `paths` arguments) when the call is about to run, resolved first (`~`, `..` and
+//! symbolic links) so none sneaks past, and refuses a denied one. A Review system drops the matches
+//! in read-protected files from each search's result before the model sees it. `/paths` lists the
+//! rules and what each blocked.
 
 use std::collections::HashMap;
 use std::path::{Component as Part, Path, PathBuf};

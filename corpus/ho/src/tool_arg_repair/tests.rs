@@ -138,7 +138,4 @@ fn broken_arguments_run_repaired_and_are_kept_repaired() {
     );
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(ToolArgRepairPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(ToolArgRepairPlugin);

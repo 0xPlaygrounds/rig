@@ -6,7 +6,7 @@ use rig_core::tool::{
 };
 
 use super::{Read, ReadArgs};
-use crate::fs::resolve;
+use crate::workspace::{Local, Workspace};
 
 /// What `read` answers for `args`, and the context it published to.
 fn call(args: ReadArgs) -> (Result<ToolOutput, ToolExecutionError>, ToolContext) {
@@ -42,7 +42,7 @@ fn a_read_publishes_the_file_it_read() {
         published,
         Some(FilesRead(vec![
             FileRead::new(
-                resolve(None, &path).to_string_lossy(),
+                <dyn Workspace>::resolve(&Local, None, &path).to_string_lossy(),
                 content_hash(b"one\ntwo\n")
             )
             .with_lines(LinesShown {
@@ -154,7 +154,7 @@ fn a_read_that_stops_at_its_bytes_says_so() {
 fn an_image_is_read_as_an_image() {
     let dir = std::env::temp_dir().join(format!("rig-tools-read-image-{}", std::process::id()));
     std::fs::create_dir_all(&dir).ok();
-    let dir = resolve(None, &dir.to_string_lossy());
+    let dir = <dyn Workspace>::resolve(&Local, None, &dir.to_string_lossy());
     let png = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR".to_vec();
     let at = |name: &str| dir.join(name).to_string_lossy().into_owned();
     std::fs::write(at("logo.png"), &png).ok();
@@ -224,7 +224,7 @@ fn an_image_is_read_as_an_image() {
 fn a_binary_file_is_refused_as_not_text() {
     let path = std::env::temp_dir().join(format!("rig-tools-read-{}.bin", std::process::id()));
     std::fs::write(&path, b"\xff\xfe\0\x01").ok();
-    let path = resolve(None, &path.to_string_lossy());
+    let path = <dyn Workspace>::resolve(&Local, None, &path.to_string_lossy());
     let path = path.to_string_lossy().into_owned();
     let (refused, _) = call(ReadArgs::new(&path));
     let refused = refused
@@ -311,7 +311,7 @@ fn a_command_is_given_only_for_a_path_shell_reaches() {
 fn a_cut_line_can_be_read_on_in_shell() {
     let dir = std::env::temp_dir().join(format!("rig-tools-read-it's-{}", std::process::id()));
     std::fs::create_dir_all(&dir).ok();
-    let dir = resolve(None, &dir.to_string_lossy());
+    let dir = <dyn Workspace>::resolve(&Local, None, &dir.to_string_lossy());
     let path = dir.join("long.txt");
     let ascii = "x".repeat(30_000);
     let wide = "é".repeat(2_500);

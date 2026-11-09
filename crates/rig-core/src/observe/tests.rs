@@ -1,6 +1,6 @@
 use super::*;
 
-fn denied(order: u64) -> Observation {
+fn started(order: u64) -> Observation {
     Observation::new(
         Subject {
             scope: Some("app/run#1".into()),
@@ -9,39 +9,31 @@ fn denied(order: u64) -> Observation {
             family: Some(EffectFamily::Tool),
             ..Subject::default()
         },
-        Stage::Host,
+        Stage::Handler,
         Emitter::versioned("app/steer", "1"),
-        Action::Host {
-            kind: "app/denied".into(),
-            payload: serde_json::json!({"why": "refusing to delete /"}),
+        Action::Adapter {
+            observation: AdapterObservation {
+                operation: "op-1".into(),
+                attempt: Some(1),
+                event: AdapterEvent::Started {
+                    method: "POST".into(),
+                    route: "/completion".into(),
+                },
+                analysis: None,
+            },
         },
     )
 }
 
 #[test]
 fn a_trace_round_trips_through_json() {
-    let log = ObservationLog::default().with_session("trial-7");
-    log.observe(denied(3));
-    log.observe(Observation::new(
-        Subject {
-            effect: Some(EffectId::from_raw(4)),
-            parent: Some(EffectId::from_raw(1)),
-            ..Subject::default()
-        },
-        Stage::Handler,
-        Emitter::named("host/bus"),
-        Action::Host {
-            kind: "app/other".into(),
-            payload: serde_json::json!([]),
-        },
-    ));
+    let log = ObservationLog::default();
+    log.observe(started(3));
     let trace = log.trace();
     let json = serde_json::to_string(&trace).unwrap();
     let back: ObservationTrace = serde_json::from_str(&json).unwrap();
     assert_eq!(back, trace);
-    assert_eq!(back.session.as_deref(), Some("trial-7"));
-    assert!(json.contains("\"stage\":\"host\""));
-    assert!(json.contains("\"action\":\"host\""));
+    assert!(json.contains("\"stage\":\"handler\""));
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -76,7 +68,7 @@ fn a_later_fact_reopens_a_finalized_capture_even_when_dropped() {
         let log = ObservationLog::with_capacity(capacity);
         log.finalize();
         assert!(log.trace().finalized);
-        log.observe(denied(0));
+        log.observe(started(0));
         assert!(
             !log.trace().finalized,
             "a later producer fact invalidates finalization"
@@ -86,50 +78,18 @@ fn a_later_fact_reopens_a_finalized_capture_even_when_dropped() {
     }
 }
 
-/// The two sink shapes across the capacity boundary: a capture keeps the
-/// first facts and counts the rest, a ring keeps the last facts and counts
-/// what it let go; both say when something was lost, and a drain starts
-/// either over.
+/// A capture keeps the first facts and counts the rest as dropped.
 #[test]
-fn a_capture_keeps_the_first_facts_and_a_ring_the_last() {
-    for (ring, fill, kept, dropped, first_seq) in [
-        (false, 2, 2, 0, 0),
-        (false, 3, 3, 0, 0),
-        (false, 5, 3, 2, 0),
-        (true, 2, 2, 0, 0),
-        (true, 3, 3, 0, 0),
-        (true, 5, 3, 2, 2),
-    ] {
-        let log = if ring {
-            ObservationLog::ring(3)
-        } else {
-            ObservationLog::with_capacity(3)
-        };
+fn a_capture_keeps_the_first_facts() {
+    for (fill, kept, dropped) in [(2, 2, 0), (3, 3, 0), (5, 3, 2)] {
+        let log = ObservationLog::with_capacity(3);
         for i in 0..fill {
-            log.observe(denied(i));
+            log.observe(started(i));
         }
         let trace = log.trace();
-        assert_eq!(trace.observations.len(), kept, "ring={ring} fill={fill}");
-        assert_eq!(trace.dropped, dropped, "ring={ring} fill={fill}");
+        assert_eq!(trace.observations.len(), kept, "fill={fill}");
+        assert_eq!(trace.dropped, dropped, "fill={fill}");
         assert_eq!(trace.is_complete(), dropped == 0);
-        assert_eq!(
-            trace.observations.first().map(|o| o.seq),
-            Some(first_seq),
-            "ring={ring} fill={fill}: a ring keeps the latest, a capture the earliest"
-        );
-        let drained = log.drain();
-        assert_eq!(drained.observations.len(), kept);
-        assert_eq!(drained.dropped, dropped);
-        let after = log.trace();
-        assert!(
-            after.observations.is_empty() && after.dropped == 0,
-            "a drain starts over"
-        );
-        log.observe(denied(9));
-        assert_eq!(
-            log.trace().observations[0].seq,
-            fill,
-            "the sequence continues across a drain"
-        );
+        assert_eq!(trace.observations.first().map(|o| o.seq), Some(0));
     }
 }

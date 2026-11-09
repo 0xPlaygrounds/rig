@@ -19,71 +19,16 @@
 //! # }
 //! ```
 //!
-//! # What it does
-//!
-//! Gemini's implicit caching reuses an earlier request's prefix at no cost,
-//! but on gemini-3.8-flash a chat-sized request that extends the previous one
-//! almost never hits (measured: 1 hit in 138). An explicit cache
-//! (`cachedContents`) can hold the whole conversation so far: system
-//! instruction, tools, tool config, every model turn with its signatures, and
-//! function calls and responses. A request that reads it sends only what
-//! came after. Caches cannot be extended or chained, so a growing
-//! conversation needs a new cache from time to time ("rolling"), and each new
-//! cache is billed again at the input price.
-//!
-//! The `Auto` policy rolls when rolling has already paid for itself: it
-//! counts the input premium the conversation paid for tokens a cache could
-//! have held, and creates a new cache once that premium covers the new
-//! cache's creation and storage (ski rental). So:
-//!
-//! - a cache read once never pays, and is never made;
-//! - rolling beats one fixed prefix cache from about 20 calls, and the saving
-//!   grows with the run;
-//! - where implicit caching already serves a conversation (large contexts,
-//!   repeated documents), the book stays inline instead of paying to cache
-//!   what is already cheap. It goes inline above `implicit_ceiling` tokens
-//!   until implicit caching is seen failing.
-//!
-//! Cost savings top out below 90%, because a cached read costs 10% of the
-//! input price. How close a run gets depends on its shape: a large stable
-//! prefix with little new content per call approaches 99% cached (a batch of
-//! short questions over a 5.5k-token prefix measured 99.6%); a chat on a small
-//! preamble cannot, because each call's new turn is never cached, and on
-//! Gemini 3 each earlier thought a request replays through its signature is
-//! billed again as input that no explicit cache holds (see
-//! [`ThoughtReplay`](super::completion::ThoughtReplay)).
-//!
-//! # Lifecycle
-//!
-//! - The book tracks each cache's expiry and never sends one it knows has
-//!   expired. A new cache's TTL follows the gaps between calls (at least
-//!   twice the longest gap seen, never less than [`AutoCache::ttl`], never more
-//!   than 81 minutes, past which keeping a cache costs more than it saves at
-//!   the default prices), and a cache read close to expiry is extended.
-//! - A shared-prefix cache that expired is replaced by the next call if a call
-//!   other than its creator read it. If none did, the replacement waits for a
-//!   run of calls one cache could have served, twice as long each time.
-//! - A replaced cache stays in [`CacheBook::leases`] until it is deleted.
-//! - A replaced cache is deleted when the roll replaces it, and a
-//!   conversation cache nobody has read for a while is deleted too.
-//! - A cache that answers 403 (deleted elsewhere, or expired early) is
-//!   forgotten and the request is sent again inline, once.
-//! - [`CacheBook::close`] deletes everything still live.
-//!
-//! # Resume
-//!
-//! A checkpoint stores [`CacheBook::leases`] beside the run. A new book in a
-//! new process calls [`CacheBook::restore`] with them, then
-//! [`CacheBook::prove`], which keeps a lease only if Google still has it
-//! under its name. The resumed run then reads the surviving cache instead of
-//! creating a new one.
-//!
-//! # Scope
-//!
-//! This covers `generateContent` and `streamGenerateContent` on the Gemini
-//! Developer API. The Interactions API has no explicit caching. Vertex AI
-//! and `rig-gemini-grpc` are not covered, nor are hosted-tool parts, which
-//! this crate's Gemini decoder does not keep in history.
+//! An explicit cache (`cachedContents`) holds the conversation so far, and a
+//! request that reads it sends only what came after. Caches cannot be
+//! extended or chained, so a growing conversation needs a new cache from
+//! time to time, billed again at the input price. The `Auto` policy creates
+//! one once the input premium the conversation paid for tokens a cache could
+//! have held covers the new cache's creation and storage, and stays inline
+//! above `implicit_ceiling` tokens until Gemini's implicit caching is seen
+//! failing. Only the Gemini Developer API is covered: not Interactions,
+//! which has no explicit caching, Vertex AI, `rig-gemini-grpc` or
+//! hosted-tool parts.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -374,6 +319,18 @@ pub(crate) struct Book {
 /// The shared, content-addressed record of the caches a set of models
 /// reads. Clone it into every model that should share caches: sub-agents on
 /// one prefix, a resumed run and its successor.
+///
+/// The book never sends a cache it knows has expired. A new cache's TTL is at
+/// least twice the longest gap seen between calls, never less than
+/// [`AutoCache::ttl`] and never more than 81 minutes, and a cache read close
+/// to expiry is extended. An expired shared-prefix cache that only its
+/// creator read is replaced after a run of calls one cache could have
+/// served, twice as long each time. A cache that answers 403 is forgotten and the
+/// request is sent again inline, once. A replaced cache stays in
+/// [`Self::leases`] until the roll deletes it, a conversation cache nobody
+/// has read for a while is deleted, and [`Self::close`] deletes everything
+/// still live. To resume, store [`Self::leases`] with the checkpoint, then
+/// call [`Self::restore`] and [`Self::prove`] on a new book.
 #[derive(Clone)]
 pub struct CacheBook {
     inner: Arc<Mutex<Book>>,

@@ -1,16 +1,13 @@
-//! SN-01: a scope fence for file changes. `/scope <dir>…` fences the
-//! session's file changes to those directories of the project; `/scope`
-//! shows the fence and `/scope off` lifts it.
+//! A scope fence for file changes. `/scope <dir>…` fences the session's file changes to those
+//! directories of the project; `/scope` shows the fence and `/scope off` lifts it.
 //!
-//! A Gate system reads each tool call's `Footprint`, the paths the call
-//! writes as its tool resolved them (`..` folded, links followed), so one
-//! rule covers `edit`, `write`, `delete` and any tool that declares
-//! the paths it writes. A call that writes outside the fence is refused and
-//! the turn goes on. Calls that only read are never fenced, and neither is
-//! a tool that may change anything (`Writes(Anything)`), such as `shell`:
-//! the fence guards tool edits, it is no sandbox. The fence is a saved
-//! resource of the session, so every agent of the session, subagents
-//! included, is fenced by it, and it comes back on `/reload` and `/resume`.
+//! A Gate system reads each tool call's `Footprint`, the paths the call writes as its tool
+//! resolved them (`..` folded, links followed), so one rule covers `edit`, `write`, `delete`
+//! and any tool that declares the paths it writes. A call that writes outside the fence is
+//! refused and the turn goes on. Calls that only read are never fenced, and neither is a tool
+//! that may change anything (`Writes(Anything)`), such as `shell`: the fence guards tool edits,
+//! it is no sandbox. The fence is a saved resource of the session, so every agent of the
+//! session, subagents included, is fenced by it, and it comes back on `/reload` and `/resume`.
 
 use std::path::{Path, PathBuf};
 

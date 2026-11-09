@@ -40,13 +40,7 @@ where
     cassette.finish_after_test(result).await;
 }
 
-/// The body every result-returning wrapper shares.
-///
-/// Deliberately *not* one of the registered wrapper names: the safety scan
-/// reads each cassette scenario out of the AST at the wrapper's call site, so a
-/// wrapper that forwarded to another registered wrapper would hand it a
-/// variable instead of a string literal and register nothing.
-async fn run_deepseek_cassette_result<F, Fut, E>(
+pub(super) async fn with_deepseek_cassette_result<F, Fut, E>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) -> Result<(), E>
@@ -64,20 +58,9 @@ where
     cassette.finish_after_test_result(result).await
 }
 
-pub(super) async fn with_deepseek_cassette_result<F, Fut, E>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) -> Result<(), E>
-where
-    F: FnOnce(OpenAiModels) -> Fut,
-    Fut: Future<Output = Result<(), E>>,
-{
-    run_deepseek_cassette_result(spec, test_body).await
-}
-
 /// Bogus-key variant for recording real 401s: the shared model-listing fetch
-/// must classify a rejected listing with provider, path and status context
-/// (rig#2079), and only a real rejection proves it.
+/// must classify a rejected listing with provider, path and status context,
+/// and only a real rejection proves it.
 pub(super) async fn with_deepseek_cassette_bogus_key_result<F, Fut, E>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
@@ -104,152 +87,6 @@ where
     .catch_unwind()
     .await;
     cassette.finish_after_test_result(result).await
-}
-
-/// Truncation-matrix variant: one recorded fixture directory per bug keeps the
-/// matrices auditable, and the safety scan pairs a fixture with the wrapper
-/// whose call site names it.
-pub(super) async fn with_deepseek_truncation_cassette_result<F, Fut, E>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) -> Result<(), E>
-where
-    F: FnOnce(OpenAiModels) -> Fut,
-    Fut: Future<Output = Result<(), E>>,
-{
-    run_deepseek_cassette_result(spec, test_body).await
-}
-
-/// Reasoning-block-order matrix variant.
-pub(super) async fn with_deepseek_block_order_cassette_result<F, Fut, E>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) -> Result<(), E>
-where
-    F: FnOnce(OpenAiModels) -> Fut,
-    Fut: Future<Output = Result<(), E>>,
-{
-    run_deepseek_cassette_result(spec, test_body).await
-}
-
-/// Request-wire-shape matrix variant (content parts, forced tool choice,
-/// completion-path error envelopes).
-pub(super) async fn with_deepseek_wire_shape_cassette_result<F, Fut, E>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) -> Result<(), E>
-where
-    F: FnOnce(OpenAiModels) -> Fut,
-    Fut: Future<Output = Result<(), E>>,
-{
-    run_deepseek_cassette_result(spec, test_body).await
-}
-
-/// Follow-up hunt census: request/response fields that the first sweep did
-/// not exercise (stop sequences, reasoning effort and content filtering).
-/// This remains separate from per-bug matrix wrappers: a confirmed defect,
-/// such as streamed log-probability loss, graduates into its own fixture
-/// directory and wrapper.
-pub(super) async fn with_deepseek_followup_hunt_cassette_result<F, Fut, E>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) -> Result<(), E>
-where
-    F: FnOnce(OpenAiModels) -> Fut,
-    Fut: Future<Output = Result<(), E>>,
-{
-    run_deepseek_cassette_result(spec, test_body).await
-}
-
-/// Per-bug matrix for streamed Chat Completions log-probability loss.
-pub(super) async fn with_deepseek_stream_logprobs_cassette_result<F, Fut, E>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) -> Result<(), E>
-where
-    F: FnOnce(OpenAiModels) -> Fut,
-    Fut: Future<Output = Result<(), E>>,
-{
-    run_deepseek_cassette_result(spec, test_body).await
-}
-
-/// Every interaction recorded under `scenario`, as `(request, response)` body
-/// strings in cassette order.
-///
-/// Matrix cells assert their *premise* against these bytes — that the provider
-/// turn really did carry (or really did not carry) the shape the cell is about
-/// — so a cell whose recorded turn quietly changed shape fails loudly instead
-/// of passing while covering nothing.
-pub(super) fn recorded_interactions(scenario: &str) -> Vec<(String, String)> {
-    #[derive(serde::Deserialize)]
-    struct RecordedInteraction {
-        when: RecordedSide,
-        then: RecordedSide,
-    }
-
-    #[derive(serde::Deserialize)]
-    struct RecordedSide {
-        body: Option<String>,
-    }
-
-    let cassette_path = crate::cassettes::cassette_path("deepseek", scenario);
-    let contents = std::fs::read_to_string(&cassette_path).unwrap_or_else(|error| {
-        panic!(
-            "provider cassette {} should be readable after recording: {error}",
-            cassette_path.display()
-        )
-    });
-
-    serde_yaml::Deserializer::from_str(&contents)
-        .map(|document| {
-            let interaction = <RecordedInteraction as serde::Deserialize>::deserialize(document)
-                .expect("cassette interaction should deserialize");
-            (
-                interaction.when.body.unwrap_or_default(),
-                interaction.then.body.unwrap_or_default(),
-            )
-        })
-        .collect()
-}
-
-/// The first recorded request body under `scenario`, parsed as JSON.
-pub(super) fn recorded_request(scenario: &str) -> serde_json::Value {
-    let (request, _) = recorded_interactions(scenario)
-        .into_iter()
-        .next()
-        .unwrap_or_else(|| panic!("cassette {scenario} should contain an interaction"));
-    serde_json::from_str(&request)
-        .unwrap_or_else(|error| panic!("cassette {scenario} request should be JSON: {error}"))
-}
-
-/// The first recorded response body under `scenario`, parsed as JSON.
-pub(super) fn recorded_response(scenario: &str) -> serde_json::Value {
-    let (_, response) = recorded_interactions(scenario)
-        .into_iter()
-        .next()
-        .unwrap_or_else(|| panic!("cassette {scenario} should contain an interaction"));
-    serde_json::from_str(&response)
-        .unwrap_or_else(|error| panic!("cassette {scenario} response should be JSON: {error}"))
-}
-
-/// The decoded `data:` frames of the first recorded SSE response under
-/// `scenario`, `[DONE]` excluded.
-pub(super) fn recorded_stream_chunks(scenario: &str) -> Vec<serde_json::Value> {
-    let (_, response) = recorded_interactions(scenario)
-        .into_iter()
-        .next()
-        .unwrap_or_else(|| panic!("cassette {scenario} should contain an interaction"));
-
-    response
-        .lines()
-        .filter_map(|line| line.trim().strip_prefix("data:"))
-        .map(str::trim)
-        .filter(|payload| *payload != "[DONE]")
-        .map(|payload| {
-            serde_json::from_str(payload)
-                .unwrap_or_else(|error| panic!("cassette {scenario} chunk should be JSON: {error}"))
-        })
-        .collect()
 }
 
 /// Everything one raw DeepSeek stream produced, in arrival order.
@@ -344,30 +181,4 @@ pub(super) async fn collect_raw_stream_outcome(
     }
 
     outcome
-}
-
-/// Cassette wrapper for the deepseek prompt-caching matrix
-/// (`crates/rig-cassette/fixtures/cassettes/deepseek/prompt_caching/`).
-///
-/// Builds the cassette directly rather than delegating to [`with_deepseek_cassette`]: this
-/// provider's cassette-safety `source_dir` covers `support.rs` itself, and the
-/// scan requires every call to a *registered* wrapper to pass a string-literal
-/// scenario. A delegating wrapper passes its `spec` variable through, which the
-/// scan reports as an unregistered scenario. The duplication is three lines and
-/// the alternative is an unscannable suite.
-pub(super) async fn with_deepseek_prompt_caching_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(OpenAiModels) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    let (cassette, bound) = deepseek_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(OpenAiModels::new(
-        bound,
-        rig_test_support::cassettes::local_http(),
-    )))
-    .catch_unwind()
-    .await;
-    cassette.finish_after_test(result).await;
 }

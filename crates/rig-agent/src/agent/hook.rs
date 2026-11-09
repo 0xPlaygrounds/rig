@@ -74,9 +74,7 @@ fn take<T: 'static>(entry: Box<dyn Entry>) -> Option<T> {
 
 impl Scratchpad {
     fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<TypeId, Box<dyn Entry>>> {
-        self.inner
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+        crate::lock(&self.inner)
     }
 
     /// Insert a value.
@@ -185,67 +183,38 @@ impl HookContext {
     /// inner stack saw, so the inner accumulation is the last rewrite before
     /// the terminal action.
     fn salvage_patch(&self, id: EffectId, kind: EffectKind) {
-        self.salvaged_patches
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+        crate::lock(&self.salvaged_patches)
             .entry(id)
             .or_insert(kind);
     }
 
     /// The effect as patched before the dispatch `id` was denied, if any.
     pub(crate) fn take_salvaged_patch(&self, id: EffectId) -> Option<EffectKind> {
-        self.salvaged_patches
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .remove(&id)
+        crate::lock(&self.salvaged_patches).remove(&id)
     }
 
     /// Seed the entries a resumed run carried; called by the driver at run
     /// start, before any hook fires.
     pub(crate) fn seed_entries(&self, entries: &[Aside]) {
-        self.entries
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .extend_from_slice(entries);
+        crate::lock(&self.entries).extend_from_slice(entries);
     }
 
     /// Drain the appends not yet flushed into the run; called by the driver
     /// at each step boundary.
     pub(crate) fn drain_pending_entries(&self) -> Vec<Aside> {
-        std::mem::take(
-            &mut *self
-                .pending_entries
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner),
-        )
+        std::mem::take(&mut *crate::lock(&self.pending_entries))
     }
 
     pub(crate) fn set_output_tool(&self, name: Option<&str>) {
-        *self
-            .output_tool
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = name.map(str::to_owned);
+        *crate::lock(&self.output_tool) = name.map(str::to_owned);
     }
 
     fn output_tool(&self) -> Option<String> {
-        self.output_tool
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone()
+        crate::lock(&self.output_tool).clone()
     }
 
     pub(crate) fn set_turn(&self, turn: usize) {
         self.turn.store(turn, Ordering::Relaxed);
-    }
-
-    #[cfg(any(test, feature = "test-utils"))]
-    pub(crate) fn set_streaming(&mut self, is_streaming: bool) {
-        self.is_streaming = is_streaming;
-    }
-
-    #[cfg(any(test, feature = "test-utils"))]
-    pub(crate) fn set_agent_name(&mut self, name: String) {
-        self.agent_name = Some(name);
     }
 
     /// Bind a typed key in the run's handler table. Fails when the current
@@ -311,23 +280,15 @@ impl HookContext {
         value: &T,
     ) -> Result<(), serde_json::Error> {
         let entry = Aside::new(kind, Author::rig(), serde_json::to_value(value)?);
-        self.entries
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .push(entry.clone());
-        self.pending_entries
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .push(entry);
+        crate::lock(&self.entries).push(entry.clone());
+        crate::lock(&self.pending_entries).push(entry);
         Ok(())
     }
 
     /// Clone all entries of `kind`, including resumed entries and new appends,
     /// in append order. Reading does not consume entries.
     pub fn entries(&self, kind: &str) -> Vec<Aside> {
-        self.entries
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+        crate::lock(&self.entries)
             .iter()
             .filter(|entry| entry.kind == kind)
             .cloned()
@@ -336,9 +297,7 @@ impl HookContext {
 
     /// Clone the most recent entry of `kind`, if present.
     pub fn last_entry(&self, kind: &str) -> Option<Aside> {
-        self.entries
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+        crate::lock(&self.entries)
             .iter()
             .rev()
             .find(|entry| entry.kind == kind)
@@ -1205,6 +1164,10 @@ impl AgentHook for () {
 /// hand-written below.
 macro_rules! for_each_boxed_hook_event {
     ($m:ident) => {
+        $m!(run_start, on_run_start, RunStart, RunStartAction);
+        $m!(run_settled, on_run_settled, RunSettled, ());
+        $m!(dispatch, on_dispatch, DispatchEvent, DispatchAction);
+        $m!(outcome, on_outcome, OutcomeEvent, OutcomeAction);
         $m!(
             completion_call,
             on_completion_call,
@@ -1234,7 +1197,7 @@ macro_rules! for_each_boxed_hook_event {
 }
 
 macro_rules! erased_hook_decl {
-    ($erased:ident, $on:ident, $event:ident, $action:ident) => {
+    ($erased:ident, $on:ident, $event:ident, $action:ty) => {
         fn $erased<'a>(
             &'a self,
             ctx: &'a HookContext,
@@ -1244,7 +1207,7 @@ macro_rules! erased_hook_decl {
 }
 
 macro_rules! erased_hook_forward {
-    ($erased:ident, $on:ident, $event:ident, $action:ident) => {
+    ($erased:ident, $on:ident, $event:ident, $action:ty) => {
         fn $erased<'a>(
             &'a self,
             ctx: &'a HookContext,
@@ -1256,32 +1219,12 @@ macro_rules! erased_hook_forward {
 }
 
 trait DynAgentHook: WasmCompatSend + WasmCompatSync {
-    fn run_start<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: RunStart<'a>,
-    ) -> WasmBoxedFuture<'a, RunStartAction>;
-    fn run_settled<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: RunSettled<'a>,
-    ) -> WasmBoxedFuture<'a, ()>;
     fn model_select(&self, ctx: &HookContext, event: ModelSelection<'_>) -> ModelSelectionAction;
     fn invalid_tool_call<'a>(
         &'a self,
         ctx: &'a HookContext,
         event: &'a InvalidToolCallContext,
     ) -> WasmBoxedFuture<'a, Option<InvalidToolCallAction>>;
-    fn dispatch<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: DispatchEvent<'a>,
-    ) -> WasmBoxedFuture<'a, DispatchAction>;
-    fn outcome<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: OutcomeEvent<'a>,
-    ) -> WasmBoxedFuture<'a, OutcomeAction>;
     for_each_boxed_hook_event!(erased_hook_decl);
     fn observes(&self, kind: StepEventKind) -> bool;
 }
@@ -1290,22 +1233,6 @@ impl<H> DynAgentHook for H
 where
     H: AgentHook,
 {
-    fn run_start<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: RunStart<'a>,
-    ) -> WasmBoxedFuture<'a, RunStartAction> {
-        Box::pin(self.on_run_start(ctx, event))
-    }
-
-    fn run_settled<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: RunSettled<'a>,
-    ) -> WasmBoxedFuture<'a, ()> {
-        Box::pin(self.on_run_settled(ctx, event))
-    }
-
     fn model_select(&self, ctx: &HookContext, event: ModelSelection<'_>) -> ModelSelectionAction {
         self.on_model_select(ctx, event)
     }
@@ -1316,20 +1243,6 @@ where
         event: &'a InvalidToolCallContext,
     ) -> WasmBoxedFuture<'a, Option<InvalidToolCallAction>> {
         Box::pin(self.on_invalid_tool_call(ctx, event))
-    }
-    fn dispatch<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: DispatchEvent<'a>,
-    ) -> WasmBoxedFuture<'a, DispatchAction> {
-        Box::pin(self.on_dispatch(ctx, event))
-    }
-    fn outcome<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: OutcomeEvent<'a>,
-    ) -> WasmBoxedFuture<'a, OutcomeAction> {
-        Box::pin(self.on_outcome(ctx, event))
     }
     for_each_boxed_hook_event!(erased_hook_forward);
     fn observes(&self, kind: StepEventKind) -> bool {

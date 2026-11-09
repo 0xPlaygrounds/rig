@@ -173,7 +173,6 @@ impl<I: Intercept> Serve for Layer<I> {
         if !dispatch.is_stream() {
             let folded = Arc::new(Mutex::new(None));
             let inner = dispatch.inner(Some(folded.clone()));
-            let attribution = dispatch.attribution();
             let outcome = self
                 .inner
                 .handle(kind.clone(), inner)
@@ -182,15 +181,11 @@ impl<I: Intercept> Serve for Layer<I> {
                 .await;
             return Reply::Outcome(match self.intercept.after(id, &kind, &outcome).await {
                 AfterServe::Keep => outcome,
-                AfterServe::Replace(replacement) => {
-                    attribution.replaced(&name);
-                    replacement
-                }
+                AfterServe::Replace(replacement) => replacement,
             });
         }
         let folded = Arc::new(Mutex::new(None));
         let inner = dispatch.inner(Some(folded.clone()));
-        let attribution = dispatch.attribution();
         let stream = self
             .inner
             .handle(kind.clone(), inner)
@@ -199,8 +194,8 @@ impl<I: Intercept> Serve for Layer<I> {
             .fuse();
         let intercept = self.intercept.clone();
         Reply::Stream(Box::pin(futures::stream::unfold(
-            (stream, intercept, kind, folded, false, attribution),
-            move |(mut stream, intercept, kind, folded, mut decided, attribution)| async move {
+            (stream, intercept, kind, folded, false),
+            move |(mut stream, intercept, kind, folded, mut decided)| async move {
                 let item = stream.next().await;
                 if decided && item.is_none() {
                     return None;
@@ -217,34 +212,24 @@ impl<I: Intercept> Serve for Layer<I> {
                     decided = true;
                     match intercept.after(id, &kind, &outcome).await {
                         AfterServe::Keep => item.unwrap_or_else(|| Err(stream_truncated())),
-                        AfterServe::Replace(Err(report)) => {
-                            attribution.replaced(&intercept.name());
-                            Err(report)
-                        }
+                        AfterServe::Replace(Err(report)) => Err(report),
                         AfterServe::Replace(Ok(Answered::Completion(response))) => {
-                            attribution.replaced(&intercept.name());
                             Ok(Relayed::Done(response))
                         }
-                        AfterServe::Replace(Ok(other)) => {
-                            attribution.replaced(&intercept.name());
-                            Err(ErrorReport::new(
-                                ErrorKind::Internal,
-                                format!(
-                                    "layer `{}`: replaced a streamed completion with a {} outcome",
-                                    intercept.name(),
-                                    other.family()
-                                ),
-                            )
-                            .with_retryable(false))
-                        }
+                        AfterServe::Replace(Ok(other)) => Err(ErrorReport::new(
+                            ErrorKind::Internal,
+                            format!(
+                                "layer `{}`: replaced a streamed completion with a {} outcome",
+                                intercept.name(),
+                                other.family()
+                            ),
+                        )
+                        .with_retryable(false)),
                     }
                 } else {
                     item?
                 };
-                Some((
-                    item,
-                    (stream, intercept, kind, folded, decided, attribution),
-                ))
+                Some((item, (stream, intercept, kind, folded, decided)))
             },
         )))
     }

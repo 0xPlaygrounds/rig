@@ -414,7 +414,4 @@ fn provider_run_search_is_kept_replayed_natively_and_sent_as_text_elsewhere() {
     assert!(!format!("{:?}", requests.last()).contains("web_search_20250305"));
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(ProviderToolsPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(ProviderToolsPlugin);

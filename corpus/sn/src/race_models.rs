@@ -1,27 +1,22 @@
-//! SN-22: race two models, keep the faster.
+//! Race two models, keep the faster. `RIG_HOME/race.toml` names virtual models, each raced over
+//! two or more catalog models: `race-fast = ["provider-a/model-x", "provider-b/model-y"]`. Each
+//! is a catalog model of the vendor `race` (`race/race-fast`), so `/model` lists it and an
+//! agent, a subagent or a restored session picks it like any model; `/model race-fast` picks it
+//! too.
 //!
-//! `RIG_HOME/race.toml` names virtual models, each raced over two or more
-//! catalog models: `race-fast = ["provider-a/model-x", "provider-b/model-y"]`. Each
-//! is a catalog model of the vendor `race` (`race/race-fast`), so `/model`
-//! lists it and an agent, a subagent or a restored session picks it like
-//! any model; `/model race-fast` picks it too.
+//! A turn's model call to a race model goes to its first member, and a sibling call of the same
+//! turn goes to each other member, each fitted to its own model. The first to stream content
+//! (text, reasoning or a tool call) wins: it supersedes the others ([`SupersededBy`]), which
+//! are cancelled and never put in the conversation. A member that fails before it streamed
+//! drops out the same way; if all fail, the last failure lists every member's error. A winner
+//! that fails mid-stream is superseded by a call to the next member alone ("restarting on …"),
+//! so the stored reply is that member's whole reply. The context window is the answering
+//! member's.
 //!
-//! A turn's model call to a race model goes to its first member, and the
-//! plugin sends a sibling turn call of the same turn to each other one, all
-//! built by the kernel from the agent and each fitted to its own model.
-//! The first to stream content (text, reasoning or a tool call) wins: it
-//! supersedes the others ([`SupersededBy`]), which the kernel cancels and
-//! never puts in the conversation. A member that fails before it streamed
-//! drops out the same way; if all fail, the last failure lists every
-//! member's error. A winner that fails mid-stream is superseded by a turn
-//! call to the next member alone ("restarting on …"), so the stored reply
-//! is that member's whole reply. The context window is the answering
-//! member's, as `rig_basics::telemetry` reads it from where the call was sent. A
-//! member cancelled after it was sent, or a winner that failed mid-stream,
-//! carries a [`CallUsage`] estimate (its input tokens at its model's list
-//! price), which `rig_basics::telemetry` counts like a reply's usage, and `/race`
-//! shows each race model's wins, median time to first content and
-//! cancelled spend.
+//! A member cancelled after it was sent, or a winner that failed mid-stream, carries a
+//! [`CallUsage`] estimate (its input tokens at its model's list price), which
+//! `rig_basics::telemetry` counts like a reply's usage. `/race` shows each race model's wins,
+//! median time to first content and cancelled spend.
 
 use std::collections::BTreeMap;
 use std::path::Path;

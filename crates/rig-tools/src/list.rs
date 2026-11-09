@@ -2,7 +2,6 @@
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use rig_core::completion::ToolAnnotations;
 use rig_core::tool::{
@@ -13,7 +12,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::fs::{listed, shown, unread};
-use crate::workspace::{Listing, Local, Workspace};
+use crate::workspace::{Listing, Root, Workspace};
 use crate::{MAX_BYTES, MAX_LINES, blocking};
 
 /// Lists the files under a directory, as far down as asked, honouring
@@ -21,27 +20,10 @@ use crate::{MAX_BYTES, MAX_LINES, blocking};
 /// when the glob names a hidden path): one path per line below the listed directory, and each
 /// directory deeper than the listing goes once, as `dir/`. Publishes what
 /// it listed ([`FilesListed`]) and, when the list was cut, [`OutputCut`].
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct List {
-    /// Where the files are listed.
-    pub workspace: Arc<dyn Workspace>,
-    /// The directory a relative path is listed from; `None` is the
-    /// workspace's working directory.
-    pub base: Option<PathBuf>,
-    /// Whether a path that resolves outside `base` is refused, before
-    /// anything is listed.
-    pub confine: bool,
-}
-
-impl Default for List {
-    /// Lists this machine's files, from this process's working directory.
-    fn default() -> Self {
-        Self {
-            workspace: Arc::new(Local),
-            base: None,
-            confine: false,
-        }
-    }
+    /// Where the files are, and the directory a relative path is taken from.
+    pub root: Root,
 }
 
 /// Arguments of [`List`].
@@ -138,8 +120,7 @@ impl Tool for List {
 
     fn footprint(&self, args: &ListArgs) -> Touches {
         Touches::Reads(Scope::Paths(vec![
-            self.workspace
-                .resolve(self.base.as_deref(), args.path.as_deref().unwrap_or(".")),
+            self.root.resolve(args.path.as_deref().unwrap_or(".")),
         ]))
     }
 
@@ -148,12 +129,8 @@ impl Tool for List {
         context: &mut ToolContext,
         args: ListArgs,
     ) -> Result<String, ToolExecutionError> {
-        let root = self.workspace.place(
-            self.base.as_deref(),
-            self.confine,
-            args.path.as_deref().unwrap_or("."),
-        )?;
-        let workspace = self.workspace.clone();
+        let root = self.root.place(args.path.as_deref().unwrap_or("."))?;
+        let workspace = self.root.workspace.clone();
         let (text, listed, cut) = blocking(move || list(&*workspace, &root, &args)).await?;
         context.insert_result(listed)?;
         if let Some(cut) = cut {

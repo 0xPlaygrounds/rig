@@ -1,24 +1,20 @@
-//! Plugin corpus (held-out): H16: Best-of-N attempts in git worktrees (spec
-//! `H16-best-of-n.md`).
+//! Best-of-N attempts in git worktrees. `/best-of 3 --verify "cargo test" fix the flaky test in
+//! net.rs` makes 3 git worktrees of the project as it is now (HEAD plus the uncommitted changes, as
+//! a snapshot commit) under `.rig/best-of/<id>/<k>`, and spawns one one-job helper agent per
+//! worktree with the task. Each candidate has the project's directory in its worktree as its
+//! `WorkDir`, so its file and shell tools work there and refuse paths outside it. When a
+//! candidate's turn ends, its tree is snapshotted, its diff measured and the verify command run in
+//! it.
 //!
-//! `/best-of 3 --verify "cargo test" fix the flaky test in net.rs` makes 3
-//! git worktrees of the project as it is now (HEAD plus the uncommitted
-//! changes, as a snapshot commit) under `.rig/best-of/<id>/<k>`, and spawns
-//! one one-job helper agent per worktree with the task. Each candidate has
-//! the project's directory in its worktree as its `WorkDir`, so its file
-//! and shell tools work there and refuse paths outside it. When a
-//! candidate's turn ends, its tree is snapshotted, its diff measured and
-//! the verify command run in it. Once all are done, a picker lists them
-//! (passing first, then the smaller diff) with their diffs; `--auto`, or a
-//! run nobody answers, takes the first passing one. The winner is merged
-//! into the project's tree with a 3-way merge against the user's changes
-//! since the start, refused on a conflict, and the agent gets a note naming
-//! the winner. `--models a,b,c` gives each candidate its model; N is capped
-//! at 5. Stopping the agent cancels every candidate. Worktrees are removed
-//! after an apply or a discard; `/best-of clean` removes leftovers.
+//! Once all are done, a picker lists them (passing first, then the smaller diff) with their diffs;
+//! `--auto`, or a run nobody answers, takes the first passing one. The winner is merged into the
+//! project's tree with a 3-way merge against the user's changes since the start, refused on a
+//! conflict, and the agent gets a note naming the winner. `--models a,b,c` gives each candidate its
+//! model; N is capped at 5. Stopping the agent cancels every candidate. Worktrees are removed after
+//! an apply or a discard; `/best-of clean` removes leftovers.
 //!
-//! Every git step and verify run is an effect of the agent (`best-of-*`),
-//! recorded, gateable and cancelled with its run, which kills its process.
+//! Every git step and verify run is an effect of the agent (`best-of-*`), recorded, gateable and
+//! cancelled with its run, which kills its process.
 
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};

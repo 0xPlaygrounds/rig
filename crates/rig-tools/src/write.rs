@@ -1,8 +1,5 @@
 //! The `write` tool.
 
-use std::path::PathBuf;
-use std::sync::Arc;
-
 use rig_core::completion::ToolAnnotations;
 use rig_core::tool::{
     ChangeKind, FileChange, FilesChanged, Scope, Tool, ToolContext, ToolExecutionError, Touches,
@@ -12,38 +9,20 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 
 use crate::fs::{Previous, io_error};
-use crate::workspace::{Local, Workspace};
+use crate::workspace::Root;
 use crate::{MAX_FILE_BYTES, Seen, blocking};
 
 /// Writes a whole file, creating its parent directories. Publishes the file
-/// it changed ([`FilesChanged`]): its [resolved](Workspace) path,
+/// it changed ([`FilesChanged`]): its [resolved](Root::resolve) path,
 /// and the diff. The text it wrote counts as [`Seen`] whole, so an edit of
 /// the file starts from it; a write that failed forgets the file.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Write {
-    /// Where the file is written.
-    pub workspace: Arc<dyn Workspace>,
-    /// The directory a relative path is written in; `None` is the
-    /// workspace's working directory.
-    pub base: Option<PathBuf>,
-    /// Whether a path that resolves outside `base` is refused, before
-    /// anything is written.
-    pub confine: bool,
+    /// Where the files are, and the directory a relative path is taken from.
+    pub root: Root,
     /// The files seen, shared with [`Read`](crate::Read) and
     /// [`Edit`](crate::Edit).
     pub seen: Seen,
-}
-
-impl Default for Write {
-    /// Writes this machine's files, from this process's working directory.
-    fn default() -> Self {
-        Self {
-            workspace: Arc::new(Local),
-            base: None,
-            confine: false,
-            seen: Seen::default(),
-        }
-    }
 }
 
 /// Arguments of [`Write`].
@@ -91,9 +70,7 @@ impl Tool for Write {
     }
 
     fn footprint(&self, args: &WriteArgs) -> Touches {
-        Touches::Writes(Scope::Paths(vec![
-            self.workspace.resolve(self.base.as_deref(), &args.path),
-        ]))
+        Touches::Writes(Scope::Paths(vec![self.root.resolve(&args.path)]))
     }
 
     async fn call(
@@ -101,10 +78,8 @@ impl Tool for Write {
         context: &mut ToolContext,
         args: WriteArgs,
     ) -> Result<String, ToolExecutionError> {
-        let resolved = self
-            .workspace
-            .place(self.base.as_deref(), self.confine, &args.path)?;
-        let workspace = self.workspace.clone();
+        let resolved = self.root.place(&args.path)?;
+        let workspace = self.root.workspace.clone();
         let seen = self.seen.clone();
         let (output, change) = blocking(move || {
             let path = resolved.to_string_lossy();

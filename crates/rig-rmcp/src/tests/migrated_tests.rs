@@ -1,15 +1,8 @@
-#[allow(unused_imports)]
 use crate::handler::MAX_CONCURRENT_REFRESHES;
 #[allow(unused_imports)]
 use crate::*;
 use crate::{McpClientError, McpClientHandler};
 use rig_agent::tool::{DynamicTool, ToolOutput, server::ToolServer};
-#[allow(unused_imports)]
-use rig_agent::tool::{ToolContext, ToolResult};
-#[allow(unused_imports)]
-use rig_core::message::ImageMediaType;
-#[allow(unused_imports)]
-use rig_core::tool::ToolExecutionError;
 use rmcp::{
     RoleServer, ServerHandler, ServiceExt, handler::client::ClientHandler, model::*,
     service::RequestContext,

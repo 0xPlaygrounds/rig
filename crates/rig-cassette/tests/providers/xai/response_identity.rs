@@ -1,11 +1,11 @@
-//! Response identity metadata (rig#2265): xAI reports `x-request-id` on its
+//! Response identity metadata: xAI reports `x-request-id` on its
 //! Responses-shaped API; blocking and streaming turns carry it identically.
 
 use rig::providers::xai;
 
 use rig::completion::CompletionRequest;
 
-/// 401 auth rejection (rig#2314 error matrix): contract classification holds
+/// 401 auth rejection for the error matrix: contract classification holds
 /// on the auth tier; the recording documents whether xAI's auth tier sends
 /// the id it omits on 4xx.
 #[tokio::test]

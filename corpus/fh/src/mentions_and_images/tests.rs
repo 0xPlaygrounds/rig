@@ -4,7 +4,8 @@ use std::sync::mpsc::Receiver;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
-    Collected, Ended, app_on, collect, first_agent, log_ended, reply, run_until, scripted_models,
+    Collected, Ended, app_on, collect, first_agent, log_ended, reply, run_until, scratch_dir,
+    scripted_models,
 };
 
 use std::fs;
@@ -18,10 +19,7 @@ const A_RS: &str = "fn a() {\n    broken();\n}\n";
 
 /// A project of its own beside the test binary: `src/a.rs` and `shot.png`.
 fn project(name: &str) -> PathBuf {
-    let dir = std::env::current_exe()
-        .unwrap_or_default()
-        .with_file_name(name);
-    fs::remove_dir_all(&dir).ok();
+    let dir = scratch_dir(name);
     assert!(fs::create_dir_all(dir.join("src")).is_ok());
     assert!(fs::write(dir.join("src/a.rs"), A_RS).is_ok());
     assert!(fs::write(dir.join("shot.png"), b"\x89PNG\r\n\x1a\nnot really pixels").is_ok());
@@ -210,10 +208,7 @@ fn a_model_that_reads_no_images_gets_a_description() {
     assert_eq!(seen, 1, "the vision model got the image");
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(MentionsPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(MentionsPlugin);
 
 /// A quoted path is taken as written, its range after the closing quote,
 /// so it never mixes up with an unquoted path and range.

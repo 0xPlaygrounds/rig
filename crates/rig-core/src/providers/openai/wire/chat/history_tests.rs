@@ -165,7 +165,7 @@ fn mistral_thinking_parts_are_reasoning() {
     }
 }
 
-/// chatA NEW-3, chatB NEW (custom calls): a custom call is a call whose
+/// A custom call is a call whose
 /// arguments are its `{"input"}`, and an edited sibling leaves it a custom
 /// call in the message's `tool_calls`.
 #[test]
@@ -227,7 +227,7 @@ fn response_only_fields_never_go_back() {
     );
 }
 
-/// chatA NEW-6: Perplexity takes no tools, so the adapter renders a call and
+/// Perplexity takes no tools, so the adapter renders a call and
 /// its result as text the model still reads, rather than dropping them.
 #[test]
 fn perplexity_reads_a_tool_exchange_as_text() {
@@ -431,7 +431,7 @@ fn an_answers_audio_transcript_is_text() {
     }
 }
 
-/// chat NEW-5, chat_new NEW-7, #1266, #1333: an edited same-model reasoning
+/// An edited same-model reasoning
 /// block goes back under the field it arrived in, as pi keeps
 /// `thinkingSignature`: DeepSeek and Kimi read their reasoning back on a
 /// tool-call turn.
@@ -472,7 +472,7 @@ fn an_edited_reasoning_block_keeps_its_field() {
     }
 }
 
-/// chat NEW-8, chat_new NEW-8: a custom call stays custom when its input is
+/// A custom call stays custom when its input is
 /// edited (its kind survives as identity) and when another model replays it
 /// to a request that declares the custom tool (pi decides by the declared
 /// tools).
@@ -765,7 +765,7 @@ fn reasoning_details_fold_alike_whole_and_streamed_wherever_they_arrive() {
     }
 }
 
-/// #2945: a LiteLLM proxy in front of Anthropic returns a thinking model's
+/// A LiteLLM proxy in front of Anthropic returns a thinking model's
 /// signed reasoning as `thinking_blocks`, which Anthropic needs back within
 /// a tool loop. Whole or streamed, where a signature closes the `thinking`
 /// pieces before it and a redacted block comes whole, the blocks are kept

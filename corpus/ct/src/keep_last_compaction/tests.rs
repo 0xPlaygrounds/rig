@@ -6,7 +6,7 @@ use rig_core::completion::Message as ChatMessage;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::settings::Settings;
 use rig_harness_test_support::{
-    Ended, MemoryStore, app_on, connect, first_agent, log_ended, reply, run_until,
+    Ended, MemoryStore, app_on, connect, first_agent, log_ended, reply, say,
 };
 
 use super::*;
@@ -28,16 +28,6 @@ fn start(model: &MockCompletionModel, window: u32, settings: &str) -> (App, Rece
         app.world_mut().entity_mut(agent).insert(connection);
     }
     (app, wakes, agent)
-}
-
-/// Sends `text` and runs frames until its turn ended.
-fn ask(app: &mut App, wakes: &Receiver<()>, agent: Entity, text: &str) {
-    let ended = app.world().resource::<Ended>().0.len();
-    app.world_mut()
-        .trigger(Deliver::new(agent, text, DeliveryMode::Steer));
-    run_until(app, wakes, |world| {
-        world.resource::<Ended>().0.len() > ended
-    });
 }
 
 /// Each message of `agent`, as its text.
@@ -72,7 +62,7 @@ fn a_request_near_the_window_drops_the_oldest_turns_with_no_model_call() {
     // No reserve and a one-token window: every request is over it.
     let (mut app, wakes, agent) = start(&model, 1, "[compaction]\nlimits = { reserve = 0 }");
     for question in ["apples?", "bananas?", "cherries?", "dates?"] {
-        ask(&mut app, &wakes, agent, question);
+        say(&mut app, &wakes, agent, question);
     }
 
     // One request per turn: no summary was asked for.
@@ -100,7 +90,7 @@ fn compact_drops_the_oldest_turns_now() {
     // A window no request nears: only `/compact` drops.
     let (mut app, wakes, agent) = start(&model, 1_000_000, "");
     for question in ["Q1", "Q2", "Q3"] {
-        ask(&mut app, &wakes, agent, question);
+        say(&mut app, &wakes, agent, question);
     }
     assert_eq!(texts(&app, agent).len(), 6);
 

@@ -23,8 +23,8 @@ use crate::completion::{Message, PromptError, Usage};
 use crate::run::OutputMode;
 use crate::streaming::{Item, StreamEvent};
 use crate::test_utils::{
-    MockAddTool, MockCompletionModel, MockOperationArgs, MockScript, MockStreamEvent,
-    MockSubtractTool, MockToolError, MockTurn,
+    Counted, MockAddTool, MockCompletionModel, MockOperationArgs, MockScript, MockStreamEvent,
+    MockSubtractTool, MockToolError, MockTurn, drive_to_final_response,
 };
 use crate::tool::{
     Tool, ToolContext, ToolExecutionError,
@@ -269,7 +269,7 @@ async fn completion_response_hook_and_calls_carry_identity_metadata() {
     assert_eq!(call.provider_request_id.as_deref(), Some("req_1"));
 }
 
-/// rig#2314 error matrix: a failed attempt's error carries its *own*
+/// A failed attempt's error carries its *own*
 /// transport id through the surfaced `PromptError`, and a run that fails
 /// after a successful call never cross-attributes — the error's id and
 /// the earlier success's id stay distinct.
@@ -324,8 +324,8 @@ async fn failed_attempt_error_carries_its_own_request_id() {
 }
 
 /// Hook capturing every `ModelTurnFinished` identity plus every
-/// `CompletionResponse` identity — the cross-surface "every completed
-/// call" observer #2265 requires.
+/// `CompletionResponse` identity: an observer of every completed call on
+/// both surfaces.
 #[derive(Clone, Default)]
 struct TurnIdentityHook {
     turns: Arc<Mutex<Vec<rig_core::completion::ResponseIdentity>>>,
@@ -436,9 +436,7 @@ async fn model_turn_finished_identity_streamed_tool_only_and_text() {
         .prompt(Message::user("add 2 and 3"))
         .max_turns(3)
         .stream();
-    while let Some(item) = stream.next().await {
-        item.expect("stream item");
-    }
+    drive_to_final_response(&mut stream).await;
 
     let turns = hook.turns.lock().expect("turn identities").clone();
     let request_ids: Vec<_> = turns
@@ -680,7 +678,6 @@ async fn prompt_surfaces_reject_second_tool_roundtrip_request_at_budget_one() {
 mod structured_tool_results {
     use std::sync::{Arc, Mutex};
 
-    use futures::StreamExt;
     use serde_json::json;
 
     use crate::agent::{
@@ -689,7 +686,7 @@ mod structured_tool_results {
     };
     use crate::test_utils::{
         MockAddTool, MockCompletionModel, MockDeniedTool, MockFailingTool, MockHandledFailureTool,
-        MockMetadataTool, MockRequestId, MockStreamEvent, MockTurn,
+        MockMetadataTool, MockRequestId, MockStreamEvent, MockTurn, drive_to_final_response,
     };
     use crate::tool::{ToolErrorKind, ToolResult};
 
@@ -1052,11 +1049,7 @@ mod structured_tool_results {
                     .prompt("go")
                     .max_turns(3)
                     .stream();
-                while let Some(item) = stream.next().await {
-                    if let Err(err) = item {
-                        panic!("stream item errored: {err}");
-                    }
-                }
+                drive_to_final_response(&mut stream).await;
             } else {
                 AgentBuilder::new(model_one_tool_then_text("add"))
                     .tool(MockAddTool)
@@ -1167,11 +1160,7 @@ mod structured_tool_results {
                     .prompt("go")
                     .max_turns(3)
                     .stream();
-                while let Some(item) = stream.next().await {
-                    if let Err(err) = item {
-                        panic!("stream item errored: {err}");
-                    }
-                }
+                drive_to_final_response(&mut stream).await;
             } else {
                 AgentBuilder::new(model_one_tool_then_text("add"))
                     .tool(MockAddTool)
@@ -1267,11 +1256,7 @@ mod structured_tool_results {
                     .prompt("go")
                     .max_turns(3)
                     .stream();
-                while let Some(item) = stream.next().await {
-                    if let Err(error) = item {
-                        panic!("stream item errored: {error}");
-                    }
-                }
+                drive_to_final_response(&mut stream).await;
             } else {
                 AgentBuilder::new(model_one_tool_then_text("with_meta"))
                     .tool(MockMetadataTool)
@@ -1365,11 +1350,7 @@ mod structured_tool_results {
             .prompt("go")
             .max_turns(3)
             .stream();
-        while let Some(item) = stream.next().await {
-            if let Err(err) = item {
-                panic!("stream item errored: {err}");
-            }
-        }
+        drive_to_final_response(&mut stream).await;
 
         assert_eq!(blocking.outcomes(), vec!["error:timeout".to_string()]);
         assert_eq!(blocking.outcomes(), streaming.outcomes());
@@ -1884,22 +1865,6 @@ async fn duplicate_call_ids_keep_their_own_results_when_settling_out_of_order() 
     assert_eq!(answers, ["2", "4"], "results stay with their calls");
 }
 
-/// Drive a stream to completion, panicking on any stream error, and return
-/// its final response.
-async fn drive_to_final_response(
-    mut stream: crate::agent::streaming::StreamingResult,
-) -> crate::agent::PromptResponse {
-    let mut final_response = None;
-    while let Some(item) = stream.next().await {
-        if let MultiTurnStreamItem::FinalResponse(resp) =
-            item.unwrap_or_else(|err| panic!("stream item errored: {err}"))
-        {
-            final_response = Some(resp);
-        }
-    }
-    final_response.expect("stream should yield a final response")
-}
-
 /// Tool-result ids, in history order, across a run's message history.
 fn tool_result_ids(messages: &[Message]) -> Vec<String> {
     messages
@@ -2175,9 +2140,7 @@ impl AgentHook for TerminateOnFirstToolHook {
 async fn default_concurrency_terminate_skips_remaining_tools_on_both_drivers() {
     let blocking_calls = Arc::new(AtomicU32::new(0));
     AgentBuilder::new(two_terminating_tools_blocking_model())
-        .tool(CountingAddTool {
-            calls: blocking_calls.clone(),
-        })
+        .tool(Counted(MockAddTool, blocking_calls.clone()))
         .build()
         .prompt("go")
         .max_turns(3)
@@ -2193,9 +2156,7 @@ async fn default_concurrency_terminate_skips_remaining_tools_on_both_drivers() {
 
     let streaming_calls = Arc::new(AtomicU32::new(0));
     let mut stream = AgentBuilder::new(two_terminating_tools_streaming_model())
-        .tool(CountingAddTool {
-            calls: streaming_calls.clone(),
-        })
+        .tool(Counted(MockAddTool, streaming_calls.clone()))
         .build()
         .prompt("go")
         .max_turns(3)
@@ -2246,9 +2207,7 @@ async fn a_stop_mid_batch_cancels_with_the_settled_result_and_the_rest_closed() 
 
     let calls = Arc::new(AtomicU32::new(0));
     let err = AgentBuilder::new(two_terminating_tools_blocking_model())
-        .tool(CountingAddTool {
-            calls: calls.clone(),
-        })
+        .tool(Counted(MockAddTool, calls.clone()))
         .build()
         .prompt("go")
         .max_turns(3)
@@ -2323,9 +2282,7 @@ async fn stream_hook_skip_surfaces_result_without_execution_commit() {
         ],
     ]);
     let stream = AgentBuilder::new(model)
-        .tool(CountingAddTool {
-            calls: calls.clone(),
-        })
+        .tool(Counted(MockAddTool, calls.clone()))
         .add_hook(SkipHook)
         .build()
         .prompt("go")
@@ -2376,13 +2333,9 @@ async fn required_with_empty_active_tools_errors_locally_without_provider_call()
         async fn on_completion_call(
             &self,
             _ctx: &HookContext,
-            event: CompletionCallEvent<'_>,
+            _event: CompletionCallEvent<'_>,
         ) -> CompletionCallAction {
-            if let CompletionCallEvent { .. } = event {
-                CompletionCallAction::patch(RequestPatch::new().active_tools(Vec::<String>::new()))
-            } else {
-                CompletionCallAction::continue_run()
-            }
+            CompletionCallAction::patch(RequestPatch::new().active_tools(Vec::<String>::new()))
         }
     }
 
@@ -2422,13 +2375,9 @@ async fn specific_naming_filtered_out_tool_errors_locally_without_provider_call(
         async fn on_completion_call(
             &self,
             _ctx: &HookContext,
-            event: CompletionCallEvent<'_>,
+            _event: CompletionCallEvent<'_>,
         ) -> CompletionCallAction {
-            if let CompletionCallEvent { .. } = event {
-                CompletionCallAction::patch(RequestPatch::new().active_tools(["add"]))
-            } else {
-                CompletionCallAction::continue_run()
-            }
+            CompletionCallAction::patch(RequestPatch::new().active_tools(["add"]))
         }
     }
 
@@ -2460,32 +2409,6 @@ async fn specific_naming_filtered_out_tool_errors_locally_without_provider_call(
         msg.contains("active_tools"),
         "error should name active_tools: {msg}"
     );
-}
-
-/// A tool that counts how many times it executes.
-#[derive(Clone)]
-struct CountingAddTool {
-    calls: Arc<AtomicU32>,
-}
-impl Tool for CountingAddTool {
-    const NAME: &'static str = "add";
-    type Error = MockToolError;
-    type Args = MockOperationArgs;
-    type Output = i32;
-    fn description(&self) -> String {
-        MockAddTool.description()
-    }
-    fn parameters(&self) -> serde_json::Value {
-        MockAddTool.parameters()
-    }
-    async fn call(
-        &self,
-        _context: &mut ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
-        self.calls.fetch_add(1, SeqCst);
-        MockAddTool.call(_context, args).await
-    }
 }
 
 /// The shared driver events a hook can terminate the run from.
@@ -2535,13 +2458,9 @@ impl AgentHook for RepairInvalidToHook {
     async fn on_invalid_tool_call(
         &self,
         _ctx: &HookContext,
-        event: &InvalidToolCallContext,
+        _event: &InvalidToolCallContext,
     ) -> Option<InvalidToolCallAction> {
-        Some(if let _ = event {
-            InvalidToolCallAction::repair(self.0)
-        } else {
-            InvalidToolCallAction::fail()
-        })
+        Some(InvalidToolCallAction::repair(self.0))
     }
 }
 
@@ -2550,103 +2469,43 @@ impl AgentHook for RepairInvalidToHook {
 /// output, tool-result content, and final message history.
 #[tokio::test]
 async fn invalid_tool_call_repair_parity_across_run_and_stream() {
-    let blocking_model = MockCompletionModel::from_turns([
-        MockTurn::tool_call("tc1", "default_api", json!({"x": 2, "y": 3})),
-        MockTurn::text("the answer is 5"),
-    ]);
-    let blocking_hook = RecordingHook::default();
-    let blocking = AgentBuilder::new(blocking_model)
-        .tool(MockAddTool)
-        .build()
-        .prompt("add 2 and 3")
-        .max_turns(3)
-        .add_hook(blocking_hook.clone())
-        .add_hook(RepairInvalidToHook("add"))
-        .run()
-        .await
-        .expect("blocking run should recover via repair");
-
-    // Emit the invalid call as a single complete tool call (mirroring the
-    // blocking model). A provider stream carries one tool call via one
-    // mechanism — deltas *or* a complete call — so this is the apples-to-
-    // apples comparison; mixing both would trip the assembler's two
-    // independent invalid-detection sites and fire the event twice.
-    let streaming_model = MockCompletionModel::from_stream_turns([
-        vec![
-            MockStreamEvent::tool_call("tc1", "default_api", json!({"x": 2, "y": 3})),
-            MockStreamEvent::final_response_with_total_tokens(0),
-        ],
-        vec![
-            MockStreamEvent::text("the answer is 5"),
-            MockStreamEvent::final_response_with_total_tokens(0),
-        ],
-    ]);
-    let streaming_hook = RecordingHook::default();
-    let mut stream = AgentBuilder::new(streaming_model)
-        .tool(MockAddTool)
-        .build()
-        .prompt("add 2 and 3")
-        .max_turns(3)
-        .add_hook(streaming_hook.clone())
-        .add_hook(RepairInvalidToHook("add"))
-        .stream();
-    let mut final_response = None;
-    while let Some(item) = stream.next().await {
-        if let Ok(MultiTurnStreamItem::FinalResponse(resp)) =
-            item.map_err(|err| panic!("stream item errored: {err}"))
-        {
-            final_response = Some(resp);
-        }
-    }
-    let final_response = final_response.expect("stream should recover and yield a final response");
-
-    // Same recovered output.
-    assert_eq!(blocking.output(), "the answer is 5");
-    assert_eq!(final_response.output(), blocking.output());
-
-    // Both drivers reported the invalid tool call to the hook, then executed
-    // the repaired tool, so the shared event sequences match.
-    assert_eq!(
-        blocking_hook.shared_events(),
-        streaming_hook.shared_events()
-    );
+    let turns = [
+        ScriptedTurn::ToolCalls(vec![default_api_call()]),
+        ScriptedTurn::Text("the answer is 5"),
+    ];
+    // A provider stream carries one tool call as deltas or as a complete call,
+    // so only the complete shape mirrors the blocking turn here.
+    let blocking = run_blocking_scenario("add 2 and 3", &turns, RepairInvalidToHook("add")).await;
+    let streaming = run_streaming_scenario(
+        "add 2 and 3",
+        &turns,
+        StreamShape::Complete,
+        RepairInvalidToHook("add"),
+    )
+    .await;
+    assert_outcomes_match(&blocking, &streaming, "repair");
+    assert_eq!(blocking.output, "the answer is 5");
     assert!(
-        blocking_hook
-            .shared_events()
+        blocking
+            .shared_events
             .contains(&StepEventKind::InvalidToolCall),
         "the hook must observe the invalid tool call"
     );
-    assert_eq!(blocking_hook.tool_results(), streaming_hook.tool_results());
-    assert_eq!(blocking_hook.tool_results(), vec!["5".to_string()]);
+    assert_eq!(blocking.tool_results, vec!["5".to_string()]);
+}
 
-    // Same final message history.
-    let blocking_messages = blocking.messages;
-    let streaming_messages = final_response.messages().to_vec();
-    assert_eq!(
-        serde_json::to_value(&blocking_messages).expect("serialize blocking"),
-        serde_json::to_value(&streaming_messages).expect("serialize streaming"),
-    );
+fn default_api_call() -> ScriptedToolCall {
+    ScriptedToolCall {
+        id: "tc1",
+        name: "default_api",
+        args: json!({"x": 2, "y": 3}),
+    }
 }
 
 // ----------------------------------------------------------------------
-// Single-source-of-truth parity harness
+// Parity harness: one scripted turn list renders into both a blocking and a
+// streaming model, so run() and stream() are fed identical model behavior.
 // ----------------------------------------------------------------------
-//
-// `run()` and `stream()` are two implementations of one agent loop; testing
-// they agree on the same input is *differential testing*, with each driver
-// acting as the other's oracle. The hazard such tests have (and that bit the
-// invalid-tool-repair test above) is *fixture drift*: when the blocking
-// `MockTurn` list and the streaming `MockStreamEvent` list are hand-written
-// separately, they can silently encode different model behavior, so a
-// passing test proves nothing.
-//
-// The fix — the single-source-of-truth / data-driven principle, embodied by
-// pydantic-ai's `TestModel` (one scripted response replayed as a stream) and
-// litellm's `stream_chunk_builder` (reassemble the stream, compare to the
-// whole) — is to derive *both* encodings from one canonical `ScriptedTurn`
-// list. The two drivers are then provably fed identical model behavior and
-// can be asserted equal on the medium-independent projection (final output,
-// message history, tool-result content, shared hook-event sequence).
 
 /// One tool call inside a scripted turn.
 #[derive(Clone)]
@@ -2738,7 +2597,11 @@ struct ParityOutcome {
     tool_results: Vec<String>,
 }
 
-async fn run_blocking_scenario(prompt: &'static str, turns: &[ScriptedTurn]) -> ParityOutcome {
+async fn run_blocking_scenario(
+    prompt: &'static str,
+    turns: &[ScriptedTurn],
+    extra: impl AgentHook + 'static,
+) -> ParityOutcome {
     let model = MockCompletionModel::from_turns(turns.iter().map(ScriptedTurn::as_blocking_turn));
     let hook = RecordingHook::default();
     let response = AgentBuilder::new(model)
@@ -2747,6 +2610,7 @@ async fn run_blocking_scenario(prompt: &'static str, turns: &[ScriptedTurn]) -> 
         .prompt(prompt)
         .max_turns(8)
         .add_hook(hook.clone())
+        .add_hook(extra)
         .run()
         .await
         .expect("blocking scenario should succeed");
@@ -2762,6 +2626,7 @@ async fn run_streaming_scenario(
     prompt: &'static str,
     turns: &[ScriptedTurn],
     shape: StreamShape,
+    extra: impl AgentHook + 'static,
 ) -> ParityOutcome {
     let model = MockCompletionModel::from_stream_turns(
         turns.iter().map(|turn| turn.as_stream_events(shape)),
@@ -2773,16 +2638,9 @@ async fn run_streaming_scenario(
         .prompt(prompt)
         .max_turns(8)
         .add_hook(hook.clone())
+        .add_hook(extra)
         .stream();
-    let mut final_response = None;
-    while let Some(item) = stream.next().await {
-        if let Ok(MultiTurnStreamItem::FinalResponse(resp)) =
-            item.map_err(|err| panic!("stream item errored: {err}"))
-        {
-            final_response = Some(resp);
-        }
-    }
-    let final_response = final_response.expect("streaming scenario should yield a final response");
+    let final_response = drive_to_final_response(&mut stream).await;
     ParityOutcome {
         output: final_response.output().to_string(),
         messages: final_response.messages().to_vec(),
@@ -2816,12 +2674,12 @@ fn assert_outcomes_match(blocking: &ParityOutcome, streaming: &ParityOutcome, la
 /// identical every way. Because both stream shapes are compared against the
 /// same blocking outcome, they are also transitively equal to each other.
 async fn assert_run_stream_parity(prompt: &'static str, turns: &[ScriptedTurn]) {
-    let blocking = run_blocking_scenario(prompt, turns).await;
+    let blocking = run_blocking_scenario(prompt, turns, ()).await;
     for (shape, label) in [
         (StreamShape::Complete, "complete-stream"),
         (StreamShape::Chunked, "chunked-stream"),
     ] {
-        let streaming = run_streaming_scenario(prompt, turns, shape).await;
+        let streaming = run_streaming_scenario(prompt, turns, shape, ()).await;
         assert_outcomes_match(&blocking, &streaming, label);
     }
 }
@@ -2884,200 +2742,53 @@ impl AgentHook for SkipInvalidHook {
     async fn on_invalid_tool_call(
         &self,
         _ctx: &HookContext,
-        event: &InvalidToolCallContext,
+        _event: &InvalidToolCallContext,
     ) -> Option<InvalidToolCallAction> {
-        Some(if let _ = event {
-            InvalidToolCallAction::skip(self.0)
-        } else {
-            InvalidToolCallAction::fail()
-        })
+        Some(InvalidToolCallAction::skip(self.0))
     }
 }
 
 /// An invalid tool call *skipped* by a hook recovers identically under
 /// `run()` and `stream()`: the synthetic skip result enters the history
 /// verbatim (it is never re-parsed as tool output) and both drivers reach
-/// the same output and message history. Complements the repair-parity test.
+/// the same output and message history.
 #[tokio::test]
 async fn invalid_tool_call_skip_parity_across_run_and_stream() {
-    let blocking_model = MockCompletionModel::from_turns([
-        MockTurn::tool_call("tc1", "default_api", json!({"x": 2, "y": 3})),
-        MockTurn::text("acknowledged"),
-    ]);
-    let blocking_hook = RecordingHook::default();
-    let blocking = AgentBuilder::new(blocking_model)
-        .tool(MockAddTool)
-        .build()
-        .prompt("do the thing")
-        .max_turns(3)
-        .add_hook(blocking_hook.clone())
-        .add_hook(SkipInvalidHook("tool not permitted"))
-        .run()
-        .await
-        .expect("blocking run should recover via skip");
+    let turns = [
+        ScriptedTurn::ToolCalls(vec![default_api_call()]),
+        ScriptedTurn::Text("acknowledged"),
+    ];
+    let reason = "tool not permitted";
+    let blocking = run_blocking_scenario("do the thing", &turns, SkipInvalidHook(reason)).await;
+    let streaming = run_streaming_scenario(
+        "do the thing",
+        &turns,
+        StreamShape::Complete,
+        SkipInvalidHook(reason),
+    )
+    .await;
 
-    // Single complete tool call (mirrors the blocking model; see the
-    // repair-parity test for why deltas are not mixed in here).
-    let streaming_model = MockCompletionModel::from_stream_turns([
-        vec![
-            MockStreamEvent::tool_call("tc1", "default_api", json!({"x": 2, "y": 3})),
-            MockStreamEvent::final_response_with_total_tokens(0),
-        ],
-        vec![
-            MockStreamEvent::text("acknowledged"),
-            MockStreamEvent::final_response_with_total_tokens(0),
-        ],
-    ]);
-    let streaming_hook = RecordingHook::default();
-    let mut stream = AgentBuilder::new(streaming_model)
-        .tool(MockAddTool)
-        .build()
-        .prompt("do the thing")
-        .max_turns(3)
-        .add_hook(streaming_hook.clone())
-        .add_hook(SkipInvalidHook("tool not permitted"))
-        .stream();
-    let mut final_response = None;
-    while let Some(item) = stream.next().await {
-        if let Ok(MultiTurnStreamItem::FinalResponse(resp)) =
-            item.map_err(|err| panic!("stream item errored: {err}"))
-        {
-            final_response = Some(resp);
-        }
-    }
-    let final_response = final_response.expect("stream should recover and yield a final response");
-
-    assert_eq!(blocking.output(), "acknowledged");
-    assert_eq!(final_response.output(), blocking.output());
-    assert_eq!(
-        blocking_hook.shared_events(),
-        streaming_hook.shared_events()
-    );
+    assert_eq!(blocking.output, "acknowledged");
+    assert_eq!(streaming.output, blocking.output);
+    assert_eq!(blocking.shared_events, streaming.shared_events);
     assert!(
-        blocking_hook
-            .shared_events()
+        blocking
+            .shared_events
             .contains(&StepEventKind::InvalidToolCall),
         "the hook must observe the invalid tool call"
     );
-
     // A streamed turn cut short at its invalid call replays canonically;
     // the parity is in the content.
     let blocking_messages = canonical_history(&blocking.messages);
-    let streaming_messages = canonical_history(final_response.messages());
     assert_eq!(
         serde_json::to_value(&blocking_messages).expect("serialize blocking"),
-        serde_json::to_value(&streaming_messages).expect("serialize streaming"),
+        serde_json::to_value(canonical_history(&streaming.messages)).expect("serialize streaming"),
     );
-    // Pin the actual reason, not just blocking == streaming (see the valid-tool
-    // skip test): a reason dropped or altered on BOTH paths would still pass.
+    // A reason dropped or altered on both paths would still pass the equality.
     assert!(
-        tool_result_text_in_history(&blocking_messages, "tool not permitted"),
+        tool_result_text_in_history(&blocking_messages, reason),
         "the verbatim invalid-tool skip reason must be the tool result content"
     );
-}
-
-/// Skips a *valid* tool call before execution; observes everything else.
-struct SkipToolCallHook(&'static str);
-
-impl AgentHook for SkipToolCallHook {
-    async fn on_dispatch(&self, _ctx: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
-        if event.tool_name().is_some() {
-            DispatchAction::skip(self.0)
-        } else {
-            DispatchAction::proceed()
-        }
-    }
-}
-
-/// A hook that skips a *valid* tool call (`DispatchAction::skip` on the tool dispatch, the
-/// honored-action path — distinct from skipping an *invalid* call) recovers
-/// identically under `run()` and `stream()`: the synthetic skip result enters
-/// the history verbatim without executing the tool, and both drivers reach the
-/// same output, tool-result content and message history.
-#[tokio::test]
-async fn valid_tool_call_skip_parity_across_run_and_stream() {
-    let turns = [
-        ScriptedTurn::ToolCalls(vec![add_call("tc1", 2, 3)]),
-        ScriptedTurn::Text("acknowledged"),
-    ];
-
-    let blocking_model =
-        MockCompletionModel::from_turns(turns.iter().map(ScriptedTurn::as_blocking_turn));
-    let blocking_hook = RecordingHook::default();
-    let blocking = AgentBuilder::new(blocking_model)
-        .tool(MockAddTool)
-        .build()
-        .prompt("add 2 and 3")
-        .max_turns(3)
-        .add_hook(blocking_hook.clone())
-        .add_hook(SkipToolCallHook("skipped by policy"))
-        .run()
-        .await
-        .expect("blocking run should succeed with a skipped tool call");
-
-    let streaming_model = MockCompletionModel::from_stream_turns(
-        turns
-            .iter()
-            .map(|turn| turn.as_stream_events(StreamShape::Complete)),
-    );
-    let streaming_hook = RecordingHook::default();
-    let mut stream = AgentBuilder::new(streaming_model)
-        .tool(MockAddTool)
-        .build()
-        .prompt("add 2 and 3")
-        .max_turns(3)
-        .add_hook(streaming_hook.clone())
-        .add_hook(SkipToolCallHook("skipped by policy"))
-        .stream();
-    let mut final_response = None;
-    while let Some(item) = stream.next().await {
-        if let Ok(MultiTurnStreamItem::FinalResponse(resp)) =
-            item.map_err(|err| panic!("stream item errored: {err}"))
-        {
-            final_response = Some(resp);
-        }
-    }
-    let final_response = final_response.expect("stream should yield a final response");
-
-    assert_eq!(blocking.output(), "acknowledged");
-    assert_eq!(final_response.output(), blocking.output());
-    assert_eq!(
-        blocking_hook.shared_events(),
-        streaming_hook.shared_events()
-    );
-    // A skipped valid tool call fires the `ToolResult` hook carrying a
-    // structured `Skipped` outcome (the redesign surfaces the skip to result
-    // hooks), so both drivers record the verbatim skip reason as the result.
-    assert_eq!(blocking_hook.tool_results(), streaming_hook.tool_results());
-    assert_eq!(
-        blocking_hook.tool_results(),
-        vec!["skipped by policy".to_string()],
-        "a skipped tool fires a ToolResult hook with the verbatim skip reason"
-    );
-
-    let blocking_messages = blocking.messages;
-    let streaming_messages = final_response.messages().to_vec();
-    assert_eq!(
-        serde_json::to_value(&blocking_messages).expect("serialize blocking"),
-        serde_json::to_value(&streaming_messages).expect("serialize streaming"),
-    );
-    // Pin the actual reason, not just blocking == streaming: a reason dropped
-    // or altered on BOTH paths would still satisfy the equality above.
-    assert!(
-        tool_result_text_in_history(&blocking_messages, "skipped by policy"),
-        "the verbatim skip reason must be the tool result content in the history"
-    );
-}
-
-/// A hook that rewrites a valid tool call's arguments (`DispatchAction::Patch` on
-/// `ToolCall`) so the tool executes with the replacement instead of what the
-/// model emitted.
-struct RewriteToolArgsHook(serde_json::Value);
-
-impl AgentHook for RewriteToolArgsHook {
-    async fn on_dispatch(&self, _ctx: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
-        DispatchAction::rewrite_tool_args(event.kind, self.0.clone())
-    }
 }
 
 // Distinct inert tools stand in for a destructive target and a safe target.
@@ -3480,72 +3191,6 @@ fn one_hook_instance_attaches_to_distinct_completion_models() {
     let _other_agent = AgentBuilder::new(other_model).add_hook(hook).build();
 }
 
-/// A hook that rewrites a *valid* tool call's arguments (`DispatchAction::Patch`
-/// on `ToolCall`) is honored identically under `run()` and `stream()`: the
-/// tool executes with the replacement, so both drivers observe the same
-/// rewritten tool result and reach the same output, tool-result content and
-/// message history. Both drivers share `run_single_tool`, so they stay in
-/// lock-step.
-#[tokio::test]
-async fn valid_tool_call_rewrite_args_parity_across_run_and_stream() {
-    // The model asks to add 2 + 3; the hook rewrites the arguments to 2 + 40,
-    // so the tool returns 42 rather than 5.
-    let turns = [
-        ScriptedTurn::ToolCalls(vec![add_call("tc1", 2, 3)]),
-        ScriptedTurn::Text("acknowledged"),
-    ];
-    let replacement = json!({"x": 2, "y": 40});
-
-    let blocking_model =
-        MockCompletionModel::from_turns(turns.iter().map(ScriptedTurn::as_blocking_turn));
-    let blocking_hook = RecordingHook::default();
-    let blocking = AgentBuilder::new(blocking_model)
-        .tool(MockAddTool)
-        .build()
-        .prompt("add 2 and 3")
-        .max_turns(3)
-        .add_hook(blocking_hook.clone())
-        .add_hook(RewriteToolArgsHook(replacement.clone()))
-        .run()
-        .await
-        .expect("blocking run should succeed with rewritten tool arguments");
-
-    let streaming_model = MockCompletionModel::from_stream_turns(
-        turns
-            .iter()
-            .map(|turn| turn.as_stream_events(StreamShape::Complete)),
-    );
-    let streaming_hook = RecordingHook::default();
-    let mut stream = AgentBuilder::new(streaming_model)
-        .tool(MockAddTool)
-        .build()
-        .prompt("add 2 and 3")
-        .max_turns(3)
-        .add_hook(streaming_hook.clone())
-        .add_hook(RewriteToolArgsHook(replacement))
-        .stream();
-    let mut final_response = None;
-    while let Some(item) = stream.next().await {
-        if let Ok(MultiTurnStreamItem::FinalResponse(resp)) =
-            item.map_err(|err| panic!("stream item errored: {err}"))
-        {
-            final_response = Some(resp);
-        }
-    }
-    let final_response = final_response.expect("stream should yield a final response");
-
-    // The tool ran with the rewritten arguments (2 + 40 = 42), not the
-    // model's emitted 2 + 3 = 5 — on both drivers.
-    assert_eq!(blocking_hook.tool_results(), vec!["42".to_string()]);
-    assert_eq!(blocking.output(), "acknowledged");
-    assert_eq!(final_response.output(), blocking.output());
-    assert_eq!(
-        blocking_hook.shared_events(),
-        streaming_hook.shared_events()
-    );
-    assert_eq!(blocking_hook.tool_results(), streaming_hook.tool_results());
-}
-
 /// A hook that rewrites a tool's result (`OutcomeAction::rewrite_tool_result` on
 /// the tool outcome) so the model sees the replacement instead of the tool's
 /// actual output.
@@ -3560,78 +3205,36 @@ impl AgentHook for RewriteToolResultHook {
 /// A hook that rewrites a tool's result (`OutcomeAction::rewrite_tool_result` on
 /// the tool outcome) is honored identically under `run()` and `stream()`: the
 /// model-visible history carries the replacement while the `ToolResult` event
-/// still observed the tool's actual output, and both drivers reach the same
-/// output and history. Both share `run_single_tool`, so they stay in
-/// lock-step.
+/// still observed the tool's actual output.
 #[tokio::test]
 async fn valid_tool_result_rewrite_parity_across_run_and_stream() {
-    // The tool computes 2 + 3 = 5; the hook replaces what the model sees with
-    // "redacted-result".
     let turns = [
         ScriptedTurn::ToolCalls(vec![add_call("tc1", 2, 3)]),
         ScriptedTurn::Text("acknowledged"),
     ];
-
-    let blocking_model =
-        MockCompletionModel::from_turns(turns.iter().map(ScriptedTurn::as_blocking_turn));
-    let blocking_hook = RecordingHook::default();
-    let blocking = AgentBuilder::new(blocking_model)
-        .tool(MockAddTool)
-        .build()
-        .prompt("add 2 and 3")
-        .max_turns(3)
-        .add_hook(blocking_hook.clone())
-        .add_hook(RewriteToolResultHook("redacted-result"))
-        .run()
-        .await
-        .expect("blocking run should succeed with a rewritten tool result");
-
-    let streaming_model = MockCompletionModel::from_stream_turns(
-        turns
-            .iter()
-            .map(|turn| turn.as_stream_events(StreamShape::Complete)),
-    );
-    let streaming_hook = RecordingHook::default();
-    let mut stream = AgentBuilder::new(streaming_model)
-        .tool(MockAddTool)
-        .build()
-        .prompt("add 2 and 3")
-        .max_turns(3)
-        .add_hook(streaming_hook.clone())
-        .add_hook(RewriteToolResultHook("redacted-result"))
-        .stream();
-    let mut final_response = None;
-    while let Some(item) = stream.next().await {
-        if let Ok(MultiTurnStreamItem::FinalResponse(resp)) =
-            item.map_err(|err| panic!("stream item errored: {err}"))
-        {
-            final_response = Some(resp);
-        }
-    }
-    let final_response = final_response.expect("stream should yield a final response");
-
-    assert_eq!(blocking.output(), "acknowledged");
-    assert_eq!(final_response.output(), blocking.output());
-
-    // The ToolResult event observes the tool's ACTUAL output (5) on both
-    // drivers — the replacement is applied after the event fires.
-    assert_eq!(blocking_hook.tool_results(), vec!["5".to_string()]);
-    assert_eq!(blocking_hook.tool_results(), streaming_hook.tool_results());
-
-    // The model-visible history carries the REWRITTEN result, not "5", and is
-    // byte-identical across drivers.
-    let blocking_messages = blocking.messages;
-    let streaming_messages = final_response.messages().to_vec();
-    assert_eq!(
-        serde_json::to_value(&blocking_messages).expect("serialize blocking"),
-        serde_json::to_value(&streaming_messages).expect("serialize streaming"),
-    );
+    let blocking = run_blocking_scenario(
+        "add 2 and 3",
+        &turns,
+        RewriteToolResultHook("redacted-result"),
+    )
+    .await;
+    let streaming = run_streaming_scenario(
+        "add 2 and 3",
+        &turns,
+        StreamShape::Complete,
+        RewriteToolResultHook("redacted-result"),
+    )
+    .await;
+    assert_outcomes_match(&blocking, &streaming, "result rewrite");
+    assert_eq!(blocking.output, "acknowledged");
+    // The replacement is applied after the ToolResult event fires.
+    assert_eq!(blocking.tool_results, vec!["5".to_string()]);
     assert!(
-        tool_result_text_in_history(&blocking_messages, "redacted-result"),
+        tool_result_text_in_history(&blocking.messages, "redacted-result"),
         "the model-visible tool result must be the hook's replacement"
     );
     assert!(
-        !tool_result_text_in_history(&blocking_messages, "5"),
+        !tool_result_text_in_history(&blocking.messages, "5"),
         "the tool's original output must not reach the model after a rewrite"
     );
 }
@@ -3656,13 +3259,9 @@ impl AgentHook for ExtraContextHook {
     async fn on_completion_call(
         &self,
         _ctx: &HookContext,
-        event: CompletionCallEvent<'_>,
+        _event: CompletionCallEvent<'_>,
     ) -> CompletionCallAction {
-        if let CompletionCallEvent { .. } = event {
-            CompletionCallAction::patch(RequestPatch::new().context(hook_doc(self.id, self.text)))
-        } else {
-            CompletionCallAction::continue_run()
-        }
+        CompletionCallAction::patch(RequestPatch::new().context(hook_doc(self.id, self.text)))
     }
 }
 
@@ -3786,9 +3385,7 @@ async fn extra_context_appears_after_static_context_on_both_surfaces() {
         .build()
         .prompt("go")
         .stream();
-    while let Some(item) = stream.next().await {
-        let _ = item.map_err(|err| panic!("stream item errored: {err}"));
-    }
+    drive_to_final_response(&mut stream).await;
     assert_docs(streaming_probe.requests().first().expect("one request"));
 }
 
@@ -3857,9 +3454,7 @@ async fn dynamic_context_preserves_query_selection_formatting_and_order_on_both_
             Message::user("latest history query"),
         ])
         .stream();
-    while let Some(item) = stream.next().await {
-        item.expect("streaming dynamic-context run should succeed");
-    }
+    drive_to_final_response(&mut stream).await;
     assert_eq!(
         *streaming_queries.lock().expect("streaming queries"),
         vec![("latest history query".to_string(), 3)]
@@ -4000,13 +3595,9 @@ async fn history_patch_changes_sent_messages_not_transcript_on_both_surfaces() {
         async fn on_completion_call(
             &self,
             _ctx: &HookContext,
-            event: CompletionCallEvent<'_>,
+            _event: CompletionCallEvent<'_>,
         ) -> CompletionCallAction {
-            if let CompletionCallEvent { .. } = event {
-                CompletionCallAction::patch(RequestPatch::new().history([Message::user(SENTINEL)]))
-            } else {
-                CompletionCallAction::continue_run()
-            }
+            CompletionCallAction::patch(RequestPatch::new().history([Message::user(SENTINEL)]))
         }
     }
 
@@ -4156,9 +3747,7 @@ async fn chained_rewrites_compose_across_hooks() {
         .prompt("add 2 and 3")
         .max_turns(3)
         .stream();
-    while let Some(item) = stream.next().await {
-        let _ = item.map_err(|err| panic!("stream item errored: {err}"));
-    }
+    drive_to_final_response(&mut stream).await;
     assert_eq!(
         stream_recorder.tool_results(),
         vec!["B(A(140))".to_string()],
@@ -4318,13 +3907,9 @@ impl AgentHook for ActiveToolsAddOnly {
     async fn on_completion_call(
         &self,
         _ctx: &HookContext,
-        event: CompletionCallEvent<'_>,
+        _event: CompletionCallEvent<'_>,
     ) -> CompletionCallAction {
-        if let CompletionCallEvent { .. } = event {
-            CompletionCallAction::patch(RequestPatch::new().active_tools(["add"]))
-        } else {
-            CompletionCallAction::continue_run()
-        }
+        CompletionCallAction::patch(RequestPatch::new().active_tools(["add"]))
     }
 }
 
@@ -4502,10 +4087,9 @@ impl AgentHook for HumanApprovalHook {
 /// edits the third's arguments behaves identically under `run()` and
 /// `stream()`: approved/edited tools execute (and the edit takes effect),
 /// the denied tool runs nothing while its reason reaches the model, and the
-/// model-visible history is identical across drivers (compared structurally).
+/// model-visible history is identical across drivers.
 #[tokio::test]
 async fn human_in_the_loop_approve_deny_edit_parity_across_run_and_stream() {
-    // One turn issues three tool calls; the reviewer decides each differently.
     let turns = [
         ScriptedTurn::ToolCalls(vec![
             add_call("tc1", 2, 3),   // approve -> runs, 2 + 3 = 5
@@ -4515,82 +4099,35 @@ async fn human_in_the_loop_approve_deny_edit_parity_across_run_and_stream() {
         ScriptedTurn::Text("done"),
     ];
     let denial = "denied by reviewer: amount too large";
-    let decisions = || {
-        vec![
+    let approver = || {
+        HumanApprovalHook::new([
             Decision::Approve,
             Decision::Deny(denial),
             Decision::Edit(json!({"x": 1, "y": 100})),
-        ]
+        ])
     };
+    let blocking_approver = approver();
+    let streaming_approver = approver();
+    let blocking =
+        run_blocking_scenario("carry out the plan", &turns, blocking_approver.clone()).await;
+    let streaming = run_streaming_scenario(
+        "carry out the plan",
+        &turns,
+        StreamShape::Complete,
+        streaming_approver.clone(),
+    )
+    .await;
+    assert_outcomes_match(&blocking, &streaming, "human in the loop");
+    assert_eq!(blocking.output, "done");
 
-    let blocking_model =
-        MockCompletionModel::from_turns(turns.iter().map(ScriptedTurn::as_blocking_turn));
-    let blocking_recorder = RecordingHook::default();
-    let blocking_approver = HumanApprovalHook::new(decisions());
-    let blocking = AgentBuilder::new(blocking_model)
-        .tool(MockAddTool)
-        .build()
-        .prompt("carry out the plan")
-        .max_turns(3)
-        .add_hook(blocking_recorder.clone())
-        .add_hook(blocking_approver.clone())
-        .run()
-        .await
-        .expect("blocking HITL run should succeed");
-
-    let streaming_model = MockCompletionModel::from_stream_turns(
-        turns
-            .iter()
-            .map(|turn| turn.as_stream_events(StreamShape::Complete)),
-    );
-    let streaming_recorder = RecordingHook::default();
-    let streaming_approver = HumanApprovalHook::new(decisions());
-    let mut stream = AgentBuilder::new(streaming_model)
-        .tool(MockAddTool)
-        .build()
-        .prompt("carry out the plan")
-        .max_turns(3)
-        .add_hook(streaming_recorder.clone())
-        .add_hook(streaming_approver.clone())
-        .stream();
-    let mut final_response = None;
-    while let Some(item) = stream.next().await {
-        if let Ok(MultiTurnStreamItem::FinalResponse(resp)) =
-            item.map_err(|err| panic!("stream item errored: {err}"))
-        {
-            final_response = Some(resp);
-        }
-    }
-    let final_response = final_response.expect("stream should yield a final response");
-
-    // Approved (5) and edited (101) tools executed, in call order; the denied
-    // call executed nothing but now fires a ToolResult carrying its verbatim
-    // denial reason (structured `Skipped` outcome) — identically on both
-    // drivers.
+    // The denied call (10 + 20 = 30) executed nothing; its reason stands in as
+    // the result, ruling out deny being silently treated as approve.
     assert_eq!(
-        blocking_recorder.tool_results(),
-        vec![
-            "5".to_string(),
-            "denied by reviewer: amount too large".to_string(),
-            "101".to_string()
-        ]
-    );
-    assert_eq!(
-        blocking_recorder.tool_results(),
-        streaming_recorder.tool_results()
+        blocking.tool_results,
+        vec!["5".to_string(), denial.to_string(), "101".to_string()]
     );
 
-    // The denied call (10 + 20) never executed, so its result 30 is absent —
-    // the denial reason stands in its place, ruling out deny being silently
-    // treated as approve.
-    assert!(
-        !blocking_recorder.tool_results().contains(&"30".to_string()),
-        "the denied call must not have executed"
-    );
-
-    // The reviewer was consulted for all three calls, in order, identically per
-    // driver — pinning each decision to its call (approve=2+3, deny=10+20,
-    // edit=the third).
+    // The reviewer saw all three calls, in order, identically per driver.
     let reviewed = blocking_approver.reviewed();
     assert_eq!(reviewed.len(), 3);
     assert_eq!(reviewed, streaming_approver.reviewed());
@@ -4602,29 +4139,12 @@ async fn human_in_the_loop_approve_deny_edit_parity_across_run_and_stream() {
         reviewed[1].contains("10") && reviewed[1].contains("20"),
         "the denied (second) call should be add(10, 20): {reviewed:?}"
     );
-
-    assert_eq!(blocking.output(), "done");
-    assert_eq!(final_response.output(), blocking.output());
-    assert_eq!(
-        blocking_recorder.shared_events(),
-        streaming_recorder.shared_events()
-    );
-
-    // Model-visible history is identical across drivers (compared structurally
-    // as serde_json::Value) and carries the denial reason and the edited result
-    // 101 (not the model's 1 + 1 = 2).
-    let blocking_messages = blocking.messages;
-    let streaming_messages = final_response.messages().to_vec();
-    assert_eq!(
-        serde_json::to_value(&blocking_messages).expect("serialize blocking"),
-        serde_json::to_value(&streaming_messages).expect("serialize streaming"),
-    );
     assert!(
-        tool_result_text_in_history(&blocking_messages, denial),
+        tool_result_text_in_history(&blocking.messages, denial),
         "the denial reason must be the denied call's tool result in the history"
     );
     assert!(
-        tool_result_json_in_history(&blocking_messages, &json!(101)),
+        tool_result_json_in_history(&blocking.messages, &json!(101)),
         "the edited call must have executed with the rewritten arguments"
     );
 }
@@ -4688,118 +4208,6 @@ async fn human_in_the_loop_abort_terminates_the_run() {
     );
 }
 
-/// A non-interactive *policy* HITL hook: auto-approve an allow-list, deny
-/// everything else (fail-closed), and cache each decision so a repeated tool
-/// is not re-evaluated ("sticky", like the OpenAI Agents SDK's
-/// `always_approve`). Backs `examples/agent_with_approval_policy`.
-#[derive(Clone)]
-struct PolicyHook {
-    auto_approve: std::collections::HashSet<&'static str>,
-    /// Tool names the policy actually evaluated (cache misses), in order.
-    evaluated: Arc<Mutex<Vec<String>>>,
-    /// Sticky cache of prior decisions, keyed by tool name.
-    cache: Arc<Mutex<std::collections::HashMap<String, bool>>>,
-}
-
-impl PolicyHook {
-    fn new(auto_approve: impl IntoIterator<Item = &'static str>) -> Self {
-        Self {
-            auto_approve: auto_approve.into_iter().collect(),
-            evaluated: Arc::new(Mutex::new(Vec::new())),
-            cache: Arc::new(Mutex::new(std::collections::HashMap::new())),
-        }
-    }
-
-    fn evaluated(&self) -> Vec<String> {
-        self.evaluated.lock().unwrap().clone()
-    }
-}
-
-impl AgentHook for PolicyHook {
-    async fn on_dispatch(&self, _ctx: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
-        let Some(tool_name) = event.tool_name() else {
-            return DispatchAction::proceed();
-        };
-        let cached = self.cache.lock().unwrap().get(tool_name).copied();
-        let approved = match cached {
-            Some(decision) => decision, // sticky: reuse without re-evaluating
-            None => {
-                self.evaluated.lock().unwrap().push(tool_name.to_string());
-                let decision = self.auto_approve.contains(tool_name);
-                self.cache
-                    .lock()
-                    .unwrap()
-                    .insert(tool_name.to_string(), decision);
-                decision
-            }
-        };
-        if approved {
-            DispatchAction::proceed()
-        } else {
-            DispatchAction::skip(format!("denied by policy: `{tool_name}` not allowed"))
-        }
-    }
-}
-
-/// The policy hook auto-approves `add` and denies `subtract`, and its decision
-/// is sticky: a second `add` call reuses the cached approval instead of being
-/// re-evaluated. The denied call never runs and its reason reaches the model.
-#[tokio::test]
-async fn approval_policy_allow_list_with_sticky_decisions() {
-    // One turn issues three calls: add, subtract (denied), add again (sticky).
-    let turns = [
-        ScriptedTurn::ToolCalls(vec![
-            add_call("c1", 2, 3),
-            ScriptedToolCall {
-                id: "c2",
-                name: "subtract",
-                args: json!({ "x": 10, "y": 4 }),
-            },
-            add_call("c3", 2, 3),
-        ]),
-        ScriptedTurn::Text("done"),
-    ];
-
-    let model = MockCompletionModel::from_turns(turns.iter().map(ScriptedTurn::as_blocking_turn));
-    let recorder = RecordingHook::default();
-    let policy = PolicyHook::new(["add"]);
-    let out = AgentBuilder::new(model)
-        .tool(MockAddTool)
-        .tool(MockSubtractTool)
-        .build()
-        .prompt("go")
-        .max_turns(3)
-        .add_hook(recorder.clone())
-        .add_hook(policy.clone())
-        .run()
-        .await
-        .expect("policy run should succeed");
-
-    assert_eq!(out.output(), "done");
-    // `add` ran twice (auto-approved, then sticky-reused); `subtract` was denied
-    // and executed nothing, but its denial reason now surfaces as a ToolResult
-    // (structured `Skipped` outcome) between the two `add` results.
-    assert_eq!(
-        recorder.tool_results(),
-        vec![
-            "5".to_string(),
-            "denied by policy: `subtract` not allowed".to_string(),
-            "5".to_string()
-        ]
-    );
-    // The policy evaluated each distinct tool once; the second `add` reused the
-    // cached decision rather than being re-evaluated.
-    assert_eq!(
-        policy.evaluated(),
-        vec!["add".to_string(), "subtract".to_string()]
-    );
-    let messages = out.messages;
-    assert!(
-        tool_result_text_in_history(&messages, "denied by policy: `subtract` not allowed"),
-        "the policy denial reason must reach the model as the subtract tool result"
-    );
-}
-
 static NEXT_RESPONSE_RETRY_HOOK_ID: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Clone, Default)]
@@ -4841,11 +4249,8 @@ impl AgentHook for BoundedResponseRetry {
         let has_rejected_text = event.content.iter().any(
             |content| matches!(content, AssistantContent::Text(text) if text.text == self.rejected_text),
         );
-        // A hook watching for the empty response has to recognise both
-        // spellings of it. Blocking turns carry an explicit empty text part;
-        // a stream that produced nothing now carries no parts at all, where
-        // it used to be padded with a fabricated empty-text part that made
-        // the two look alike.
+        // Blocking turns carry an explicit empty text part; a stream that
+        // produced nothing carries no parts at all.
         let rejected =
             has_rejected_text || (self.rejected_text.is_empty() && event.content.is_empty());
         if !rejected {
@@ -4880,13 +4285,8 @@ fn retry_usage(input_tokens: u64, output_tokens: u64) -> Usage {
         .total_tokens(input_tokens + output_tokens)
 }
 
-// ---------------------------------------------------------------------
-// rig#2184: portable model-turn termination metadata.
-//
-// A hook must be able to tell *why* a turn stopped and *what cap* that
-// exact attempt ran under, without naming a provider or touching a raw
-// response type, and must see the same thing on both surfaces.
-// ---------------------------------------------------------------------
+// A hook can tell why a turn stopped and what cap that attempt ran under,
+// without naming a provider, and sees the same thing on both surfaces.
 
 #[tokio::test]
 async fn blocking_empty_feedback_retry_omits_empty_assistant_history() {
@@ -4954,9 +4354,7 @@ async fn model_turn_retry_rejects_tool_turn_before_tool_hooks_or_execution() {
         "add",
         json!({"x": 1, "y": 2}),
     )]))
-    .tool(CountingAddTool {
-        calls: executions.clone(),
-    })
+    .tool(Counted(MockAddTool, executions.clone()))
     .add_hook(recorder.clone())
     .add_hook(AlwaysRepeatModelTurn)
     .build()
@@ -4990,9 +4388,7 @@ async fn streaming_model_turn_retry_rejects_tool_turn_without_committed_executio
         MockStreamEvent::tool_call("tc1", "add", json!({"x": 1, "y": 2})),
         MockStreamEvent::final_response_with_default_usage(),
     ]]))
-    .tool(CountingAddTool {
-        calls: executions.clone(),
-    })
+    .tool(Counted(MockAddTool, executions.clone()))
     .add_hook(recorder.clone())
     .add_hook(AlwaysRepeatModelTurn)
     .build()
@@ -6089,9 +5485,7 @@ async fn resume_of_a_part_answered_batch_runs_only_the_unanswered_call() {
 
     let calls = Arc::new(AtomicU32::new(0));
     let agent = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::text("done")]))
-        .tool(CountingAddTool {
-            calls: calls.clone(),
-        })
+        .tool(Counted(MockAddTool, calls.clone()))
         .build();
     let mut run = AgentRun::from_spec(&agent.run_spec(), Message::user("go"), None).max_turns(2);
     let Ok(AgentRunStep::CallModel { turn, .. }) = run.next_step() else {

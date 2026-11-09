@@ -170,12 +170,6 @@ impl<O> AgentRunner<O> {
         self
     }
 
-    /// This run neither loads nor saves a conversation.
-    pub fn without_memory(mut self) -> Self {
-        self.config.memory = None;
-        self
-    }
-
     /// The store and log this run keeps its conversation in: none without a
     /// store, or with an explicit [`history`](AgentRunner::history).
     pub(crate) fn memory_log(&self) -> Option<(super::memory::Memory, String)> {
@@ -497,14 +491,9 @@ impl AgentRunner {
         let usage = Arc::new(Mutex::new(Usage::default()));
         self.error_usage = Some(usage.clone());
         let result = self.run_under(ambient).await;
-        let observed = result.as_ref().map_or_else(
-            |_| {
-                *usage
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-            },
-            |response| response.usage,
-        );
+        let observed = result
+            .as_ref()
+            .map_or_else(|_| *crate::lock(&usage), |response| response.usage);
         (result, observed)
     }
 

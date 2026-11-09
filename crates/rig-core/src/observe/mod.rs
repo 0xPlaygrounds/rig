@@ -1,6 +1,5 @@
 //! Typed runtime and policy observations, separate from effect replay records.
 //! [`Witness`] receives facts and [`ObservationLog`] retains a bounded trace.
-//! Optional timestamps come from a host-supplied [`Clock`], not replay identity.
 //!
 //! ```
 //! use rig_core::observe::ObservationLog;
@@ -10,10 +9,7 @@
 //! assert!(log.trace().finalized);
 //! ```
 
-use std::{
-    sync::{Arc, Mutex, PoisonError},
-    time::Duration,
-};
+use std::sync::{Mutex, PoisonError};
 
 use serde::{Deserialize, Serialize};
 
@@ -46,10 +42,6 @@ pub struct Observation {
     pub emitter: Emitter,
     /// The fact.
     pub action: Action,
-    /// When, as a host-owned monotonic elapsed duration; a measurement,
-    /// never a semantic field. `None` when the sink has no [`Clock`].
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub at: Option<Duration>,
 }
 
 impl Observation {
@@ -61,7 +53,6 @@ impl Observation {
             stage,
             emitter,
             action,
-            at: None,
         }
     }
 }
@@ -94,25 +85,13 @@ pub struct Subject {
     pub family: Option<EffectFamily>,
 }
 
-impl Subject {
-    /// A subject with nothing but a scope: a run-level fact.
-    pub fn scoped(scope: impl Into<String>) -> Self {
-        Self {
-            scope: Some(scope.into()),
-            ..Self::default()
-        }
-    }
-}
-
 /// Where a fact was seen: the handler side (the provider request
-/// boundary), or the host.
+/// boundary).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Stage {
     /// Handler-side: the provider request boundary.
     Handler,
-    /// The application's own policies and state.
-    Host,
 }
 
 /// Stable emitter name and optional version.
@@ -212,13 +191,6 @@ pub trait HostAction: Serialize + serde::de::DeserializeOwned {
     }
 }
 
-/// A host-owned monotonic clock: what a sink stamps [`Observation::at`]
-/// from. rig-core reads no clock itself; a test supplies a counter.
-pub trait Clock: WasmCompatSend + WasmCompatSync {
-    /// Elapsed time since the clock's origin.
-    fn elapsed(&self) -> Duration;
-}
-
 /// Where observations go: the seam a driver and a host emit through. A
 /// witness is shared, so it takes `&self`; it must never block the caller.
 pub trait Witness: WasmCompatSend + WasmCompatSync + 'static {
@@ -229,10 +201,6 @@ pub trait Witness: WasmCompatSend + WasmCompatSync + 'static {
 /// The serializable trace a sink produces: the analysis artifact.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ObservationTrace {
-    /// The sink's declared session, when it has one (a run's scope, a
-    /// trial id). Lineage, not semantics.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub session: Option<String>,
     /// The facts, in sequence.
     pub observations: Vec<Observation>,
     /// Facts discarded because sink capacity was reached. Nonzero means the
@@ -251,24 +219,16 @@ impl ObservationTrace {
     }
 }
 
-/// The bounded in-memory sink, in one of two shapes. A capture
-/// ([`Self::with_capacity`], the default) keeps the first `capacity` facts
-/// and counts the rest as dropped: the trace is a complete prefix or says
-/// how much of the session it missed, which is what a comparison wants. A
-/// ring ([`Self::ring`]) keeps the *last* `capacity` facts and counts what
-/// it let go: a long-running host always sees its recent past, which is
-/// what a dashboard wants. Either way [`Self::drain`] takes what is kept
-/// and starts over, so a host that exports periodically never fills up.
+/// The bounded in-memory sink. It keeps the first `capacity` facts and
+/// counts the rest as dropped: the trace is a complete prefix or says how
+/// much of the session it missed.
 pub struct ObservationLog {
     inner: Mutex<LogState>,
     capacity: usize,
-    ring: bool,
-    clock: Option<Arc<dyn Clock + Send + Sync>>,
 }
 
 struct LogState {
-    session: Option<String>,
-    observations: std::collections::VecDeque<Observation>,
+    observations: Vec<Observation>,
     next: u64,
     dropped: u64,
     finalized: bool,
@@ -300,54 +260,13 @@ impl ObservationLog {
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             inner: Mutex::new(LogState {
-                session: None,
-                observations: std::collections::VecDeque::new(),
+                observations: Vec::new(),
                 next: 0,
                 dropped: 0,
                 finalized: false,
             }),
             capacity,
-            ring: false,
-            clock: None,
         }
-    }
-
-    /// Keeps the last `capacity` facts and counts evictions as dropped.
-    /// Capacity zero is raised to one.
-    pub fn ring(capacity: usize) -> Self {
-        Self {
-            ring: true,
-            // A ring of nothing would keep every fact and count it dropped.
-            ..Self::with_capacity(capacity.max(1))
-        }
-    }
-
-    /// Take the kept facts and start over: the session name and the
-    /// sequence continue, the kept facts and the dropped count reset. A
-    /// host that exports its trace periodically drains rather than
-    /// letting a capture fill and stop.
-    pub fn drain(&self) -> ObservationTrace {
-        let mut state = self.lock();
-        let trace = ObservationTrace {
-            session: state.session.clone(),
-            observations: state.observations.drain(..).collect(),
-            dropped: state.dropped,
-            finalized: state.finalized,
-        };
-        state.dropped = 0;
-        trace
-    }
-
-    /// Stamp every fact with `clock`'s elapsed time.
-    pub fn with_clock(mut self, clock: Arc<dyn Clock + Send + Sync>) -> Self {
-        self.clock = Some(clock);
-        self
-    }
-
-    /// Name the session the trace belongs to.
-    pub fn with_session(self, session: impl Into<String>) -> Self {
-        self.lock().session = Some(session.into());
-        self
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, LogState> {
@@ -365,8 +284,7 @@ impl ObservationLog {
     pub fn trace(&self) -> ObservationTrace {
         let state = self.lock();
         ObservationTrace {
-            session: state.session.clone(),
-            observations: state.observations.iter().cloned().collect(),
+            observations: state.observations.clone(),
             dropped: state.dropped,
             finalized: state.finalized,
         }
@@ -385,26 +303,15 @@ impl ObservationLog {
 
 impl Witness for ObservationLog {
     fn observe(&self, mut observation: Observation) {
-        let at = self.clock.as_ref().map(|clock| clock.elapsed());
         let mut state = self.lock();
         state.finalized = false;
         observation.seq = state.next;
         state.next += 1;
         if state.observations.len() >= self.capacity {
             state.dropped += 1;
-            if !self.ring {
-                return;
-            }
-            state.observations.pop_front();
+            return;
         }
-        observation.at = at;
-        state.observations.push_back(observation);
-    }
-}
-
-impl<W: Witness + ?Sized> Witness for Arc<W> {
-    fn observe(&self, observation: Observation) {
-        (**self).observe(observation);
+        state.observations.push(observation);
     }
 }
 

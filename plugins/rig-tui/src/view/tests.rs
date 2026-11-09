@@ -5,7 +5,7 @@ use rig_harness::prelude::*;
 use rig_harness::rig_memory::MemoryStore;
 
 use super::*;
-use crate::tests::{transcript, view_app};
+use crate::tests::{line_of, say, transcript, view_app};
 
 /// Places for plugins' files, all in memory, the session's in `session`.
 fn data(session: &MemoryStore) -> PluginData {
@@ -14,11 +14,6 @@ fn data(session: &MemoryStore) -> PluginData {
         project: Arc::new(MemoryStore::default()),
         user: Arc::new(MemoryStore::default()),
     }
-}
-
-/// Where in `lines` the first that contains `text` is.
-fn line_of(lines: &[String], text: &str) -> Option<usize> {
-    lines.iter().position(|line| line.contains(text))
 }
 
 #[test]
@@ -163,14 +158,6 @@ fn what_was_typed_and_not_sent_is_kept_across_a_reload() {
     app.insert_resource(data(&session));
     assert!(app.world_mut().run_system_once(load_draft).is_ok());
     assert!(crate::tests::input(&app).is_empty());
-}
-
-/// Adds `message` to `agent`'s conversation.
-fn say(app: &mut App, agent: Entity, message: rig_core::completion::Message) {
-    if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
-        conversation.push(message);
-    }
-    app.update();
 }
 
 #[test]

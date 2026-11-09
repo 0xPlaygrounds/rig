@@ -1,26 +1,18 @@
-//! FH-20: transcript search, as in `less`.
+//! Transcript search, as in `less`. Ctrl+F opens a search bar under the transcript (a [`TuiPanel`]
+//! that takes the keys), and so does `/` while an item of the transcript is selected
+//! ([`KeyScope::Transcript`]). Otherwise `/` starts a slash command. The query searches as it is
+//! typed, ignoring case unless it has a capital letter; `re:` makes the rest a regular expression.
+//! It searches the transcript as the view lays it out ([`TranscriptLayout`]), at the width it draws
+//! at.
 //!
-//! Ctrl+F opens a search bar under the transcript (a [`TuiPanel`] that
-//! takes the keys), and so does `/` while the transcript has the keys
-//! ([`KeyScope::Transcript`]: an item of it is selected). Otherwise `/`
-//! starts a slash command, as it does without the plugin.
-//! What is typed searches as it is typed, ignoring case unless the query
-//! has a capital letter; `re:` makes the rest a regular expression. It
-//! searches the transcript as the view lays it out ([`TranscriptLayout`]),
-//! at the width it draws at: each line as its render systems draw it, its
-//! wrapped rows rejoined, the notices where they are drawn and the reply
-//! streaming in.
+//! The matches are lit in the transcript ([`Highlight::spans`]), the current one in a style of its
+//! own. Moving to one scrolls the view to its row ([`ScrollTo`] with [`ItemRow::Top`]). Enter takes
+//! it; `n` (or Enter again) and `N` (or Shift+Enter) move, wrapping around, and the bar counts
+//! (`3/17`). Tab searches every agent, naming the agent of the match and showing it.
 //!
-//! The matches the view draws are lit in the transcript, each where the
-//! search found it ([`Highlight::spans`]), the one shown in a style of its
-//! own, across the rows a wrap split one into. Moving to one scrolls the
-//! view to its row ([`ScrollTo`] with [`ItemRow::Top`]). Enter takes it; `n` (or Enter again) and `N`
-//! (or Shift+Enter) move, wrapping around, and the bar counts (`3/17`).
-//! Tab searches every agent, naming the agent of the match and showing it. Esc
-//! closes the bar and unlights the matches; unless a match was taken, it
-//! also scrolls back to where the view was. The bar takes the keys it does, so none of them reaches the
-//! input or its bindings: its Esc does not also stop the agent. The search
-//! only reads: it never changes a conversation.
+//! Esc closes the bar and unlights the matches; unless a match was taken, it also scrolls back to
+//! where the view was. The bar's keys never reach the input or its bindings, so its Esc does not
+//! also stop the agent. The search never changes a conversation.
 
 use std::collections::HashMap;
 use std::ops::Range;

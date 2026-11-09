@@ -16,11 +16,9 @@ type TestResult<T> = Result<T, Box<dyn std::error::Error>>;
 // Rerouting happens only after the production destination guard and preparation.
 #[derive(Clone)]
 struct Loopback {
-    inner: DynHttpClient,
     uri: Uri,
 }
-impl Loopback {
-    #[allow(clippy::result_large_err)]
+impl tests::Reroute for Loopback {
     fn reroute(&self, mut request: Request<Bytes>) -> http_client::Result<Request<Bytes>> {
         if request.uri() != "https://api.anthropic.com/v1/messages?beta=true"
             || request.headers().get("authorization")
@@ -30,40 +28,6 @@ impl Loopback {
         }
         *request.uri_mut() = self.uri.clone();
         Ok(request)
-    }
-}
-impl HttpClientExt for Loopback {
-    fn send<T, U>(
-        &self,
-        req: Request<T>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        T: Into<Bytes> + WasmCompatSend,
-        U: From<Bytes> + WasmCompatSend + 'static,
-    {
-        let this = self.clone();
-        let req = req.map(Into::into);
-        async move { this.inner.send(this.reroute(req)?).await }
-    }
-    #[allow(clippy::manual_async_fn)]
-    fn send_multipart<U>(
-        &self,
-        _: Request<MultipartForm>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        U: From<Bytes> + WasmCompatSend + 'static,
-    {
-        async { Err(http_client::Error::permanent(Error::Multipart)) }
-    }
-    fn send_streaming<T>(
-        &self,
-        req: Request<T>,
-    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
-    where
-        T: Into<Bytes> + WasmCompatSend,
-    {
-        let req = req.map(Into::into);
-        async move { self.inner.send_streaming(self.reroute(req)?).await }
     }
 }
 
@@ -180,13 +144,13 @@ async fn roundtrip() -> TestResult<()> {
     });
     let client = DynHttpClient::new(OAuthTransport {
         home: Default::default(),
-        inner: DynHttpClient::new(Loopback {
+        inner: DynHttpClient::new(tests::Rerouted {
             inner: DynHttpClient::new(rig_reqwest::ReqwestClient::from(
                 reqwest::Client::builder()
                     .redirect(reqwest::redirect::Policy::none())
                     .build()?,
             )),
-            uri,
+            by: Loopback { uri },
         }),
         device: "fake-roundtrip-device".into(),
         session: "fake-roundtrip-session".into(),

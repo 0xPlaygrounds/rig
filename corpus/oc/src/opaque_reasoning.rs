@@ -1,9 +1,7 @@
-//! OC-23: a provider whose reasoning comes back as an opaque blob that must
-//! be sent back unchanged.
-//!
-//! The providers listed in the `[opaque_reasoning]` settings table become
-//! catalog vendors, reached on an Anthropic Messages, OpenAI Responses or
-//! OpenAI Chat endpoint at their `base_url`, with the key in `key_env`:
+//! A provider whose reasoning comes back as an opaque blob that must be sent back unchanged. The
+//! providers listed in the `[opaque_reasoning]` settings table become catalog vendors, reached on
+//! an Anthropic Messages, OpenAI Responses or OpenAI Chat endpoint at their `base_url`, with the
+//! key in `key_env`:
 //!
 //! ```toml
 //! [[opaque_reasoning.provider]]
@@ -15,24 +13,16 @@
 //! # reasoning_field = "reasoning_content"  # Chat: where it takes reasoning text back
 //! ```
 //!
-//! rig-core's wires keep each reasoning item's blob (a thinking block's
-//! signature, a redacted block's data, a Responses item's
-//! `encrypted_content`) verbatim as the block's provider item, stream only
-//! its readable summary, and replay the item in place to the model that
-//! made it. This plugin adds the rest:
+//! rig-core keeps each reasoning blob verbatim, streams only its readable summary, and replays it
+//! to the model that made it. This plugin asks every request to send other models' reasoning as
+//! reasoning where its model reads it (`foreign_reasoning`), else as plain text, never with its
+//! blob. A blob whose message was edited, whose earlier history changed, or that was never anchored
+//! is left out instead of being sent stale. Each blob's message is anchored, as it is committed, by
+//! a fingerprint of the conversation up to it.
 //!
-//! - every request asks for other models' reasoning to go as reasoning
-//!   where its model reads it (`foreign_reasoning`), as plain text
-//!   otherwise, never with its blob;
-//! - a blob whose message was edited, whose earlier history changed, or
-//!   that was never anchored, is left out instead of being sent stale:
-//!   each blob's message is anchored, as it is committed, by a fingerprint
-//!   of the conversation up to it, kept as an aside;
-//! - a request the provider rejects over a reasoning blob is sent again
-//!   once, without any blob, with a notice;
-//! - the transcript and the effect log show `[encrypted reasoning, N bytes]`
-//!   in place of the blob, which stays in the saved conversation so a
-//!   resumed session sends it again.
+//! A request the provider rejects over a reasoning blob is sent again once, without any blob, with
+//! a notice. The transcript and the effect log show `[encrypted reasoning, N bytes]` in place of
+//! the blob, which stays in the saved conversation so a resumed session sends it again.
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::{

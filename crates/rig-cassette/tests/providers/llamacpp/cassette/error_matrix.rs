@@ -1,55 +1,25 @@
 //! Provider-error matrix for `llama-server`.
 //!
-//! Nothing in rig had ever recorded a single non-2xx response from llama.cpp
-//! before this suite: both pre-merge corpora were happy paths end to end. Error
-//! paths are where OpenAI-compatible servers diverge most from OpenAI, and
-//! llama.cpp diverges on all four axes at once — which status it picks, which
-//! `type` string it uses, which extra fields it attaches, and which failures it
-//! declines to treat as failures at all.
+//! Error paths are where OpenAI-compatible servers diverge most from OpenAI, and llama.cpp
+//! diverges in the status it picks, the `type` string it uses, the extra fields it attaches,
+//! and the failures it declines to treat as failures. Every cell asserts the class and the
+//! preserved body, never a literal id, and reads the recorded bytes back to prove its own
+//! premise.
 //!
-//! Every cell asserts the **class and the preserved body**, never a literal id,
-//! and reads the recorded bytes back to prove its own premise.
+//! The cells are context overflow, unary and streamed
+//! ([`context_overflow_preserves_the_token_counts`],
+//! [`streaming_context_overflow_matches_the_blocking_envelope`]); a keyed server
+//! ([`verify_fails_without_the_key_and_succeeds_with_it`], which is why `verify_path` is
+//! `/props`, and [`the_model_listing_requires_the_key_on_a_keyed_server`]); embeddings
+//! ([`embeddings_without_the_flag_are_a_501`], [`embeddings_with_pooling_none_are_a_400`],
+//! [`an_embeddings_input_past_the_batch_size_is_a_500`]); a mistyped field
+//! ([`a_malformed_body_keeps_its_parse_error`]); and rerank
+//! ([`rerank_without_a_reranker_is_a_501`], [`rerank_with_an_empty_document_list_is_a_400`]).
 //!
-//! | Cell | Server | Status | `type` | Notes |
-//! | --- | --- | --- | --- | --- |
-//! | [`context_overflow_preserves_the_token_counts`] | `-c 512` | 400 | `exceed_context_size_error` | carries `n_prompt_tokens` + `n_ctx` |
-//! | [`streaming_context_overflow_matches_the_blocking_envelope`] | `-c 512` | 400 | `exceed_context_size_error` | the 400 lands before the SSE stream opens |
-//! | [`verify_fails_without_the_key_and_succeeds_with_it`] | `--api-key` | 401 / 200 | `authentication_error` | why `verify_path` is `/props` |
-//! | [`the_model_listing_requires_the_key_on_a_keyed_server`] | `--api-key` | 401 | `authentication_error` | `/v1/models` was public on b10499 |
-//! | [`embeddings_without_the_flag_are_a_501`] | default | 501 | `not_supported_error` | |
-//! | [`embeddings_with_pooling_none_are_a_400`] | `--pooling none` | 400 | `invalid_request_error` | not the 500 the README implies |
-//! | [`an_embeddings_input_past_the_batch_size_is_a_500`] | `--embeddings` | 500 | `server_error` | the *batch* size, not the context size — a different limit with a different message |
-//! | [`a_malformed_body_keeps_its_parse_error`] | default | 400 | `invalid_request_error` | mistyped field, injected through `additional_params` |
-//! | [`rerank_without_a_reranker_is_a_501`] | default | 501 | `not_supported_error` | |
-//! | [`rerank_with_an_empty_document_list_is_a_400`] | `--reranking` | 400 | `invalid_request_error` | |
-//!
-//! Two rows are the interesting ones. llama.cpp reports **`tools` without
-//! `--jinja`** as `500 server_error` even though it is something the caller
-//! got wrong; a client that retries 5xx and not 4xx will retry a request that
-//! can never succeed until the server is restarted with a different flag. And
-//! an **unknown model is not an error at all** — the field is decorative on a
-//! single-model server, so a typo'd model identifier silently answers from
-//! whatever is loaded.
-//!
-//! # Dropped, with reasons
-//!
-//! * **A syntactically malformed request body.** llama.cpp answers
-//!   `500 server_error` carrying the nlohmann/json parse error (verified by
-//!   hand against b10964-b29c606e2). rig cannot produce one: every request body
-//!   it emits is serialized from typed values, and `additional_params` is a
-//!   `serde_json::Value`, which is valid JSON by construction. The reachable
-//!   neighbour — a field of the wrong *type* — is
-//!   [`a_malformed_body_keeps_its_parse_error`], and it is a 400.
-//! * **A 401 whose key is wrong rather than missing.** llama.cpp compares the
-//!   key for equality and answers the same `401 authentication_error` either
-//!   way; the middleware runs before routing, so even an unknown path 401s.
-//!   A second cell would record identical bytes.
-//! * **A streaming 401.** The API-key middleware runs before the handler, so a
-//!   `stream: true` request without the key answers the same `401` body before
-//!   any event stream opens — byte-identical to the blocking cell above
-//!   (verified by hand against b10964-b29c606e2). The streaming-error path is
-//!   already covered where it differs: `context_overflow_streaming` records a
-//!   400 that must survive rig's SSE funnel rather than the unary one.
+//! A syntactically malformed body is not recorded because rig serializes every body from typed
+//! values and cannot produce one. A wrong key and a streamed missing key are not recorded
+//! because the key check runs before routing and answers the same 401 bytes as the missing-key
+//! cell.
 
 use futures::StreamExt;
 use rig::error::ProviderError;

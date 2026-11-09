@@ -5,20 +5,14 @@ use rig_basics::telemetry::usage::{AgentUsage, SessionUsage, UsagePlugin};
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
-    Ended, app_on, calls, log_ended, reply, run_until, scripted_models,
+    Ended, app_on, calls, log_ended, reply, run_until, scratch_dir, scripted_models,
 };
 
 use super::*;
 
 /// A new git repository beside the test binary, in the build directory.
 fn repository() -> PathBuf {
-    let exe = std::env::current_exe().unwrap_or_default();
-    let dir = exe
-        .parent()
-        .unwrap_or(Path::new("."))
-        .join(format!("review-agent-{}", std::process::id()));
-    std::fs::remove_dir_all(&dir).ok();
-    std::fs::create_dir_all(&dir).ok();
+    let dir = scratch_dir(&format!("review-agent-{}", std::process::id()));
     let init = Command::new("git")
         .arg("-C")
         .arg(&dir)
@@ -98,7 +92,4 @@ fn a_turn_that_changed_a_file_is_reviewed_once_and_the_agent_fixes_the_findings(
     std::fs::remove_dir_all(&dir).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(ReviewAgentPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(ReviewAgentPlugin);

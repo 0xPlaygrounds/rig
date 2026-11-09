@@ -8,7 +8,7 @@ use rig_harness::rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     ToolOutputs, answer_open, app_on, calls, connect, log_tool_outputs, reply, run_until,
-    start_call,
+    scratch_dir, start_call,
 };
 use rig_tui::{KeyPressed, Keys};
 use serde_json::json;
@@ -41,11 +41,7 @@ fn session(mode: PermissionMode, model: &MockCompletionModel) -> (App, Receiver<
 
 /// A fresh directory for a test's files, beside the test's binary.
 fn scratch(name: &str) -> PathBuf {
-    let exe = std::env::current_exe().unwrap_or_default();
-    let dir = exe.with_file_name(format!("permission-modes-{name}"));
-    std::fs::remove_dir_all(&dir).ok();
-    std::fs::create_dir_all(&dir).ok();
-    dir
+    scratch_dir(&format!("permission-modes-{name}"))
 }
 
 fn tell(app: &mut App, agent: Entity, text: &str) {
@@ -179,7 +175,4 @@ fn edits_runs_edits_and_asks_before_shell_also_for_a_subagent() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(PermissionModesPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(PermissionModesPlugin);

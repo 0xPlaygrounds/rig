@@ -368,7 +368,4 @@ seed = 7
     assert_eq!(streams, Some(true), "the wire's own fields stay");
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(ModelParamsPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(ModelParamsPlugin);

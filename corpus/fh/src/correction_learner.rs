@@ -1,25 +1,15 @@
-//! Plugin corpus (fresh held-out): FH-11: learn project rules from
-//! corrections.
+//! Learns project rules from corrections. When the user's message reaches an agent that answered
+//! before, a model call of the plugin's own (on `[correction-learner] model`, else the agent's
+//! model) reads that message, the agent's previous reply and its tool calls in short form, and the
+//! rules already learned or dismissed. It answers one rule of at most 200 characters, or `NONE`.
+//! The agent's turns never wait for the call, and its usage counts under the purpose
+//! `correction-learner`.
 //!
-//! When the user's message reaches an agent that answered before, a model
-//! call of the plugin's own (on `[correction-learner] model`, else the
-//! agent's model) reads that message, the agent's previous reply and its
-//! tool calls in short form, and the rules already learned or dismissed,
-//! and answers one rule of at most 200 characters, or `NONE`. The call is
-//! no turn's: the agent's turns never wait for it, and its usage counts
-//! under the purpose `correction-learner`.
-//!
-//! A new rule is a [`Proposal`]: where someone sits at a front, an inline
-//! [`Ask`] beside the work, which waits until it is answered Save, Dismiss,
-//! or with an edited rule, or until a newer proposal replaces it; in a run
-//! nobody answers, an effect recorded as logged and nothing more. Saving
-//! appends the rule under `## Learned rules` in the project's instruction
-//! file, which rig's prompt has every agent read for itself, and tells the
-//! corrected agent's model in a note. Dismissed rules are kept in the project's
-//! `.rig/dismissed-rules.txt` and never proposed again. `/rules` lists the
-//! learned rules, and `/rules rm N` removes one. Every file is read and
-//! written through the project's workspace, off the main thread when it is
-//! not this machine.
+//! A new rule is a [`Proposal`]: an inline [`Ask`] that waits for Save, Dismiss or an edited rule,
+//! or until a newer proposal replaces it. A run nobody answers only logs it. Saving appends the
+//! rule under `## Learned rules` in the project's instruction file and tells the corrected agent's
+//! model in a note. Dismissed rules are kept in the project's `.rig/dismissed-rules.txt` and never
+//! proposed again. `/rules` lists the learned rules, and `/rules rm N` removes one.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

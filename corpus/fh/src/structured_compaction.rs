@@ -1,23 +1,15 @@
-//! FH-10: structured compaction. Every compaction `rig_basics::compaction` makes,
-//! near the window, after an overflow or on `/compact <focus>`, summarizes
-//! in a fixed template ([`HEADINGS`]), from the previous summary plus the
-//! messages since, focused on what `/compact` was given, on the model the
-//! `[compact]` table of `RIG_HOME/settings.toml` names (else the agent's
-//! own). Everything before the user's last message is summarized, so tool
-//! calls and results before it are dropped and the most recent exchange
-//! stays whole; the user's last [`StructuredCompaction::keep_user_messages`]
-//! messages stay word for word after the summary. A summary that fails or
-//! lacks a heading is asked for once more, then the compaction runs the
-//! way it would have without this plugin, with a notice.
+//! Structured compaction. Every compaction `rig_basics::compaction` makes, near the window, after
+//! an overflow or on `/compact <focus>`, summarizes in a fixed template ([`HEADINGS`]), from the
+//! previous summary plus the messages since, focused on what `/compact` was given, on the model the
+//! `[compact]` table of `RIG_HOME/settings.toml` names (else the agent's own). Everything before
+//! the user's last message is summarized, so tool calls and results before it are dropped and the
+//! most recent exchange stays whole. The user's last [`StructuredCompaction::keep_user_messages`]
+//! messages stay word for word after the summary. A summary that fails or lacks a heading is asked
+//! for once more, then the compaction runs the way it would have without this plugin, with a
+//! notice.
 //!
 //! It sets the summary prompts of `rig_basics::compaction`'s default policy
-//! ([`CompactionDefault`]). It adds a Prepare system that plans
-//! `rig_basics::compaction`'s summary calls again, cut before the user's last
-//! message, and sends them to the configured model, a
-//! Review system that checks their answers and sends them again
-//! ([`resend`]), and an observer that puts the kept messages after the
-//! summary as it goes in. In the terminal view the summary is a
-//! "Summary" entry.
+//! ([`CompactionDefault`]). In the terminal view the summary is a "Summary" entry.
 
 use std::borrow::Cow;
 

@@ -8,7 +8,7 @@ use rig_harness::commands::CommandPlugin;
 use rig_harness::harness_protocol::SessionId;
 use rig_harness_test_support::{
     Collected, Ended, app_in, calls, collect, first_agent, log_ended, reply, run_until,
-    scratch_home, scripted_models, tui_view,
+    scratch_dir, scratch_home, scripted_models, tui_view,
 };
 use rig_tui::TuiTestScreen;
 use serde_json::json;
@@ -99,10 +99,7 @@ fn source_turns_get_fragments_in_the_background() {
         vec![MockStreamEvent::error("the drafting model is overloaded")],
         reply("added: An extra module"),
     ]);
-    let project = std::env::current_exe()
-        .unwrap_or_default()
-        .with_file_name("sp-changelog-fragments-project");
-    fs::remove_dir_all(&project).ok();
+    let project = scratch_dir("sp-changelog-fragments-project");
     assert!(fs::create_dir_all(project.join("src")).is_ok());
     assert!(fs::write(project.join("src/parse.rs"), "old\n").is_ok());
     let changes = project.join("changes");

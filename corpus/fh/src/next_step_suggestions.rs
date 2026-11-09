@@ -1,19 +1,13 @@
-//! Plugin corpus (fresh held-out): FH-13: Next-step suggestions (spec
-//! `13-next-step-suggestions.md`).
-//!
-//! When a turn of the agent the user looks at ends with an answer, a model
-//! call of the plugin's own (on `[suggest] model`, else the agent's model)
-//! reads the last message the user typed and the final reply, and answers
-//! up to three next prompts. The terminal view shows them as numbered chips
-//! in a one-row panel under the input; `Alt+1..3` sends one to the
-//! agent as the user's message and `Alt+0` hides them. Those keys are bound
-//! only while chips show and no question waits beside the work, so they
-//! never take the question's own `Alt+N` keys. Any message the user
-//! sends, and any new turn, takes them away and cancels a call still
-//! running. A failed or stopped turn, a subagent, and a run without the
-//! terminal view get none. The suggestions are no part of the conversation
-//! and are not restored; the call's usage counts under the purpose
-//! `suggest`. `/suggest off|on` switches them for the session.
+//! Next-step suggestions. When a turn of the agent the user looks at ends with an answer, a model
+//! call of the plugin's own (on `[suggest] model`, else the agent's model) reads the last message
+//! the user typed and the final reply, and answers up to three next prompts. The terminal view
+//! shows them as numbered chips in a one-row panel under the input; `Alt+1..3` sends one to the
+//! agent as the user's message and `Alt+0` hides them. Those keys are bound only while chips show
+//! and no question waits beside the work, so they never take the question's own `Alt+N` keys. Any
+//! message the user sends, and any new turn, takes them away and cancels a call still running. A
+//! failed or stopped turn, a subagent, and a run without the terminal view get none. The
+//! suggestions are no part of the conversation and are not restored; the call's usage counts under
+//! the purpose `suggest`. `/suggest off|on` switches them for the session.
 
 use bevy_ecs::entity_disabling::Disabled;
 use bevy_ecs::query::Allow;

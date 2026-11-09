@@ -1,14 +1,9 @@
-//! OC-13: rate answers and keep the feedback (one-conversation fresh
-//! held-out spec `13-message-ratings.md`).
-//!
-//! `/good [reason]` and `/bad [reason]` (Alt+Up and Alt+Down from the
-//! terminal view's input) rate the agent's last reply. A rating is two
-//! saved asides after that reply in the agent's conversation: a
-//! [`Rating`] (the data, kind [`Rating::KIND`]) and a [`Note`] the fronts
-//! draw as a marker with the reason. Asides never reach
-//! a model and are saved and restored with the conversation, so a rating
-//! stays with its reply. `/ratings` lists the session's ratings and
-//! jumps to one; `/ratings --all` reads every saved session of the project
+//! Rate answers and keep the feedback. `/good [reason]` and `/bad [reason]` (Alt+Up and Alt+Down
+//! from the terminal view's input) rate the agent's last reply. A rating is two saved asides after
+//! that reply in the agent's conversation: a [`Rating`] (the data, kind [`Rating::KIND`]) and a
+//! [`Note`] the fronts draw as a marker with the reason. Asides never reach a model and are saved
+//! and restored with the conversation, so a rating stays with its reply. `/ratings` lists the
+//! session's ratings and jumps to one; `/ratings --all` reads every saved session of the project
 //! and tallies good, bad and unrated replies per model.
 
 use std::cmp::Reverse;

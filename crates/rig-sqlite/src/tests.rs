@@ -875,13 +875,14 @@ fn unsupported_document_filter_expressions_are_rejected() -> anyhow::Result<()> 
 
 #[tokio::test]
 async fn live_search_orders_by_similarity_and_applies_threshold() -> anyhow::Result<()> {
-    let index = live_test_index(
+    let index = live_index(
         "live_search_orders_by_similarity_and_applies_threshold",
         vec![
             row("exact", "docs", "exact match", vec![1.0, 0.0]),
             row("close", "docs", "close match", vec![0.8, 0.6]),
             row("opposite", "docs", "opposite match", vec![-1.0, 0.0]),
         ],
+        SqliteDistanceMetric::Cosine,
     )
     .await?;
 
@@ -1124,7 +1125,7 @@ async fn live_multiple_embeddings_per_document_use_best_embedding() -> anyhow::R
         category: "docs".to_string(),
         title: "multi-vector document".to_string(),
     };
-    let index = live_test_index(
+    let index = live_index(
         "live_multiple_embeddings_per_document_use_best_embedding",
         vec![
             (
@@ -1142,6 +1143,7 @@ async fn live_multiple_embeddings_per_document_use_best_embedding() -> anyhow::R
             ),
             row("single", "docs", "single close chunk", vec![0.8, 0.6]),
         ],
+        SqliteDistanceMetric::Cosine,
     )
     .await?;
 
@@ -1220,7 +1222,7 @@ async fn live_multivector_search_beyond_knn_k_cap_succeeds() -> anyhow::Result<(
         title: "many-embedding document".to_string(),
     };
 
-    let index = live_test_index(
+    let index = live_index(
         "live_multivector_search_beyond_knn_k_cap_succeeds",
         vec![
             (filler_document, filler_chunks),
@@ -1228,6 +1230,7 @@ async fn live_multivector_search_beyond_knn_k_cap_succeeds() -> anyhow::Result<(
             row("mid", "docs", "mid", vec![0.5, 0.5]),
             row("worst", "docs", "worst", vec![-1.0, 0.0]),
         ],
+        SqliteDistanceMetric::Cosine,
     )
     .await?;
 
@@ -1274,7 +1277,12 @@ async fn live_post_filter_search_beyond_knn_k_cap_succeeds() -> anyhow::Result<(
     // the top 4096 by similarity.
     rows.push(row("wanted", "docs", "wanted title", vec![-1.0, 0.0]));
 
-    let index = live_test_index("live_post_filter_search_beyond_knn_k_cap_succeeds", rows).await?;
+    let index = live_index(
+        "live_post_filter_search_beyond_knn_k_cap_succeeds",
+        rows,
+        SqliteDistanceMetric::Cosine,
+    )
+    .await?;
 
     let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
         .query("needle")
@@ -1310,12 +1318,13 @@ async fn live_post_filter_search_beyond_knn_k_cap_succeeds() -> anyhow::Result<(
 
 #[tokio::test]
 async fn live_equal_score_results_are_ordered_by_document_id() -> anyhow::Result<()> {
-    let index = live_test_index(
+    let index = live_index(
         "live_equal_score_results_are_ordered_by_document_id",
         vec![
             row("b", "docs", "second id exact match", vec![1.0, 0.0]),
             row("a", "docs", "first id exact match", vec![1.0, 0.0]),
         ],
+        SqliteDistanceMetric::Cosine,
     )
     .await?;
 
@@ -1349,7 +1358,7 @@ async fn live_equal_score_results_are_ordered_by_document_id() -> anyhow::Result
 
 #[tokio::test]
 async fn live_common_sqlite_text_types_round_trip_in_top_n() -> anyhow::Result<()> {
-    let index = live_common_type_test_index(
+    let index = live_index(
         "live_common_sqlite_text_types_round_trip_in_top_n",
         vec![common_type_row(
             "common",
@@ -1358,6 +1367,7 @@ async fn live_common_sqlite_text_types_round_trip_in_top_n() -> anyhow::Result<(
             7,
             vec![1.0, 0.0],
         )],
+        SqliteDistanceMetric::Cosine,
     )
     .await?;
 
@@ -1394,7 +1404,7 @@ async fn live_json_column_structured_metadata_round_trips_in_top_n() -> anyhow::
         knowledge_id: 1,
         knowledge_doc_id: 361,
     };
-    let index = live_structured_json_metadata_test_index(
+    let index = live_index(
         "live_json_column_structured_metadata_round_trips_in_top_n",
         vec![structured_json_metadata_row(
             "structured",
@@ -1402,6 +1412,7 @@ async fn live_json_column_structured_metadata_round_trips_in_top_n() -> anyhow::
             "metadata document",
             vec![1.0, 0.0],
         )],
+        SqliteDistanceMetric::Cosine,
     )
     .await?;
 
@@ -1438,12 +1449,13 @@ async fn live_json_column_structured_metadata_round_trips_in_top_n() -> anyhow::
 
 #[tokio::test]
 async fn live_text_affinity_metadata_filters_during_candidate_search() -> anyhow::Result<()> {
-    let index = live_common_type_test_index(
+    let index = live_index(
         "live_text_affinity_metadata_filters_during_candidate_search",
         vec![
             common_type_row("nearest", "misc", "nearest excluded", 1, vec![1.0, 0.0]),
             common_type_row("docs", "docs", "docs match", 2, vec![0.0, 1.0]),
         ],
+        SqliteDistanceMetric::Cosine,
     )
     .await?;
 
@@ -1480,7 +1492,7 @@ async fn live_text_affinity_metadata_filters_during_candidate_search() -> anyhow
 
 #[tokio::test]
 async fn live_l2_metric_is_consistent() -> anyhow::Result<()> {
-    let index = live_test_index_with_metric(
+    let index = live_index(
         "live_l2_metric_is_consistent",
         vec![
             row("exact", "docs", "exact match", vec![1.0, 0.0]),
@@ -1547,7 +1559,7 @@ async fn live_l2_metric_is_consistent() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn live_indexed_filter_is_applied_during_candidate_search() -> anyhow::Result<()> {
-    let index = live_test_index(
+    let index = live_index(
         "live_indexed_filter_is_applied_during_candidate_search",
         vec![
             row(
@@ -1558,6 +1570,7 @@ async fn live_indexed_filter_is_applied_during_candidate_search() -> anyhow::Res
             ),
             row("docs", "docs", "docs match", vec![0.0, 1.0]),
         ],
+        SqliteDistanceMetric::Cosine,
     )
     .await?;
 
@@ -1597,12 +1610,13 @@ async fn live_indexed_filter_is_applied_during_candidate_search() -> anyhow::Res
 
 #[tokio::test]
 async fn live_nonindexed_filter_is_applied_after_candidate_search() -> anyhow::Result<()> {
-    let index = live_test_index(
+    let index = live_index(
         "live_nonindexed_filter_is_applied_after_candidate_search",
         vec![
             row("nearest", "docs", "nearest excluded title", vec![1.0, 0.0]),
             row("wanted", "docs", "wanted title", vec![0.0, 1.0]),
         ],
+        SqliteDistanceMetric::Cosine,
     )
     .await?;
 
@@ -1640,12 +1654,13 @@ async fn live_nonindexed_filter_is_applied_after_candidate_search() -> anyhow::R
 
 #[tokio::test]
 async fn live_json_metadata_filter_is_applied_after_candidate_search() -> anyhow::Result<()> {
-    let index = live_json_metadata_test_index(
+    let index = live_index(
         "live_json_metadata_filter_is_applied_after_candidate_search",
         vec![
             json_metadata_row("nearest", "docs", "skip", "nearest skipped", vec![1.0, 0.0]),
             json_metadata_row("matched", "docs", "vvv", "metadata match", vec![0.0, 1.0]),
         ],
+        SqliteDistanceMetric::Cosine,
     )
     .await?;
 
@@ -1683,12 +1698,13 @@ async fn live_json_metadata_filter_is_applied_after_candidate_search() -> anyhow
 
 #[tokio::test]
 async fn live_json_arrow_filter_compares_against_json_text() -> anyhow::Result<()> {
-    let index = live_json_metadata_test_index(
+    let index = live_index(
         "live_json_arrow_filter_compares_against_json_text",
         vec![
             json_metadata_row("nearest", "docs", "skip", "nearest skipped", vec![1.0, 0.0]),
             json_metadata_row("matched", "docs", "vvv", "metadata match", vec![0.0, 1.0]),
         ],
+        SqliteDistanceMetric::Cosine,
     )
     .await?;
 
@@ -1726,7 +1742,7 @@ async fn live_json_arrow_filter_compares_against_json_text() -> anyhow::Result<(
 
 #[tokio::test]
 async fn live_mixed_indexed_and_json_metadata_filters_are_applied() -> anyhow::Result<()> {
-    let index = live_json_metadata_test_index(
+    let index = live_index(
         "live_mixed_indexed_and_json_metadata_filters_are_applied",
         vec![
             json_metadata_row(
@@ -1751,6 +1767,7 @@ async fn live_mixed_indexed_and_json_metadata_filters_are_applied() -> anyhow::R
                 vec![0.0, 1.0],
             ),
         ],
+        SqliteDistanceMetric::Cosine,
     )
     .await?;
 
@@ -1788,7 +1805,7 @@ async fn live_mixed_indexed_and_json_metadata_filters_are_applied() -> anyhow::R
 
 #[tokio::test]
 async fn live_negated_eq_filter_is_applied_during_candidate_search() -> anyhow::Result<()> {
-    let index = live_test_index(
+    let index = live_index(
         "live_negated_eq_filter_is_applied_during_candidate_search",
         vec![
             row(
@@ -1799,6 +1816,7 @@ async fn live_negated_eq_filter_is_applied_during_candidate_search() -> anyhow::
             ),
             row("docs", "docs", "docs match", vec![0.0, 1.0]),
         ],
+        SqliteDistanceMetric::Cosine,
     )
     .await?;
 
@@ -1955,7 +1973,7 @@ async fn live_internal_score_and_rank_column_names_do_not_shadow_search_columns(
 
 #[tokio::test]
 async fn live_typed_columns_round_trip_and_filter_during_candidate_search() -> anyhow::Result<()> {
-    let index = live_typed_test_index(
+    let index = live_index(
         "live_typed_columns_round_trip_and_filter_during_candidate_search",
         vec![
             typed_row(
@@ -1978,6 +1996,7 @@ async fn live_typed_columns_round_trip_and_filter_during_candidate_search() -> a
                 vec![0.0, 0.9],
             ),
         ],
+        SqliteDistanceMetric::Cosine,
     )
     .await?;
 
@@ -2032,7 +2051,7 @@ async fn live_typed_columns_round_trip_and_filter_during_candidate_search() -> a
 
 #[tokio::test]
 async fn live_boolean_range_filter_is_rejected() -> anyhow::Result<()> {
-    let index = live_typed_test_index(
+    let index = live_index(
         "live_boolean_range_filter_is_rejected",
         vec![
             typed_row(
@@ -2046,6 +2065,7 @@ async fn live_boolean_range_filter_is_rejected() -> anyhow::Result<()> {
             ),
             typed_row(2, "docs", 2, 0.7, true, "published doc", vec![0.0, 1.0]),
         ],
+        SqliteDistanceMetric::Cosine,
     )
     .await?;
 
@@ -2069,7 +2089,7 @@ async fn live_boolean_range_filter_is_rejected() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn live_mismatched_metadata_filter_value_type_is_rejected() -> anyhow::Result<()> {
-    let index = live_typed_test_index(
+    let index = live_index(
         "live_mismatched_metadata_filter_value_type_is_rejected",
         vec![typed_row(
             1,
@@ -2080,6 +2100,7 @@ async fn live_mismatched_metadata_filter_value_type_is_rejected() -> anyhow::Res
             "published doc",
             vec![1.0, 0.0],
         )],
+        SqliteDistanceMetric::Cosine,
     )
     .await?;
 
@@ -2135,12 +2156,7 @@ async fn live_matches_exact_oracle_for_metrics_filters_and_thresholds() -> anyho
         )?;
         let test_name =
             format!("live_matches_exact_oracle_for_{distance_metric:?}").to_ascii_lowercase();
-        let index = live_typed_test_index_with_metric(
-            &test_name,
-            sqlite_oracle_rows(&rows),
-            distance_metric,
-        )
-        .await?;
+        let index = live_index(&test_name, sqlite_oracle_rows(&rows), distance_metric).await?;
 
         let results = index.top_n::<TypedTestDocument>(req.clone()).await?;
         let scored_ids = results
@@ -2168,7 +2184,7 @@ async fn live_matches_exact_oracle_for_metrics_filters_and_thresholds() -> anyho
 
 #[tokio::test]
 async fn live_or_filter_preserves_mixed_document_semantics() -> anyhow::Result<()> {
-    let index = live_test_index(
+    let index = live_index(
         "live_or_filter_preserves_mixed_document_semantics",
         vec![
             row(
@@ -2180,6 +2196,7 @@ async fn live_or_filter_preserves_mixed_document_semantics() -> anyhow::Result<(
             row("special", "misc", "special title", vec![0.9, 0.1]),
             row("docs", "docs", "far docs match", vec![0.0, 1.0]),
         ],
+        SqliteDistanceMetric::Cosine,
     )
     .await?;
 
@@ -2218,12 +2235,13 @@ async fn live_or_filter_preserves_mixed_document_semantics() -> anyhow::Result<(
 
 #[tokio::test]
 async fn live_pattern_and_null_filters_are_applied_after_candidate_search() -> anyhow::Result<()> {
-    let index = live_json_metadata_test_index(
+    let index = live_index(
         "live_pattern_and_null_filters_are_applied_after_candidate_search",
         vec![
             json_metadata_row("nearest", "docs", "skip", "skip this", vec![1.0, 0.0]),
             json_metadata_row("matched", "docs", "vvv", "metadata match", vec![0.0, 1.0]),
         ],
+        SqliteDistanceMetric::Cosine,
     )
     .await?;
 
@@ -2273,18 +2291,11 @@ fn register_sqlite_vec_extension() {
     });
 }
 
-async fn live_test_index(
+async fn live_index<D: SqliteVectorStoreTable + 'static>(
     name: &str,
-    rows: Vec<(TestDocument, Vec<Embedding>)>,
-) -> anyhow::Result<SqliteVectorIndex<TestDocument>> {
-    live_test_index_with_metric(name, rows, SqliteDistanceMetric::Cosine).await
-}
-
-async fn live_test_index_with_metric(
-    name: &str,
-    rows: Vec<(TestDocument, Vec<Embedding>)>,
+    rows: Vec<(D, Vec<Embedding>)>,
     distance_metric: SqliteDistanceMetric,
-) -> anyhow::Result<SqliteVectorIndex<TestDocument>> {
+) -> anyhow::Result<SqliteVectorIndex<D>> {
     register_sqlite_vec_extension();
 
     let conn = Connection::open(format!("file:{name}?mode=memory")).await?;
@@ -2298,77 +2309,15 @@ async fn live_test_index_with_metric(
     Ok(vector_store.index(model))
 }
 
-async fn live_typed_test_index(
-    name: &str,
-    rows: Vec<(TypedTestDocument, Vec<Embedding>)>,
-) -> anyhow::Result<SqliteVectorIndex<TypedTestDocument>> {
-    live_typed_test_index_with_metric(name, rows, SqliteDistanceMetric::Cosine).await
-}
-
-async fn live_typed_test_index_with_metric(
-    name: &str,
-    rows: Vec<(TypedTestDocument, Vec<Embedding>)>,
-    distance_metric: SqliteDistanceMetric,
-) -> anyhow::Result<SqliteVectorIndex<TypedTestDocument>> {
-    register_sqlite_vec_extension();
-
-    let conn = Connection::open(format!("file:{name}?mode=memory")).await?;
-    let model = TestEmbeddingModel::model();
-    let vector_store: SqliteVectorStore<TypedTestDocument> =
-        SqliteVectorStore::with_distance_metric(conn, model.capabilities().ndims, distance_metric)
-            .await?;
-
-    vector_store.add_rows(rows).await?;
-
-    Ok(vector_store.index(model))
-}
-
-async fn live_common_type_test_index(
-    name: &str,
-    rows: Vec<(CommonTypeDocument, Vec<Embedding>)>,
-) -> anyhow::Result<SqliteVectorIndex<CommonTypeDocument>> {
-    register_sqlite_vec_extension();
-
-    let conn = Connection::open(format!("file:{name}?mode=memory")).await?;
-    let model = TestEmbeddingModel::model();
-    let vector_store: SqliteVectorStore<CommonTypeDocument> =
-        SqliteVectorStore::new(conn, model.capabilities().ndims).await?;
-
-    vector_store.add_rows(rows).await?;
-
-    Ok(vector_store.index(model))
-}
-
-async fn live_json_metadata_test_index(
-    name: &str,
-    rows: Vec<(JsonMetadataDocument, Vec<Embedding>)>,
-) -> anyhow::Result<SqliteVectorIndex<JsonMetadataDocument>> {
-    register_sqlite_vec_extension();
-
-    let conn = Connection::open(format!("file:{name}?mode=memory")).await?;
-    let model = TestEmbeddingModel::model();
-    let vector_store: SqliteVectorStore<JsonMetadataDocument> =
-        SqliteVectorStore::new(conn, model.capabilities().ndims).await?;
-
-    vector_store.add_rows(rows).await?;
-
-    Ok(vector_store.index(model))
-}
-
-async fn live_structured_json_metadata_test_index(
-    name: &str,
-    rows: Vec<(StructuredJsonMetadataDocument, Vec<Embedding>)>,
-) -> anyhow::Result<SqliteVectorIndex<StructuredJsonMetadataDocument>> {
-    register_sqlite_vec_extension();
-
-    let conn = Connection::open(format!("file:{name}?mode=memory")).await?;
-    let model = TestEmbeddingModel::model();
-    let vector_store: SqliteVectorStore<StructuredJsonMetadataDocument> =
-        SqliteVectorStore::new(conn, model.capabilities().ndims).await?;
-
-    vector_store.add_rows(rows).await?;
-
-    Ok(vector_store.index(model))
+/// A row of `document` with one embedding of `text`.
+fn embedded<D>(text: String, document: D, vec: Vec<f64>) -> (D, Vec<Embedding>) {
+    (
+        document,
+        vec![Embedding {
+            document: text,
+            vec,
+        }],
+    )
 }
 
 fn row(
@@ -2383,13 +2332,7 @@ fn row(
         title: title.into(),
     };
 
-    (
-        document.clone(),
-        vec![Embedding {
-            document: document.title,
-            vec,
-        }],
-    )
+    embedded(document.title.clone(), document, vec)
 }
 
 fn common_type_row(
@@ -2406,13 +2349,7 @@ fn common_type_row(
         rank,
     };
 
-    (
-        document.clone(),
-        vec![Embedding {
-            document: document.name,
-            vec,
-        }],
-    )
+    embedded(document.name.clone(), document, vec)
 }
 
 fn json_metadata_row(
@@ -2429,13 +2366,7 @@ fn json_metadata_row(
         title: title.into(),
     };
 
-    (
-        document.clone(),
-        vec![Embedding {
-            document: document.title,
-            vec,
-        }],
-    )
+    embedded(document.title.clone(), document, vec)
 }
 
 fn structured_json_metadata_row(
@@ -2450,13 +2381,7 @@ fn structured_json_metadata_row(
         title: title.into(),
     };
 
-    (
-        document.clone(),
-        vec![Embedding {
-            document: document.title,
-            vec,
-        }],
-    )
+    embedded(document.title.clone(), document, vec)
 }
 
 fn reordered_id_row(
@@ -2471,13 +2396,7 @@ fn reordered_id_row(
         category: category.into(),
     };
 
-    (
-        document.clone(),
-        vec![Embedding {
-            document: document.title,
-            vec,
-        }],
-    )
+    embedded(document.title.clone(), document, vec)
 }
 
 fn internal_alias_row(
@@ -2494,13 +2413,7 @@ fn internal_alias_row(
         title: title.into(),
     };
 
-    (
-        document.clone(),
-        vec![Embedding {
-            document: document.title,
-            vec,
-        }],
-    )
+    embedded(document.title.clone(), document, vec)
 }
 
 fn typed_row(
@@ -2521,13 +2434,7 @@ fn typed_row(
         title: title.into(),
     };
 
-    (
-        document.clone(),
-        vec![Embedding {
-            document: document.title,
-            vec,
-        }],
-    )
+    embedded(document.title.clone(), document, vec)
 }
 
 #[derive(Clone, Debug)]

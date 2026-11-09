@@ -1,30 +1,21 @@
-//! Plugin corpus: 35. Review agent (spec `35-review-agent.md`).
+//! Review agent. A second agent, on a model of its own, reviews what an agent the user talks to
+//! changed, and the agent addresses the findings. Before a turn's first call that may change
+//! files (an [`Touches::Writes`] tool call), the call is held while a git snapshot of the
+//! working tree is taken ([`Baseline`], on the turn). When such a turn proposes to end with an
+//! answer, a review effect ([`Review`], named "reviewing") holds that end, diffs the working
+//! tree against the snapshot and, when the diff is not empty, spawns a reviewer: a one-job
+//! helper agent ([`SpawnSubagent`], [`Reviewer`]) on [`ReviewSettings::model`], or on the
+//! agent's own model when that is unset, with the read-only tools, briefed with the user's
+//! request and the diff.
 //!
-//! A second agent, on a model of its own, reviews what an agent the user
-//! talks to changed, and the agent addresses the findings.
+//! Findings go to the agent as a queued message headed "Reviewer (model) found:", which carries
+//! its turn on to address them; "LGTM" is a notice, and the turn ends. At most
+//! [`ReviewSettings::max_reviews`] reviews follow one user message, so the fixes are not
+//! reviewed again by default. A user message, Esc, or anything else that carries the turn on
+//! cancels the review and stops the reviewer.
 //!
-//! - Before a turn's first call that may change files (an
-//!   [`Touches::Writes`] tool call), the call is held while a git
-//!   snapshot of the working tree is taken ([`Baseline`], on the turn).
-//! - When such a turn proposes to end with an answer, a review effect
-//!   ([`Review`], named "reviewing", which the agent's status shows) holds
-//!   that end. It diffs the working tree against the snapshot and, when
-//!   the diff is not empty, spawns a reviewer: a helper agent
-//!   ([`SpawnSubagent`], [`Reviewer`]) on [`ReviewSettings::model`], or
-//!   on the agent's own model when that is unset, with
-//!   its prompt and the read-only tools, briefed with the user's request
-//!   and the diff.
-//! - Findings go to the agent as a queued message headed "Reviewer (model)
-//!   found:", which carries its turn on to address them; "LGTM" is a
-//!   notice, and the turn ends.
-//! - At most [`ReviewSettings::max_reviews`] reviews follow one user
-//!   message, so the fixes are not reviewed again by default.
-//! - `/review` reviews the uncommitted diff now; `/review off` and
-//!   `/review on` switch auto-review for the session ([`AutoReview`]).
-//! - The reviewer is an agent that does one job: its model calls count in
-//!   usage under it, and it retires once its review is done.
-//! - A user message, Esc, or anything else that carries the turn on
-//!   cancels the review, and stops the reviewer.
+//! `/review` reviews the uncommitted diff now; `/review off` and `/review on` switch
+//! auto-review for the session ([`AutoReview`]).
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};

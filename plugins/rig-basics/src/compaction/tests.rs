@@ -1,7 +1,6 @@
 mod anthropic;
 
 use std::collections::BTreeMap;
-use std::ffi::{OsStr, OsString};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -13,8 +12,7 @@ use rig_core::completion::{FinishReason, Message, Usage};
 use rig_core::message::{AssistantContent, AssistantMessage, CallId, ToolName, UserContent};
 use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
 use rig_harness::commands::RunCommand;
-use rig_tools::process::{Launcher, Process, Spawn};
-use rig_tools::workspace::{Contents, Listed, Listing, Stat, Workspace};
+use rig_tools::workspace::{Contents, Stat, Workspace};
 
 use super::*;
 use crate::telemetry::usage::{AgentUsage, SessionUsage, StoppedUsage, UsagePlugin};
@@ -93,8 +91,11 @@ impl Files {
     /// What the `read` tool shows of the file `name`.
     fn shown(self: &Arc<Self>, name: &str) -> String {
         let read = rig_tools::Read {
-            workspace: self.clone(),
-            base: Some(PROJECT.into()),
+            root: rig_tools::workspace::Root {
+                workspace: self.clone(),
+                base: Some(PROJECT.into()),
+                confine: false,
+            },
             ..rig_tools::Read::default()
         };
         let args = rig_tools::ReadArgs::new(name);
@@ -165,38 +166,25 @@ impl Workspace for Files {
         Ok(())
     }
 
-    fn remove(&self, _: &Path) -> io::Result<()> {
-        Err(io::ErrorKind::Unsupported.into())
-    }
-
-    fn rename(&self, _: &Path, _: &Path) -> io::Result<()> {
-        Err(io::ErrorKind::Unsupported.into())
-    }
-
-    fn canonical(&self, path: &Path) -> PathBuf {
-        path.to_path_buf()
-    }
-
-    fn files(&self, _: &Path, _: Option<&str>, _: Listing) -> io::Result<Listed> {
-        Ok(Listed::default())
-    }
-
-    fn spawn(
-        &self,
-        _: &Launcher,
-        _: Option<&Path>,
-        _: &OsStr,
-        _: &[OsString],
-        _: Spawn,
-    ) -> io::Result<Process> {
-        Err(io::ErrorKind::Unsupported.into())
-    }
+    crate::tests::workspace_stubs!();
 }
 
 /// The app's first agent, answered by `model` as the catalog's DeepSeek
 /// model with a `window`-token context window, with `messages` in its
-/// conversation.
+/// conversation. Fails the test when the catalog does not list the model.
 fn agent(
+    app: &mut App,
+    model: &MockCompletionModel,
+    window: u32,
+    messages: Vec<Message>,
+) -> Entity {
+    let agent = connected(app, model, window, messages);
+    assert!(agent.is_some(), "the catalog lists the model");
+    agent.unwrap_or(Entity::PLACEHOLDER)
+}
+
+/// [`agent`], or `None` when the catalog does not list the model.
+fn connected(
     app: &mut App,
     model: &MockCompletionModel,
     window: u32,
@@ -330,10 +318,6 @@ fn a_conversation_near_the_window_is_summarized_before_the_request_and_restored(
         reply("## Goal\nAnswer the next question."),
     ]);
     let agent = agent(&mut app, &model, 40_000, messages);
-    assert!(agent.is_some(), "the catalog lists the model");
-    let Some(agent) = agent else {
-        return;
-    };
     let before = entries(app.world(), agent);
     ask(&mut app, &wakes, agent);
     assert_eq!(answer(&app).as_deref(), Some("done"));
@@ -455,10 +439,6 @@ fn a_summary_sent_again_mid_flight_is_taken_from_its_successor() {
         reply("done"),
     ]);
     let agent = agent(&mut app, &model, 40_000, long_conversation(6));
-    assert!(agent.is_some(), "the catalog lists the model");
-    let Some(agent) = agent else {
-        return;
-    };
     ask(&mut app, &wakes, agent);
     assert_eq!(answer(&app).as_deref(), Some("done"));
     assert_eq!(app.world().resource::<Resent>().0, [true], "the plugin's");
@@ -487,9 +467,6 @@ fn cleared_outputs_are_logged_and_stay_cleared_after_a_restore() {
     let messages = files.read_all(5);
     let model = MockCompletionModel::from_stream_turns([reply("done")]);
     let agent = agent(&mut app, &model, 80_000, messages);
-    let Some(agent) = agent else {
-        return;
-    };
     let ids = |entries: &[Entry]| entries.iter().map(|entry| entry.id).collect::<Vec<_>>();
     let before = ids(&entries(app.world(), agent));
     let reads = files.reads();
@@ -538,9 +515,7 @@ fn a_read_whose_file_changed_since_is_cleared_only_after_notes() {
         reply("- read a.txt: SECRET_VALUE=alpha-731"),
         reply("done"),
     ]);
-    let Some(agent) = agent(&mut app, &model, 80_000, messages) else {
-        return;
-    };
+    let agent = agent(&mut app, &model, 80_000, messages);
     ask(&mut app, &wakes, agent);
     assert_eq!(answer(&app).as_deref(), Some("done"));
     let sent = sent(&model);
@@ -561,9 +536,7 @@ fn reading_outputs_again_never_blocks_the_frame() {
     let (mut app, wakes) = start_on(&MemoryStore::default(), &files);
     let messages = files.read_all(5);
     let model = MockCompletionModel::from_stream_turns([reply("done")]);
-    let Some(agent) = agent(&mut app, &model, 80_000, messages) else {
-        return;
-    };
+    let agent = agent(&mut app, &model, 80_000, messages);
     let release = files.hold();
     let steer = Deliver::new(agent, "And the next question?", DeliveryMode::Steer);
     app.world_mut().trigger(steer);
@@ -599,8 +572,6 @@ fn overflowing(
     let (mut app, wakes) = start(&MemoryStore::default());
     let model = MockCompletionModel::from_stream_turns(replies);
     let agent = agent(&mut app, &model, 1_000_000, messages);
-    assert!(agent.is_some(), "the catalog lists the model");
-    let agent = agent.unwrap_or(Entity::PLACEHOLDER);
     ask(&mut app, &wakes, agent);
     let ended = app.world().resource::<Ended>().0.clone();
     (sent(&model), ended, app, agent)
@@ -666,8 +637,6 @@ fn a_summary_call_that_fails_for_a_while_is_retried_with_the_turns_retries() {
         reply("done"),
     ]);
     let agent = agent(&mut app, &model, 1_000_000, read_files(6));
-    assert!(agent.is_some(), "the catalog lists the model");
-    let agent = agent.unwrap_or(Entity::PLACEHOLDER);
     limit_input(&mut app, agent, 120_000);
     let steer = Deliver::new(agent, "And the next question?", DeliveryMode::Steer);
     app.world_mut().trigger(steer);
@@ -714,8 +683,6 @@ fn a_summary_call_that_times_out_twice_is_retried_again() {
         reply("done"),
     ]);
     let agent = agent(&mut app, &model, 1_000_000, read_files(6));
-    assert!(agent.is_some(), "the catalog lists the model");
-    let agent = agent.unwrap_or(Entity::PLACEHOLDER);
     limit_input(&mut app, agent, 120_000);
     let steer = Deliver::new(agent, "And the next question?", DeliveryMode::Steer);
     app.world_mut().trigger(steer);
@@ -755,8 +722,6 @@ fn a_summary_call_that_times_out_is_retried_as_a_turns_call_is() {
         reply("## Goal\nNever asked."),
     ]);
     let agent = agent(&mut app, &model, 1_000_000, read_files(6));
-    assert!(agent.is_some(), "the catalog lists the model");
-    let agent = agent.unwrap_or(Entity::PLACEHOLDER);
     limit_input(&mut app, agent, 120_000);
     let steer = Deliver::new(agent, "And the next question?", DeliveryMode::Steer);
     app.world_mut().trigger(steer);
@@ -899,9 +864,7 @@ fn thinking_turn(window: u32, budget: Option<u32>) -> (Option<CompletionRequest>
         .0
         .near_window = NearWindow::Clear;
     let model = MockCompletionModel::from_stream_turns(vec![reply("done")]);
-    let Some(agent) = agent(&mut app, &model, window, read_files(5)) else {
-        return (None, false);
-    };
+    let agent = agent(&mut app, &model, window, read_files(5));
     let world = app.world_mut();
     if let Some(mut connection) = world.get_mut::<Connection>(agent) {
         let mut spec = connection.spec.as_ref().clone();
@@ -1046,8 +1009,6 @@ fn an_overflow_with_nothing_to_summarize_clears_only_what_reads_back_unchanged()
         collect::<Notice>(&mut app);
         let model = MockCompletionModel::from_stream_turns(vec![too_long(), reply("done")]);
         let agent = agent(&mut app, &model, 1_000_000, Vec::new());
-        assert!(agent.is_some(), "the catalog lists the model");
-        let agent = agent.unwrap_or(Entity::PLACEHOLDER);
         let outputs: Vec<(String, String)> = match on_disk {
             true => files.outputs(6),
             false => (0..6)
@@ -1104,8 +1065,6 @@ fn a_set_keep_recent_is_named_when_nothing_older_is_left() {
         .keep_recent = Some(1_000_000);
     let model = MockCompletionModel::from_stream_turns(vec![too_long()]);
     let agent = agent(&mut app, &model, 1_000_000, Vec::new());
-    assert!(agent.is_some(), "the catalog lists the model");
-    let agent = agent.unwrap_or(Entity::PLACEHOLDER);
     let outputs: Vec<(String, String)> = (0..6)
         .map(|n| (format!("gone{n}.rs"), "x".repeat(60_000)))
         .collect();
@@ -1134,8 +1093,6 @@ fn notes_too_big_with_nothing_to_summarize_keep_the_outputs() {
     collect::<Notice>(&mut app);
     let model = MockCompletionModel::from_stream_turns(vec![reply("done")]);
     let agent = agent(&mut app, &model, 1_000_000, Vec::new());
-    assert!(agent.is_some(), "the catalog lists the model");
-    let agent = agent.unwrap_or(Entity::PLACEHOLDER);
     let outputs: Vec<(String, String)> = (0..6)
         .map(|n| (format!("gone{n}.rs"), "x".repeat(60_000)))
         .collect();
@@ -1181,9 +1138,7 @@ fn an_agent_that_cannot_read_gets_notes_not_a_re_read() {
         let messages = files.read_all(5);
         let replies = [reply("- 0.rs: lines"), reply("done")];
         let model = MockCompletionModel::from_stream_turns(replies);
-        let Some(agent) = agent(&mut app, &model, 80_000, messages) else {
-            return;
-        };
+        let agent = agent(&mut app, &model, 80_000, messages);
         let world = app.world_mut();
         if no_tools {
             if let Some(mut connection) = world.get_mut::<Connection>(agent) {
@@ -1225,9 +1180,7 @@ fn a_gate_that_refuses_the_re_read_leaves_notes_to_do_it() {
     app.add_systems(AgentPass, deny_reads.in_set(Stage::Gate));
     let messages = files.read_all(5);
     let model = MockCompletionModel::from_stream_turns([reply("- 0.rs: lines"), reply("done")]);
-    let Some(agent) = agent(&mut app, &model, 80_000, messages) else {
-        return;
-    };
+    let agent = agent(&mut app, &model, 80_000, messages);
     let reads = files.reads();
     ask(&mut app, &wakes, agent);
     assert_eq!(answer(&app).as_deref(), Some("done"));
@@ -1284,9 +1237,7 @@ fn a_conversation_changed_during_the_re_read_is_seen_as_it_is_now() {
             false => vec![reply("done")],
         };
         let model = MockCompletionModel::from_stream_turns(replies);
-        let Some(agent) = agent(&mut app, &model, 80_000, messages) else {
-            return;
-        };
+        let agent = agent(&mut app, &model, 80_000, messages);
         let release = files.hold();
         let steer = Deliver::new(agent, "And the next question?", DeliveryMode::Steer);
         app.world_mut().trigger(steer);
@@ -1410,9 +1361,7 @@ fn a_read_sent_again_still_ends_the_re_read() {
     app.add_systems(AgentPass, resend_a_read.in_set(Stage::Gate));
     let messages = files.read_all(5);
     let model = MockCompletionModel::from_stream_turns([reply("done")]);
-    let Some(agent) = agent(&mut app, &model, 80_000, messages) else {
-        return;
-    };
+    let agent = agent(&mut app, &model, 80_000, messages);
     ask(&mut app, &wakes, agent);
     assert_eq!(answer(&app).as_deref(), Some("done"));
     let sent = sent(&model);
@@ -1430,9 +1379,7 @@ fn a_stop_while_reading_again_clears_nothing() {
     let (mut app, wakes) = start_on(&MemoryStore::default(), &files);
     let messages = files.read_all(5);
     let model = MockCompletionModel::from_stream_turns([reply("never asked")]);
-    let Some(agent) = agent(&mut app, &model, 80_000, messages) else {
-        return;
-    };
+    let agent = agent(&mut app, &model, 80_000, messages);
     let release = files.hold();
     let steer = Deliver::new(agent, "And the next question?", DeliveryMode::Steer);
     app.world_mut().trigger(steer);
@@ -1473,8 +1420,6 @@ fn a_summary_too_big_to_ask_in_place_is_retried_as_it_was() {
         reply("## Goal\nRead six files."),
     ]);
     let agent = agent(&mut app, &model, 1_000_000, read_files(6));
-    assert!(agent.is_some(), "the catalog lists the model");
-    let agent = agent.unwrap_or(Entity::PLACEHOLDER);
     limit_input(&mut app, agent, 60_000);
     app.world_mut()
         .trigger(RunCommand::new(agent, "compact".to_owned()));
@@ -1509,7 +1454,7 @@ fn routed_agent(
     to.spec = Arc::new(spec(to.spec.as_ref().clone()));
     app.insert_resource(Routed(to))
         .add_systems(AgentPass, route.in_set(PrepareSystems::Edit));
-    agent(app, own, 1_000_000, messages)
+    connected(app, own, 1_000_000, messages)
 }
 
 /// The summary after an overflow goes to the model the refused call was
@@ -1580,8 +1525,6 @@ fn compact_is_measured_as_the_provider_counted_the_last_request() {
         reply("## Goal\nRead three files."),
     ]);
     let agent = agent(&mut app, &model, 1_000_000, read_files(3));
-    assert!(agent.is_some(), "the catalog lists the model");
-    let agent = agent.unwrap_or(Entity::PLACEHOLDER);
     limit_input(&mut app, agent, 150_000);
     ask(&mut app, &wakes, agent);
     app.world_mut().resource_mut::<Ended>().0.clear();
@@ -1608,8 +1551,6 @@ fn a_reply_counted_past_the_input_limit_compacts_before_the_next_request() {
         reply("done"),
     ]);
     let agent = agent(&mut app, &model, 1_000_000, long_conversation(6));
-    assert!(agent.is_some(), "the catalog lists the model");
-    let agent = agent.unwrap_or(Entity::PLACEHOLDER);
     limit_input(&mut app, agent, 120_000);
     ask(&mut app, &wakes, agent);
     assert_eq!(answer(&app).as_deref(), Some("Answered."));
@@ -1664,8 +1605,6 @@ fn the_summary_after_an_overflow_reads_at_most_half_the_input_limit() {
     ]);
     // Long exchanges the summary reads as they are, unlike tool outputs.
     let agent = agent(&mut app, &model, 1_000_000, long_conversation(40));
-    assert!(agent.is_some(), "the catalog lists the model");
-    let agent = agent.unwrap_or(Entity::PLACEHOLDER);
     limit_input(&mut app, agent, 240_000);
     ask(&mut app, &wakes, agent);
     assert_eq!(answer(&app).as_deref(), Some("done"));
@@ -1686,8 +1625,6 @@ fn compact_on_a_conversation_past_the_input_limit_asks_a_request_of_its_own() {
     let (mut app, wakes) = start(&MemoryStore::default());
     let model = MockCompletionModel::from_stream_turns([reply("## Goal\nRead six files.")]);
     let agent = agent(&mut app, &model, 1_000_000, read_files(6));
-    assert!(agent.is_some(), "the catalog lists the model");
-    let agent = agent.unwrap_or(Entity::PLACEHOLDER);
     limit_input(&mut app, agent, 60_000);
     app.world_mut()
         .trigger(RunCommand::new(agent, "compact".to_owned()));
@@ -1726,8 +1663,6 @@ fn a_stop_during_the_retry_wait_cancels_the_compaction() {
         reply("## Goal\nNever asked."),
     ]);
     let agent = agent(&mut app, &model, 1_000_000, read_files(6));
-    assert!(agent.is_some(), "the catalog lists the model");
-    let agent = agent.unwrap_or(Entity::PLACEHOLDER);
     limit_input(&mut app, agent, 120_000);
     let before = entries(app.world(), agent);
     let steer = Deliver::new(agent, "And the next question?", DeliveryMode::Steer);
@@ -1775,8 +1710,6 @@ fn notes_too_big_for_the_input_limit_give_way_to_a_summary() {
     let model =
         MockCompletionModel::from_stream_turns([reply("## Goal\nRead six files."), reply("done")]);
     let agent = agent(&mut app, &model, 1_000_000, read_files(6));
-    assert!(agent.is_some(), "the catalog lists the model");
-    let agent = agent.unwrap_or(Entity::PLACEHOLDER);
     // Clearing all but the newest output would leave room, but the notes
     // on them would read about 75k tokens.
     limit_input(&mut app, agent, 60_000);
@@ -1874,9 +1807,7 @@ fn a_cut_summary_near_the_window_clears_nothing_until_the_next_reply() {
     ]);
     let mut messages = long_conversation(10);
     messages.extend(read_files(3));
-    let Some(agent) = agent(&mut app, &model, 1_000_000, messages) else {
-        return;
-    };
+    let agent = agent(&mut app, &model, 1_000_000, messages);
     limit_input(&mut app, agent, 100_000);
     ask(&mut app, &wakes, agent);
     assert_eq!(answer(&app).as_deref(), Some("done"));
@@ -1924,9 +1855,7 @@ fn a_request_that_still_does_not_fit_after_a_cut_summary_is_not_sent() {
         limits.summarizer.limits.reserve = reserve;
         let model =
             MockCompletionModel::from_stream_turns(vec![stopped_summary(FinishReason::Length)]);
-        let Some(agent) = agent(&mut app, &model, window, messages) else {
-            return;
-        };
+        let agent = agent(&mut app, &model, window, messages);
         limit_input(&mut app, agent, input);
         if let Some(mut connection) = app.world_mut().get_mut::<Connection>(agent)
             && only_input
@@ -1969,9 +1898,7 @@ fn overflows_separated_by_replies_compact_each_time_and_the_turn_ends_answered()
     }
     replies.push(reply("done"));
     let model = MockCompletionModel::from_stream_turns(replies);
-    let Some(agent) = agent(&mut app, &model, 1_000_000, long_conversation(2)) else {
-        return;
-    };
+    let agent = agent(&mut app, &model, 1_000_000, long_conversation(2));
     ask(&mut app, &wakes, agent);
     assert_eq!(answer(&app).as_deref(), Some("done"));
     let sent = sent(&model);
@@ -2005,9 +1932,7 @@ fn a_call_cut_off_by_the_output_limit_is_answered_so() {
         }),
     ];
     let model = MockCompletionModel::from_stream_turns([cut_off, reply("done")]);
-    let Some(agent) = agent(&mut app, &model, 1_000_000, long_conversation(1)) else {
-        return;
-    };
+    let agent = agent(&mut app, &model, 1_000_000, long_conversation(1));
     ask(&mut app, &wakes, agent);
     assert_eq!(answer(&app).as_deref(), Some("done"));
     let live = entries(app.world(), agent);
@@ -2052,10 +1977,6 @@ fn an_interrupt_during_the_summary_cancels_the_compaction() {
     ]);
     let model = MockCompletionModel::from_stream_turns([reply("## Goal\nArithmetic.")]);
     let agent = agent(&mut app, &model, 1_000_000, messages);
-    assert!(agent.is_some(), "the catalog lists the model");
-    let Some(agent) = agent else {
-        return;
-    };
     app.world_mut()
         .trigger(RunCommand::new(agent, "compact keep the sums".to_owned()));
     run_until(&mut app, &wakes, |world| {
@@ -2142,9 +2063,6 @@ fn a_call_routed_to_a_smaller_model_is_measured_against_its_window() {
         .add_systems(AgentPass, route.in_set(PrepareSystems::Edit));
     // The agent's own model has room for the conversation; the call's has not.
     let agent = agent(&mut app, &model, 1_000_000, long_conversation(6));
-    let Some(agent) = agent else {
-        return;
-    };
     ask(&mut app, &wakes, agent);
     assert_eq!(answer(&app).as_deref(), Some("done"));
     let sent = sent(&model);
@@ -2185,9 +2103,6 @@ fn a_routed_call_is_measured_against_its_adapted_model() {
     // Both the agent's model and the routed one have room; the adapted
     // one has not.
     let agent = agent(&mut app, &own, 1_000_000, long_conversation(6));
-    let Some(agent) = agent else {
-        return;
-    };
     ask(&mut app, &wakes, agent);
     assert_eq!(answer(&app).as_deref(), Some("done"));
     assert_eq!(own.request_count(), 0);
@@ -2204,9 +2119,6 @@ fn a_model_whose_input_limit_is_below_its_window_compacts_before_that_limit() {
     let model = MockCompletionModel::from_stream_turns([reply("## Goal\nAnswer."), reply("done")]);
     // The window has room for the conversation; the input limit has not.
     let agent = agent(&mut app, &model, 1_000_000, long_conversation(6));
-    let Some(agent) = agent else {
-        return;
-    };
     if let Some(mut connection) = app.world_mut().get_mut::<Connection>(agent) {
         let spec = connection
             .spec
@@ -2241,9 +2153,6 @@ fn a_model_that_calls_no_tools_is_not_measured_with_them() {
     app.world_mut().spawn(ToolDef(definition.into()));
     let model = MockCompletionModel::from_stream_turns([reply("done")]);
     let agent = agent(&mut app, &model, 40_000, long_conversation(4));
-    let Some(agent) = agent else {
-        return;
-    };
     let world = app.world_mut();
     if let Some(mut connection) = world.get_mut::<Connection>(agent) {
         let mut spec = connection.spec.as_ref().clone();
@@ -2284,10 +2193,6 @@ fn the_request_is_measured_after_the_default_prompt_went_in() {
     let model = MockCompletionModel::from_stream_turns([reply("## Goal\nAnswer."), reply("done")]);
     // The conversation alone fits; with the prompt it nears the window.
     let agent = agent(&mut app, &model, 40_000, messages);
-    assert!(agent.is_some(), "the catalog lists the model");
-    let Some(agent) = agent else {
-        return;
-    };
     ask(&mut app, &wakes, agent);
     assert_eq!(answer(&app).as_deref(), Some("done"));
     let sent = sent(&model);
@@ -2368,10 +2273,6 @@ fn a_held_summary_is_applied_as_reviewed_or_cancelled_and_undone_with_its_ids() 
         reply("## Goal\nThe second draft."),
     ]);
     let agent = agent(&mut app, &model, 1_000_000, long_conversation(3));
-    assert!(agent.is_some(), "the catalog lists the model");
-    let Some(agent) = agent else {
-        return;
-    };
     app.update();
     let original = entries(app.world(), agent);
     let compact = |app: &mut App| {
@@ -2425,9 +2326,7 @@ fn a_cancelled_summary_near_the_window_sends_the_request_as_it_was() {
     app.add_systems(AgentPass, hold_for_review.in_set(ReviewSystems::Act));
     let model = MockCompletionModel::from_stream_turns([reply("## Goal\nAnswer."), reply("done")]);
     // About 30k tokens, with about 8k of the window left for the answer.
-    let Some(agent) = agent(&mut app, &model, 42_000, long_conversation(6)) else {
-        return;
-    };
+    let agent = agent(&mut app, &model, 42_000, long_conversation(6));
     app.world_mut().trigger(Deliver::new(
         agent,
         "And the next question?",
@@ -2542,9 +2441,7 @@ fn a_summary_that_would_free_little_is_not_asked_for() {
         Message::assistant("word ".repeat(56_000)),
     ];
     let model = MockCompletionModel::from_stream_turns([reply("done")]);
-    let Some(agent) = agent(&mut app, &model, 80_000, messages) else {
-        return;
-    };
+    let agent = agent(&mut app, &model, 80_000, messages);
     ask(&mut app, &wakes, agent);
     assert_eq!(answer(&app).as_deref(), Some("done"));
     let sent = sent(&model);
@@ -3306,14 +3203,8 @@ fn an_asked_summary_is_told_the_reply_it_keeps() {
         let store = MemoryStore::default();
         let (mut app, wakes) = start(&store);
         let model = MockCompletionModel::from_stream_turns([reply("## Goal\nCheckpoint.")]);
-        let Some(agent) = agent(
-            &mut app,
-            &model,
-            40_000,
-            vec![Message::user("Explain the crate.")],
-        ) else {
-            return;
-        };
+        let messages = vec![Message::user("Explain the crate.")];
+        let agent = agent(&mut app, &model, 40_000, messages);
         let mut conversation = app.world_mut().get_mut::<Conversation>(agent);
         let Some(conversation) = conversation.as_deref_mut() else {
             return;
@@ -3427,9 +3318,7 @@ fn what_compactions_replaced_stays_drawn_live_after_a_restart_and_in_a_fork() {
     let mut messages = vec![Message::user("What does the crate do?")];
     messages.extend(read("1", "src/lib.rs", "pub fn answer() -> u32 { 42 }"));
     messages.extend(long_conversation(3).into_iter().skip(1));
-    let Some(agent) = agent(&mut app, &model, 1_000_000, messages) else {
-        return;
-    };
+    let agent = agent(&mut app, &model, 1_000_000, messages);
     app.update();
     let original = entries(app.world(), agent);
     let compact = |app: &mut App, review: Option<&str>, count: usize| {
@@ -3679,10 +3568,6 @@ fn notes_on_cleared_outputs_stay_when_a_turn_fails() {
         MockError::ProviderResponse(refused),
     )]]);
     let agent = agent(&mut app, &model, 1_000_000, messages);
-    assert!(agent.is_some(), "the catalog lists the model");
-    let Some(agent) = agent else {
-        return;
-    };
     let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) else {
         return;
     };

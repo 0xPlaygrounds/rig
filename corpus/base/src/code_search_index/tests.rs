@@ -6,7 +6,7 @@ use rig_core::test_utils::MockCompletionModel;
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     Ended, ToolOutputs, app_on, calls, connect, first_agent, log_ended, log_tool_outputs, reply,
-    run_until,
+    run_until, scratch_dir,
 };
 use serde_json::json;
 
@@ -15,10 +15,7 @@ use super::*;
 /// A git project beside the test's binary with networking code in
 /// `net.rs` and drawing code in `ui.rs`.
 fn project() -> std::io::Result<PathBuf> {
-    let dir = std::env::current_exe()?.with_file_name("code-search-project");
-    std::fs::remove_dir_all(&dir).ok();
-    std::fs::create_dir_all(&dir)?;
-    let dir = std::fs::canonicalize(dir)?;
+    let dir = std::fs::canonicalize(scratch_dir("code-search-project"))?;
     let git = Command::new("git")
         .args(["init", "-q"])
         .current_dir(&dir)
@@ -163,7 +160,4 @@ fn search_finds_code_by_meaning_sees_an_edit_and_adds_context() {
     assert!(kept.is_some_and(|kept| !kept.contains("<code-context>")));
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(CodeSearchPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(CodeSearchPlugin);

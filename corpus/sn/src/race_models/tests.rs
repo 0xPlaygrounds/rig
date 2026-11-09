@@ -371,7 +371,4 @@ fn a_winner_that_fails_mid_stream_is_replaced_by_the_other_member_alone() {
     ));
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(RaceModelsPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(RaceModelsPlugin);

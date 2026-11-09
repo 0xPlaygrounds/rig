@@ -362,7 +362,4 @@ fn an_earlier_saved_form_is_read_or_skipped_with_a_notice() {
     assert_eq!(lists, ["[x] 1. parse", "[ ] 1. check"]);
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(TodoPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(TodoPlugin);

@@ -1,6 +1,5 @@
-use std::ffi::{OsStr, OsString};
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
 use rig_harness::prelude::*;
@@ -11,8 +10,7 @@ use rig_harness_test_support::{
     Collected, MemoryStore, ToolOutputs, app_on, collect, connect, log_tool_outputs, reply,
     run_until, start_call,
 };
-use rig_tools::process::{Launcher, Process, Spawn};
-use rig_tools::workspace::{Contents, Listed, Listing, Stat, Workspace};
+use rig_tools::workspace::{Contents, Stat, Workspace};
 use rig_tools::{Shell, ShellArgs};
 
 use super::remote::RemoteHostsPlugin;
@@ -106,32 +104,7 @@ impl Workspace for Served {
         Err(io::ErrorKind::Unsupported.into())
     }
 
-    fn remove(&self, _: &Path) -> io::Result<()> {
-        Err(io::ErrorKind::Unsupported.into())
-    }
-
-    fn rename(&self, _: &Path, _: &Path) -> io::Result<()> {
-        Err(io::ErrorKind::Unsupported.into())
-    }
-
-    fn canonical(&self, path: &Path) -> PathBuf {
-        path.to_path_buf()
-    }
-
-    fn files(&self, _: &Path, _: Option<&str>, _: Listing) -> io::Result<Listed> {
-        Ok(Listed::default())
-    }
-
-    fn spawn(
-        &self,
-        _: &Launcher,
-        _: Option<&Path>,
-        _: &OsStr,
-        _: &[OsString],
-        _: Spawn,
-    ) -> io::Result<Process> {
-        Err(io::ErrorKind::Unsupported.into())
-    }
+    crate::tests::workspace_stubs!();
 }
 
 #[test]
@@ -340,32 +313,7 @@ impl Workspace for Slow {
         Err(io::ErrorKind::Unsupported.into())
     }
 
-    fn remove(&self, _: &Path) -> io::Result<()> {
-        Err(io::ErrorKind::Unsupported.into())
-    }
-
-    fn rename(&self, _: &Path, _: &Path) -> io::Result<()> {
-        Err(io::ErrorKind::Unsupported.into())
-    }
-
-    fn canonical(&self, path: &Path) -> PathBuf {
-        path.to_path_buf()
-    }
-
-    fn files(&self, _: &Path, _: Option<&str>, _: Listing) -> io::Result<Listed> {
-        Ok(Listed::default())
-    }
-
-    fn spawn(
-        &self,
-        _: &Launcher,
-        _: Option<&Path>,
-        _: &OsStr,
-        _: &[OsString],
-        _: Spawn,
-    ) -> io::Result<Process> {
-        Err(io::ErrorKind::Unsupported.into())
-    }
+    crate::tests::workspace_stubs!();
 }
 
 /// While a slow workspace reads a message's files the frame goes on, and

@@ -1,43 +1,23 @@
 //! OpenAI prompt-caching cassette suite.
 //!
-//! OpenAI is the first provider after Anthropic to have its prompt cache
-//! *observed* rather than merely normalized: rig has mapped
-//! `prompt_tokens_details.cached_tokens` and
-//! `input_tokens_details.cached_tokens` into `Usage::cached_input_tokens` for a
-//! long time, and until this suite no test had ever seen either field be
-//! non-zero.
+//! Rig maps `prompt_tokens_details.cached_tokens` and
+//! `input_tokens_details.cached_tokens` into `Usage::cached_input_tokens`; these
+//! cells observe both non-zero. Chat completions and the Responses API are
+//! covered separately because they are two endpoints with different request
+//! shapes, usage payloads and rig mapping functions, so a cache result on one
+//! says nothing about the other.
 //!
-//! Both surfaces are covered, separately and deliberately. Chat completions and
-//! the Responses API are two different endpoints, with two different request
-//! shapes, two different usage payloads, and two different rig mapping
-//! functions; a cache result on one says nothing about the other.
+//! OpenAI reports `cached_tokens` as a subset of the prompt-token counter, so the
+//! hit ratio is turn 2's cache read over turn 1's `input_tokens`. It never
+//! reports cache writes, so turn 1 legitimately shows zero for both counters and
+//! [`assert_warms`] does not require otherwise. OpenAI caches a prefix only above
+//! 1,024 tokens and in 128-token increments, so the ratio is a floor rather than
+//! an equality.
 //!
-//! # Reading the numbers
-//!
-//! OpenAI reports `cached_tokens` as a **subset** of the prompt-token counter,
-//! as rig's `Usage` counts cache reads on every provider, so turn 1's billed
-//! prompt is `input_tokens` on its own and the hit ratio is turn 2's cache read
-//! over that. It never reports cache *writes* — rig hardcodes
-//! `cache_creation_input_tokens` to 0 on both paths (the Chat and Responses
-//! usage mappings) — so turn 1 legitimately shows zero
-//! for both counters, and [`assert_warms`] does not require otherwise.
-//!
-//! OpenAI caches a prefix only above 1,024 tokens and in 128-token increments,
-//! so the tail of the prompt is legitimately uncached and the hit ratio is a
-//! floor rather than an equality.
-//!
-//! # Recording
-//!
-//! ```text
-//! RIG_PROVIDER_TEST_MODE=record cargo test -p rig-cassette --test integration --all-features \
-//!     openai::cassette::prompt_caching:: -- --exact --test-threads=1
-//! ```
-//!
-//! The cache TTL is minutes, so all three turns of a probe must record
-//! back-to-back inside one test body — which is exactly how the shared probe
-//! runs them. The assertions run identically in record mode, so a session that
-//! records a miss fails immediately instead of committing a fixture that pins
-//! one.
+//! The cache TTL is minutes, so all three turns of a probe record back-to-back in
+//! one test body, and the assertions run in record mode too so a miss fails
+//! instead of being committed. Re-record with
+//! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig-cassette --test integration --all-features openai::cassette::prompt_caching:: -- --exact --test-threads=1`.
 
 use rig::providers::openai;
 use rig_test_support::cassette_models::OpenAiModels;
@@ -48,7 +28,7 @@ use crate::cache_conformance::{
     run_cache_probe_streaming,
 };
 
-use super::super::support::{shared_options, stateless, with_openai_prompt_caching_cassette};
+use super::super::support::{shared_options, stateless, with_openai_cassette};
 
 /// A cheap model that still participates in prompt caching.
 pub(super) const CACHE_MODEL: &str = openai::GPT_4O_MINI;
@@ -114,7 +94,7 @@ fn keyed_probe() -> CacheProbe {
 async fn responses_without_a_cache_key_does_not_hit_until_the_third_turn() {
     const SCENARIO: &str = "prompt_caching/responses_unkeyed_probe";
 
-    with_openai_prompt_caching_cassette("prompt_caching/responses_unkeyed_probe", |client| async move {
+    with_openai_cassette("prompt_caching/responses_unkeyed_probe", |client| async move {
         let model = client.openai.completion(CACHE_MODEL);
         let observation = run_cache_probe(model, &responses_probe()).await;
 
@@ -154,7 +134,7 @@ async fn responses_without_a_cache_key_does_not_hit_until_the_third_turn() {
 async fn responses_streaming_probe_survives_the_streaming_accumulator() {
     const SCENARIO: &str = "prompt_caching/responses_streaming_probe";
 
-    with_openai_prompt_caching_cassette(
+    with_openai_cassette(
         "prompt_caching/responses_streaming_probe",
         |client| async move {
             let model = client.openai.completion(CACHE_MODEL);
@@ -186,7 +166,7 @@ async fn responses_cache_point_breakpoint_serves_a_changed_question() {
         .collect::<Vec<_>>()
         .join(" ");
     let mut cached = 0;
-    with_openai_prompt_caching_cassette(
+    with_openai_cassette(
         "prompt_caching/responses_cache_point_breakpoint",
         |client| {
             let cached = &mut cached;

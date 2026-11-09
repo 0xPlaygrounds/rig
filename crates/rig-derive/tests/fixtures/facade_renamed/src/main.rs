@@ -16,20 +16,11 @@ fn contextual_echo(
     Ok(value)
 }
 
-// Fully qualified context paths under the renamed facade are recognized
-// without the `#[rig(context)]` marker — both the facade `tool` path and the
-// explicit `agent::tool` path.
+// A fully qualified context path under the renamed facade is recognized
+// without the `#[rig(context)]` marker.
 #[rig_tool]
 fn contextual_fully_qualified(
     _context: &mut rig_facade::tool::ToolContext,
-    value: String,
-) -> Result<String, ToolExecutionError> {
-    Ok(value)
-}
-
-#[rig_tool]
-fn contextual_agent_path(
-    _context: &mut rig_facade::agent::tool::ToolContext,
     value: String,
 ) -> Result<String, ToolExecutionError> {
     Ok(value)
@@ -48,6 +39,5 @@ fn main() {
     assert_contextual::<PortableEcho>();
     assert_contextual::<ContextualEcho>();
     assert_contextual::<ContextualFullyQualified>();
-    assert_contextual::<ContextualAgentPath>();
     assert_embed::<Doc>();
 }

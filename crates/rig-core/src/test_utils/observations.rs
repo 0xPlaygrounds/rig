@@ -32,8 +32,7 @@ pub enum Comparison {
 }
 
 /// Compare two traces on their semantic fields: subject, stage, emitter,
-/// action and sequence. Adapter analysis, measurements ([`Observation::at`]) and the session
-/// name are ignored. An incomplete trace (dropped facts) is incomparable,
+/// action and sequence. Adapter analysis is ignored. An incomplete trace (dropped facts) is incomparable,
 /// never equal: a missing fact is not evidence of agreement.
 pub fn compare(expected: &ObservationTrace, actual: &ObservationTrace) -> Comparison {
     if !expected.is_complete() {
@@ -54,7 +53,6 @@ pub fn compare(expected: &ObservationTrace, actual: &ObservationTrace) -> Compar
     }
     let semantic = |observation: &Observation| {
         let mut observation = observation.clone();
-        observation.at = None;
         if let Action::Adapter { observation } = &mut observation.action {
             observation.analysis = None;
         }

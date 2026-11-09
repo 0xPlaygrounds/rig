@@ -6,8 +6,8 @@ use rig_core::providers::registry::ProviderId;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::harness_protocol::SessionId;
 use rig_harness_test_support::{
-    Ended, MemoryStore, app_in, app_on, commit_message, first_agent, log_ended, press, reply,
-    run_until, scratch_home, scripted_models, tui_view,
+    Ended, MemoryStore, app_in, app_on, commit_message, deliver, first_agent, log_ended, press,
+    reply, scratch_home, scripted_models, tui_view,
 };
 
 use super::*;
@@ -48,15 +48,12 @@ fn use_model(app: &mut App, agent: Entity, model: &str) -> Option<()> {
 /// Sends `line` as the user typed it: a command runs in that frame, a
 /// message's turn is run to its end.
 fn send(app: &mut App, wakes: &Receiver<()>, agent: Entity, line: &str) {
-    let ended = app.world().resource::<Ended>().0.len();
     let typed = Deliver::new(agent, line, DeliveryMode::Queue).with_author(Author::user());
-    app.world_mut().trigger(typed);
     if line.starts_with('/') {
+        app.world_mut().trigger(typed);
         app.update();
     } else {
-        run_until(app, wakes, |world| {
-            world.resource::<Ended>().0.len() > ended
-        });
+        deliver(app, wakes, typed);
     }
 }
 

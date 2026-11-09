@@ -1,83 +1,24 @@
-//! Edge matrix for the "a thought part is not output text" bug.
+//! Edge matrix for Gemini thought parts: a thought part is never output text.
 //!
-//! # The bug
+//! `thinkingConfig.includeThoughts` makes Gemini return its chain-of-thought in
+//! the same `parts` array as the answer, marked only by `"thought": true`. The
+//! rule pinned here is that the normalized text of a turn is exactly its visible
+//! text parts and carries no thought text. The transcription reader enforces it
+//! through `transcript_of`; the completion reader is the GenerateContent decoder.
+//! Cells vary whether thought parts are present, where they sit, which reader
+//! asks, and the model (2.5's `thinkingBudget` and 3's `thinkingLevel` are
+//! different wire dialects). Cells named `text_response_*` keep their names, but
+//! the reader under test is the decoder's normalized `choice`.
 //!
-//! `thinkingConfig.includeThoughts` makes Gemini return its chain-of-thought
-//! in the *same* `parts` array as the answer, distinguished only by
-//! `"thought": true`. The completion mapper honours that flag (thought parts
-//! become `AssistantContent::Reasoning`); two other readers of the same
-//! payload did not:
+//! Gemini 3 can put a `thoughtSignature` on an answer part with no `thought`
+//! flag. That signature stays on the answer text that carried it, never on
+//! reasoning. Cells marked as unit tests state layouts a live turn cannot be made
+//! to produce: a transcript split across visible parts, a thought-only
+//! candidate, or a part ordering other than the one a turn emits. Each states its
+//! shape from bytes recorded elsewhere in this matrix.
 //!
-//! * the transcription reader of the `generateContent` reply read
-//!   `parts.first()`. With thoughts on, parts[0] is the reasoning — so
-//!   `response.text` was **the model's private reasoning** and the actual
-//!   transcript, sitting in parts[1], was dropped. A transcript split across
-//!   several text parts lost everything after the first, too.
-//! * the client layer's `text_response` reader collected *every* text part,
-//!   gluing the chain-of-thought onto the answer — a second reader of the
-//!   same document, disagreeing with the first.
-//!
-//! The transcription reader goes through `transcript_of`, which skips every
-//! part marked `thought`. The second reader is gone with the client layer:
-//! `text_response` had no caller left once the driver started recording
-//! telemetry off the normalized response. So the cells that held the two
-//! readers to each other now hold the one that remains — the GenerateContent
-//! decoder — to the same rule: **the normalized text of a turn is exactly
-//! its visible text parts, and carries no thought text.**
-//!
-//! # The matrix
-//!
-//! The fixed code path's inputs are: whether thought parts are present, where
-//! they sit, which reader is asking, and which model produced them (2.5's
-//! `thinkingBudget` and 3's `thinkingLevel` are different wire dialects).
-//!
-//! | # | cell | reader | dimension pinned |
-//! |---|------|--------|------------------|
-//! | 5 | `transcription_with_thoughts_and_temperature` | transcription | temperature alongside thoughts |
-//! | 15 | `text_response_with_structured_output` | `text_response` | `responseJsonSchema` turn |
-//! | 16 | `text_response_across_two_candidates` | `text_response` | `candidateCount: 2` |
-//! | 19 | `text_response_matches_the_choice_text` (unit) | both | see below |
-//! | 20 | `transcription_joins_every_visible_text_part` (unit) | transcription | see below |
-//! | 21 | `transcription_rejects_a_thought_only_candidate` (unit) | transcription | see below |
-//! | 22 | `transcription_rejects_a_candidate_with_no_text_part` (unit) | transcription | see below |
-//! | 23 | `text_response_is_none_for_a_thought_only_candidate` (unit) | `text_response` | see below |
-//! | 24 | — | — | deleted with the reader it tested; see below |
-//! | 25 | `transcription_keeps_an_empty_visible_text_part` (unit) | transcription | see below |
-//! | 28 | `a_trailing_signature_stays_on_its_text` (unit) | blocking | see below |
-//! | 29 | `a_thought_flagged_part_still_signs_its_own_reasoning` (unit) | blocking | see below |
-//! | 30 | `a_text_part_without_a_signature_yields_no_reasoning` (unit) | blocking | see below |
-//! | 31 | `transcription_rejects_a_candidate_with_no_parts_at_all` (unit) | transcription | see below |
-//! | 32 | `a_text_signature_does_not_sign_the_chain_of_thought` (unit) | blocking | see below |
-//!
-//! Cells 28–32 cover Gemini 3's `thoughtSignature` on an answer part carrying
-//! no `thought` flag. The signature stays in the provider item of the answer
-//! text that carried it, never on reasoning. They state orderings one live
-//! turn cannot emit.
-//!
-//! The cells marked `(unit)` are unit tests because a live turn cannot be
-//! made to produce their states: Gemini does not split a short transcript
-//! across several visible text parts on demand, does not return a
-//! transcription candidate consisting only of thoughts, never labels a
-//! `generateContent` candidate with a non-model role, and emits one part
-//! ordering per turn. Every one states its shape from bytes recorded
-//! elsewhere in this matrix.
-//!
-//! No cell was dropped for cost.
-//!
-//! Re-record with:
-//! `RIG_PROVIDER_TEST_MODE=record GEMINI_API_KEY=... cargo test -p rig-cassette --all-features --test integration gemini::cassette::thought_text_matrix -- --test-threads=1`
-//!
-//! The `reader` column's `text_response` entries name the cells (whose
-//! function names are frozen), not a surviving method: on those cells the
-//! reader under test is now the decoder's normalized `choice`.
-//!
-//! Cell 24, `text_response_still_ignores_non_model_roles`, is deleted rather
-//! than restated. The role filter it pinned existed only inside
-//! the client layer's `text_response` reader (`content.role != Role::Model` →
-//! contribute nothing); the decoder reads the first candidate's parts without
-//! consulting `role`, and `transcript_of` — the surviving skip rule — never
-//! filtered on it either. Nothing replaces the cell because nothing
-//! replaces the filter.
+//! Re-record with
+//! `RIG_PROVIDER_TEST_MODE=record GEMINI_API_KEY=... cargo test -p rig-cassette --all-features --test integration gemini::cassette::thought_text_matrix -- --test-threads=1`.
 
 use rig::message::AssistantContent;
 use rig::providers::gemini;
@@ -86,8 +27,7 @@ use rig_test_support::cassette_models::GeminiModels;
 use serde_json::{Value, json};
 
 use super::super::support::{
-    assert_recorded_response_contains, assert_recorded_response_excludes,
-    with_gemini_thought_text_cassette,
+    assert_recorded_response_contains, assert_recorded_response_excludes, with_gemini_cassette,
 };
 use crate::support::AUDIO_FIXTURE_PATH;
 use rig::completion::{CompletionRequest, GenerationOptions, ProviderOptions, Reasoning};
@@ -266,7 +206,7 @@ async fn transcription_with_thoughts_and_temperature() {
     const SCENARIO: &str = "thought_text_matrix/transcription_with_thoughts_and_temperature";
     // The literal is repeated here on purpose: the cassette safety
     // scan reads each scenario out of this call site's AST.
-    with_gemini_thought_text_cassette(
+    with_gemini_cassette(
         "thought_text_matrix/transcription_with_thoughts_and_temperature",
         |client| {
             transcription_body(
@@ -382,7 +322,7 @@ async fn text_response_with_structured_output() {
     const SCENARIO: &str = "thought_text_matrix/text_response_with_structured_output";
     // The literal is repeated here on purpose: the cassette safety
     // scan reads each scenario out of this call site's AST.
-    with_gemini_thought_text_cassette(
+    with_gemini_cassette(
         "thought_text_matrix/text_response_with_structured_output",
         |client| {
             text_response_body(
@@ -427,7 +367,7 @@ async fn text_response_across_two_candidates() {
     // `candidateCount: 2` is where a folding reader and the normalized choice
     // legitimately differ: the choice is candidate 0 alone. The thought
     // filter must still apply, and no second candidate may be folded in.
-    with_gemini_thought_text_cassette(
+    with_gemini_cassette(
         "thought_text_matrix/text_response_across_two_candidates",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);

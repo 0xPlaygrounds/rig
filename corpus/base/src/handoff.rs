@@ -1,18 +1,15 @@
-//! Plugin corpus: 40. Handoff to a fresh agent (spec `40-handoff.md`).
+//! Handoff to a fresh agent. `/handoff [--now] <next goal>` asks the agent's model, or the
+//! model the `[handoff]` settings name, for a brief of its conversation for that goal. The
+//! brief is a [`ModelRequest`] of a turn of the agent's own, made for the purpose `handoff`, so
+//! its usage counts like any call and an interrupt cancels it. A new top-level agent on the
+//! same model, reasoning setting, system prompt and tools then starts from the brief alone,
+//! shown in the terminal view: the brief waits in the input line to be edited and sent, or is
+//! sent at once with `--now` (and in a run without the view), by the old agent, titled with the
+//! goal.
 //!
-//! `/handoff [--now] <next goal>` asks the agent's model, or the model the
-//! `[handoff]` settings name, for a brief of its conversation for that
-//! goal. The brief is a [`ModelRequest`] of a turn of the agent's own, made
-//! for the purpose `handoff`, so its usage counts like any call and an
-//! interrupt cancels it. A new top-level agent on the same model, reasoning
-//! setting, system prompt and tools then starts from the brief alone, shown
-//! in the terminal view: the brief waits in the input line to be edited and
-//! sent, or is sent at once with `--now` (and in a run without the view),
-//! by the old agent, titled with the goal.
-//! The old agent stays, idle; the new one is [`HandedOffFrom`] it, which
-//! names it, and a handoff moves the agent shown ([`ShownAgent`], in any front)
-//! from the old agent to the new one, when it happens and again when the
-//! session is restored.
+//! The old agent stays, idle; the new one is [`HandedOffFrom`] it, which names it, and a
+//! handoff moves the agent shown ([`ShownAgent`], in any front) from the old agent to the new
+//! one, when it happens and again when the session is restored.
 
 use std::borrow::Cow;
 

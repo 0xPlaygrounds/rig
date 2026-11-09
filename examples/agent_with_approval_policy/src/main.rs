@@ -1,21 +1,13 @@
-//! Policy-based (non-interactive) human-in-the-loop: approval *rules* decided up
-//! front, evaluated per tool call by an `AgentHook` — no human prompt in the
-//! loop. This mirrors the OpenAI Agents SDK's `needs_approval(fn)`, Vercel AI
-//! SDK's `needsApproval(({input}) => ...)`, and LangGraph's `interrupt_on`
-//! predicates: a person encodes the policy once, and the agent runs within it.
+//! Tool-call approval from rules set up front, with no human prompt.
 //!
-//! The [`ApprovalPolicy`] hook fires on the [`DispatchEvent`] for each tool call and returns:
-//! - [`DispatchAction::proceed`] to allow a tool that is on the safe allow-list, or a
-//!   guarded tool whose arguments satisfy the rule;
-//! - [`DispatchAction::skip`] to **deny** otherwise — the denial reason is fed back to the
-//!   model as the tool result, so it can adjust (e.g. transfer a smaller amount
-//!   or ask the user) rather than the run simply failing.
+//! The [`ApprovalPolicy`] hook fires on each tool call's [`DispatchEvent`]. It
+//! returns [`DispatchAction::proceed`] for allow-listed tools and for guarded tools
+//! whose arguments satisfy the rule, and [`DispatchAction::skip`] otherwise, which
+//! returns the denial reason as the tool result so the model can adjust. Any tool
+//! not allowed is denied. This is a guardrail, not a security boundary, so enforce
+//! authorization in the tool.
 //!
-//! The policy is **fail-closed**: any tool not explicitly allowed is denied. As
-//! always, this is guardrail/UX logic, not a security boundary — enforce real
-//! authorization inside the tool.
-//!
-//! Requires `OPENAI_API_KEY`. Run with: `cargo run -p agent_with_approval_policy`
+//! Requires `OPENAI_API_KEY`. Run with `cargo run -p agent_with_approval_policy`.
 
 use std::collections::HashSet;
 

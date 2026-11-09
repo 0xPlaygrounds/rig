@@ -1,21 +1,15 @@
-//! SN-11: leftover debug code detector.
+//! Leftover debug code detector. When an agent's turn would end having changed files, the lines
+//! the turn added (each file compared with its content before the turn) are matched against
+//! patterns by file extension: `dbg!(`, `console.log(`, `breakpoint()` and the like, and
+//! `TODO`, `FIXME` or `XXX` in a comment. If any match, the agent is sent one message listing
+//! each as `path:line: text`, asking it to remove each one or say why it stays, and its turn
+//! carries on. At most one nudge per turn the user started; what the agent kept then is the
+//! file's content before the next turn, so it is never raised again.
 //!
-//! When an agent's turn would end having changed files, the lines the turn
-//! added (each file compared with its content before the turn) are matched
-//! against patterns by file extension: `dbg!(`, `console.log(`,
-//! `breakpoint()` and the like, and `TODO`, `FIXME` or `XXX` in a comment.
-//! If any match, the agent is sent one message listing each as
-//! `path:line: text`, asking it to remove each one or say why it stays, and
-//! its turn carries on. At most one nudge per turn the user started; what
-//! the agent kept then is the file's content before the next turn, so it is
-//! never raised again.
-//!
-//! The content before the turn is read in `Gate`, as each call that writes
-//! named files (its `Footprint`) is about to run, the first time the turn
-//! touches each file; a call that may write anywhere, such as `shell`,
-//! names no files and is not checked. A subagent's calls count for the agent at the root of its spawns, whose
-//! turn ends with them. `/leftovers off|on` switches it for the session,
-//! saved with it.
+//! Only calls that write named files (their `Footprint`) are checked; a call that may write
+//! anywhere, such as `shell`, names no files and is not checked. A subagent's calls count for
+//! the agent at the root of its spawns, whose turn ends with them. `/leftovers off|on` switches
+//! it for the session, saved with it.
 //!
 //! The project's `.rig/leftovers.toml` adds patterns:
 //!

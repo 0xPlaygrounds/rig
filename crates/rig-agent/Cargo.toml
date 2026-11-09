@@ -32,12 +32,10 @@ schemars = { workspace = true }
 serde = { workspace = true, features = ["derive", "rc"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["rt", "sync"], optional = true }
 tracing = { workspace = true }
 tracing-futures = { workspace = true, features = ["futures-03"] }
 
 [dev-dependencies]
-rig-cassette = { path = "../rig-cassette", default-features = false, features = ["agent"] }
 rig-reqwest = { path = "../rig-reqwest", version = "0.46.0" }
 anyhow = { workspace = true }
 # `cargo test -p rig-agent` needs rig-core's mock models even when the
@@ -55,4 +53,4 @@ default = ["derive"]
 audio = ["rig-core/audio"]
 image = ["rig-core/image"]
 derive = ["dep:rig-derive", "rig-core/derive"]
-test-utils = ["rig-core/test-utils", "dep:tokio"]
+test-utils = ["rig-core/test-utils"]

@@ -7,7 +7,7 @@ use std::sync::{Mutex, PoisonError};
 
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 use rig_harness::harness_protocol;
-use rig_harness::harness_protocol::{first_errors, secret_variables};
+use rig_harness::harness_protocol::{first_errors, without_secrets};
 use rig_harness::prelude::*;
 use rig_tools::process::{Process, STOP_GRACE};
 
@@ -56,9 +56,7 @@ impl ReloadBuild {
         // Not through `Processes`, whose sandbox may lack the network or
         // the home cargo needs; it keeps the secrets from cargo and every
         // build script all the same.
-        for secret in secret_variables() {
-            command.env_remove(secret);
-        }
+        without_secrets(&mut command);
         // Its own session and process group, so cancelling stops cargo and
         // rustc too, and a git prompt for a plugin cannot reach the screen.
         let mut process = Process::start_with_stdio(command)?;

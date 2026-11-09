@@ -1,22 +1,15 @@
-//! CT-11: undo for conversation changes. Every change to an agent's
-//! conversation that is not simply appending (a cut, a summary, an edit, a
-//! reorder, a branch switch), by any plugin or command,
-//! is kept as a numbered [`Version`] with its time, its author, a one-line
-//! description, and the conversation as it was before it. The versions
-//! are saved with the session ([`ConvVersions`]) and trimmed to the
-//! `[conv-history]` table's `keep` count and `max_age_days`, oldest first.
+//! Undo for conversation changes. Every change to an agent's conversation that is not
+//! simply appending (a cut, a summary, an edit, a reorder, a branch switch), by any plugin
+//! or command, as the kernel's [`ConversationChanged`] messages report it, is kept as a
+//! numbered [`Version`] with its time, its author, a one-line description, and the
+//! conversation as it was before it. The versions are saved with the session
+//! ([`ConvVersions`]) and trimmed to the `[conv-history]` table's `keep` count and
+//! `max_age_days`, oldest first.
 //!
-//! - `/conv-log` lists them newest first, with message and token counts
-//!   before and after.
-//! - `/conv-diff <n>` shows what version `n` removed, added and replaced.
-//! - `/conv-restore <n>` makes the conversation what it was just before
-//!   version `n`, then puts back on top, verbatim, the entries appended
-//!   since; the restore is a version too.
-//!
-//! The changes are read from the kernel's [`ConversationChanged`] messages. A splice
-//! names the ids it removed, not their messages, so the plugin keeps a copy
-//! of each conversation ([`Shadow`]) folded from the same messages, and
-//! takes the "before" from it.
+//! `/conv-log` lists them newest first, with message and token counts before and after.
+//! `/conv-diff <n>` shows what version `n` removed, added and replaced. `/conv-restore <n>`
+//! makes the conversation what it was just before version `n`, then puts back on top,
+//! verbatim, the entries appended since; the restore is a version too.
 
 use std::collections::{HashMap, HashSet};
 

@@ -39,10 +39,9 @@ fn sse_error_detector_handles_null_empty_and_object_or_string_errors() {
     assert_eq!(error.provider_response_status(), None);
 
     // The choices guard is narrowed to a NON-EMPTY array: an error body
-    // that also carries `"choices":[]` (or `null`) is still an error —
-    // pre-#2258-B6 it classified as a normal chunk, and a following
-    // `[DONE]` committed the failed turn as a successful zero-usage
-    // completion.
+    // that also carries `"choices":[]` (or `null`) is still an error, so a
+    // following `[DONE]` cannot commit the failed turn as a successful
+    // zero-usage completion.
     let masked = r#"{"error":{"message":"rate limited"},"choices":[]}"#;
     let error = detect(masked).expect("an empty choices array must not mask the error");
     assert_eq!(error.provider_response_body(), Some(masked));

@@ -1,23 +1,21 @@
-//! Plugin corpus (held-out): H28: Stall watchdog (spec `H28-stall-watchdog.md`).
-//!
-//! Watches every model call and tool call while it runs, of any agent or
-//! plugin, with a timer of its own per call ([`WakeAt`] at the call's next
-//! deadline), so nothing runs while no call does. A model call whose
-//! stream ([`StreamTiming`]) sent nothing for the model timeout is reported
-//! and sent again once ([`resend`]); a second stall fails it. A tool call
-//! past its soft limit is reported, shown on the status line while it
-//! runs, and stopped only past its `kill_after`. Each stall is a line of
-//! `<session dir>/stall-watchdog/stalls.jsonl`, which `/stalls` lists.
+//! Stall watchdog. Watches every model call and tool call while it runs, of any agent or plugin,
+//! with a timer of its own per call ([`WakeAt`] at the call's next deadline), so nothing runs while
+//! no call does. A model call whose stream ([`StreamTiming`]) sent nothing for the model timeout is
+//! reported and sent again once ([`resend`]); a second stall fails it. A tool call past its soft
+//! limit is reported, shown on the status line while it runs, and stopped only past its
+//! `kill_after`. Each stall is a line of `<session dir>/stall-watchdog/stalls.jsonl`, which
+//! `/stalls` lists.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::PathBuf;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
 
 use rig_harness::clock::ClockPlugin;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
+use rig_harness::rig_core::now_ms;
 use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
 use serde::{Deserialize, Serialize};
 
@@ -347,7 +345,7 @@ fn settled(
         .duration_since(started.at)
         .unwrap_or_default();
     let entry = Entry {
-        at_ms: millis(SystemTime::now()),
+        at_ms: now_ms(),
         agent: agent
             .and_then(|agent| ids.get(agent.0).ok())
             .map(|id| id.0.clone()),
@@ -475,12 +473,6 @@ fn human(duration: Duration) -> String {
     } else {
         format!("{} m", duration.as_secs() / 60)
     }
-}
-
-fn millis(at: SystemTime) -> u64 {
-    at.duration_since(UNIX_EPOCH).map_or(0, |since| {
-        u64::try_from(since.as_millis()).unwrap_or(u64::MAX)
-    })
 }
 
 #[cfg(test)]

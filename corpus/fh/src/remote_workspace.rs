@@ -1,19 +1,12 @@
-//! FH-09: 09. Remote workspace.
-//!
-//! [`RemoteWorkspacePlugin`] points the app's whole [`ProjectWorkspace`]
-//! at a directory on one of the hosts `[remote.hosts]` names
-//! (rig-basics' [`RemoteSettings`]): `rig --remote bench:~/app`, or
-//! `/remote bench:~/app` in a session, and `/remote off` to come back.
-//! While remote, the workspace is that host's rig-tools
-//! [`Remote`](rig_tools::remote::Remote) and the [`ProjectRoot`] the
-//! remote directory, so every file tool, the shell and `@path`
-//! attachments act there, as does any plugin that
-//! goes through the workspace; the others learn it is remote from its
-//! `host()`. Paths written `HOST:PATH` still reach the other hosts. A call
-//! whose transport failed fails with "the transport to host failed" (a
-//! command's call in Review, from its exit status). The target is saved
-//! with the session, so `/resume` points at it again. The status line
-//! shows `⇄ host:/path`.
+//! Remote workspace. [`RemoteWorkspacePlugin`] points the app's whole [`ProjectWorkspace`] at a
+//! directory on one of the hosts `[remote.hosts]` names (rig-basics' [`RemoteSettings`]): `rig
+//! --remote bench:~/app`, or `/remote bench:~/app` in a session, and `/remote off` to come back.
+//! While remote, the workspace is that host's rig-tools [`Remote`](rig_tools::remote::Remote) and
+//! the [`ProjectRoot`] the remote directory, so every file tool, the shell and `@path` attachments
+//! act there, as does any plugin that goes through the workspace; the others learn it is remote
+//! from its `host()`. Paths written `HOST:PATH` still reach the other hosts. A call whose transport
+//! failed fails with "the transport to host failed". The target is saved with the session, so
+//! `/resume` points at it again. The status line shows `⇄ host:/path`.
 
 use std::path::PathBuf;
 use std::sync::Arc;

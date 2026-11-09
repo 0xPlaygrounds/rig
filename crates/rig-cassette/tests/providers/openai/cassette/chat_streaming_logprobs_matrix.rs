@@ -1,38 +1,15 @@
-//! Exhaustive matrix for streamed Chat Completions log probabilities.
+//! Matrix for streamed Chat Completions log probabilities.
 //!
-//! Before this fix, `StreamingChoice` did not model `logprobs`, so serde
-//! discarded every per-token object before the shared compatible adapter saw
-//! it. The blocking provider-native reply retained the same field on
-//! `Choice`; raw streaming therefore carried strictly less provider-native
-//! information.
+//! `StreamingChoice` models `logprobs`, so the raw stream carries the same per-token objects
+//! the blocking reply keeps on `Choice`. The space is transport, model (`gpt-4o-mini`,
+//! `gpt-4.1-mini`, since this is shared Chat Completions metadata rather than a one-model
+//! quirk), termination (`stop` or a one-token `length`) and `top_logprobs` (absent, `0`, `2`).
 //!
-//! The complete input space exercised here is a 2 × 2 × 2 × 3 cross-product:
-//!
-//! | dimension | values |
-//! |---|---|
-//! | transport | blocking control, raw streaming regression |
-//! | model | `gpt-4o-mini`, `gpt-4.1-mini` |
-//! | termination | natural `stop`, one-token `length` |
-//! | top candidates | `top_logprobs` absent, `0`, `2` |
-//!
-//! That is 24 cells, of which the four below are tests. Each one re-derives the
-//! exact expected log-probability object from its fixture and compares it with
-//! the serialized native response. Streaming cells recursively concatenate
-//! token arrays in wire order. The two model families are deliberate: this is
-//! shared Chat Completions metadata rather than a one-model quirk.
-//!
-//! Each test maps to
-//! `crates/rig-cassette/fixtures/cassettes/openai/chat_streaming_logprobs_matrix/<test-name>.yaml`.
-//! Synthetic `logprobs` values (`null`, `{}`, and a non-object) stay in the
-//! shared deserializer's unit tests because a live model cannot be instructed
-//! to emit them. The two inexpensive mini models are stable Chat Completions
-//! controls; every recorded cell asserts the request, provider-native blocking
-//! response or raw-stream terminal, finish reason, and complete probability
-//! payload.
-//!
-//! | recorded cells | exact fixture set |
-//! |---|---|
-//! | 4 of 24 | `crates/rig-cassette/fixtures/cassettes/openai/chat_streaming_logprobs_matrix/{blocking_gpt_4_1_mini_length_top_zero,blocking_gpt_4_1_mini_stop_top_absent,streaming_gpt_4_1_mini_length_top_zero,streaming_gpt_4_1_mini_stop_top_absent}.yaml` |
+//! Each recorded cell re-derives the exact expected log-probability object from its fixture
+//! under `crates/rig-cassette/fixtures/cassettes/openai/chat_streaming_logprobs_matrix/` and
+//! compares it with the serialized native response; streaming cells concatenate token arrays in
+//! wire order. Synthetic values (`null`, `{}`, a non-object) stay in the shared deserializer's
+//! unit tests, because a live model cannot be made to emit them.
 
 use std::sync::{Arc, Mutex};
 
@@ -42,9 +19,7 @@ use serde_json::{Value, json};
 
 use rig::providers::openai::extension::{ChatOptions, OpenAiOptions};
 
-use super::super::support::{
-    OpenAiCassette, openai_options, with_openai_chat_stream_logprobs_cassette_result,
-};
+use super::super::support::{OpenAiCassette, openai_options, with_openai_cassette_result};
 use rig::completion::CompletionRequest;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -302,7 +277,7 @@ fn cell(transport: Transport, model: ModelVariant, termination: Termination, top
 // configurations. The matching streaming half below traverses the fixed path.
 
 crate::matrix::case_matrix! {
-    wrapper: with_openai_chat_stream_logprobs_cassette_result, family: streaming_logprobs_matrix_case;
+    wrapper: with_openai_cassette_result, family: streaming_logprobs_matrix_case;
     # [tokio :: test]
     blocking_gpt_4_1_mini_stop_top_absent: ("chat_streaming_logprobs_matrix/blocking_gpt_4_1_mini_stop_top_absent", configured, cell (Transport :: Blocking , ModelVariant :: Gpt41Mini , Termination :: Stop , Top :: Absent ,));
     # [tokio :: test]

@@ -134,7 +134,8 @@ fn a_halted_reset_naming_a_blob_reads_halted() -> Result<(), Box<dyn std::error:
             None,
         )],
     };
-    let stored = crate::store_images(&image, &*store)?.into_owned();
+    let put = &mut |name: String, bytes: Vec<u8>| crate::blobs::put_blob(&*store, &name, &bytes);
+    let stored = crate::blobs::store_images_with(&image, put)?.into_owned();
     if stored == image {
         return Err("the image was not stored as a blob".into());
     }

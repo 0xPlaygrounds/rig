@@ -67,7 +67,7 @@ fn leaves(value: &Value, at: String, out: &mut Vec<String>) {
 }
 
 /// The body leaves the Responses wire writes itself or maps a
-/// `GenerationOptions` field to (section 6.3 of `TYPED_OPTIONS.md`).
+/// `GenerationOptions` field to (section 2.3 of `TYPED_OPTIONS.md`).
 const RESERVED: &[&str] = &[
     "/model",
     "/input",

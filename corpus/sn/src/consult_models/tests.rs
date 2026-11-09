@@ -11,8 +11,8 @@ use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::clock::ClockPlugin;
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
-    ToolOutputs, app_on, calls, first_agent, log_tool_outputs, reply, run_until, scripted_models,
-    tui_view,
+    ToolOutputs, app_on, calls, first_agent, log_tool_outputs, reply, run_until, scratch_dir,
+    scripted_models, tui_view,
 };
 use rig_tui::{DrawnRow, MainPane, PastEffects, TranscriptLayout, TranscriptView};
 use serde_json::json;
@@ -57,10 +57,7 @@ struct Models3 {
 
 /// A project with `src/cache.rs`, beside the test binary.
 fn project(name: &str) -> PathBuf {
-    let dir: PathBuf = std::env::current_exe()
-        .unwrap_or_default()
-        .with_file_name(name);
-    std::fs::remove_dir_all(&dir).ok();
+    let dir = scratch_dir(name);
     assert!(std::fs::create_dir_all(dir.join("src")).is_ok());
     assert!(std::fs::write(dir.join("src/cache.rs"), CACHE).is_ok());
     std::fs::canonicalize(&dir).unwrap_or(dir)
@@ -314,7 +311,4 @@ fn interrupting_the_agent_stops_its_consultants() {
     assert_eq!(models.b.request_count(), 0);
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(ConsultPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(ConsultPlugin);

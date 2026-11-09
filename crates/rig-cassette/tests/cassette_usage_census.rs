@@ -1,25 +1,20 @@
 //! Corpus census: what rig's `Usage` reports for every recorded completion.
 //!
-//! Every committed 200-status completion reply, unary and streamed, is
-//! decoded through the provider's real wire exactly as it was recorded, and
-//! rig's `Usage` for it is set beside the total the provider reported, when
-//! it reported one. The census costs no provider traffic and covers every
-//! provider directory in the corpus.
+//! Every committed 200-status completion reply, unary and streamed, is decoded
+//! through the provider's real wire exactly as it was recorded, and rig's
+//! `Usage` for it is set beside the total the provider reported, when it
+//! reported one. The census costs no provider traffic and covers every provider
+//! directory in the corpus.
 //!
-//! It prints one `USAGE_CENSUS <provider>/<wire> {json}` line per provider
-//! and wire: calls, calls with a cache read or write, calls with reasoning,
-//! and the calls where cached plus written input exceeds input, where
-//! reasoning exceeds output, where rig's total is not input plus output, and
-//! where the provider's reported total is not input plus output. Set
+//! It prints one `USAGE_CENSUS <provider>/<wire> {json}` line per provider and
+//! wire, counting calls, cache reads and writes, reasoning, and each kind of
+//! inconsistency between the input, output and total counters. Set
 //! `RIG_USAGE_CENSUS` to a path to also write every call as one JSON line.
-//!
-//! [`every_recorded_completion_is_censused`] fails closed on coverage, as
-//! the cache-prefix census does: every 200-status reply is either a
-//! completion the census decodes or an endpoint it names as carrying none,
-//! and every provider directory yields decoded completions.
-//! [`every_recorded_call_keeps_the_usage_contract`] asserts `Usage`'s
-//! contract on every decoded call of every provider, and that rig's total is
-//! the provider's wherever the provider reports one.
+//! [`every_recorded_completion_is_censused`] fails closed on coverage: every
+//! 200-status reply is a completion the census decodes or an endpoint it names as
+//! carrying none. [`every_recorded_call_keeps_the_usage_contract`] asserts
+//! `Usage`'s contract on every decoded call, and that rig's total is the
+//! provider's wherever the provider reports one.
 
 #![allow(clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
 

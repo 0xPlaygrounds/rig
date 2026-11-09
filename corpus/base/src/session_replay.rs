@@ -1,37 +1,22 @@
-//! Replays a recorded session: the user's messages are sent again in
-//! order, and every model call, tool call and replayable plugin effect is
-//! answered from the recorded effect log instead of by the provider or the
-//! tool. A model call is answered by the replay's adapter, placed
-//! outermost: it replaces the call's adapted model with the record, so
-//! Start fits the request as it would live, the request compared is the
-//! one recorded as sent, and no other adapter rewrites the recorded reply
-//! again. A recorded model the environment has no key for, such as one
-//! whose credentials are gone, is reached through the replay's sign-in,
-//! which answers from the record only. Tool calls and replayable plugin
-//! effects are decided as Gate opens, before any gate, but for the calls
-//! of a tool that [`RunsAgain`], such as `rig_basics::subagents`' `task`, `message`
-//! and `wait`, whose answers come from the agents the replay runs again: a
-//! spawned subagent gets its recorded id, so what names it reads as it was
-//! recorded, and a `wait` ends when its report comes, as it did. Each request is checked against the
-//! recorded one at the same place of the same agent; the first difference
-//! stops the replay, or with `--continue-live` is reported and the run goes
-//! on live. With `--speed` each answer settles after its recorded duration
-//! and each user message after its recorded gap. A replay that ends with
-//! recorded model calls not replayed (a turn failed before its call reached
-//! the replay) stops with why, as at a divergence, and `--replay` then
-//! exits with 1. A recorded exit that ended the session for good, such as
-//! `/quit`, is asked for again where it was, so what held it, such as a
-//! summary call, replays too, and the replay ends as the exit goes; one
-//! that restarted the session, a reload or a switch, is passed over. Once
-//! the replay ended, every new effect but the exit, such as the summary
-//! call of a killed session's exit, is refused before it starts: the record
-//! does not have it.
+//! Replays a recorded session: the user's messages are sent again in order, and every model
+//! call, tool call and replayable plugin effect is answered from the recorded effect log
+//! instead of by the provider or the tool. The calls of a tool that [`RunsAgain`], such as
+//! `rig_basics::subagents`' `task`, `message` and `wait`, are answered by the agents the replay
+//! runs again; a spawned subagent gets its recorded id. A recorded model the environment has no
+//! key for is reached through the replay's sign-in, which answers from the record only.
 //!
-//! `rig --replay=DIR` gives the run to the replay's own front, which keeps
-//! no session: it replays the session kept in `DIR`, prints the report as
-//! the app exits, and exits with 0, or 1 when the replay diverged. A
-//! [`ReplaySource`] inserted before the plugin is added replays inside
-//! whatever front runs. Nothing recorded is written to.
+//! Each request is checked against the recorded one at the same place of the same agent; the
+//! first difference stops the replay, or with `--continue-live` is reported and the run goes on
+//! live. With `--speed` each answer settles after its recorded duration and each user message
+//! after its recorded gap. Recorded model calls left unreplayed at the end stop the replay with
+//! why, as at a divergence. A recorded exit that ended the session for good, such as `/quit`,
+//! is asked for again where it was; one that restarted the session is passed over. Once the
+//! replay ended, every new effect but the exit is refused before it starts.
+//!
+//! `rig --replay=DIR` gives the run to the replay's own front, which keeps no session: it
+//! replays the session kept in `DIR`, prints the report as the app exits, and exits with 0, or
+//! 1 when the replay diverged. A [`ReplaySource`] inserted before the plugin is added replays
+//! inside whatever front runs. Nothing recorded is written to.
 
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet, VecDeque};

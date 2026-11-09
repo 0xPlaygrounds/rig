@@ -94,11 +94,6 @@ pub enum TranscriptItem {
     /// ([`RenderOutput::decorate`](crate::RenderOutput::decorate)),
     /// inside the call's rows. Selecting moves past it.
     Decoration(CallItem, String),
-    /// The rows a named decoration drew under a message, by the
-    /// message's id and the decoration's name
-    /// ([`RenderBatch::messages_mut`](crate::RenderBatch::messages_mut)),
-    /// inside the message's rows. Selecting moves past it.
-    MessageDecoration(MessageId, String),
 }
 
 /// Where a tool call of the transcript is, as its items name it: a reply's

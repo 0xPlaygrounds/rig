@@ -10,7 +10,7 @@ use bevy_ecs::prelude::*;
 use bevy_ecs::schedule::ScheduleLabel;
 use ratatui::style::{Style, Stylize};
 use ratatui::text::{Line, Span};
-use rig_core::completion::{AssistantContent, Message};
+use rig_core::completion::AssistantContent;
 use rig_core::message::{
     Audio, Document, Image, ToolCall, ToolFunction, ToolResult, ToolResultContent, UserContent,
     Video,
@@ -595,84 +595,34 @@ pub struct AsideView<'a> {
     pub theme: Theme,
 }
 
-/// Whose text a [`MessageView`] is.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Role {
-    /// What the user typed.
-    User,
-    /// A text block of a reply, or the reply streaming in.
-    Assistant,
-    /// A reply's reasoning.
-    Reasoning,
+/// The user's text after `›`.
+pub(crate) fn user_lines(text: &str) -> Vec<LookLine> {
+    let lines = text.lines().enumerate();
+    let rows = lines.map(|(index, line)| {
+        let prefix = if index == 0 { "› " } else { "  " };
+        let text = line.replace('\t', "    ");
+        Line::from(vec![Span::from(prefix).dim(), Span::from(text).bold()]).into()
+    });
+    rows.collect()
 }
 
-impl Role {
-    /// Its name: `user`, `assistant` or `reasoning`.
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::User => "user",
-            Self::Assistant => "assistant",
-            Self::Reasoning => "reasoning",
-        }
-    }
+/// A reply's text as markdown wrapped to `width`, with the labels drawn
+/// inside it ([`TextMark`](crate::TextMark)), each before its byte.
+pub(crate) fn reply_lines(
+    text: &str,
+    marks: &[(usize, Span<'static>)],
+    width: usize,
+    theme: &Theme,
+) -> Vec<LookLine> {
+    markdown::render_marked(text, marks, theme, Some(width))
 }
 
-/// A text of a message, as the transcript draws it.
-pub struct MessageView<'a> {
-    /// Whose text it is.
-    pub role: Role,
-    /// The message it is in; `None` for the reply streaming in.
-    pub message: Option<MessageId>,
-    /// The text's place among the message's content.
-    pub block: usize,
-    /// The text.
-    pub text: &'a str,
-    /// The labels drawn inside it ([`TextMark`](crate::TextMark)), each
-    /// before its byte.
-    pub marks: &'a [(usize, Span<'static>)],
-    /// The width its lines are wrapped to, which a reply's tables are fit
-    /// to.
-    pub width: usize,
-    /// The colors a reply's code, alerts and tables are drawn in.
-    pub theme: Theme,
-}
-
-impl MessageView<'_> {
-    /// The default look: the user's text after `›`, a reply's as markdown
-    /// with its marks, reasoning as dimmed markdown.
-    pub fn default_lines(&self) -> Vec<LookLine> {
-        match self.role {
-            Role::User => {
-                let lines = self.text.lines().enumerate();
-                let rows = lines.map(|(index, line)| {
-                    let prefix = if index == 0 { "› " } else { "  " };
-                    let text = line.replace('\t', "    ");
-                    Line::from(vec![Span::from(prefix).dim(), Span::from(text).bold()]).into()
-                });
-                rows.collect()
-            }
-            Role::Assistant => {
-                markdown::render_marked(self.text, self.marks, &self.theme, Some(self.width))
-            }
-            Role::Reasoning => {
-                let lines = markdown::render(self.text, &self.theme, Some(self.width));
-                let style = Style::new().dim().italic();
-                let lines = lines.into_iter();
-                lines.map(|line| line.patch_style(style)).collect()
-            }
-        }
-    }
-}
-
-/// A message the user or the model wrote, as a render system decorating it
-/// sees it.
-pub struct DecoratedMessage<'a> {
-    /// The message.
-    pub message: &'a Message,
-    /// Its id, when it has one.
-    pub id: Option<MessageId>,
-    /// Its author, when it has one.
-    pub author: Option<&'a Author>,
+/// A reply's reasoning as dimmed, italic markdown wrapped to `width`.
+pub(crate) fn reasoning_lines(text: &str, width: usize, theme: &Theme) -> Vec<LookLine> {
+    let lines = markdown::render(text, theme, Some(width));
+    let style = Style::new().dim().italic();
+    let lines = lines.into_iter();
+    lines.map(|line| line.patch_style(style)).collect()
 }
 
 /// Runs presentation systems for the changed items of one pane or export.
@@ -702,7 +652,7 @@ pub struct RenderRevision(pub u64);
 /// Lines of an item and named contributions after them. Contributions are
 /// ordered and names identify row ranges. An item with no lines and no
 /// contributions is hidden; contributions are drawn even when `lines` is
-/// empty. A message's output only adds to it ([`RenderBatch::messages_mut`]).
+/// empty.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct RenderOutput {
     /// The item's unwrapped lines.
@@ -872,28 +822,6 @@ impl AsideRender {
     }
 }
 
-/// Owned message input for message decorations.
-#[derive(Clone, PartialEq)]
-pub struct MessageRender {
-    /// Message value.
-    pub message: Message,
-    /// Message identity, when available.
-    pub id: Option<MessageId>,
-    /// Message author.
-    pub author: Option<Author>,
-}
-
-impl MessageRender {
-    /// Borrow this input for the formatting helpers.
-    pub fn view(&self) -> DecoratedMessage<'_> {
-        DecoratedMessage {
-            message: &self.message,
-            id: self.id,
-            author: self.author.as_ref(),
-        }
-    }
-}
-
 /// The input of one render request.
 #[derive(Clone, PartialEq)]
 pub enum RenderInput {
@@ -905,8 +833,6 @@ pub enum RenderInput {
     Content(ContentRender),
     /// Non-note aside.
     Aside(AsideRender),
-    /// Message decorations.
-    Message(MessageRender),
 }
 
 /// An item's identity within one batch. Message ordinals distinguish values
@@ -924,8 +850,6 @@ pub enum RenderKey {
     Content(usize, usize),
     /// Message ordinal and delivered text block index.
     Entry(usize, usize),
-    /// Message ordinal.
-    Message(usize),
 }
 
 /// Public input and output of an item that needs rendering.
@@ -1011,15 +935,6 @@ impl RenderBatch {
                 RenderInput::Aside(v) if v.aside.kind == kind => Some((v, &mut r.output)),
                 _ => None,
             })
-    }
-    /// Messages that can receive decorations. A message request's `lines`
-    /// start empty and are drawn after the message, as an unnamed
-    /// decoration; they cannot hide the message.
-    pub fn messages_mut(&mut self) -> impl Iterator<Item = (&MessageRender, &mut RenderOutput)> {
-        self.requests.values_mut().filter_map(|r| match &r.input {
-            RenderInput::Message(v) => Some((v, &mut r.output)),
-            _ => None,
-        })
     }
 }
 
@@ -1283,26 +1198,6 @@ impl Renderers {
             theme: view.theme,
         };
         Some(self.output(key, RenderInput::Aside(input), Vec::new()).0)
-    }
-
-    /// A message's decorations; none outside a message.
-    pub(crate) fn message_decorations(
-        &self,
-        view: &DecoratedMessage<'_>,
-    ) -> (Vec<LookLine>, Decorated) {
-        let Some((index, _)) = self.in_message() else {
-            return (Vec::new(), Vec::new());
-        };
-        let input = MessageRender {
-            message: view.message.clone(),
-            id: view.id,
-            author: view.author.cloned(),
-        };
-        self.output(
-            RenderKey::Message(index),
-            RenderInput::Message(input),
-            Vec::new(),
-        )
     }
 }
 

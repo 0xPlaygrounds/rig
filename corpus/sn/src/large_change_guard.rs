@@ -1,14 +1,11 @@
-//! SN-02: the large-change guard. Every call that writes named paths is
-//! previewed first ([`Preview`]): the harness runs its tool on an overlay
-//! of the workspace and puts the files it would change on the call, each
-//! with its diff and its size and lines before and after. Under every
-//! threshold the call runs at once. Over one, the user is asked, naming
-//! the agent (or subagent) and the damage, with the diff: allow, allow
-//! this file for the session (saved with it), deny, or deny with a reason,
-//! which the model reads in the call's refusal. A run nobody can answer
-//! follows `on_headless`. A deletion is held while git is asked whether
-//! it tracks the file. The thresholds are `[large-change]` in
-//! `settings.toml`.
+//! The large-change guard. Every call that writes named paths is previewed first ([`Preview`]):
+//! the harness runs its tool on an overlay of the workspace and puts the files it would change
+//! on the call, each with its diff and its size and lines before and after. Under every
+//! threshold the call runs at once. Over one, the user is asked, naming the agent (or subagent)
+//! and the damage, with the diff: allow, allow this file for the session (saved with it), deny,
+//! or deny with a reason, which the model reads in the call's refusal. A run nobody can answer
+//! follows `on_headless`. A deletion is held while git is asked whether it tracks the file. The
+//! thresholds are `[large-change]` in `settings.toml`.
 
 use std::ffi::OsString;
 use std::fmt::Write as _;

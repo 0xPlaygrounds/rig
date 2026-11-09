@@ -110,7 +110,7 @@ fn streamed_call() -> Vec<Value> {
     ]
 }
 
-/// NEW-A and responses_new NEW-1: a done call item that leaves out its
+/// A done call item that leaves out its
 /// arguments, name or call id keeps what its announcement and deltas
 /// stated, as pi keeps the added block's id and name and parses
 /// `item.arguments || partialJson`.
@@ -148,7 +148,7 @@ fn a_done_call_keeps_what_was_announced_and_streamed() {
     }
 }
 
-/// #2647 by rollback: a reply cut before its terminal keeps no provider
+/// A reply cut before its terminal keeps no provider
 /// item, whether or not the call after the reasoning is done; the terminal
 /// keeps both and backfills the ciphertext Azure states only there.
 #[test]

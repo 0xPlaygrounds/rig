@@ -1,23 +1,19 @@
-//! Watch mode: the user writes a comment ending in `AI!` (a change) or
-//! `AI?` (a question) in their own editor and saves, and the primary agent
-//! gets a turn with every AI comment of the project and the code around
-//! each. A comment ending in just `AI` is context and never starts one.
+//! Watch mode: the user writes a comment ending in `AI!` (a change) or `AI?` (a question) in
+//! their own editor and saves, and the primary agent gets a turn with every AI comment of the
+//! project and the code around each. A comment ending in just `AI` is context and never starts
+//! one.
 //!
-//! `/watch on|off`, or `rig --watch`, watches the project's files, without
-//! what `.gitignore` leaves out. A save that settled for [`SETTLE`] and holds
-//! a trigger queues its file once (its newest content wins), and the queue
-//! runs one turn per file whenever the agent is idle. A file left as a
-//! file tool wrote it (the [`FilesChanged`] of a call that names its
-//! paths), or as this plugin cleaned it, never triggers. A call that may
-//! write anywhere, such as `shell`, names no files, so nothing it wrote is
-//! taken as rig's; the clean-up at the turn's end, and the queued file read again before its
-//! turn starts, keep the agent's own `shell` writes in a watch turn from
-//! triggering. A question's turn is question only: its calls that may change
-//! anything are refused. When a change's turn ends, or a question's turn
-//! answers, its file's trigger comments and the context comments it was
-//! given are taken out of the files. The status line says
-//! `watching` and how many files wait. The watch keeps a headless run going
-//! ([`KeepRunning`]), so `rig --watch --print` runs until interrupted and
+//! `/watch on|off`, or `rig --watch`, watches the project's files, without what `.gitignore`
+//! leaves out. A save that settled for [`SETTLE`] and holds a trigger queues its file once (its
+//! newest content wins), and the queue runs one turn per file whenever the agent is idle. A
+//! file left as a file tool wrote it (the [`FilesChanged`] of a call that names its paths), or
+//! as this plugin cleaned it, never triggers, and neither do the agent's own `shell` writes in
+//! a watch turn. A question's turn may change nothing: its calls that may change anything are
+//! refused. When a change's turn ends, or a question's turn answers, its file's trigger
+//! comments and the context comments it was given are taken out of the files.
+//!
+//! The status line says `watching` and how many files wait. The watch keeps a headless run
+//! going ([`KeepRunning`]), so `rig --watch --print` runs until interrupted and
 //! `rig_basics::print` prints each answer.
 
 use std::collections::BTreeSet;

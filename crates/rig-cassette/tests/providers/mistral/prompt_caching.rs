@@ -1,47 +1,20 @@
 //! Mistral prompt-caching cassette suite.
 //!
-//! Mistral's prompt cache is real but **intermittent**, and saying so precisely
-//! is the point of this suite.
+//! Mistral's prompt cache is real but intermittent: identical requests over the same prefix hit
+//! on some passes and miss on others, plausibly from routing without cache affinity. Rig does
+//! not control that, and `assert_prefix_stable` proves on every run that rig's own bytes did not
+//! move. So these cells do not assert the strict three-turn conformance, which would be a coin
+//! flip. They assert that when Mistral reports a cache read, rig surfaces it at full magnitude
+//! on the blocking and streaming paths alike.
 //!
-//! Across repeated live passes over an identical 1,783-token prefix, with rig
-//! sending byte-identical requests every time, Mistral produced: a hit on turn 2
-//! (1,760 tokens — a 98.7% ratio), on another pass a hit on turn 1 only, and on
-//! another no hit at all. The plausible cause is request routing without cache
-//! affinity; either way it is not something rig controls, and
-//! `assert_prefix_stable` proves on every run that rig's own bytes did not move.
+//! Rig reads the count from `prompt_tokens_details.cached_tokens`, falling back to the
+//! top-level `num_cached_tokens` (`Usage::to_normalized` in the OpenAI completion module); it is
+//! a subset of `prompt_tokens`, so the denominator is `input_tokens`.
 //!
-//! So these cells deliberately do **not** assert the strict three-turn
-//! conformance — that would be a coin flip, and re-recording until a good run
-//! landed would be cherry-picking. They assert the narrower thing that is true
-//! and deterministic: when Mistral reports a cache read, rig surfaces it at full
-//! magnitude, on the blocking and streaming paths alike. That is a claim about
-//! rig's usage mapping rather than about Mistral's hit rate.
-//!
-//! Rig reads the count from `prompt_tokens_details.cached_tokens`, falling back
-//! to the top-level `num_cached_tokens`
-//! (`crates/rig-core/src/providers/openai/completion/mod.rs`, `Usage::to_normalized`);
-//! it is a subset of `prompt_tokens`, so the denominator is `input_tokens`.
-//!
-//! # No agent-loop cell, and why
-//!
-//! Most providers in the matrix have an `agent_loop` cell driving a real
-//! multi-turn agent run with a tool round-trip — the only cell that can catch
-//! rig's *driver* disturbing the prefix between iterations. This provider has
-//! none, deliberately: its model returns an empty response ("Response contained no message or tool call") when driven through the agent surface with the probe's small output budget. A run that
-//! makes one model call records one request, which leaves `assert_prefix_stable`
-//! no pair to compare and the cell proving nothing. A cell that cannot fail is
-//! worse than an acknowledged gap.
-//!
-//! The loop-level guarantee is still covered for this provider by the
-//! corpus-wide scan in `tests/cassette_cache_prefix.rs`, which compares every
-//! recorded multi-turn conversation in its existing suites.
-//!
-//! # Recording
-//!
-//! ```text
-//! RIG_PROVIDER_TEST_MODE=record cargo test -p rig-cassette --test integration --all-features \
-//!     mistral::prompt_caching:: -- --exact --test-threads=1
-//! ```
+//! There is no `agent_loop` cell: the model returns an empty response through the agent
+//! surface with the probe's small output budget, and a one-call run leaves
+//! `assert_prefix_stable` no pair to compare. The corpus-wide scan in
+//! `tests/cassette_cache_prefix.rs` covers the loop-level guarantee instead.
 
 use rig::providers::mistral;
 
@@ -50,7 +23,7 @@ use crate::cache_conformance::{
     run_cache_probe_streaming,
 };
 
-use super::support::with_mistral_prompt_caching_cassette;
+use super::support::with_mistral_cassette;
 
 const CACHE_MODEL: &str = mistral::MISTRAL_LARGE;
 
@@ -78,7 +51,7 @@ fn probe() -> CacheProbe {
 async fn blocking_probe_surfaces_the_cache_read_mistral_reports() {
     const SCENARIO: &str = "prompt_caching/blocking_probe";
 
-    with_mistral_prompt_caching_cassette("prompt_caching/blocking_probe", |client| async move {
+    with_mistral_cassette("prompt_caching/blocking_probe", |client| async move {
         let model = client.completion(CACHE_MODEL);
         let observation = run_cache_probe(model, &probe()).await;
         assert_cache_read_is_surfaced(&observation, &MISTRAL_CACHE_SUPPORT, "blocking probe");
@@ -92,7 +65,7 @@ async fn blocking_probe_surfaces_the_cache_read_mistral_reports() {
 async fn streaming_probe_surfaces_the_cache_read_mistral_reports() {
     const SCENARIO: &str = "prompt_caching/streaming_probe";
 
-    with_mistral_prompt_caching_cassette("prompt_caching/streaming_probe", |client| async move {
+    with_mistral_cassette("prompt_caching/streaming_probe", |client| async move {
         let model = client.completion(CACHE_MODEL);
         let observation = run_cache_probe_streaming(model, &probe()).await;
         assert_cache_read_is_surfaced(&observation, &MISTRAL_CACHE_SUPPORT, "streaming probe");

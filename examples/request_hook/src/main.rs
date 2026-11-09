@@ -1,22 +1,11 @@
-//! Demonstrates the composing hook model with `AgentHook`. Several hooks are
-//! stacked via `.add_hook(…).add_hook(…)` and, crucially, **all of them run** —
-//! a request patch from one hook no longer short-circuits the others:
+//! Stacks several `AgentHook`s on one request, and every hook runs.
 //!
-//! - `LoggingHook` — observe-only. Registered first so a later terminate could
-//!   never hide events from it. Reads the run-scoped [`HookContext`] (run id,
-//!   turn, streaming flag).
-//! - `ContextHook` — injects an extra context document for the turn via
-//!   `RequestPatch::extra_context` (passive RAG).
-//! - `SamplingHook` — lowers the sampling temperature for the turn via
-//!   `RequestPatch::temperature`.
-//! - `TurnCounterHook` — counts completion calls using the run-scoped
-//!   `HookContext` scratchpad instead of its own interior mutability.
-//!
-//! On each `CompletionCall`, the patches from `ContextHook` and `SamplingHook`
-//! are **merged in registration order** into one effective patch (see the
-//! per-field merge rules on `RequestPatch`), so both take effect on the same
-//! turn — and `TurnCounterHook` still runs afterwards. A typed stop action
-//! short-circuits the stack.
+//! `LoggingHook` reads the run's [`HookContext`] and is registered first so a later
+//! stop cannot hide events from it. `ContextHook` adds a context document with
+//! `RequestPatch::extra_context`, `SamplingHook` lowers the temperature with
+//! `RequestPatch::temperature`, and `TurnCounterHook` counts completion calls in
+//! the `HookContext` scratchpad. The two patches merge in registration order into
+//! one patch for the turn. A stop action would end the stack early.
 //!
 //! Requires `OPENAI_API_KEY`.
 

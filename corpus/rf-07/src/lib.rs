@@ -1,15 +1,11 @@
-//! `rerun`: record an agent run with a checkpoint after every turn, replay
-//! it offline from any checkpoint, or fork it into a new recording that
-//! continues against another model.
+//! `rerun`: record an agent run with a checkpoint after every turn, replay it offline from any
+//! checkpoint, or fork it into a new recording that continues against another model.
 //!
-//! A run directory holds plain JSON files:
-//!
-//! - `log.json`: the stamped [`EffectLog`], stream items kept;
-//! - `run.json`: the [`RunMeta`] (prompt, run spec, outcome, stream transcript);
-//! - `checkpoint-<k>.json`: a [`Checkpoint`] holding the [`AgentRun`] right
-//!   after model turn `k` was taken in, its tool calls still pending;
-//! - `manifest.json`: a hash of every other file, so an edited or truncated
-//!   file is refused.
+//! A run directory holds plain JSON files. `log.json` is the stamped [`EffectLog`], stream items
+//! kept. `run.json` is the [`RunMeta`] (prompt, run spec, outcome, stream transcript). Each
+//! `checkpoint-<k>.json` is a [`Checkpoint`] holding the [`AgentRun`] right after model turn `k`
+//! was taken in, its tool calls still pending. `manifest.json` holds a hash of every other file, so
+//! an edited or truncated file is refused.
 
 use std::{
     collections::BTreeMap,

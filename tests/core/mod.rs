@@ -32,12 +32,12 @@ mod loaders;
 mod prompt_response_messages;
 mod provider_keys;
 mod reasoning_stream_stats;
-mod request_bodies;
 #[cfg(feature = "derive")]
 mod rig_tool_facade;
 mod streaming_conformance;
 mod streaming_conformance_registry;
 mod streaming_conformance_suites;
+mod user_agent;
 #[allow(dead_code)]
 #[path = "../../xtask/src/verify/checks.rs"]
 mod verification_checks;

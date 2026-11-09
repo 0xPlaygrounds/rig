@@ -42,7 +42,7 @@ See the [examples](./examples) folder for usage examples.
 
 - [examples/vector_search_simple.rs](examples/vector_search_simple.rs) shows how to create an index on simple data.
 - [examples/vector_search_movies_consume.rs](examples/vector_search_movies_consume.rs) shows how to query an existing index.
-- [examples/vector_search_movies_create.rs](examples/vector_search_movies_create.rs) shows how to create embeddings & index on a large DB and query it in one go.
+- [examples/vector_search_movies_add_embeddings.rs](examples/vector_search_movies_add_embeddings.rs) shows how to create embeddings & index on a large DB and query it in one go.
 
 ## Notes
 
@@ -58,8 +58,3 @@ OPTIONS {indexConfig: {
 }}
 ```
 
-## Roadmap
-
-- Add support for creating the vector index through RIG.
-- Add support for adding embeddings to an existing database
-- Add support for uploading documents to an existing database

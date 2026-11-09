@@ -1,51 +1,27 @@
-//! Edge matrix for rig#2354: a `max_tokens`-truncated tool call destroyed the
-//! whole blocking DeepSeek response.
+//! Edge matrix for a `max_tokens`-truncated DeepSeek tool call.
 //!
 //! DeepSeek emits the tool call anyway when the budget runs out mid-arguments:
 //! the turn comes back with `finish_reason: "length"` and
 //! `tool_calls[].function.arguments` cut off partway through the JSON object.
-//! DeepSeek's tool-call type parsed that strictly, so the *whole* `CompletionResponse`
-//! failed to decode and the text, usage, id, model and finish reason went with
-//! it — while the streaming path kept the turn and dropped the unusable
-//! call. The two transports disagreed about
-//! identical wire bytes.
+//! Both transports keep the response and the cut call: its arguments are what
+//! a tolerant parse reads from the text (blank text is an empty object), and a
+//! call whose text never parses keeps it as `invalid_arguments`, so the agent
+//! answers it with an error result and never runs it.
 //!
-//! Both transports now keep the cut call, as pi does: its arguments are what
-//! pi's tolerant parse reads from the text (blank text is an empty object),
-//! and a call whose text never parses keeps it as `invalid_arguments`, so the
-//! agent answers it with an error result and never runs it.
-//!
-//! Live budget sweep against `deepseek-v4-flash` (thinking disabled), one tool
-//! whose required `summary` argument must be long:
-//!
-//! | budget | recorded `arguments` | `finish_reason` | class |
-//! |---|---|---|---|
-//! | 12 | *(no tool call at all)* | `length` | control: contentless truncation |
-//! | 16 | `""` | `length` | boundary: cut before first argument token |
-//! | 20 | `""` | `length` | boundary: cut before first argument token |
-//! | 24 | `{"summary": ` | `length` | **truncated** |
-//! | 32 | `{"summary": "Log this incident: the` | `length` | **truncated** |
-//! | 48 | `…raced the artifact uploader, then the ret` | `length` | **truncated** |
-//! | 64 | `…had to drain three` | `length` | **truncated** |
-//! | 96 | complete object | `tool_calls` | control: untouched |
-//!
-//! Every budget is recorded on both transports except streaming budget 20:
-//! the live sweep returned the same empty argument string and `length` reason
-//! as streaming budget 16, exercising no additional adapter state, so that
-//! duplicate cell is explicitly pruned. The matrix also records the shapes
-//! that share the same decode: parallel calls where only the second is cut, a
-//! turn that spoke before it was cut, and a reasoner turn cut mid-arguments.
-//! See the module doc table in the PR body for per-cell status.
+//! The cells replay a live budget sweep against `deepseek-v4-flash` (thinking
+//! disabled) with one tool whose required `summary` argument must be long, from
+//! a contentless truncation through cuts before and inside the arguments to a
+//! complete call. Streaming budget 20 is pruned because it repeats budget 16's
+//! empty arguments. The matrix also covers parallel calls where only the second
+//! is cut, a turn that spoke before it was cut, and a reasoner turn cut
+//! mid-arguments.
 
 use rig::completion::ToolDefinition;
 use rig::message::AssistantContent;
 use rig::providers::deepseek;
 use serde_json::{Value, json};
 
-use super::support::{
-    collect_raw_stream_outcome, recorded_response, recorded_stream_chunks,
-    with_deepseek_truncation_cassette_result,
-};
+use super::support::{collect_raw_stream_outcome, with_deepseek_cassette_result};
 use rig::completion::{CompletionRequest, GenerationOptions, Reasoning};
 
 pub(super) const MODEL: &str = deepseek::DEEPSEEK_V4_FLASH;
@@ -150,7 +126,7 @@ fn assert_one_cut_call<'a>(calls: impl IntoIterator<Item = &'a rig::message::Too
 
 /// The `arguments` strings the recorded blocking turn carried, in wire order.
 pub(super) fn recorded_blocking_arguments(scenario: &str) -> Vec<String> {
-    let response = recorded_response(scenario);
+    let response = crate::cassettes::recorded_json_response("deepseek", scenario);
     response["choices"][0]["message"]["tool_calls"]
         .as_array()
         .map(|calls| {
@@ -168,7 +144,7 @@ pub(super) fn recorded_blocking_arguments(scenario: &str) -> Vec<String> {
 }
 
 pub(super) fn recorded_blocking_finish_reason(scenario: &str) -> String {
-    recorded_response(scenario)["choices"][0]["finish_reason"]
+    crate::cassettes::recorded_json_response("deepseek", scenario)["choices"][0]["finish_reason"]
         .as_str()
         .unwrap_or_default()
         .to_owned()
@@ -178,7 +154,7 @@ pub(super) fn recorded_blocking_finish_reason(scenario: &str) -> String {
 /// `tool_calls[].index`.
 pub(super) fn recorded_stream_arguments(scenario: &str) -> Vec<String> {
     let mut accumulated: Vec<String> = Vec::new();
-    for chunk in recorded_stream_chunks(scenario) {
+    for chunk in crate::cassettes::recorded_sse_json_frames("deepseek", scenario) {
         let Some(calls) = chunk["choices"][0]["delta"]["tool_calls"].as_array() else {
             continue;
         };
@@ -226,7 +202,7 @@ fn assert_parseable(arguments: &str, scenario: &str) {
 async fn blocking_budget_16_empty_arguments_are_dropped_on_length() {
     const SCENARIO: &str =
         "truncation_matrix/blocking_budget_16_empty_arguments_are_dropped_on_length";
-    with_deepseek_truncation_cassette_result(
+    with_deepseek_cassette_result(
         "truncation_matrix/blocking_budget_16_empty_arguments_are_dropped_on_length",
         |client| async move {
             let model = client.completion(MODEL);
@@ -260,13 +236,13 @@ async fn blocking_budget_16_empty_arguments_are_dropped_on_length() {
 // ================================================================
 
 // ================================================================
-// C. Parallel calls: only the truncated one is lost
+// C. Parallel calls: only the truncated one is unusable
 // ================================================================
 
 #[tokio::test]
 async fn blocking_parallel_calls_keep_the_complete_one() {
     const SCENARIO: &str = "truncation_matrix/blocking_parallel_calls_keep_the_complete_one";
-    with_deepseek_truncation_cassette_result(
+    with_deepseek_cassette_result(
         "truncation_matrix/blocking_parallel_calls_keep_the_complete_one",
         |client| async move {
             let model = client.completion(MODEL);
@@ -314,7 +290,7 @@ async fn blocking_parallel_calls_keep_the_complete_one() {
 #[ignore = "deepseek-v4-flash now spends the 56-token budget before the second call's arguments start, even for the original request bytes (3 live attempts, 2026-10-03)"]
 async fn streaming_parallel_calls_keep_the_complete_one() {
     const SCENARIO: &str = "truncation_matrix/streaming_parallel_calls_keep_the_complete_one";
-    with_deepseek_truncation_cassette_result(
+    with_deepseek_cassette_result(
         "truncation_matrix/streaming_parallel_calls_keep_the_complete_one",
         |client| async move {
             let model = client.completion(MODEL);

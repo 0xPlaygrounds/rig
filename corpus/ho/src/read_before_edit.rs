@@ -1,14 +1,10 @@
-//! Refuse edits to files the agent has not read (spec `H01-read-before-edit.md`).
-//!
-//! Each agent keeps, in its saved [`ReadFiles`], the content hash of every
-//! file it last read with a successful `read`, or changed with a
-//! successful `edit` or `write`: the hashes those tools published
-//! ([`FilesRead`], [`FileChange::after`]) of the bytes they read or wrote.
-//! A Gate system judges each `edit`, and each `write` over an existing
-//! file, when it is about to run, by the file its footprint names: a file
-//! the agent never read, or one whose content changed on disk since, is
-//! refused, and the model reads why. A conversation compacted into a
-//! summary forgets what its agent read.
+//! Refuse edits to files the agent has not read. Each agent keeps, in its saved [`ReadFiles`], the
+//! content hash of every file it last read with a successful `read`, or changed with a successful
+//! `edit` or `write`: the hashes those tools published ([`FilesRead`], [`FileChange::after`]) of
+//! the bytes they read or wrote. Each `edit`, and each `write` over an existing file, is judged by
+//! the file its footprint names when it is about to run: a file the agent never read, or one whose
+//! content changed on disk since, is refused, and the model reads why. A conversation compacted
+//! into a summary forgets what its agent read.
 
 use std::collections::HashMap;
 use std::path::Path;

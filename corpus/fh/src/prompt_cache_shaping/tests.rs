@@ -196,7 +196,4 @@ fn requests_keep_their_prefix_and_breaks_are_named() {
     assert_eq!(why, "request 3: tool list changed: `lsp_hover` added");
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(CacheShapingPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(CacheShapingPlugin);

@@ -2,7 +2,7 @@ use std::sync::mpsc::Receiver;
 
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness_test_support::{
-    Collected, Ended, MemoryStore, app_on, calls, collect, first_agent, log_ended, reply,
+    Collected, Ended, MemoryStore, app_on, calls, collect, deliver, first_agent, log_ended, reply,
     run_until, scripted_models,
 };
 
@@ -51,12 +51,7 @@ fn start(store: &MemoryStore, model: &MockCompletionModel) -> Option<(App, Recei
 
 /// Asks `agent` something and runs frames until its turn ended.
 fn ask(app: &mut App, wakes: &Receiver<()>, agent: Entity, text: &str) {
-    let ended = app.world().resource::<Ended>().0.len();
-    app.world_mut()
-        .trigger(Deliver::new(agent, text, DeliveryMode::Queue));
-    run_until(app, wakes, |world| {
-        world.resource::<Ended>().0.len() > ended
-    });
+    deliver(app, wakes, Deliver::new(agent, text, DeliveryMode::Queue));
 }
 
 /// Types `line` to `agent` and returns the notices it wrote, and why the

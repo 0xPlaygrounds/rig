@@ -175,21 +175,12 @@ impl AgentBuilder {
 
     /// Retrieve `samples` documents from `index` for every prompt and add
     /// them as context. The index is registered in the agent's table.
-    pub fn dynamic_context<I, F>(mut self, samples: usize, index: I) -> Self
+    pub fn dynamic_context<I, F>(self, samples: usize, index: I) -> Self
     where
         I: VectorStoreIndex<Filter = F> + 'static,
         F: DynamicSearchFilter + WasmCompatSend + WasmCompatSync + 'static,
     {
-        let n = self.retrieval_indexes;
-        self.retrieval_indexes += 1;
-        let suffix = format!("retrieve:context#{n}");
-        let key = Arc::new(OnceLock::new());
-        self.pending.push((
-            suffix.clone(),
-            ErasedHandler::new(RetrieveAdapter::new(index)),
-        ));
-        self.dynamic_contexts.push((suffix, key.clone()));
-        self.add_hook(DynamicContext { samples, key })
+        self.dynamic_context_handler(samples, RetrieveAdapter::new(index))
     }
 
     /// Retrieve `samples` documents through a retrieval-family handler registered
@@ -365,17 +356,13 @@ impl AgentBuilder {
     /// Register another model the run can select by label
     /// (`ModelSelectionAction::select(label)`, `using_model(label)`).
     pub fn model_route(
-        mut self,
+        self,
         label: impl Into<ModelRef>,
         model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
     ) -> Self {
         let label = label.into();
-        let model = model.into();
-        let suffix = rig_core::effect::model_key(label.as_str()).to_string();
-        self.routes.push(label.as_str().to_owned());
-        self.pending
-            .push((suffix, ErasedHandler::new(ModelAdapter::new(label, model))));
-        self
+        let adapter = ModelAdapter::new(label.clone(), model);
+        self.model_route_handler(label, adapter)
     }
 
     /// Register a completion-family handler under the route key for `label`.

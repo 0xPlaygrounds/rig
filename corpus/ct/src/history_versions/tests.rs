@@ -5,7 +5,7 @@ use rig_core::test_utils::MockCompletionModel;
 use rig_harness::settings::Settings;
 use rig_harness_test_support::{
     Collected, Ended, MemoryStore, app_on, collect, connect, first_agent, log_ended, reply,
-    run_until,
+    run_until, say,
 };
 
 use super::*;
@@ -47,16 +47,6 @@ fn drop_turn(In(args): In<CommandArgs>, mut agents: Query<&mut Conversation>) {
     };
     let at = n.saturating_sub(1) * 2;
     conversation.splice(at..at + 2, [], Author::plugin("drop-turn"));
-}
-
-/// Sends `text` and runs frames until its turn ended.
-fn ask(app: &mut App, wakes: &Receiver<()>, agent: Entity, text: &str) {
-    let ended = app.world().resource::<Ended>().0.len();
-    app.world_mut()
-        .trigger(Deliver::new(agent, text, DeliveryMode::Steer));
-    run_until(app, wakes, |world| {
-        world.resource::<Ended>().0.len() > ended
-    });
 }
 
 /// Runs `/line` and the frame after it.
@@ -111,7 +101,7 @@ fn rewrites_are_logged_restored_and_undone() {
     let model = MockCompletionModel::from_stream_turns(script);
     let (mut app, wakes, agent) = start(&store, &model, "");
     for question in ["Q1", "Q2", "Q3", "Q4 TOKEN4", "Q5"] {
-        ask(&mut app, &wakes, agent, question);
+        say(&mut app, &wakes, agent, question);
     }
 
     // A command drops turn 2, then a compaction condenses turns 1 and 3.
@@ -132,7 +122,7 @@ fn rewrites_are_logged_restored_and_undone() {
             });
         compacted && world.get::<ActiveTurn>(agent).is_none()
     });
-    ask(&mut app, &wakes, agent, "Q6");
+    say(&mut app, &wakes, agent, "Q6");
     let compacted = owned(&["SUMMARY", "Q4 TOKEN4", "A4", "Q5", "A5", "Q6", "A6"]);
     assert_eq!(texts(&app, agent), compacted);
 

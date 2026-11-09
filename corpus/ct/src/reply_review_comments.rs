@@ -1,23 +1,19 @@
-//! CT-08: review comments on the agent's earlier replies, like a pull
-//! request's.
+//! Review comments on the agent's earlier replies, like a pull request's. `/comment` opens
+//! a picker over the agent's replies (the ones still in its conversation, and the ones an
+//! edit took out, read back from the session's log), then a picker over the chosen reply's
+//! lines (tick a range, or type a passage), then asks for the comment. The terminal view's
+//! selected reply (Alt+Up/Down) skips the first picker. Each comment is a draft until sent;
+//! `/comments` lists the drafts to edit or delete them, and `/comments send` sends them
+//! alone.
 //!
-//! `/comment` opens a picker over the agent's replies (the ones still in
-//! its conversation, and the ones an edit took out, read back from the
-//! session's log), then a picker over the chosen reply's lines (tick a
-//! range, or type a passage), then asks for the comment. The terminal view's
-//! selected reply (Alt+Up/Down) skips the first picker. Each comment is a
-//! draft until sent; `/comments` lists the drafts to edit or delete them,
-//! and `/comments send` sends them alone.
+//! The next message the user sends carries every draft, as one block before the user's
+//! text: each comment with its quote, the turn of the reply it is about, and a note when
+//! that reply is no longer in the agent's conversation (compacted or removed). Once the
+//! message is delivered, the drafts are marked sent.
 //!
-//! The next message the user sends carries every draft, as one block
-//! before the user's text: each comment with its quote, the turn of the
-//! reply it is about, and a note when that reply is no longer in the
-//! agent's conversation (compacted or removed). Once the message is
-//! delivered, the drafts are marked sent.
-//!
-//! Each comment is kept as two asides after the reply it is about: its data
-//! (kind [`COMMENT`]) and a [`Note`] the fronts draw next to the reply,
-//! marked draft or sent. Asides are saved with the session.
+//! Each comment is kept as two asides after the reply it is about: its data (kind
+//! [`COMMENT`]) and a [`Note`] the fronts draw next to the reply, marked draft or sent.
+//! Asides are saved with the session.
 
 use std::collections::HashSet;
 

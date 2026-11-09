@@ -9,7 +9,7 @@ use rig_harness::rig_core::tool::ToolOutput;
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     Collected, Ended, app_in, app_on, calls, collect, commit_message, connect, first_agent,
-    log_ended, reply, run_until, scratch_home, scripted_models,
+    log_ended, reply, run_until, say, scratch_home, scripted_models,
 };
 
 use super::*;
@@ -108,12 +108,7 @@ fn compact_writes_the_template_keeps_the_users_words_and_builds_on_the_last_summ
         model: model_name,
         kind: ChoiceKind::ForThisRun,
     });
-    let deliver = |app: &mut App, text: String| {
-        let before = app.world().resource::<Ended>().0.len();
-        let message = Deliver::new(agent, text, DeliveryMode::Steer);
-        app.world_mut().trigger(message);
-        until_ended(app, &wakes, before);
-    };
+    let deliver = |app: &mut App, text: String| say(app, &wakes, agent, &text);
     let compact = |app: &mut App, line: &str| {
         let before = app.world().resource::<Ended>().0.len();
         app.world_mut().trigger(RunCommand::new(agent, line));
@@ -252,7 +247,4 @@ fn a_summary_without_its_headings_twice_falls_back_and_the_turn_goes_on() {
     );
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(StructuredCompactionPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(StructuredCompactionPlugin);

@@ -1155,7 +1155,7 @@ fn serde_round_trip_keeps_the_previous_model() {
     );
 }
 
-/// rig#2322: a reasoning-only turn the provider cut short fails the run
+/// A reasoning-only turn the provider cut short fails the run
 /// *before* anything is committed — the reasoning is not history.
 #[test]
 fn a_truncated_reasoning_only_turn_commits_nothing() {

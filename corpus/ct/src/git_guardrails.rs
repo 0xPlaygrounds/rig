@@ -1,11 +1,10 @@
-//! CT-02: git guardrails. Every `shell` call is read for the git commands
-//! it would run, through chains, subshells, substitutions, `sh -c`, `cd`,
-//! `git -C` and the repository's aliases, and each is judged against the
-//! repository it would run in before the call starts. A rule set to `deny`
-//! refuses the call, naming the rule and a safer way; `ask` wants the
-//! user's approval, showing the rule and what would be lost (refused when
-//! nobody can answer); `allow` lets it run. The rules and the protected
-//! branches are in `RIG_HOME/git-guard.toml`:
+//! Git guardrails. Every `shell` call is read for the git commands it would run, through
+//! chains, subshells, substitutions, `sh -c`, `cd`, `git -C` and the repository's aliases,
+//! and each is judged against the repository it would run in before the call starts. A rule
+//! set to `deny` refuses the call, naming the rule and a safer way; `ask` wants the user's
+//! approval, showing the rule and what would be lost (refused when nobody can answer);
+//! `allow` lets it run. The rules and the protected branches are in
+//! `RIG_HOME/git-guard.toml`:
 //!
 //! ```toml
 //! [rules]

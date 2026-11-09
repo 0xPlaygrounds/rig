@@ -10,7 +10,7 @@ use crate::client::env::{self, EnvError};
 use crate::error::EncodeError;
 use crate::error::ProviderError;
 use crate::operation::{Embedding, Rerank as RerankOp, RerankRequest};
-use crate::providers::internal::credential_header;
+use crate::providers::internal::{credential_header, set_fields};
 use crate::rerank::{RerankResponse, RerankResult};
 use crate::wire::{
     Body, Capabilities, Descriptor, DocumentDecoder, Encoded, Framing, Mode, Secret, Wire,
@@ -170,21 +170,19 @@ impl Wire for Embeddings {
     }
 
     fn encode(&self, texts: Vec<String>, _mode: Mode) -> Result<Encoded, EncodeError> {
-        let mut body = serde_json::Map::new();
-        body.insert("model".to_owned(), serde_json::json!(self.model));
-        body.insert("input".to_owned(), serde_json::Value::from(texts));
-        if let Some(input_type) = &self.input_type {
-            body.insert("input_type".to_owned(), serde_json::json!(input_type));
-        }
-        if let Some(truncation) = self.truncation {
-            body.insert("truncation".to_owned(), serde_json::json!(truncation));
-        }
-        if let Some(output_dimension) = self.output_dimension {
-            body.insert(
-                "output_dimension".to_owned(),
-                serde_json::json!(output_dimension),
-            );
-        }
+        let body = set_fields([
+            ("model", Some(serde_json::json!(self.model))),
+            ("input", Some(serde_json::Value::from(texts))),
+            (
+                "input_type",
+                self.input_type.as_ref().map(|v| serde_json::json!(v)),
+            ),
+            ("truncation", self.truncation.map(serde_json::Value::from)),
+            (
+                "output_dimension",
+                self.output_dimension.map(|v| serde_json::json!(v)),
+            ),
+        ]);
         let request = self
             .provider
             .post("/embeddings")
@@ -197,12 +195,7 @@ impl Wire for Embeddings {
         DocumentDecoder::new(
             |body| crate::providers::internal::wire::classify_marker_keyed_frame(body, &["data"]),
             |reply| {
-                // Voyage reports one count; every token of an embedding is input.
-                let usage = crate::completion::Usage {
-                    input_tokens: Some(reply.usage.total_tokens as u64),
-                    total_tokens: Some(reply.usage.total_tokens as u64),
-                    ..Default::default()
-                };
+                let usage = input_usage(reply.usage.total_tokens);
                 let vectors = reply.data.into_iter().map(|embedding| embedding.embedding);
                 Ok(crate::embeddings::EmbeddingResponse {
                     model: Some(reply.model),
@@ -266,23 +259,20 @@ impl Wire for Rerank {
     }
 
     fn encode(&self, request: RerankRequest, _mode: Mode) -> Result<Encoded, EncodeError> {
-        let mut body = serde_json::Map::new();
-        body.insert("query".to_owned(), serde_json::Value::from(request.query));
-        body.insert(
-            "documents".to_owned(),
-            serde_json::Value::from(request.documents),
-        );
-        body.insert("model".to_owned(), serde_json::json!(self.model));
-        if let Some(top_k) = self.top_k {
-            body.insert("top_k".to_owned(), serde_json::json!(top_k));
-        }
-        body.insert(
-            "return_documents".to_owned(),
-            serde_json::json!(self.return_documents),
-        );
-        if let Some(truncation) = self.truncation {
-            body.insert("truncation".to_owned(), serde_json::json!(truncation));
-        }
+        let body = set_fields([
+            ("query", Some(serde_json::Value::from(request.query))),
+            (
+                "documents",
+                Some(serde_json::Value::from(request.documents)),
+            ),
+            ("model", Some(serde_json::json!(self.model))),
+            ("top_k", self.top_k.map(serde_json::Value::from)),
+            (
+                "return_documents",
+                Some(serde_json::Value::from(self.return_documents)),
+            ),
+            ("truncation", self.truncation.map(serde_json::Value::from)),
+        ]);
         let request = self
             .provider
             .post("/rerank")
@@ -299,12 +289,7 @@ impl Wire for Rerank {
             },
             |reply| {
                 let reply = reply.map_err(ProviderError::from_provider_body)?;
-                // Voyage reports one count; every token of a rerank is input.
-                let usage = crate::completion::Usage {
-                    input_tokens: Some(reply.usage.total_tokens as u64),
-                    total_tokens: Some(reply.usage.total_tokens as u64),
-                    ..Default::default()
-                };
+                let usage = input_usage(reply.usage.total_tokens);
                 let results = reply
                     .data
                     .into_iter()
@@ -321,6 +306,16 @@ impl Wire for Rerank {
                 })
             },
         )
+    }
+}
+
+/// Voyage reports one count, and every token of an embedding or a rerank
+/// is input.
+fn input_usage(total_tokens: usize) -> crate::completion::Usage {
+    crate::completion::Usage {
+        input_tokens: Some(total_tokens as u64),
+        total_tokens: Some(total_tokens as u64),
+        ..Default::default()
     }
 }
 

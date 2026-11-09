@@ -1,35 +1,29 @@
-//! SN-25: `rig sessions prune`, a maintenance command safe for cron.
+//! `rig sessions prune`, a maintenance command safe for cron. It deletes saved sessions of
+//! `RIG_HOME` by age (`--older-than 30d` or a date), by count (`--keep-last N` per project, the
+//! newest kept) or by total size (`--max-size 2GB`, oldest first), in one project (`--project
+//! PATH`) or all of them. It never deletes a session another rig runs (its launcher holds the
+//! session's lock), nor one the user named (unless `--include-named`).
 //!
-//! `rig sessions prune` deletes saved sessions of `RIG_HOME` by age
-//! (`--older-than 30d` or a date), by count (`--keep-last N` per project,
-//! the newest kept) or by total size (`--max-size 2GB`, oldest first), in
-//! one project (`--project PATH`) or all of them. It never deletes a
-//! session another rig runs (its launcher holds the session's lock), nor
-//! one the user named (unless `--include-named`).
+//! Each session is deleted with the harness's [`DeleteSession`]: its store wherever it is kept
+//! (logs, plugins' data, listing) and its directory with the plain files beside the store
+//! (spilled output, pasted images). That delete is crash-safe: a session is marked deleting
+//! first, which hides it from listings and `--resume`, and the next start finishes it.
+//! [`SessionDeleted`] says which sessions went.
 //!
-//! The sessions are the home's saved ones, read as the session picker reads
-//! them ([`SessionEntry`]), and each is deleted with the harness's
-//! [`DeleteSession`]: its store wherever it is kept (logs,
-//! plugins' data, listing) and its directory with the plain files beside
-//! the store (spilled output, pasted images). That delete is crash-safe: a
-//! session is marked deleting first, which hides it from listings and
-//! `--resume`, and the next start finishes it. [`SessionDeleted`] says which
-//! sessions went.
-//!
-//! Without `--yes`, a run at a terminal shows the plan and asks; one whose
-//! stdin is not a terminal refuses with exit code 2. `--dry-run` only
-//! shows the plan, and `--json` prints it, or the result, as JSON
-//! ([`PruneReport`]).
+//! Without `--yes`, a run at a terminal shows the plan and asks; one whose stdin is not a
+//! terminal refuses with exit code 2. `--dry-run` only shows the plan, and `--json` prints it,
+//! or the result, as JSON ([`PruneReport`]).
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::io::{self, BufRead, Write as _};
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime};
 
 use rig_basics::session_picker::SessionEntry;
 use rig_harness::harness_protocol::SessionDir;
 use rig_harness::prelude::*;
+use rig_harness::rig_core::millis;
 use serde::Serialize;
 
 /// The command, and the front that runs it.
@@ -637,12 +631,6 @@ fn normal(path: &Path) -> PathBuf {
     fs::canonicalize(path)
         .or_else(|_| std::path::absolute(path))
         .unwrap_or_else(|_| path.to_owned())
-}
-
-/// `at` in milliseconds since the Unix epoch.
-fn millis(at: SystemTime) -> u64 {
-    let since = at.duration_since(UNIX_EPOCH).unwrap_or_default();
-    u64::try_from(since.as_millis()).unwrap_or(u64::MAX)
 }
 
 #[cfg(test)]

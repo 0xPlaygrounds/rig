@@ -1,23 +1,13 @@
-//! Spend by origin (spec `H27-spend-by-origin.md`): who spent the tokens.
+//! Spend by origin: who spent the tokens. Every model call ([`ModelRequest`]) is given an origin as
+//! it is admitted ([`SpendOrigin`]), and its reported usage is added under that origin once it
+//! settles, in [`SpendByOrigin`], saved with the session.
 //!
-//! Every model call ([`ModelRequest`]) is given an origin as it is
-//! admitted ([`SpendOrigin`]), and its reported usage is added under that
-//! origin once it settles, in [`SpendByOrigin`], saved with the session.
-//! The origin is, in this order:
+//! The origin is the first that applies: for a turn's call ([`TurnCall`]), its agent by name, a
+//! subagent as `parent › child`; for a call a plugin marked as its own ([`ProvidedBy`]), the
+//! plugin, with the call's purpose as its reason; for a call made under a tool call, the tool's
+//! plugin and the tool; else `unknown`.
 //!
-//! - a turn's call ([`TurnCall`]): its agent by name, a subagent as
-//!   `parent › child`;
-//! - a call a plugin marked as its own ([`ProvidedBy`], as the plugin guide
-//!   asks of what a plugin spawns while the app runs): the plugin, with the
-//!   call's purpose as its reason;
-//! - a call made under a tool call (its effect's `parent`): the tool's
-//!   plugin and the tool;
-//! - else `unknown`. The default plugins mark their own calls, so none of
-//!   theirs ends up there.
-//!
-//! `/spend` shows the session's table, `/spend turn` the last turn's (the
-//! calls since an agent nothing spawned last started a turn). It only
-//! reports.
+//! `/spend` shows the session's table, `/spend turn` the last turn's. It only reports.
 
 use std::collections::BTreeMap;
 

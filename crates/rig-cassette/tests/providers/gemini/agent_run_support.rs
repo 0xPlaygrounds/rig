@@ -1,7 +1,6 @@
 //! Shared fixtures for the `agent_run` cassette suites: the arithmetic tools
 //! advertised to Gemini and helpers for hand-driving the sans-IO
 //! [`AgentRun`](rig::run::AgentRun) state machine.
-#![allow(dead_code)]
 
 use std::collections::BTreeSet;
 
@@ -68,19 +67,25 @@ impl GeminiAgent {
     }
 }
 
+/// Forces tool use and a dependent chain so the model takes at least two turns.
+pub(crate) const CHAIN_PREAMBLE: &str = "You are a calculator assistant. You MUST use the provided \
+     tools for every arithmetic operation instead of computing results yourself. Perform the steps \
+     in order, using the result of each step as an input to the next. Once you have the final tool \
+     result, reply with the final numeric answer in plain text.";
+
 pub(crate) const FORCE_TOOLS_PREAMBLE: &str = "You are a calculator assistant. You MUST use the provided tools for every arithmetic operation instead of computing results yourself. Once you have all the tool results you need, reply with the final numeric answer in plain text.";
 
 #[derive(Deserialize)]
 pub(crate) struct OperationArgs {
-    x: i64,
-    y: i64,
+    pub(crate) x: i64,
+    pub(crate) y: i64,
 }
 
 #[derive(Debug, thiserror::Error)]
 #[error("math error")]
 pub(crate) struct MathError;
 
-fn operation_definition(name: &str, description: &str) -> ToolDefinition {
+pub(crate) fn operation_definition(name: &str, description: &str) -> ToolDefinition {
     ToolDefinition {
         name: rig_core::message::ToolName::new(name).expect("tool name"),
         description: description.to_string(),
@@ -143,33 +148,6 @@ impl Tool for Subtract {
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         Ok(args.x - args.y)
-    }
-}
-
-/// Alias of `add` registered alongside it so invalid tool-call repairs can
-/// rename `add` to `sum` while the recorded wire history stays coherent.
-pub(crate) struct Sum;
-
-impl Tool for Sum {
-    const NAME: &'static str = "sum";
-    type Error = MathError;
-    type Args = OperationArgs;
-    type Output = i64;
-
-    fn description(&self) -> String {
-        "Add x and y together (alias of add)".to_string()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        operation_definition(Self::NAME, "Add x and y together (alias of add)").parameters
-    }
-
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
-        Ok(args.x + args.y)
     }
 }
 
@@ -320,27 +298,4 @@ pub(crate) fn sum_completion_call_usage(calls: &[CompletionCall]) -> Usage {
         total += call.usage;
     }
     total
-}
-
-/// Assert each assistant message in `messages` records content in canonical
-/// replay order: reasoning blocks, then text, then tool calls.
-pub(crate) fn assert_canonical_assistant_order(messages: &[Message]) {
-    for message in messages {
-        let Message::Assistant(rig_core::message::AssistantMessage { content, .. }) = message
-        else {
-            continue;
-        };
-        let kind_rank = |item: &AssistantContent| match item {
-            AssistantContent::Reasoning(_) => 0_u8,
-            AssistantContent::ToolCall(_) => 2,
-            _ => 1,
-        };
-        let ranks: Vec<u8> = content.iter().map(kind_rank).collect();
-        let mut sorted = ranks.clone();
-        sorted.sort_unstable();
-        assert_eq!(
-            ranks, sorted,
-            "assistant content should be in canonical reasoning → text → tool-call order: {message:?}"
-        );
-    }
 }

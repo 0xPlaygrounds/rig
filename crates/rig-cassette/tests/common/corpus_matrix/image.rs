@@ -4,7 +4,6 @@
 //! image's bytes (or URL), media type and options verbatim in every
 //! request and in committed history, user content in its given order,
 //! the image only where the user put it, and the add tool run once.
-#![allow(dead_code, reason = "the image matrix runs on four of the six wires")]
 
 use base64::{Engine, prelude::BASE64_STANDARD};
 

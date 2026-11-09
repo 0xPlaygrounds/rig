@@ -1,36 +1,20 @@
-//! Response-shape dimensions the generation matrices do not own: reasoning,
-//! multiple candidates, log probabilities, and the finish-reason vocabulary.
+//! Response-shape dimensions the generation matrices do not own: multiple
+//! candidates, log probabilities, and the finish-reason vocabulary.
 //!
-//! **Server**: the default configuration — `unsloth/Qwen3-1.7B-GGUF` Q4_K_M,
+//! Recorded against the default server: `unsloth/Qwen3-1.7B-GGUF` Q4_K_M,
 //! `--jinja --seed 42 --temp 0 -c 4096`, `llama-server` b10964-b29c606e2.
+//! [`logprobs_survive_into_the_raw_response`] pins `logprobs` on `raw` and absent
+//! from the normalized view, and [`the_finish_reason_vocabulary_is_covered_end_to_end`]
+//! pins that all three values llama.cpp can emit are recorded somewhere in this
+//! suite.
 //!
-//! | Cell | Dimension | Pinned |
-//! | --- | --- | --- |
-//! | [`n_greater_than_one_answers_from_candidate_zero_on_both_transports`] | `n > 1` | the two transports pick the *same* candidate |
-//! | [`logprobs_survive_into_the_raw_response`] | `logprobs` | preserved on `raw`, absent from the normalized view |
-//! | [`the_finish_reason_vocabulary_is_covered_end_to_end`] | `finish_reason` | all three values llama.cpp can emit are recorded somewhere in this suite |
-//!
-//! # The reasoning cell is a parity check, not a shape check
-//!
-//! llama.cpp puts hidden reasoning in `reasoning_content`, a field OpenAI does
-//! not define. The two transports deliver it at different *granularities* —
-//! one [`Reasoning`](rig::message::Reasoning) block when blocking, a run of
-//! correlated `ReasoningDelta`s when streaming — which is rig's normal
-//! streaming shape and not a disagreement. What the cell requires is that
-//! neither transport lets it fall into the plain-text surface, which is the
-//! failure the blocking mapping's own comment says it exists to prevent.
-//!
-//! # Why `n > 1` earns a cell here
-//!
-//! Most providers in rig's matrix either reject `n > 1` or are never asked.
-//! llama.cpp accepts it and returns real, separately-indexed candidates on
-//! both transports, which makes it one of the few places the shared layer's
-//! candidate-selection rule can actually be observed. The streaming path
-//! interleaves candidates in one SSE stream distinguished only by
-//! `choices[].index`, and the shared decoder selects index 0 — "taking each
-//! chunk's first choice would concatenate every candidate into one garbled
-//! answer, while the blocking path answers the same request from candidate 0
-//! alone". This cell is that claim, measured.
+//! llama.cpp accepts `n > 1` and returns separately indexed candidates on both
+//! transports, which makes it one of the few places the shared decoder's
+//! candidate-selection rule can be observed. The streaming path interleaves
+//! candidates in one SSE stream distinguished only by `choices[].index`, so
+//! [`n_greater_than_one_answers_from_candidate_zero_on_both_transports`] requires
+//! the decoder to select index 0 rather than concatenate every candidate, and
+//! the blocking path to answer from the same candidate.
 
 use rig::streaming::Item;
 use serde_json::{Value, json};
@@ -250,10 +234,8 @@ async fn logprobs_survive_into_the_raw_response() {
 /// through this provider. The dimension is therefore *closed*, and this cell
 /// says so with evidence rather than by reading the source.
 ///
-/// It sweeps the corpus for **every** `finish_reason` value present, not just
-/// the three it expects — an earlier version scanned for the three by name,
-/// which made `seen ⊆ expected` true by construction and left the "a fourth
-/// value would fail this" half of the claim unenforceable.
+/// It sweeps the corpus for every `finish_reason` value present, not just the
+/// three it expects, so a fourth value fails it.
 #[test]
 fn the_finish_reason_vocabulary_is_covered_end_to_end() {
     use std::collections::BTreeSet;

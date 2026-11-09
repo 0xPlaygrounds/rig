@@ -1,9 +1,7 @@
-use std::path::PathBuf;
-
 use rig_basics::coding_tools::{EditTool, ReadTool, WriteTool};
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness_test_support::{
-    Ended, MemoryStore, app_on, calls, connect, log_ended, reply, run_until,
+    Ended, MemoryStore, app_on, calls, connect, log_ended, reply, run_until, scratch_dir,
 };
 use serde_json::json;
 
@@ -53,11 +51,7 @@ fn edit(id: &str, path: &str, old: &str, new: &str) -> Vec<rig_core::test_utils:
 
 #[test]
 fn edits_need_a_read_of_the_file_as_it_is() {
-    let dir: PathBuf = std::env::current_exe()
-        .unwrap_or_default()
-        .with_file_name("ho-read-before-edit-files");
-    std::fs::remove_dir_all(&dir).ok();
-    assert!(std::fs::create_dir_all(&dir).is_ok());
+    let dir = scratch_dir("ho-read-before-edit-files");
     // The refusals name the file as the tools resolve it.
     let dir = std::fs::canonicalize(&dir).unwrap_or(dir);
     let file = dir.join("a.txt");
@@ -137,7 +131,4 @@ fn edits_need_a_read_of_the_file_as_it_is() {
     assert_eq!(remembered(second.world()), Some(0));
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(ReadBeforeEditPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(ReadBeforeEditPlugin);

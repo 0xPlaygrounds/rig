@@ -50,7 +50,7 @@ async fn extras_from_a_unary_recording() {
 /// citations and search results included.
 #[tokio::test]
 async fn extras_read_alike_from_a_recorded_stream() {
-    use crate::test_utils::provider_extensions::{recorded_stream, streamed_reply_of};
+    use crate::test_utils::provider_extensions::{recorded_reply, streamed_reply_of};
 
     let wire =
         || OpenAIConfig::with_key(&PERPLEXITY, "key").chat(crate::providers::perplexity::SONAR);
@@ -63,7 +63,7 @@ async fn extras_read_alike_from_a_recorded_stream() {
     let streamed = read(
         streamed_reply_of(
             wire(),
-            recorded_stream(
+            recorded_reply(
                 "perplexity",
                 "raw_stream_capture_matrix/stream_raw_exposes_terminal_usage_and_object",
                 0,

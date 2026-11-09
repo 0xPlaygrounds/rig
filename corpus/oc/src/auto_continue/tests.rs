@@ -9,7 +9,7 @@ use rig_core::operation::Finish;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness_test_support::{
     Collected, Ended, MemoryStore, ToolOutputs, app_on, calls, collect, log_ended,
-    log_tool_outputs, reply, run_until, scripted_models, tui_view,
+    log_tool_outputs, reply, run_until, scratch_dir, scripted_models, tui_view,
 };
 use rig_tui::{MainPane, ShowAgent, TuiTestScreen};
 use serde_json::json;
@@ -114,15 +114,6 @@ fn text_of(answer: &AssistantMessage) -> String {
         .collect()
 }
 
-/// A scratch project directory beside the test binary.
-fn project(name: &str) -> PathBuf {
-    let exe = std::env::current_exe().unwrap_or_default();
-    let root = exe.with_file_name(name);
-    std::fs::remove_dir_all(&root).ok();
-    std::fs::create_dir_all(&root).ok();
-    root
-}
-
 #[test]
 fn a_cut_reply_is_continued_and_joined_at_the_seam() {
     let model = MockCompletionModel::from_stream_turns([
@@ -132,7 +123,7 @@ fn a_cut_reply_is_continued_and_joined_at_the_seam() {
             end(FinishReason::Stop, 130, 10),
         ],
     ]);
-    let (mut app, agent) = run_turn(&model, project("auto-continue-text"), "Steps?");
+    let (mut app, agent) = run_turn(&model, scratch_dir("auto-continue-text"), "Steps?");
 
     let requests = model.requests();
     let second = format!("{:?}", requests.get(1));
@@ -187,7 +178,7 @@ fn a_cut_write_is_never_run_and_asked_for_again() {
         ),
         reply("Wrote big.txt."),
     ]);
-    let root = project("auto-continue-write");
+    let root = scratch_dir("auto-continue-write");
     let (app, agent) = run_turn(&model, root.clone(), "Write big.txt.");
 
     let written = std::fs::read_to_string(root.join("big.txt")).unwrap_or_default();
@@ -238,7 +229,7 @@ fn a_stop_during_a_continuation_keeps_the_calls_it_carried_never_run() {
         ],
         reply("never sent"),
     ]);
-    let root = project("auto-continue-stop");
+    let root = scratch_dir("auto-continue-stop");
     let (mut app, wakes, agent) = start_turn(&model, root.clone(), "Write a.txt.", |app| {
         app.add_systems(AgentPass, hold_continuations.in_set(Stage::Gate));
     });
@@ -274,7 +265,7 @@ fn a_reply_cut_too_often_is_kept_with_a_notice() {
     let model = MockCompletionModel::from_stream_turns(
         ["alpha ", "bravo ", "charlie ", "delta "].map(cut_text),
     );
-    let (app, agent) = run_turn(&model, project("auto-continue-limit"), "Go on.");
+    let (app, agent) = run_turn(&model, scratch_dir("auto-continue-limit"), "Go on.");
 
     assert_eq!(model.request_count(), 4);
     let texts: Vec<String> = answers(app.world(), agent).iter().map(text_of).collect();
@@ -285,7 +276,4 @@ fn a_reply_cut_too_often_is_kept_with_a_notice() {
     assert_eq!(marks(app.world()), [Some(6), Some(12), Some(20)]);
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(AutoContinuePlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(AutoContinuePlugin);

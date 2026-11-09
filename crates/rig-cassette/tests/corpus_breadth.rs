@@ -1,44 +1,11 @@
 //! Matrix N: provider breadth for the pass-2 shapes.
 //!
-//! Matrices F–J were recorded on the anthropic wire; a gemini or openai
-//! row exists here for a pass-2 shape only where the wire changes the
-//! record: the output tool's call under gemini's minted `tool-<n>` ids
-//! and openai's dual ids, a delta stop on each wire's stream, a cancelled
-//! tool dispatch, a host's custom note beside each wire's tool-call ids,
-//! a host embed on gemini's embedding model, the prompted schema on the
-//! Responses wire.
-//!
-//! # Dimensions
-//!
-//! | axis | values recorded |
-//! |---|---|
-//! | shape | output tool · prompted schema · text-delta stop · tool dispatch cancelled · custom note at outcome · host embed |
-//! | wire | gemini (id-less) · openai (dual ids) |
-//! | medium | unary · streamed with events |
-//!
-//! Full cross-product: 6 × 2 × 2 = 24. Recorded: the 11 cells below.
-//! Pruned: the ignored-call empty answer per wire (no model emits an
-//! unadvertised call; the mock's empty turn is the shape); the prompted
-//! schema on gemini and the host embed on openai (the record is the
-//! anthropic or openai record with another model name: Matrices H and I
-//! pin them); the streamed twins of the cancelled dispatch and the note
-//! (the medium changes the completion's events, not the wire's ids).
-//!
-//! # Cells
-//!
-//! | golden | producer | shape |
-//! |---|---|---|
-//! | `gemini_breadth_output_tool_unary` | gemini `corpus_breadth.rs` `output_tool_unary_…` | `[Completion]`, the output tool's call minted `tool-<n>` |
-//! | `gemini_breadth_output_tool_streamed` | `output_tool_streamed_…` | the same, events kept |
-//! | `gemini_breadth_text_delta_stop` | `text_delta_stop_…` | `[Completion(cancelled)]` |
-//! | `gemini_breadth_tool_dispatch_cancelled` | `tool_dispatch_cancelled_…` | `[Completion]`; the tool never dispatched |
-//! | `gemini_breadth_custom_at_outcome` | `custom_at_outcome_…` | `[Completion, Tool, Custom, Completion]` over a host's bus |
-//! | `gemini_breadth_embed_prompt` | `embed_prompt_…` | `[Embed, Completion]`, gemini's embedding model |
-//! | `openai_breadth_output_tool_streamed` | openai `corpus_breadth.rs` `output_tool_streamed_…` | `[Completion]`, the output tool's call with dual ids, events kept |
-//! | `openai_breadth_prompted_streamed` | `prompted_streamed_…` | `[Completion]`, events kept |
-//! | `openai_breadth_text_delta_stop` | `text_delta_stop_…` | `[Completion(cancelled)]` |
-//! | `openai_breadth_tool_dispatch_cancelled` | `tool_dispatch_cancelled_…` | `[Completion]` |
-//! | `openai_breadth_custom_at_outcome` | `custom_at_outcome_…` | `[Completion, Tool, Custom, Completion]` beside dual ids |
+//! Matrices F to J were recorded on the anthropic wire. A gemini or openai
+//! row exists here only where the wire changes the record: the output
+//! tool's call under gemini's minted `tool-<n>` ids and openai's dual ids, a
+//! delta stop on each wire's stream, a cancelled tool dispatch, a host's
+//! custom note beside each wire's tool-call ids, a host embed on gemini's
+//! embedding model, and the prompted schema on the Responses wire.
 
 use crate::corpus;
 

@@ -65,12 +65,26 @@ fn app() -> (App, Receiver<()>) {
     (app, wakes)
 }
 
-/// A `RIG_HOME` of the test's own named `name`, beside its binary, emptied.
+/// The path `name` beside the test's binary, with nothing there.
+fn removed(name: &str) -> PathBuf {
+    let path = std::env::current_exe()
+        .unwrap_or_default()
+        .with_file_name(name);
+    fs::remove_dir_all(&path).ok();
+    path
+}
+
+/// A directory of the test's own named `name`, beside its binary, emptied.
+pub fn scratch_dir(name: &str) -> PathBuf {
+    let dir = removed(name);
+    fs::create_dir_all(&dir).ok();
+    dir
+}
+
+/// A `RIG_HOME` of the test's own named `name`, beside its binary, not yet
+/// made.
 pub fn scratch_home(name: &str) -> Home {
-    let exe = std::env::current_exe().unwrap_or_default();
-    let root: PathBuf = exe.with_file_name(name);
-    fs::remove_dir_all(&root).ok();
-    Home::at(root)
+    Home::at(removed(name))
 }
 
 /// An app with a task pool on the session `id` of `home`, kept in its
@@ -122,6 +136,18 @@ pub struct Ended(pub Vec<TurnOutcome>);
 /// and `.add_observer(log_ended)`.
 pub fn log_ended(settled: On<Add<Settled>>, turns: Query<&TurnOutcome>, mut log: ResMut<Ended>) {
     log.0.extend(turns.get(settled.entity).cloned());
+}
+
+/// Holds every model call of a turn, as an approval nobody gave, so the
+/// turn keeps running: `app.add_systems(AgentPass,
+/// hold_turn_calls.in_set(Stage::Gate))`.
+pub fn hold_turn_calls(
+    calls: Query<Entity, (ReadyToStart, With<TurnCall>)>,
+    mut commands: Commands,
+) {
+    for call in &calls {
+        commands.spawn(HoldOf(call));
+    }
 }
 
 /// `model` as the catalog's DeepSeek model.
@@ -344,6 +370,28 @@ pub fn run_until(app: &mut App, wakes: &Receiver<()>, done: impl Fn(&World) -> b
         done(app.world()),
         "waited {DEADLINE:?} and the condition never held; named entities: {named:?}"
     );
+}
+
+/// Triggers `message` and runs frames until one more turn ended
+/// ([`Ended`]).
+///
+/// # Panics
+///
+/// When the app keeps no [`Ended`], or no turn ends in time ([`run_until`]).
+#[track_caller]
+pub fn deliver(app: &mut App, wakes: &Receiver<()>, message: Deliver) {
+    let ended = app.world().resource::<Ended>().0.len();
+    app.world_mut().trigger(message);
+    run_until(app, wakes, |world| {
+        world.resource::<Ended>().0.len() > ended
+    });
+}
+
+/// Sends `agent` `text` to steer its turn, or start one, and runs frames
+/// until one more turn ended, as [`deliver`] does.
+#[track_caller]
+pub fn say(app: &mut App, wakes: &Receiver<()>, agent: Entity, text: &str) {
+    deliver(app, wakes, Deliver::new(agent, text, DeliveryMode::Steer));
 }
 
 /// A model reply of `text`, then the end of the stream.

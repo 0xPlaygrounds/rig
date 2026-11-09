@@ -26,7 +26,7 @@ reads it, is that host's and every other path stays the inner workspace's:
 use std::sync::Arc;
 use rig_tools::process::Launcher;
 use rig_tools::remote::{Hosts, Remote};
-use rig_tools::workspace::Local;
+use rig_tools::workspace::{Local, Root};
 use rig_tools::Read;
 
 let koh = ["koh", "exec", "bench", "--sh"];
@@ -39,7 +39,8 @@ let hosts = Hosts::new(
     ],
 );
 // `read` of `bench:~/strata/src/lib.rs` reads that file on bench.
-let read = Read { workspace: Arc::new(hosts), ..Read::default() };
+let root = Root { workspace: Arc::new(hosts), ..Root::default() };
+let read = Read { root, ..Read::default() };
 ```
 
 Each file operation there is one short `sh` script through the transport, at most two at

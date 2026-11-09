@@ -1,27 +1,14 @@
 //! Live Mistral logprobs rejection controls.
 //!
-//! Mistral's current API reference exposes no chat-completions logprobs
-//! contract, and both accessible chat families reject the OpenAI-compatible
-//! request field with error code 3051 (`Logprobs are not enabled for this
-//! model`). The terminal-metadata matrix replaces the unsupported
-//! successful-logprobs matrix; these controls keep the live evidence for that
-//! substitution.
+//! Mistral's API documents no chat-completions logprobs contract, and both accessible chat
+//! families reject the OpenAI-compatible request field with error code 3051 (`Logprobs are not
+//! enabled for this model`). These controls keep the live evidence for testing terminal
+//! metadata in `terminal_metadata_matrix.rs` instead of successful logprobs.
 //!
-//! The space is 2 transports × 2 accessible model families. `top_logprobs` has
-//! no further reachable state once `logprobs: true` is rejected before
-//! generation, so every cell fixes it at `2` and asserts the same typed error.
-//! Each test maps to
+//! The space is transport and model (`mistral-small-latest`, `ministral-3b-latest`). The field
+//! is rejected before generation, so `top_logprobs` has no further reachable state: every cell
+//! fixes it at `2` and asserts the same typed error. Each test maps to
 //! `crates/rig-cassette/fixtures/cassettes/mistral/logprobs_rejection_matrix/<test-name>.yaml`.
-//!
-//! | dimension | values |
-//! |---|---|
-//! | transport | blocking, streaming request |
-//! | model | `mistral-small-latest`, `ministral-3b-latest` |
-//! | request | `logprobs: true`, `top_logprobs: 2` |
-//!
-//! | recorded cells | exact fixture set |
-//! |---|---|
-//! | 2 of 4 | `crates/rig-cassette/fixtures/cassettes/mistral/logprobs_rejection_matrix/{blocking,streaming}_ministral_3b.yaml` |
 
 use rig_test_support::cassette_models::OpenAiModels;
 use std::sync::{Arc, Mutex};
@@ -30,7 +17,7 @@ use anyhow::{Context, Result, bail};
 use futures::StreamExt as _;
 use serde_json::{Value, json};
 
-use super::support::with_mistral_logprobs_rejection_cassette_result;
+use super::support::with_mistral_cassette_result;
 use rig::completion::CompletionRequest;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -148,7 +135,7 @@ async fn blocking_ministral_3b() -> Result<()> {
     };
     let observed = SharedError::default();
     let capture = Arc::clone(&observed);
-    with_mistral_logprobs_rejection_cassette_result(
+    with_mistral_cassette_result(
         "logprobs_rejection_matrix/blocking_ministral_3b",
         |client| async move { run_cell(client, cell, capture).await },
     )
@@ -166,7 +153,7 @@ async fn streaming_ministral_3b() -> Result<()> {
     };
     let observed = SharedError::default();
     let capture = Arc::clone(&observed);
-    with_mistral_logprobs_rejection_cassette_result(
+    with_mistral_cassette_result(
         "logprobs_rejection_matrix/streaming_ministral_3b",
         |client| async move { run_cell(client, cell, capture).await },
     )

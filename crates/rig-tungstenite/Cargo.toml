@@ -29,12 +29,10 @@ tokio = { workspace = true, features = ["net"] }
 tokio-tungstenite = { workspace = true, features = ["connect", "handshake"] }
 
 [dev-dependencies]
-anyhow = { workspace = true }
 # Test-only: the crate's own surface speaks `rig_http::ws_client` types, so
 # neither reaches a downstream build.
 bytes = { workspace = true }
 http = { workspace = true }
-serde_json = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tokio-tungstenite = { workspace = true, features = ["handshake"] }
 

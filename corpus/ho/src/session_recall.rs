@@ -1,18 +1,14 @@
-//! Plugin corpus (held-out): H11: Recall from past sessions (spec `H11-session-recall.md`).
+//! Recall from past sessions. [`RecallPlugin`] keeps a full-text index of the past sessions under
+//! `RIG_HOME` in `RIG_HOME/recall-index`, one file per session: each message of each agent's
+//! conversation (user and assistant text, tool calls with their arguments, tool results cut short)
+//! as one document. The index is brought up to date in the background at startup and before each
+//! search, re-reading only the sessions whose logs changed; the running session is never in it.
 //!
-//! [`RecallPlugin`] keeps a full-text index of the past sessions under
-//! `RIG_HOME` in `RIG_HOME/recall-index`, one file per session: each
-//! message of each agent's conversation (user and assistant text, tool
-//! calls with their arguments, tool results cut short) as one document. The
-//! index is brought up to date in the background at startup and before
-//! each search, re-reading only the sessions whose logs changed; the
-//! running session is never in it. `recall` ranks the messages with BM25
-//! and shows each hit with ±3 messages around it, `recall_open` shows more
-//! around a hit, and `/recall <query>` offers the hits in a picker that
-//! previews each hit's conversation at the message found, the one picked
-//! going with the user's next message. What `read` returned for a
-//! `.env`-like file, and such a file attached to a message, is never
-//! indexed.
+//! `recall` ranks the messages with BM25 and shows each hit with ±3 messages around it,
+//! `recall_open` shows more around a hit, and `/recall <query>` offers the hits in a picker that
+//! previews each hit's conversation at the message found, the one picked going with the user's next
+//! message. What `read` returned for a `.env`-like file, and such a file attached to a message, is
+//! never indexed.
 
 use std::collections::{HashMap, HashSet};
 use std::fs;

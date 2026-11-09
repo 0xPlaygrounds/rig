@@ -128,7 +128,7 @@ async fn extras_from_a_unary_recording() {
 /// answer times itself.
 #[tokio::test]
 async fn extras_read_alike_from_a_recorded_stream() {
-    use crate::test_utils::provider_extensions::{recorded_stream, streamed_reply_of};
+    use crate::test_utils::provider_extensions::{recorded_reply, streamed_reply_of};
 
     const SCENARIO: &str = "agent_tool_sessions/parallel_tool_calls_single_turn_{}";
     let read = |reply: crate::completion::CompletionResponse| {
@@ -140,7 +140,7 @@ async fn extras_read_alike_from_a_recorded_stream() {
     let streamed = read(
         streamed_reply_of(
             chat_wire("model"),
-            recorded_stream("groq", &SCENARIO.replace("{}", "streaming"), 0),
+            recorded_reply("groq", &SCENARIO.replace("{}", "streaming"), 0),
         )
         .await,
     );

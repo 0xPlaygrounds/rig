@@ -2,7 +2,6 @@
 
 use std::fmt;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use regex::{Regex, RegexBuilder};
 use rig_core::completion::ToolAnnotations;
@@ -14,7 +13,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize, Serializer};
 
 use crate::fs::{listed, shown, unread};
-use crate::workspace::{Listing, Local, Observation, Workspace};
+use crate::workspace::{Listing, Observation, Root, Workspace};
 use crate::{MAX_FILE_BYTES, Source, blocking, excerpt, shell_path};
 
 /// Most matches a search returns.
@@ -30,28 +29,12 @@ const MAX_LINE: usize = 300;
 /// starts with `~`.
 /// Publishes what it found ([`SearchHits`]) and the files it found matches
 /// in ([`FilesRead`]), by their [resolved](Workspace) paths.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Search {
-    /// Where the files are searched.
-    pub workspace: Arc<dyn Workspace>,
-    /// The directory searched, and a relative path is searched from;
-    /// `None` is the workspace's working directory. Hits of a relative
-    /// path are shown, and published, by their paths below it.
-    pub base: Option<PathBuf>,
-    /// Whether a path that resolves outside `base` is refused, before
-    /// anything is searched.
-    pub confine: bool,
-}
-
-impl Default for Search {
-    /// Searches this machine's files, from this process's working directory.
-    fn default() -> Self {
-        Self {
-            workspace: Arc::new(Local),
-            base: None,
-            confine: false,
-        }
-    }
+    /// Where the files are; its base is the directory searched by default,
+    /// and hits of a relative path are shown, and published, by their paths
+    /// below it.
+    pub root: Root,
 }
 
 /// Arguments of [`Search`].
@@ -229,8 +212,7 @@ impl Tool for Search {
 
     fn footprint(&self, args: &SearchArgs) -> Touches {
         Touches::Reads(Scope::Paths(vec![
-            self.workspace
-                .resolve(self.base.as_deref(), args.path.as_deref().unwrap_or(".")),
+            self.root.resolve(args.path.as_deref().unwrap_or(".")),
         ]))
     }
 
@@ -240,18 +222,17 @@ impl Tool for Search {
         mut args: SearchArgs,
     ) -> Result<String, ToolExecutionError> {
         let path = args.path.as_deref().unwrap_or(".");
-        self.workspace
-            .place(self.base.as_deref(), self.confine, path)?;
-        let joined = self.workspace.join(
-            self.base.as_deref().unwrap_or(Path::new("")),
+        self.root.place(path)?;
+        let joined = self.root.workspace.join(
+            self.root.base.as_deref().unwrap_or(Path::new("")),
             Path::new(path),
         );
         let given = Path::new(path);
         let base = (given.is_relative() && !given.starts_with("~"))
-            .then(|| self.base.clone())
+            .then(|| self.root.base.clone())
             .flatten();
         args.path = Some(joined.to_string_lossy().into_owned());
-        let workspace = self.workspace.clone();
+        let workspace = self.root.workspace.clone();
         let mut found = blocking(move || find(&*workspace, &args)).await?;
         if let Some(base) = &base {
             let paths = found.hits.iter_mut().map(|hit| &mut hit.path);

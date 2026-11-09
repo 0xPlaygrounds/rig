@@ -1,29 +1,16 @@
-//! OC-22: continue replies cut off by the output limit (one-conversation
-//! fresh held-out spec `22-auto-continue.md`).
+//! Continues replies cut off by the output limit. A turn's model reply whose provider says it
+//! stopped at the output-token limit ([`FinishReason::Length`]) never reaches the conversation, and
+//! nothing it called runs yet: the plugin keeps its text and its complete tool calls in a
+//! [`Continuing`] marker and sends the call again ([`resend`]). The new request carries the partial
+//! reply, as an unfinished assistant message where the catalog says the model continues one
+//! ([`Compat::prefill`]), else followed by a short user note asking to continue or to issue the cut
+//! calls ([`CompletionResponse::unfinished_calls`]) again.
 //!
-//! A turn's model reply whose provider says it stopped at the output-token
-//! limit ([`FinishReason::Length`]) is taken over in Review before the
-//! kernel commits it: the plugin keeps its text and its complete tool
-//! calls in a [`Continuing`] marker and sends the call again ([`resend`]),
-//! so the cut reply never reaches the conversation and nothing it called
-//! runs yet. The new call is built from the conversation as usual; in
-//! Prepare the plugin adds the partial reply to its `history`, as an
-//! unfinished assistant message where the catalog says the model continues
-//! one ([`Compat::prefill`]), else followed by a short user note asking to
-//! continue (or to issue the calls the provider cut
-//! ([`CompletionResponse::unfinished_calls`]) again, a `write` in several
-//! edits). The new call's [`Partial`] starts with the text so far, so the
-//! view keeps the one reply growing, a dim "continued" [`TextMark`] at
-//! each seam. When a reply ends without the limit,
-//! the plugin joins the text so far in front of its text in Review, the
-//! words the model repeated at the seam taken out, and the kept calls
-//! after it, so the conversation gets one assistant message. Each
-//! request's usage counts for the turn as every model call's does
-//! (`rig_basics::telemetry`'s `TurnUsage`). Once the joined reply is committed,
-//! its marks point at the saved message's text. After `max_continuations`,
-//! or when its turn is ending, a cut reply is kept as it is, its cut calls
-//! dropped, with a notice. A provider that reports no finish reason is
-//! never continued.
+//! The view keeps the one reply growing, with a dim "continued" [`TextMark`] at each seam. When a
+//! reply ends without the limit, the text so far, without the words the model repeated at the seam,
+//! and the kept calls are joined into one assistant message. Each request's usage counts for the
+//! turn. After `max_continuations`, or when its turn is ending, a cut reply is kept as it is, its
+//! cut calls dropped, with a notice. A provider that reports no finish reason is never continued.
 //!
 //! [`Compat::prefill`]: rig_harness::rig_core::catalog::Compat::prefill
 

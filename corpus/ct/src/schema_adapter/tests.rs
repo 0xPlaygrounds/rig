@@ -333,7 +333,4 @@ fn few_tools_sends_the_always_and_the_recent_ones_and_names_the_rest() {
     );
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(SchemaAdapterPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(SchemaAdapterPlugin);

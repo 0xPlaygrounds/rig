@@ -723,6 +723,13 @@ fn marked(id: i32, ledger: &Path) -> bool {
 /// `program`, without the plugins' secrets in its environment.
 fn child(program: &str) -> std::process::Command {
     let mut command = std::process::Command::new(program);
+    without_secrets(&mut command);
+    command
+}
+
+/// Removes every [`secret_variables`] name from `command`'s environment,
+/// so a child process the user did not give a secret to never sees one.
+pub fn without_secrets(command: &mut std::process::Command) -> &mut std::process::Command {
     for secret in secret_variables() {
         command.env_remove(secret);
     }
@@ -1198,7 +1205,6 @@ pub struct AgentDescription {
 /// A plugin's command, `rig <name> <usage>`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DescribedCommand {
-    /// Its name.
     pub name: String,
     /// What its arguments are, such as `<tool> [path]`; may be empty.
     pub usage: String,
@@ -1214,7 +1220,6 @@ pub struct DescribedCommand {
 /// A plugin's option, `--name` or `--name VALUE`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DescribedFlag {
-    /// Its name.
     pub name: String,
     /// What its value is, such as `ADDR`, when it takes one.
     pub value: Option<String>,
@@ -1226,7 +1231,6 @@ pub struct DescribedFlag {
 /// [`secret_variable`] of its name.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DescribedSecret {
-    /// Its name.
     pub name: String,
     /// What to ask for.
     pub help: String,

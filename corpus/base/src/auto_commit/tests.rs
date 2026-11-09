@@ -104,7 +104,4 @@ fn a_turn_that_writes_a_file_is_committed_with_the_model_subject_and_undone() {
     fs::remove_dir_all(&dir).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(AutoCommitPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(AutoCommitPlugin);

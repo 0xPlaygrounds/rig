@@ -190,7 +190,7 @@ async fn registry_copilot_preserves_explicit_configuration_after_reload() {
     assert_eq!(body["model"], super::super::GPT_4O);
 }
 
-/// #2937: a model the catalogue lists on the Responses API routes there
+/// A model the catalogue lists on the Responses API routes there
 /// whatever its name, as `gpt-5.5` does, which Copilot serves only on
 /// `/responses`; the name check routes a Codex model the catalogue does
 /// not route, and everything else stays on Chat Completions.

@@ -1,7 +1,6 @@
 //! Deterministic, side-effect-free checkpoint programs. Tokens force four
 //! dependent tool turns; the large result is generated from its arguments
 //! alone, so replaying a run needs no hidden fixture state.
-#![allow(dead_code, reason = "checkpoint cells run on five provider columns")]
 
 use rig_core::effect::EffectKind;
 
@@ -365,12 +364,6 @@ where
 /// the strict matcher refuses it.
 pub(crate) async fn assert_large_request_rejected(provider: &'static str, scenario: &'static str) {
     assert_request_body_rejected(provider, scenario, false).await;
-}
-
-/// Mutate the first actual tool-result continuation in the streamed loop.
-/// This exercises the matcher alone.
-pub(crate) async fn assert_stream_request_rejected(provider: &'static str, scenario: &'static str) {
-    assert_request_body_rejected(provider, scenario, true).await;
 }
 
 async fn assert_request_body_rejected(

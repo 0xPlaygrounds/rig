@@ -14,7 +14,7 @@
 //! - [`CompactionPolicy`], [`apply_summary`], [`undo_summary`]: compacting a long conversation.
 //! - [`load`], [`save`], [`Session`], [`Writer`]: saving and resuming, in the one format
 //!   [`FORMAT`]. Reading is strict: a session of another format, or that does not read whole,
-//!   is refused and nothing is written, unless [`migration`] brings it to the format first.
+//!   is refused and nothing is written.
 //!   [`load_async`] and [`save_async`] keep a conversation
 //!   in any [`AsyncStore`], such as a database or IndexedDB.
 //! - [`history`], [`as_of`]: how a conversation got where it is.
@@ -57,7 +57,6 @@ mod fork;
 mod format;
 mod listing;
 mod meta;
-pub mod migration;
 pub mod recent;
 mod rewrite;
 mod saved;
@@ -66,7 +65,7 @@ mod store;
 mod tokens;
 mod writer;
 
-pub use blobs::{BLOBS, load_images, store_images};
+pub use blobs::BLOBS;
 pub use compaction::{
     AFTER_OVERFLOW, COMPACTED, ClearPlan, ClearToolOutputs, Cleared, CompactReason, Compacted,
     CompactionPolicy, NearWindow, Summarized, Summarizer, SummaryCut, SummaryError, SummaryLimits,
@@ -81,7 +80,6 @@ pub use listing::read_conversation;
 pub use meta::{META, SessionMeta, excerpt, title_of};
 pub use rewrite::{
     Messages, Place, Rewrite, Rewritten, RewrittenLog, Strings, map_strings, rewrite, rewrite_file,
-    rewrite_value,
 };
 pub use saved::{CURRENT, MODEL, TITLE};
 pub use session::{

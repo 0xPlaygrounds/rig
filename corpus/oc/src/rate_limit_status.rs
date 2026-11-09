@@ -1,22 +1,16 @@
-//! OC-20: the provider quota status item.
+//! A status item for provider quotas. The plugin wraps the HTTP client every model is reached
+//! through ([`Connector::wrap_http`]) and reads the rate-limit headers of each reply to a model
+//! call (OpenAI's and Groq's `x-ratelimit-*-requests|tokens`, Anthropic's `anthropic-ratelimit-*`,
+//! OpenRouter's `x-ratelimit-*` and the IETF draft's `ratelimit-*`), keyed by the call's effect id
+//! from its [`Serving`]. When the call's [`Outcome`] arrives, its reading becomes the latest
+//! [`Quota`] of the provider it was [`SentTo`] and the key it was sent with; a 429 marks the quota
+//! limited until the wait the provider asked for. The plugin never sends a request of its own.
 //!
-//! The plugin wraps the HTTP client every model is reached through
-//! ([`Connector::wrap_http`]) and reads the rate-limit headers of each reply
-//! to a model call (OpenAI's and Groq's `x-ratelimit-*-requests|tokens`,
-//! Anthropic's `anthropic-ratelimit-*`, OpenRouter's `x-ratelimit-*` and the
-//! IETF draft's `ratelimit-*`), keyed by the call's effect id from its
-//! [`Serving`]. When the call's [`Outcome`] arrives, its reading becomes the
-//! latest [`Quota`] of the provider it was [`SentTo`] and the key it was
-//! sent with; a 429 marks the quota limited until the wait the provider
-//! asked for (rig-core's `ErrorReport::retry_after`). The plugin never sends
-//! a request of its own.
-//!
-//! Each agent's status item shows its model's provider's latest quota,
-//! `req 42/50 · tok 18k/40k · resets 34s`, in the tone of the tighter
-//! allowance (yellow under 25 % left, red under 5 % or after a 429), or
-//! `limited · retry in 12s` counting down; it is hidden for a provider
-//! that sent no such headers. `/quota` lists every provider and key seen
-//! this session with their last values and when they came.
+//! Each agent's status item shows its model's provider's latest quota, `req 42/50 · tok 18k/40k ·
+//! resets 34s`, in the tone of the tighter allowance (yellow under 25 % left, red under 5 % or
+//! after a 429), or `limited · retry in 12s` counting down. It is hidden for a provider that sent
+//! no such headers. `/quota` lists every provider and key seen this session with their last values
+//! and when they came.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};

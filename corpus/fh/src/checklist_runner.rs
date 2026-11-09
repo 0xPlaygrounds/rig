@@ -1,25 +1,18 @@
-//! Runs a markdown checklist as tasks: `/run-plan PLAN.md [--jobs N]`
-//! does each unchecked top-level `- [ ]` item of the plan in a one-job
-//! helper agent of its own, at most N at once (2 when not given), in the
-//! order written and as `(after: 2, 3)`, `(after: "title prefix")` and
-//! `(parallel)` say, and ticks the item in the file as it finishes.
+//! Runs a markdown checklist as tasks: `/run-plan PLAN.md [--jobs N]` does each unchecked top-level
+//! `- [ ]` item of the plan in a one-job helper agent of its own, at most N at once (2 when not
+//! given), in the order written and as `(after: 2, 3)`, `(after: "title prefix")` and `(parallel)`
+//! say, and ticks the item in the file as it finishes.
 //!
-//! A run is a [`PlanRun`] entity: the plan's items and where each stands
-//! ([`ItemState`]). Each item is asked for as a [`SpawnSubagent`] helper
-//! [`ForAgent`] the agent that typed the command, briefed with the text
-//! above the checklist, the item and its nested lines; once spawned it is
-//! a [`PlanItemAgent`] and gets the `fail_item` tool, which it calls when
-//! it cannot do the item. Its turn's end settles the item: `- [x]` with
-//! the first line of its answer under it as `> ..`, or `- [!]` with the
-//! reason, and the items that wait for it with `(after: ..)` are blocked.
-//! The file is read again for each mark, so the user's edits to its other
-//! lines stay, and it is the run's only record: a second `/run-plan` runs
-//! the items still `[ ]`, and offers to run the `[!]` ones again.
+//! Each item runs in a [`SpawnSubagent`] helper briefed with the text above the checklist, the item
+//! and its nested lines. It gets the `fail_item` tool for when it cannot do the item. Its turn's
+//! end marks the item `- [x]` with the first line of its answer under it as `> ..`, or `- [!]` with
+//! the reason, and blocks the items that wait for it. The file is read again for each mark, so the
+//! user's edits to its other lines stay. The file is the run's only record: a second `/run-plan`
+//! runs the items still `[ ]`, and offers to run the `[!]` ones again.
 //!
-//! `/run-plan stop` lets the running items finish and starts no more; an
-//! interrupt of the agent that started the run retires its running items
-//! and leaves their boxes as they were. Once a run ends, its agent gets a
-//! message saying what finished, what failed and what was blocked. With the
+//! `/run-plan stop` lets the running items finish and starts no more; an interrupt of the agent
+//! that started the run retires its running items and leaves their boxes as they were. Once a run
+//! ends, its agent gets a message saying what finished, what failed and what was blocked. With the
 //! `tui` feature, each run is a panel listing its items as they stand.
 
 use std::path::{Path, PathBuf};

@@ -39,11 +39,17 @@ mod corpus_matrix;
 #[path = "common/image_inputs.rs"]
 mod image_inputs;
 #[cfg(all(feature = "http", feature = "agent"))]
+#[path = "common/permission_control.rs"]
+mod permission_control;
+#[cfg(all(feature = "http", feature = "agent"))]
 #[path = "common/request_identity.rs"]
 mod request_identity;
 #[cfg(all(feature = "http", feature = "agent"))]
 #[path = "common/responses_route.rs"]
 mod responses_route;
+#[cfg(all(feature = "http", feature = "agent"))]
+#[path = "common/weather_tool.rs"]
+mod weather_tool;
 
 #[cfg(all(feature = "http", feature = "agent"))]
 #[allow(clippy::unwrap_used, clippy::unreachable)]

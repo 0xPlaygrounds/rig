@@ -1,25 +1,18 @@
-//! Stray file cleanup: the files an agent's tools created while it worked on
-//! a prompt, offered for deletion when its turn ends.
+//! Stray file cleanup: the files an agent's tools created while it worked on a prompt, offered
+//! for deletion when its turn ends. A call's new files are the ones it published as created
+//! ([`FilesChanged`], [`ChangeKind::Created`]); a call that may write anywhere, such as
+//! `shell`, names none. A subagent's files count for the agent at the top of its tree.
 //!
-//! - A call's new files are the ones it published as created
-//!   ([`FilesChanged`], [`ChangeKind::Created`]): a file tool names what it
-//!   wrote; a call that may write anywhere (such as `shell`) names none.
-//!   A subagent's files count for the agent at the top of its tree.
-//! - When a top-level agent's turn would end, the end is held while the
-//!   files still there are measured. Where someone can answer, a
-//!   multiple [`StrayPicker`] "Files created this turn" offers them,
-//!   scratch-looking names ticked; then a [`StrayActions`] picker asks what
-//!   to do with the ticked ones: **Delete selected** moves them into
-//!   `.rig/trash/<timestamp>/`, **Add selected to .gitignore** ignores
-//!   them, **Keep all** (or closing either picker) leaves them. A run nobody
-//!   answers, such as `--print`, deletes nothing and prints the list after
-//!   the answer.
-//! - The user's next message to the agent carries a note naming the files
-//!   deleted.
-//! - `/restore-strays` lists the recent batches; `/restore-strays <batch>`
-//!   puts one back.
+//! When a top-level agent's turn would end, a multiple [`StrayPicker`] "Files created this
+//! turn" offers the files still there, scratch-looking names ticked. A [`StrayActions`] picker
+//! then asks what to do with the ticked ones: "Delete selected" moves them into
+//! `.rig/trash/<timestamp>/`, "Add selected to .gitignore" ignores them, and "Keep all" (or
+//! closing either picker) leaves them. A run nobody answers, such as `--print`, deletes nothing
+//! and prints the list after the answer. The user's next message to the agent carries a note
+//! naming the files deleted.
 //!
-//! Settings, in `settings.toml`:
+//! `/restore-strays` lists the recent batches and `/restore-strays <batch>` puts one back. The
+//! scratch-looking names are set in `settings.toml`:
 //!
 //! ```toml
 //! [stray]

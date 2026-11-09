@@ -1,49 +1,17 @@
 //! The effect corpus's two interpreters and the program table they share.
 //!
-//! Every golden effect log under `fixtures/effects/*.effects.json` is one row of
-//! one matrix: a [`Program`] the producing root test built verbatim,
-//! replayed here by the bus-driven engine and by a hand driver of
-//! `AgentRun` with **no provider, no tool and no index behind
-//! any key**. The oracle is the record as data — kind, outcome and, for a
-//! stream recorded with its events, the event sequence — position by
-//! position. See `golden_replay.rs` for the original corpus and the
-//! `corpus_*.rs` modules for the matrices.
+//! Every golden effect log under `fixtures/effects/*.effects.json` is one
+//! row of one matrix: a [`Program`] the producing root test built verbatim,
+//! replayed here by the bus-driven engine and by a hand driver of `AgentRun`
+//! with no provider, no tool and no index behind any key. The oracle is the
+//! record as data, position by position: kind, outcome and, for a stream
+//! recorded with its events, the event sequence.
 //!
-//! # The dimensions of an effect trace
-//!
-//! What an agent program can ask the bus, and how it is served. Every
-//! matrix module prunes this table and says why.
-//!
-//! | axis | values |
-//! |---|---|
-//! | completion transport | unary · streamed, events dropped · streamed, events kept · streamed on a delta wire (tool names and arguments as deltas) |
-//! | tool shape | none · one call then answer · two calls in one turn · two turns · zero-arg tool · a tool that errors |
-//! | tool id wire | provider id (anthropic) · id-less, tagged generated tool identities (gemini) · dual `call_id`/`item_id` (openai) |
-//! | serving | `serial_per_handler` false · true; `tool_concurrency` 1 · 2; capacities default · 1 |
-//! | retrieval | none · `dynamic_context(n, index)` (`TopN`) · `retrieved_tools(n, index, toolset)` (`TopNIds`) · both |
-//! | embedding, rerank, custom | never dispatched by the agent itself: an index embeds its query inside the handler (`RetrieveAdapter`), and nothing in `rig-agent` reranks; a hook dispatches `Embed`, `Rerank` (a mock reranker: no keyed cassette suite) and a host's `Custom<E>` over the host's bus (Matrices I, N, O) |
-//! | hooks | none · observe-only · `on_dispatch` → `Patch` · `Deny` · `on_outcome` → `Replace` · `on_invalid_tool_call` → `Retry` · `Repair` · `Skip` · `on_completion_call` → request patch · a hook that dispatches through `HookContext` · a stop at every point (`on_run_start`, `on_model_select`, `on_completion_call`, `on_dispatch`, `on_outcome`, `on_model_turn`, a delta) |
-//! | model routing | one model · `model_route` with `on_model_select` choosing the other |
-//! | output | text · `output_schema` under `Native` · `Tool` (the output tool's call, reprompted when missing or incomplete) · `Prompted` |
-//! | bus ownership | own bus · a host's bus via `over_bus` |
-//! | run continuation | one run · serialize after the first tool turn, resume on the same replay bus (every kind of program: hooks, a committed output tool, a route, an ignored call, a streamed head) |
-//! | per-turn shaping | none · a request patch on one turn (`tool_choice`, `extra_context`, `preamble`, `max_tokens`, `additional_params`, `active_tools`, `history`) · patches merged from several hooks · a route on the first turn · a route registered after build |
-//! | hook identity | the type name · a name the hook gives itself (`AgentHook::name`) |
-//! | causality | a consumer's own dispatch · nested from a tool's `Serve` through its sink's dispatcher (depth 1 · 2) · from a task holding a detached sink · from a spawned thread; the target another key · the same key (refused under serial serving, served under concurrent); the parent answered · cancelled with the child in flight · cancelled with the child queued (Matrix Q) |
-//! | interpreters | the bus engine · the hand driver · the resumed engine |
-//! | outcome kind | success · `Cancelled` · handler error (`ErrorReport`) · a divergence (refused) |
-//! | invalid call | none · unary, resolved by a hook · streamed, resolved mid-stream · unresolved under `Fail` · under `Ignore` |
-//!
-//! # What the original nine goldens cover
-//!
-//! Unary completion; a streamed turn with events
-//! and one tool; two tools in one turn under serial serving; two tool-call
-//! turns on id-less and on dual-id wires; an invalid call retried by a
-//! hook; a consumer cancel. They do not cover retrieval, a hook that
-//! patches, denies or replaces, model routing, structured output, a host's
-//! bus, a resumed run, a handler error, `tool_choice`, `max_tokens`,
-//! `additional_params`, static context, an appended or absent preamble, or
-//! a prior history. Those are the matrices.
+//! `golden_replay.rs` holds the original corpus, and each `corpus_*.rs`
+//! module holds one matrix over a dimension of an effect trace: transport,
+//! tool shape and id wire, serving, retrieval, hooks, routing, output,
+//! bus ownership, continuation, per-turn shaping, causality and invalid
+//! calls.
 
 pub mod fixtures;
 
@@ -202,7 +170,6 @@ pub const SKIP_REASON: &str = "no such tool; skipped";
 /// The builder's `output_mode`, as data.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Output {
-    Native,
     Tool,
     Prompted,
 }
@@ -210,7 +177,6 @@ pub enum Output {
 impl Output {
     pub fn mode(self) -> OutputMode {
         match self {
-            Self::Native => OutputMode::Native,
             Self::Tool => OutputMode::Tool,
             Self::Prompted => OutputMode::Prompted,
         }

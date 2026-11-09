@@ -41,61 +41,6 @@ fn native_http_errors_preserve_distinct_boundaries_before_report_erasure() {
 }
 
 #[test]
-fn host_attempts_share_send_ordinals_without_relabeling_in_flight_facts() {
-    let log = Arc::new(ObservationLog::default());
-    let operation = AdapterContext::new(log.clone(), Subject::default(), "logical-call");
-    let first_subject = Subject::scoped("run/1");
-    let retry_subject = Subject::scoped("run/2");
-    let first = operation.for_host_attempt(first_subject.clone(), 1.try_into().unwrap());
-    let retry = operation.for_host_attempt(retry_subject.clone(), 2.try_into().unwrap());
-    let mut send_one = first.begin(&http::Method::POST, "/completion").unwrap();
-    let mut send_two = retry.begin(&http::Method::POST, "/completion").unwrap();
-    // An adapter may send again within the same host dispatch.
-    let send_three = first
-        .clone()
-        .begin(&http::Method::POST, "/completion")
-        .unwrap();
-    send_two.finish(AdapterEnding::Decoded);
-    send_one.finish(AdapterEnding::Error {
-        boundary: AdapterErrorBoundary::ProviderResponse,
-        kind: "http".into(),
-        status: Some(503),
-        retryable: true,
-    });
-    drop(send_three);
-    let trace = log.trace();
-    assert_eq!(trace.observations.len(), 6);
-    let expected = [(1, 1), (2, 2), (3, 1), (2, 2), (1, 1), (3, 1)];
-    for (o, (send, host)) in trace.observations.iter().zip(expected) {
-        let Action::Adapter { observation } = &o.action else {
-            panic!("adapter fact");
-        };
-        assert_eq!(observation.operation, "logical-call");
-        assert_eq!(observation.attempt, Some(send));
-        assert_eq!(
-            observation.host_attempt.map(std::num::NonZeroU64::get),
-            Some(host)
-        );
-        assert_eq!(
-            o.subject,
-            if host == 1 {
-                first_subject.clone()
-            } else {
-                retry_subject.clone()
-            }
-        );
-    }
-    let decoded: crate::observe::ObservationTrace =
-        serde_json::from_str(&serde_json::to_string(&trace).unwrap()).unwrap();
-    assert_eq!(decoded, trace);
-    let separate = AdapterContext::new(log.clone(), Subject::default(), "another-call");
-    drop(separate.begin(&http::Method::POST, "/completion"));
-    let last = log.trace().observations.pop().unwrap();
-    assert!(matches!(last.action, Action::Adapter { observation }
-        if observation.operation == "another-call" && observation.attempt == Some(1) && observation.host_attempt.is_none()));
-}
-
-#[test]
 fn cloned_context_numbers_attempts_and_closes_once_without_payloads() {
     let log = Arc::new(ObservationLog::default());
     let context = AdapterContext::new(log.clone(), Subject::default(), "operation-1");

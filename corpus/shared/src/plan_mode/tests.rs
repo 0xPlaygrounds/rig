@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use rig_basics::coding_tools::{ReadTool, WriteTool};
 use rig_core::catalog::{Catalog, Connector};
 use rig_core::completion::{CompletionRequest, Message};
@@ -10,21 +8,8 @@ use serde_json::json;
 use super::*;
 use rig_harness_test_support::{
     AnswerAsks, Answers, ToolOutputs, answer_open, app_on, calls, connect, log_tool_outputs, reply,
-    run_until,
+    run_until, scratch_dir,
 };
-
-/// A directory of its own for this test, beside the test binary, so
-/// nothing lands in the source tree.
-fn scratch() -> PathBuf {
-    let exe = std::env::current_exe().unwrap_or_default();
-    let dir = exe
-        .parent()
-        .map(|deps| deps.join("corpus-plan-mode-test"))
-        .unwrap_or_default();
-    std::fs::remove_dir_all(&dir).ok();
-    std::fs::create_dir_all(&dir).ok();
-    dir
-}
 
 fn tool_names(request: Option<&CompletionRequest>) -> Vec<String> {
     let tools = request.map(|request| request.tools.iter());
@@ -45,7 +30,7 @@ fn prompt(request: Option<&CompletionRequest>) -> String {
 
 #[test]
 fn a_plan_is_made_without_changes_then_executed_with_the_tools_back() {
-    let dir = scratch();
+    let dir = scratch_dir("corpus-plan-mode-test");
     let target = dir.join("x.txt");
     let write = json!({ "path": target.display().to_string(), "content": "hello" });
     let model = MockCompletionModel::from_stream_turns([
@@ -135,7 +120,4 @@ fn a_plan_is_made_without_changes_then_executed_with_the_tools_back() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(PlanModePlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(PlanModePlugin);

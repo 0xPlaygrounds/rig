@@ -13,8 +13,8 @@ use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::harness_protocol::Invocation;
 use rig_harness::host::exit::ExitPlugin;
 use rig_harness_test_support::{
-    self as test_support, MemoryStore, app_on, calls, connect, first_agent, reply, scripted_models,
-    start_call,
+    self as test_support, MemoryStore, app_on, calls, connect, first_agent, hold_turn_calls, reply,
+    scripted_models, start_call,
 };
 
 use super::*;
@@ -407,13 +407,6 @@ fn a_turn_the_run_never_saw_working_is_still_reported() {
     assert!(answered_alone(world), "the second turn ran");
     assert_eq!(ended(&mut app), answered("two"));
     assert_eq!(turns(&app), [Some("one"), Some("two")]);
-}
-
-/// Holds every model call of a turn, as an approval nobody gave.
-fn hold_turn_calls(calls: Query<Entity, (ReadyToStart, With<TurnCall>)>, mut commands: Commands) {
-    for call in &calls {
-        commands.spawn(HoldOf(call));
-    }
 }
 
 /// Runs a frame of `app`, then one more for each wake, as the host loop

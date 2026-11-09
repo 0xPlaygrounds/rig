@@ -1,47 +1,25 @@
 //! Cassette helpers for the llama.cpp suite.
 //!
-//! Replays by default. Set `RIG_PROVIDER_TEST_MODE=record` to record against a
-//! local `llama-server`; `LLAMACPP_CASSETTE_UPSTREAM` overrides the default
+//! Replays by default. Set `RIG_PROVIDER_TEST_MODE=record` to record against
+//! a local `llama-server`; `LLAMACPP_CASSETTE_UPSTREAM` overrides the default
 //! `http://localhost:8080`, and the per-configuration variables below point
-//! individual matrices at the differently-launched servers they need.
+//! individual matrices at the servers they need. The suite drives the
+//! `LLAMACPP` dialect of the OpenAI wire. [`with_llamacpp_bare_openai_cassette`]
+//! stays deliberately small: it pins only what differs on a plain OpenAI
+//! client (base-URL composition, the `Authorization` header, the absent
+//! associated consts), not the generation matrix.
 //!
-//! # One suite, one provider
-//!
-//! This suite drives the `LLAMACPP` dialect of the OpenAI wire — the
-//! provider a user reaches for. It is the merge of two suites that previously
-//! recorded the same scenarios twice, once through an unconfigured OpenAI
-//! client and once through the now-deleted `providers::llamafile`; 19 of the
-//! 61 fixtures were duplicates and the provider path is the copy that
-//! survived.
-//!
-//! The plain-OpenAI-against-a-local-server path is still covered, by
-//! [`with_llamacpp_bare_openai_cassette`] and the `unmapped_surface` cell
-//! that uses it, deliberately small. It exists to pin
-//! what genuinely differs between the two paths (base-URL composition, the
-//! `Authorization` header, the absence of this provider's associated consts),
-//! not to re-record the generation matrix. Keep it that way.
-//!
-//! # Determinism
-//!
-//! A fixture recorded from a local server is reproducible only if the
-//! generation is pinned. Unless a cell's own doc comment says otherwise, every
-//! cassette here was recorded against **`unsloth/Qwen3-1.7B-GGUF` Q4_K_M**
-//! served by `llama-server` **b10964 (commit b29c606e2)**, launched as:
+//! Unless a cell's own docs say otherwise, every cassette was recorded
+//! against `unsloth/Qwen3-1.7B-GGUF` Q4_K_M on `llama-server` b10964,
+//! launched as below; `cassette/mod.rs` lists every other server invocation.
+//! A replay proves rig's request shape and decoding of a real response, not
+//! that the model answers the same way elsewhere, so assertions key on
+//! structure rather than prose.
 //!
 //! ```text
 //! llama-server -m <Qwen3-1.7B-Q4_K_M.gguf> --host 127.0.0.1 --port 8080 \
 //!     --jinja --seed 42 --temp 0 -c 4096
 //! ```
-//!
-//! Cells that need a different server configuration or a different model say
-//! so in their own module documentation and use the matching wrapper; the
-//! table of every server invocation this corpus was recorded under lives in
-//! `cassette/mod.rs`.
-//!
-//! What a replayed fixture proves is rig's request shape and rig's decoding of
-//! a real response — not that this model answers the same way on another
-//! machine. Assertions therefore key on structure (a tool call was requested,
-//! with this name and these arguments) rather than on prose.
 
 use futures::FutureExt;
 use rig::providers::openai::wire::{LLAMACPP, OpenAIConfig, Route};
@@ -292,29 +270,6 @@ pub(super) async fn with_llamacpp_missing_api_key_cassette<F, Fut>(
 
 /// The key the `--api-key` recording server was started with.
 pub(super) const CASSETTE_API_KEY: &str = "llamacpp-local-test-key";
-
-/// Cassette wrapper for the llama.cpp prompt-caching matrix
-/// (`crates/rig-cassette/fixtures/cassettes/llamacpp/prompt_caching/`).
-///
-/// Delegates to [`with_llamacpp_cassette`] — the behaviour is identical, and
-/// deliberately shared so the two cannot drift when the base wrapper gains
-/// policy. What the separate name buys is a per-suite entry in the
-/// cassette-safety registry, so the cache fixtures are auditable as one
-/// concern's evidence.
-///
-/// **Recording note**: llama.cpp's cache is the server's KV slot cache, so
-/// turn 1 is only cold on a freshly started server. Restart the default
-/// configuration before re-recording, or turn 1 records a hit and the probe
-/// pins nothing.
-pub(super) async fn with_llamacpp_prompt_caching_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(OpenAiModels) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    with_llamacpp_cassette(spec, test_body).await;
-}
 
 /// Drive a scenario that speaks to the server **without a rig client at all**,
 /// handing the body the cassette's base URL.

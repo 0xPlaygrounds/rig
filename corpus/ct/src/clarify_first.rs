@@ -1,24 +1,19 @@
-//! CT-15: clarify first.
+//! Clarify first. `/clarify <task>` starts an interview before the agent works on a task: a
+//! one-job helper subagent ([`SpawnSubagent::helper`], on the model the `[clarify]` table
+//! names, else the agent's) that may use only the tools that read, plus [`CLARIFY_ASK`].
+//! Each `clarify_ask` call is one question for the user, an [`Ask`] that holds the call,
+//! with the interviewer's suggested answer first, its options, and "just start"; the user
+//! types an answer, takes the suggestion or an option, or says "just start", which answers
+//! every later question with its suggestion unasked. The interviewer's final answer is the
+//! brief, to which the plugin adds each question and how it was answered. The user then
+//! starts with the brief, edits it (a typed answer is the edited brief), or cancels; "just
+//! start" skips that review.
 //!
-//! `/clarify <task>` starts an interview before the agent works on a task:
-//! a one-job helper subagent ([`SpawnSubagent::helper`], on the model the
-//! `[clarify]` table names, else the agent's) that may use only the tools
-//! that read, plus [`CLARIFY_ASK`]. Each `clarify_ask` call is one question
-//! for the user, an [`Ask`] that holds the call, with the interviewer's
-//! suggested answer first, its options, and "just start"; the user types an
-//! answer, takes the suggestion or an option, or says "just start", which
-//! answers every later question with its suggestion unasked. The
-//! interviewer's final answer is the brief, to which the plugin adds each
-//! question and how it was answered. The user then starts with the brief,
-//! edits it (a typed answer is the edited brief), or cancels; "just start"
-//! skips that review.
-//!
-//! On start, the agent gets the task and the brief as one message from the
-//! user. The interviewer is an agent of its own, so nothing of its
-//! conversation reaches the agent's. A run nobody answers questions in (no
-//! [`Answerer`], such as `--print`) asks nothing: every question takes its
-//! suggestion and the brief says so. With `mode = "auto"`, a message the
-//! user sends that is longer than `auto_min_chars` or says "implement" or
+//! On start, the agent gets the task and the brief as one message from the user. The
+//! interviewer is an agent of its own, so nothing of its conversation reaches the agent's.
+//! A run nobody answers questions in (no [`Answerer`], such as `--print`) asks nothing:
+//! every question takes its suggestion and the brief says so. With `mode = "auto"`, a
+//! message the user sends that is longer than `auto_min_chars` or says "implement" or
 //! "build" is interviewed on first; other messages go straight through.
 //!
 //! ```toml

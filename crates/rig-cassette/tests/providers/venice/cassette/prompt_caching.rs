@@ -1,21 +1,9 @@
 //! Venice prompt-caching cassette suite.
 //!
-//! Rig normalizes `Usage::cached_input_tokens` for this provider, and before
-//! this suite no test had ever seen the field be non-zero. The three-turn probe
-//! below is what makes the provider's actual behavior observable — including the
-//! possibility that it does not cache at all, which is recorded rather than
-//! assumed.
-//!
-//! Venice exposes an explicit `prompt_cache_key` on its request, carried
-//! through `additional_params`, which nothing pinned on the wire before this
-//! suite.
-//!
-//! # Recording
-//!
-//! ```text
-//! RIG_PROVIDER_TEST_MODE=record cargo test -p rig-cassette --test integration --all-features \
-//!     venice::cassette::prompt_caching:: -- --exact --test-threads=1
-//! ```
+//! Rig normalizes `Usage::cached_input_tokens` for this provider, and the three-turn probe makes
+//! the provider's actual caching behavior observable, including the possibility that it does
+//! not cache at all. Venice also takes an explicit `prompt_cache_key`, carried through
+//! `additional_params`, which these cells pin on the wire.
 
 use rig::providers::openai::wire::VENICE;
 use rig::providers::venice;
@@ -27,7 +15,7 @@ use crate::cache_conformance::{
     run_cache_probe_streaming,
 };
 
-use super::super::support::with_venice_prompt_caching_cassette;
+use super::super::support::with_venice_cassette;
 
 pub(super) const CACHE_MODEL: &str = venice::QWEN3_5_9B;
 
@@ -59,7 +47,7 @@ pub(super) fn probe() -> CacheProbe {
 async fn blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
     const SCENARIO: &str = "prompt_caching/blocking_probe";
 
-    with_venice_prompt_caching_cassette("prompt_caching/blocking_probe", |client| async move {
+    with_venice_cassette("prompt_caching/blocking_probe", |client| async move {
         let model = client.completion(CACHE_MODEL);
         let observation = run_cache_probe(model, &probe()).await;
         assert_cache_conformance(&observation, &VENICE_CACHE_SUPPORT, "blocking probe");
@@ -74,7 +62,7 @@ async fn blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
 async fn streaming_probe_survives_the_streaming_accumulator() {
     const SCENARIO: &str = "prompt_caching/streaming_probe";
 
-    with_venice_prompt_caching_cassette("prompt_caching/streaming_probe", |client| async move {
+    with_venice_cassette("prompt_caching/streaming_probe", |client| async move {
         let model = client.completion(CACHE_MODEL);
         let observation = run_cache_probe_streaming(model, &probe()).await;
         assert_cache_conformance(&observation, &VENICE_CACHE_SUPPORT, "streaming probe");
@@ -97,7 +85,7 @@ async fn streaming_probe_survives_the_streaming_accumulator() {
 async fn prompt_cache_key_reaches_the_wire_and_is_stable() {
     const SCENARIO: &str = "prompt_caching/cache_key_stable";
 
-    with_venice_prompt_caching_cassette("prompt_caching/cache_key_stable", |client| async move {
+    with_venice_cassette("prompt_caching/cache_key_stable", |client| async move {
         let model = client.completion(CACHE_MODEL);
         let probe = CacheProbe {
             max_tokens: ANSWERING_MAX_TOKENS,

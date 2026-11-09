@@ -1,42 +1,32 @@
 //! `cargo xtask catalog sync`: generate rig-core's model catalog,
 //! `crates/rig-core/src/catalog/models.json`, from models.dev and the facts
-//! reviewed by hand in `xtask/src/catalog/review.json`.
+//! reviewed by hand in `xtask/src/catalog/review.json`. DEVELOPING.md's
+//! "Refreshing the model catalog" is the procedure.
 //!
-//! The steps, in order:
-//!
-//! 1. Keep the models.dev providers rig serves, renamed to rig's vendor
-//!    names ([`KEYS`]), each model row whole but for its `id`, its keys in
-//!    a fixed order ([`ordered`]), leaving out a row reached through an API
-//!    rig serves only at another vendor ([`OWN_APIS`]).
-//! 2. Lay each reviewed row over its models.dev row, or add it: objects merge
-//!    key by key, anything else replaces. A reviewed row that names
-//!    `"from": "<vendor>/<id>"` starts from that generated row instead. The
-//!    review's own keys (`from`, `source`, `note`) are dropped.
-//! 3. Give each row of a vendor that serves another's models, whose
-//!    models.dev `canonical_model_id` names that vendor's model, that
-//!    model's facts it takes ([`SERVERS`]),
-//!    give each reasoning row of a gateway that translates reasoning
-//!    controls the controls it translates ([`REASONING_GATEWAYS`]), give
-//!    each vendor that serves another's API over another transport every
-//!    row of that vendor ([`MIRRORS`]), then lay the reviewed rows over them
-//!    again.
-//! 4. Pin under `rig.pinned` every key steps 2 and 3 set ([`pin`]), so that
-//!    rig-core's `Catalog::with_models_dev` keeps them when an application
-//!    lays a newer copy of models.dev over the built-in catalog.
+//! Sync keeps the models.dev providers rig serves under rig's vendor names
+//! ([`KEYS`]), each row's keys in a fixed order ([`ordered`]), leaving out a
+//! row reached through an API rig serves only at another vendor
+//! ([`OWN_APIS`]). It lays each reviewed row over its models.dev row or adds
+//! it: objects merge key by key, anything else replaces, a row naming
+//! `"from": "<vendor>/<id>"` starts from that generated row, and the review's
+//! own keys (`from`, `source`, `note`) are dropped. It then gives a vendor
+//! serving another's models that model's facts ([`SERVERS`]), a reasoning
+//! gateway's rows the controls it translates ([`REASONING_GATEWAYS`]), and a
+//! vendor serving another's API over another transport every row of that
+//! vendor ([`MIRRORS`]), lays the reviewed rows over them again, and pins
+//! under `rig.pinned` every key the review and those steps set ([`pin`]) so
+//! rig-core's `Catalog::with_models_dev` keeps them over a newer models.dev.
 //!
 //! Before it writes, sync refuses a capability loss the review does not
-//! answer, and a review fact without a `source`; otherwise it prints a
-//! markdown report of every change ([`guard`]). DEVELOPING.md's "Refreshing
-//! the model catalog" is the procedure.
-//!
-//! `--from <file>` reads a saved models.dev `api.json`; without it the
-//! command fetches <https://models.dev/api.json> with `curl`. Sync also
-//! writes when that data was read (the file's modification time, or now)
-//! to `crates/rig-core/src/catalog/generated_at`. `--check`
-//! writes nothing and fails when the checked-in file differs from what sync
-//! would write. `catalog check` runs offline, in CI's `tooling` check: it
-//! fails when the checked-in file is not in the form sync writes, a reviewed
-//! fact is missing from it, or a review row lacks the `source` it needs.
+//! answer and a review fact without a `source`; otherwise it prints a
+//! markdown report of every change ([`guard`]). `--from <file>` reads a saved
+//! models.dev `api.json`; without it the command fetches
+//! <https://models.dev/api.json> with `curl`. Sync also writes when that data
+//! was read to `crates/rig-core/src/catalog/generated_at`. `--check` writes
+//! nothing and fails when the checked-in file differs from what sync would
+//! write. `catalog check` runs offline, in CI's `tooling` check: it fails when
+//! the checked-in file is not in the form sync writes, a reviewed fact is
+//! missing from it, or a review row lacks the `source` it needs.
 
 use std::collections::BTreeMap;
 use std::path::Path;

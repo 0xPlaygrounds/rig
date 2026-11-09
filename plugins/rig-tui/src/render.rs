@@ -31,7 +31,7 @@ use super::panel::{
 };
 use super::pick::{Choices, InlineStrip, Item, Listing, PickerInput, Row, detail_column};
 use super::renderers::{
-    CallState, LookLine, MessageView, Place, Renderers, Role, ToolCallView, UNNAMED_HOLD,
+    CallState, LookLine, Place, Renderers, ToolCallView, UNNAMED_HOLD, reasoning_lines, reply_lines,
 };
 use super::status::{AppStatus, StatusItems, StatusLine};
 use super::terminal::{CopyToClipboard, Tui, TuiTestScreen};
@@ -772,21 +772,12 @@ pub(crate) fn lay_out_transcript(
         }
         if index == count {
             if let Some((call, partial)) = shown.partial {
-                let view = |role, text, marks| MessageView {
-                    role,
-                    message: None,
-                    block: 0,
-                    text,
-                    marks,
-                    width: wrap_width,
-                    theme: *sources.theme,
-                };
-                let reasoning = view(Role::Reasoning, &partial.reasoning, &[]);
-                extra.extend(reasoning.default_lines());
+                let theme = sources.theme;
+                extra.extend(reasoning_lines(&partial.reasoning, wrap_width, theme));
                 if !partial.text.is_empty() {
                     extra.push(LookLine::default());
                     let marks = look.marks_in(MarkIn::Streaming(call));
-                    extra.extend(view(Role::Assistant, &partial.text, &marks).default_lines());
+                    extra.extend(reply_lines(&partial.text, &marks, wrap_width, theme));
                 }
             }
             let streaming = shown
@@ -1200,10 +1191,7 @@ fn cells_in(buffer: &Buffer, areas: &[Rect]) -> Vec<(u16, u16, Cell)> {
 /// Whether a selection moves through `item`: all but a decoration's rows,
 /// which belong to their call.
 pub(crate) fn selectable(item: &TranscriptItem) -> bool {
-    !matches!(
-        item,
-        TranscriptItem::Decoration(..) | TranscriptItem::MessageDecoration(..)
-    )
+    !matches!(item, TranscriptItem::Decoration(..))
 }
 
 /// Where the last frame drew each part of the screen: for a plugin that

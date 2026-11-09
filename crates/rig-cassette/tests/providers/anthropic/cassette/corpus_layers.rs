@@ -13,7 +13,7 @@ use rig::serve::ErasedHandler;
 use rig_cassette::agent::AgentReplayExt;
 use rig_test_support::cassette_models::AnthropicModels;
 
-use super::super::support::with_anthropic_corpus_hooks_cassette;
+use super::super::support::with_anthropic_cassette;
 use crate::goldens::{
     DENY_REASON, DenyAddLayer, PATCHED_AGAIN_ARGS, PatchAddArgs, PatchAddArgsLayer,
     PatchAgainLayer, ReplaceAddResultLayer, add_tool_under, families,
@@ -69,7 +69,7 @@ async fn own_bus(
 
 #[tokio::test]
 async fn deny_tool_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_hooks_cassette("corpus_hooks/deny_tool", |client| async move {
+    with_anthropic_cassette("corpus_hooks/deny_tool", |client| async move {
         let log = own_bus(client, |adder| adder.layered(DenyAddLayer), |b| b).await;
         assert_eq!(
             families(&log),
@@ -83,7 +83,7 @@ async fn deny_tool_effect_log_is_the_golden_fixture() {
 
 #[tokio::test]
 async fn patch_tool_args_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_hooks_cassette("corpus_hooks/patch_tool_args", |client| async move {
+    with_anthropic_cassette("corpus_hooks/patch_tool_args", |client| async move {
         let log = own_bus(client, |adder| adder.layered(PatchAddArgsLayer), |b| b).await;
         assert_eq!(tool_record_args(&log), [r#"{"x":40,"y":2}"#]);
         assert_eq!(log.header.hooks, ["PatchAddArgsLayer"]);
@@ -94,7 +94,7 @@ async fn patch_tool_args_effect_log_is_the_golden_fixture() {
 
 #[tokio::test]
 async fn replace_tool_result_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_hooks_cassette("corpus_hooks/replace_tool_result", |client| async move {
+    with_anthropic_cassette("corpus_hooks/replace_tool_result", |client| async move {
         let log = own_bus(client, |adder| adder.layered(ReplaceAddResultLayer), |b| b).await;
         assert_eq!(
             tool_record_outputs(&log),
@@ -109,7 +109,7 @@ async fn replace_tool_result_effect_log_is_the_golden_fixture() {
 
 #[tokio::test]
 async fn two_layers_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_hooks_cassette("corpus_hooks/two_hooks", |client| async move {
+    with_anthropic_cassette("corpus_hooks/two_hooks", |client| async move {
         // Outermost first in the header: the patch sees the dispatch
         // first, the replacement sees the answer first.
         let log = own_bus(
@@ -136,7 +136,7 @@ async fn two_layers_effect_log_is_the_golden_fixture() {
 #[tokio::test]
 async fn host_deny_over_host_bus_effect_log_is_the_golden_fixture() {
     // The host's own policy on the agent's tool key, over the host's bus.
-    with_anthropic_corpus_hooks_cassette("corpus_hooks/deny_tool", |client| async move {
+    with_anthropic_cassette("corpus_hooks/deny_tool", |client| async move {
         let handlers = Handlers::default();
         let model_key = HandlerKey::from("golden/model:default");
         handlers
@@ -180,7 +180,7 @@ async fn host_deny_over_host_bus_effect_log_is_the_golden_fixture() {
 async fn patch_beneath_hook_patch_effect_log_is_the_golden_fixture() {
     // The agent's hook patches first (40 + 2); the host's layer beneath it
     // patches again (30 + 12): the record holds what was served.
-    with_anthropic_corpus_hooks_cassette("corpus_hooks/patch_tool_args", |client| async move {
+    with_anthropic_cassette("corpus_hooks/patch_tool_args", |client| async move {
         let log = own_bus(
             client,
             |adder| adder.layered(PatchAgainLayer),

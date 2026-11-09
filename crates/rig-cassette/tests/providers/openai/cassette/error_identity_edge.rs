@@ -1,5 +1,4 @@
-//! Error-taxonomy identity coverage on OpenAI (rig#2314 / PR #2315
-//! follow-up): auth, validation, reference errors, and the streaming
+//! Error-taxonomy identity coverage on OpenAI: auth, validation, reference errors, and the streaming
 //! handshake, on both APIs where the class differs.
 
 use rig::error::ProviderError;
@@ -8,9 +7,9 @@ use super::super::support::{with_openai_cassette, with_openai_cassette_bogus_key
 use crate::support::assert_transport_request_id;
 
 /// Family C: an embeddings 4xx keeps the provider's status and body, and
-/// carries the transport request id the recording shows on the wire — the
+/// carries the transport request id the recording shows on the wire. The
 /// embeddings wire reports `x-request-id` like every other route on this
-/// dialect, so the id is no longer dropped on the way to the caller.
+/// dialect.
 #[tokio::test]
 async fn embeddings_error_preserves_status_and_body() {
     with_openai_cassette(
@@ -37,8 +36,7 @@ async fn embeddings_error_preserves_status_and_body() {
     .await;
 }
 
-/// Family C: the model-listing 401 live — the #2315 review's P1 fix on the
-/// wire: an auth failure keeps the provider's reply with provider and path
+/// Family C: the model-listing 401 live. An auth failure keeps the provider's reply with provider and path
 /// context, not a transport-error fallback.
 #[tokio::test]
 async fn model_listing_auth_failure_keeps_api_error_context() {

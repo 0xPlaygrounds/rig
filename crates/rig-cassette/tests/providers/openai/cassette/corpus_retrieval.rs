@@ -11,7 +11,7 @@ use rig::effect::{Answered, EffectFamily, RetrievedDocuments};
 use rig::providers::openai;
 use rig_cassette::agent::AgentReplayExt;
 
-use super::super::support::with_openai_corpus_retrieval_cassette;
+use super::super::support::with_openai_cassette;
 use crate::goldens::{
     FACT_PROMPT, FACTS, RETRIEVED_TOOLS_PREAMBLE, SUBTRACT_PROMPT, facts_index, families,
     retrievable_toolset, tool_index,
@@ -48,7 +48,7 @@ async fn final_output(stream: &mut rig::agent::StreamingResult) -> String {
 
 #[tokio::test]
 async fn dynamic_context_one_effect_log_is_the_golden_fixture() {
-    with_openai_corpus_retrieval_cassette(
+    with_openai_cassette(
         "corpus_retrieval/dynamic_context_one",
         |client| async move {
             let index = facts_index(client.openai.embedding(EMBEDDING, None), &FACTS).await;
@@ -76,7 +76,7 @@ async fn dynamic_context_one_effect_log_is_the_golden_fixture() {
 
 #[tokio::test]
 async fn dynamic_context_one_streamed_effect_log_is_the_golden_fixture() {
-    with_openai_corpus_retrieval_cassette(
+    with_openai_cassette(
         "corpus_retrieval/dynamic_context_one_streamed",
         |client| async move {
             let index = facts_index(client.openai.embedding(EMBEDDING, None), &FACTS).await;
@@ -106,7 +106,7 @@ async fn dynamic_context_one_streamed_effect_log_is_the_golden_fixture() {
 
 #[tokio::test]
 async fn retrieved_tools_one_effect_log_is_the_golden_fixture() {
-    with_openai_corpus_retrieval_cassette(
+    with_openai_cassette(
         "corpus_retrieval/retrieved_tools_one",
         |client| async move {
             let toolset = retrievable_toolset();
@@ -145,7 +145,7 @@ async fn retrieved_tools_one_effect_log_is_the_golden_fixture() {
 
 #[tokio::test]
 async fn retrieved_tools_one_streamed_effect_log_is_the_golden_fixture() {
-    with_openai_corpus_retrieval_cassette(
+    with_openai_cassette(
         "corpus_retrieval/retrieved_tools_one_streamed",
         |client| async move {
             let toolset = retrievable_toolset();
@@ -182,42 +182,39 @@ async fn retrieved_tools_one_streamed_effect_log_is_the_golden_fixture() {
 
 #[tokio::test]
 async fn context_and_tools_effect_log_is_the_golden_fixture() {
-    with_openai_corpus_retrieval_cassette(
-        "corpus_retrieval/context_and_tools",
-        |client| async move {
-            let facts = facts_index(client.openai.embedding(EMBEDDING, None), &FACTS).await;
-            let toolset = retrievable_toolset();
-            let tools = tool_index(client.openai.embedding(EMBEDDING, None), &toolset).await;
-            let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = rig::AgentBuilder::new(client.openai.completion(MODEL))
-                .name("golden")
-                .preamble(RETRIEVED_TOOLS_PREAMBLE)
-                .temperature(0.0)
-                .dynamic_context(1, facts)
-                .retrieved_tools(1, tools, toolset)
-                .record_to(recorder.clone())
-                .build();
-            let response = agent
-                .prompt(SUBTRACT_PROMPT)
-                .max_turns(3)
-                .await
-                .expect("the agent answers");
-            assert!(response.output().contains("42"), "{}", response.output());
-            let log = agent.stamp(recorder.take());
-            assert_eq!(
-                families(&log),
-                [
-                    EffectFamily::Retrieve,
-                    EffectFamily::Retrieve,
-                    EffectFamily::Completion,
-                    EffectFamily::Tool,
-                    EffectFamily::Retrieve,
-                    EffectFamily::Retrieve,
-                    EffectFamily::Completion
-                ]
-            );
-            crate::goldens::golden_effects("openai_retrieval_context_and_tools", &log);
-        },
-    )
+    with_openai_cassette("corpus_retrieval/context_and_tools", |client| async move {
+        let facts = facts_index(client.openai.embedding(EMBEDDING, None), &FACTS).await;
+        let toolset = retrievable_toolset();
+        let tools = tool_index(client.openai.embedding(EMBEDDING, None), &toolset).await;
+        let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
+        let agent = rig::AgentBuilder::new(client.openai.completion(MODEL))
+            .name("golden")
+            .preamble(RETRIEVED_TOOLS_PREAMBLE)
+            .temperature(0.0)
+            .dynamic_context(1, facts)
+            .retrieved_tools(1, tools, toolset)
+            .record_to(recorder.clone())
+            .build();
+        let response = agent
+            .prompt(SUBTRACT_PROMPT)
+            .max_turns(3)
+            .await
+            .expect("the agent answers");
+        assert!(response.output().contains("42"), "{}", response.output());
+        let log = agent.stamp(recorder.take());
+        assert_eq!(
+            families(&log),
+            [
+                EffectFamily::Retrieve,
+                EffectFamily::Retrieve,
+                EffectFamily::Completion,
+                EffectFamily::Tool,
+                EffectFamily::Retrieve,
+                EffectFamily::Retrieve,
+                EffectFamily::Completion
+            ]
+        );
+        crate::goldens::golden_effects("openai_retrieval_context_and_tools", &log);
+    })
     .await;
 }

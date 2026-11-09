@@ -1,20 +1,15 @@
-//! SP-10: edit churn monitor.
+//! Edit churn monitor. Counts, for each file an agent's tools change, the changing calls, the
+//! lines added and removed, and the lines reverted: lines the same agent added earlier in the
+//! session and now removes again, matched by their text. What the tools publish as
+//! `FilesChanged` is all it reads, so a change the user or another program makes is never
+//! counted; a line the agent added that someone else removed since is forgotten, so the agent's
+//! later edits never count it as reverted.
 //!
-//! Counts, for each file an agent's tools change, the changing calls, the
-//! lines added and removed, and the lines reverted: lines the same agent
-//! added earlier in the session and now removes again, matched by their
-//! text. What the tools publish as `FilesChanged` is all it reads, so a
-//! change the user or another program makes is never counted; a line the
-//! agent added that someone else removed since (the file as the next call
-//! found it no longer holds it) is forgotten, so the agent's later edits
-//! never count it as reverted.
-//!
-//! When one file gets more than `limit` changing calls within an agent's
-//! last `turns` turns, that agent's status line says `churn: <file> ×N`
-//! and a notice says so once per episode; with `nudge = true`, the first
-//! model request after an episode starts carries one short note naming the
-//! file. `/churn` shows the session's table, subagents under their own
-//! names. The counts are saved with the session, so a resume restores them.
+//! When one file gets more than `limit` changing calls within an agent's last `turns` turns,
+//! that agent's status line says `churn: <file> ×N` and a notice says so once per episode; with
+//! `nudge = true`, the first model request after an episode starts carries one short note
+//! naming the file. `/churn` shows the session's table, subagents under their own names. The
+//! counts are saved with the session, so a resume restores them.
 //!
 //! ```toml
 //! [churn]

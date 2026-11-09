@@ -1,16 +1,20 @@
-//! Demonstrates tool calls streaming their arguments as the provider sends
-//! them, first on a raw completion stream, then through an agent run.
+//! Streams tool-call arguments as the provider sends them, first on a raw
+//! completion stream, then through an agent run.
 //!
-//! The prompt asks for two calls in one turn: `write_file`, whose long
-//! `content` arrives over many fragments, and `add`. Every event prints
-//! with its time and part: a call's start names its tool, each argument
-//! fragment shows the object its text states so far
-//! ([`parse_partial_arguments`](rig::streaming::parse_partial_arguments)),
-//! and its end brings the call's id. A summary checks that each call's
-//! joined fragments are the arguments its end states. Tools only run once
-//! a call ends.
+//! The prompt asks for a `write_file` call with long content and an `add` call in
+//! one turn. Each event prints with its time, each argument fragment shows the
+//! object parsed so far
+//! ([`parse_partial_arguments`](rig::streaming::parse_partial_arguments)), and a
+//! summary checks that each call's joined fragments match its final arguments.
+//! `--stop-after N` stops the agent run after N fragments, before any tool runs.
+//! `--tool-input-streaming eager|beta|off` picks how an Anthropic-format provider
+//! streams tool input.
 //!
-//! Run it with a provider, which reads its key from the environment:
+//! Providers: `anthropic` (`ANTHROPIC_API_KEY`), `openai` (Chat Completions) and
+//! `openai-responses` (`OPENAI_API_KEY`), `gemini` and `gemini-interactions`
+//! (`GEMINI_API_KEY`), `deepseek` and `deepseek-anthropic` (`DEEPSEEK_API_KEY`),
+//! `openrouter` (`OPENROUTER_API_KEY`). Gemini's generateContent sends each call
+//! whole, in one fragment.
 //!
 //! ```sh
 //! cargo run -p agent_tool_call_streaming -- anthropic
@@ -20,19 +24,6 @@
 //! cargo run -p agent_tool_call_streaming -- deepseek --stop-after 5
 //! cargo run -p agent_tool_call_streaming -- anthropic --tool-input-streaming off
 //! ```
-//!
-//! Providers: `anthropic` (`ANTHROPIC_API_KEY`), `openai` (Chat Completions)
-//! and `openai-responses` (`OPENAI_API_KEY`), `gemini` and
-//! `gemini-interactions` (`GEMINI_API_KEY`), `deepseek` (`DEEPSEEK_API_KEY`),
-//! `deepseek-anthropic` (DeepSeek's Anthropic-format endpoint, as an
-//! Anthropic-compatible gateway, `DEEPSEEK_API_KEY`), `openrouter`
-//! (`OPENROUTER_API_KEY`). Gemini's generateContent sends each call whole,
-//! so its calls start, carry one fragment, and end together.
-//! `--stop-after N` stops the agent run from a hook after N argument
-//! fragments, before any call ends, and shows that no tool ran.
-//! `--tool-input-streaming eager|beta|off` chooses how an Anthropic-format
-//! provider is asked to stream tool input; with `off`, Anthropic holds a
-//! long argument value back and sends it in one burst.
 
 mod hook;
 mod tools;

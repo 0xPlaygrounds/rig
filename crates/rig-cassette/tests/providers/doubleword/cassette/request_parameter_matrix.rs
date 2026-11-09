@@ -1,18 +1,11 @@
 //! Request-parameter pass-through matrix for Doubleword chat completions.
 //!
-//! The shared completion builder owns some fields while provider-specific
-//! OpenAI-compatible options arrive through `additional_params`. These six
-//! cells prove the final serialized body contains the requested value and
-//! that Doubleword accepts it, covering both paths through the merge.
-//!
-//! | source | field | recorded value |
-//! |---|---|---|
-//! | typed builder | `temperature` | `0.0` |
-//! | typed builder | `max_tokens` | `7` |
-//! | additional params | `top_p` | `0.25` |
-//! | additional params | `seed` | `31415` |
-//! | additional params | `stop` | `["BANANA"]` |
-//! | additional params | `response_format` | `{"type":"json_object"}` |
+//! The shared completion builder owns some fields, such as `temperature` and
+//! `max_tokens`, while provider-specific OpenAI-compatible options like
+//! `top_p`, `seed`, `stop` and `response_format` arrive through
+//! `additional_params`. Each cell proves the final serialized body contains
+//! the requested value and that Doubleword accepts it, covering both paths
+//! through the merge.
 
 use rig::providers::doubleword;
 use serde_json::{Value, json};

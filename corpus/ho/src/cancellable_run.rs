@@ -1,21 +1,14 @@
-//! Long commands with live output and per-call cancel (spec
-//! `H09-cancellable-run.md`): the `run` tool, `/cancel-call` and `ctrl+k`.
+//! Long commands with live output and per-call cancel: the `run` tool, `/cancel-call` and `ctrl+k`.
+//! Each `run` call starts `sh -c` through the shared launcher ([`Processes`]) as a process group of
+//! its own. Its output lines go into the call's [`RunOutput`], which keeps the last 4 KB and feeds
+//! the call's [`ToolProgress`] (the terminal view shows it at most 10 times a second). When the
+//! turn is interrupted or stopped, the call is answered with the output so far and `[interrupted]`
+//! ([`IfStopped`]).
 //!
-//! `run` is an open tool. Each call starts `sh -c` through the shared
-//! launcher ([`Processes`]) as a process group of its own. A thread hands
-//! the command's output lines to a [`Running::stream`] on the call's job
-//! entity, and each line goes into the call's [`RunOutput`], which keeps
-//! the last 4 KB. From it the plugin keeps the call's [`ToolProgress`]
-//! (which every front shows, the terminal view at most 10 times a second)
-//! and its [`IfStopped`]: the output so far and `[interrupted]`, which the
-//! kernel answers with when the turn is interrupted or stopped.
-//!
-//! A cancel (`/cancel-call`, `ctrl+k`) or the timeout sends the group
-//! SIGTERM, then SIGKILL three seconds later (a [`WakeAt`] on the job).
-//! Once the command ended the call is answered with its last 4 KB of output
-//! and how it ended, so a cancel lets the turn carry on with the model
-//! deciding. The job is [`JobOf`] its call and ends when the call settles,
-//! which kills a command still running.
+//! A cancel or the timeout sends the group SIGTERM, then SIGKILL three seconds later. Once the
+//! command ended, the call is answered with its last 4 KB of output and how it ended, so a cancel
+//! lets the turn carry on with the model deciding. The job is [`JobOf`] its call and ends when the
+//! call settles, which kills a command still running.
 
 use std::cmp::Reverse;
 use std::thread;

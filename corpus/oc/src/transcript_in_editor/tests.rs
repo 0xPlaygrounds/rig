@@ -8,8 +8,8 @@ use rig_core::message::{Origin, ToolFunction, ToolName};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_core::tool::ExitStatus;
 use rig_harness_test_support::{
-    AnswerAsks, Answers, Collected, Ended, MemoryStore, app_on, calls, collect, first_agent,
-    log_ended, reply, run_until, scratch_home, scripted_models, tui_view,
+    AnswerAsks, Answers, Collected, Ended, MemoryStore, app_on, calls, collect, deliver,
+    first_agent, log_ended, reply, run_until, scratch_home, scripted_models, tui_view,
 };
 
 use super::*;
@@ -90,12 +90,7 @@ fn start(
 
 /// Asks `agent` something and runs frames until its turn ended.
 fn ask(app: &mut App, wakes: &Receiver<()>, agent: Entity, text: &str) {
-    let ended = app.world().resource::<Ended>().0.len();
-    app.world_mut()
-        .trigger(Deliver::new(agent, text, DeliveryMode::Queue));
-    run_until(app, wakes, |world| {
-        world.resource::<Ended>().0.len() > ended
-    });
+    deliver(app, wakes, Deliver::new(agent, text, DeliveryMode::Queue));
 }
 
 /// Types `line` with `editor` as the editor and runs frames until a

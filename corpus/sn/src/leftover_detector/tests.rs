@@ -5,7 +5,7 @@ use rig_basics::coding_tools::EditTool;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
-    Ended, app_on, calls, connect, first_agent, log_ended, reply, run_until, scratch_home,
+    Ended, app_on, calls, connect, first_agent, log_ended, reply, say, scratch_home,
 };
 
 use super::*;
@@ -44,12 +44,7 @@ fn sent(model: &MockCompletionModel) -> Vec<String> {
 /// Sends `text` from the user and runs until its turn ended, and a few
 /// frames more, in case anything else would start.
 fn prompt(app: &mut App, wakes: &Receiver<()>, agent: Entity, text: &str) {
-    let ended = app.world().resource::<Ended>().0.len();
-    app.world_mut()
-        .trigger(Deliver::new(agent, text, DeliveryMode::Steer));
-    run_until(app, wakes, |world| {
-        world.resource::<Ended>().0.len() > ended
-    });
+    say(app, wakes, agent, text);
     for _ in 0..20 {
         app.update();
     }
@@ -147,7 +142,4 @@ fn added_leftovers_get_one_nudge_and_kept_ones_are_not_raised_again() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(LeftoverDetectorPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(LeftoverDetectorPlugin);

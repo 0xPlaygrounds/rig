@@ -1,26 +1,19 @@
 //! Wire-sequence conformance scenarios for provider streaming pipelines.
 //!
-//! The streaming sibling of `rig-agent`'s `model_conformance`: each scenario
-//! drives raw wire bytes (SSE or NDJSON) through a provider's *complete*
-//! streaming path — bytes → decode → the writer's parts →
-//! [`CompletionStream`](crate::streaming::CompletionStream) → its response
-//! — and asserts the streaming contract: an error is the stream's last item,
-//! a reply the provider did not end has no response, and every part the
-//! stream emits reaches the response exactly once. Scenarios state the contract; a per-provider
+//! Each scenario drives raw wire bytes (SSE or NDJSON) through a provider's
+//! complete streaming path, from decode through the writer's parts and
+//! [`CompletionStream`](crate::streaming::CompletionStream) to its response,
+//! and asserts the streaming contract: an error is the stream's last item, a
+//! reply the provider did not end has no response, and every part the stream
+//! emits reaches the response exactly once. A per-provider
 //! [`ProviderWireFixture`] supplies the frames, since each wire format spells
 //! the same event differently.
 //!
-//! Every sequence family here pins a shipped bug from the #2257 review rounds
-//! (`rig-2257-code-review-findings-*.md`); the per-scenario comments cite the
-//! specific finding.
-//!
-//! Suites are expanded per wire family by
-//! [`streaming_conformance_suite!`](crate::streaming_conformance_suite).
-//! Scenarios a wire cannot spell return an explicit
-//! [`ScenarioOutcome::Skipped`] that the macro cross-checks against the
-//! suite's declared [`SuiteCapabilities`] — a skip is always visible and can
-//! never masquerade as a pass, so the executed count is exactly the declared
-//! grid minus the named skips (#2258 review, F8 corpus honesty).
+//! [`streaming_conformance_suite!`](crate::streaming_conformance_suite)
+//! expands the suites per wire family. A scenario a wire cannot spell returns
+//! [`ScenarioOutcome::Skipped`], which the macro checks against the suite's
+//! declared [`SuiteCapabilities`], so the executed count is the declared grid
+//! minus the named skips.
 
 use bytes::Bytes;
 use futures::StreamExt;
@@ -68,17 +61,6 @@ impl ConformanceError {
     }
 }
 
-/// Outcome of a passing wire-conformance scenario.
-#[derive(Debug)]
-pub struct ScenarioReport {
-    /// Stable scenario name.
-    pub name: &'static str,
-    /// Provider driver the scenario ran against.
-    pub provider: &'static str,
-    /// Human-readable observations, one per verified sub-case.
-    pub observations: Vec<String>,
-}
-
 /// What a capability-gated scenario did: ran its assertions, or skipped
 /// because the wire family cannot spell the sequence shape.
 ///
@@ -86,11 +68,11 @@ pub struct ScenarioReport {
 /// [`streaming_conformance_suite!`](crate::streaming_conformance_suite)
 /// macro cross-checks it against the suite's declared capability flags via
 /// [`check_gated_outcome`], so a fixture cannot vacuously pass a scenario its
-/// capabilities claim to cover (#2258 review, F8 corpus-honesty batch).
+/// capabilities claim to cover.
 #[derive(Debug)]
 pub enum ScenarioOutcome {
     /// The scenario ran and its assertions held.
-    Ran(ScenarioReport),
+    Ran,
     /// The fixture lacks the sequence shape; nothing was asserted.
     Skipped {
         /// Stable scenario name.
@@ -201,31 +183,8 @@ pub const WIRE_FAMILIES: &[&str] = &[
     "candle",
 ];
 
-/// The sanctioned reason for an expected-failure scenario, from `xfail`
-/// entries of the form `"scenario_name: reason (finding reference)"`.
-pub fn xfail_reason<'a>(xfail: &[&'a str], scenario: &str) -> Option<&'a str> {
-    xfail.iter().find_map(|entry| {
-        let (name, reason) = entry.split_once(':')?;
-        (name.trim() == scenario).then(|| reason.trim())
-    })
-}
-
-/// `xfail` entries that do not name a canonical scenario or carry no reason.
-pub fn invalid_xfail_entries(xfail: &[&str]) -> Vec<String> {
-    xfail
-        .iter()
-        .filter(|entry| match entry.split_once(':') {
-            Some((name, reason)) => {
-                !CANONICAL_SCENARIOS.contains(&name.trim()) || reason.trim().is_empty()
-            }
-            None => true,
-        })
-        .map(std::string::ToString::to_string)
-        .collect()
-}
-
 /// Enforce a capability-gated scenario's outcome against the suite's declared
-/// capability flag and its `xfail` list.
+/// capability flag.
 ///
 /// A `Skipped` outcome passes only when the capability is disclaimed; a `Ran`
 /// outcome passes only when it is declared — so a vacuous pass (fixture lacks
@@ -234,19 +193,11 @@ pub fn invalid_xfail_entries(xfail: &[&str]) -> Vec<String> {
 pub fn check_gated_outcome(
     scenario: &'static str,
     capability: bool,
-    xfail: &[&str],
     outcome: Result<ScenarioOutcome, ConformanceError>,
 ) -> Result<(), String> {
-    match (xfail_reason(xfail, scenario), outcome) {
-        (Some(reason), Err(error)) => {
-            eprintln!("xfail {scenario}: {reason} ({error})");
-            Ok(())
-        }
-        (Some(reason), Ok(_)) => Err(format!(
-            "{scenario} passed but is listed as xfail ({reason}); remove the xfail entry"
-        )),
-        (None, Err(error)) => Err(format!("{scenario} failed: {error}")),
-        (None, Ok(ScenarioOutcome::Ran(_))) => {
+    match outcome {
+        Err(error) => Err(format!("{scenario} failed: {error}")),
+        Ok(ScenarioOutcome::Ran) => {
             if capability {
                 Ok(())
             } else {
@@ -255,7 +206,7 @@ pub fn check_gated_outcome(
                 ))
             }
         }
-        (None, Ok(ScenarioOutcome::Skipped { reason, .. })) => {
+        Ok(ScenarioOutcome::Skipped { reason, .. }) => {
             if capability {
                 Err(format!(
                     "{scenario} skipped ({reason}) but the suite declares the capability; \
@@ -269,14 +220,13 @@ pub fn check_gated_outcome(
     }
 }
 
-/// Enforce an always-runnable scenario's result against the `xfail` list.
+/// Enforce an always-runnable scenario's result.
 pub fn check_ungated_outcome(
     scenario: &'static str,
-    xfail: &[&str],
-    result: Result<ScenarioReport, ConformanceError>,
+    result: Result<(), ConformanceError>,
 ) -> Result<(), String> {
     // A run always declares its capability.
-    check_gated_outcome(scenario, true, xfail, result.map(ScenarioOutcome::Ran))
+    check_gated_outcome(scenario, true, result.map(|()| ScenarioOutcome::Ran))
 }
 
 /// One scripted wire input frame.
@@ -349,7 +299,7 @@ pub fn transport_error_chunk() -> http_client::Result<WireInput> {
     )))
 }
 
-/// Executable stream-lifecycle validator (#2258 C1).
+/// Executable stream-lifecycle validator.
 ///
 /// The invariants every normalized stream must satisfy, stated once and run
 /// over every recorded cassette and corpus fixture that drains through
@@ -742,25 +692,17 @@ fn concat_frames(parts: &[&[WireInput]]) -> Vec<WireInput> {
         .collect()
 }
 
-/// A scenario's identity and running notes, bound once.
-///
-/// The scenario name and the provider under test are facts of the *scenario*,
-/// not of each check inside it: every contract violation in a body reports
-/// the same pair. `Checks` holds them, so a check states only what must hold
-/// and a report states only what was observed.
+/// A scenario's identity, bound once: every contract violation in a body
+/// reports the same scenario name and provider, so a check states only what
+/// must hold.
 struct Checks {
     name: &'static str,
     provider: &'static str,
-    observations: Vec<String>,
 }
 
 impl Checks {
     fn new(name: &'static str, provider: &'static str) -> Self {
-        Self {
-            name,
-            provider,
-            observations: Vec::new(),
-        }
+        Self { name, provider }
     }
 
     /// This scenario's contract violation, for the `ok_or_else` shape.
@@ -781,11 +723,6 @@ impl Checks {
         Err(self.fail(details()))
     }
 
-    /// Record a verified sub-case.
-    fn note(&mut self, observation: impl Into<String>) {
-        self.observations.push(observation.into());
-    }
-
     /// The wire family cannot spell this sequence shape: an explicit, named
     /// skip that [`check_gated_outcome`] cross-checks against the suite's
     /// declared capabilities.
@@ -796,31 +733,17 @@ impl Checks {
             reason,
         }
     }
-
-    fn report(self) -> ScenarioReport {
-        ScenarioReport {
-            name: self.name,
-            provider: self.provider,
-            observations: self.observations,
-        }
-    }
-
-    fn ran(self) -> ScenarioOutcome {
-        ScenarioOutcome::Ran(self.report())
-    }
 }
 
 /// Truncation at every position — EOF before content, mid-text, mid-tool-args,
 /// after a tool call's frames — must preserve the content that ended and
 /// never produce a terminal record.
-///
-/// Pins the truncation family from round one (`rig-2257-code-review-findings-ec9f2625.md`):
 /// EOF without the provider's end event must not synthesize a successful
 /// usage-less terminal.
 pub async fn truncation_preserves_content_without_terminal(
     fixture: &ProviderWireFixture,
-) -> Result<ScenarioReport, ConformanceError> {
-    let mut checks = Checks::new(
+) -> Result<(), ConformanceError> {
+    let checks = Checks::new(
         "truncation_preserves_content_without_terminal",
         fixture.driver.provider,
     );
@@ -831,7 +754,6 @@ pub async fn truncation_preserves_content_without_terminal(
         !drained.has_terminal(),
         || "an empty stream must not synthesize a terminal record",
     )?;
-    checks.note("EOF before content: no terminal");
 
     // EOF after text deltas.
     let drained = fixture
@@ -849,7 +771,6 @@ pub async fn truncation_preserves_content_without_terminal(
         !drained.has_terminal(),
         || "EOF after text deltas must not synthesize a terminal record",
     )?;
-    checks.note("EOF mid-text: content preserved, no terminal");
 
     // EOF mid-tool-arguments, where the wire streams arguments.
     if let Some(partial) = &fixture.partial_tool_call_frames {
@@ -858,7 +779,6 @@ pub async fn truncation_preserves_content_without_terminal(
             !drained.has_terminal(),
             || "EOF mid-tool-arguments must not synthesize a terminal record",
         )?;
-        checks.note("EOF mid-tool-args: no terminal");
     }
 
     // EOF after a tool call's frames, before the provider's end. A call is
@@ -884,9 +804,8 @@ pub async fn truncation_preserves_content_without_terminal(
         !drained.has_terminal(),
         || "EOF after a tool call must not synthesize a terminal record",
     )?;
-    checks.note("EOF after a tool call: no terminal");
 
-    Ok(checks.report())
+    Ok(())
 }
 
 /// A transport failure after a tool call's frames ends the reply: the `Err`
@@ -894,8 +813,8 @@ pub async fn truncation_preserves_content_without_terminal(
 /// before the failure precedes it; one still open never surfaces.
 pub async fn transport_error_after_tool_call_yields_err_then_end(
     fixture: &ProviderWireFixture,
-) -> Result<ScenarioReport, ConformanceError> {
-    let mut checks = Checks::new(
+) -> Result<(), ConformanceError> {
+    let checks = Checks::new(
         "transport_error_after_tool_call_yields_err_then_end",
         fixture.driver.provider,
     );
@@ -928,8 +847,7 @@ pub async fn transport_error_after_tool_call_yields_err_then_end(
         || "a transport failure must not be papered over with a terminal record",
     )?;
 
-    checks.note("Err, then end; no terminal");
-    Ok(checks.report())
+    Ok(())
 }
 
 /// A malformed frame between valid content and the provider's end ends the
@@ -938,7 +856,7 @@ pub async fn transport_error_after_tool_call_yields_err_then_end(
 pub async fn malformed_frame_ends_the_reply(
     fixture: &ProviderWireFixture,
 ) -> Result<ScenarioOutcome, ConformanceError> {
-    let mut checks = Checks::new("malformed_frame_ends_the_reply", fixture.driver.provider);
+    let checks = Checks::new("malformed_frame_ends_the_reply", fixture.driver.provider);
     let Some(malformed) = &fixture.malformed_frame else {
         return Ok(checks.skip("wire family cannot spell a frame-level decode failure"));
     };
@@ -969,19 +887,15 @@ pub async fn malformed_frame_ends_the_reply(
         || "a reply cut by a corrupt frame has no response",
     )?;
 
-    checks.note("Err surfaced last; content kept; no response");
-    Ok(checks.ran())
+    Ok(ScenarioOutcome::Ran)
 }
 
 /// An event type the client does not know must be skipped without an error,
 /// and the stream must still complete.
-///
-/// Pins the unknown-event forward-compatibility policy (round three,
-/// `rig-2257-code-review-findings-8a2f41c7.md`).
 pub async fn unknown_event_is_skipped(
     fixture: &ProviderWireFixture,
 ) -> Result<ScenarioOutcome, ConformanceError> {
-    let mut checks = Checks::new("unknown_event_is_skipped", fixture.driver.provider);
+    let checks = Checks::new("unknown_event_is_skipped", fixture.driver.provider);
     let Some(unknown) = &fixture.unknown_event_frame else {
         return Ok(checks.skip("wire family cannot spell an unknown event type"));
     };
@@ -1002,7 +916,7 @@ pub async fn unknown_event_is_skipped(
         || "the stream must deliver its content and complete around the skipped event",
     )?;
     // The frame is skipped semantically but observable verbatim on the raw
-    // passthrough channel (openai-agents' raw-event precedent, #2258 item 5).
+    // passthrough channel.
     checks.require(drained.unknown_values().len() == 1, || {
         format!(
             "exactly one Unknown passthrough item must surface for the unknown frame, \
@@ -1020,11 +934,7 @@ pub async fn unknown_event_is_skipped(
         || "the unknown frame must not perturb the aggregated assistant choice",
     )?;
 
-    checks.note(
-        "unknown event skipped semantically, surfaced on the raw channel, \
-         choice unchanged, stream completed",
-    );
-    Ok(checks.ran())
+    Ok(ScenarioOutcome::Ran)
 }
 
 /// A *known* event whose payload is schema-defective ends the reply: it
@@ -1035,7 +945,7 @@ pub async fn unknown_event_is_skipped(
 pub async fn defective_known_event_ends_the_reply(
     fixture: &ProviderWireFixture,
 ) -> Result<ScenarioOutcome, ConformanceError> {
-    let mut checks = Checks::new(
+    let checks = Checks::new(
         "defective_known_event_ends_the_reply",
         fixture.driver.provider,
     );
@@ -1063,19 +973,15 @@ pub async fn defective_known_event_ends_the_reply(
         || "a reply cut by a defective event has no response",
     )?;
 
-    checks.note("defective known event ended the reply with its Err");
-    Ok(checks.ran())
+    Ok(ScenarioOutcome::Ran)
 }
 
 /// A delta-less choice (the Azure `prompt_filter_results` prelude) must be a
-/// no-op — no error, no content, and the rest of the stream unaffected.
-///
-/// Pins the Azure prelude no-op from round two
-/// (`rig-2257-code-review-findings-b91d03aa.md`).
+/// no-op: no error, no content, and the rest of the stream unaffected.
 pub async fn delta_less_choice_prelude_is_a_noop(
     fixture: &ProviderWireFixture,
 ) -> Result<ScenarioOutcome, ConformanceError> {
-    let mut checks = Checks::new(
+    let checks = Checks::new(
         "delta_less_choice_prelude_is_a_noop",
         fixture.driver.provider,
     );
@@ -1099,18 +1005,14 @@ pub async fn delta_less_choice_prelude_is_a_noop(
         || "the prelude must not perturb content delivery or the terminal",
     )?;
 
-    checks.note("delta-less prelude ignored; stream unaffected");
-    Ok(checks.ran())
+    Ok(ScenarioOutcome::Ran)
 }
 
 /// Refusal frames must deliver their text to the consumer without an error.
-///
-/// Pins the refusal-delta handling from round three
-/// (`rig-2257-code-review-findings-8a2f41c7.md`).
 pub async fn refusal_frames_deliver_text_without_error(
     fixture: &ProviderWireFixture,
 ) -> Result<ScenarioOutcome, ConformanceError> {
-    let mut checks = Checks::new(
+    let checks = Checks::new(
         "refusal_frames_deliver_text_without_error",
         fixture.driver.provider,
     );
@@ -1137,24 +1039,18 @@ pub async fn refusal_frames_deliver_text_without_error(
         || "a refused turn still ends with the provider's genuine terminal",
     )?;
 
-    checks.note("refusal text delivered without error");
-    Ok(checks.ran())
+    Ok(ScenarioOutcome::Ran)
 }
 
 /// On the buffered-body pipeline (the ChatGPT backend), a terminal whose body
 /// carries text never seen as a delta must merge that text into the choice
 /// exactly once, and a body restating streamed deltas must not duplicate them.
-///
-/// Pins the terminal-body/delta per-kind merge from round five
-/// (`rig-2257-code-review-findings-5c73639c.md`) and the empty-delta merge
-/// direction verified in round six (`rig-2257-code-review-findings-34ee8ba5.md`
-/// P3-2).
 pub async fn terminal_body_content_merges_per_kind(
     driver: &BufferedBodyDriver,
     cases: Vec<(&'static str, String)>,
     expected_text: &str,
-) -> Result<ScenarioReport, ConformanceError> {
-    let mut checks = Checks::new("terminal_body_content_merges_per_kind", driver.provider);
+) -> Result<(), ConformanceError> {
+    let checks = Checks::new("terminal_body_content_merges_per_kind", driver.provider);
 
     for (label, body) in cases {
         let choice = driver.drive(body).await?;
@@ -1171,22 +1067,18 @@ pub async fn terminal_body_content_merges_per_kind(
                 "{label}: terminal-body text must appear exactly once in the choice, observed {occurrences} in {choice_text:?}"
             )
         })?;
-        checks.note(format!("{label}: text merged exactly once"));
     }
 
-    Ok(checks.report())
+    Ok(())
 }
 
 /// A bare terminal signal after only-unparseable frames must not fabricate a
 /// successful terminal record: the parse errors were already surfaced, and a
 /// default-usage terminal would dress the failure up as success.
-///
-/// Pins the bare-`[DONE]` guard from round six
-/// (`rig-2257-code-review-findings-5c73639c.md`, carried into `34ee8ba5`).
 pub async fn bare_terminal_after_only_unparseable_frames_fabricates_nothing(
     fixture: &ProviderWireFixture,
 ) -> Result<ScenarioOutcome, ConformanceError> {
-    let mut checks = Checks::new(
+    let checks = Checks::new(
         "bare_terminal_after_only_unparseable_frames_fabricates_nothing",
         fixture.driver.provider,
     );
@@ -1209,20 +1101,18 @@ pub async fn bare_terminal_after_only_unparseable_frames_fabricates_nothing(
         || "a bare terminal with no decoded frame must not fabricate a terminal record",
     )?;
 
-    checks.note("no fabricated terminal after only-unparseable frames");
-    Ok(checks.ran())
+    Ok(ScenarioOutcome::Ran)
 }
 
 /// The genuine terminal must report the provider's usage; a terminal without
 /// usage metrics must complete with no counter reported rather than being
-/// suppressed or invented.
-///
-/// Pins the absent-usage contract on [`CompletionResponse::usage`](crate::completion::CompletionResponse::usage)
-/// (round one, `rig-2257-code-review-findings-ec9f2625.md`).
+/// suppressed or invented, as
+/// [`CompletionResponse::usage`](crate::completion::CompletionResponse::usage)
+/// documents.
 pub async fn usage_variants_are_reported_or_absent(
     fixture: &ProviderWireFixture,
-) -> Result<ScenarioReport, ConformanceError> {
-    let mut checks = Checks::new(
+) -> Result<(), ConformanceError> {
+    let checks = Checks::new(
         "usage_variants_are_reported_or_absent",
         fixture.driver.provider,
     );
@@ -1252,10 +1142,6 @@ pub async fn usage_variants_are_reported_or_absent(
             )
         },
     )?;
-    checks.note(format!(
-        "usage total {} and finish reason {:?} preserved",
-        fixture.expected_usage_total, fixture.expected_finish_reason
-    ));
 
     if let Some(zero_usage) = &fixture.zero_usage_terminal_frames {
         let frames = concat_frames(&[&fixture.text_frames, zero_usage]);
@@ -1269,26 +1155,23 @@ pub async fn usage_variants_are_reported_or_absent(
                 response.usage
             )
         })?;
-        checks.note("usage-less terminal completed with no counter reported");
     }
 
-    Ok(checks.report())
+    Ok(())
 }
 
 /// Reasoning-summary deltas followed by the item's full `output_item.done`
 /// block must aggregate to the summary exactly once — the full block
 /// supersedes its own deltas, never duplicates them.
 ///
-/// Pins the open P1 in `rig-2257-code-review-findings-34ee8ba5.md` ("OpenAI
-/// Responses reasoning-summary streams duplicate reasoning content"):
 /// `reasoning_summary_text.delta` drops `item_id`, so the strict same-item
 /// table appends the full block beside the delta-built item.
 pub async fn reasoning_summary_deltas_are_superseded_without_duplication(
     driver: &WireDriver,
     frames: Vec<WireInput>,
     summary_text: &str,
-) -> Result<ScenarioReport, ConformanceError> {
-    let mut checks = Checks::new(
+) -> Result<(), ConformanceError> {
+    let checks = Checks::new(
         "reasoning_summary_deltas_are_superseded_without_duplication",
         driver.provider,
     );
@@ -1315,8 +1198,7 @@ pub async fn reasoning_summary_deltas_are_superseded_without_duplication(
         )
     })?;
 
-    checks.note("summary aggregated exactly once");
-    Ok(checks.report())
+    Ok(())
 }
 
 /// A reasoning item whose `output_item.done` carries several parts under one
@@ -1326,8 +1208,8 @@ pub async fn multi_part_same_id_reasoning_keeps_every_part(
     driver: &WireDriver,
     frames: Vec<WireInput>,
     expected_parts: &[&str],
-) -> Result<ScenarioReport, ConformanceError> {
-    let mut checks = Checks::new(
+) -> Result<(), ConformanceError> {
+    let checks = Checks::new(
         "multi_part_same_id_reasoning_keeps_every_part",
         driver.provider,
     );
@@ -1360,11 +1242,7 @@ pub async fn multi_part_same_id_reasoning_keeps_every_part(
         )
     })?;
 
-    checks.note(format!(
-        "all {} reasoning parts survived",
-        expected_parts.len()
-    ));
-    Ok(checks.report())
+    Ok(())
 }
 
 /// Reasoning deltas interleaved with a tool call, then the item's completed
@@ -1372,14 +1250,13 @@ pub async fn multi_part_same_id_reasoning_keeps_every_part(
 /// content.
 ///
 /// Pins the interleaved-reasoning replacement contract on
-/// completed reasoning block (round six,
-/// `rig-2257-code-review-findings-34ee8ba5.md`, "Verified sound" section).
+/// completed reasoning block.
 pub async fn interleaved_reasoning_aggregates_to_one_item(
     driver: &WireDriver,
     frames: Vec<WireInput>,
     expected_text: &str,
-) -> Result<ScenarioReport, ConformanceError> {
-    let mut checks = Checks::new(
+) -> Result<(), ConformanceError> {
+    let checks = Checks::new(
         "interleaved_reasoning_aggregates_to_one_item",
         driver.provider,
     );
@@ -1401,22 +1278,17 @@ pub async fn interleaved_reasoning_aggregates_to_one_item(
         format!("the reasoning item must carry the completed block's text {expected_text:?}")
     })?;
 
-    checks.note("exactly one reasoning item with the completed content");
-    Ok(checks.report())
+    Ok(())
 }
 
 /// On a constant-id wire (a boundary-minted per-stream reasoning id), other
 /// output closes the open reasoning item: thought → tool call → thought must
 /// aggregate as `[Reasoning(first), ToolCall, Reasoning(second)]` — two items
 /// in arrival order, never one merged item that misorders history on replay.
-///
-/// Pins the F1b ordering dimension of the #2258 review (main's
-/// "other output closes the reasoning item" boundary, lost when identity
-/// became the per-stream constant).
 pub async fn interleaved_constant_id_reasoning_preserves_order(
     fixture: &ProviderWireFixture,
 ) -> Result<ScenarioOutcome, ConformanceError> {
-    let mut checks = Checks::new(
+    let checks = Checks::new(
         "interleaved_constant_id_reasoning_preserves_order",
         fixture.driver.provider,
     );
@@ -1440,26 +1312,23 @@ pub async fn interleaved_constant_id_reasoning_preserves_order(
         interleaved.second_reasoning,
     )?;
 
-    checks.note("boundary kept: reasoning, tool call, reasoning in order");
-    Ok(checks.ran())
+    Ok(ScenarioOutcome::Ran)
 }
 
 /// On a constant-id wire whose completed reasoning block arrives as a signed
 /// full restatement (gemini `thoughtSignature`), a full block *after*
 /// interleaved output must not replace-and-discard the thought accumulated
 /// before the boundary: the choice keeps `[Reasoning(first), ToolCall,
-/// Reasoning(second, signed)]`.
-///
-/// Pins the F1b erasure dimension of the #2258 review, on top of the F1
-/// adapter fix (the signed chunk restates only post-boundary fragments).
+/// Reasoning(second, signed)]`. The signed chunk restates only
+/// post-boundary fragments.
 pub async fn interleaved_signed_full_reasoning_does_not_erase_prior_thought(
     driver: &WireDriver,
     frames: Vec<WireInput>,
     first: &str,
     tool_name: &str,
     second: &str,
-) -> Result<ScenarioReport, ConformanceError> {
-    let mut checks = Checks::new(
+) -> Result<(), ConformanceError> {
+    let checks = Checks::new(
         "interleaved_signed_full_reasoning_does_not_erase_prior_thought",
         driver.provider,
     );
@@ -1476,8 +1345,7 @@ pub async fn interleaved_signed_full_reasoning_does_not_erase_prior_thought(
         .is_some_and(|reasoning| reasoning.native.is_some());
     checks.require(signed, || "the post-boundary block must keep its signature")?;
 
-    checks.note("pre-boundary thought survived; signed block completed the post-boundary part");
-    Ok(checks.report())
+    Ok(())
 }
 
 /// Shared assertion: the aggregated choice is exactly
@@ -1539,8 +1407,7 @@ pub mod fixtures {
             response,
         };
         // Every fixture and cassette that drains through this helper runs
-        // the lifecycle validator — the prose invariants as one executable
-        // artifact (#2258 C1).
+        // the lifecycle validator.
         super::assert_valid_event_stream(&drained.items, &drained.choice);
         drained
     }
@@ -1979,7 +1846,7 @@ pub mod fixtures {
                     "item_id": "ws_1",
                 }))),
                 // The decoder reads only the fields it builds blocks from, and
-                // reads those leniently, so no known event fails a reply (#2668).
+                // reads those leniently, so no known event fails a reply.
                 defective_known_frame: None,
                 delta_less_prelude_frame: None,
                 refusal: Some(RefusalFixture {
@@ -2004,8 +1871,7 @@ pub mod fixtures {
         /// Drives the *real* entry — `Model::call` on the
         /// ChatGPT wire whose HTTP double answers the `/responses` POST with
         /// the scripted SSE body — so the scenario exercises the buffered
-        /// fold itself rather than a mirrored copy of it (#2258 review, F8
-        /// drift risk).
+        /// fold itself rather than a mirrored copy of it.
         pub fn buffered_driver() -> BufferedBodyDriver {
             BufferedBodyDriver::new("chatgpt", |body| {
                 Box::pin(async move {
@@ -2056,7 +1922,7 @@ pub mod fixtures {
             frames.iter().map(frame_text).collect()
         }
 
-        /// The ChatGPT envelope-less replay shape (#2258 F3): a summary delta
+        /// The ChatGPT envelope-less replay shape: a summary delta
         /// with NO envelope bookkeeping at all (repair injects
         /// `output_index: 0`, minting the `output-0` identity), then the
         /// item's envelope-full `output_item.done` restating the summary
@@ -2274,7 +2140,7 @@ pub mod fixtures {
         }
 
         /// Thought delta, interleaved tool call, then a signed full thought
-        /// chunk carrying non-empty text — the F1 erasure shape.
+        /// chunk carrying non-empty text, the erasure shape.
         pub fn interleaved_signed_thought_frames()
         -> (Vec<WireInput>, &'static str, &'static str, &'static str) {
             let frames = vec![

@@ -1,85 +1,26 @@
-//! Edge matrix for error identity on the OpenAI Responses **websocket**
-//! transport.
+//! Error identity on the OpenAI Responses websocket transport.
 //!
-//! **Bug.** A websocket upgrade the provider *rejects* never becomes a
-//! websocket — it is an ordinary HTTP response, and this endpoint answers it
-//! exactly as its HTTP twin does. A live handshake against
-//! `wss://api.openai.com/v1/responses` with an invalid key returns:
-//!
-//! ```text
-//! HTTP/1.1 401 Unauthorized
-//! x-request-id: req_...
-//! {"error":{"message":"Incorrect API key provided: …","type":"invalid_request_error",
-//!           "code":"invalid_api_key","param":null},"status":401}
-//! ```
-//!
-//! `tungstenite` hands rig all three — its `Error::Http` carries the status,
-//! the headers, and a body filled in from the read tail — and
-//! `websocket_provider_error` flattened the lot to `error.to_string()`, i.e.
-//! `ProviderError("HTTP error: 401 Unauthorized")`. So
+//! A websocket upgrade the provider rejects is an ordinary HTTP response,
+//! and this endpoint answers it exactly as its HTTP twin does: status,
+//! request id and JSON error body. The caller must reach the same
+//! `ProviderError` identity whichever transport carried the rejection, so
 //! `provider_response_status()`, `provider_response_body()` and
-//! `provider_request_id()` all came back `None`, and a caller could not tell a
-//! bad key from a quota stop from a network fault.
+//! `provider_request_id()` stay populated on the websocket path too.
 //!
-//! That is the contract rig#2314 and rig#2315 established for the crate's
-//! other two transports — the blocking path keeps it through
-//! `send_completion`, the SSE connect path through `sse_transport` — leaving
-//! the websocket the one transport that still dropped it.
-//!
-//! **How these cells fail on `origin/main`.** The recorded handshake replays
-//! identically — the fix changes nothing rig sends — and the assertions fail:
-//! `main` yields `ProviderError("HTTP error: 401 Unauthorized")` where the cell
-//! expects a `ProviderResponse` carrying status, body and request id.
-//!
-//! **Why this matrix is small, and where its coverage actually lives.** The
-//! input is not a request space but an error space: the only failure carrying
-//! a provider response is `tungstenite::Error::Http`, and every other variant
-//! has none. That space is covered by unit cells on **both sides of the
-//! transport seam**, since the mapping is now split across it:
-//!
-//! - `from_tungstenite`'s cells in `crates/rig-tungstenite/src/lib.rs` cover
-//!   the tungstenite half — the rejection's status, headers and body, and
-//!   every non-`Http` variant except `Tls`, whose inner error cannot be
-//!   constructed portably in a test.
-//! - `websocket_provider_error_*` in
-//!   `crates/rig-core/src/providers/openai/responses_api/websocket.rs` covers
-//!   the provider half — body present/absent, request id present/absent/empty,
-//!   the rejection's headers present/absent, and nine status classes including
-//!   2xx and 3xx.
-//!
-//! `crates/rig-tungstenite/tests/handshake_rejection.rs` joins the two against
-//! a real socket.
-//!
-//! The recorded cell runs in every execution of the target: `rig-cassette`'s
-//! dev-dependency on the facade enables `websocket` unconditionally. The unit
-//! cells above live in `rig-core`.
-//!
-//! Only the *auth-class* failure is reachable as a recorded handshake: the
-//! model is named in the `response.create` message, not in the upgrade, so a
-//! bad model fails **in band** as an `error` event on an established socket
-//! rather than as a handshake rejection. There is exactly one recordable
-//! handshake failure, and cell 2 records it.
-//!
-//! | # | cell | trigger | asserts | status |
-//! |---|------|---------|---------|--------|
-//! | 2 | `handshake_rejection_matches_the_http_twin` | invalid key | same identity as the HTTP 401 | recorded |
-//!
-//! Cell 2 is the parity claim stated as a test: the same credential rejected
-//! on the same path must reach the caller the same way whether the transport
-//! was HTTP or a websocket upgrade. It replays the recorded websocket
-//! handshake **and drives the unary HTTP path against the same credential in
-//! the same cassette**, then compares the two errors. Both transports run, so
-//! a regression on either side fails the cell — reading the twin's recorded
-//! bytes instead, as an earlier version did, could not have detected an HTTP
-//! regression at all.
+//! Only an auth-class failure is recordable as a handshake: the model is
+//! named in the `response.create` message, so a bad model fails in band on
+//! an established socket. The rest of the error space is covered by unit
+//! tests of `from_tungstenite` in `rig-tungstenite` and
+//! `websocket_provider_error_*` in `rig-core`, joined against a real socket
+//! by `crates/rig-tungstenite/tests/handshake_rejection.rs`.
 
 use rig::error::ProviderError;
 
 use super::super::support::with_openai_websocket_cassette;
 use rig::completion::CompletionRequest;
 
-/// What a caller can actually learn from a failed connection — the three
-/// accessors the rig#2314/#2315 contract is written in terms of.
+/// What a caller can learn from a failed connection, through the three
+/// error identity accessors.
 fn observable(error: &ProviderError) -> (Option<u16>, bool, bool) {
     (
         error
@@ -92,16 +33,10 @@ fn observable(error: &ProviderError) -> (Option<u16>, bool, bool) {
     )
 }
 
-/// The parity the bug broke, driven rather than described: **both transports
-/// run**, against the same credential and the same path, inside one cassette —
-/// the upgrade `GET /v1/responses` and the unary `POST /v1/responses` — and
-/// what a caller can observe is compared between the two errors.
-///
-/// An earlier version of this cell read the HTTP twin's recorded *bytes*
-/// instead of running the HTTP transport, which a review pointed out could not
-/// detect the thing it was named for: had the unary path regressed to
-/// `from_http_response` (dropping the request id), this cell would still have
-/// passed. Executing both is the only form that cannot.
+/// Both transports run against the same credential and path inside one
+/// cassette: the upgrade `GET /v1/responses` and the unary
+/// `POST /v1/responses`. What a caller can observe must match between the
+/// two errors. Running both means a regression on either side fails the cell.
 #[tokio::test]
 async fn handshake_rejection_matches_the_http_twin() {
     with_openai_websocket_cassette(

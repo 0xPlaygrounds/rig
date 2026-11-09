@@ -1,3 +1,4 @@
+use crate::workspace::Root;
 use rig_core::tool::{FileRead, FilesRead, Tool, ToolContext, ToolErrorKind, content_hash};
 
 use super::{Search, SearchArgs, SearchHits, find, render};
@@ -68,7 +69,7 @@ fn the_tool_publishes_its_hits_and_the_files_it_read() {
         .ok()
         .flatten()
         .unwrap_or_default();
-    let a = crate::fs::resolve(Some(&dir), "a.rs");
+    let a = <dyn crate::workspace::Workspace>::resolve(&Local, Some(&dir), "a.rs");
     let a = FileRead::new(a.to_string_lossy(), content_hash(b"todo one\ntodo two\n"));
     assert_eq!(read.0, [a]);
 
@@ -89,8 +90,10 @@ fn a_search_names_hits_as_read_takes_them() {
     std::fs::create_dir_all(dir.join("src")).ok();
     std::fs::write(dir.join("src").join("a.rs"), "todo one\n").ok();
     let search = Search {
-        base: Some(dir.clone()),
-        ..Search::default()
+        root: Root {
+            base: Some(dir.clone()),
+            ..Root::default()
+        },
     };
     let text = |args| {
         futures::executor::block_on(Tool::call(&search, &mut ToolContext::new(), args))
@@ -119,8 +122,10 @@ fn a_search_for_files_lists_their_paths() {
     std::fs::write(dir.join("src").join("b.rs"), "").ok();
     std::fs::write(dir.join("logo.png"), [0xff, 0xfe]).ok();
     let search = Search {
-        base: Some(dir.clone()),
-        ..Search::default()
+        root: Root {
+            base: Some(dir.clone()),
+            ..Root::default()
+        },
     };
     let mut context = ToolContext::new();
     let found = futures::executor::block_on(Tool::call(

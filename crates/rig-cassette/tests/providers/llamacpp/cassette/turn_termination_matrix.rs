@@ -1,37 +1,19 @@
-//! Model-turn termination metadata (rig#2184 / #2341) against llama.cpp.
+//! Model-turn termination metadata against llama.cpp.
 //!
 //! `ModelTurnFinished` carries `finish_reason: Option<&FinishReason>` and
-//! `max_tokens: Option<u64>` — the normalized reason the provider stopped, and
-//! the effective output-token cap *that attempt* ran under. Anthropic, Gemini
-//! and OpenAI each have a recorded matrix for it; llama.cpp had none, and its
-//! whole vocabulary is reachable without asking a model to misbehave.
+//! `max_tokens: Option<u64>`: the normalized reason the provider stopped, and the
+//! effective output-token cap that attempt ran under.
+//! [`streaming_truncated_turn_reports_length_and_cap`] pins `Length` and the
+//! request's cap on the streaming surface. llama.cpp's wire values `stop`,
+//! `length` and `tool_calls` map directly to `Stop`, `Length` and `ToolCalls`;
+//! `server-task.cpp` builds the field from exactly those three, and
+//! `response_shape_matrix`'s finish-reason cell fails if a fourth appears.
 //!
-//! **Server**: the competent tier — `unsloth/Qwen3-8B-GGUF` Q4_K_M,
-//! `--jinja --seed 42 --temp 0 -c 8192`, `llama-server` b10964-b29c606e2. The
-//! tool cells need a model that reliably calls; the rest would run on the
-//! smoke tier but stay here so one server records the whole matrix.
-//!
-//! This provider's vocabulary, and what it normalizes to:
-//!
-//! | normalized | llama.cpp wire value | how |
-//! | --- | --- | --- |
-//! | `Stop` | `stop` | direct |
-//! | `Length` | `length` | direct |
-//! | `ToolCalls` | `tool_calls` | direct |
-//!
-//! `server-task.cpp` builds the field from exactly those three, so the
-//! vocabulary is *closed* — there is no `Other(_)`, no `ContentFilter`, and no
-//! reachable "no reason at all" on this wire. `response_shape_matrix`'s
-//! finish-reason cell sweeps the corpus and fails if a fourth value ever
-//! appears.
-//!
-//! | # | Cell | Surface | Asserts |
-//! | --- | --- | --- | --- |
-//! | 2 | [`streaming_truncated_turn_reports_length_and_cap`] | streaming | `Length` and the request's cap |
-//!
-//! Every cell re-reads its own fixture and fails if the recorded turn stopped
-//! carrying the wire reason the cell is about, so a provider changing
-//! behaviour cannot leave a cell green while covering nothing.
+//! Recorded against the competent tier: `unsloth/Qwen3-8B-GGUF` Q4_K_M,
+//! `--jinja --seed 42 --temp 0 -c 8192`, `llama-server` b10964-b29c606e2, so one
+//! server that reliably calls tools records the whole matrix. Every cell re-reads
+//! its own fixture and fails if the recorded turn stopped carrying the wire
+//! reason the cell is about.
 
 use rig::completion::FinishReason;
 use serde_json::Value;

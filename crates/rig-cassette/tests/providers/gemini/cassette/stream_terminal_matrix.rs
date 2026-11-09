@@ -1,57 +1,21 @@
-//! Edge matrix for the premature stream-terminal bug.
+//! Gemini stream terminals: an intermediate `finishReason` does not end the
+//! stream.
 //!
-//! # The bug
-//!
-//! `GeminiRestAdapter::interpret` treated *any* chunk carrying a
-//! `finishReason` as the provider completing the turn and pushed the
-//! terminal record there; the shared driver stops reading
-//! as soon as it sees a terminal record. Gemini's `streamGenerateContent`
-//! does not honour that assumption: when a built-in tool runs a round it
-//! emits an **intermediate** `finishReason` and keeps streaming. A recorded
-//! two-round code-execution turn reads
+//! Gemini's `streamGenerateContent` emits an intermediate `finishReason`
+//! when a built-in tool runs a round, then keeps streaming. A two-round
+//! code-execution turn reads:
 //!
 //! ```text
 //! [executableCode] [codeExecutionResult] [executableCode + finishReason:STOP]
 //! [codeExecutionResult] [text] [text + finishReason:STOP]
 //! ```
 //!
-//! so rig ended the stream on frame 3 and dropped the model's entire answer —
-//! while still yielding a terminal record that reported a clean `STOP`. The
-//! blocking twin of the same request returns the full answer.
-//!
-//! The fix defers the terminal record to EOF, which the adapter contract
-//! names as deferral rather than synthesis ("a terminal the provider *did*
-//! signal earlier … may be emitted here"). EOF with no `finishReason` at all
-//! is still truncation and still yields no terminal.
-//!
-//! # The matrix
-//!
-//! The fixed code path's inputs are: how many `finishReason` chunks arrive,
-//! what follows the first one, which terminal metadata each chunk carries,
-//! how the stream ends (EOF / transport error / in-band failure), and which
-//! stream entry point the caller used.
-//!
-//! | # | cell | kind | dimension pinned |
-//! |---|------|------|------------------|
-//! | 13 | `an_intermediate_finish_reason_does_not_end_the_stream` | unit | minimal statement of the rule |
-//! | 14 | `the_last_finish_reason_wins_over_an_earlier_one` | unit | STOP→MAX_TOKENS ordering |
-//! | 15 | `a_usage_only_trailer_after_the_finish_reason_reaches_the_terminal` | unit | trailing usage chunk |
-//! | 16 | `later_metadata_wins_on_the_terminal_record` | unit | responseId/modelVersion from the last chunk |
-//! | 17 | `three_finish_reason_chunks_still_yield_one_terminal` | unit | exactly-one-terminal invariant |
-//! | 18 | `eof_without_any_finish_reason_yields_no_terminal_record` | unit | truncation is still truncation |
-//! | 19 | `a_transport_error_after_a_finish_reason_yields_no_terminal_record` | unit | error path |
-//! | 20 | `a_tool_protocol_failure_still_ends_the_stream_immediately` | unit | in-band failure still short-circuits |
-//! | 21 | `a_tool_call_after_the_first_finish_reason_reaches_the_choice` | unit | tool content past the boundary |
-//! | 22 | `reasoning_after_the_first_finish_reason_reaches_the_choice` | unit | reasoning past the boundary |
-//! | 23 | `an_unknown_frame_after_the_first_finish_reason_is_passed_through` | unit | passthrough past the boundary |
-//! | 24 | `the_terminal_record_is_the_last_item_yielded` | unit | ordering invariant |
-//! | 25 | `a_transport_error_after_the_real_terminal_also_reports_truncation` | unit | the deliberate trade-off, stated |
-//!
-//! These cells drive synthetic SSE frames through the real client, because
-//! the provider cannot be asked for these shapes: Gemini never emits `STOP`
-//! followed by `MAX_TOKENS`, never sends a usage-only trailer *after* an
-//! intermediate finish, and cannot be made to fail its transport mid-turn on
-//! demand. Each frame sequence follows the bytes of recorded Gemini streams.
+//! So the terminal record waits for EOF (`GenerateContentDecoder::eof`), where
+//! the last finish reason and metadata win, and exactly one terminal is
+//! yielded last. EOF with no `finishReason`, or a transport error after one,
+//! is truncation and yields no terminal. These cells drive synthetic SSE
+//! frames, modelled on recorded Gemini streams, through the real client,
+//! since the provider cannot be asked for these shapes on demand.
 
 mod unit {
     use futures::StreamExt;
@@ -62,7 +26,7 @@ mod unit {
     use rig::streaming::StreamEvent;
     use rig_core::test_utils::{MockStreamingClient, SequencedStreamingHttpClient};
 
-    /// Frames written from the bytes recorded by cells 1–12.
+    /// Frames written from the bytes of recorded Gemini streams.
     const CODE_ROUND: &str = r#"{"candidates":[{"content":{"parts":[{"executableCode":{"language":"PYTHON","code":"print(6*7)"}}],"role":"model"},"index":0}],"responseId":"resp-first","modelVersion":"gemini-2.5-flash"}"#;
     /// The intermediate terminal: a finishReason on a chunk that is not last.
     /// The part kind matches the recorded bytes, where the early finish rides
@@ -267,15 +231,8 @@ mod unit {
             run.errors, 1,
             "the transport failure must reach the consumer"
         );
-        // The deliberate half of the trade-off. Before the fix, a connection
-        // that dropped after *any* finishReason still handed the consumer a
-        // terminal record, because the stream had already ended there. It now
-        // reports truncation instead — and it must: on this wire a
-        // finishReason is not proof the turn finished (that is the whole bug),
-        // so the two cases are indistinguishable in-band and the safe reading
-        // is the module's stated truncation semantics. A terminal here would
-        // report a successful completion for a turn that may have been cut in
-        // half.
+        // On this wire a finishReason is not proof the turn finished, so a
+        // terminal here could report success for a turn cut in half.
         assert!(
             run.response.is_none(),
             "a failed stream must not be dressed up as a completed turn by the deferred terminal"
@@ -283,14 +240,10 @@ mod unit {
         assert!(run.response.is_none());
     }
 
-    /// The other half of cell 19, and the regressing direction: the provider
-    /// signalled its *real* finish and the transport then failed before EOF.
-    /// The turn's bytes all arrived, and rig still reports truncation —
-    /// deliberately, because on this wire a `finishReason` is not proof the
-    /// turn finished (that is the whole bug), so "final finish" and
-    /// "intermediate finish" are indistinguishable in-band and reporting a
-    /// completed turn for one that may have been cut in half is the worse
-    /// error. Pinned so the trade-off cannot change unnoticed.
+    /// The provider signalled its real finish and the transport then failed
+    /// before EOF. Rig still reports truncation: a final and an intermediate
+    /// finish are indistinguishable in band, and reporting a completed turn
+    /// for one cut in half is the worse error.
     #[tokio::test]
     async fn a_transport_error_after_the_real_terminal_also_reports_truncation() {
         let run = run_client(SequencedStreamingHttpClient::new(vec![

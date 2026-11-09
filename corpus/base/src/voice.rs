@@ -1,20 +1,15 @@
-//! Plugin corpus: 49. Voice input and spoken answers (spec `49-voice.md`).
+//! Voice input and spoken answers. Holding the push-to-talk key (`ctrl+space`) in the
+//! terminal view, or `/listen` to start and again to stop, records with a [`Recorder`]; on
+//! release a [`Transcriber`] turns the audio into text off the main thread. The text goes
+//! into the terminal view's input for [`AUTO_SEND`] and is then sent as the user's message,
+//! unless the user edited the input meanwhile. When a top-level agent's turn ends with an
+//! answer, the answer is condensed (its first paragraph without code blocks, or a summary
+//! model's sentence) and spoken by a [`Speaker`], which stops when the user talks or types.
+//! `/voice on|off` and `/voice speak on|off` switch it, kept with the session.
 //!
-//! Holding the push-to-talk key (`ctrl+space`) in the terminal view, or
-//! `/listen` to start and again to stop, records with a [`Recorder`]; on
-//! release a [`Transcriber`] turns the audio into text off the main thread.
-//! The text goes into the terminal view's input for [`AUTO_SEND`] and is
-//! then sent as the user's message, unless the user edited the input
-//! meanwhile. When a top-level agent's turn ends with an answer, the answer
-//! is condensed (its first paragraph without code blocks, or a summary
-//! model's sentence) and spoken by a [`Speaker`], which stops when the user
-//! talks or types. `/voice on|off` and `/voice speak on|off` switch it,
-//! kept with the session.
-//!
-//! The backends are commands from the `[voice]` table of the settings, else
-//! found on the `PATH` (`arecord` or sox's `rec`; `whisper-cli` with
-//! `RIG_HOME/voice/ggml-base.en.bin`; `say`, `espeak-ng` or `espeak`), and
-//! start as every child process does ([`Processes`]):
+//! The backends are commands from the `[voice]` table of the settings, else found on the
+//! `PATH` (`arecord` or sox's `rec`; `whisper-cli` with `RIG_HOME/voice/ggml-base.en.bin`;
+//! `say`, `espeak-ng` or `espeak`), and start as every child process does ([`Processes`]):
 //!
 //! ```toml
 //! [voice]

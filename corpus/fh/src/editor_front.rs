@@ -1,21 +1,17 @@
-//! FH-21: an editor front (Neovim, VS Code). `rig --editor` speaks a JSON
-//! protocol over stdio, one object per line ([`FromEditor`] in,
-//! [`ToEditor`] out); other editor windows join the same session over
-//! the session directory's `editor.sock`, the same protocol, and any other
-//! transport hands its lines to [`connect`]. Every
-//! connected editor sees the transcript as it streams, the questions and
-//! pickers, and answers them.
+//! An editor front (Neovim, VS Code). `rig --editor` speaks a JSON protocol over stdio, one object
+//! per line ([`FromEditor`] in, [`ToEditor`] out); other editor windows join the same session over
+//! the session directory's `editor.sock`, the same protocol, and any other transport hands its
+//! lines to [`connect`]. Every connected editor sees the transcript as it streams, the questions
+//! and pickers, and answers them.
 //!
-//! Open buffers win. A `read` of a file an editor has open is answered,
-//! once every gate had its say, from the buffer. An `edit` or `write` of an open file is held by an
-//! open `editor_review` effect: the editors get its hunks, the first
-//! editor that answers applies the hunks it accepted to its buffer, and
-//! the others are told the review is closed. The call's result says
-//! `applied`, `rejected by user` or `partially applied: hunk 2 rejected`,
-//! followed by the editor's diagnostics of the file, awaited at most 2 s.
-//! `/auto-accept` has the editor apply and save every edit unreviewed.
-//! Files no editor has open are edited on disk as usual, and the editors
-//! are told which changed.
+//! Open buffers win. A `read` of a file an editor has open is answered, once every gate had its
+//! say, from the buffer. An `edit` or `write` of an open file is held by an open `editor_review`
+//! effect: the editors get its hunks, the first editor that answers applies the hunks it accepted
+//! to its buffer, and the others are told the review is closed. The call's result says `applied`,
+//! `rejected by user` or `partially applied: hunk 2 rejected`, followed by the editor's diagnostics
+//! of the file, awaited at most 2 s. `/auto-accept` has the editor apply and save every edit
+//! unreviewed. Files no editor has open are edited on disk as usual, and the editors are told which
+//! changed.
 
 use std::collections::HashMap;
 use std::fmt::Write as _;
@@ -31,7 +27,7 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::EffectKind;
 use rig_harness::rig_core::message::Message;
 use rig_harness::rig_core::tool::FilesChanged;
-use rig_tools::fs::{place, resolve};
+use rig_tools::workspace::{Local, Workspace};
 use rig_tools::{Edit, EditArgs, Read, ReadArgs, Write, WriteArgs};
 use serde::{Deserialize, Serialize};
 use similar::{DiffTag, TextDiff};
@@ -581,10 +577,15 @@ fn receive(
         match message {
             FromEditor::Buffer { path, text } => {
                 let buffer = Buffer { text, client: from };
-                buffers.0.insert(resolve(Some(&root.0), &path), buffer);
+                buffers.0.insert(
+                    <dyn Workspace>::resolve(&Local, Some(&root.0), &path),
+                    buffer,
+                );
             }
             FromEditor::Close { path } => {
-                buffers.0.remove(&resolve(Some(&root.0), &path));
+                buffers
+                    .0
+                    .remove(&<dyn Workspace>::resolve(&Local, Some(&root.0), &path));
             }
             FromEditor::Send { text, selection } => {
                 let Some(agent) = agent else { continue };
@@ -840,7 +841,9 @@ fn one_path<'a>(touches: &'a Touches, dir: Option<&WorkDir>) -> Option<&'a Path>
         }
         _ => return None,
     };
-    let placed = dir.is_none_or(|dir| place(Some(&dir.0), true, &path.to_string_lossy()).is_ok());
+    let placed = dir.is_none_or(|dir| {
+        <dyn Workspace>::place(&Local, Some(&dir.0), true, &path.to_string_lossy()).is_ok()
+    });
     placed.then_some(path.as_path())
 }
 

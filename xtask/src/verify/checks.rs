@@ -200,8 +200,8 @@ pub(super) fn all() -> Vec<Check> {
         check(
             "default-check",
             vec![
-                // A dependency's #[cfg(test)] bodies are not compiled by the
-                // facade's test targets after moving helpers into this crate.
+                // The facade's test targets do not compile a dependency's
+                // #[cfg(test)] bodies, so rig-test-support's tests build here.
                 cargo(&[
                     "check",
                     "--locked",
@@ -314,7 +314,7 @@ pub(super) fn all() -> Vec<Check> {
                     "rig",
                     "-p",
                     "rig-cassette",
-                    // Extracted corpus helper regressions retain this graph too.
+                    // rig-test-support's corpus regressions run in this graph too.
                     "-p",
                     "rig-test-support",
                     "--features",
@@ -364,8 +364,8 @@ pub(super) fn all() -> Vec<Check> {
                 "rig-agent",
                 "-p",
                 "rig-rmcp",
-                // Keep relocated bus regressions in this feature graph,
-                // rather than enabling cassette's HTTP dev-dependencies.
+                // The bus regressions run in this feature graph rather than
+                // enabling cassette's HTTP dev-dependencies.
                 "-p",
                 "rig-cassette-minimal",
                 "--all-features",
@@ -390,11 +390,10 @@ pub(super) fn all() -> Vec<Check> {
                     "-E",
                     "package(rig-cassette-minimal) and (test(/^verify::/) or test(/^effect_log::/))",
                 ]),
-                // Preserve the former default sweep's dependency graph and
-                // retry policy. The nested runner above has no native HTTP
-                // engine; this execution also exercises the unified
-                // allocator. Only the `verify` suite moves out of the
-                // default sweep.
+                // The `verify` suite under the default sweep's dependency
+                // graph and retry policy: the nested runner above has no
+                // native HTTP engine, and this run also exercises the unified
+                // allocator.
                 cargo(&[
                     "nextest",
                     "run",
@@ -499,8 +498,7 @@ pub(super) fn all() -> Vec<Check> {
         ),
         check(
             "derive",
-            // nextest runs each test in its own process, as the former
-            // one binary per file did; doctests are cargo's.
+            // nextest runs each test in its own process; doctests are cargo's.
             vec![
                 cargo(&[
                     "nextest",
@@ -580,7 +578,7 @@ pub(super) fn all() -> Vec<Check> {
         // except the separately executed minimal replay runner. Clippy checks
         // the default members' --all-targets, and every bench has an explicit
         // locked compile-only owner, enforced by the verification planner tests.
-        // Existing repository floor checker; new verification tooling is Rust.
+        // The dependency-floor checker is Python; new verification tooling is Rust.
         check(
             "dependency-floors",
             vec![

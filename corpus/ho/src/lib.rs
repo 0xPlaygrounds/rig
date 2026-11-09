@@ -1,7 +1,5 @@
-//! The plugins of the held-out series (H): one plugin per module, each written only against the harness's public API.
-//!
-//! Each module was its own package; they share a crate so their tests
-//! link one binary instead of one each.
+//! The plugins of the held-out series: one plugin per module, each written only against the
+//! harness's public API. They share a crate so their tests link one binary instead of one each.
 
 pub mod api_key_pool;
 pub mod auto_session_name;

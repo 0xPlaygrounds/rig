@@ -6,7 +6,7 @@ use rig_basics::subagents::{SubagentsPlugin, TASK};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness_test_support::{
     Collected, MemoryStore, ToolOutputs, app_on, calls, collect, log_tool_outputs, reply,
-    run_until, scripted_models,
+    run_until, scratch_dir, scripted_models,
 };
 use serde_json::{Value, json};
 
@@ -157,9 +157,7 @@ fn builds(n: usize) -> Vec<Vec<MockStreamEvent>> {
 /// A project of the test `name` beside the test binary, with
 /// `src/config.rs`.
 fn project(name: &str) -> PathBuf {
-    let exe = std::env::current_exe().unwrap_or_default();
-    let dir = exe.with_file_name(format!("subcache-{name}-{}", std::process::id()));
-    std::fs::remove_dir_all(&dir).ok();
+    let dir = scratch_dir(&format!("subcache-{name}-{}", std::process::id()));
     std::fs::create_dir_all(dir.join("src")).ok();
     let config = "use std::fs;\n\n// Loading.\n\n\n\n\n\n\n\n\npub fn load_config() {}\n";
     std::fs::write(dir.join("src/config.rs"), config).ok();
@@ -345,7 +343,4 @@ fn a_list_task_refuses_is_never_answered_from_a_record() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(SubagentResultCachePlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(SubagentResultCachePlugin);

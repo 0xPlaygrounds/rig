@@ -69,66 +69,6 @@ async fn openai_completions_cassette(
     (cassette, openai.chat)
 }
 
-/// The effect corpus's retrieval matrix (Matrix A):
-/// `crates/rig-cassette/fixtures/cassettes/openai/corpus_retrieval/`.
-pub(super) async fn with_openai_corpus_retrieval_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(OpenAiCassette) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    with_openai_cassette(spec, test_body).await;
-}
-
-/// The effect corpus's provider-breadth matrix (Matrix N):
-/// `crates/rig-cassette/fixtures/cassettes/openai/corpus_breadth/`.
-pub(super) async fn with_openai_corpus_breadth_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(OpenAiCassette) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    with_openai_cassette(spec, test_body).await;
-}
-
-/// The effect corpus's delta-wire matrix (Matrix K):
-/// `crates/rig-cassette/fixtures/cassettes/openai/corpus_delta/`.
-pub(super) async fn with_openai_corpus_delta_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(OpenAiCassette) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    with_openai_cassette(spec, test_body).await;
-}
-
-/// The effect corpus's host-families matrix (Matrix I):
-/// `crates/rig-cassette/fixtures/cassettes/openai/corpus_host/`.
-pub(super) async fn with_openai_corpus_host_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(OpenAiCassette) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    with_openai_cassette(spec, test_body).await;
-}
-
-/// The effect corpus's output-mode matrix (Matrix H):
-/// `crates/rig-cassette/fixtures/cassettes/openai/corpus_output/`.
-pub(super) async fn with_openai_corpus_output_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(OpenAiCassette) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    with_openai_cassette(spec, test_body).await;
-}
-
 pub(super) async fn with_openai_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
     F: FnOnce(OpenAiCassette) -> Fut,
@@ -239,119 +179,6 @@ where
     cassette.finish_after_test_result(result).await
 }
 
-/// Per-bug wrapper for the Chat Completions refusal matrix
-/// (`crates/rig-cassette/fixtures/cassettes/openai/refusal_matrix/`).
-///
-/// Yields both routes; cells that drive Chat Completions take
-/// [`OpenAiCassette::chat`], so one wrapper covers both surfaces of a bug
-/// whose logic lives in the shared chat-completions types.
-pub(super) async fn with_openai_refusal_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(OpenAiCassette) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    with_openai_cassette(spec, test_body).await;
-}
-
-/// Per-bug wrapper for the output-token-cap spelling matrix
-/// (`crates/rig-cassette/fixtures/cassettes/openai/max_completion_tokens_matrix/`).
-pub(super) async fn with_openai_max_tokens_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(OpenAiCassette) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    with_openai_cassette(spec, test_body).await;
-}
-
-/// Live-recorded Chat Completions log-probability transport matrix.
-pub(super) async fn with_openai_chat_stream_logprobs_cassette_result<F, Fut, E>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) -> Result<(), E>
-where
-    F: FnOnce(OpenAiCassette) -> Fut,
-    Fut: Future<Output = Result<(), E>>,
-{
-    with_openai_cassette_result(spec, test_body).await
-}
-
-/// Live-recorded Chat Completions tool-call truncation contract matrix.
-pub(super) async fn with_openai_tool_truncation_cassette_result<F, Fut, E>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) -> Result<(), E>
-where
-    F: FnOnce(OpenAiCassette) -> Fut,
-    Fut: Future<Output = Result<(), E>>,
-{
-    with_openai_cassette_result(spec, test_body).await
-}
-
-/// Live-recorded Chat Completions tool-call lifecycle matrix.
-pub(super) async fn with_openai_tool_lifecycle_cassette_result<F, Fut, E>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) -> Result<(), E>
-where
-    F: FnOnce(OpenAiCassette) -> Fut,
-    Fut: Future<Output = Result<(), E>>,
-{
-    with_openai_cassette_result(spec, test_body).await
-}
-
-/// Live-recorded Chat Completions terminal identity, usage, and provider
-/// metadata matrix.
-pub(super) async fn with_openai_terminal_metadata_cassette_result<F, Fut, E>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) -> Result<(), E>
-where
-    F: FnOnce(OpenAiCassette) -> Fut,
-    Fut: Future<Output = Result<(), E>>,
-{
-    with_openai_cassette_result(spec, test_body).await
-}
-
-/// Live-recorded Chat Completions caller-history roundtrip matrix.
-pub(super) async fn with_openai_history_roundtrip_cassette_result<F, Fut, E>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) -> Result<(), E>
-where
-    F: FnOnce(OpenAiCassette) -> Fut,
-    Fut: Future<Output = Result<(), E>>,
-{
-    with_openai_cassette_result(spec, test_body).await
-}
-
-/// Per-bug wrapper for the image-generation `additional_params` matrix
-/// (`crates/rig-cassette/fixtures/cassettes/openai/image_params_matrix/`).
-pub(super) async fn with_openai_image_params_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(OpenAiCassette) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    with_openai_cassette(spec, test_body).await;
-}
-
-/// Per-bug wrapper for the transcription-usage matrix
-/// (`crates/rig-cassette/fixtures/cassettes/openai/transcription_usage_matrix/`).
-pub(super) async fn with_openai_transcription_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(OpenAiCassette) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    with_openai_cassette(spec, test_body).await;
-}
-
 /// Per-bug wrapper for the audio-generation `additional_params` matrix
 /// (`crates/rig-cassette/fixtures/cassettes/openai/audio_params_matrix/`).
 ///
@@ -452,37 +279,13 @@ pub(super) async fn with_openai_cassette_bogus_key<F, Fut>(
 /// the same YAML decoder the harness writes with, so a layout change in the
 /// fixture format fails here loudly rather than silently reading `None`.
 pub(super) fn recorded_request_id_headers(scenario: &str) -> Vec<Option<String>> {
-    #[derive(serde::Deserialize)]
-    struct Interaction {
-        then: Response,
-    }
-    #[derive(serde::Deserialize)]
-    struct Response {
-        #[serde(default)]
-        header: Vec<NameValue>,
-    }
-    #[derive(serde::Deserialize)]
-    struct NameValue {
-        name: String,
-        value: String,
-    }
-
-    let path = crate::cassettes::cassette_path("openai", scenario);
-    let contents = std::fs::read_to_string(&path)
-        .unwrap_or_else(|err| panic!("cassette {} should be readable: {err}", path.display()));
-
-    serde_yaml::Deserializer::from_str(&contents)
-        .map(|document| {
-            let interaction = <Interaction as serde::Deserialize>::deserialize(document)
-                .unwrap_or_else(|err| {
-                    panic!("cassette {} should deserialize: {err}", path.display())
-                });
-            interaction
-                .then
-                .header
+    crate::cassettes::recorded_response_header_pairs("openai", scenario)
+        .into_iter()
+        .map(|headers| {
+            headers
                 .into_iter()
-                .find(|header| header.name.eq_ignore_ascii_case("x-request-id"))
-                .map(|header| header.value)
+                .find(|(name, _)| name == "x-request-id")
+                .map(|(_, value)| value)
         })
         .collect()
 }
@@ -503,24 +306,6 @@ pub(super) fn sse_json_frames(body: &str) -> Vec<serde_json::Value> {
                 .unwrap_or_else(|err| panic!("recorded SSE frame should be JSON: {err}"))
         })
         .collect()
-}
-
-/// Cassette wrapper for the OpenAI Responses prompt-caching matrix
-/// (`crates/rig-cassette/fixtures/cassettes/openai/prompt_caching/`).
-///
-/// Delegates to [`with_openai_cassette`] — the behavior is identical, and
-/// deliberately shared so the two cannot drift apart when the base wrapper gains
-/// policy. What the separate name buys is a per-suite entry in the
-/// cassette-safety registry, so the cache fixtures are auditable as one
-/// concern's evidence.
-pub(super) async fn with_openai_prompt_caching_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(OpenAiCassette) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    with_openai_cassette(spec, test_body).await;
 }
 
 /// `options` as OpenAI's typed provider options.

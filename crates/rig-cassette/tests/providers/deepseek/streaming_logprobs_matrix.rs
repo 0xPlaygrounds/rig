@@ -1,25 +1,14 @@
-//! Exhaustive matrix for streamed Chat Completions log probabilities.
+//! Matrix for streamed Chat Completions log probabilities on DeepSeek.
 //!
-//! Before this fix, `StreamingChoice` did not model `logprobs`, so serde
-//! discarded every per-token object before the shared compatible adapter saw
-//! it. A blocking reply's captured `raw` kept the same field on its choice;
-//! a streamed reply therefore carried strictly less provider-native
-//! information than a blocking one.
+//! `StreamingChoice` models `logprobs`, so a streamed reply carries the same per-token objects
+//! a blocking reply's captured `raw` keeps on its choice. The space is transport, thinking
+//! (disabled or `reasoning_effort: low`), termination (`stop` or a one-token `length`) and
+//! `top_logprobs` (absent, `0`, `2`).
 //!
-//! The complete input space exercised here is a 2 × 2 × 2 × 3 cross-product:
-//!
-//! | dimension | values |
-//! |---|---|
-//! | transport | blocking control, streamed regression |
-//! | thinking | disabled text, `reasoning_effort: low` |
-//! | termination | natural `stop`, one-token `length` |
-//! | top candidates | `top_logprobs` absent, `0`, `2` |
-//!
-//! That is 24 cells, of which eight are tests. Each re-derives the exact
-//! expected log-probability object from its fixture and compares it with the
-//! captured `raw` view of the reply it rode on. Streaming cells recursively
-//! concatenate token arrays in wire order, including DeepSeek's
-//! `reasoning_content` probability array.
+//! Each recorded cell re-derives the exact expected log-probability object from its fixture and
+//! compares it with the captured `raw` view of the reply it rode on. Streaming cells
+//! concatenate token arrays in wire order, including DeepSeek's `reasoning_content` probability
+//! array.
 
 use rig_test_support::cassette_models::OpenAiModels;
 use std::sync::{Arc, Mutex};
@@ -29,10 +18,7 @@ use futures::StreamExt as _;
 use rig::providers::deepseek;
 use serde_json::{Value, json};
 
-use super::support::{
-    recorded_request, recorded_response, recorded_stream_chunks,
-    with_deepseek_stream_logprobs_cassette_result,
-};
+use super::support::with_deepseek_cassette_result;
 use rig::completion::{CompletionRequest, GenerationOptions, Reasoning};
 
 const MODEL: &str = deepseek::DEEPSEEK_V4_FLASH;
@@ -188,7 +174,7 @@ fn merge_json(existing: &mut Value, incoming: Value) {
 
 fn recorded_stream_logprobs(scenario: &str) -> Value {
     let mut accumulated = Value::Null;
-    for chunk in recorded_stream_chunks(scenario) {
+    for chunk in crate::cassettes::recorded_sse_json_frames("deepseek", scenario) {
         let Some(choice) = chunk["choices"].as_array().and_then(|choices| {
             choices
                 .iter()
@@ -211,8 +197,8 @@ fn recorded_stream_logprobs(scenario: &str) -> Value {
 
 fn recorded_finish_reason(scenario: &str, transport: Transport) -> Value {
     match transport {
-        Transport::Blocking => recorded_response(scenario)["choices"][0]["finish_reason"].clone(),
-        Transport::Streaming => recorded_stream_chunks(scenario)
+        Transport::Blocking => crate::cassettes::recorded_json_response("deepseek", scenario)["choices"][0]["finish_reason"].clone(),
+        Transport::Streaming => crate::cassettes::recorded_sse_json_frames("deepseek", scenario)
             .into_iter()
             .filter_map(|chunk| {
                 chunk["choices"]
@@ -229,7 +215,7 @@ fn recorded_finish_reason(scenario: &str, transport: Transport) -> Value {
 }
 
 fn assert_cell(scenario: &str, cell: Cell, observed: SharedObservation) {
-    let request = recorded_request(scenario);
+    let request = crate::cassettes::recorded_json_request("deepseek", scenario);
     assert_eq!(request["logprobs"], true, "{scenario}: request premise");
     match cell.top {
         Top::Absent => assert!(
@@ -249,7 +235,10 @@ fn assert_cell(scenario: &str, cell: Cell, observed: SharedObservation) {
     }
 
     let expected_logprobs = match cell.transport {
-        Transport::Blocking => recorded_response(scenario)["choices"][0]["logprobs"].clone(),
+        Transport::Blocking => {
+            crate::cassettes::recorded_json_response("deepseek", scenario)["choices"][0]["logprobs"]
+                .clone()
+        }
         Transport::Streaming => recorded_stream_logprobs(scenario),
     };
     assert!(
@@ -303,7 +292,7 @@ fn cell(transport: Transport, thinking: Thinking, termination: Termination, top:
 // configurations. The matching streaming half below traverses the fixed path.
 
 crate::matrix::case_matrix! {
-    wrapper: with_deepseek_stream_logprobs_cassette_result, family: streaming_logprobs_matrix_case;
+    wrapper: with_deepseek_cassette_result, family: streaming_logprobs_matrix_case;
     # [tokio :: test]
     blocking_disabled_stop_top_zero: ("streaming_logprobs_matrix/blocking_disabled_stop_top_zero", configured, cell (Transport :: Blocking , Thinking :: Disabled , Termination :: Stop , Top :: Zero ,));
     # [tokio :: test]

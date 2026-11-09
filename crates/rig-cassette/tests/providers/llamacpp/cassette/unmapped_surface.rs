@@ -1,51 +1,21 @@
-//! Part 3: llama.cpp's surface beyond what rig calls, and the decision on each.
+//! llama.cpp's surface beyond what rig calls, and the decision on each.
 //!
-//! `llama-server` b10499 registers 40-odd routes. Rig speaks four of them, and
-//! this file is where the rest are decided rather than left as an unexamined
-//! gap. Every row is **implement** or **exclude**, with the reason attached.
+//! Rig speaks four `llama-server` routes: chat completions, embeddings,
+//! rerank, and `GET /props`, the only API-key-checked GET and so the
+//! dialect's `verify_path`, which also reports the build tag and modalities
+//! that produced a fixture
+//! ([`props_states_which_model_and_modalities_produced_this_corpus`]). The
+//! other cells pin excluded routes rig can reach but does not route to:
+//! [`the_responses_api_is_reachable_but_rig_does_not_route_to_it`] and
+//! [`transcription_is_a_501_unless_the_loaded_model_hears`].
 //!
-//! | Route | Decision | Where |
-//! | --- | --- | --- |
-//! | `POST /v1/chat/completions` | implement | the whole suite |
-//! | `POST /v1/embeddings` | implement | `embeddings.rs`, `error_matrix.rs` |
-//! | `POST /v1/rerank` (+ `/rerank`, `/reranking`, `/v1/reranking`) | implement | `rerank_matrix.rs` |
-//! | `GET /props` | implement, as the dialect's `verify_path` | [`props_states_which_model_and_modalities_produced_this_corpus`] |
-//! | `POST /v1/responses` | **exclude** | [`the_responses_api_is_reachable_but_rig_does_not_route_to_it`] |
-//! | `POST /v1/audio/transcriptions` | **exclude** | [`transcription_is_a_501_unless_the_loaded_model_hears`] |
-//! | `POST /infill` | **exclude** | rig has no FIM capability; see below |
-//! | `POST /v1/messages` (Anthropic wire) | **exclude** | see below |
-//! | `POST /completion`, `/v1/completions` | **exclude** | the legacy text-completion wire; rig models chat |
-//! | `GET /slots`, `/metrics`, `/lora-adapters`, `POST /tokenize`, `/detokenize`, `/apply-template`, `/models/load`, `/models/unload`, `/cors-proxy`, `/tools` | **exclude** | operational and administrative; no rig capability corresponds |
-//!
-//! # The exclusions, stated
-//!
-//! * **`POST /infill`** — fill-in-the-middle, taking `input_prefix`,
-//!   `input_suffix` and `input_extra`. Rig has no capability for code infilling
-//!   at all: there is no trait to implement it against and no normalized
-//!   response to map it into. Adding one is a rig-wide design question, not a
-//!   provider integration. Excluded, and it is the clearest case in the table.
-//! * **`POST /v1/messages`** — llama.cpp also speaks the *Anthropic* Messages
-//!   wire, converting it to chat completions internally. Rig has an Anthropic
-//!   wire, so this is reachable today with
-//!   `anthropic::wire::Anthropic::new(key).with_base_url(url)`. It is
-//!   excluded from *this* provider because a
-//!   provider that spoke two wires would have to pick one for every capability,
-//!   and the OpenAI wire is the one llama.cpp's own documentation leads with.
-//! * **The legacy completion wire** (`/completion`, `/v1/completions`) — the
-//!   only place llama.cpp reports `tokens_evaluated`, `truncated`, `stop_type`,
-//!   `stopping_word` and `generation_settings`. Rig models chat completions;
-//!   there is no prompt-continuation capability to route here, and the fields
-//!   are therefore *absent* rather than dropped. Stated in
-//!   `providers::llamacpp::completion`'s docs alongside the `timings` that are
-//!   preserved.
-//! * **Operational routes** — `/slots` exposes and mutates server state,
-//!   `/tokenize` and `/detokenize` are tokenizer utilities, `/lora-adapters`
-//!   swaps adapters, `/models/load` and `/models/unload` drive the multi-model
-//!   router, and `/tools` and `/cors-proxy` are the web UI's own back end. None
-//!   maps to a rig capability. `/props` is the exception and is implemented:
-//!   it is the only API-key-checked GET, which makes it the only honest
-//!   `verify_path` for this dialect, and it reports the build tag and
-//!   modalities that say what produced a fixture.
+//! The rest are excluded. `/infill` has no rig capability to map into. The
+//! Anthropic-wire `/v1/messages` is reachable through rig's Anthropic
+//! provider with a base URL, and one provider speaks one wire. The legacy
+//! `/completion` wire is prompt continuation, which rig does not model, so
+//! its extra fields are absent rather than dropped. Operational routes such
+//! as `/slots`, `/tokenize`, `/lora-adapters` and `/models/load` map to no
+//! rig capability.
 
 use serde_json::Value;
 

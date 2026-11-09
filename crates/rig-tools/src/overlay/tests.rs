@@ -1,3 +1,4 @@
+use crate::workspace::Root;
 use std::sync::Arc;
 
 use rig_core::tool::{ChangeKind, Tool, ToolContext, ToolExecutionError, ToolOutput, content_hash};
@@ -28,21 +29,27 @@ fn tools_on_an_overlay_leave_the_disk_and_list_their_changes() {
     let workspace: Arc<dyn Workspace> = overlay.clone();
     let base = Some(dir.clone());
     let edit = Edit {
-        workspace: workspace.clone(),
-        base: base.clone(),
-        confine: true,
+        root: Root {
+            workspace: workspace.clone(),
+            base: base.clone(),
+            confine: true,
+        },
         seen: crate::Seen::default(),
     };
     let write = Write {
-        workspace: workspace.clone(),
-        base: base.clone(),
-        confine: true,
+        root: Root {
+            workspace: workspace.clone(),
+            base: base.clone(),
+            confine: true,
+        },
         seen: Default::default(),
     };
     let read = Read {
-        workspace,
-        base,
-        confine: true,
+        root: Root {
+            workspace,
+            base,
+            confine: true,
+        },
         seen: crate::Seen::default(),
     };
     let edited = run(

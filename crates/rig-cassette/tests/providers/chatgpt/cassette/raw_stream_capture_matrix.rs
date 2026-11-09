@@ -1,33 +1,15 @@
-//! Matrix for raw terminal-record capture on ChatGPT's streaming `/responses`
-//! path ([`CompletionResponse::raw`](rig::completion::CompletionResponse::raw)).
+//! Matrix for raw terminal-record capture on ChatGPT's streaming `/responses` path
+//! ([`CompletionResponse::raw`](rig::completion::CompletionResponse::raw)).
 //!
-//! # The feature
+//! Capture is always on. The terminal record of every stream carries `raw`: the response object
+//! the terminal `response.completed` event carried, with its usage, status, ids and model,
+//! verbatim. `raw == Value::Null` means only that a `CompletionResponse` was built by hand.
+//! `stream_raw_terminal_round_trips_provider_type` checks `raw` agrees with the normalized
+//! fields, and `stream_raw_exposes_terminal_status` reads back the provider's `status`, which
+//! the normalized response folds into a finish reason and does not carry.
 //!
-//! Capture is always on. The terminal record of every stream the seam yields
-//! carries `raw`: the response object the terminal `response.completed`
-//! event carried, with its usage, status, ids and model, verbatim. It is the
-//! terminal record only, and
-//! nothing about it is sent to ChatGPT. `raw == Value::Null` means only that a
-//! `CompletionResponse` was built by hand without a provider terminal behind it,
-//! which no cell here can produce.
-//!
-//! The terminal record spells the provider's `status` (`completed`), which
-//! the normalized [`CompletionResponse`](rig::completion::CompletionResponse) folds into a
-//! finish reason and does not carry; cell 2 reads it back through `raw`.
-//!
-//! # Matrix
-//!
-//! | # | Cell | Dimension | expected | Status |
-//! |---|------|-----------|----------|--------|
-//! | 1 | `stream_raw_terminal_round_trips_provider_type` | provider document | `raw` is the terminal response object, agreeing with the normalized fields | unrecorded (no CHATGPT credentials in this environment) |
-//! | 2 | `stream_raw_exposes_terminal_status` | terminal-only field | `raw.status == "completed"` as the recorded `response.completed` frame says; usage equals the frame's | unrecorded (no CHATGPT credentials in this environment) |
-//!
-//! Every cell is unrecorded: neither `CHATGPT_ACCESS_TOKEN`/`CHATGPT_ACCOUNT_ID`
-//! nor a usable ChatGPT OAuth cache was present when this matrix was written,
-//! and a fixture is never fabricated. To record: export the two variables,
-//! remove the `#[ignore]` attributes, flip the table to `recorded`, then run
-//! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig-cassette --all-features --test integration chatgpt::cassette::raw_stream_capture_matrix -- --nocapture --test-threads=1`
-//! and review `crates/rig-cassette/fixtures/cassettes/chatgpt/raw_stream_capture_matrix/`.
+//! The cells are ignored until recorded with ChatGPT credentials; a fixture is never
+//! fabricated.
 
 use super::GPT_5_4;
 use serde_json::Value;

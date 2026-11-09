@@ -478,7 +478,6 @@ pub struct Holds(Vec<Entity>);
 pub struct SupersededBy(pub Entity);
 
 impl SupersededBy {
-    /// The successor.
     pub fn successor(&self) -> Entity {
         self.0
     }

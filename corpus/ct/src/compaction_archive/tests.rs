@@ -310,7 +310,4 @@ fn compacted_messages_are_found_across_compactions_restarts_and_removals() {
     assert!(vault.starts_with("No archived message matches"), "{vault}");
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(CompactionArchivePlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(CompactionArchivePlugin);

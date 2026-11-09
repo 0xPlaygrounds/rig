@@ -185,7 +185,7 @@ pub const fn retryable_status(status: Option<u16>) -> bool {
 pub type LazyBody<T> = WasmBoxedFuture<'static, Result<T>>;
 
 /// The body of a streaming response: the transport's own chunks, boxed.
-pub type BoxedStream = std::pin::Pin<Box<dyn WasmCompatSendStream<InnerItem = Result<Bytes>>>>;
+pub type BoxedStream = WasmBoxedStream<'static, Result<Bytes>>;
 
 /// A response whose body streams.
 pub type StreamingResponse = Response<BoxedStream>;

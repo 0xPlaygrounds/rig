@@ -1,36 +1,20 @@
-//! Classifying tool failures as structured facts and applying policy in hooks.
+//! Classifies tool failures as structured facts and applies policy in hooks.
 //!
-//! `SystemProbe` simulates Erik Tews's two failure cases: disk I/O (`EIO`) and
-//! network unreachable (`ENETUNREACH`). The tool classifies each error and adds
-//! typed operation metadata; it does not decide whether the agent may continue.
+//! `SystemProbe` simulates a disk I/O failure (`EIO`) and an unreachable network
+//! (`ENETUNREACH`). It records the error class and typed metadata but does not
+//! decide whether the run continues. A completion-call hook forces `system_probe`
+//! on turn 1. `FailureRecorder` copies each result's call ID, error, and metadata
+//! into the run's scratchpad, and `FatalFailurePolicy` looks up the same call ID to
+//! stop on `Other`/`EIO` and let `Network`/`ENETUNREACH` reach the model. Keying on
+//! the call ID keeps concurrent results apart.
 //!
-//! A narrow completion-call hook reliably invokes `system_probe` on turn 1,
-//! while the prompt requests the desired operation. It does nothing on later
-//! turns, leaving the recoverable run free to produce a final answer. Two tool-result
-//! hooks then run in registration order:
-//!
-//! 1. `FailureRecorder` copies the event's call ID, structured error, and typed
-//!    result metadata into a run-scoped scratchpad ledger.
-//! 2. `FatalFailurePolicy` looks up that same call ID, terminating on `Other`/`EIO`
-//!    while allowing `Network`/`ENETUNREACH` feedback to reach the model. Correlation
-//!    matters because results from concurrent tool calls can interleave.
-//!
-//! The tool-call `OutcomeEvent` carries facts about one execution: `tool_result()`
-//! contains the standard classification and `tool_context()` holds
-//! tool/application-specific typed metadata that is never sent to the model. The
-//! scratchpad is different: it is shared, run-scoped hook state. Here it lets one
-//! hook record facts for the next hook without coupling either hook to
-//! model-visible result text.
-//!
-//! Live commands (require `OPENAI_API_KEY`):
+//! Requires `OPENAI_API_KEY`, except for `--help`. `fatal` stops after the disk
+//! failure; `recoverable` returns the network failure to the model.
 //!
 //! ```text
 //! cargo run -p tool_result_outcomes -- fatal
 //! cargo run -p tool_result_outcomes -- recoverable
 //! ```
-//!
-//! The fatal command terminates after the disk failure. The recoverable command
-//! lets the network failure return to the model. `--help` requires no credentials.
 
 use anyhow::{Result, bail};
 use rig::agent::{

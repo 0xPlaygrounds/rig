@@ -1,4 +1,4 @@
-//! The turn-termination matrix (`turn_termination_matrix`, rig#2184) once
+//! The turn-termination matrix (`turn_termination_matrix`) once
 //! per reply shape that matters to it. A hook's `ModelTurnFinished` must
 //! carry the normalized reason the provider stopped and the cap that
 //! attempt ran under. What differs per provider is only

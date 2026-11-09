@@ -44,7 +44,7 @@ macro_rules! case_matrix {
 pub use case_matrix;
 
 #[path = "matrix/agent_tool_sessions.rs"]
-mod agent_tool_sessions;
+pub mod agent_tool_sessions;
 pub use agent_tool_sessions::agent_tool_sessions_case;
 pub use agent_tool_sessions::session_agent;
 
@@ -53,7 +53,7 @@ mod turn_termination_matrix;
 pub use turn_termination_matrix::turn_termination_matrix_case;
 
 #[path = "matrix/tool_lifecycle_matrix.rs"]
-mod tool_lifecycle_matrix;
+pub mod tool_lifecycle_matrix;
 pub use tool_lifecycle_matrix::tool_lifecycle_matrix_case;
 
 #[path = "matrix/streaming_logprobs_matrix.rs"]

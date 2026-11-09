@@ -5,7 +5,7 @@ use rig_basics::coding_tools::{EditTool, ReadTool, ShellTool, WriteTool};
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness_test_support::{
     Ended, MemoryStore, ToolOutputs, app_on, calls, connect, first_agent, log_ended,
-    log_tool_outputs, reply, run_until,
+    log_tool_outputs, reply, run_until, scratch_dir,
 };
 use serde_json::json;
 
@@ -29,10 +29,7 @@ fn start(store: &MemoryStore) -> (App, Receiver<()>, Entity) {
 
 /// A fresh directory for the test's files, beside the test's binary.
 fn scratch(name: &str) -> PathBuf {
-    let exe = std::env::current_exe().unwrap_or_default();
-    let dir = exe.with_file_name(format!("dry-run-{name}"));
-    std::fs::remove_dir_all(&dir).ok();
-    std::fs::create_dir_all(&dir).ok();
+    let dir = scratch_dir(&format!("dry-run-{name}"));
     std::fs::canonicalize(&dir).unwrap_or(dir)
 }
 
@@ -113,7 +110,4 @@ fn dry_run_previews_changes_keeps_them_with_the_session_and_applies_them() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(DryRunPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(DryRunPlugin);

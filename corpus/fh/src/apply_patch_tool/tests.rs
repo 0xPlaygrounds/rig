@@ -288,10 +288,7 @@ fn a_patch_model_gets_apply_patch_and_patches_apply_whole_or_not_at_all() {
     assert_eq!(text(&dir, "b.txt").as_deref(), Some("bee\n"));
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(ApplyPatchPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(ApplyPatchPlugin);
 
 /// With the plugins it is often run with: early tool starts and permission
 /// modes, which it orders itself against, and the other tools.

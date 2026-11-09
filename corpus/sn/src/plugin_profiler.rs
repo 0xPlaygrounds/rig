@@ -1,33 +1,20 @@
-//! `/perf`: which plugin is slowing the agent down, and what it was doing.
+//! `/perf`: which plugin is slowing the agent down, and what it was doing. A hold on a turn
+//! (`HoldOf`: a request before it goes out, a tool call before it starts, a result before it
+//! reaches the model, or the turn's end) is timed and charged to the plugin that spawned it
+//! (`ProvidedBy`), with what it held ("before request #2, turn 3"). A question for the user
+//! (`Ask`) is the user's time, not a plugin's. A plugin's own effect (`EffectRequest`) is timed
+//! from its start to its answer: as holding up the turn when it is a call of one (`CallOf`),
+//! else as background work.
 //!
-//! What it measures, from the stack's public data:
+//! Every system and observer run is timed with the plugin that added it and its schedule
+//! ([`PluginTimings`], with rig-harness's `trace` feature, which this crate turns on). A run in
+//! `AgentPass` holds up the user's turn; any other run is background work. A frame whose work
+//! takes over 50 ms is an interface stall, named after the plugin whose runs took most of it,
+//! with the keys the frame handled. System time and stalls are charged one frame late.
 //!
-//! - **Holding up a turn.** A plugin that makes a turn wait holds an effect
-//!   (`HoldOf`): a request before it goes out, a tool call before it
-//!   starts, a result before it reaches the model, or the turn's end. Each
-//!   hold's life is timed and charged to the plugin that spawned it
-//!   (`ProvidedBy`), with what it held ("before request #2, turn 3"). A
-//!   question for the user (`Ask`) is the user's time, not a plugin's.
-//! - **Background work.** A plugin's own effect (`EffectRequest`) is timed
-//!   from its start to its answer: as holding up the turn when it is a call
-//!   of one (`CallOf`), else as background work.
-//! - **Its systems and observers.** The harness times every system and
-//!   observer run with the plugin that added it and the schedule it ran in
-//!   ([`PluginTimings`], with rig-harness's `trace` feature, which this
-//!   crate turns on). A run in `AgentPass` (a stage system, or an observer
-//!   its commands set off) is work an agent's pass waited on: it holds up
-//!   the user's turn while one runs. Any other run is background work.
-//! - **Interface stalls.** A frame whose work takes over 50 ms kept the
-//!   terminal from drawing and from reacting to keys. It names the plugin
-//!   whose runs took most of it, with the keys the frame handled.
-//!
-//! The harness hands over a frame's runs in the next frame, so system time
-//! and stalls are charged one frame late, with what the frame was doing.
-//!
-//! A plugin that holds up one turn longer than `[perf] threshold_ms` of
-//! `settings.toml` (1000 by default) is named in a notice, once a session.
-//! `/perf` shows the measurements, `/perf --json` prints them as JSON, and
-//! `/perf reset` clears them; they are kept in memory only.
+//! A plugin that holds up one turn longer than `[perf] threshold_ms` of `settings.toml` (1000
+//! by default) is named in a notice, once a session. `/perf` shows the measurements, `/perf
+//! --json` prints them as JSON, and `/perf reset` clears them; they are kept in memory only.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Write as _;

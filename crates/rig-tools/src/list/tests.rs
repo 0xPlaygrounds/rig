@@ -1,3 +1,4 @@
+use crate::workspace::Root;
 use rig_core::tool::{OutputCut, Tool, ToolContext, ToolErrorKind};
 
 use super::{FilesListed, List, ListArgs};
@@ -24,9 +25,11 @@ fn a_listing_shows_what_files_lists_down_to_its_depth() {
         std::fs::write(dir.join(file), "x").ok();
     }
     let list = List {
-        base: Some(dir.clone()),
-        confine: true,
-        ..List::default()
+        root: Root {
+            base: Some(dir.clone()),
+            confine: true,
+            ..Root::default()
+        },
     };
     let run = |args: ListArgs| {
         let mut context = ToolContext::new();
@@ -84,8 +87,10 @@ fn hidden_files_are_listed_when_asked_for_or_named() {
         std::fs::write(dir.join(file), "x").ok();
     }
     let list = List {
-        base: Some(dir.clone()),
-        ..List::default()
+        root: Root {
+            base: Some(dir.clone()),
+            ..Root::default()
+        },
     };
     let run = |args: ListArgs| {
         futures::executor::block_on(list.call(&mut ToolContext::new(), args)).unwrap_or_default()

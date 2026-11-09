@@ -808,7 +808,6 @@ pub enum NoticeLevel {
 pub struct Notice {
     /// The agent it is about, or `None` when it is about the whole app.
     pub agent: Option<Entity>,
-    /// The text.
     pub text: String,
     /// Whether it informs, warns or reports a failure.
     pub level: NoticeLevel,

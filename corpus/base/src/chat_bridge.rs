@@ -1,17 +1,13 @@
-//! Plugin corpus: 47. Chat bot bridge (Slack/Matrix) (spec `47-chat-bridge.md`).
-//!
-//! Each chat thread that mentions the bot gets a top-level agent of its
-//! own. Later messages in the thread are queued to that agent, each turn's
-//! final answer is posted back (split when long), tool activity is one
-//! edited "working…" post, and the questions other plugins ask the agent
-//! ([`Ask`]) are posted as "Reply `yes` or `no`": the thread is the
-//! agent's [`Answerer`]. The thread an agent belongs to is a saved
+//! Chat bot bridge for Slack and Matrix. Each chat thread that mentions the bot gets a
+//! top-level agent of its own. Later messages in the thread are queued to that agent, each
+//! turn's final answer is posted back (split when long), tool activity is one edited "working…"
+//! post, and the questions other plugins ask the agent ([`Ask`]) are posted as "Reply `yes` or
+//! `no`": the thread is the agent's [`Answerer`]. The thread an agent belongs to is a saved
 //! component, so a restart keeps the conversations.
 //!
-//! The network is a [`ChatTransport`] the app inserts with
-//! [`ChatBridge::new`]; posts it cannot send are kept and retried with
-//! backoff. `rig --chat` makes the bridge the run's front, a bot with no
-//! terminal; without it, it runs beside the terminal view.
+//! The network is a [`ChatTransport`] the app inserts with [`ChatBridge::new`]; posts it cannot
+//! send are kept and retried with backoff. `rig --chat` makes the bridge the run's front, a bot
+//! with no terminal; without it, it runs beside the terminal view.
 
 use std::collections::{BTreeMap, VecDeque};
 

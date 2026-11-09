@@ -1,3 +1,4 @@
+use crate::workspace::Root;
 use unicode_width::UnicodeWidthStr as _;
 
 use std::path::PathBuf;
@@ -58,26 +59,21 @@ fn shorten_fits_the_width() {
 fn each_call_names_what_it_touches() {
     let base = PathBuf::from("/nowhere/work");
     let at = |path: &str| Scope::Paths(vec![base.join(path)]);
+    let root = Root {
+        base: Some(base.clone()),
+        ..Root::default()
+    };
     let read = Read {
-        base: Some(base.clone()),
-        confine: false,
+        root: root.clone(),
         seen: crate::Seen::default(),
-        ..Default::default()
     };
-    let search = Search {
-        base: Some(base.clone()),
-        confine: false,
-        ..Default::default()
-    };
+    let search = Search { root: root.clone() };
     let edit = Edit {
-        base: Some(base.clone()),
-        confine: false,
+        root: root.clone(),
         seen: crate::Seen::default(),
-        ..Default::default()
     };
     let write = Write {
-        base: Some(base.clone()),
-        confine: false,
+        root,
         ..Default::default()
     };
     assert_eq!(

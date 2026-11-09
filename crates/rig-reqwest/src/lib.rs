@@ -182,11 +182,10 @@ impl From<reqwest::Client> for ReqwestClient {
 
 use bytes::Bytes;
 use rig_http::http_client::{
-    DynHttpClient, Error, HttpClientExt, LazyBody, MultipartForm, Request, Response, Result,
-    StreamingResponse, multipart::PartContent, retryable_status,
+    BoxedStream, DynHttpClient, Error, HttpClientExt, LazyBody, MultipartForm, Request, Response,
+    Result, StreamingResponse, multipart::PartContent, retryable_status,
 };
 use rig_http::wasm_compat::*;
-use std::pin::Pin;
 use std::sync::Arc;
 
 /// A transport build failure that displays the source chain and retains the
@@ -386,7 +385,7 @@ async fn into_streaming_response(mut response: reqwest::Response) -> Result<Stre
         .map(|chunk| chunk.map_err(from_reqwest));
     #[cfg(not(target_family = "wasm"))]
     let stream = rig_http::runtime::bind_stream(stream)?;
-    let stream: Pin<Box<dyn WasmCompatSendStream<InnerItem = Result<Bytes>>>> = Box::pin(stream);
+    let stream: BoxedStream = Box::pin(stream);
     res.body(stream).map_err(Error::Protocol)
 }
 

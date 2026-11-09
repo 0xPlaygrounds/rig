@@ -1,48 +1,24 @@
-//! Feature matrix for raw provider response capture on the Gemini
-//! Interactions API (`POST /v1beta/interactions`) unary seam.
-//!
-//! # The feature
+//! Raw provider response capture on the Gemini Interactions API
+//! (`POST /v1beta/interactions`) unary seam.
 //!
 //! Raw capture is always on: the driver puts the provider's reply body,
-//! parsed as JSON, onto [`rig::completion::CompletionResponse::raw`] — here
-//! the API's own interaction document, verbatim. There is no opt-in and
-//! nothing about it reaches the wire; `raw` is required at construction, so
-//! there is no response without the document that produced it and no way
-//! for capture to be "not requested".
+//! parsed as JSON, onto [`rig::completion::CompletionResponse::raw`], here
+//! the API's own interaction document verbatim. The normalized response is
+//! folded by one decoder out of these same bytes, so the identity, finish
+//! reason, model and usage read off `raw` always agree with it.
 //!
-//! # Matrix
-//!
-//! `expected` is what the caller observes on the normalized response. Every
-//! recorded cell re-derives its premise from its own fixture bytes after the
-//! wrapper returns: the recorded interaction must have completed and carry the
-//! lifecycle fields the cells read.
-//!
-//! | # | Cell | Dimension | expected | Status |
-//! |---|------|-----------|----------|--------|
-//! | 1 | `raw_roundtrips_interaction` | document access | `raw` reads back as the interaction document, and its provider-native fields agree with the normalized response | recorded |
-//! | 2 | `raw_exposes_lifecycle_fields` | un-normalized fields | `object` / `status` spelling / `steps` == fixture, absent from the normalized response | recorded |
-//!
-//! Every cell is recorded: `GEMINI_API_KEY` was available and the seam under
-//! test is the plain non-streaming interactions route.
-//!
-//! Cell 1 also carries the "one story" contract: the normalized response was
-//! folded by one decoder out of these very bytes, so the identity, finish
-//! reason, model and usage read off `raw` are the ones the response reports —
-//! `raw` and the normalized response can never disagree about the turn they
-//! describe.
-//!
-//! The un-normalized fields of choice are the interaction's lifecycle
-//! envelope: `object` (`"interaction"`), the wire spelling of `status`
-//! (`"completed"`, which normalizes to rig's `Stop`), and the `steps` log —
-//! the interaction `id` is normalized into `response_id` *and* scrubbed into
-//! the fixture, so it cannot prove anything against the recorded bytes.
+//! The un-normalized fields the cells read are the lifecycle envelope:
+//! `object`, the wire spelling of `status`, and the `steps` log. The
+//! interaction `id` is not used, since it is scrubbed in the fixture. Every
+//! cell re-derives its premise from its own fixture bytes after the wrapper
+//! returns.
 
 use rig::completion::FinishReason;
 use rig::providers::gemini::extension::{GeminiExt, InteractionStatus};
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
 
-use super::super::support::with_gemini_interactions_cassette;
+use super::super::support::with_gemini_cassette;
 use crate::support::{json_contains_key, normalized_without_raw};
 use rig::completion::CompletionRequest;
 
@@ -88,7 +64,7 @@ fn assert_recorded_completed_interaction(scenario: &str) -> Value {
 #[tokio::test]
 async fn raw_roundtrips_interaction() {
     const SCENARIO: &str = "interactions_raw_capture_matrix/raw_roundtrips_interaction";
-    with_gemini_interactions_cassette(
+    with_gemini_cassette(
         "interactions_raw_capture_matrix/raw_roundtrips_interaction",
         |client| async move {
             let model = client.interactions(MODEL);
@@ -149,7 +125,7 @@ async fn raw_exposes_lifecycle_fields() {
     const SCENARIO: &str = "interactions_raw_capture_matrix/raw_exposes_lifecycle_fields";
     let observed: Arc<Mutex<Option<Value>>> = Arc::new(Mutex::new(None));
     let sink = Arc::clone(&observed);
-    with_gemini_interactions_cassette(
+    with_gemini_cassette(
         "interactions_raw_capture_matrix/raw_exposes_lifecycle_fields",
         |client| async move {
             let model = client.interactions(MODEL);

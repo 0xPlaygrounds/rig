@@ -87,11 +87,6 @@ pub mod run {
 #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
 pub mod agent {
     pub use rig_agent::agent::*;
-
-    /// Contextual tools for the classic agent runtime.
-    pub mod tool {
-        pub use rig_agent::tool::*;
-    }
 }
 
 /// Low-level completion contracts plus the classic runtime's errors.
@@ -132,7 +127,7 @@ pub mod prelude {
 ///
 /// The tool contracts come from `rig-core` and need no
 /// feature. The registry, tool set, and catalog belong to the agent runtime and
-/// need the `agent` feature; they also live at `rig::agent::tool`.
+/// need the `agent` feature.
 pub mod tool {
     /// Derive a stable serialized key for a tool-context value.
     #[cfg(feature = "derive")]

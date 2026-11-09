@@ -37,7 +37,6 @@ tokio = { workspace = true, optional = true, features = ["rt", "rt-multi-thread"
 
 [dev-dependencies]
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 
 [features]

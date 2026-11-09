@@ -1,15 +1,8 @@
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
-use rig_harness_test_support::{MemoryStore, app_on, run_until, scripted_models};
+use rig_harness_test_support::{MemoryStore, app_on, hold_turn_calls, run_until, scripted_models};
 
 use super::*;
 use rig_ecs::spawn::spawn;
-
-/// Holds every model call, so a turn keeps running.
-fn hold_turn_calls(calls: Query<Entity, (ReadyToStart, With<TurnCall>)>, mut commands: Commands) {
-    for call in &calls {
-        commands.spawn(HoldOf(call));
-    }
-}
 
 #[test]
 fn the_users_stop_cancels_the_build_only_on_an_idle_agent() {

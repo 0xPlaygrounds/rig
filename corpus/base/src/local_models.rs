@@ -1,32 +1,20 @@
-//! Local models (spec `58-local-models.md`): models served by an Ollama
-//! daemon or a llama.cpp server on this machine, found at startup and on
-//! `/models refresh` by probing the `[local_models]` endpoints in the
-//! background, and used like any catalog model.
+//! Local models: models served by an Ollama daemon or a llama.cpp server on this machine, found
+//! at startup and on `/models refresh` by probing the `[local_models]` endpoints in the
+//! background, and used like any catalog model. The plugin declares the vendor `local` and puts
+//! each model found in the catalog as `local/<name>`, free and with the context window and tool
+//! support its server reports. Its models connect to their server's OpenAI-compatible `/v1`, so
+//! `/model`, the picker, `--model`, the saved choice, usage and cost take them like any other
+//! model.
 //!
-//! - The plugin declares the vendor `local` and puts each model found in
-//!   the catalog as `local/<name>`, free and with the context window and
-//!   tool support its server reports, and provides the vendor: its models
-//!   connect to their server's OpenAI-compatible `/v1`. So `/model`, the
-//!   picker, `--model`, the saved choice, usage and cost take them like any
-//!   other model.
-//! - Each model call gets an outermost adapter, which sees the model the
-//!   call finally goes to as every other adapter left it. When that is a
-//!   local model, the adapter:
-//!   - refuses the call with "Ollama not running at …" while the model is
-//!     unavailable: its server stopped listing it, or is down. The vendor's
-//!     provider refuses to connect it with the same words, so the picker
-//!     leaves it out and choosing it fails. An endpoint that is down is
-//!     skipped with one debug line. A saved choice of a local model
-//!     connects once a probe finds it (the kernel reconnects when the
-//!     catalog changes);
-//!   - when the model takes no tools, adds a line saying so to the system
-//!     prompt. The kernel already offers it none; a plugin that gives it
-//!     tools as text (spec 59) says it takes tools, and the line is left
-//!     out.
-//! - An agent connected to an Ollama model sends it a small warm-up
-//!   request, so the first turn does not wait for the model to load.
-//! - Probes, warm-ups and model calls go through the connector's HTTP
-//!   transport, so its wrappers see them all.
+//! While a local model is unavailable (its server stopped listing it, or is down), a call that
+//! goes to it is refused with "Ollama not running at …", the picker leaves it out and choosing
+//! it fails. A saved choice of a local model connects once a probe finds it. When the model
+//! takes no tools, a line saying so is added to the system prompt, unless a plugin gives it
+//! tools as text.
+//!
+//! An agent connected to an Ollama model sends it a small warm-up request, so the first turn
+//! does not wait for the model to load. Probes, warm-ups and model calls go through the
+//! connector's HTTP transport, so its wrappers see them all.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;

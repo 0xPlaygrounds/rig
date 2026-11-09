@@ -1,22 +1,10 @@
 //! Copilot model listing smoke test.
 //!
-//! This test is ignored by default and requires Copilot credentials. Run it
-//! with one of the auth methods below:
+//! This test is ignored by default and requires Copilot credentials: set
+//! `GITHUB_COPILOT_API_KEY` or `COPILOT_GITHUB_ACCESS_TOKEN`, or leave both
+//! unset to authorize through the OAuth device code flow, which reuses a
+//! cached token when one exists.
 //!
-//! **API key:**
-//! ```sh
-//! GITHUB_COPILOT_API_KEY=<key> \
-//!   cargo test -p rig-cassette --test integration copilot::models::list_models_smoke -- --ignored --nocapture
-//! ```
-//!
-//! **GitHub personal access token:**
-//! ```sh
-//! COPILOT_GITHUB_ACCESS_TOKEN=<token> \
-//!   cargo test -p rig-cassette --test integration copilot::models::list_models_smoke -- --ignored --nocapture
-//! ```
-//!
-//! **OAuth (device code flow):** leave the env vars unset; the test will open a
-//! browser prompt for authorization, or reuse a cached token from a previous run.
 //! ```sh
 //! cargo test -p rig-cassette --test integration copilot::models::list_models_smoke -- --ignored --nocapture
 //! ```

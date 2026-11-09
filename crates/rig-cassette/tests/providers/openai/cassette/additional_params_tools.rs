@@ -1,12 +1,11 @@
 //! Chat Completions: builder tools must survive `additional_params` that also
-//! carries a `tools` key (issue #1890).
+//! carries a `tools` key.
 //!
 //! The chat request body flattens `additional_params` into the serialized
-//! struct, so a raw `tools` array supplied there used to silently *replace*
-//! the builder's function tools (the body is built via `serde_json::to_value`,
-//! where the flattened key wins last). The intended contract — matching the
-//! Responses API path, which merges `additional_params["tools"]` into the
-//! typed tool list — is that both sets reach the wire.
+//! struct, where the flattened key wins last, so a raw `tools` array there
+//! could replace the builder's function tools. As on the Responses API path,
+//! which merges `additional_params["tools"]` into the typed tool list, both
+//! sets must reach the wire.
 //!
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.

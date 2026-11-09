@@ -1,49 +1,18 @@
 //! Matrix for raw response capture on both Copilot blocking routes
 //! ([`CompletionResponse::raw`](rig::completion::CompletionResponse::raw)).
 //!
-//! # The feature
+//! Every completion the driver returns carries `raw`: the route's own reply
+//! document, parsed from the reply's bytes and untagged. It is the body Copilot
+//! sent, not a round trip through the decoder, which is what lets a caller reach
+//! fields the normalized response does not model: the chat route's
+//! `copilot_usage` and `system_fingerprint`, and the Responses route's
+//! `object`/`status`. Which route a turn took is a fact about the wire, so each
+//! body-fidelity cell asserts it on the bound wire itself.
 //!
-//! Capture is always on. Every completion the driver returns carries `raw`:
-//! the route's own reply *document*, set from the reply's bytes
-//! (`driver::call` does `serde_json::from_slice(&body)`), untagged. So it is
-//! not a round trip through whatever the decoder parsed. It is the body
-//! Copilot sent: a chat-completions reply body on chat completions, the
-//! Responses response object on the Responses route. Nothing
-//! about it is sent to Copilot. `raw == Value::Null` means only that a
-//! `CompletionResponse` was built by hand without a provider response behind
-//! it, which no cell here can produce.
-//!
-//! That the document is the body, and not the parse, is what lets a caller
-//! reach the fields the normalized response does not model: Copilot's chat
-//! route sends a `copilot_usage` block that the normalized response has no
-//! field for, and it reaches the caller through `raw` for exactly that
-//! reason. Cell 1 pins it, so the capability stays stated rather than
-//! rediscovered.
-//!
-//! Which route a turn took is a fact about the wire rather than about `raw`,
-//! so each body-fidelity cell asserts it on the bound wire itself.
-//!
-//! Provider-only fields per route: the chat route's `system_fingerprint` and
-//! `copilot_usage`; the Responses route's `object`/`status`.
-//!
-//! # Matrix
-//!
-//! | # | Cell | Dimension | expected | Status |
-//! |---|------|-----------|----------|--------|
-//! | 1 | `chat_raw_round_trips_provider_type` | chat route, body fidelity | the wire is `OpenAiWire::Chat`; `raw` is untagged, is the chat-completions reply document, and carries the recorded reply's own keys including the unmodelled `copilot_usage` | unrecorded (no COPILOT credentials in this environment) |
-//! | 2 | `chat_raw_exposes_system_fingerprint` | chat route, provider-only field | `raw.system_fingerprint` equals the fixture body's | unrecorded (no COPILOT credentials in this environment) |
-//! | 3 | `chat_normalized_fields_equal_raw_renormalized` | chat route, normalized view | every normalized field equals the provider-native field it was mapped from, on `raw` and on the fixture body | unrecorded (no COPILOT credentials in this environment) |
-//! | 4 | `responses_raw_round_trips_provider_type` | responses route, body fidelity | the wire is `OpenAiWire::Responses`; `raw` is untagged, is the Responses response object, and carries the recorded reply's own keys | unrecorded (no COPILOT credentials in this environment) |
-//! | 5 | `responses_raw_exposes_envelope` | responses route, provider-only fields | `raw.object`/`raw.status` equal the fixture body's | unrecorded (no COPILOT credentials in this environment) |
-//! | 6 | `responses_normalized_fields_equal_raw_renormalized` | responses route, normalized view | every normalized field equals the provider-native field it was mapped from, on `raw` and on the fixture body | unrecorded (no COPILOT credentials in this environment) |
-//!
-//! Every cell is unrecorded: none of `GITHUB_COPILOT_API_KEY`,
-//! `COPILOT_API_KEY`, `COPILOT_GITHUB_ACCESS_TOKEN`/`GITHUB_TOKEN` nor a Copilot
-//! OAuth cache was present when this matrix was written, and a fixture is
-//! never fabricated. To record: export `GITHUB_COPILOT_API_KEY` (the harness
-//! placeholders it on disk), remove the `#[ignore]` attributes, flip the table
-//! to `recorded`, then run
-//! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig-cassette --all-features --test integration copilot::raw_capture_matrix -- --nocapture --test-threads=1`
+//! Every cell is ignored until recorded, because no Copilot credentials were
+//! available and a fixture is never fabricated. To record, export
+//! `GITHUB_COPILOT_API_KEY`, remove the `#[ignore]` attributes, run
+//! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig-cassette --all-features --test integration copilot::raw_capture_matrix -- --nocapture --test-threads=1`,
 //! and review `crates/rig-cassette/fixtures/cassettes/copilot/raw_capture_matrix/`.
 
 use rig::providers::copilot;

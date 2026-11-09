@@ -1,9 +1,7 @@
-//! The plugins other corpus plugins build on: confirmations, plan mode,
-//! protected paths, permission modes and few-shot examples, and the editor
-//! lookup and read-only shell rule they share.
+//! The plugins other corpus plugins build on: confirmations, plan mode, protected paths, permission
+//! modes and few-shot examples, and the editor lookup and read-only shell rule they share.
 //!
-//! Each module was its own package; they share a crate so their tests
-//! link one binary instead of one each.
+//! The modules share a crate so their tests link one binary instead of one each.
 
 pub mod confirm_destructive;
 pub mod editor;

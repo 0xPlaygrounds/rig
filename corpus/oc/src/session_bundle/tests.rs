@@ -9,7 +9,7 @@ use rig_harness::harness_protocol::Invocation;
 use rig_harness::host::exit::ExitPlugin;
 use rig_harness::load;
 use rig_harness_test_support::{
-    Collected, Ended, ToolOutputs, app_in, calls, collect, commit_message, log_ended,
+    Collected, Ended, ToolOutputs, app_in, calls, collect, commit_message, deliver, log_ended,
     log_tool_outputs, reply, run_until, scratch_home, scripted_models,
 };
 use serde_json::json;
@@ -88,12 +88,7 @@ fn main_agent(app: &mut App) -> Entity {
 }
 
 fn turn(app: &mut App, wakes: &Receiver<()>, agent: Entity, text: &str) {
-    let ended = app.world().resource::<Ended>().0.len();
-    app.world_mut()
-        .trigger(Deliver::new(agent, text, DeliveryMode::Queue));
-    run_until(app, wakes, |world| {
-        world.resource::<Ended>().0.len() > ended
-    });
+    deliver(app, wakes, Deliver::new(agent, text, DeliveryMode::Queue));
 }
 
 /// Why each command was refused, as a `--print` run fails with (exit 2).

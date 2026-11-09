@@ -1,40 +1,20 @@
 //! llama.cpp prompt-caching cassette suite.
 //!
-//! Before this suite, `tests/cassette_cache_prefix.rs` carried a
-//! `NO_CACHE_SUITE` exemption for both llama.cpp suites reading "records
-//! against a local llama.cpp server that is not running in this environment".
-//! That reason was true and is no longer: a server *is* running for this PR,
-//! so the exemption is deleted and this is what replaces it.
+//! llama.cpp's cache is the server's own KV slot cache, not a hosted prefix cache with a billing
+//! minimum. It caches from the first token, needs no opt-in beyond the `cache_prompt` default,
+//! and reports its work in two independently populated places:
+//! `usage.prompt_tokens_details.cached_tokens`, which rig normalizes into
+//! [`Usage::cached_input_tokens`](rig::completion::Usage), and `timings.cache_n`, which reaches
+//! a caller in `raw`. The blocking probe reads back all but one prompt token on turn 2, far
+//! above the 0.80 floor every other provider is held to.
 //!
-//! # What llama.cpp's cache is
-//!
-//! Not a hosted prefix cache with a billing minimum — the server's own **KV
-//! slot cache**. It caches from the first token, needs no opt-in beyond the
-//! `cache_prompt` default, and reports its work in two independently populated
-//! places: `usage.prompt_tokens_details.cached_tokens`, which rig normalizes
-//! into [`Usage::cached_input_tokens`](rig::completion::Usage), and
-//! `timings.cache_n`, which reaches a caller in `raw`, the reply document.
-//!
-//! Measured by the fixtures below, against b10964-b29c606e2 with
-//! `unsloth/Qwen3-1.7B-GGUF` Q4_K_M: `prompt_caching/blocking_probe` bills
-//! 2,825 prompt tokens on turn 1 and reads **2,824** of them back on turn 2 —
-//! far above the 0.80 floor every other provider in the matrix is held to.
-//! Turn 3 grows the prefix to 2,854 and still reads 2,825.
-//!
-//! | Cell | Dimension | Pinned |
-//! | --- | --- | --- |
-//! | [`streaming_probe_survives_the_streaming_accumulator`] | streaming | the terminal frame's usage carries the read |
-//! | [`cache_prompt_false_turns_the_cache_off_for_that_turn_only`] | `cache_prompt` | a llama.cpp-only request field; off means 0 cached, and it does not poison the next turn |
-//! | [`agent_loop_does_not_move_its_own_prefix`] | agent loop | every outbound request extends its predecessor |
-//!
-//! # Recording
-//!
-//! ```text
-//! # restart the default server first: turn 1 is only cold on an empty KV cache
-//! RIG_PROVIDER_TEST_MODE=record cargo test -p rig-cassette --test integration --all-features \
-//!     llamacpp::cassette::prompt_caching:: -- --test-threads=1
-//! ```
-//!
+//! The other cells pin that the streamed terminal frame carries the read
+//! ([`streaming_probe_survives_the_streaming_accumulator`]), that the llama.cpp-only
+//! `cache_prompt: false` turns the cache off for one turn without poisoning the next
+//! ([`cache_prompt_false_turns_the_cache_off_for_that_turn_only`]), and that every outbound
+//! request of an agent run extends its predecessor
+//! ([`agent_loop_does_not_move_its_own_prefix`]). Restart the default server before recording:
+//! turn 1 is only cold on an empty KV cache.
 
 use serde_json::Value;
 
@@ -128,7 +108,7 @@ fn recorded_cache_counters(scenario: &str) -> Vec<(u64, u64, u64)> {
 
 #[tokio::test]
 async fn streaming_probe_survives_the_streaming_accumulator() {
-    with_llamacpp_prompt_caching_cassette("prompt_caching/streaming_probe", |client| async move {
+    with_llamacpp_cassette("prompt_caching/streaming_probe", |client| async move {
         let model = client.completion(CASSETTE_MODEL);
         let observation =
             run_cache_probe_streaming(model, &probe_for("llamacpp streaming probe")).await;
@@ -154,7 +134,7 @@ async fn streaming_probe_survives_the_streaming_accumulator() {
 /// whole conversation.
 #[tokio::test]
 async fn cache_prompt_false_turns_the_cache_off_for_that_turn_only() {
-    with_llamacpp_prompt_caching_cassette(
+    with_llamacpp_cassette(
         "prompt_caching/cache_prompt_disabled",
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
@@ -236,7 +216,7 @@ async fn cache_prompt_false_turns_the_cache_off_for_that_turn_only() {
 /// A real agent loop with a tool round-trip, asserted on prefix stability.
 #[tokio::test]
 async fn agent_loop_does_not_move_its_own_prefix() {
-    with_llamacpp_prompt_caching_cassette("prompt_caching/agent_loop", |client| async move {
+    with_llamacpp_cassette("prompt_caching/agent_loop", |client| async move {
         let response = rig::AgentBuilder::new(client.completion(CASSETTE_MODEL))
             .preamble(&probe_for("llamacpp agent loop").preamble)
             .tool(CacheProbeLookupTool)

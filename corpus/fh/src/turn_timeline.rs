@@ -1,28 +1,18 @@
-//! FH-23: turn timeline. Records, for every turn of every agent, when each
-//! piece of its work ran, and shows it as a chart (`/timeline`) or writes
-//! it in Chrome's trace event format for Perfetto (`/timeline export`).
+//! Turn timeline. Records, for every turn of every agent, when each piece of its work ran, and
+//! shows it as a chart (`/timeline`) or writes it in Chrome's trace event format for Perfetto
+//! (`/timeline export`).
 //!
-//! Recording is a handful of observers on the kernel's own markers, so it
-//! costs a few map lookups per step of a turn:
+//! A turn is a [`TurnOf`] until it is [`Settled`]. Each model or tool call of it ([`CallOf`]) and
+//! each plugin effect of it is a [`Span`] from [`Admitted`] to its [`Outcome`], cut into
+//! [`PhaseKind`]s: waiting behind an earlier call, held, started, and for a model call the time to
+//! its first streamed item and the streaming after it. Each hold ([`HoldOf`]) is a span nested
+//! under what it holds: a question for the user ([`Ask`]) is a wait on the user, any other hold is
+//! plugin work. An agent whose work is recorded under an effect ([`EffectParent`]), such as the
+//! subagent of a `task` call, has its turns nested under that effect's span.
 //!
-//! - a turn is a [`TurnOf`] until it is [`Settled`];
-//! - each model or tool call of it ([`CallOf`]) and each plugin effect of
-//!   it is a [`Span`] from the moment it is [`Admitted`] to its
-//!   [`Outcome`], cut into [`PhaseKind`]s: [`Waiting`] behind an earlier
-//!   call, held ([`Holds`]), [`Started`], and for a model call the time to
-//!   its first streamed item ([`StreamTiming`]) and the streaming after it;
-//! - each hold ([`HoldOf`]) on a call or on the turn is a span of its own,
-//!   nested under what it holds: a question for the user ([`Ask`]) is a
-//!   wait on the user, any other hold is plugin work;
-//! - an agent whose work is recorded under an effect ([`EffectParent`]),
-//!   such as the subagent of a `task` call, has its turns nested under that
-//!   effect's span.
-//!
-//! Times are taken from the monotonic clock, as offsets from the turn's
-//! start; a frame that finds the wall clock ran ahead of it marks the gap
-//! as a suspension instead of stretching what was running. Each finished
-//! turn is appended to `turn-timeline/turns.jsonl` in the session's
-//! directory and read back when the session is resumed.
+//! Times are offsets from the turn's start on the monotonic clock; a gap where the wall clock ran
+//! ahead is marked as a suspension. Each finished turn is appended to `turn-timeline/turns.jsonl`
+//! in the session's directory and read back when the session is resumed.
 
 use std::collections::HashMap;
 use std::fs::OpenOptions;

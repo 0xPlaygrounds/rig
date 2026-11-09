@@ -225,7 +225,6 @@ pub enum PickPreview {
     Text(String),
     /// A conversation, such as a saved session's line.
     Conversation {
-        /// The conversation.
         conversation: Conversation,
         /// The entry to show first; the end with `None`.
         at: Option<MessageId>,

@@ -1,22 +1,18 @@
 //! `/reload`: rebuild the agent through the `rig` launcher and restart on
 //! the new build, in the same session, with the plugins `settings.toml`
-//! turns on then. The build runs as a child process,
-//! and its latest line of output is the progress. Quitting during the build
-//! kills it with cargo and rustc.
+//! turns on then. The build runs as a child process whose latest line of
+//! output is the progress; quitting during the build kills it.
 //!
 //! `/reload` typed while a turn runs is queued: the build starts once no
 //! turn runs, and `/reload cancel` drops it. A plugin queues one with
-//! [`ReloadStatus::ask`]. A turn started while the build runs delays the
-//! restart until it ends. A build that fails leaves this build running,
-//! and the launcher rolls back a new build that fails to start. Views show
-//! where it is from the [`ReloadStatus`] resource; with the `tui` feature,
-//! the terminal view's status line does. A stop that reaches an idle agent
-//! no agent spawned (Esc in the terminal view) cancels a running build.
-//!
-//! A failed build's first errors go into the conversation of the agent that
-//! asked, as a note for its model ([`launcher::build_failure_message`]);
-//! `rig build` keeps the whole output in `RIG_HOME/build.log`. A run nobody
-//! sits at (`--print`) waits for a reload and restarts on the new build too.
+//! [`ReloadStatus::ask`], and views read progress from that resource. A turn
+//! started while the build runs delays the restart until it ends. A stop that
+//! reaches an idle agent no agent spawned (Esc in the terminal view) cancels
+//! a running build. A build that fails leaves this build running, and its
+//! first errors go to the agent that asked as a note for its model
+//! ([`launcher::build_failure_message`]); `rig build` keeps the whole output
+//! in `RIG_HOME/build.log`. The launcher rolls back a new build that fails to
+//! start. A run nobody sits at (`--print`) waits for a reload too.
 //!
 //! [`PluginsPlugin`](plugins::PluginsPlugin) adds `/plugins`, which turns plugins on and
 //! off in `settings.toml` and reloads.

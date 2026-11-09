@@ -334,7 +334,4 @@ fn hash_offers_the_open_issues_by_title() {
     assert_eq!(server.asked("/repos/acme/widget/issues"), 1, "loaded once");
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(IssueReferencesPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(IssueReferencesPlugin);

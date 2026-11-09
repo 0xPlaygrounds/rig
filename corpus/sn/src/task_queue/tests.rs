@@ -323,10 +323,7 @@ fn a_quit_interrupts_the_running_task_and_the_restart_runs_the_pending_ones() {
     assert!(t4_said.contains("T4 built"), "{t4_said}");
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(TaskQueuePlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(TaskQueuePlugin);
 
 /// An idle queue is left alone, so its panel and status do not redraw the
 /// terminal on every update.

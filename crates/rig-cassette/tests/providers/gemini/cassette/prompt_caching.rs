@@ -1,49 +1,19 @@
 //! Gemini prompt-caching cassette suite.
 //!
-//! Gemini caches long prefixes *implicitly* — there is no `cache_control` marker
-//! to place and no opt-in call to make; a request whose prefix exceeds the
-//! model's minimum is eligible, and the provider reports what it reused in
-//! `usageMetadata.cachedContentTokenCount`. Rig has mapped that field into
-//! `Usage::cached_input_tokens` for a long time
-//! (`crates/rig-core/src/providers/gemini/completion.rs`) and, before this
-//! suite, no test had ever seen it be non-zero.
+//! Gemini caches long prefixes implicitly: there is no `cache_control`
+//! marker, and the provider reports what it reused in
+//! `usageMetadata.cachedContentTokenCount`, which rig maps into
+//! `Usage::cached_input_tokens`. That count is a subset of
+//! `promptTokenCount`, and Gemini never reports cache writes, so turn 1
+//! shows zero for both counters. The probe carries a tool with several
+//! properties, so a nondeterministic tool schema order shows up as a turn-2
+//! miss.
 //!
-//! # This suite is also the regression cell for a real cache bug
-//!
-//! Gemini's tool schema `properties` used to be a `HashMap`, so its keys
-//! serialized in a *different order on every request*. Gemini renders `tools`
-//! at the very front of the cacheable prefix, which meant any rig request
-//! carrying a tool with two or more properties had a different prefix every time
-//! and could never hit the cache — silently, with the full prompt re-billed on
-//! every turn. The probe below carries exactly such a tool, so a regression
-//! would show up here as a turn-2 miss. (The direct, key-free guard is
-//! `gemini_request_serialization_is_deterministic` in
-//! `tests/cassette_cache_prefix.rs`.)
-//!
-//! # Recording note: Gemini's implicit cache needs a warm-up pass
-//!
-//! Gemini's implicit cache serves a prefix only once an entry for *that exact
-//! prefix* has been established, and establishing one is not instantaneous. On a
-//! cold run the byte-identical repeat (turn 2) hits while the grown turn-3
-//! prefix — which no earlier request ever sent — reads zero. Run the same
-//! scenario again and turn 3 hits too, because the first pass created its entry.
-//!
-//! This was measured, not assumed: three consecutive cold/warm recording passes
-//! reproduced it on the blocking, streaming and agent paths.
-//!
-//! The practical consequence is for whoever re-records these fixtures: **run the
-//! scenario twice and keep the second recording.** A cold first pass fails
-//! `assert_growth_still_hits` rather than quietly committing a fixture that pins
-//! a miss, which is the intended outcome — a recorded miss is worse than a
-//! failed recording session.
-//!
-//! # Reading the numbers
-//!
-//! `cachedContentTokenCount` is a **subset** of `promptTokenCount`, so turn 1's
-//! billed prompt is `input_tokens` on its own. Gemini never reports cache
-//! *writes*, so turn 1 legitimately shows zero for both counters.
-//!
-//! # Recording
+//! The implicit cache serves a prefix only once an entry for that exact
+//! prefix exists, so on a cold run the grown turn-3 prefix reads zero.
+//! Whoever re-records these fixtures must run the scenario twice and keep
+//! the second recording; a cold pass fails `assert_growth_still_hits`
+//! rather than committing a fixture that pins a miss.
 //!
 //! ```text
 //! RIG_PROVIDER_TEST_MODE=record cargo test -p rig-cassette --test integration --all-features \
@@ -59,7 +29,7 @@ use crate::cache_conformance::{
     assert_prefix_stable, report_and_assert_live, run_cache_probe,
 };
 
-use super::super::support::with_gemini_prompt_caching_cassette;
+use super::super::support::with_gemini_cassette;
 
 /// Gemini 2.5 Flash: implicit caching, and the cheapest model that has it.
 pub(super) const CACHE_MODEL: &str = gemini::completion::GEMINI_2_5_FLASH;
@@ -101,7 +71,7 @@ pub(super) fn probe() -> CacheProbe {
 async fn blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
     const SCENARIO: &str = "prompt_caching/blocking_probe";
 
-    with_gemini_prompt_caching_cassette("prompt_caching/blocking_probe", |client| async move {
+    with_gemini_cassette("prompt_caching/blocking_probe", |client| async move {
         let model = client.completion(CACHE_MODEL);
         let observation = run_cache_probe(model, &probe()).await;
         assert_cache_conformance(&observation, &GEMINI_CACHE_SUPPORT, "blocking probe");
@@ -254,7 +224,7 @@ fn cache_tokens_details_are_populated_and_agree_with_the_aggregate() {
 /// long ago it went, and collapsing both is the point of the variant.
 #[tokio::test]
 async fn a_deleted_handle_reports_expired_rather_than_a_status_code() {
-    with_gemini_prompt_caching_cassette(
+    with_gemini_cassette(
         "prompt_caching/explicit_cache_expired",
         |client| async move {
             let caches = client.cached_contents();

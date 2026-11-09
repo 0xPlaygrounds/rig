@@ -422,5 +422,4 @@ pub async fn stream_to_stdout(
 #[cfg(test)]
 mod malformed_tool_args_tests;
 #[cfg(test)]
-#[allow(irrefutable_let_patterns, unreachable_patterns)]
 mod tests;

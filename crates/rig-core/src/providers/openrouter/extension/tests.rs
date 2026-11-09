@@ -344,7 +344,7 @@ async fn responses_extras_from_a_unary_recording() {
 /// `native_finish_reason` included.
 #[tokio::test]
 async fn chat_extras_read_alike_from_a_recorded_stream() {
-    use crate::test_utils::provider_extensions::{recorded_stream, streamed_reply_of};
+    use crate::test_utils::provider_extensions::{recorded_reply, streamed_reply_of};
 
     let read = |reply: crate::completion::CompletionResponse| {
         reply
@@ -355,7 +355,7 @@ async fn chat_extras_read_alike_from_a_recorded_stream() {
     let streamed = read(
         streamed_reply_of(
             chat(MODEL),
-            recorded_stream(
+            recorded_reply(
                 "openrouter",
                 "raw_stream_capture_matrix/stream_raw_exposes_terminal_cost_and_provider",
                 0,

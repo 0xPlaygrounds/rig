@@ -3,6 +3,59 @@ use super::*;
 mod cache_override;
 mod current_profile;
 
+/// What a [`Rerouted`] test client does to each request before it sends it.
+pub(super) trait Reroute:
+    Clone + WasmCompatSend + rig_harness::rig_core::wasm_compat::WasmCompatSync + 'static
+{
+    /// The request to send in place of `request`, or why none is sent.
+    fn reroute(&self, request: Request<Bytes>) -> http_client::Result<Request<Bytes>>;
+}
+
+/// A test client that sends each request, as `by` reroutes it, through
+/// `inner`, and refuses multipart forms.
+#[derive(Clone)]
+pub(super) struct Rerouted<R> {
+    pub(super) inner: DynHttpClient,
+    pub(super) by: R,
+}
+
+impl<R: Reroute> HttpClientExt for Rerouted<R> {
+    fn send<T, U>(
+        &self,
+        req: Request<T>,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+    where
+        T: Into<Bytes> + WasmCompatSend,
+        U: From<Bytes> + WasmCompatSend + 'static,
+    {
+        let this = self.clone();
+        let req = req.map(Into::into);
+        async move { this.inner.send(this.by.reroute(req)?).await }
+    }
+
+    #[allow(clippy::manual_async_fn)]
+    fn send_multipart<U>(
+        &self,
+        _: Request<MultipartForm>,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+    where
+        U: From<Bytes> + WasmCompatSend + 'static,
+    {
+        async { Err(http_client::Error::permanent(Error::Multipart)) }
+    }
+
+    fn send_streaming<T>(
+        &self,
+        req: Request<T>,
+    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
+    where
+        T: Into<Bytes> + WasmCompatSend,
+    {
+        let req = req.map(Into::into);
+        async move { self.inner.send_streaming(self.by.reroute(req)?).await }
+    }
+}
+
 #[test]
 fn platform_headers_match_host_architecture() {
     let (os, arch) = platform();

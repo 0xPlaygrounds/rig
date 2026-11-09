@@ -1,45 +1,19 @@
-//! Matrix for raw response capture on mistral.rs's `/v1/chat/completions`
-//! route ([`CompletionResponse::raw`](rig::completion::CompletionResponse::raw)).
+//! Matrix for raw response capture on mistral.rs's `/v1/chat/completions` route
+//! ([`CompletionResponse::raw`](rig::completion::CompletionResponse::raw)).
 //!
-//! # The feature
+//! Capture is always on. mistral.rs is a local server with no dialect of its own: it is driven
+//! through the plain `OPENAI` chat-completions wire pointed at its base URL, and every
+//! completion carries `raw`, the reply document the driver set from the response bytes.
+//! `raw == Value::Null` means only that a `CompletionResponse` was built by hand, which no cell
+//! here can produce.
 //!
-//! Capture is always on. mistral.rs is a local server rather than a hosted
-//! provider, so it has no dialect of its own: it is driven through the plain
-//! `OPENAI` chat-completions wire pointed at its base URL, and every
-//! completion carries `raw` — the reply *document*, set by the driver from
-//! the response bytes. Nothing about it is sent to the server.
-//! `raw == Value::Null` means only that a `CompletionResponse` was built by
-//! hand without a provider response behind it, which no cell here can
-//! produce.
-//!
-//! mistral.rs stamps `system_fingerprint: "local"` and the `object`/`created`
-//! envelope on every response; none has a home on the normalized
-//! [`rig::completion::CompletionResponse`], and cell 2 reads them back
-//! through `raw`. Its per-second throughput fields inside `usage`
-//! (`avg_compl_tok_per_sec` and friends) have no normalized home either, and
-//! they still reach a caller because `raw` is the document rather than the
-//! parse. Cell 1 pins that by requiring `raw` to reproduce the recorded reply
-//! key for key.
-//!
-//! # Matrix
-//!
-//! | # | Cell | Dimension | expected | Status |
-//! |---|------|-----------|----------|--------|
-//! | 1 | `raw_is_the_reply_document` | body fidelity | `raw` reproduces the recorded reply, and its id and model are the normalized response's | unrecorded (no mistral.rs server in this environment) |
-//! | 2 | `raw_exposes_envelope_fields` | provider-only fields | `system_fingerprint`/`object`/`created` in `raw` equal the fixture body | unrecorded (no mistral.rs server in this environment) |
-//! | 3 | `normalized_fields_equal_raw_renormalized` | normalized view | the normalized fields are the fields the reply document carries, live and in the fixture | unrecorded (no mistral.rs server in this environment) |
-//!
-//! The scenario literals — and therefore the fixture filenames — keep the
-//! names they were recorded under; the cell names describe what the cells now
-//! assert.
-//!
-//! Every cell is unrecorded: no mistral.rs server was listening on
-//! `127.0.0.1:1234` when this matrix was written, and a fixture is never
-//! fabricated. To record: start `mistralrs-server` on that port serving
-//! `Qwen/Qwen3-4B` (or export `MISTRALRS_BASE_URL`/`MISTRALRS_MODEL`), remove
-//! the `#[ignore]` attributes, flip the table to `recorded`, then run
-//! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig-cassette --all-features --test integration mistralrs::cassette::raw_capture_matrix -- --nocapture --test-threads=1`
-//! and review `crates/rig-cassette/fixtures/cassettes/mistralrs/raw_capture_matrix/`.
+//! mistral.rs stamps `system_fingerprint: "local"`, the `object`/`created` envelope and
+//! per-second throughput fields in `usage`, none of which has a normalized home.
+//! `raw_is_the_reply_document` requires `raw` to reproduce the recorded reply key for key,
+//! `raw_exposes_envelope_fields` reads the envelope back through `raw`, and
+//! `normalized_fields_equal_raw_renormalized` checks the normalized fields are the ones the
+//! document carries. The cells are ignored until recorded against a local `mistralrs-server`
+//! (`MISTRALRS_BASE_URL`, `MISTRALRS_MODEL`); a fixture is never fabricated.
 
 use rig::completion::CompletionRequest;
 use serde_json::Value;

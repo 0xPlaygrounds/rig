@@ -1,25 +1,16 @@
-//! CT-16: talk to a finished subagent.
+//! Talk to a finished subagent. `rig_basics::subagents` keeps a `task` subagent after it
+//! reports, restored on resume, and this plugin makes it usable. `/subagents` lists the
+//! subagents: short id, task, model, turns, tokens, and when each last finished. `/talk
+//! <id>` asks the terminal view to show that subagent and send what the user types to it
+//! ([`rig_tui::ShowAgent`]); `/talk main` goes back. Its replies to the user stay in its
+//! own conversation and are not reported to the parent.
 //!
-//! `rig_basics::subagents` already keeps a `task` subagent after it reports (its
-//! conversation, model, tools and saved state live on as an agent of the
-//! session, restored on resume). This plugin
-//! makes that usable:
-//!
-//! - `/subagents` lists the subagents: short id, task, model, turns,
-//!   tokens, and when each last finished.
-//! - `/talk <id>` asks the terminal view to show that subagent and send
-//!   what the user types to it ([`rig_tui::ShowAgent`]); `/talk main` goes
-//!   back. Its replies stay in its own conversation: a message from the
-//!   user opens no request, so `rig_basics::subagents` reports nothing to the parent.
-//! - `follow_up {agent_id, message}` sends one of the caller's own
-//!   subagents a queued message, marked with the call as its request, and
-//!   answers the call with the subagent's reply to it: the final text of
-//!   the step that message started, read from the subagent's conversation.
-//! - The user's messages to a subagent are queued rather than steered, so a
-//!   subagent answers the user and its parent one step at a time, in the
-//!   order the messages arrived.
-//! - At most [`KeptSubagents::keep`] finished subagents are kept; the ones
-//!   that finished longest ago are retired.
+//! `follow_up {agent_id, message}` sends one of the caller's own subagents a queued message
+//! and answers the call with the subagent's reply to it: the final text of the step that
+//! message started. The user's messages to a subagent are queued too, so a subagent answers
+//! the user and its parent one step at a time, in the order the messages arrived. At most
+//! [`KeptSubagents::keep`] finished subagents are kept; the ones that finished longest ago
+//! are retired.
 
 use bevy_reflect::Reflect;
 use rig_basics::subagents::{Awaiting, Lifecycle, Subtask};

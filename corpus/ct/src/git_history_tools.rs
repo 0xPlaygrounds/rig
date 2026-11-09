@@ -1,26 +1,21 @@
-//! CT-05: read-only git history tools.
+//! Read-only git history tools. [`GitHistoryToolsPlugin`] adds four tools that read a
+//! repository's history without `shell`: `git_log`, `git_show`, `git_blame` and `git_diff`.
+//! Each call is built for where its agent works (its `WorkDir`, else the `ProjectRoot`, in
+//! the app's workspace) and starts `git` as the app's `Processes` say, so a sandbox
+//! plugin's policy applies.
 //!
-//! [`GitHistoryToolsPlugin`] adds four tools that read a repository's
-//! history without `shell`: `git_log`, `git_show`, `git_blame` and
-//! `git_diff`. Each call is built for where its agent works (its
-//! `WorkDir`, else the `ProjectRoot`, in the app's workspace) and starts
-//! `git` as the app's `Processes` say, so a sandbox plugin's policy
-//! applies.
+//! They never change the repository, its index or the working tree: every `git` they start
+//! runs with `GIT_OPTIONAL_LOCKS=0`, so none refreshes the index, and they run while
+//! another git process holds `index.lock`. They say so in their annotations
+//! (`read_only_hint`), which makes each call's footprint `Reads(Anything)`: an approval
+//! plugin that lets reads run without asking lets these run too, and the harness does not
+//! preview them.
 //!
-//! They never change the repository, its index or the working tree: every
-//! `git` they start runs with `GIT_OPTIONAL_LOCKS=0`, so none refreshes the
-//! index, and they run while another git process holds `index.lock`. They
-//! say so in their annotations (`read_only_hint`), which makes each call's
-//! footprint `Reads(Anything)`: an approval plugin that lets reads run
-//! without asking lets these run too, and the harness does not preview
-//! them.
-//!
-//! Output is compact: `git_log` gives one line per commit (20 by default),
-//! `git_blame` groups consecutive lines by commit with each commit's
-//! subject once, and `git_show` and `git_diff` stop after 400 lines,
-//! saying how many were left out and how to narrow. A path outside the
-//! repository or a revision that does not exist is a short error of its
-//! own, not git's stderr.
+//! Output is compact: `git_log` gives one line per commit (20 by default), `git_blame`
+//! groups consecutive lines by commit with each commit's subject once, and `git_show` and
+//! `git_diff` stop after 400 lines, saying how many were left out and how to narrow. A path
+//! outside the repository or a revision that does not exist is a short error of its own,
+//! not git's stderr.
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};

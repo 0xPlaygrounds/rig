@@ -3,40 +3,12 @@
 
 use futures::StreamExt;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent, MockTurn};
-use rig_core::tool::{Tool, ToolContext, ToolExecutionError};
-use serde::Deserialize;
 use serde_json::json;
 
 use crate::AgentRun;
 use crate::agent::{AgentBuilder, MultiTurnStreamItem, StreamingResult};
 use crate::run::UnhandledInvalidToolCall;
-
-#[derive(Deserialize)]
-struct AddArgs {
-    x: i64,
-    y: i64,
-}
-
-struct Add;
-
-impl Tool for Add {
-    const NAME: &'static str = "add";
-    type Args = AddArgs;
-    type Output = i64;
-    type Error = ToolExecutionError;
-
-    fn description(&self) -> String {
-        "adds".into()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        json!({"type": "object", "properties": {"x": {"type": "integer"}, "y": {"type": "integer"}}})
-    }
-
-    async fn call(&self, _context: &mut ToolContext, args: AddArgs) -> Result<i64, Self::Error> {
-        Ok(args.x + args.y)
-    }
-}
+use crate::test_utils::MockAddTool;
 
 async fn collect(mut stream: StreamingResult) -> Result<String, String> {
     let mut output = None;
@@ -68,7 +40,7 @@ async fn resumed_outputs(
         "multiply",
         json!({"x": 2, "y": 3}),
     )]))
-    .tool(Add)
+    .tool(MockAddTool)
     .build();
     let blocking = match restore() {
         Ok(run) => unary
@@ -83,7 +55,7 @@ async fn resumed_outputs(
         MockStreamEvent::tool_call("call-1", "multiply", json!({"x": 2, "y": 3})),
         MockStreamEvent::final_response_with_default_usage(),
     ]]))
-    .tool(Add)
+    .tool(MockAddTool)
     .build();
     let streamed = match restore() {
         Ok(run) => collect(streaming.resume(run).stream()).await,
@@ -132,7 +104,7 @@ async fn a_call_renamed_after_its_start_keeps_its_streamed_name() {
             MockStreamEvent::final_response_with_default_usage(),
         ],
     ]))
-    .tool(Add)
+    .tool(MockAddTool)
     .build();
     let run =
         AgentRun::new("go").with_unhandled_invalid_tool_call(UnhandledInvalidToolCall::Ignore);

@@ -292,7 +292,4 @@ fn a_member_hired_in_a_limited_run_keeps_the_leads_tools() {
     assert!(hired.is_some_and(|(_, access)| access.keeps("write") && !access.allows("write")));
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(StandingTeamPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(StandingTeamPlugin);

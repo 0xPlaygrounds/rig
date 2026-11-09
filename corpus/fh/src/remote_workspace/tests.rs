@@ -6,7 +6,7 @@ use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::harness_protocol::SessionId;
 use rig_harness_test_support::{
     Collected, Ended, ToolOutputs, app_in, calls, collect, connect, first_agent, log_ended,
-    log_tool_outputs, reply, run_until, scratch_home,
+    log_tool_outputs, reply, run_until, scratch_dir, scratch_home,
 };
 use serde_json::json;
 
@@ -18,11 +18,7 @@ use super::*;
 /// `remote-home`. A command saying `FAILONCE` fails the transport once
 /// (while `fail-once` exists).
 fn scratch() -> Option<PathBuf> {
-    let exe = std::env::current_exe().ok()?;
-    let base = exe
-        .parent()?
-        .join(format!("remote-workspace-{}", std::process::id()));
-    std::fs::remove_dir_all(&base).ok();
+    let base = scratch_dir(&format!("remote-workspace-{}", std::process::id()));
     for dir in ["local", "remote", "remote-home"] {
         std::fs::create_dir_all(base.join(dir)).ok()?;
     }
@@ -163,7 +159,4 @@ fn tools_act_on_the_remote_and_a_failed_transport_fails_one_call() {
     std::fs::remove_dir_all(&base).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(RemoteWorkspacePlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(RemoteWorkspacePlugin);

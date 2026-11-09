@@ -13,7 +13,6 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use rig_core::completion::ToolAnnotations;
 use rig_core::tool::{
@@ -24,7 +23,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 
 use crate::fs::{diff, io_error};
-use crate::workspace::{Endings, Local, Workspace, text_error, text_of};
+use crate::workspace::{Endings, Root, Workspace, text_error, text_of};
 use crate::{CUT_MARK, Seen, Source, blocking, excerpt, shell_path};
 
 /// Most matches an ambiguity error lists by line, and most changed places
@@ -38,33 +37,15 @@ const MAX_CLOSEST_CHARS: usize = 300;
 /// Replaces text in a file. Publishes the file it changed
 /// ([`FilesChanged`]): its [resolved](Workspace) path, and the
 /// whole diff.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Edit {
-    /// Where the file is edited.
-    pub workspace: Arc<dyn Workspace>,
-    /// The directory a relative path is edited in; `None` is the
-    /// workspace's working directory.
-    pub base: Option<PathBuf>,
-    /// Whether a path that resolves outside `base` is refused, before
-    /// anything is read.
-    pub confine: bool,
+    /// Where the files are, and the directory a relative path is taken from.
+    pub root: Root,
     /// The files [`Read`](crate::Read) showed and edits left, shared with
     /// it: an `old_text` not found asks for a new read only of a file that
     /// changed since, and an edit of a file seen whole is made from that
     /// text, in one [`write_if`](Workspace::write_if).
     pub seen: Seen,
-}
-
-impl Default for Edit {
-    /// Edits this machine's files, from this process's working directory.
-    fn default() -> Self {
-        Self {
-            workspace: Arc::new(Local),
-            base: None,
-            confine: false,
-            seen: Seen::default(),
-        }
-    }
 }
 
 /// Arguments of [`Edit`].
@@ -152,9 +133,7 @@ impl Tool for Edit {
     }
 
     fn footprint(&self, args: &EditArgs) -> Touches {
-        Touches::Writes(Scope::Paths(vec![
-            self.workspace.resolve(self.base.as_deref(), &args.path),
-        ]))
+        Touches::Writes(Scope::Paths(vec![self.root.resolve(&args.path)]))
     }
 
     async fn call(
@@ -162,10 +141,8 @@ impl Tool for Edit {
         context: &mut ToolContext,
         args: EditArgs,
     ) -> Result<String, ToolExecutionError> {
-        let path = self
-            .workspace
-            .place(self.base.as_deref(), self.confine, &args.path)?;
-        let workspace = self.workspace.clone();
+        let path = self.root.place(&args.path)?;
+        let workspace = self.root.workspace.clone();
         let seen = self.seen.clone();
         let (output, change) = blocking(move || edit(&*workspace, &seen, path, args)).await?;
         context.insert_result(FilesChanged(vec![change]))?;

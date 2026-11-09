@@ -1,31 +1,14 @@
-//! **Durable** human-in-the-loop tool-call approval.
+//! Tool-call approval that survives a serialization boundary.
 //!
-//! Unlike `agent_with_human_in_the_loop` (which `.await`s the human *inline*
-//! inside an `AgentHook`, so the approval only lives as long as the running
-//! task), this example pauses the run **across a serialization boundary**: when
-//! the model wants to run tools, the entire [`AgentRun`] state machine is written
-//! to a JSON file and then reconstructed from that file before the decision is
-//! taken. Everything between the write and the reload could be a *different
-//! process*, an HTTP request handler, or hours/days later — the run carries no
-//! live futures, only serializable state.
+//! When the model asks for tools, the example writes the whole [`AgentRun`] to a
+//! JSON file and rebuilds it from that file before asking for a decision, so the
+//! pause could span processes or days. Each call is approved (run it), denied (the
+//! reason becomes the tool result), edited (run it with new JSON arguments), or
+//! aborted (stop the run).
 //!
-//! This is rig's analogue of LangGraph's `interrupt()` + checkpointer, the OpenAI
-//! Agents SDK's serializable `RunState`, and pydantic-ai's `DeferredToolRequests`
-//! — built on the fact that `AgentRun` is `Serialize + Deserialize` and the run
-//! loop is driven by hand (see also `agent_run_stepping`). Each per-call decision
-//! maps to ordinary tool-result content:
-//!
-//! - **approve** → execute the tool, return its real output
-//! - **deny**    → don't execute; return the reason as the tool result so the model adapts
-//! - **edit**    → execute with human-supplied JSON arguments instead
-//! - **abort**   → stop the run
-//!
-//! The gate is **fail-closed**: empty/unknown input denies, and closed stdin
-//! (e.g. piped `< /dev/null`) aborts — a destructive tool never runs on ambiguous
-//! input. The prompt is a UX affordance, not a security boundary; enforce real
-//! authorization inside the tool.
-//!
-//! Requires `OPENAI_API_KEY`. Run with: `cargo run -p agent_with_durable_approval`
+//! The gate fails closed: empty or unknown input denies, and closed stdin aborts.
+//! It is a UX step, not a security boundary, so enforce authorization in the tool.
+//! Requires `OPENAI_API_KEY`. Run with `cargo run -p agent_with_durable_approval`.
 
 use anyhow::Result;
 use rig::agent::InvalidToolCallAction;

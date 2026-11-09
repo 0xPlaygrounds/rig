@@ -1,35 +1,14 @@
 //! OpenRouter history serialization and response matrix.
 //!
 //! This matrix exercises the request serializer and response normalizer around
-//! caller-owned history, including tool-call ids, arguments, ordered tool
-//! results, Unicode-bearing text, and both public completion surfaces.
+//! caller-owned history: tool-call ids, arguments, ordered tool results,
+//! Unicode-bearing text, and both public completion surfaces. Each cell proves
+//! the exact serialized history from its fixture and compares the observed
+//! response text to those exact blocking or SSE bytes. The native surface is
+//! the gateway's reply document on
+//! [`rig::completion::CompletionResponse::raw`].
 //!
-//! The complete input space exercised here is a 2 × 2 × 2 × 3 cross-product:
-//!
-//! | dimension | values |
-//! |---|---|
-//! | transport | blocking, streaming |
-//! | model | `openai/gpt-4o-mini`, `openai/gpt-4.1-mini` |
-//! | surface | provider-native reply document (`raw`), normalized Rig response |
-//! | history shape | text, one tool result, two ordered tool results |
-//!
-//! That is 24 cells, of which the two below are tests. Each test proves the
-//! exact serialized history from its fixture and compares the observed response
-//! text to those exact blocking or SSE bytes.
-//!
-//! Each test maps to
-//! `crates/rig-cassette/fixtures/cassettes/openrouter/history_roundtrip_matrix/<test-name>.yaml`.
-//! The two inexpensive mini routes are pinned to OpenAI with fallbacks disabled
-//! and provide stable controls from separate model families. There is one
-//! decoder now, so the native surface is the gateway's reply document on
-//! [`rig::completion::CompletionResponse::raw`] rather than a second normalizer
-//! over it. Assertions cover native and normalized blocking/streaming surfaces,
-//! routing, Unicode, exact tool ids and arguments, ordered tool results, the
-//! current prompt, and terminal arrival.
-//!
-//! | recorded cells | exact fixture set |
-//! |---|---|
-//! | 2 of 24 | `crates/rig-cassette/fixtures/cassettes/openrouter/history_roundtrip_matrix/{blocking_gpt_4_1_mini_normalized_single_tool,streaming_gpt_4_1_mini_normalized_parallel_tool}.yaml` |
+//! The routes are pinned to OpenAI with fallbacks disabled.
 
 use rig::streaming::Item;
 use rig_test_support::cassette_models::OpenAiModels;
@@ -42,7 +21,7 @@ use rig::message::{AssistantContent, ToolResultContent, UserContent};
 use rig::streaming::StreamEvent;
 use serde_json::{Value, json};
 
-use super::super::support::with_openrouter_history_roundtrip_cassette_result;
+use super::super::support::with_openrouter_cassette_result;
 use rig::completion::CompletionRequest;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -430,7 +409,7 @@ fn cell(transport: Transport, model: ModelVariant, surface: Surface, shape: Shap
 // mapping between tests and fixtures.
 
 crate::matrix::case_matrix! {
-    wrapper: with_openrouter_history_roundtrip_cassette_result, family: history_roundtrip_matrix_case;
+    wrapper: with_openrouter_cassette_result, family: history_roundtrip_matrix_case;
     # [tokio :: test]
     blocking_gpt_4_1_mini_normalized_single_tool: ("history_roundtrip_matrix/blocking_gpt_4_1_mini_normalized_single_tool", configured, cell (Transport :: Blocking , ModelVariant :: Gpt41Mini , Surface :: Normalized , Shape :: SingleTool ,));
     # [tokio :: test]

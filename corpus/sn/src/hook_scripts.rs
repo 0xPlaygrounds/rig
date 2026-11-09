@@ -1,8 +1,5 @@
-//! External hook scripts (spec SN-03): the team's own programs, in any
-//! language, wired into the agent from a config file, as Claude Code's
-//! hooks are.
-//!
-//! Hooks are read from `RIG_HOME/hooks.toml` and `<project>/.rig/hooks.toml`:
+//! External hook scripts: the team's own programs, in any language, wired into the agent from a
+//! config file. Hooks are read from `RIG_HOME/hooks.toml` and `<project>/.rig/hooks.toml`:
 //!
 //! ```toml
 //! [[hook]]
@@ -14,20 +11,16 @@
 //! fail_closed = false       # a failed hook blocks what it guards
 //! ```
 //!
-//! Each command runs under `sh -c` in the project, with one JSON object on
-//! stdin (`event`, `session_id`, `agent_id`, `project_dir`, and as relevant
-//! `tool_name`, `arguments`, `result`, `is_error`, `prompt`). Exit 0 with
-//! nothing printed carries on; exit 0 with a JSON object may deny a call
-//! (`{"decision":"deny","reason":…}`), replace its arguments (`{"args":…}`),
-//! add text for the model (`{"context":…}`) or carry a turn on
-//! (`{"decision":"continue","reason":…}`); exit 2 blocks with stderr as the
-//! reason; anything else is a hook error the user sees.
+//! Each command runs under `sh -c` in the project, with one JSON object on stdin (`event`,
+//! `session_id`, `agent_id`, `project_dir`, and as relevant `tool_name`, `arguments`, `result`,
+//! `is_error`, `prompt`). Exit 0 with nothing printed carries on; exit 0 with a JSON object may
+//! deny a call (`{"decision":"deny","reason":…}`), replace its arguments (`{"args":…}`), add text
+//! for the model (`{"context":…}`) or carry a turn on (`{"decision":"continue","reason":…}`); exit
+//! 2 blocks with stderr as the reason; anything else is a hook error the user sees.
 //!
-//! A hook is an effect's hold: the call, message or turn it guards waits
-//! while the hook runs on a thread of its own, so the interface never
-//! waits, calls that run side by side have their hooks run side by side,
-//! and interrupting a turn, which despawns its holds, kills the hooks'
-//! processes. Project hooks run once the project is trusted.
+//! A hook holds the call, message or turn it guards while it runs on a thread of its own, so the
+//! interface never waits and calls that run side by side have their hooks run side by side.
+//! Interrupting a turn kills its hooks' processes. Project hooks run once the project is trusted.
 
 use std::collections::BTreeMap;
 use std::fs;

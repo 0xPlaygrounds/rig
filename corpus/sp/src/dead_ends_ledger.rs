@@ -1,27 +1,25 @@
-//! SP-04: a dead-ends ledger. Each agent keeps a short list of approaches
-//! known not to work: the model records one with the `dead_end` tool, the
-//! user with `/dead-end <text>`, and the plugin records one itself when a
-//! failing `shell` command is run again, unchanged, in the same directory,
-//! with no file changed in between, and fails the same way. `/dead-ends`
-//! lists an agent's entries, `/dead-ends drop <n>` removes one.
+//! A dead-ends ledger. Each agent keeps a short list of approaches known not to work: the model
+//! records one with the `dead_end` tool, the user with `/dead-end <text>`, and the plugin
+//! records one itself when a failing `shell` command is run again, unchanged, in the same
+//! directory, with no file changed in between, and fails the same way. `/dead-ends` lists an
+//! agent's entries, `/dead-ends drop <n>` removes one.
 //!
-//! The ledger is a saved [`DeadEnds`] component: kept with the session and
-//! restored on resume. Each turn's model request gets a
-//! `<known_dead_ends>` section of its system prompt with the agent's
-//! newest entries (a subagent's ancestors' too), never a message, so no
-//! compaction drops it and the conversation never holds it. A `shell` call
-//! that repeats an automatic entry's command while no file has changed
-//! since still runs, and its result starts with a warning naming the entry.
+//! The ledger is a saved [`DeadEnds`] component: kept with the session and restored on resume.
+//! Each turn's model request gets a `<known_dead_ends>` section of its system prompt with the
+//! agent's newest entries (a subagent's ancestors' too), never a message, so no compaction
+//! drops it and the conversation never holds it. A `shell` call that repeats an automatic
+//! entry's command while no file has changed since still runs, and its result starts with a
+//! warning naming the entry.
 
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::Section;
 use rig_harness::rig_core::effect::Answered;
+use rig_harness::rig_core::now_ms;
 use rig_harness::rig_core::tool::{ExitStatus, FilesChanged, ToolOutput};
 use rig_harness::rig_tools::Shell;
 use rig_harness::rig_tools::split_status;
@@ -248,14 +246,6 @@ struct Failure {
 #[derive(Component)]
 #[component(storage = "SparseSet")]
 struct Checked;
-
-/// Milliseconds since the Unix epoch now.
-fn now_ms() -> u64 {
-    let since = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default();
-    u64::try_from(since.as_millis()).unwrap_or(u64::MAX)
-}
 
 /// The agent's turn now, from 1: its running turn, else its last one, else 0.
 fn turn_of(turn: Option<&Turn>, conversation: Option<&Conversation>) -> u64 {

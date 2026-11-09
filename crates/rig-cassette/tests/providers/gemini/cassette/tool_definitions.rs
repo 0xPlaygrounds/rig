@@ -11,9 +11,9 @@ use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+use super::super::agent_run_support::MathError;
 use super::super::agent_run_support::tool_result_texts;
 use super::super::support::with_gemini_cassette;
-use super::super::tools_support::MathError;
 use crate::support::assert_nonempty_response;
 
 #[derive(Deserialize, Serialize)]

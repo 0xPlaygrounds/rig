@@ -1,9 +1,7 @@
-//! OC-14: untested-change nudge from coverage.
-//!
-//! After a turn in which an agent's own file tools (`edit`, `write`, any
-//! tool that says which paths it writes) changed lines of the project's
-//! sources, the project's coverage command runs in the background, as
-//! `coverage.toml` at the project's root says:
+//! An untested-change nudge from coverage. After a turn in which an agent's own file tools (`edit`,
+//! `write`, any tool that says which paths it writes) changed lines of the project's sources, the
+//! project's coverage command runs in the background, as `coverage.toml` at the project's root
+//! says:
 //!
 //! ```toml
 //! command = "cargo llvm-cov --lcov --output-path {out}"
@@ -13,16 +11,13 @@
 //! timeout_secs = 300         # 5 minutes by default
 //! ```
 //!
-//! The lines the agent changed are the lines each of its calls added or
-//! rewrote (`FileChange::changed_lines`), carried through its later edits
-//! of the same file and through anyone else's edits in between, so a line
-//! the user changed is never one of them. Those the report counts as
-//! instrumented but never run (blank lines, comments and braces aside)
-//! start one follow-up turn that lists them with their code and asks for
-//! tests; a failing test run lists the failures instead. A result that
-//! comes with a user's message on its way goes with that message. After `max_rounds` follow-ups, a notice says what remains
-//! uncovered. A new turn or an interrupt kills a running command.
-//! `/coverage` shows the last result.
+//! The lines the agent changed are the lines each of its calls added or rewrote, carried through
+//! later edits, so a line the user changed is never one of them. Those the report counts as
+//! instrumented but never run (blank lines, comments and braces aside) start one follow-up turn
+//! that lists them with their code and asks for tests; a failing test run lists the failures
+//! instead. A result that comes with a user's message on its way goes with that message. After
+//! `max_rounds` follow-ups, a notice says what remains uncovered. A new turn or an interrupt kills
+//! a running command. `/coverage` shows the last result.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::ffi::OsString;

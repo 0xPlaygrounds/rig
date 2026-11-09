@@ -6,9 +6,8 @@
 //! expands one test per row, and the workspace registry fails when a wire in
 //! [`HISTORY_WIRES`] has no suite.
 //!
-//! Each row's function documents its invariant. The audit findings each row
-//! closes are listed in [`ROWS`], and those a named test closes in
-//! [`TESTS`]; a finding is closed only by one of them.
+//! Each row's function documents its invariant. [`TESTS`] names the tests
+//! that check an invariant outside the rows.
 //!
 //! ```ignore
 //! mod anthropic_history {
@@ -90,394 +89,241 @@ pub const HISTORY_WIRES: &[&str] = &[
     "candle",
 ];
 
-/// Each row, and the audit findings (`audit/AUDIT.md`) it closes.
-pub const ROWS: &[(&str, &str)] = &[
-    (
-        "h01_same_model_verbatim",
-        "#1315 (Anthropic native before unsigned-thinking rule), Vertex #2026 same-model half, \
-         Responses NEW edited-reasoning orphan (identity half)",
-    ),
-    (
-        "h02_cross_model_canonical",
-        "chatA NEW-4 (Mistral id collisions), anthropic NEW cross-model assistant images, \
-         Gemini #2026 rebuilt calls",
-    ),
-    (
-        "h03_stream_equals_whole",
-        "#2647 class (whole and streamed folds disagree), chatA NEW-5",
-    ),
-    (
-        "h04_unknown_kept",
-        "#807, #1835, chatB NEW Mistral thinking, gemini NEW mixed Interactions output, \
-         core NEW Bedrock server_tool_use and citations, chatA NEW-3 custom calls",
-    ),
-    (
-        "h05_field_ablation",
-        "#2668, #1426, #1176, #1512, #2194, #2591, #1984, #2475, #2509, #2510, gemini NEW \
-         missing args, review: typed parts fail a whole reply (null and retyped fields)",
-    ),
-    (
-        "h06_malformed_arguments",
-        "#1085, #2359, #2447, #2554, core NEW null arguments",
-    ),
-    (
-        "h07_failed_turns",
-        "core #1559, anthropic NEW partial turns, gemini NEW non-success finishes, chatB NEW \
-         unknown finish reasons, review: Chat finish `end`, Responses response.incomplete",
-    ),
-    ("h08_pairing", "#2560, chatA NEW-4, core NEW is_error"),
-    (
-        "h09_capability_downgrades",
-        "#305, #2143, #2380, chatA NEW-1, NEW-2, NEW-6, chatB NEW placeholder (accepts_images \
-         dead, with the Moonshot, Z.AI, MiniMax and MiMo text-only models), anthropic NEW image \
-         capability (Moonshot's Messages wire), review: encoders refuse canonical content on \
-         every wire",
-    ),
-    (
-        "h10_persistence",
-        "core NEW fingerprint key order, round 5: generated finding 7 (integers beyond 2^53)",
-    ),
-    (
-        "h11_order",
-        "#2647, Responses NEW terminal-only order, chatA NEW-5",
-    ),
-    (
-        "h12_edits",
-        "Responses NEW edited reasoning orphans its pair, Responses NEW added snapshot",
-    ),
-    (
-        "h13_rollback",
-        "core #1559, core NEW rollback origin, chatB NEW rollback, review: a cut Chat, Cohere \
-         or Ollama reply loses its reasoning, round 5: a cut turn keeps no provider item",
-    ),
-    (
-        "h14_model_identity",
-        "gemini NEW resume origin model, gemini NEW Vertex model override",
-    ),
-    (
-        "h15_item_round_trip",
-        "round 4: Anthropic A4 and A5, Responses NEW-C, Gemini NEW-3 (stored items the wire \
-         would refuse)",
-    ),
-    (
-        "h16_call_identity",
-        "#2655, round 4: Chat NEW-1 and NEW-2 (merged parallel calls), Mistral tool-0, Gemini \
-         3 id-less call, Responses NEW-B and NEW-E, Anthropic A1, stored duplicate ids, rename \
-         scope",
-    ),
-    (
-        "h17_generated_histories",
-        "round 4: fuzz F1 (duplicate ids), F2 (fingerprint number form), role alternation, \
-         round 5: generated findings 1 (windows), 5 (store bodies, explicit skips, reached \
-         checks) and 6 (hosted pairs, late and split results, own streamed and generated \
-         turns, adjacency)",
-    ),
-    (
-        "h18_generated_stream_equals_whole",
-        "round 6: fuzz R6-A (terminal-only Responses items reordered), R6-B (index-less \
-         id-less Chat calls merged), round 5: generated finding 2 (OpenRouter details and \
-         Mistral parts in the Chat generator)",
-    ),
-    (
-        "h19_generated_cuts",
-        "round 6: fuzz (e) (a cut stream never replays as a success), #2647 cut paths, \
-         round 5: generated findings 3 and 4 (continued and delivered turns keep no item)",
-    ),
-];
-
-/// Each audit finding a named test closes rather than a row: the file that
-/// holds it, the test function, and the findings. The workspace registry
-/// fails when a named test no longer exists.
-pub const TESTS: &[(&str, &str, &str)] = &[
+/// The tests that check a replay invariant outside the rows: the file that
+/// holds each and its function. The workspace registry fails when one no
+/// longer exists.
+pub const TESTS: &[(&str, &str)] = &[
     (
         "crates/rig-bedrock/tests/history_conformance.rs",
         "an_orphan_first_result_still_leaves_a_user_message_first",
-        "round 5: generated finding 1 (a Bedrock request opens with the assistant)",
     ),
     (
         "crates/rig-core/src/providers/openai/wire/chat/history_tests.rs",
         "reasoning_details_fold_alike_whole_and_streamed_wherever_they_arrive",
-        "round 5: generated finding 2 (OpenRouter details after the content)",
     ),
     (
         "crates/rig-core/src/providers/openai/responses_api/history_tests.rs",
         "a_call_cut_off_after_a_missing_output_index_goes_back_without_its_item",
-        "round 5: generated finding 3 (a Responses cut at a missing output_index)",
     ),
     (
         "tests/core/history_conformance/deepseek.rs",
         "generated_reply_checks_catch_what_they_guard",
-        "round 5: generated finding 4 (H19's checks can fail)",
     ),
     (
         "crates/rig-gemini-grpc/src/completion/tests.rs",
         "a_user_video_keeps_its_video_metadata",
-        "#2658, round 4: gemini NEW-1 (gRPC refuses videoMetadata)",
     ),
     (
         "crates/rig-gemini-grpc/src/completion/tests.rs",
         "the_rest_request_transcodes_in_full",
-        "#2658 (gRPC drops the tool choice, generation config and hosted tools)",
     ),
     (
         "crates/rig-gemini-grpc/src/completion/tests.rs",
         "a_signature_only_part_replays_its_signature",
-        "round 4: gemini NEW-3 on gRPC",
     ),
     (
         "crates/rig-core/src/providers/gemini/streaming/tests.rs",
         "a_signature_only_part_joins_the_text_before_it",
-        "round 4: gemini NEW-3 (a signature-only part never replays)",
     ),
     (
         "crates/rig-core/src/providers/gemini/interactions_api/history_tests.rs",
         "a_multi_part_result_reaches_gemini_2_as_one_string",
-        "#2143, round 4: gemini NEW-2 (Interactions multi-part result on Gemini 2)",
     ),
     (
         "crates/rig-core/src/providers/gemini/interactions_api/history_tests.rs",
         "a_stored_continuation_keeps_its_results_without_declared_tools",
-        "round 4 core: tools withdrawn turned a stored interaction's results into text",
     ),
     (
         "crates/rig-core/src/providers/gemini/interactions_api/history_tests.rs",
         "every_gemini_wire_classifies_a_model_alike",
-        "round 4 architecture: REST and Interactions classify aliases apart",
     ),
     (
         "crates/rig-core/src/completion/request/tests.rs",
         "documents_join_the_first_user_message_so_roles_alternate",
-        "#1179",
     ),
     (
         "crates/rig-bedrock/src/streaming/tests.rs",
         "a_stream_rebuilds_the_unary_converse_output",
-        "#2311",
     ),
     (
         "crates/rig-bedrock/src/request/tests.rs",
         "an_edited_block_is_rebuilt_for_the_family",
-        "core NEW Bedrock application inference profile",
     ),
     (
         "crates/rig-bedrock/src/request/tests.rs",
         "a_later_system_message_stays_in_place",
-        "core NEW Bedrock system hoisting",
     ),
     (
         "crates/rig-core/src/providers/openai/wire/chat/history_tests.rs",
         "response_only_fields_never_go_back",
-        "chatB NEW response-only fields replayed, #1835",
     ),
     (
         "crates/rig-core/src/providers/openai/responses_api/streaming/tests.rs",
         "a_call_added_but_never_done_fails_the_turn",
-        "Responses NEW call added but never done, review: a never-done call loses its id",
     ),
     (
         "crates/rig-core/src/providers/anthropic/completion/tests.rs",
         "the_container_survives_a_dropped_block_and_an_edited_call",
-        "anthropic NEW container, review: container lost when content changes",
     ),
     (
         "crates/rig-core/src/completion/message/native/tests.rs",
         "a_store_that_writes_whole_numbers_as_integers_keeps_the_item_current",
-        "review: fingerprint number form",
     ),
     (
         "crates/rig-core/src/operation/completion/tests.rs",
         "a_reused_call_id_is_renamed_and_loses_its_item",
-        "review: duplicate call id fails the reply",
     ),
     (
         "crates/rig-core/src/serve/handler/tests.rs",
         "a_written_reply_names_its_origin_before_its_first_item",
-        "review: Reply::written sends no origin",
     ),
     (
         "crates/rig-core/src/completion/history/tests.rs",
         "results_come_before_the_text_of_the_message_they_merge_into",
-        "review: text before tool_result after a merge",
     ),
     (
         "crates/rig-core/src/completion/history/tests.rs",
         "media_the_encoder_cannot_carry_becomes_a_placeholder_or_its_text",
-        "review: encoders refuse canonical content",
     ),
     (
         "crates/rig-core/src/providers/anthropic/completion/tests.rs",
         "an_edited_call_keeps_its_caller",
-        "review: an edited Anthropic call loses its caller",
     ),
     (
         "crates/rig-core/src/providers/anthropic/streaming/tests.rs",
         "an_empty_reply_folds_the_same_whole_or_streamed",
-        "review: Anthropic empty replies differ whole and streamed",
     ),
     (
         "crates/rig-core/src/providers/anthropic/completion/tests.rs",
         "tool_results_lead_a_merged_user_message",
-        "review: Anthropic text before tool_result",
     ),
     (
         "crates/rig-core/src/providers/anthropic/completion/tests.rs",
         "an_idless_call_replays_under_the_id_its_result_gets",
-        "#2655, Responses NEW-B neighbour (an Anthropic tool_use without an id)",
     ),
     (
         "crates/rig-core/src/providers/anthropic/completion/tests.rs",
         "a_binding_model_replays_its_thinking_and_asks_for_drop_block",
-        "#2703 (Opus 5.5 thinking bound to its tools)",
     ),
     (
         "crates/rig-core/src/providers/anthropic/completion/tests.rs",
         "unsigned_thinking_keeps_its_item_only_where_the_dialect_takes_it",
-        "round 4: Anthropic A4 (unsigned thinking replayed as thinking)",
     ),
     (
         "crates/rig-core/src/providers/anthropic/completion/tests.rs",
         "a_kept_tool_use_item_always_states_an_object_input",
-        "round 4: Anthropic A5 (a tool_use item without input)",
     ),
     (
         "crates/rig-core/src/providers/anthropic/completion/tests.rs",
         "a_server_tool_result_never_replays_without_its_use",
-        "round 4: Anthropic A3 (an orphaned server-tool result)",
     ),
     (
         "crates/rig-core/src/providers/anthropic/completion/tests.rs",
         "a_blank_text_block_keeps_no_item_and_is_never_sent",
-        "round 4: Anthropic blank text with a current item (encoder drop deleted)",
     ),
     (
         "crates/rig-core/src/providers/anthropic/streaming/tests.rs",
         "a_stop_reason_states_every_open_block_complete",
-        "round 4: Anthropic A6 (a signature lost without content_block_stop)",
     ),
     (
         "tests/core/history_conformance_registry.rs",
         "every_messages_dialect_has_a_history_suite",
-        "round 4: Anthropic A8 (no Messages suite for Z.AI, MiniMax and MiMo)",
     ),
     (
         "crates/rig-cassette/tests/providers/anthropic/cassette/malformed_tool_args_matrix.rs",
         "streaming_malformed_call_is_answered_with_an_error",
-        "review: hand-derived malformed-arguments cassette",
     ),
     (
         "crates/rig-core/src/providers/openai/responses_api/streaming/tests.rs",
         "reasoning_done_without_ciphertext_keeps_its_item_in_a_stream_without_indices",
-        "review: Responses reasoning loses its item without output_index",
     ),
     (
         "crates/rig-core/src/providers/openai/responses_api/streaming/tests.rs",
         "a_terminal_only_item_does_not_repeat_text_streamed_without_indices",
-        "review: Responses terminal-only items duplicate text",
     ),
     (
         "crates/rig-core/src/providers/openai/responses_api/streaming/tests.rs",
         "a_done_item_that_contradicts_its_deltas_states_the_block",
-        "review: Responses block text and native disagree",
     ),
     (
         "crates/rig-core/src/providers/openai/responses_api/streaming/tests.rs",
         "an_item_without_a_type_never_replays",
-        "review: Responses item without a type replays",
     ),
     (
         "crates/rig-core/src/providers/openai/responses_api/streaming/tests.rs",
         "response_incomplete_is_incomplete_whatever_its_status_says",
-        "review: response.incomplete without status is Stop",
     ),
     (
         "crates/rig-gemini-grpc/src/completion/tests.rs",
         "a_url_tool_result_image_follows_the_results_on_gemini_3",
-        "review: gRPC URL tool-result image",
     ),
     (
         "crates/rig-gemini-grpc/src/completion/tests.rs",
         "a_part_of_an_undeclared_kind_never_replays_without_data",
-        "review: gRPC part with no data replays",
     ),
     (
         "crates/rig-bedrock/src/request/tests.rs",
         "a_hosted_use_replays_only_with_its_result",
-        "review: Bedrock server_tool_use replays without its result",
     ),
     (
         "crates/rig-bedrock/src/request/tests.rs",
         "only_nova_and_claude_get_a_result_status",
-        "review: Bedrock status sent to every family",
     ),
     (
         "crates/rig-bedrock/tests/history_conformance.rs",
         "a_reply_the_sdk_cannot_read_decodes_from_its_json",
-        "review: Bedrock whole reply read strictly",
     ),
     (
         "crates/rig-bedrock/src/request/tests.rs",
         "a_tool_history_without_tools_is_text",
-        "round 4: Bedrock NEW-R4-toolconfig",
     ),
     (
         "crates/rig-bedrock/src/streaming/tests.rs",
         "a_stream_without_a_stop_reason_fails",
-        "round 4: core NEW-R4-finish (Bedrock metadata without messageStop)",
     ),
     (
         "crates/rig-bedrock/src/request/tests.rs",
         "a_same_model_assistant_image_is_not_sent",
-        "round 4: NEW-bedrock-assistant-image",
     ),
     (
         "crates/rig-bedrock/src/request/tests.rs",
         "duplicate_stored_ids_reach_converse_distinct",
-        "round 4: NEW-dup-stored-ids on Converse",
     ),
     (
         "crates/rig-bedrock/src/request/tests.rs",
         "documents_are_named_by_content_and_land_in_the_first_user_message",
-        "round 4: #43, #652, #404, #405 (Bedrock document placement and names)",
     ),
     (
         "crates/rig-bedrock/src/request/tests.rs",
         "cache_points_follow_what_the_request_sends",
-        "round 4: #1673 (cache point after a reasoning turn)",
     ),
     (
         "crates/rig-bedrock/src/request/tests.rs",
         "a_stored_item_goes_back_with_whole_numbers",
-        "round 4: Bedrock H10 (a store writes whole numbers as floats)",
     ),
     (
         "crates/rig-bedrock/tests/history_conformance.rs",
         "the_transport_sends_the_encoded_body",
-        "round 4: Bedrock request built as JSON, sent as encoded",
     ),
     (
         "crates/rig-candle/src/protocol/tests.rs",
         "every_renderer_takes_any_media_the_adapter_hands_over",
-        "review: Candle refuses media",
     ),
     (
         "crates/rig-core/src/providers/openai/wire/chat/history_tests.rs",
         "review_text_only_chat_dialect_models_get_placeholders",
-        "chatB NEW accepts_images dead (STILL_POSSIBLE)",
     ),
     (
         "crates/rig-core/src/providers/openai/wire/chat/tests.rs",
         "the_done_sentinel_without_a_finish_fails",
-        "review: Chat [DONE] without finish_reason is Stop",
     ),
     (
         "crates/rig-core/src/providers/openai/wire/chat/history_tests.rs",
         "an_answers_audio_transcript_is_text",
-        "review: an OpenAI audio transcript is never text",
     ),
     (
         "crates/rig-core/src/providers/openai/wire/chat/history_tests.rs",
         "a_mistyped_part_never_fails_a_reply",
-        "review: Chat index null, numeric id, object content",
     ),
 ];
 
@@ -488,7 +334,7 @@ pub enum Shape {
     /// reasoning with its signature, a tool call, and an image or a hosted
     /// item where the wire has them.
     Rich,
-    /// `[reasoning, text, reasoning, tool call]`, the #2647 shape.
+    /// `[reasoning, text, reasoning, tool call]`.
     Interleaved,
     /// An item of the invented type `x_rig_invented`, and a known item
     /// carrying the invented field `x_rig_field`.
@@ -2780,8 +2626,8 @@ fn name(name: &str) -> ToolName {
     ToolName::new(name).unwrap_or_else(|_| panic!("`{name}` is a tool name"))
 }
 
-/// Expand the history conformance suite for one wire: one test per row of
-/// [`ROWS`], and the `HISTORY_WIRE` constant the registry links.
+/// Expand the history conformance suite for one wire: one test per row,
+/// and the `HISTORY_WIRE` constant the registry links.
 ///
 /// `wire` is the wire's name in [`HISTORY_WIRES`]; `fixture` is an
 /// expression producing its [`HistoryFixture`].
@@ -2815,30 +2661,7 @@ macro_rules! history_conformance_suite {
         }
 
         #[test]
-        fn suite_runs_every_row() {
-            let emitted = [
-                "h01_same_model_verbatim",
-                "h02_cross_model_canonical",
-                "h03_stream_equals_whole",
-                "h04_unknown_kept",
-                "h05_field_ablation",
-                "h06_malformed_arguments",
-                "h07_failed_turns",
-                "h08_pairing",
-                "h09_capability_downgrades",
-                "h10_persistence",
-                "h11_order",
-                "h12_edits",
-                "h13_rollback",
-                "h14_model_identity",
-                "h15_item_round_trip",
-                "h16_call_identity",
-                "h17_generated_histories",
-                "h18_generated_stream_equals_whole",
-                "h19_generated_cuts",
-            ];
-            let rows: Vec<&str> = $crate::ROWS.iter().map(|(row, _)| *row).collect();
-            assert_eq!(emitted.as_slice(), rows.as_slice());
+        fn suite_wire_is_listed() {
             assert!(
                 $crate::HISTORY_WIRES.contains(&$wire),
                 "`{}` is in HISTORY_WIRES",

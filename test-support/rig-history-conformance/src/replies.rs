@@ -14,6 +14,7 @@ use serde_json::{Value, json};
 use rig_core::completion::CompletionRequest;
 use rig_core::json_utils::remove_preserving_order;
 use rig_core::operation::Completion;
+use rig_core::test_utils::history::numbered;
 use rig_core::wire::{Mode, Wire};
 
 use crate::decode;
@@ -73,27 +74,6 @@ fn first_line(text: &str) -> String {
         .chars()
         .take(200)
         .collect()
-}
-
-/// A turn as JSON with rig-issued ids numbered and fingerprints left out,
-/// as `assert_restated_agrees` compares.
-fn numbered(mut turn: Value) -> Value {
-    fn walk(value: &mut Value, next: &mut usize) {
-        match value {
-            Value::Object(fields) => {
-                remove_preserving_order(fields, "fingerprint");
-                if let Some(local) = fields.get_mut("local") {
-                    *local = json!(*next);
-                    *next += 1;
-                }
-                fields.values_mut().for_each(|value| walk(value, next));
-            }
-            Value::Array(values) => values.iter_mut().for_each(|value| walk(value, next)),
-            _ => {}
-        }
-    }
-    walk(&mut turn, &mut 0);
-    turn
 }
 
 /// How the whole and the streamed fold of `frames` differ on `wire`, if

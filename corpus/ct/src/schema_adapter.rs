@@ -1,17 +1,13 @@
-//! CT-03: tool schemas adjusted per model, in the outgoing request only.
-//!
-//! The `[schema_adapter]` table of `settings.toml` maps model patterns to
-//! profiles. In the adapt phase ([`Adapted`]), on the model each call
-//! finally goes to, a matching rule wraps the
-//! model's handler: a layer rewrites the request's tools as the profiles
-//! say (`strict-subset`, `short-descriptions`, `few-tools`), and a stream
-//! rewrite maps each tool call's arguments back to the schema its tool
-//! declares, so the kernel checks them against that schema and the
-//! conversation keeps calls in the declared shape. Tool definitions, the
-//! request the kernel built and the conversation never see the adapted
-//! schemas. A model call that fails naming a tool or a schema gets a
-//! warning with the schema the model was sent, once per tool, and
-//! `/schema-adapter show <tool> [model]` prints what a model receives.
+//! Tool schemas adjusted per model, in the outgoing request only. The `[schema_adapter]`
+//! table of `settings.toml` maps model patterns to profiles. In the adapt phase
+//! ([`Adapted`]), on the model each call finally goes to, a matching rule wraps the model's
+//! handler: a layer rewrites the request's tools as the profiles say (`strict-subset`,
+//! `short-descriptions`, `few-tools`), and a stream rewrite maps each tool call's arguments
+//! back to the schema its tool declares, so the kernel checks them against that schema and
+//! the conversation keeps calls in the declared shape. Tool definitions, the request the
+//! kernel built and the conversation never see the adapted schemas. A model call that fails
+//! naming a tool or a schema gets a warning with the schema the model was sent, once per
+//! tool, and `/schema-adapter show <tool> [model]` prints what a model receives.
 
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex, PoisonError};

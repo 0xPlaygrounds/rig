@@ -1,78 +1,18 @@
 //! Groq live coverage for combining `prompt_typed()` with tool calling.
 
 use anyhow::Result;
-use rig_test_support::cassette_models::OpenAiModels;
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
-
 use rig::providers::openai::wire::GROQ;
-use rig::tool::Tool;
+use rig_test_support::cassette_models::OpenAiModels;
 
 use crate::support::assert_weather_tool_roundtrip_response;
+use crate::weather_tool::{WeatherResponse, WeatherTool};
 
 use super::TYPED_PROMPT_TOOLS_MODEL;
-
-#[derive(Debug, Deserialize, JsonSchema, Serialize)]
-struct WeatherResponse {
-    city: String,
-    weather: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct WeatherArgs {
-    city: String,
-}
-
-#[derive(Clone)]
-struct WeatherTool {
-    call_count: Arc<AtomicUsize>,
-}
-
-impl WeatherTool {
-    fn new(call_count: Arc<AtomicUsize>) -> Self {
-        Self { call_count }
-    }
-}
-
-impl Tool for WeatherTool {
-    const NAME: &'static str = "weather";
-    type Error = std::io::Error;
-    type Args = WeatherArgs;
-    type Output = String;
-
-    fn description(&self) -> String {
-        "Get the current weather for a city.".to_string()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({
-            "type": "object",
-            "properties": {
-                "city": { "type": "string" }
-            },
-            "required": ["city"]
-        })
-    }
-
-    fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> impl std::future::Future<Output = Result<Self::Output, Self::Error>> + Send {
-        self.call_count.fetch_add(1, Ordering::SeqCst);
-        std::future::ready(Ok(format!(
-            "The weather in {} is all fire and brimstone",
-            args.city
-        )))
-    }
-}
 
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
-    let call_count = Arc::new(AtomicUsize::new(0));
+    let weather = WeatherTool::default();
     let groq = OpenAiModels::from_env_for(&GROQ).expect("GROQ_API_KEY should be set");
     let agent = rig::AgentBuilder::new(groq
         .completion(TYPED_PROMPT_TOOLS_MODEL))
@@ -88,7 +28,7 @@ async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
              {\"city\":\"London\",\"weather\":\"The weather in London is all fire and brimstone\"}. \
              DO NOT wrap the JSON in markdown or add explanatory text.",
         )
-        .tool(WeatherTool::new(call_count.clone()))
+        .tool(weather.clone())
         .build();
 
     let response: WeatherResponse = agent
@@ -97,7 +37,7 @@ async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
         .output;
 
     anyhow::ensure!(
-        call_count.load(Ordering::SeqCst) >= 1,
+        weather.calls() >= 1,
         "expected the weather tool to be executed at least once"
     );
     assert_weather_tool_roundtrip_response(&response.city, &response.weather, "London");

@@ -1042,7 +1042,7 @@ fn blocks_without_a_current_item_rebuild_as_pi_does() {
 }
 
 // -------------------------------------------------------------------
-// Citations (#1767)
+// Citations
 // -------------------------------------------------------------------
 
 #[test]
@@ -1062,16 +1062,6 @@ fn document_serializes_citations_and_metadata() {
         "context should be skipped when None"
     );
 }
-
-/// Raw-capture tests: `CompletionResponse::raw` driven end to end over a
-/// mock transport that hands back a Messages body *and* a `request-id`
-/// response header. `raw` is the verbatim reply document — not a
-/// re-serialization of the parsed type — so it answers what the normalized
-/// response does not, and the transport id the driver read off the headers
-/// reaches the normalized response rather than the document.
-/// `with_error_response_headers` with `200 OK` is the one unary double
-/// that carries response headers.
-mod raw_capture {}
 
 /// A `tool_use` whose `input` is not an object keeps its call, with the
 /// arguments normalized, and no provider item: the item could not be sent
@@ -1458,7 +1448,7 @@ fn sent_with(
     )
 }
 
-/// #2655: a `tool_use` the provider sent without an id gets an id rig
+/// A `tool_use` the provider sent without an id gets an id rig
 /// issues, and the replayed item carries the spelling its result gets, so
 /// the call and its result always agree, on every dialect.
 #[test]
@@ -1499,7 +1489,7 @@ fn an_idless_call_replays_under_the_id_its_result_gets() {
     }
 }
 
-/// #2703: Claude Opus 5.5 binds its thinking to the tools and system prompt
+/// Claude Opus 5.5 binds its thinking to the tools and system prompt
 /// it was made under. Its turns replay verbatim whatever the tools, and
 /// every request asks Anthropic, under the binding beta, to drop a block
 /// whose binding no longer matches (pi's `drop_block`). A model that does
@@ -1580,7 +1570,7 @@ fn drop_block_joins_the_callers_thinking() {
 
 /// Anthropic A4: thinking that ended without a signature keeps no item, so
 /// it replays as text, as pi sends it. Kimi, which sends thinking unsigned,
-/// takes it back as thinking (#1315).
+/// takes it back as thinking.
 #[test]
 fn unsigned_thinking_keeps_its_item_only_where_the_dialect_takes_it() {
     let unsigned = json!({"type": "thinking", "thinking": "plan", "signature": ""});

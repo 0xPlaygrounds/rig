@@ -1,67 +1,20 @@
 //! Matrix P: layers.
 //!
-//! Interception is handler composition: a `Layer` wraps a handler in an
-//! `Intercept` that decides before (`Proceed`, `Patch`, `Deny`) and after
-//! (`Keep`, `Replace`), and registers under the inner descriptor with its
-//! name in `layers`. Decisions are program, never record — the recorder
-//! taps the innermost hop — so a denial leaves no record, a replacement
-//! leaves the handler's real answer in it, and a replay re-makes the
-//! decision with the same layer registered (`Program::layers`; the header
-//! names the layers after the hooks, and a replay under another stack is
-//! refused by the hook-stack check). The equivalence row is the evidence
-//! that `Layer`'s three decisions are expressive enough: hand-written
-//! layers reproduce four hook goldens' records byte for byte, without
-//! rig-agent's stack (ruling 14).
+//! Interception is handler composition: a `Layer` wraps a handler in an `Intercept` that decides
+//! before (`Proceed`, `Patch`, `Deny`) and after (`Keep`, `Replace`), and registers under the
+//! inner descriptor with its name in `layers`. Decisions are program, never record, because the
+//! recorder taps the innermost hop. A denial leaves no record, a replacement leaves the
+//! handler's real answer in it, and a replay re-makes the decision with the same layer
+//! registered (`Program::layers`). The header's `hooks` list names the hooks, then the layers
+//! in handler-table order, outermost first within a key (`Agent::program_names`), so a replay
+//! under another stack is refused by the hook-stack check.
 //!
-//! # Dimensions
-//!
-//! | axis | values recorded |
-//! |---|---|
-//! | layer position | the one layer · outermost of two · innermost of two · beneath the agent's hook stack |
-//! | decision | `Proceed` · `Patch` same family · `Patch` wrong family · `deny(reason)` → `Denied` · a suspended decision (approve · deny · never) |
-//! | verdict | `Keep` · `Replace(Ok)` · `Replace(Err(Cancelled))` |
-//! | medium | unary · streamed with events |
-//! | who | a hand-written `Intercept` standing in for a corpus hook · the host's own policy · both stacked · beneath the agent's hooks |
-//! | key | the agent's tool · the model |
-//!
-//! Full cross-product: 4 × 7 × 3 × 2 × 4 × 2 = 1344. Recorded: the 11
-//! cells below. Pruned: `Deny(Cancelled)` from a layer (a hook's stop is
-//! Matrix D's; a layer that stops a run is the same report on the same
-//! path); `Replace(Ok)` over a stream (an `Internal` by construction, pinned
-//! in rig-core's layer tests); the streamed medium on every cell but the
-//! model-key replacement (the medium changes the run's completions, not
-//! where a layer's decision lands); the middle of three layers (two show
-//! the order; a third adds a name); positions and verdicts crossed with
-//! the model key beyond the one cell it shows.
-//!
-//! # Cells
-//!
-//! | golden | producer | shape |
-//! |---|---|---|
-//! | `anthropic_layers_deny_tool` | anthropic `corpus_layers.rs` `deny_tool_…` (the `corpus_hooks/deny_tool` cassette) | `[Completion, Completion]`; records = `anthropic_hooks_deny_tool` |
-//! | `anthropic_layers_patch_tool_args` | `patch_tool_args_…` | `[Completion, Tool, Completion]`; records = `anthropic_hooks_patch_tool_args` |
-//! | `anthropic_layers_replace_tool_result` | `replace_tool_result_…` | the same shape; records = `anthropic_hooks_replace_tool_result` |
-//! | `anthropic_layers_two_layers` | `two_layers_…` | records = `anthropic_hooks_two_hooks`; `hooks` = `[PatchAddArgsLayer, ReplaceAddResultLayer]` |
-//! | `anthropic_layers_host_deny_over_host_bus` | `host_deny_over_host_bus_…` | the denial over a host bus (`bus: None`) |
-//! | `anthropic_layers_patch_beneath_hook_patch` | `patch_beneath_hook_patch_…` | the hook patches, the layer beneath patches again: the record holds the layer's |
-//! | `mock_layers_suspend_approve` | `tests/core/golden_layers.rs` `suspend_approve_…` | `[Completion, Tool, Completion]` |
-//! | `mock_layers_suspend_deny` | `suspend_deny_…` | `[Completion, Completion]`: no record for the denial |
-//! | `mock_layers_suspend_cancelled` | `suspend_cancelled_…` | `[Completion, Tool✗]`: cancelled mid-suspend by the consumer's drop |
-//! | `mock_layers_wrong_family_patch` | `wrong_family_patch_…` | `[Completion, Completion]`: `Internal`, no record, a failed result the model sees |
-//! | `mock_layers_replace_streamed_cancelled` | `replace_streamed_cancelled_…` | `[Completion]` with events; the run ends cancelled |
-//!
-//! # What the matrix found
-//!
-//! - A wrong-family patch does not fail the run: the engine's tool mapping
-//!   turns any other error into a failed tool result the model sees, so
-//!   the run goes on and the model answers. Pinned as it is; "run fails at
-//!   the tool" was the prompt's guess.
-//! - The header's `hooks` list is the hook names followed by the layer
-//!   names in the handler table's order (by key), outermost first within a
-//!   key — `Agent::program_names`. The hand driver builds the same list.
-//! - A host-bus golden with a layer names the layer in its handler table
-//!   (`layers`) as well as in `hooks`; the equivalence row's tables differ
-//!   from the hook goldens' in that field only.
+//! The equivalence cells are the evidence that `Layer`'s decisions are expressive enough:
+//! hand-written layers reproduce four hook goldens' records byte for byte, without rig-agent's
+//! stack. The other cells cover a host's own policy over its bus, a layer beneath the agent's
+//! hook patch, a suspended decision that is approved, denied or cancelled, a wrong-family
+//! patch, and a streamed replacement that ends cancelled. A wrong-family patch does not fail
+//! the run: the engine turns it into a failed tool result the model sees.
 
 use crate::corpus;
 use rig_cassette::agent::AgentReplayExt;

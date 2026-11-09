@@ -1,47 +1,21 @@
 //! Matrix for the two views of one ChatGPT reply: the normalized
-//! [`CompletionResponse`](rig::completion::CompletionResponse) the driver
-//! returns and the provider envelope it captured on
-//! [`raw`](rig::completion::CompletionResponse::raw). Both must tell the same
-//! story about `identity()`, `finish_reason()`, `model` and `usage`.
+//! [`CompletionResponse`](rig::completion::CompletionResponse) the driver returns and the
+//! provider envelope it captured on [`raw`](rig::completion::CompletionResponse::raw). Both must
+//! tell the same story about `identity()`, `finish_reason()`, `model` and `usage`.
 //!
-//! # The contract
+//! The driver reassembles the Responses wire type from the SSE body's terminal
+//! `response.completed` event, folds it into the normalized response, and serializes the same
+//! value onto `raw`. ChatGPT reads no transport request-id header, so the whole identity lives
+//! in the body and `provider_request_id` is `None`. The cells are a text turn
+//! (`raw_normalize_reproduces_completion`), a tool-call turn
+//! (`raw_normalize_reproduces_completion_with_tool_call`), and an empty-`output` terminal event
+//! (`empty_output_fallback_still_carries_raw`), where the content folds from the preceding
+//! events while `raw` still carries `output: []`.
 //!
-//! One call yields both views. The driver reassembles the Responses wire type
-//! from the SSE body's terminal `response.completed` event, folds it into the
-//! normalized response, and serializes the same value onto `raw`. ChatGPT
-//! reads no transport request-id header, so the whole identity — the
-//! `resp_…` response id and the `msg_…` message id — lives in the body:
-//! `provider_request_id` is `None`.
-//!
-//! The state worth its own cell is the empty-`output` terminal event: the
-//! assistant content is folded from the preceding stream events while the
-//! captured envelope still carries `output: []`, so the two views disagree on
-//! where the content came from and agree on everything the envelope states.
-//!
-//! # Matrix
-//!
-//! | # | Cell | Dimension | expected | Status |
-//! |---|------|-----------|----------|--------|
-//! | 1 | `raw_normalize_reproduces_completion` | text turn | the normalized view's identity/finish_reason/model/usage equal the recorded terminal frame's, and `raw` reads back as the same envelope | unrecorded (no CHATGPT credentials in this environment) |
-//! | 2 | `raw_normalize_reproduces_completion_with_tool_call` | tool-call turn | same, with `finish_reason == ToolCalls` and the call on the choice matching the frame's `function_call` item | unrecorded (no CHATGPT credentials in this environment) |
-//! | 3 | `empty_output_fallback_still_carries_raw` | empty-`output` terminal event | the content folds from the events **and** `raw` carries the envelope whose `output` is empty | unrecorded (no CHATGPT credentials in this environment) |
-//!
-//! Every cell is unrecorded: neither `CHATGPT_ACCESS_TOKEN`/`CHATGPT_ACCOUNT_ID`
-//! nor a usable ChatGPT OAuth cache was present when this matrix was written,
-//! and a fixture is never fabricated. Cell 3 additionally cannot be produced
-//! on demand: the empty-`output` terminal event is a backend behavior, not a
-//! request shape, so even with credentials the cell records only when the
-//! backend happens to emit it — its body asserts the premise (`output: []`
-//! on the recorded terminal frame) and fails loudly otherwise; the branch is
-//! pinned by construction in the provider's own unit test
-//! (`test_completion_response_from_sse_body_falls_back_to_streamed_text` in
-//! `providers/chatgpt`), and this
-//! cell exists so the live-traffic proof has a home when the state shows up.
-//!
-//! To record cells 1–2: export `CHATGPT_ACCESS_TOKEN` and `CHATGPT_ACCOUNT_ID`,
-//! remove the `#[ignore]` attributes, flip the table to `recorded`, then run
-//! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig-cassette --all-features --test integration chatgpt::cassette::raw_completion_parity_matrix -- --nocapture --test-threads=1`
-//! and review `crates/rig-cassette/fixtures/cassettes/chatgpt/raw_completion_parity_matrix/`.
+//! The cells are ignored until recorded with ChatGPT credentials; a fixture is never
+//! fabricated. The empty-`output` event is a backend behavior, not a request shape, so its cell
+//! asserts the premise and records only when the backend emits it; the provider's unit test
+//! `test_completion_response_from_sse_body_falls_back_to_streamed_text` pins the branch.
 
 use super::GPT_5_4;
 use rig::completion::{CompletionResponse as RigCompletionResponse, FinishReason, ToolDefinition};

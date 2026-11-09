@@ -1,47 +1,24 @@
 //! Matrix for the reply document's parity with the normalized path on both
 //! Copilot routes.
 //!
-//! # The contract
-//!
 //! One `completion(req)` yields both views of one reply: the normalized
 //! [`CompletionResponse`](rig::completion::CompletionResponse), and
-//! [`raw`](rig::completion::CompletionResponse::raw) — the route's own reply
-//! body, verbatim, read as JSON.
-//! The two must agree on `identity()`, `finish_reason()`, `model` and
-//! `usage`, because the normalized view is a projection of that exact body,
-//! produced by the one decoder — there is no second mapping to compare it
-//! against any more.
-//!
-//! Copilot relays two request shapes, so `raw` has two shapes: a
-//! chat-completions reply body on the chat-completions route, and the
-//! Responses response object on the Responses route. The route is decided by
-//! the model id alone
+//! [`raw`](rig::completion::CompletionResponse::raw), the route's own reply
+//! body, verbatim, read as JSON. The two must agree on `identity()`,
+//! `finish_reason()`, `model` and `usage`, because the normalized view is a
+//! projection of that exact body, produced by the one decoder. Copilot relays
+//! two request shapes, so `raw` is a chat-completions reply body on the
+//! chat-completions route and the Responses response object on the Responses
+//! route. The route is decided by the model id alone
 //! ([`wire::routes_through_responses`](rig::providers::copilot::wire::routes_through_responses)).
-//! `raw` carries no routing tag: the body is the provider's, and the tag was
-//! rig's.
+//! The driver stamps `x-request-id` from the response headers onto the
+//! normalized response on both routes, so the cells assert the routes agree.
 //!
-//! The transport id is *not* route-dependent any more. The driver captures
-//! `x-request-id` from the response headers for both routes and stamps it
-//! onto the normalized response, so a cell asserts that the two routes
-//! *agree* rather than that one of them loses the id.
-//!
-//! # Matrix
-//!
-//! | # | Cell | Dimension | expected | Status |
-//! |---|------|-----------|----------|--------|
-//! | 1 | `chat_raw_with_request_id_reproduces_completion` | chat route | `raw` is the chat-completions reply document and agrees with the normalized identity/finish_reason/model/usage, and `provider_request_id` is the recorded `x-request-id` | unrecorded (no COPILOT credentials in this environment) |
-//! | 2 | `responses_raw_completion_carries_request_id` | responses route | the same, with `raw` the Responses route's own reply object | unrecorded (no COPILOT credentials in this environment) |
-//!
-//! Every cell is unrecorded: none of `GITHUB_COPILOT_API_KEY`,
-//! `COPILOT_API_KEY`, `COPILOT_GITHUB_ACCESS_TOKEN`/`GITHUB_TOKEN` nor a Copilot
-//! OAuth cache was present when this matrix was written, and a fixture is
-//! never fabricated. Each cell's premise is that the recorded response
-//! headers carry `x-request-id` (allowlisted and placeholdered by the
-//! scrubber); a recording without it proves nothing and fails loudly. To
-//! record: export `GITHUB_COPILOT_API_KEY`, remove the `#[ignore]` attributes,
-//! flip the table to `recorded`, then run
-//! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig-cassette --all-features --test integration copilot::raw_completion_parity_matrix -- --nocapture --test-threads=1`
-//! and review `crates/rig-cassette/fixtures/cassettes/copilot/raw_completion_parity_matrix/`.
+//! The cells are ignored until recorded, because no Copilot credentials were
+//! available and a fixture is never fabricated. To record, export
+//! `GITHUB_COPILOT_API_KEY`, remove the `#[ignore]` attributes, and run
+//! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig-cassette --all-features --test integration copilot::raw_completion_parity_matrix -- --nocapture --test-threads=1`.
+//! A recording without `x-request-id` fails loudly.
 
 use rig::completion::FinishReason;
 use rig::providers::copilot;

@@ -216,7 +216,4 @@ fn long_pastes_are_chips_sent_as_their_contents() {
     assert_eq!(input(&app).0, short);
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(PasteChipsPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(PasteChipsPlugin);

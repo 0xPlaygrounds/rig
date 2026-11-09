@@ -1,35 +1,19 @@
-//! Xai prompt-caching cassette suite.
+//! xAI prompt-caching cassette suite.
 //!
-//! Rig normalizes `Usage::cached_input_tokens` for this provider, and before
-//! this suite no test had ever seen the field be non-zero. The three-turn probe
-//! below is what makes the provider's actual behavior observable — including the
+//! Rig normalizes `Usage::cached_input_tokens` for this provider. The three-turn
+//! probe makes the provider's actual behavior observable, including the
 //! possibility that it does not cache at all, which is recorded rather than
-//! assumed.
+//! assumed. xAI reuses the OpenAI-compatible usage shape, so a cache hit arrives
+//! in `prompt_tokens_details.cached_tokens`.
 //!
-//! xAI reuses the OpenAI-compatible usage shape, so a cache hit would arrive in
-//! `prompt_tokens_details.cached_tokens`.
+//! There is no `agent_loop` cell: the model answers the probe from its own
+//! knowledge and never calls the tool, even with `ToolChoice::Required`, so a run
+//! records one request and leaves `assert_prefix_stable` nothing to compare. The
+//! corpus-wide scan in `tests/cassette_cache_prefix.rs` covers the loop-level
+//! guarantee.
 //!
-//! # No agent-loop cell, and why
-//!
-//! Every other caching provider in the matrix has an `agent_loop` cell that
-//! drives a real multi-turn agent run with a tool round-trip — the only cell
-//! that can catch rig's *driver* disturbing the prefix between iterations.
-//! This provider has none, deliberately: its model answers the probe's prompt
-//! from its own knowledge and never calls the tool, even with
-//! `ToolChoice::Required`. A run that makes one model call records one request,
-//! which leaves `assert_prefix_stable` no pair to compare and the cell proving
-//! nothing. A cell that cannot fail is worse than an acknowledged gap.
-//!
-//! The loop-level guarantee is still covered for this provider by the
-//! corpus-wide scan in `tests/cassette_cache_prefix.rs`, which compares every
-//! recorded multi-turn conversation in its existing suites.
-//!
-//! # Recording
-//!
-//! ```text
-//! RIG_PROVIDER_TEST_MODE=record cargo test -p rig-cassette --test integration --all-features \
-//!     xai::prompt_caching:: -- --exact --test-threads=1
-//! ```
+//! Re-record with
+//! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig-cassette --test integration --all-features xai::prompt_caching:: -- --exact --test-threads=1`.
 
 use rig::providers::xai;
 use rig_test_support::cassette_models::OpenAiModels;
@@ -39,7 +23,7 @@ use crate::cache_conformance::{
     report_and_assert_live, run_cache_probe, run_cache_probe_streaming,
 };
 
-use super::support::with_xai_prompt_caching_cassette;
+use super::support::with_xai_cassette;
 
 const CACHE_MODEL: &str = xai::GROK_3_MINI;
 
@@ -61,7 +45,7 @@ fn probe() -> CacheProbe {
 async fn blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
     const SCENARIO: &str = "prompt_caching/blocking_probe";
 
-    with_xai_prompt_caching_cassette("prompt_caching/blocking_probe", |client| async move {
+    with_xai_cassette("prompt_caching/blocking_probe", |client| async move {
         let model = client.completion(CACHE_MODEL);
         let observation = run_cache_probe(model, &probe()).await;
         assert_cache_conformance(&observation, &XAI_CACHE_SUPPORT, "blocking probe");
@@ -75,7 +59,7 @@ async fn blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
 async fn streaming_probe_survives_the_streaming_accumulator() {
     const SCENARIO: &str = "prompt_caching/streaming_probe";
 
-    with_xai_prompt_caching_cassette("prompt_caching/streaming_probe", |client| async move {
+    with_xai_cassette("prompt_caching/streaming_probe", |client| async move {
         let model = client.completion(CACHE_MODEL);
         let observation = run_cache_probe_streaming(model, &probe()).await;
         assert_cache_conformance(&observation, &XAI_CACHE_SUPPORT, "streaming probe");

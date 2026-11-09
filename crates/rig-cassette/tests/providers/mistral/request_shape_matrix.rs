@@ -1,34 +1,13 @@
 //! Mistral request finalization matrix.
 //!
 //! Mistral rejects structured output beside a forced tool choice. Rig's
-//! provider finalizer must preserve `auto`/`none`, translate `required` to
-//! Mistral's `any` dialect for plain output, and relax that forced choice back
-//! to `auto` when `json_object` is present.
+//! provider finalizer must preserve `auto` and `none`, translate `required`
+//! to Mistral's `any` dialect for plain output, and relax that forced choice
+//! back to `auto` when `json_object` is present.
 //!
-//! The complete input space exercised here is a 2 × 2 × 2 × 3 cross-product:
-//!
-//! | dimension | values |
-//! |---|---|
-//! | transport | blocking, streaming |
-//! | model | `mistral-small-latest`, `ministral-3b-latest` |
-//! | response format | plain text, `json_object` |
-//! | tool policy | `auto`, forced (`any`), `none` |
-//!
-//! That is 24 cells, of which the two below are tests. Each proves the
-//! finalized wire request and compares normalized text/tool output to the
-//! exact blocking or SSE response.
-//!
-//! Each test maps to
-//! `crates/rig-cassette/fixtures/cassettes/mistral/request_shape_matrix/<test-name>.yaml`.
-//! The small and 3B aliases are inexpensive current models spanning Mistral's
-//! served chat families. Assertions cover finalized blocking/streaming request
-//! fields, `tool_choice` translation, structured-output compatibility, exact
-//! recorded text or tool calls, and terminal finish reasons. Invalid raw value
-//! types that the live API cannot be asked to synthesize remain unit tests.
-//!
-//! | recorded cells | exact fixture set |
-//! |---|---|
-//! | 2 of 24 | `crates/rig-cassette/fixtures/cassettes/mistral/request_shape_matrix/{blocking_mistral_small_json_none,streaming_mistral_small_json_any}.yaml` |
+//! Each cell checks the finalized wire request and compares the normalized
+//! text or tool output to the exact blocking or SSE response. Invalid raw
+//! value types the live API cannot be asked to produce stay unit tests.
 
 use rig::streaming::Item;
 use rig_test_support::cassette_models::OpenAiModels;
@@ -41,7 +20,7 @@ use rig::message::AssistantContent;
 use rig::streaming::StreamEvent;
 use serde_json::{Value, json};
 
-use super::support::with_mistral_request_shape_cassette_result;
+use super::support::with_mistral_cassette_result;
 use rig::completion::CompletionRequest;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -439,7 +418,7 @@ async fn blocking_mistral_small_json_none() -> Result<()> {
     );
     let observed = SharedObservation::default();
     let capture = Arc::clone(&observed);
-    with_mistral_request_shape_cassette_result(
+    with_mistral_cassette_result(
         "request_shape_matrix/blocking_mistral_small_json_none",
         |client| async move { run_cell(client, cell, capture).await },
     )
@@ -459,7 +438,7 @@ async fn streaming_mistral_small_json_any() -> Result<()> {
     );
     let observed = SharedObservation::default();
     let capture = Arc::clone(&observed);
-    with_mistral_request_shape_cassette_result(
+    with_mistral_cassette_result(
         "request_shape_matrix/streaming_mistral_small_json_any",
         |client| async move { run_cell(client, cell, capture).await },
     )

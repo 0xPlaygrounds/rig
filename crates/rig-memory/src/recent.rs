@@ -38,34 +38,29 @@ impl Recent for LastMessages {
     }
 }
 
-/// The newest messages within `max_tokens`, as `counter` counts them:
-/// walking back from the newest, it stops before the first message that
-/// does not fit.
+/// The newest messages within `max_tokens`, as [`HeuristicTokenCounter`]
+/// counts them: walking back from the newest, it stops before the first
+/// message that does not fit.
 #[derive(Clone, Copy, Debug)]
-pub struct TokenBudget<C: TokenCounter = HeuristicTokenCounter> {
+pub struct TokenBudget {
     /// The budget.
     pub max_tokens: usize,
-    /// How a message is counted.
-    pub counter: C,
 }
 
 impl TokenBudget {
-    /// A budget of `max_tokens`, counted by the default
-    /// [`HeuristicTokenCounter`].
+    /// A budget of `max_tokens`.
     pub fn new(max_tokens: usize) -> Self {
-        Self {
-            max_tokens,
-            counter: HeuristicTokenCounter::default(),
-        }
+        Self { max_tokens }
     }
 }
 
-impl<C: TokenCounter> Recent for TokenBudget<C> {
+impl Recent for TokenBudget {
     fn start(&self, messages: &[Arc<Message>]) -> usize {
+        let counter = HeuristicTokenCounter::default();
         let mut budget = self.max_tokens;
         let mut start = messages.len();
         for (index, message) in messages.iter().enumerate().rev() {
-            let cost = self.counter.count(message);
+            let cost = counter.count(message);
             if cost > budget {
                 break;
             }

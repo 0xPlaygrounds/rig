@@ -1,54 +1,26 @@
 //! The `cachedContents` create matrix.
 //!
-//! Five dimensions change the create body: payload (system instruction /
-//! contents / both), tool count (none / one / three), tool choice (absent /
-//! auto), display name (absent / present), and expiry (relative TTL / absolute
-//! timestamp / provider default). Their full product is 108 combinations.
-//!
-//! **All 108 are asserted, and only 8 are recorded.** That split is deliberate,
-//! and it took recording all 108 to see why: Gemini's create *response* carries
-//! only `name`, `model`, `displayName`, `createTime`, `updateTime`, `expireTime`
-//! and `usageMetadata`. It never echoes `tools` or `toolConfig`. So a recorded
-//! cell cannot tell whether the tools it asked for were sent at all — the cache
-//! could discard them entirely and all 72 tool-bearing fixtures would still have
-//! passed. What those cells actually pinned was the *request* body, through the
-//! cassette matcher.
-//!
-//! So the request body is pinned directly instead, by
-//! [`every_create_combination_serializes_as_expected`], which covers all 108
-//! combinations for free and does assert the tool count — verified by dropping
-//! the tools and watching it fail, which the fixtures did not. The 8 recorded
-//! cells cover one arm of each dimension, keeping the provider's *acceptance* of
-//! each shape under test, plus the edge cells below which pin behaviour no
-//! serialization test could reach.
-//!
-//! That is 164 KB instead of 1.3 MB, for strictly more coverage.
+//! Five dimensions change the create body: payload (system instruction, contents
+//! or both), tool count (none, one or three), tool choice (absent or auto),
+//! display name (absent or present), and expiry (relative TTL, absolute timestamp
+//! or provider default). All 108 combinations are asserted by
+//! [`every_create_combination_serializes_as_expected`], and only one arm of each
+//! dimension is recorded, plus edges no serialization test could reach. Gemini's
+//! create response never echoes `tools` or `toolConfig`, so a recording cannot
+//! tell whether the tools were sent; the request body is pinned directly instead,
+//! and the recordings keep the provider's acceptance of each shape under test.
 //!
 //! Every recorded cell deletes what it created, on the failure path too, because
 //! storage bills until it does. Cells whose checks panic run them inside
-//! `always_deleting_cached_contents` (`tests/providers/gemini/support.rs`),
-//! which issues the delete even when an assertion panics; the rest get the same
-//! guarantee by hand, returning a `Result` from their checks and deleting
-//! before they panic on it.
+//! `always_deleting_cached_contents`; the rest return a `Result` from their checks
+//! and delete before they panic on it. Measured live: the create minimum is 1,024
+//! tokens, `ttl` and `expireTime` together are a 400 (which `CacheExpiry` makes
+//! unrepresentable), omitting both defaults to one hour, a `toolConfig` with no
+//! `tools` is accepted, and an unqualified model id is a 400, which is why
+//! `NewCachedContent::new` qualifies it.
 //!
-//! Behaviours pinned here were measured against the live API first:
-//!
-//! * the create minimum really is 1,024 tokens (720 is rejected with
-//!   `min_total_token_count`, 1,080 is accepted);
-//! * `ttl` and `expireTime` together are a 400 — the API models expiration as a
-//!   `oneof`, which is exactly what `CacheExpiry` makes unrepresentable;
-//! * omitting both defaults to one hour;
-//! * a `toolConfig` with no `tools` is accepted;
-//! * an unqualified model id is a 400, which is why `NewCachedContent::new`
-//!   qualifies it.
-//!
-//! # Recording
-//!
-//! ```text
-//! RIG_PROVIDER_TEST_MODE=record cargo test -p rig-cassette --test integration --all-features \
-//!     gemini::cassette::cached_content_matrix -- --test-threads=1
-//! ```
-//!
+//! Re-record with
+//! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig-cassette --test integration --all-features gemini::cassette::cached_content_matrix -- --test-threads=1`.
 
 use rig::providers::gemini::cached_content::{CacheExpiry, CachedContent, NewCachedContent};
 use rig::providers::gemini::{self, GeminiConfig};
@@ -58,7 +30,7 @@ use std::time::Duration;
 
 use super::super::support::{
     always_deleting_cached_contents, assert_recorded_requests_read_from_a_cache,
-    assert_recorded_response_contains, with_gemini_prompt_caching_cassette,
+    assert_recorded_response_contains, with_gemini_cassette,
 };
 
 /// Deterministic, committed timestamp for the absolute-expiry arm. A computed
@@ -329,7 +301,7 @@ fn every_create_combination_serializes_as_expected() {
 async fn an_agent_with_tools_cannot_read_from_a_cache() {
     use rig::agent::AgentBuilder;
 
-    use super::super::tools_support::CountingPing;
+    use super::super::tools_support::Ping;
 
     let client = GeminiModels::new(
         GeminiConfig::new("not-a-real-key").with_base_url("http://127.0.0.1:1"),
@@ -341,7 +313,7 @@ async fn an_agent_with_tools_cannot_read_from_a_cache() {
             .completion(CACHE_MODEL)
             .map_wire(|wire| wire.with_cached_content("cachedContents/agent-guard")),
     )
-    .tool(CountingPing::default())
+    .tool(Ping)
     .build();
 
     let message = agent
@@ -377,7 +349,7 @@ async fn an_agent_with_tools_cannot_read_from_a_cache() {
 async fn a_cache_carrying_a_provider_hosted_tool_is_usable_from_an_agent() {
     use rig::agent::AgentBuilder;
 
-    with_gemini_prompt_caching_cassette(
+    with_gemini_cassette(
         "cached_content_matrix/edge_cached_code_execution",
         |client| async move {
             let cache = client
@@ -440,7 +412,7 @@ async fn a_cache_carrying_a_provider_hosted_tool_is_usable_from_an_agent() {
 
 #[tokio::test]
 async fn sys_notools_nocfg_noname_abs() {
-    with_gemini_prompt_caching_cassette(
+    with_gemini_cassette(
         "cached_content_matrix/sys_notools_nocfg_noname_abs",
         |client| async move {
             run_cell(
@@ -461,7 +433,7 @@ async fn sys_notools_nocfg_noname_abs() {
 
 #[tokio::test]
 async fn sys_onetool_nocfg_noname_ttl() {
-    with_gemini_prompt_caching_cassette(
+    with_gemini_cassette(
         "cached_content_matrix/sys_onetool_nocfg_noname_ttl",
         |client| async move {
             run_cell(
@@ -482,7 +454,7 @@ async fn sys_onetool_nocfg_noname_ttl() {
 
 #[tokio::test]
 async fn sys_threetools_autocfg_noname_ttl() {
-    with_gemini_prompt_caching_cassette(
+    with_gemini_cassette(
         "cached_content_matrix/sys_threetools_autocfg_noname_ttl",
         |client| async move {
             run_cell(
@@ -503,7 +475,7 @@ async fn sys_threetools_autocfg_noname_ttl() {
 
 #[tokio::test]
 async fn contents_notools_nocfg_noname_ttl() {
-    with_gemini_prompt_caching_cassette(
+    with_gemini_cassette(
         "cached_content_matrix/contents_notools_nocfg_noname_ttl",
         |client| async move {
             run_cell(
@@ -524,7 +496,7 @@ async fn contents_notools_nocfg_noname_ttl() {
 
 #[tokio::test]
 async fn both_notools_nocfg_noname_ttl() {
-    with_gemini_prompt_caching_cassette(
+    with_gemini_cassette(
         "cached_content_matrix/both_notools_nocfg_noname_ttl",
         |client| async move {
             run_cell(
@@ -550,7 +522,7 @@ async fn both_notools_nocfg_noname_ttl() {
 /// Omitting both expiry forms defaults to one hour.
 #[tokio::test]
 async fn omitting_expiry_defaults_to_one_hour() {
-    with_gemini_prompt_caching_cassette(
+    with_gemini_cassette(
         "cached_content_matrix/edge_default_expiry_is_one_hour",
         |client| async move {
             let created = client
@@ -586,7 +558,7 @@ async fn omitting_expiry_defaults_to_one_hour() {
 /// mask, not the `ttl` one.
 #[tokio::test]
 async fn update_expiry_accepts_an_absolute_timestamp() {
-    with_gemini_prompt_caching_cassette(
+    with_gemini_cassette(
         "cached_content_matrix/edge_update_expiry_absolute",
         |client| async move {
             let caches = client.cached_contents();
@@ -624,63 +596,60 @@ async fn update_expiry_accepts_an_absolute_timestamp() {
 async fn streaming_against_a_cache_reports_the_cache_read() {
     use futures::StreamExt;
 
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/use_streaming",
-        |client| async move {
-            let cache = client
-                .cached_contents()
-                .create(
-                    NewCachedContent::new(CACHE_MODEL)
-                        .system_instruction(pad())
-                        .expiry(CacheExpiry::ttl(Duration::from_secs(180))),
-                )
+    with_gemini_cassette("cached_content_matrix/use_streaming", |client| async move {
+        let cache = client
+            .cached_contents()
+            .create(
+                NewCachedContent::new(CACHE_MODEL)
+                    .system_instruction(pad())
+                    .expiry(CacheExpiry::ttl(Duration::from_secs(180))),
+            )
+            .await
+            .expect("create should succeed");
+
+        let handles = [cache.name.clone()];
+        always_deleting_cached_contents(&client, &handles, async {
+            let model = client
+                .completion(CACHE_MODEL)
+                .map_wire(|wire| wire.with_cached_content(cache.name.clone()));
+
+            let mut request =
+                rig::completion::CompletionRequest::from(vec![rig::message::Message::User {
+                    content: vec![rig::message::UserContent::text(
+                        "Reply with exactly: streamed",
+                    )],
+                }]);
+            request.temperature = Some(0.0);
+            request.max_tokens = Some(16);
+            request.additional_params = Some(serde_json::json!({
+                "generationConfig": { "thinkingConfig": { "thinkingBudget": 0 } }
+            }));
+
+            let mut stream = model
+                .stream(request)
+                .expect("streamed cached-content request should start");
+            while let Some(item) = stream.next().await {
+                item.expect("stream item should succeed");
+            }
+            let usage = stream
+                .finish()
                 .await
-                .expect("create should succeed");
-
-            let handles = [cache.name.clone()];
-            always_deleting_cached_contents(&client, &handles, async {
-                let model = client
-                    .completion(CACHE_MODEL)
-                    .map_wire(|wire| wire.with_cached_content(cache.name.clone()));
-
-                let mut request =
-                    rig::completion::CompletionRequest::from(vec![rig::message::Message::User {
-                        content: vec![rig::message::UserContent::text(
-                            "Reply with exactly: streamed",
-                        )],
-                    }]);
-                request.temperature = Some(0.0);
-                request.max_tokens = Some(16);
-                request.additional_params = Some(serde_json::json!({
-                    "generationConfig": { "thinkingConfig": { "thinkingBudget": 0 } }
-                }));
-
-                let mut stream = model
-                    .stream(request)
-                    .expect("streamed cached-content request should start");
-                while let Some(item) = stream.next().await {
-                    item.expect("stream item should succeed");
-                }
-                let usage = stream
-                    .finish()
-                    .await
-                    .expect(
-                        "the stream should carry final usage; losing it on the streaming path is \
+                .expect(
+                    "the stream should carry final usage; losing it on the streaming path is \
                          the exact bug this cell exists to catch",
-                    )
-                    .usage;
-                let cached = usage.cached_input_tokens.unwrap_or(0);
-                let input = usage.input_tokens.unwrap_or(0);
-                let ratio = cached as f64 / input as f64;
-                assert!(
-                    ratio >= 0.95,
-                    "a streamed request against a cache handle should read essentially the whole \
+                )
+                .usage;
+            let cached = usage.cached_input_tokens.unwrap_or(0);
+            let input = usage.input_tokens.unwrap_or(0);
+            let ratio = cached as f64 / input as f64;
+            assert!(
+                ratio >= 0.95,
+                "a streamed request against a cache handle should read essentially the whole \
                      prefix from cache, got {cached} of {input} ({:.1}%)",
-                    ratio * 100.0
-                );
-            })
-            .await;
-        },
-    )
+                ratio * 100.0
+            );
+        })
+        .await;
+    })
     .await;
 }

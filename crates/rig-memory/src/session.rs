@@ -9,9 +9,7 @@ use std::ops::ControlFlow;
 use rig_core::conversation::{ChangeRecord, Conversation, Lineage};
 use serde_json::Value;
 
-use crate::blobs::{
-    BLOBS, load_images, load_images_with, messages_mut, named_blobs, put_blob, read_blob,
-};
+use crate::blobs::{BLOBS, load_images_with, messages_mut, named_blobs, put_blob, read_blob};
 use crate::format::{Body, Header, LogLines, Meta, SESSION, parse, stamp_of};
 use crate::store::now;
 use crate::writer::Book;
@@ -815,7 +813,7 @@ pub fn history(store: &dyn Store, log: &str) -> Result<Vec<(Stamp, LogRecord)>, 
             Body::Change(mut recorded) => {
                 // A lost image is read without data, as by a restore.
                 let _ = messages_mut(&mut recorded.change, &mut |message| {
-                    let _ = load_images(message, store);
+                    let _ = load_images_with(message, &|name| read_blob(store, name));
                     Ok(())
                 });
                 LogRecord::Change(recorded)

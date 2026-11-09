@@ -1,13 +1,12 @@
-//! SN-20: tool reliability statistics. Every tool call that settles, a
-//! subagent's too, is counted from its effect record as the session's
-//! effect log gets it: calls, errors, cancelled and refused calls, how long
-//! each ran, its result's size and its error message, masked so similar
-//! ones group ([`mask`]). The session's totals are saved with it; the
-//! project's are added to `RIG_HOME/tool-stats/<project>.json` by a worker
-//! thread, so no call or frame waits on the file.
+//! Tool reliability statistics. Every tool call that settles, a subagent's too, is counted from
+//! its effect record as the session's effect log gets it: calls, errors, cancelled and refused
+//! calls, how long each ran, its result's size and its error message, masked so similar ones
+//! group ([`mask`]). The session's totals are saved with it; the project's are added to
+//! `RIG_HOME/tool-stats/<project>.json` by a worker thread, so no call or frame waits on the
+//! file.
 //!
-//! `/toolstats [--by-agent] [--all] [--since 7d]` shows them, and
-//! `/toolstats reset` clears the project's after the user confirms.
+//! `/toolstats [--by-agent] [--all] [--since 7d]` shows them, and `/toolstats reset` clears the
+//! project's after the user confirms.
 
 mod stats;
 

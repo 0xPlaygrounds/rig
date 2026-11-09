@@ -1,5 +1,4 @@
-//! Adversarial response-identity coverage on OpenAI (rig#2265 / PR #2313
-//! follow-up): structured output, response chaining, live hook retries, error
+//! Adversarial response-identity coverage on OpenAI: structured output, response chaining, live hook retries, error
 //! responses, and raw-vs-normalized agreement.
 
 use rig::providers::openai;

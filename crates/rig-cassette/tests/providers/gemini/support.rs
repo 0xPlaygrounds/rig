@@ -1,7 +1,6 @@
 use futures::FutureExt;
 use rig::providers::gemini::GeminiConfig;
 use rig_test_support::cassette_models::GeminiModels;
-use serde::Deserialize;
 use std::future::Future;
 use std::panic::{AssertUnwindSafe, resume_unwind};
 
@@ -44,24 +43,13 @@ pub(super) fn recorded_request_generation_configs(scenario: &str) -> Vec<serde_j
 /// completion, and those carry no body by construction. The non-empty assert
 /// still catches a scenario that recorded nothing to read.
 pub(super) fn recorded_request_bodies(scenario: &str) -> Vec<serde_json::Value> {
-    let path = crate::cassettes::cassette_path("gemini", scenario);
-    let contents = std::fs::read_to_string(&path)
-        .unwrap_or_else(|error| panic!("cassette {} should be readable: {error}", path.display()));
-
     let bodies: Vec<serde_json::Value> =
-        serde_yaml::Deserializer::from_str(&contents)
-            .filter_map(|document| {
-                let document = serde_yaml::Value::deserialize(document)
-                    .unwrap_or_else(|error| panic!("cassette document should parse: {error}"));
-                let body = document
-                    .get("when")
-                    .and_then(|when| when.get("body"))
-                    .and_then(serde_yaml::Value::as_str)
-                    .filter(|body| !body.is_empty())?
-                    .to_owned();
-                Some(serde_json::from_str(&body).unwrap_or_else(|error| {
-                    panic!("recorded request body should be JSON: {error}")
-                }))
+        crate::cassettes::recorded_interaction_bodies("gemini", scenario)
+            .into_iter()
+            .filter(|(request, _)| !request.is_empty())
+            .map(|(request, _)| {
+                serde_json::from_str(&request)
+                    .unwrap_or_else(|error| panic!("recorded request body should be JSON: {error}"))
             })
             .collect();
 
@@ -121,12 +109,12 @@ pub(super) fn assert_recorded_requests_read_from_a_cache(scenario: &str) {
 ///
 /// `expected` lists the fields the test *did* ask for, as
 /// `(field, Some(json_value))`; every other sampling field must be absent from
-/// the wire so Gemini applies the model's own documented default (rig#2322).
+/// the wire so Gemini applies the model's own documented default.
 pub(super) fn assert_recorded_sampling_fields(
     scenario: &str,
     expected: &[(&str, serde_json::Value)],
 ) {
-    // The fields rig#2322's hardcoded `Default` used to inject.
+    // The fields a non-`None` `Default` would inject.
     const SAMPLING_FIELDS: &[&str] = &["maxOutputTokens", "temperature"];
 
     for (turn, config) in recorded_request_generation_configs(scenario)
@@ -164,21 +152,9 @@ pub(super) fn assert_recorded_sampling_fields(
 /// matrix cell asks of the bytes ("did the provider actually send the part
 /// kind this cell is about?") is the same either way.
 pub(super) fn recorded_response_bodies(scenario: &str) -> Vec<String> {
-    let path = crate::cassettes::cassette_path("gemini", scenario);
-    let contents = std::fs::read_to_string(&path)
-        .unwrap_or_else(|error| panic!("cassette {} should be readable: {error}", path.display()));
-
-    let bodies: Vec<String> = serde_yaml::Deserializer::from_str(&contents)
-        .map(|document| {
-            let document = serde_yaml::Value::deserialize(document)
-                .unwrap_or_else(|error| panic!("cassette document should parse: {error}"));
-            document
-                .get("then")
-                .and_then(|then| then.get("body"))
-                .and_then(serde_yaml::Value::as_str)
-                .unwrap_or_default()
-                .to_owned()
-        })
+    let bodies: Vec<String> = crate::cassettes::recorded_interaction_bodies("gemini", scenario)
+        .into_iter()
+        .map(|(_, response)| response)
         .collect();
 
     assert!(
@@ -266,42 +242,6 @@ where
     }
 }
 
-/// The effect corpus's provider-breadth matrix (Matrix N):
-/// `crates/rig-cassette/fixtures/cassettes/gemini/corpus_breadth/`.
-pub(super) async fn with_gemini_corpus_breadth_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(GeminiModels) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    with_gemini_cassette(spec, test_body).await;
-}
-
-/// The effect corpus's delta-wire matrix (Matrix K):
-/// `crates/rig-cassette/fixtures/cassettes/gemini/corpus_delta/`.
-pub(super) async fn with_gemini_corpus_delta_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(GeminiModels) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    with_gemini_cassette(spec, test_body).await;
-}
-
-/// The effect corpus's retrieval matrix (Matrix A):
-/// `crates/rig-cassette/fixtures/cassettes/gemini/corpus_retrieval/`.
-pub(super) async fn with_gemini_corpus_retrieval_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(GeminiModels) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    with_gemini_cassette(spec, test_body).await;
-}
-
 pub(super) async fn with_gemini_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
     F: FnOnce(GeminiModels) -> Fut,
@@ -341,53 +281,7 @@ pub(super) async fn with_gemini_checked_cassette<F, Fut>(
     crate::cassettes::finish_checked(cassette, "gemini", spec.scenario(), result, check).await;
 }
 
-pub(super) async fn with_gemini_interactions_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(GeminiModels) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    let (cassette, client) = gemini_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(GeminiModels::new(
-        client,
-        rig_test_support::cassettes::local_http(),
-    )))
-    .catch_unwind()
-    .await;
-    cassette.finish_after_test(result).await;
-}
-
-/// Code-execution edge matrix (`crates/rig-cassette/fixtures/cassettes/gemini/code_execution_matrix/`).
-///
-/// A separate registered wrapper so one bug's matrix stays auditable as a
-/// unit: `cassette_files_match_registered_scenarios` pairs the fixtures under
-/// that directory with the calls made through this name and nothing else.
-pub(super) async fn with_gemini_code_execution_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(GeminiModels) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    with_gemini_cassette(spec, test_body).await;
-}
-
-/// Thought-text edge matrix (`crates/rig-cassette/fixtures/cassettes/gemini/thought_text_matrix/`).
-///
-/// Separate from [`with_gemini_code_execution_cassette`] for the same reason:
-/// one registered wrapper per bug keeps each matrix's fixture set closed.
-pub(super) async fn with_gemini_thought_text_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(GeminiModels) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    with_gemini_cassette(spec, test_body).await;
-}
-
-/// Bogus-key variant for recording real 401/403s (rig#2314 error matrix).
+/// Bogus-key variant for recording real 401/403s for the error matrix.
 pub(super) async fn with_gemini_cassette_bogus_key<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
@@ -412,23 +306,6 @@ pub(super) async fn with_gemini_cassette_bogus_key<F, Fut>(
     .catch_unwind()
     .await;
     cassette.finish_after_test(result).await;
-}
-
-/// Cassette wrapper for the gemini prompt-caching matrix
-/// (`crates/rig-cassette/fixtures/cassettes/gemini/prompt_caching/`).
-///
-/// Delegates to [`with_gemini_cassette`] — the behavior is identical, and deliberately
-/// shared so the two cannot drift apart when the base wrapper gains policy. What
-/// the separate name buys is a per-suite entry in the cassette-safety registry,
-/// so the cache fixtures are auditable as one concern's evidence.
-pub(super) async fn with_gemini_prompt_caching_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(GeminiModels) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    with_gemini_cassette(spec, test_body).await;
 }
 
 /// Run `body`, then delete `handles` — including when `body` panics.

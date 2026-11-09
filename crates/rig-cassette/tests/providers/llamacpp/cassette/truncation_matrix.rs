@@ -1,31 +1,18 @@
-//! What an output-budget cut does to a tool call, on both transports.
+//! What an output-budget cut does to a llama.cpp tool call, on both
+//! transports.
 //!
-//! **Server**: the competent tier — `unsloth/Qwen3-8B-GGUF` Q4_K_M,
-//! `--jinja --seed 42 --temp 0 -c 8192`, `llama-server` b10964-b29c606e2. A
-//! model that reliably makes the call is the precondition for cutting one in
-//! half.
+//! A turn that runs out of output budget mid-arguments comes back with
+//! `finish_reason: "length"` and `tool_calls[].function.arguments` cut
+//! partway through the JSON object. The decoder keeps the call: its
+//! arguments are what a tolerant parse reads, and its text is kept as
+//! `invalid_arguments`, so the agent answers it with an error result and
+//! never runs it ([`a_tool_call_cut_mid_arguments_does_not_destroy_the_turn`]).
+//! The streaming path keeps the same cut call and still terminates cleanly
+//! ([`the_streaming_path_keeps_the_same_cut_call`]).
 //!
-//! # Why this dimension exists
-//!
-//! [#2359](https://github.com/0xPlaygrounds/rig/pull/2359) established a
-//! shared policy for the state llama.cpp produces here: a turn that ran out of
-//! output budget mid-arguments comes back with `finish_reason: "length"` and
-//! `tool_calls[].function.arguments` cut partway through the JSON object. The
-//! decoder now keeps the call, as pi does: its arguments are what pi's
-//! tolerant parse reads, and its text is kept as `invalid_arguments`, so the
-//! agent answers it with an error result and never runs it.
-//!
-//! That policy was derived from DeepSeek and Mistral. llama.cpp is a third
-//! wire that produces the same state, from a completely different server, and
-//! nothing had checked the policy against it. Measured on b10499-6d05498 with
-//! `tool_choice: required`, the cut lands exactly where the budget runs out:
-//! 12 tokens gives `{`, 20 gives `{"note": "The`, 28 gives
-//! `{"note": "The quarterly incident review found three unrelate`.
-//!
-//! | Cell | Transport | Pinned |
-//! | --- | --- | --- |
-//! | [`a_tool_call_cut_mid_arguments_does_not_destroy_the_turn`] | blocking | the response decodes; the cut call is kept with its text, so nothing runs it |
-//! | [`the_streaming_path_keeps_the_same_cut_call`] | streaming | the same boundary, and the stream still terminates cleanly |
+//! Cells run on the competent tier, `unsloth/Qwen3-8B-GGUF` Q4_K_M with
+//! `--jinja --seed 42 --temp 0 -c 8192`, since a model that reliably makes
+//! the call is the precondition for cutting one in half.
 
 use rig::completion::FinishReason;
 use rig::message::AssistantContent;

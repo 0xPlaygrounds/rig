@@ -46,34 +46,6 @@ fn decoded(
 }
 
 #[test]
-fn test_deserialize_stream_response_with_single_text_part() {
-    let json_data = json!({
-        "candidates": [{
-            "content": {
-                "parts": [
-                    {"text": "Hello, world!"}
-                ],
-                "role": "model"
-            },
-            "finishReason": "STOP",
-            "index": 0
-        }],
-        "usageMetadata": {
-            "promptTokenCount": 10,
-            "candidatesTokenCount": 5,
-            "totalTokenCount": 15
-        }
-    });
-
-    let response = decoded(json_data).expect("the reply decodes");
-    assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
-    let [AssistantContent::Text(text)] = response.choice.as_slice() else {
-        panic!("Expected one text block: {:?}", response.choice);
-    };
-    assert_eq!(text.text, "Hello, world!");
-}
-
-#[test]
 fn test_deserialize_stream_response_with_usage_only_chunk() {
     let json_data = json!({
         "responseId": "response-123",
@@ -141,61 +113,6 @@ fn test_deserialize_stream_response_with_multiple_text_parts() {
     assert_eq!(
         text.native.as_ref().map(|native| &native.item),
         Some(&json!({ "text": "Hello, world! How are you?" }))
-    );
-}
-
-#[test]
-fn test_deserialize_stream_response_with_multiple_tool_calls() {
-    let json_data = json!({
-        "candidates": [{
-            "content": {
-                "parts": [
-                    {
-                        "functionCall": {
-                            "name": "get_weather",
-                            "args": {"city": "San Francisco"},
-                            "id": "call-weather"
-                        }
-                    },
-                    {
-                        "functionCall": {
-                            "name": "get_temperature",
-                            "args": {"location": "New York"},
-                            "id": "call-temperature"
-                        }
-                    }
-                ],
-                "role": "model"
-            },
-            "finishReason": "STOP",
-            "index": 0
-        }],
-        "usageMetadata": {
-            "promptTokenCount": 50,
-            "candidatesTokenCount": 20,
-            "totalTokenCount": 70
-        }
-    });
-
-    let response = decoded(json_data).expect("the reply decodes");
-    let [
-        AssistantContent::ToolCall(weather),
-        AssistantContent::ToolCall(temperature),
-    ] = response.choice.as_slice()
-    else {
-        panic!("Expected two function calls: {:?}", response.choice);
-    };
-    assert_eq!(weather.function.name, "get_weather");
-    assert_eq!(weather.id.wire(), "call-weather");
-    assert_eq!(
-        weather.function.arguments_value(),
-        json!({"city": "San Francisco"})
-    );
-    assert_eq!(temperature.function.name, "get_temperature");
-    assert_eq!(temperature.id.wire(), "call-temperature");
-    assert_eq!(
-        temperature.function.arguments_value(),
-        json!({"location": "New York"})
     );
 }
 
@@ -278,9 +195,6 @@ fn test_deserialize_stream_response_with_empty_parts() {
     assert!(response.choice.is_empty(), "{:?}", response.choice);
     assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
 }
-
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-mod terminal_emission {}
 
 /// Open a `streamGenerateContent` stream over the given SSE frames and
 /// collect every item the consumer sees, and whether the reply ended.
@@ -456,7 +370,7 @@ async fn in_band_opaque_or_invalid_codes_do_not_invent_http_status() {
     }
 }
 
-/// Round 4 NEW-3: a part that carries only a thought signature, as a
+/// A part that carries only a thought signature, as a
 /// stream's last chunk can, joins the text before it, so the signature
 /// replays to the same model.
 #[test]

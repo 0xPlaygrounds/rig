@@ -56,10 +56,10 @@ where
         .unwrap_or_else(|error| panic!("the request encodes: {error}"))
 }
 
-/// The reply body of recorded interaction `index` of
-/// `rig-cassette/fixtures/cassettes/<provider>/<scenario>.yaml`, a
-/// single-quoted scalar. Read here rather than with a YAML dependency, and
-/// never written.
+/// The reply body of recorded interaction `index` (from 0) of
+/// `rig-cassette/fixtures/cassettes/<provider>/<scenario>.yaml`, a unary
+/// body or an event stream, as
+/// [`raw_parity::recorded_reply`](super::raw_parity::recorded_reply) reads it.
 pub(crate) fn recorded_reply(provider: &str, scenario: &str, index: usize) -> String {
     let file = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../rig-cassette/fixtures/cassettes")
@@ -67,24 +67,10 @@ pub(crate) fn recorded_reply(provider: &str, scenario: &str, index: usize) -> St
         .join(format!("{scenario}.yaml"));
     let text = std::fs::read_to_string(&file)
         .unwrap_or_else(|error| panic!("{} should be readable: {error}", file.display()));
-    let interaction = text
-        .split("\n---\n")
-        .nth(index)
-        .unwrap_or_else(|| panic!("{} should record interaction {index}", file.display()));
-    let reply = interaction
-        .split_once("\nthen:")
-        .unwrap_or_else(|| panic!("{} should record a reply", file.display()))
-        .1;
-    let body = reply
-        .split_once("  body: '")
-        .unwrap_or_else(|| panic!("{} should record a single-quoted body", file.display()))
-        .1
-        .lines()
-        .next()
-        .unwrap_or_default()
-        .trim_end()
-        .trim_end_matches('\'');
-    body.replace("''", "'")
+    let body = super::raw_parity::recorded_reply(&text, index + 1)
+        .unwrap_or_else(|| panic!("{} should record reply {index}", file.display()));
+    String::from_utf8(body.to_vec())
+        .unwrap_or_else(|error| panic!("{} should record a text body: {error}", file.display()))
 }
 
 /// `body`, a unary reply, decoded by `wire` as a live call decodes it.
@@ -98,40 +84,6 @@ where
         .call(CompletionRequest::new("hi"))
         .await
         .unwrap_or_else(|error| panic!("the reply decodes: {error}"))
-}
-
-/// The event stream of recorded interaction `index` of
-/// `rig-cassette/fixtures/cassettes/<provider>/<scenario>.yaml`, a `|+`
-/// literal block. Read here rather than with a YAML dependency, and never
-/// written.
-pub(crate) fn recorded_stream(provider: &str, scenario: &str, index: usize) -> String {
-    let file = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../rig-cassette/fixtures/cassettes")
-        .join(provider)
-        .join(format!("{scenario}.yaml"));
-    let text = std::fs::read_to_string(&file)
-        .unwrap_or_else(|error| panic!("{} should be readable: {error}", file.display()));
-    let interaction = text
-        .split("\n---\n")
-        .nth(index)
-        .unwrap_or_else(|| panic!("{} should record interaction {index}", file.display()));
-    let reply = interaction
-        .split_once("\nthen:")
-        .unwrap_or_else(|| panic!("{} should record a reply", file.display()))
-        .1;
-    let block = reply
-        .split_once("  body: |+\n")
-        .unwrap_or_else(|| panic!("{} should record an event stream", file.display()))
-        .1;
-    let mut body = String::new();
-    for line in block.lines() {
-        if !line.is_empty() && !line.starts_with("    ") {
-            break;
-        }
-        body.push_str(line.get(4..).unwrap_or_default());
-        body.push('\n');
-    }
-    body
 }
 
 /// `body`, an event stream, folded by `wire` as a live stream folds it.

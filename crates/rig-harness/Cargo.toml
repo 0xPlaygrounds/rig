@@ -58,7 +58,6 @@ signal-hook = { workspace = true }
 ctrlc = { workspace = true }
 
 [dev-dependencies]
-# The synthetic session format and its migration, for the session tests.
 rig-memory = { path = "../rig-memory", features = ["test-utils"] }
 # The terminal panel, lists, stage sets, compaction, subagents and effect
 # log of the plugin guide's examples.

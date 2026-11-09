@@ -1,24 +1,19 @@
-//! CT-22: provider-run tools in the stream.
+//! Provider-run tools in the stream. Some model APIs run tools themselves (web search, code
+//! execution, URL fetches) and stream their calls and results inside the reply. rig-core's
+//! Anthropic Messages provider keeps them in the conversation as opaque provider items, in
+//! stream order, and replays them to the same provider. The kernel never runs them, since
+//! they are no tool calls.
 //!
-//! Some model APIs run tools themselves (web search, code execution, URL
-//! fetches) and stream their calls and results inside the reply. rig-core's
-//! Anthropic Messages provider already decodes them as opaque provider
-//! items (`server_tool_use`, `web_search_tool_result`, …) in stream order,
-//! keeps them in the conversation and replays them, opaque ids included, to
-//! the same provider; the kernel never runs them, since they are no tool
-//! calls. This plugin adds what is left:
+//! The `[provider_tools]` settings name each model's `server_tools` and their options,
+//! which are added to every turn request that finally goes to that model, whatever routed
+//! it there. Provider-run calls another provider made are rewritten as plain text (`[web
+//! search: query] → title <url>`) for a request to a different provider, so no foreign call
+//! reaches it.
 //!
-//! - `[provider_tools]` settings name each model's `server_tools` and their
-//!   options, which an adapter adds to every turn request that finally goes
-//!   to that model, whatever routed it there;
-//! - the same adapter rewrites provider-run calls another provider made as
-//!   plain text (`[web search: query] → title <url>`) for a request to a
-//!   different provider, so no foreign call reaches it;
-//! - each reply's provider-run calls and the citations of its text become a
-//!   note in the transcript, saved with the session, and a notice as each
-//!   call ends while the reply streams;
-//! - the provider-reported server tool counts add up in a saved
-//!   [`ProviderToolUsage`], shown in `/usage`.
+//! Each reply's provider-run calls and the citations of its text become a note in the
+//! transcript, saved with the session, and a notice as each call ends while the reply
+//! streams. The provider-reported server tool counts add up in a saved
+//! [`ProviderToolUsage`], shown in `/usage`.
 
 use std::collections::BTreeMap;
 use std::future::{Future, ready};

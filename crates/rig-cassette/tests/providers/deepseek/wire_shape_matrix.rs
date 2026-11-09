@@ -1,58 +1,28 @@
-//! Edge matrix for rig#2354's third fix, plus the wire census the hunt turned
-//! up.
+//! Wire-shape matrix for DeepSeek's plain-string message content.
 //!
-//! **The fix.** DeepSeek takes message `content` as a plain string, so the
-//! wire's DeepSeek body rewrite (`finalize_deepseek`) flattens content-part
-//! arrays. It passed
-//! `only_if_all_text = false`, which *drops* every non-text part — so an
-//! attached image, audio clip or PDF was silently deleted and DeepSeek
-//! answered the question from the remaining text alone, with nothing anywhere
-//! saying the attachment was gone. Perplexity, the tree's other plain-text-only
-//! provider, passes `true` so the part survives to the wire and the API's own
-//! rejection reaches the caller. DeepSeek now does the same: verified live,
-//! `{"type":"image_url",...}` comes back `400 Failed to deserialize the JSON
-//! body into the target type: messages[0]: unknown variant `image_url`,
-//! expected `text``. All-text arrays still flatten to a plain string, byte for
-//! byte as before — which is why no existing fixture moved.
+//! DeepSeek takes message `content` as a plain string, so the wire's body rewrite
+//! (`finalize_deepseek`) flattens content-part arrays with `only_if_all_text = true`. An
+//! all-text array flattens to a string; an array with a non-text part reaches the wire, so
+//! DeepSeek's own 400 reaches the caller instead of the attachment being dropped and the
+//! question answered from the text alone. DeepSeek rejects document, audio and video parts the
+//! same way, so its wire states it carries none, and the history adapter sends every non-text
+//! part as placeholder text before the rewrite sees it. The non-text cells pin that placeholder.
 //!
-//! DeepSeek answers a document, audio or video part with the same 400, so
-//! its wire states it carries none of them, and the history adapter sends
-//! every non-text part as its placeholder text before this rewrite sees it.
-//! The non-text cells pin that placeholder.
+//! The cells cover the rewrite's one decision exhaustively: mixed text with each non-text tag
+//! the chat-completions wire emits, non-text-only content (the empty-text boundary), one
+//! streamed control, and the all-text, text-document and assistant or tool-result history
+//! controls. Agent calls and more streamed tags would repeat identical request bodies, since
+//! both transports and both agent surfaces encode through the same rewrite.
 //!
-//! The fix-relevant live matrix is the complete input partition seen by the
-//! changed `flatten_text_content_parts(..., only_if_all_text)` call:
-//!
-//! | partition | recorded cells | why this exhausts the branch |
-//! |---|---:|---|
-//! | mixed text + non-text user content | 5 | every emitted non-text chat-completions tag: base64 image, URL image, PDF/file, audio and video |
-//! | non-text-only user content | 1 | pins the empty-text boundary that previously collapsed the whole message to `""` |
-//! | streaming transport | 1 | image rejection control; blocking and streaming encode the same request through the same body rewrite before transport selection |
-//! | unchanged flattening controls | 3 | all-text user parts, normalized text documents, and assistant/tool-result history |
-//!
-//! That is 10 fix-relevant recorded cells. The input space is smaller than 24
-//! because the changed helper has only one decision — every part has text, or
-//! at least one does not — and the five non-text variants above are the full
-//! wire enum, not samples from an open-ended set. Agent calls add no request
-//! mapping branch: both agent surfaces delegate to the same completion model.
-//! Recording agent duplicates or all five tags again on streaming would
-//! therefore repeat identical encoded request bodies rather than exercise
-//! another path.
-//!
-//! **The census** (confirmed non-bugs, recorded so they stay confirmed):
-//! DeepSeek really does reject a forced `tool_choice` while thinking is on, so
-//! the rewrite's suppression of one is justified; the completion path
-//! preserves DeepSeek's error envelope; and the `prompt_cache_hit_tokens` /
-//! `prompt_cache_miss_tokens` split reaches `Usage::cached_input_tokens` on
-//! both transports.
+//! The census cells pin confirmed behaviour: DeepSeek rejects a forced `tool_choice` while
+//! thinking is on, which justifies the rewrite suppressing one; the completion path preserves
+//! DeepSeek's error envelope; and the `prompt_cache_hit_tokens` / `prompt_cache_miss_tokens`
+//! split reaches `Usage::cached_input_tokens` on both transports.
 
 use rig::providers::deepseek;
 use serde_json::{Value, json};
 
-use super::support::{
-    recorded_interactions, with_deepseek_cassette_bogus_key_result,
-    with_deepseek_wire_shape_cassette_result,
-};
+use super::support::{with_deepseek_cassette_bogus_key_result, with_deepseek_cassette_result};
 use rig::completion::{CompletionRequest, GenerationOptions, Reasoning};
 
 const MODEL: &str = deepseek::DEEPSEEK_V4_FLASH;
@@ -73,7 +43,7 @@ fn non_thinking() -> GenerationOptions {
 async fn forced_tool_choice_under_thinking_is_rejected_upstream() {
     const SCENARIO: &str =
         "wire_shape_matrix/forced_tool_choice_under_thinking_is_rejected_upstream";
-    with_deepseek_wire_shape_cassette_result(
+    with_deepseek_cassette_result(
         "wire_shape_matrix/forced_tool_choice_under_thinking_is_rejected_upstream",
         |client| async move {
             // The wire's `encode` rewrites any forced `tool_choice` rig
@@ -137,7 +107,7 @@ async fn forced_tool_choice_under_thinking_is_rejected_upstream() {
     );
 
     assert_eq!(
-        recorded_interactions(SCENARIO).len(),
+        crate::cassettes::recorded_interaction_bodies("deepseek", SCENARIO).len(),
         2,
         "both forced shapes are recorded"
     );

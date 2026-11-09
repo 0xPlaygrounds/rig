@@ -71,11 +71,11 @@ async fn responses_extras_from_a_unary_recording() {
 /// recorded stream sends read as a unary reply's.
 #[tokio::test]
 async fn chat_extras_from_a_recorded_stream() {
-    use crate::test_utils::provider_extensions::{recorded_stream, streamed_reply_of};
+    use crate::test_utils::provider_extensions::{recorded_reply, streamed_reply_of};
 
     let reply = streamed_reply_of(
         copilot().completion(crate::providers::copilot::GPT_4O),
-        recorded_stream("copilot", "streaming/example_streaming_prompt", 0),
+        recorded_reply("copilot", "streaming/example_streaming_prompt", 0),
     )
     .await;
     let extras = reply

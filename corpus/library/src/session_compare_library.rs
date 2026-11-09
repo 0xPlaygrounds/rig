@@ -1,9 +1,7 @@
-//! CT-24: `session-compare a b`, a plain program on rig's library crates
-//! (rig-core, rig-memory, rig-tools; no Bevy, no harness) that compares two
-//! saved sessions: where their main agents'
-//! conversations part, what each side did (turns, replies, tool calls by
-//! name, failed calls, tokens, cost, models), and which files each side's
-//! file tools changed.
+//! `session-compare a b`, a plain program on rig's library crates (rig-core, rig-memory, rig-tools;
+//! no Bevy, no harness) that compares two saved sessions: where their main agents' conversations
+//! part, what each side did (turns, replies, tool calls by name, failed calls, tokens, cost,
+//! models), and which files each side's file tools changed.
 //!
 //! A side is a session directory ([`DirStore`]).
 

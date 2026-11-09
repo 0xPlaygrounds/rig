@@ -1,15 +1,12 @@
-//! CT-01: time-boxed permission grants. `/grant shell for 10m`, `/grant
-//! edits:src/** until turn-end` or `/grant write for 2 turns` lets the
-//! calls a grant covers run without the user's approval while it lives:
-//! once every gate had its say, a covered call that only waits on
-//! [`NeedsApproval`] is [`Approved`], so a refusal from another gate still
-//! stands. A grant covers the agent it was made in and the subagents it
-//! starts meanwhile, runs out by itself on the wall clock ([`WakeAt`]) or
-//! by its agent's ended turns with a one-line notice, is listed by
-//! `/grants` and ended early by `/revoke <n|all>`. Grants are saved with
-//! the session ([`SavedGrants`]); a timed one whose time passed is gone on
-//! resume. With the `tui` feature the status line counts the soonest one
-//! down, `grant shell 4:12`.
+//! Time-boxed permission grants. `/grant shell for 10m`, `/grant edits:src/** until
+//! turn-end` or `/grant write for 2 turns` lets the calls a grant covers run without the
+//! user's approval while it lives: once every gate had its say, a covered call that only
+//! waits on [`NeedsApproval`] is [`Approved`], so a refusal from another gate still stands.
+//! A grant covers the agent it was made in and the subagents it starts meanwhile, runs out
+//! by itself on the wall clock ([`WakeAt`]) or by its agent's ended turns with a one-line
+//! notice, is listed by `/grants` and ended early by `/revoke <n|all>`. Grants are saved
+//! with the session ([`SavedGrants`]); a timed one whose time passed is gone on resume.
+//! With the `tui` feature the status line counts the soonest one down, `grant shell 4:12`.
 //!
 //! ```
 //! use rig_harness::prelude::*;

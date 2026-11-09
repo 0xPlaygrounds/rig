@@ -193,7 +193,4 @@ fn three_refused_results_fail_the_run() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(SubmitResultPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(SubmitResultPlugin);

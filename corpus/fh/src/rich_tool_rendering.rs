@@ -1,15 +1,12 @@
-//! FH-19: rich tool call rendering in the terminal view (`rig-tui`).
+//! Rich tool call rendering in the terminal view (`rig-tui`).
 //!
-//! The built-in tools' calls get looks of their own, in place of the
-//! default plugins' ([`TOOLS`]): `edit` and `write` as a coloured,
-//! highlighted diff, `shell` as `$ command` with its output as it comes,
-//! then all of it and `exit N · 4.2s`, `read` as a line with the lines
-//! read and the content highlighted, `search` as a count with the
-//! matches. Its system runs after the default plugins' looks
-//! ([`CodingToolLooks`]), so its lines are the ones drawn. The terminal view
-//! draws a call through its look while the model still streams its
-//! arguments. Any other tool keeps its own look or the default one; the
-//! looks never change what is saved or sent.
+//! The built-in tools' calls get looks of their own, in place of the default plugins' ([`TOOLS`]):
+//! `edit` and `write` as a coloured, highlighted diff, `shell` as `$ command` with its output as it
+//! comes, then all of it and `exit N · 4.2s`, `read` as a line with the lines read and the content
+//! highlighted, `search` as a count with the matches. Its system runs after the default plugins'
+//! looks ([`CodingToolLooks`]), so its lines are the ones drawn. The terminal view draws a call
+//! through its look while the model still streams its arguments. Any other tool keeps its own look
+//! or the default one; the looks never change what is saved or sent.
 
 mod highlight;
 mod looks;

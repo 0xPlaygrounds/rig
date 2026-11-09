@@ -1,19 +1,13 @@
-//! Openrouter prompt-caching cassette suite.
+//! OpenRouter prompt-caching cassette suite.
 //!
-//! Rig normalizes `Usage::cached_input_tokens` for this provider, and before
-//! this suite no test had ever seen the field be non-zero. The three-turn probe
-//! below is what makes the provider's actual behavior observable — including the
-//! possibility that it does not cache at all, which is recorded rather than
-//! assumed.
-//!
-//! OpenRouter proxies to an upstream provider and is the one gateway in the
-//! matrix that reports cache *writes* as well as reads
-//! (`prompt_tokens_details.cache_write_tokens`, mapped by the shared chat
-//! usage type in `crates/rig-core/src/providers/openai/completion/mod.rs`).
-//! Routed here to an OpenAI model, so the underlying cache is OpenAI's
-//! 1,024-token automatic one.
-//!
-//! # Recording
+//! A three-turn probe makes the provider's caching observable through
+//! `Usage::cached_input_tokens`, including the possibility that it does not
+//! cache at all, which is recorded rather than assumed. OpenRouter reports
+//! cache writes as well as reads (`prompt_tokens_details.cache_write_tokens`,
+//! mapped by the shared chat usage type in
+//! `crates/rig-core/src/providers/openai/completion/mod.rs`). It is routed here
+//! to an OpenAI model, so the underlying cache is OpenAI's 1,024-token
+//! automatic one.
 //!
 //! ```text
 //! RIG_PROVIDER_TEST_MODE=record cargo test -p rig-cassette --test integration --all-features \
@@ -26,7 +20,7 @@ use crate::cache_conformance::{
 };
 use rig_test_support::cassette_models::OpenAiModels;
 
-use super::super::support::with_openrouter_prompt_caching_cassette;
+use super::super::support::with_openrouter_cassette;
 
 pub(super) const CACHE_MODEL: &str = "openai/gpt-4o-mini";
 
@@ -51,7 +45,7 @@ pub(super) fn probe() -> CacheProbe {
 async fn blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
     const SCENARIO: &str = "prompt_caching/blocking_probe";
 
-    with_openrouter_prompt_caching_cassette("prompt_caching/blocking_probe", |client| async move {
+    with_openrouter_cassette("prompt_caching/blocking_probe", |client| async move {
         let model = client.completion(CACHE_MODEL);
         let observation = run_cache_probe(model, &probe()).await;
         assert_cache_conformance(&observation, &OPENROUTER_CACHE_SUPPORT, "blocking probe");
@@ -65,14 +59,11 @@ async fn blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
 async fn streaming_probe_survives_the_streaming_accumulator() {
     const SCENARIO: &str = "prompt_caching/streaming_probe";
 
-    with_openrouter_prompt_caching_cassette(
-        "prompt_caching/streaming_probe",
-        |client| async move {
-            let model = client.completion(CACHE_MODEL);
-            let observation = run_cache_probe_streaming(model, &probe()).await;
-            assert_cache_conformance(&observation, &OPENROUTER_CACHE_SUPPORT, "streaming probe");
-        },
-    )
+    with_openrouter_cassette("prompt_caching/streaming_probe", |client| async move {
+        let model = client.completion(CACHE_MODEL);
+        let observation = run_cache_probe_streaming(model, &probe()).await;
+        assert_cache_conformance(&observation, &OPENROUTER_CACHE_SUPPORT, "streaming probe");
+    })
     .await;
 
     assert_prefix_stable("openrouter", SCENARIO);

@@ -114,7 +114,4 @@ fn recall_finds_the_past_fix_and_never_the_current_session() {
     assert!(!index.contains("hunter2"), "{index}");
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(RecallPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(RecallPlugin);

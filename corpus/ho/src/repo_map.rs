@@ -1,16 +1,11 @@
-//! Plugin corpus (held-out): H10: Repo map in the prompt (spec `H10-repo-map.md`).
-//!
-//! [`RepoMapPlugin`] maps the project's git-tracked files in the background
-//! at startup: each file's top-level symbols with their lines (Rust, Python,
-//! JavaScript and TypeScript, by simple line parsing) and the module names
-//! it refers to. Each agent's system prompt gets a `repo_map` section of its
-//! own, rendered within a token budget when a turn starts and only then, so
-//! the requests of one turn share their prompt: first the files the agent
-//! read or changed (the calls' published `FilesRead` and `FilesChanged`),
-//! then the files those refer to, then the rest by size. The `repo_map`
-//! tool shows a subtree in full or the files defining a symbol. A file a
-//! call changed is scanned again in the background, and after a `shell`
-//! call so is every file `git status` reports.
+//! Repo map in the prompt. [`RepoMapPlugin`] maps the project's git-tracked files in the background
+//! at startup: each file's top-level symbols with their lines (Rust, Python, JavaScript and
+//! TypeScript, by simple line parsing) and the module names it refers to. Each agent's system
+//! prompt gets a `repo_map` section of its own, rendered within a token budget when a turn starts
+//! and only then, so the requests of one turn share their prompt: first the files the agent read or
+//! changed, then the files those refer to, then the rest by size. The `repo_map` tool shows a
+//! subtree in full or the files defining a symbol. A file a call changed is scanned again in the
+//! background, and after a `shell` call so is every file `git status` reports.
 
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};

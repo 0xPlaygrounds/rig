@@ -178,7 +178,4 @@ fn looping_and_role_play_replies_are_cut_where_they_go_wrong() {
     assert_eq!(app.world().resource::<Cuts>().0.get("test/model"), Some(&3));
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(StreamCutterPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(StreamCutterPlugin);

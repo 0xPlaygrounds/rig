@@ -9,7 +9,6 @@
 //! share a directory.
 
 use std::collections::BTreeMap;
-use std::fs::{File, OpenOptions};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -128,7 +127,7 @@ impl Approvals {
             self.answers.insert(name.to_owned(), answer);
             return Ok(());
         };
-        let _lock = lock(&self.lock)?;
+        let _lock = crate::config::lock(&self.lock)?;
         self.answers = self.kept();
         self.answers.insert(name.to_owned(), answer);
         let kept = Kept {
@@ -140,22 +139,6 @@ impl Approvals {
             .write_file(FILE, &bytes)
             .map_err(|error| format!("could not keep the approval: {error}"))
     }
-}
-
-/// The lock file at `path`, locked until it is dropped.
-fn lock(path: &Path) -> Result<File, String> {
-    let failed = |error: std::io::Error| format!("could not lock {}: {error}", path.display());
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).map_err(failed)?;
-    }
-    let lock = OpenOptions::new()
-        .create(true)
-        .write(true)
-        .truncate(false)
-        .open(path)
-        .map_err(failed)?;
-    lock.lock().map_err(failed)?;
-    Ok(lock)
 }
 
 /// Reads this project's answers, before the files' servers spawn.

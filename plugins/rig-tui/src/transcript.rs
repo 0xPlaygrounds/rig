@@ -24,9 +24,9 @@ use rig_core::message::{AssistantMessage, ToolFunction, ToolName, ToolResult, Us
 use super::markdown;
 use super::render::{Lights, light, lit};
 use super::renderers::{
-    AsideView, CallState, ChildCall, ContentBlock, ContentView, DecoratedMessage, EntryView,
-    LookLine, MessageView, Pass, Place, Renderers, Role, ToolCallView, plugin_name, result_style,
-    result_text, text_rows,
+    AsideView, CallState, ChildCall, ContentBlock, ContentView, EntryView, LookLine, Pass, Place,
+    Renderers, ToolCallView, plugin_name, reasoning_lines, reply_lines, result_style, result_text,
+    text_rows, user_lines,
 };
 use super::theme::Theme;
 use super::view::{
@@ -1597,19 +1597,7 @@ fn message_lines(
                                 text_rows(&text.text, Style::new().dim()),
                                 look.theme.tool,
                             )),
-                            None => lines.extend(on_band(
-                                MessageView {
-                                    role: Role::User,
-                                    message: id,
-                                    block: item_at,
-                                    text: &text.text,
-                                    marks: &[],
-                                    width,
-                                    theme: *look.theme,
-                                }
-                                .default_lines(),
-                                look.theme.user,
-                            )),
+                            None => lines.extend(on_band(user_lines(&text.text), look.theme.user)),
                         }
                     }
                     // Drawn under its call already.
@@ -1649,32 +1637,11 @@ fn message_lines(
                         lines.push(LookLine::default());
                         let marks =
                             id.map(|id| look.marks_in(MarkIn::Message { id, block: item_at }));
-                        lines.extend(
-                            MessageView {
-                                role: Role::Assistant,
-                                message: id,
-                                block: item_at,
-                                text: &text.text,
-                                marks: &marks.unwrap_or_default(),
-                                width,
-                                theme: *look.theme,
-                            }
-                            .default_lines(),
-                        );
+                        let marks = marks.unwrap_or_default();
+                        lines.extend(reply_lines(&text.text, &marks, width, look.theme));
                     }
                     AssistantContent::Reasoning(reasoning) => {
-                        lines.extend(
-                            MessageView {
-                                role: Role::Reasoning,
-                                message: id,
-                                block: item_at,
-                                text: &reasoning.text,
-                                marks: &[],
-                                width,
-                                theme: *look.theme,
-                            }
-                            .default_lines(),
-                        );
+                        lines.extend(reasoning_lines(&reasoning.text, width, look.theme));
                     }
                     AssistantContent::ToolCall(call) => {
                         let ((index, result), facts) = calls.next().unwrap_or_default();
@@ -1715,22 +1682,6 @@ fn message_lines(
     }
     if look.stops.under(id) {
         lines.extend(stop_lines(message, look.theme));
-    }
-    if !matches!(message, Message::System { .. }) {
-        let decorated = DecoratedMessage {
-            message,
-            id,
-            author,
-        };
-        let (drawn, decorations) = look.renderers.message_decorations(&decorated);
-        let start = lines.len();
-        lines.extend(drawn);
-        for (name, rows) in decorations {
-            if let Some(id) = id {
-                let decoration = TranscriptItem::MessageDecoration(id, name);
-                marks.push((decoration, start + rows.start..start + rows.end));
-            }
-        }
     }
     if let Some(id) = id {
         marks.insert(0, (TranscriptItem::Message(id), 0..lines.len()));

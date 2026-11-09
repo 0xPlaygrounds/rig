@@ -1,26 +1,14 @@
-//! The guard that keeps every table in this suite honest.
+//! The guard that keeps this suite's cell documentation from drifting.
 //!
-//! Each matrix module documents its cells as a markdown table, and the suite's
-//! `mod.rs` indexes the modules. Both are prose, and prose drifts: a cell
-//! added without a row reads as covered-and-tabled while being neither, and a
-//! row whose cell was renamed reads as coverage that no longer exists.
+//! Every `*_matrix.rs` module names each of its own test functions in its
+//! module-level docs, and every module under `cassette/` appears in the suite
+//! index in `mod.rs`. A cell added without being named reads as uncovered, and a
+//! renamed cell leaves docs describing coverage that no longer exists.
 //!
-//! This module turns the one-off "check each table row-for-row against
-//! `--list`" audit into something that runs on every CI job. It is deliberately
-//! source-level rather than reflective: `--list` is not reachable from inside a
-//! test, so the cells are read from the same files the tables live in.
-//!
-//! Two rules, and each says what to do when it fires:
-//!
-//! 1. Every `*_matrix.rs` module names every one of its own test functions in
-//!    its module-level docs.
-//! 2. Every module under `cassette/` appears in the suite index in `mod.rs`.
-//!
-//! Modules that are not matrices — the smoke cells migrated from the two
-//! pre-merge suites — are exempt from rule 1 by name, listed below, because
-//! their coverage is indexed at the suite level rather than tabulated per
-//! module. Adding a *new* module to that list is a decision someone has to
-//! make explicitly.
+//! The check is source-level because `--list` is not reachable from inside a
+//! test, so the cells are read from the same files their docs live in. Modules
+//! that are not matrices are exempt from the first rule by name, in
+//! `NOT_TABULATED`, because their coverage is indexed at the suite level.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -28,8 +16,8 @@ use std::path::{Path, PathBuf};
 /// Modules whose cells are indexed at the suite level rather than tabulated.
 ///
 /// These are the migrated smoke cells: one or two straightforward cells each,
-/// covering a surface the matrices then exercise in depth. `mod.rs`'s
-/// "Surface" and "Dimension" tables are where they are accounted for.
+/// covering a surface the matrices then exercise in depth. `mod.rs`'s module
+/// doc accounts for them.
 const NOT_TABULATED: &[&str] = &[
     "agent",
     "embeddings",

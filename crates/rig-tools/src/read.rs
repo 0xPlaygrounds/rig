@@ -14,7 +14,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 
 use crate::attach::{self, NoImage, is_image_path};
-use crate::workspace::{Endings, Local, Workspace, text_error};
+use crate::workspace::{Endings, Root, text_error};
 use crate::{
     CHUNK_BYTES, CUT_MARK, MAX_BYTES, MAX_FILE_BYTES, MAX_LINE_CHARS, MAX_LINES, blocking, excerpt,
     line_bytes, shell_path,
@@ -22,34 +22,16 @@ use crate::{
 
 /// Reads a text file's lines as they are, or a PNG, JPEG, GIF or WebP
 /// image as a line saying what it is and the image. Publishes the file it
-/// read ([`FilesRead`]), by its [resolved](Workspace) path, with the hash
+/// read ([`FilesRead`]), by its [resolved](Root::resolve) path, with the hash
 /// of the bytes it read and, for a text file, the lines it showed, and,
 /// when lines after those were left out, [`OutputCut`].
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Read {
-    /// Where the file is read.
-    pub workspace: Arc<dyn Workspace>,
-    /// The directory a relative path is read from; `None` is the
-    /// workspace's working directory.
-    pub base: Option<PathBuf>,
-    /// Whether a path that resolves outside `base` is refused, before
-    /// anything is read.
-    pub confine: bool,
+    /// Where the files are, and the directory a relative path is taken from.
+    pub root: Root,
     /// Where each file read is noted, for an [`Edit`](crate::Edit) given
     /// the same to tell whether a file changed since.
     pub seen: Seen,
-}
-
-impl Default for Read {
-    /// Reads this machine's files, from this process's working directory.
-    fn default() -> Self {
-        Self {
-            workspace: Arc::new(Local),
-            base: None,
-            confine: false,
-            seen: Seen::default(),
-        }
-    }
 }
 
 /// Most bytes of file text a [`Seen`] keeps, for the files seen last.
@@ -63,7 +45,7 @@ const SEEN_TEXT_BYTES: usize = 8 * 1024 * 1024;
 ///
 /// It also keeps the whole text of the files last seen whole, up to 8 MB
 /// of them, so an edit starts from it and only writes, if the file still
-/// holds that text ([`Workspace::write_if`]).
+/// holds that text ([`write_if`](crate::workspace::Workspace::write_if)).
 #[derive(Clone, Debug, Default)]
 pub struct Seen(Arc<Mutex<Files>>);
 
@@ -242,9 +224,7 @@ impl Tool for Read {
     }
 
     fn footprint(&self, args: &ReadArgs) -> Touches {
-        Touches::Reads(Scope::Paths(vec![
-            self.workspace.resolve(self.base.as_deref(), &args.path),
-        ]))
+        Touches::Reads(Scope::Paths(vec![self.root.resolve(&args.path)]))
     }
 
     async fn call(
@@ -257,13 +237,11 @@ impl Tool for Read {
                 "offset counts lines from 1; give 1 or more, or leave it out",
             ));
         }
-        let path = self
-            .workspace
-            .place(self.base.as_deref(), self.confine, &args.path)?;
+        let path = self.root.place(&args.path)?;
         let shown = path.to_string_lossy().into_owned();
         // The name asked counts too, for a link named as an image.
         let image = is_image_path(&path) || is_image_path(Path::new(&args.path));
-        let workspace = self.workspace.clone();
+        let workspace = self.root.workspace.clone();
         let seen = self.seen.clone();
         let (output, read) = blocking(move || {
             if image {

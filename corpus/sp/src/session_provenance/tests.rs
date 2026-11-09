@@ -8,8 +8,7 @@ use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::load;
 use rig_harness_test_support::{
-    Ended, app_in, first_agent, log_ended, reply, run_until, scratch_home, scripted_models,
-    tui_view,
+    Ended, app_in, deliver, first_agent, log_ended, reply, scratch_home, scripted_models, tui_view,
 };
 use rig_tui::TuiTestScreen;
 
@@ -95,16 +94,13 @@ fn start(
 /// Sends `line` as the user typed it: a command runs, a message's turn
 /// runs to its end.
 fn send(app: &mut App, wakes: &Receiver<()>, agent: Entity, line: &str) {
-    let ended = app.world().resource::<Ended>().0.len();
     let typed = Deliver::new(agent, line, DeliveryMode::Queue).with_author(Author::user());
-    app.world_mut().trigger(typed);
     if line.starts_with('/') {
+        app.world_mut().trigger(typed);
         app.update();
         app.update();
     } else {
-        run_until(app, wakes, |world| {
-            world.resource::<Ended>().0.len() > ended
-        });
+        deliver(app, wakes, typed);
     }
 }
 

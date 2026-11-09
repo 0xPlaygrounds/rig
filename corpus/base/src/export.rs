@@ -1,14 +1,11 @@
-//! Plugin corpus: 41. Session export (spec `41-export.md`).
-//!
-//! `/export [md|html|json] [path] [--thinking] [--session <id>]` writes a
-//! session as Markdown (default, to `./rig-<session-name>.md`), a
-//! self-contained HTML page or JSON; `rig --export=<session>` (with
-//! `--export-format`, `--export-to` and `--export-thinking`) does the same
-//! from the command line and exits. Either reads the *saved* session with
-//! rig-memory's `Session::read_lenient`, which neither restores nor writes
-//! it, so a session that is not running exports the same way as this one,
-//! and a log that cannot be read is named and left out; each model call's
-//! usage and cost comes from the session's effect log.
+//! Session export. `/export [md|html|json] [path] [--thinking] [--session <id>]` writes a
+//! session as Markdown (default, to `./rig-<session-name>.md`), a self-contained HTML page or
+//! JSON; `rig --export=<session>` (with `--export-format`, `--export-to` and
+//! `--export-thinking`) does the same from the command line and exits. Either reads the *saved*
+//! session with rig-memory's `Session::read_lenient`, which neither restores nor writes it, so
+//! a session that is not running exports the same way as this one, and a log that cannot be
+//! read is named and left out; each model call's usage and cost comes from the session's effect
+//! log.
 
 use std::any::TypeId;
 use std::collections::BTreeMap;

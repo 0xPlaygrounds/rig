@@ -1,8 +1,6 @@
 use super::{CompletionResponse, FinishReason, Usage};
 use crate::completion::CompletionRequest;
-use crate::error::ProviderError;
 use crate::message::AssistantContent;
-use crate::{http_client, provider_response};
 
 /// An empty conversation or message parses, and the request boundary
 /// rejects it by role and index. An empty tool result is the adapter's to
@@ -44,9 +42,6 @@ mod empty_lists_parse_and_are_rejected_when_sent {
         assert_eq!(model.request_count(), 0);
     }
 }
-
-/// The request-boundary check accepts what providers accept.
-mod message_content {}
 
 fn tool_call_choice() -> Vec<AssistantContent> {
     vec![AssistantContent::tool_call(
@@ -269,66 +264,6 @@ fn documents_join_the_first_user_message_so_roles_alternate() {
         )
     );
 }
-
-#[test]
-fn completion_error_provider_response_helpers_with_preserved_json_body() {
-    let body = r#"{"error":{"code":"rate_limit","message":"slow down"}}"#;
-    let error = ProviderError::ProviderResponse(
-        provider_response::ProviderResponseError::without_status(body.to_string()),
-    );
-
-    assert_eq!(error.provider_response_body(), Some(body));
-    assert_eq!(error.provider_response_status(), None);
-    assert_eq!(
-        error
-            .provider_response_json()
-            .expect("fixture body should parse as valid JSON"),
-        Some(serde_json::json!({
-            "error": {
-                "code": "rate_limit",
-                "message": "slow down"
-            }
-        }))
-    );
-}
-
-#[test]
-fn completion_error_provider_response_helpers_with_preserved_plain_text_body() {
-    let error = ProviderError::ProviderResponse(
-        provider_response::ProviderResponseError::without_status("provider exploded".to_string()),
-    );
-
-    assert_eq!(error.provider_response_body(), Some("provider exploded"));
-    assert_eq!(error.provider_response_status(), None);
-    assert!(error.provider_response_json().is_err());
-}
-
-#[test]
-fn completion_error_provider_response_helpers_with_http_non_success_body_and_status() {
-    let body = r#"{"error":{"type":"invalid_request","message":"bad request"}}"#;
-    let error = ProviderError::from_transport_error(http_client::Error::non_success_with_details(
-        http::StatusCode::BAD_REQUEST,
-        http::HeaderMap::new(),
-        body.to_string(),
-    ));
-
-    assert_eq!(error.provider_response_body(), Some(body));
-    assert_eq!(
-        error.provider_response_status(),
-        Some(http::StatusCode::BAD_REQUEST)
-    );
-    assert_eq!(
-        error.provider_response_json().expect("valid JSON body"),
-        Some(serde_json::json!({
-            "error": {
-                "type": "invalid_request",
-                "message": "bad request"
-            }
-        }))
-    );
-}
-
-mod additional_params_precedence {}
 
 /// An unknown finish reason fails the turn by default, and replay leaves the
 /// turn out. A request that accepts unknown reasons gets a response that

@@ -1,24 +1,17 @@
-//! OC-09: Edit the conversation in your editor (one-conversation fresh
-//! held-out spec).
+//! Edit the conversation in your editor. `/edit-history` writes the focused agent's conversation to
+//! a Markdown file, one section per message part (`## [n] user`, `## [n] assistant`, `## [n]
+//! tool-result <tool> <call id>`), and opens the editor on it with the terminal. Tool calls are
+//! fenced ```` ```call <tool> <id> ```` blocks of JSON arguments; reasoning, images and other parts
+//! are placeholder lines that keep the original part.
 //!
-//! `/edit-history` writes the focused agent's conversation to a Markdown
-//! file, one section per message part (`## [n] user`, `## [n] assistant`,
-//! `## [n] tool-result <tool> <call id>`), and opens the editor on it with
-//! the terminal (rig-tui's `RunInTerminal`). Tool calls are fenced
-//! ```` ```call <tool> <id> ```` blocks of JSON arguments; reasoning, images
-//! and other parts are placeholder lines that keep the original part.
+//! On save the file is parsed and saved as one change of the conversation: text edits, deleted
+//! sections, changed call arguments. A call and its result go together: deleting one side asks
+//! whether to delete both or reopen the editor. A parse error reopens the editor with the error on
+//! top; quitting without saving changes nothing.
 //!
-//! On save the file is parsed, normalized (`pairing::normalize`, which
-//! merges the model's turns left side by side and keeps ids) and saved as
-//! one change of the conversation (`set_entries`): text edits, deleted
-//! sections, changed call arguments.
-//! A call and its result go together: deleting one side asks whether to
-//! delete both or reopen the editor. A parse error reopens the editor with
-//! the error on top; quitting without saving changes nothing.
-//! `/edit-history undo` restores the version before the last edit, read
-//! back from the session's log, its entries put back with their ids
-//! (`restore`), keeping the turns that came after it. Neither runs while
-//! the agent's turn does, nor without the terminal view.
+//! `/edit-history undo` restores the version before the last edit, with the ids its entries had,
+//! keeping the turns that came after it. Neither runs while the agent's turn does, nor without the
+//! terminal view.
 
 #[cfg(test)]
 mod tests;

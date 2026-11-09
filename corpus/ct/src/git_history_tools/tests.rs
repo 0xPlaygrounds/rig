@@ -5,7 +5,7 @@ use std::process::Command;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness_test_support::{
     Ended, MemoryStore, ToolOutputs, app_on, first_agent, log_ended, log_tool_outputs, reply,
-    run_until, scripted_models,
+    run_until, scratch_dir, scripted_models,
 };
 
 use super::*;
@@ -42,10 +42,7 @@ fn commit(dir: &Path, author: &str, subject: &str, files: &[(&str, String)]) {
 /// A repository with three commits by Alice and Bob touching `a.txt` and
 /// `b.txt`, the last a 500-line rewrite of `b.txt`.
 fn repository() -> PathBuf {
-    let exe = std::env::current_exe().unwrap_or_default();
-    let dir = exe.with_file_name(format!("ct-git-history-tools-{}", std::process::id()));
-    fs::remove_dir_all(&dir).ok();
-    fs::create_dir_all(&dir).ok();
+    let dir = scratch_dir(&format!("ct-git-history-tools-{}", std::process::id()));
     git(&dir, "Alice", &["init", "-q"]);
     let config =
         |limit: u32| format!("name = rig\nretry_limit = {limit}\ntimeout = 30\nverbose = false\n");

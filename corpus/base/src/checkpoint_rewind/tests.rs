@@ -5,8 +5,8 @@ use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::pick::PickPlugin;
 use rig_harness_test_support::{
-    AnswerAsks, Answers, Collected, Ended, app_in, calls, collect, first_agent, log_ended, reply,
-    run_until, scratch_home, scripted_models,
+    AnswerAsks, Answers, Collected, Ended, app_in, calls, collect, deliver, first_agent, log_ended,
+    reply, run_until, scratch_home, scripted_models,
 };
 use serde_json::json;
 
@@ -69,12 +69,7 @@ fn start(home: &Home, session: &SessionId, model: &MockCompletionModel) -> (App,
 }
 
 fn ask(app: &mut App, wakes: &Receiver<()>, agent: Entity, text: &str) {
-    let ended = app.world().resource::<Ended>().0.len();
-    app.world_mut()
-        .trigger(Deliver::new(agent, text, DeliveryMode::Queue));
-    run_until(app, wakes, |world| {
-        world.resource::<Ended>().0.len() > ended
-    });
+    deliver(app, wakes, Deliver::new(agent, text, DeliveryMode::Queue));
 }
 
 /// The open picker and the position of its item for the message `text`.
@@ -290,7 +285,4 @@ fn a_stopped_turns_edits_are_not_the_users() {
     fs::remove_dir_all(home.root()).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(CheckpointRewindPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(CheckpointRewindPlugin);

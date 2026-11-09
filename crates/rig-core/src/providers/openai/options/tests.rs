@@ -758,8 +758,7 @@ mod responses {
         assert_eq!(body["top_p"], 0.5);
     }
 
-    /// Ported from #2171 (`prompt_cache_options_serialize_at_request_top_level`):
-    /// a long cache on GPT-5.6 is the 12 hour `prompt_cache_options.ttl`
+    /// A long cache on GPT-5.6 is the 12 hour `prompt_cache_options.ttl`
     /// (<https://developers.openai.com/api/docs/guides/prompt-caching>), and a raw
     /// `mode` and `prompt_cache_key` join it at the top level.
     #[test]
@@ -779,8 +778,7 @@ mod responses {
         assert_eq!(body["prompt_cache_options"]["ttl"], "12h");
     }
 
-    /// Ported from #2616 (`prompt_cache_options_reach_the_request_typed_and_through_additional_params`):
-    /// the option and the raw key send the same object, and no retention.
+    /// The option and the raw key send the same object, and no retention.
     #[test]
     fn prompt_cache_options_reach_the_request_typed_and_through_additional_params() {
         let wire = responses(&OPENAI, crate::providers::openai::GPT_6_SOL);
@@ -1100,8 +1098,8 @@ mod responses {
     }
 }
 
-// GPT-6's sampling and Chat Completions tool rules, ported from #2616 and
-// expressed as catalog data: the GPT-6 models' `sampling` is `reasoning_off`,
+// GPT-6's sampling and Chat Completions tool rules, expressed as catalog
+// data: the GPT-6 models' `sampling` is `reasoning_off`,
 // their `chat_tools` is `reasoning_off` (Sol, Luna) or `never` (Astra, 6.1
 // Sol, 6.1 Terra), and their documented default effort is `medium`. Sources:
 // the GPT-6 model pages and

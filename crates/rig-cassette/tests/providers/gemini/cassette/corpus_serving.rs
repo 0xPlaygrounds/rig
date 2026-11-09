@@ -9,9 +9,8 @@ use rig::effect::EffectFamily;
 use rig::providers::gemini;
 use rig_cassette::agent::AgentReplayExt;
 
-use super::super::hook_stress_support::CHAIN_PREAMBLE;
+use super::super::agent_run_support::{Add, CHAIN_PREAMBLE, Subtract};
 use super::super::support::with_gemini_cassette;
-use super::super::tools_support::{CountingAdd, CountingSubtract};
 use crate::goldens::families;
 
 #[tokio::test]
@@ -25,8 +24,8 @@ async fn two_turns_serial_effect_log_is_the_golden_fixture() {
                     .name("stress-agent")
                     .preamble(CHAIN_PREAMBLE)
                     .temperature(0.0)
-                    .tool(CountingAdd::default())
-                    .tool(CountingSubtract::default())
+                    .tool(Add)
+                    .tool(Subtract)
                     .record_to(recorder.clone())
                     .build();
             let mut stream = agent

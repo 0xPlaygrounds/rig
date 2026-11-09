@@ -1,17 +1,13 @@
 //! Retries a completed, tool-free model turn from an [`AgentHook`].
 //!
-//! `RetryOnMarker` owns its policy limit in the run-scoped [`HookContext`]
-//! scratchpad. Rig does not add a separate retry counter to the agent: every
-//! retry consumes the request's existing `max_turns` model-call budget.
+//! `RetryOnMarker` keeps its retry limit in the run's [`HookContext`] scratchpad,
+//! and each retry spends the request's `max_turns` budget. [`RetryMode::Feedback`]
+//! keeps the rejected response and adds a corrective user message.
+//! [`RetryMode::Repeat`] discards it and prepares the same request again, so
+//! completion-call hooks, retrieval, and dynamic tool resolution run again. Turns
+//! with tool calls belong to tool-call hooks.
 //!
-//! [`RetryMode::Feedback`] preserves the rejected assistant response and adds a
-//! corrective user message. [`RetryMode::Repeat`] discards the response and
-//! reuses the same prompt and preceding history with fresh request preparation.
-//! Completion-call hooks, retrieval, and dynamic tool resolution therefore run
-//! again. Tool-bearing turns must instead be handled by tool-call hooks.
-//!
-//! Requires `OPENAI_API_KEY`. Run with:
-//! `cargo run -p agent_with_retry_hook`.
+//! Requires `OPENAI_API_KEY`. Run with `cargo run -p agent_with_retry_hook`.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};

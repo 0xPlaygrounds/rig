@@ -1,44 +1,20 @@
 //! Raw provider response capture on OpenAI's streaming seams
 //! (`CompletionResponse::raw`).
 //!
-//! # What this pins
-//!
 //! The streamed twin of `raw_capture_matrix`: every terminal
-//! `StreamedAssistantContent::Final` carries `raw`, the unary document of
-//! the route's API as the driver's reassembler rebuilt it from the reply's
-//! frames. There is no switch behind it; a terminal `raw` is `Value::Null`
-//! only on a record built by hand, never on one a stream yielded. A cell
-//! reads it as JSON, by the paths a unary body is read by. It exposes a
-//! field the normalized `CompletionResponse` does not model, and its
+//! `StreamedAssistantContent::Final` carries `raw`, the unary document of the
+//! route's API as the driver's reassembler rebuilt it from the reply's frames.
+//! A terminal `raw` is `Value::Null` only on a record built by hand. It exposes
+//! a field the normalized `CompletionResponse` does not model, and its
 //! `usage`, finish reason, `model` and identity are the ones the stream
 //! reported.
 //!
 //! On Chat Completions the document is a `chat.completion`: the top-level
-//! chunk fields (`service_tier`, `system_fingerprint`) where a unary body
-//! states them, the deltas folded into `choices[].message`, and the
-//! provider's usage object, extra counters included. On the Responses API,
-//! the response object, verbatim (whose `status` and message id come from
-//! the terminal `response.completed` event alone).
-//!
-//! Cell 6 is the streamed twin of the tool-call cell in `raw_capture_matrix`:
-//! a forced Chat tool call, whose document spells `finish_reason` as
-//! `"tool_calls"` and whose normalized twin reports `FinishReason::ToolCalls`.
-//!
-//! # Matrix
-//!
-//! | # | Cell | Dimension | expected | Status |
-//! |---|------|-----------|----------|--------|
-//! | 1 | `chat_stream_raw_round_trips_typed` | chat, streamed | `raw` is the rebuilt `chat.completion`; its fields ≡ terminal | recorded |
-//! | 4 | `responses_stream_raw_exposes_status` | Responses, terminal-only field | `raw["status"]` = `response.completed` status | recorded |
-//! | 6 | `chat_tool_call_stream_raw_round_trips_typed` | chat, forced tool call (`tool_choice: required`) | `raw` is the rebuilt `chat.completion`; `raw["choices"][0]["finish_reason"] == "tool_calls"` = last finish chunk; normalized terminal reports `ToolCalls` | recorded |
-//!
-//! Every cell is recorded; none is unit-only. Premise, re-derived from each
-//! cell's fixture after the wrapper returns: the recorded stream ends with a
-//! terminal frame carrying usage — Chat because the request the provider
-//! sends already asks for `stream_options.include_usage`, Responses because
-//! `response.completed` carries the whole response object. Cell 6 further
-//! requires a chunk whose delta carries `tool_calls` and a chunk finishing
-//! with `"tool_calls"`.
+//! chunk fields (`service_tier`, `system_fingerprint`), the deltas folded into
+//! `choices[].message`, and the provider's usage object. On the Responses API
+//! it is the response object from the terminal `response.completed` event.
+//! Each cell re-derives from its fixture that the stream ends with a terminal
+//! frame carrying usage.
 
 use rig::completion::CompletionRequest;
 use rig::completion::CompletionResponse;

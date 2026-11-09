@@ -17,7 +17,7 @@ use futures::StreamExt;
 use rig::providers::mistral;
 use rig::streaming::Item;
 
-use super::support::with_mistral_capability_cassette;
+use super::support::with_mistral_cassette_result;
 use rig::completion::CompletionRequest;
 
 /// One more than Mistral's real per-request cap, so a single un-chunked
@@ -26,7 +26,7 @@ const OVER_ONE_BATCH: usize = 257;
 
 #[tokio::test]
 async fn one_request_over_mistrals_batch_cap_is_rejected() -> Result<()> {
-    with_mistral_capability_cassette(
+    with_mistral_cassette_result(
         "capability_edges/one_request_over_mistrals_batch_cap_is_rejected",
         |client| async move {
             let model = client.embedding(mistral::embedding::MISTRAL_EMBED, None);
@@ -67,7 +67,7 @@ fn assert_batch_cap_rejection(error: &rig::error::ProviderError) {
 /// with identical candidates the merge would be invisible.
 #[tokio::test]
 async fn streaming_with_two_candidates_answers_from_the_first() -> Result<()> {
-    with_mistral_capability_cassette(
+    with_mistral_cassette_result(
         "capability_edges/streaming_with_two_candidates_answers_from_the_first",
         |client| async move {
             let model = client.completion(mistral::MISTRAL_SMALL);
@@ -169,7 +169,7 @@ struct SumReport {
 /// wire error this is about.
 #[tokio::test]
 async fn a_forced_tool_choice_beside_a_response_format_is_accepted() -> Result<()> {
-    with_mistral_capability_cassette(
+    with_mistral_cassette_result(
         "capability_edges/a_forced_tool_choice_beside_a_response_format_is_accepted",
         |client| async move {
             let model = client.completion(mistral::MISTRAL_SMALL);

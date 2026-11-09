@@ -1,21 +1,16 @@
-//! CT-19: a status line item from a user script (conversation-over-time
-//! fresh held-out spec `19-status-command.md`).
-//!
-//! `status_command = "~/.config/rig/status.sh"` in `RIG_HOME/settings.toml`
-//! (or a `[status_command]` table with `command`, `every_ms` and
-//! `timeout_ms`) makes the terminal view's status line show the first line
-//! the command prints. The command runs under `sh -c` in the project, as
-//! every child process starts ([`Processes`]), with the [`StatusInput`] as
-//! JSON on stdin. It runs again when that input changes, at most once every
-//! `every_ms` (300 ms), one copy at a time: a change while it runs, or
-//! within the pace, runs it once more afterwards. A run past `timeout_ms`
-//! (2 s) is killed and the previous line stays, dimmed with a marker; a
-//! failing run says its last error line once, as a warning, and keeps the
-//! previous line. Control characters are stripped; the status item holds
-//! one tone, so ANSI colours become the tone of the first colour named.
-//! The terminal view cuts the item to the width it has. An edit of
-//! `settings.toml` takes effect at once, and the script is read anew on
-//! each run. Without the terminal view the plugin does nothing.
+//! A status line item from a user script. `status_command = "~/.config/rig/status.sh"` in
+//! `RIG_HOME/settings.toml` (or a `[status_command]` table with `command`, `every_ms` and
+//! `timeout_ms`) makes the terminal view's status line show the first line the command
+//! prints. The command runs under `sh -c` in the project, as every child process starts
+//! ([`Processes`]), with the [`StatusInput`] as JSON on stdin. It runs again when that
+//! input changes, at most once every `every_ms` (300 ms), one copy at a time: a change
+//! while it runs, or within the pace, runs it once more afterwards. A run past `timeout_ms`
+//! (2 s) is killed and the previous line stays, dimmed with a marker; a failing run says
+//! its last error line once, as a warning, and keeps the previous line. Control characters
+//! are stripped; the status item holds one tone, so ANSI colours become the tone of the
+//! first colour named. The terminal view cuts the item to the width it has. An edit of
+//! `settings.toml` takes effect at once, and the script is read anew on each run. Without
+//! the terminal view the plugin does nothing.
 
 use std::io;
 use std::path::PathBuf;

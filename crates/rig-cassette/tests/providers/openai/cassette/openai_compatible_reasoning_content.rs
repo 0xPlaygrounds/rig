@@ -16,7 +16,6 @@ use axum::{Json, Router, routing::post};
 use futures::FutureExt;
 use rig::completion::Message;
 use rig::providers::openai::OpenAIConfig;
-use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
@@ -270,32 +269,11 @@ fn reasoning_item_preserves_content(item: &Value) -> bool {
 }
 
 fn assert_cassette_preserves_reasoning_content(scenario: &str) {
-    let cassette_path = cassettes::cassette_path("openai", scenario);
-    let contents = std::fs::read_to_string(&cassette_path).unwrap_or_else(|error| {
-        panic!(
-            "provider cassette {} should be readable after recording: {error}",
-            cassette_path.display()
-        )
-    });
-    let interactions = serde_yaml::Deserializer::from_str(&contents)
-        .map(|document| serde_yaml::Value::deserialize(document).expect("cassette interaction"))
-        .collect::<Vec<_>>();
-
     assert!(
-        interactions.iter().any(|interaction| {
-            let Some(body) = interaction
-                .get("when")
-                .and_then(|when| when.get("body"))
-                .and_then(serde_yaml::Value::as_str)
-            else {
-                return false;
-            };
-            let Ok(body) = serde_json::from_str::<Value>(body) else {
-                return false;
-            };
-            request_preserves_reasoning_content(&body)
-        }),
-        "expected cassette {} to contain a continuation request preserving reasoning.content",
-        cassette_path.display()
+        cassettes::recorded_interaction_bodies("openai", scenario)
+            .iter()
+            .filter_map(|(request, _)| serde_json::from_str::<Value>(request).ok())
+            .any(|body| request_preserves_reasoning_content(&body)),
+        "expected cassette openai/{scenario} to contain a continuation request preserving reasoning.content"
     );
 }

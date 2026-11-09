@@ -1,8 +1,5 @@
-//! Plugin corpus: 32. Run checks after the agent edits (spec
-//! `32-check-after-turn.md`).
-//!
-//! The project's checks, `<project>/.rig/checks.toml`, run when an agent's
-//! turn ends having edited files one of them watches:
+//! Runs the project's checks after the agent edits. The checks, `<project>/.rig/checks.toml`,
+//! run when an agent's turn ends having edited files one of them watches:
 //!
 //! ```toml
 //! max_rounds = 3          # automatic fix rounds per user message
@@ -13,13 +10,12 @@
 //! when = "**/*.rs"        # a glob over the edited paths, from the project
 //! ```
 //!
-//! The files a turn edited are what its tool calls published they changed
-//! (`FilesChanged`). Each matching check is a `check` effect of the agent,
-//! one at a time, whose command runs as `Processes` say, so a sandbox
-//! plugin's launcher wraps it too. All pass: a "checks passed" notice. One
-//! fails (its `ExitStatus`): the agent is sent its name and the last lines
-//! of its output and starts a turn to fix it, at most `max_rounds` times per
-//! user message. A user message, or stopping the agent, cancels the checks.
+//! The files a turn edited are what its tool calls published they changed (`FilesChanged`).
+//! Each matching check is a `check` effect of the agent, one at a time, whose command runs as
+//! `Processes` say, so a sandbox plugin's launcher wraps it too. All pass: a "checks passed"
+//! notice. One fails (its `ExitStatus`): the agent is sent its name and the last lines of its
+//! output and starts a turn to fix it, at most `max_rounds` times per user message. A user
+//! message, or stopping the agent, cancels the checks.
 
 use std::collections::{BTreeSet, VecDeque};
 use std::path::{Path, PathBuf};

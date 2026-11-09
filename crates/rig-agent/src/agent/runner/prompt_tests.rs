@@ -25,16 +25,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-/// rig#2322 — the **blocking** surface enforces the same truncation
-/// contract as the streamed one.
-///
-/// The premise of the whole fix is that the two surfaces disagreeing is
-/// what let truncation surface as a blank answer, yet every other guard
-/// test drives the streamed surface. Until `MockTurn::with_finish_reason`
-/// existed the blocking mock could not report a reason at all, so
-/// `runner.rs`'s `.with_finish_reason(resp.finish_reason())` — and its
-/// propagation through `model_response` → `record_completion_call` → this
-/// guard — was never exercised. Deleting that one line failed nothing.
+/// The blocking surface enforces the same truncation contract as the
+/// streamed one, so the response's finish reason must reach the guard.
 #[tokio::test]
 async fn blocking_prompt_rejects_an_empty_truncated_turn() {
     let agent = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::from_contents(
@@ -55,8 +47,7 @@ async fn blocking_prompt_rejects_an_empty_truncated_turn() {
     );
 }
 
-/// rig#2322 — blocking counterpart of the reasoning-only case: the shape
-/// that motivated the predicate fix must be caught on both surfaces.
+/// The blocking surface also rejects a reasoning-only truncated turn.
 #[tokio::test]
 async fn blocking_prompt_rejects_a_reasoning_only_truncated_turn() {
     let agent = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::from_content(
@@ -825,7 +816,7 @@ async fn prompt_request_stops_cleanly_on_empty_terminal_turn() {
     validate_follow_up_tool_history(&requests[1]);
 }
 
-/// The identity fields are skipped when `None` (rig#2265), so a record
+/// The identity fields are skipped when `None`, so a record
 /// written without them loads with every identity field `None`.
 #[test]
 fn completion_call_without_identity_fields_deserializes() {

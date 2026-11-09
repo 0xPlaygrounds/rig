@@ -73,6 +73,39 @@ impl LanceDbVectorIndex {
         })
     }
 
+    /// Runs `req`'s nearest-neighbour query, projecting `columns`.
+    async fn search(
+        &self,
+        req: &VectorSearchRequest<LanceDBFilter>,
+        columns: Vec<String>,
+    ) -> Result<Vec<Value>, VectorStoreError> {
+        let prompt_embedding = self.model.embed_text(req.query()).await?;
+        let mut query = self
+            .table
+            .vector_search(prompt_embedding.vec)
+            .map_err(VectorStoreError::datastore)?
+            .limit(req.samples() as usize)
+            .distance_range(None, req.threshold().map(|x| x as f32))
+            .select(lancedb::query::Select::Columns(columns));
+        if let Some(filter) = req.filter() {
+            query = query.only_if(filter.clone().into_inner()?);
+        }
+        execute_query(&self.build_query(query)).await
+    }
+
+    /// The row's id column as text (a number id in its decimal form), refused
+    /// when it is missing or neither text nor a number.
+    fn row_id(&self, value: &Value) -> Result<String, VectorStoreError> {
+        match value.get(self.id_field.as_str()) {
+            Some(Value::String(id)) => Ok(id.clone()),
+            Some(Value::Number(id)) => Ok(id.to_string()),
+            _ => Err(VectorStoreError::MissingIdError(format!(
+                "row has no text or number `{}` column",
+                self.id_field
+            ))),
+        }
+    }
+
     /// Applies the configured search parameters. Probe and refinement settings
     /// apply only when approximate search is requested explicitly.
     fn build_query(&self, mut query: VectorQuery) -> VectorQuery {
@@ -435,8 +468,9 @@ impl VectorStoreIndex for LanceDbVectorIndex {
 
     /// Returns matches scored by distance, with embedding columns projected
     /// out. Errors when a row's distance is not finite, as for an L2 distance
-    /// past Float32, which LanceDB computes distances in. A row whose id column
-    /// is absent or non-textual gets a placeholder id.
+    /// past Float32, which LanceDB computes distances in, and with
+    /// `MissingIdError` when a row's id column is missing or neither text nor a
+    /// number.
     ///
     /// # Example
     /// ```no_run
@@ -464,73 +498,37 @@ impl VectorStoreIndex for LanceDbVectorIndex {
         &self,
         req: VectorSearchRequest<LanceDBFilter>,
     ) -> Result<Vec<VectorSearchResult<T>>, VectorStoreError> {
-        let prompt_embedding = self.model.embed_text(req.query()).await?;
         let schema = self
             .table
             .schema()
             .await
             .map_err(VectorStoreError::datastore)?;
 
-        let mut query = self
-            .table
-            .vector_search(prompt_embedding.vec.clone())
-            .map_err(VectorStoreError::datastore)?
-            .limit(req.samples() as usize)
-            .distance_range(None, req.threshold().map(|x| x as f32))
-            .select(lancedb::query::Select::Columns(filter_embeddings(&schema)));
-
-        if let Some(filter) = req.filter() {
-            query = query.only_if(filter.clone().into_inner()?);
-        }
-
-        execute_query(&self.build_query(query))
+        self.search(&req, filter_embeddings(&schema))
             .await?
             .into_iter()
-            .enumerate()
-            .map(|(i, value)| {
+            .map(|value| {
                 Ok(VectorSearchResult {
                     score: distance(&value, &self.id_field)?,
-                    id: match value.get(self.id_field.as_str()) {
-                        Some(Value::String(id)) => id.clone(),
-                        _ => format!("unknown{i}"),
-                    },
+                    id: self.row_id(&value)?,
                     document: serde_json::from_value(value).map_err(VectorStoreError::JsonError)?,
                 })
             })
             .collect()
     }
 
-    /// Like [`LanceDbVectorIndex::top_n`] but projects only the id column,
-    /// returning an empty id when the column is absent or non-textual.
+    /// Like [`LanceDbVectorIndex::top_n`] but projects only the id column.
     async fn top_n_ids(
         &self,
         req: VectorSearchRequest<LanceDBFilter>,
     ) -> Result<Vec<VectorSearchIdResult>, VectorStoreError> {
-        let prompt_embedding = self.model.embed_text(req.query()).await?;
-
-        let mut query = self
-            .table
-            .query()
-            .select(lancedb::query::Select::Columns(vec![self.id_field.clone()]))
-            .nearest_to(prompt_embedding.vec.clone())
-            .map_err(VectorStoreError::datastore)?
-            .distance_range(None, req.threshold().map(|x| x as f32))
-            .limit(req.samples() as usize);
-
-        if let Some(filter) = req.filter() {
-            query = query.only_if(filter.clone().into_inner()?);
-        }
-
-        execute_query(&self.build_query(query))
+        self.search(&req, vec![self.id_field.clone()])
             .await?
             .into_iter()
             .map(|value| {
                 Ok(VectorSearchIdResult {
                     score: distance(&value, &self.id_field)?,
-                    id: match value.get(self.id_field.as_str()) {
-                        Some(Value::String(id)) => id.clone(),
-                        _ => "".to_string(),
-                    },
+                    id: self.row_id(&value)?,
                 })
             })
             .collect()

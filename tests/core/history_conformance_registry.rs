@@ -158,18 +158,18 @@ fn every_provider_module_has_a_history_suite() {
     );
 }
 
-/// Every test `TESTS` names for an audit finding still exists.
+/// Every test `TESTS` names still exists.
 #[test]
 fn every_named_finding_test_exists() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let missing: Vec<String> = TESTS
         .iter()
-        .filter(|(file, test, _)| {
+        .filter(|(file, test)| {
             !std::fs::read_to_string(root.join(file))
                 .unwrap_or_default()
                 .contains(&format!("fn {test}("))
         })
-        .map(|(file, test, _)| format!("{file}::{test}"))
+        .map(|(file, test)| format!("{file}::{test}"))
         .collect();
     assert!(
         missing.is_empty(),

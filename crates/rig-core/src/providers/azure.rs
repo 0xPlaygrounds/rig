@@ -33,14 +33,10 @@ pub const GPT_4O: &str = "gpt-4o";
 pub const GPT_4O_MINI: &str = "gpt-4o-mini";
 /// `gpt-4o-realtime-preview` completion model
 pub const GPT_4O_REALTIME_PREVIEW: &str = "gpt-4o-realtime-preview";
-/// Conventional `gpt-4` deployment name; this constant does not select a turbo version.
-pub const GPT_4_TURBO: &str = "gpt-4";
 /// `gpt-4` completion model
 pub const GPT_4: &str = "gpt-4";
 /// `gpt-4-32k` completion model
 pub const GPT_4_32K: &str = "gpt-4-32k";
-/// `gpt-4-32k` completion model
-pub const GPT_4_32K_0613: &str = "gpt-4-32k";
 /// `gpt-3.5-turbo-16k` completion model
 pub const GPT_35_TURBO_16K: &str = "gpt-3.5-turbo-16k";
 

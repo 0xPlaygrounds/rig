@@ -1,16 +1,13 @@
-//! SP-06: a subagent answer cache. A `task` whose subagent only read files
-//! and listed or searched directories is recorded when its first turn
-//! answers: its task text (whitespace-normalized), its kind, model and tool
-//! set, its answer, the files it read with their content hashes and the
-//! files under each directory it listed or searched. A later `task` of the
-//! same agent with the same task, kind, model and tools is answered from
-//! the record, with no subagent, model call or tool call, while every
-//! recorded file has the same hash and every directory the same files.
+//! A subagent answer cache. A `task` whose subagent only read files and listed or searched
+//! directories is recorded when its first turn answers: its task text (whitespace-normalized),
+//! its kind, model and tool set, its answer, the files it read with their content hashes and
+//! the files under each directory it listed or searched. A later `task` of the same agent with
+//! the same task, kind, model and tools is answered from the record, with no subagent, model
+//! call or tool call, while every recorded file has the same hash and every directory the same
+//! files.
 //!
-//! The records are agent state saved with the session. `/subcache` lists
-//! them;
-//! `/subcache off|on|clear` turns the cache off or on for the session, or
-//! forgets the records.
+//! The records are agent state saved with the session. `/subcache` lists them; `/subcache
+//! off|on|clear` turns the cache off or on for the session, or forgets the records.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;

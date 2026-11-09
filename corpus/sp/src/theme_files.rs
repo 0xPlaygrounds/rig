@@ -1,19 +1,16 @@
-//! SP-08: theme files. Colour themes are small TOML files in
-//! `~/.config/rig/themes/`, beside the built-in `dark` and `light`; each
-//! key names a role ([`ThemeRole`]), not a widget. `/theme <name>` switches
-//! at once, `/theme` alone opens a picker that previews the highlighted
-//! theme and puts the old one back on Esc. The choice is kept in the
-//! user's plugin data across sessions, and editing the active theme's file
-//! applies it as it is saved; a file that does not read keeps the colours
-//! and says why once. With `NO_COLOR` set, no colours are drawn.
+//! Theme files. Colour themes are small TOML files in `~/.config/rig/themes/`, beside the
+//! built-in `dark` and `light`; each key names a role ([`ThemeRole`]), not a widget. `/theme
+//! <name>` switches at once, `/theme` alone opens a picker that previews the highlighted theme
+//! and puts the old one back on Esc. The choice is kept in the user's plugin data across
+//! sessions, and editing the active theme's file applies it as it is saved; a file that does
+//! not read keeps the colours and says why once. With `NO_COLOR` set, no colours are drawn.
 //!
-//! Other plugins colour their own panels by role from the [`Theme`]
-//! resource. The view's tints (the input, panels, boxes over the screen,
-//! code, alerts, a call's row by its state, the selection) are its own
-//! [`rig_tui::Theme`], which a theme file's tint roles set, each one it
-//! leaves out as the view chose it for the terminal. Its text has fixed
-//! ANSI colours, so this plugin recolours what its widgets drew between
-//! [`TuiSystems::Draw`] and [`TuiSystems::Render`].
+//! Other plugins colour their own panels by role from the [`Theme`] resource. The view's tints
+//! (the input, panels, boxes over the screen, code, alerts, a call's row by its state, the
+//! selection) are its own [`rig_tui::Theme`], which a theme file's tint roles set, each one it
+//! leaves out as the view chose it for the terminal. Its text has fixed ANSI colours, so this
+//! plugin recolours what its widgets drew between [`TuiSystems::Draw`] and
+//! [`TuiSystems::Render`].
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};

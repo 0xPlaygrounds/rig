@@ -1,5 +1,6 @@
 #![allow(clippy::disallowed_methods, reason = "test fixtures")]
 
+use crate::workspace::Root;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -57,14 +58,15 @@ fn tools_reach_a_host_path_through_its_transport() {
     std::fs::write(home.join("strata/src/lib.rs"), "fn old() {}\n").ok();
     std::fs::write(dir.join("local/notes.txt"), "here\n").ok();
     let bench = Remote::new("bench", transport(&home), Launcher::default);
-    let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
-    let base = Some(dir.join("local"));
+    let root = Root {
+        workspace: Arc::new(Hosts::new(Arc::new(Local), bench)),
+        base: Some(dir.join("local")),
+        confine: false,
+    };
     let file = "bench:~/strata/src/lib.rs";
 
     let read = Read {
-        workspace: workspace.clone(),
-        base: base.clone(),
-        confine: false,
+        root: root.clone(),
         seen: crate::Seen::default(),
     };
     let (shown, context) = call(&read, ReadArgs::new("bench:~/strata/src/../src/lib.rs"));
@@ -91,9 +93,7 @@ fn tools_reach_a_host_path_through_its_transport() {
     );
 
     let edit = Edit {
-        workspace: workspace.clone(),
-        base: base.clone(),
-        confine: false,
+        root: root.clone(),
         seen: crate::Seen::default(),
     };
     let args = EditArgs::new(file, [Replacement::new("old", "new")]);
@@ -108,17 +108,13 @@ fn tools_reach_a_host_path_through_its_transport() {
     let changed: Vec<&str> = changed.0.iter().map(|it| it.path.as_str()).collect();
     assert_eq!(changed, [file]);
 
-    let search = Search {
-        workspace: workspace.clone(),
-        base: base.clone(),
-        confine: false,
-    };
+    let search = Search { root: root.clone() };
     let (found, _) = call(&search, SearchArgs::new("fn new").in_path("bench:~/strata"));
     let found = found.unwrap_or_default();
     assert_eq!(found, "bench:~/strata/src/lib.rs:1: fn new() {}");
 
     let shell = Shell {
-        workspace,
+        workspace: root.workspace,
         launcher: Launcher::default().in_dir(dir.join("local")),
         ..Shell::default()
     };
@@ -144,9 +140,7 @@ fn a_failed_transport_fails_the_call() {
     );
     let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), down));
     let read = Read {
-        workspace: workspace.clone(),
-        base: None,
-        confine: false,
+        root: Root::from(workspace.clone()),
         seen: crate::Seen::default(),
     };
     let (failed, _) = call(&read, ReadArgs::new("down:/etc/hostname"));
@@ -249,27 +243,19 @@ fn each_file_operation_is_one_transport_call() {
     let file = "bench:~/strata/src/lib.rs";
     let seen = crate::Seen::default();
     let read = Read {
-        workspace: workspace.clone(),
-        base: None,
-        confine: false,
+        root: Root::from(workspace.clone()),
         seen: seen.clone(),
     };
     let edit = Edit {
-        workspace: workspace.clone(),
-        base: None,
-        confine: false,
+        root: Root::from(workspace.clone()),
         seen: seen.clone(),
     };
     let write = crate::Write {
-        workspace: workspace.clone(),
-        base: None,
-        confine: false,
+        root: Root::from(workspace.clone()),
         seen,
     };
     let search = Search {
-        workspace,
-        base: None,
-        confine: false,
+        root: Root::from(workspace),
     };
     let (shown, _) = call(&read, ReadArgs::new(file));
     let read_calls = calls(&log);
@@ -354,9 +340,7 @@ fn a_read_of_some_lines_is_sent_only_those() {
     std::fs::write(home.join("strata/short.txt"), "one\ntwo").ok();
     let bench = Remote::new("bench", metered(&home, &log), Launcher::default);
     let read = Read {
-        workspace: Arc::new(Hosts::new(Arc::new(Local), bench)),
-        base: None,
-        confine: false,
+        root: Root::from(Arc::new(Hosts::new(Arc::new(Local), bench)) as Arc<dyn Workspace>),
         seen: crate::Seen::default(),
     };
     let args = ReadArgs::new("bench:~/strata/long.log").lines(10_000, 2);
@@ -396,15 +380,11 @@ fn an_edit_after_a_read_of_some_lines_of_a_small_file_is_one_call() {
     let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
     let seen = crate::Seen::default();
     let read = Read {
-        workspace: workspace.clone(),
-        base: None,
-        confine: false,
+        root: Root::from(workspace.clone()),
         seen: seen.clone(),
     };
     let edit = Edit {
-        workspace,
-        base: None,
-        confine: false,
+        root: Root::from(workspace),
         seen,
     };
     let file = "bench:~/strata/src/lib.rs";
@@ -451,9 +431,7 @@ fn a_host_runs_a_few_file_operations_at_once() {
     let bench = Remote::new("bench", transport, Launcher::default);
     let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
     let read = Read {
-        workspace,
-        base: None,
-        confine: false,
+        root: Root::from(workspace),
         seen: crate::Seen::default(),
     };
     let shown: Vec<Option<String>> = std::thread::scope(|scope| {
@@ -518,9 +496,7 @@ fn a_failed_transport_is_tried_again_for_a_read_only() {
         let bench = Remote::new("bench", flaky, Launcher::default);
         let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
         let read = Read {
-            workspace,
-            base: None,
-            confine: false,
+            root: Root::from(workspace),
             seen: crate::Seen::default(),
         };
         let (read, _) = call(&read, ReadArgs::new("bench:~/strata/src/lib.rs"));
@@ -595,15 +571,11 @@ fn a_write_cut_off_mid_way_says_whether_it_happened() {
         let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
         let seen = crate::Seen::default();
         let read = Read {
-            workspace: workspace.clone(),
-            base: None,
-            confine: false,
+            root: Root::from(workspace.clone()),
             seen: seen.clone(),
         };
         let edit = Edit {
-            workspace,
-            base: None,
-            confine: false,
+            root: Root::from(workspace),
             seen,
         };
         let file = "bench:~/strata/src/lib.rs";
@@ -730,9 +702,7 @@ fn a_remote_home_file_is_listed_as_named() {
     std::fs::write(home.join("notes.txt"), "remote\n").ok();
     let listed = Remote::new("solo", transport(&home), Launcher::default).map(|remote| {
         let list = List {
-            workspace: Arc::new(remote),
-            base: None,
-            confine: false,
+            root: Root::from(Arc::new(remote) as Arc<dyn Workspace>),
         };
         call(&list, ListArgs::new("~/notes.txt")).0
     });
@@ -765,9 +735,7 @@ fn what_could_not_be_read_there_is_not_taken_for_absent() {
     let bench = Remote::new("bench", refusing, Launcher::default);
     let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
     let search = Search {
-        workspace: workspace.clone(),
-        base: None,
-        confine: false,
+        root: Root::from(workspace.clone()),
     };
     let (found, _) = call(&search, SearchArgs::new("needle").in_path("bench:~/strata"));
     let found = found.unwrap_or_default();
@@ -1023,21 +991,15 @@ fn a_write_there_to_a_link_is_refused() {
     let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
     let seen = crate::Seen::default();
     let read = Read {
-        workspace: workspace.clone(),
-        base: None,
-        confine: false,
+        root: Root::from(workspace.clone()),
         seen: seen.clone(),
     };
     let edit = Edit {
-        workspace: workspace.clone(),
-        base: None,
-        confine: false,
+        root: Root::from(workspace.clone()),
         seen: seen.clone(),
     };
     let write = crate::Write {
-        workspace,
-        base: None,
-        confine: false,
+        root: Root::from(workspace),
         seen,
     };
     let file = "bench:~/strata/src/lib.rs";

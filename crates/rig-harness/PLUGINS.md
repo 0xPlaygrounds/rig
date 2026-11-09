@@ -513,8 +513,8 @@ fn draw_count(mut batch: ResMut<RenderBatch>) {
 The batch's `pane`, `agent`, and `width` describe this layout. A system can
 select a pane by its entity or query a marker on it; `pane = None` means an
 export. The typed `tools_mut`, `entries_mut`, `contents_mut`, `asides_mut`,
-`calls_mut`, and `messages_mut` iterators select inputs without depending on
-live effect entities. `requests` exposes every request and output by its typed
+and `calls_mut` iterators select inputs without depending on live effect
+entities. `requests` exposes every request and output by its typed
 `RenderKey`. Unchanged messages stay cached and do not enter the schedule.
 A cached item is drawn again only when its inputs change, so after changing
 anything else a look reads, or adding or removing a look system at runtime,
@@ -1890,8 +1890,7 @@ effect, which a holder may take as "stop waiting".
   through }` announces each fork made to everyone. `rig_basics::sessions`'
   `/fork`, `/agents` and rewind are built on it, and show the fork, which
   makes it the session's `CurrentAgent`.
-- **Edit a stopped one:** `edit_stopped(&stores, &paths.0, &dir, |session|
-  ..)` under its lock; `PluginData::of(&stores, &dir)` opens its plugin files.
+- **Open a stopped one's plugin files:** `PluginData::of(&stores, &dir)`.
 - **Delete:** `DeleteSession(id)`, finished by the next start if a crash cut
   it short (`SessionDeleted`, else `SessionDeleteFailed`). It checks that no
   rig runs the session, then removes it without holding the lock, so a session
@@ -1999,8 +1998,7 @@ fn made(made: On<Add<ForkResult>>, results: Query<(&ForkResult, &RequestOf)>, mu
 A plugin keeps any serde value with the session under a key of its own:
 `app.saved_as::<T>("goals.goal")` logs a saved resource or agent component
 under that key, not its type's path. A program without Bevy reads it typed,
-`Session::value::<T>(key)` (an agent's, `SavedAgent::value`), and writes a
-stopped session's through `edit_stopped` (which keeps its listing).
+`Session::value::<T>(key)` (an agent's, `SavedAgent::value`).
 `.listed()` also copies it into the session's listing (`SessionMeta.listed`;
 keep it small), so `/resume`, `SessionMeta::read` and a `SessionPicker`'s
 filter show and find it without reading a log.
@@ -2334,8 +2332,7 @@ model's, are drawn by systems selecting `contents_mut(ContentKind::Image)`.
 The input's `view()` gives a `ContentView` (`default_lines()` is `[image]`),
 each block an item `TranscriptItem::Content(id, index)` with its rows.
 `RenderOutput::decorate(name, lines)` appends named lines after a call, an item
-`Decoration(call, name)`. For messages, use `messages_mut()` and the same
-method to produce `MessageDecoration(message, name)`. `TuiFrame`, written in `TuiSystems::Render`,
+`Decoration(call, name)`. `TuiFrame`, written in `TuiSystems::Render`,
 says where the frame drew each panel (`area`) and row (`screen_row`) and
 what an overlay `covered`, for a plugin that writes to the terminal
 itself, such as an image over rows its render system left blank, and

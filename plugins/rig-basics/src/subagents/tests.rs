@@ -17,7 +17,8 @@ use rig_ecs::fork::{ForkAgent, ForkedFrom};
 use rig_ecs::session_log::{SessionLog, SessionStore};
 use rig_harness::rig_memory::{Files, LogWriteError, Store};
 use rig_harness_test_support::{
-    MemoryStore, app_on, calls, commit_message, connect, reply, run_until, start_call,
+    MemoryStore, app_on, calls, commit_message, connect, hold_turn_calls, reply, run_until,
+    start_call,
 };
 
 /// Each message delivered: the agent it went to, the request it names, its
@@ -107,9 +108,7 @@ impl Session {
     fn task(&mut self, id: &str) -> Entity {
         let args = json!({ "description": id, "prompt": "Agree on a name.", "peers": true });
         self.call(self.parent, TASK, id, args);
-        let spawned = self.app.world().get::<Spawned>(self.parent);
-        let child = spawned.and_then(|spawned| spawned.iter().last());
-        child.unwrap_or(Entity::PLACEHOLDER)
+        self.last_child(self.parent)
     }
 
     /// Runs passes of the stages, and nothing else of a frame, until
@@ -129,6 +128,12 @@ impl Session {
         spawned
             .map(|spawned| spawned.iter().collect())
             .unwrap_or_default()
+    }
+
+    /// The subagent or helper `agent` spawned last.
+    fn last_child(&self, agent: Entity) -> Entity {
+        let child = self.children(agent).last().copied();
+        child.unwrap_or(Entity::PLACEHOLDER)
     }
 
     /// The short id of `agent`.
@@ -272,8 +277,7 @@ fn a_subagents_question_is_a_message_and_only_its_final_answer_reports() {
     let mut session = Session::new(&MemoryStore::default(), Some(&unread));
     let args = json!({ "description": "Fix", "prompt": "Fix the bug." });
     session.call(session.parent, TASK, "t1", args);
-    let child = session.children(session.parent).last().copied();
-    let child = child.unwrap_or(Entity::PLACEHOLDER);
+    let child = session.last_child(session.parent);
     let (parent_id, child_id) = (session.short(session.parent), session.short(child));
     // The subagent asks the parent which file, waits for the answer, and
     // reports once it is done.
@@ -328,8 +332,7 @@ fn a_correction_reaches_a_working_subagent_with_its_next_model_call() {
     });
     let args = json!({ "description": "Build", "prompt": "Build it with plan A." });
     session.call(session.parent, TASK, "t1", args);
-    let child = session.children(session.parent).last().copied();
-    let child = child.unwrap_or(Entity::PLACEHOLDER);
+    let child = session.last_child(session.parent);
     let child_model = MockCompletionModel::from_stream_turns([
         calls("s1", "slow", json!({})),
         reply("Built with plan B."),
@@ -358,13 +361,6 @@ fn a_correction_reaches_a_working_subagent_with_its_next_model_call() {
     assert_eq!(child_model.request_count(), 2);
     let reports = session.to(session.parent);
     assert_eq!(reports, [("m1", DeliveryMode::Steer, "Built with plan B.")]);
-}
-
-/// Holds every model call of a turn, as an approval nobody gave.
-fn hold_turn_calls(calls: Query<Entity, (ReadyToStart, With<TurnCall>)>, mut commands: Commands) {
-    for call in &calls {
-        commands.spawn(HoldOf(call));
-    }
 }
 
 #[test]
@@ -538,8 +534,7 @@ fn a_task_subagents_subagents_subagent_starts() {
         let args = json!({ "description": format!("d{depth}"), "prompt": "Go one deeper." });
         let said = session.call(agent, TASK, &format!("t{depth}"), args);
         assert!(said.starts_with("Started subagent"), "{depth}: {said}");
-        let child = session.children(agent).last().copied();
-        agent = child.unwrap_or(Entity::PLACEHOLDER);
+        agent = session.last_child(agent);
     }
     let world = session.app.world();
     let lineage = std::iter::successors(Some(agent), |&agent| {
@@ -595,13 +590,11 @@ fn what_a_parent_knows_of_the_environment_goes_to_every_subagent_below_it() {
     let known = "No local toolchain; build on the remote with `koh exec bench -- CMD`.";
     let args = json!({ "description": "ta", "prompt": "Fix it.", "environment": known });
     session.call(session.parent, TASK, "t1", args);
-    let child = session.children(session.parent).last().copied();
-    let child = child.unwrap_or(Entity::PLACEHOLDER);
+    let child = session.last_child(session.parent);
     // Its own subagent, started without one, gets the same.
     let args = json!({ "description": "tb", "prompt": "Test it." });
     session.call(child, TASK, "t2", args);
-    let grandchild = session.children(child).last().copied();
-    let grandchild = grandchild.unwrap_or(Entity::PLACEHOLDER);
+    let grandchild = session.last_child(child);
     let world = session.app.world_mut();
     let mut sections = world.query::<(&SectionOf, &PromptSection)>();
     let mut told = |agent: Entity| {
@@ -645,8 +638,10 @@ fn a_subagent_made_in_a_limited_run_keeps_its_parents_own_access() {
     let args = json!({ "description": "Look", "prompt": "Look around." });
     let said = session.call(session.parent, TASK, "t1", args);
     assert!(said.starts_with("Started subagent"), "{said}");
-    let child = session.children(session.parent).last().copied();
-    let access = child.and_then(|child| session.app.world().get::<ToolAccess>(child));
+    let access = session
+        .app
+        .world()
+        .get::<ToolAccess>(session.last_child(session.parent));
     // A later run without the run's tool limit gives it every tool its
     // parent keeps.
     let kept = access
@@ -688,8 +683,10 @@ fn a_task_naming_no_model_or_tools_gets_the_defaults_its_description_names() {
     let args = json!({ "description": "Look", "prompt": "Look around." });
     let started = session.call(session.parent, TASK, "t1", args);
     assert!(started.starts_with("Started subagent"), "{started}");
-    let child = session.children(session.parent).last().copied();
-    let access = child.and_then(|child| session.app.world().get::<ToolAccess>(child));
+    let access = session
+        .app
+        .world()
+        .get::<ToolAccess>(session.last_child(session.parent));
     let only_look = access.is_some_and(|access| access.allows("look") && !access.allows("edit"));
     assert!(only_look, "{access:?}");
 
@@ -756,9 +753,8 @@ fn a_plugin_shapes_a_tasks_subagent_through_the_stages_and_the_record_shows_it()
     let said = session.call(session.parent, TASK, "t1", args);
     assert!(said.starts_with("Started subagent"), "{said}");
 
-    let child = session.children(session.parent).last().copied();
+    let child = session.last_child(session.parent);
     let world = session.app.world();
-    let child = child.unwrap_or(Entity::PLACEHOLDER);
     let access = world.get::<ToolAccess>(child);
     let only_look =
         access.and_then(ToolAccess::names) == Some(&["look", MESSAGE, WAIT].map(str::to_owned)[..]);
@@ -943,8 +939,7 @@ fn a_helper_works_only_for_its_plugin_and_a_stopped_subagent_reports_why() {
     // marks every report it reads.
     let args = json!({ "description": "Count", "prompt": "Count the files." });
     session.call(session.parent, TASK, "t1", args);
-    let child = session.children(session.parent).last().copied();
-    let child = child.unwrap_or(Entity::PLACEHOLDER);
+    let child = session.last_child(session.parent);
     let budget = move |calls: Query<(Entity, &ForAgent), (With<TurnCall>, ReadyToStart)>,
                        mut seen: Local<HashSet<Entity>>,
                        mut commands: Commands| {
@@ -1068,8 +1063,7 @@ fn a_fork_of_a_working_subagent_never_reports_on_its_task() {
     let mut session = Session::new(&MemoryStore::default(), Some(&parent_model));
     let args = json!({ "description": "Kid", "prompt": "Reply ORIGINAL." });
     session.call(session.parent, TASK, "t1", args);
-    let child = session.children(session.parent).last().copied();
-    let child = child.unwrap_or(Entity::PLACEHOLDER);
+    let child = session.last_child(session.parent);
     let child_model = MockCompletionModel::from_stream_turns([reply("ORIGINAL")]);
     session.answer_by(child, &child_model);
     let fork = fork(&mut session, child);
@@ -1314,8 +1308,7 @@ fn a_report_the_parents_log_failed_to_keep_reaches_it_once_after_the_restore() {
         }
         let args = json!({ "description": "Fix", "prompt": "Fix the bug." });
         session.call(session.parent, TASK, "t1", args);
-        let child = session.children(session.parent).last().copied();
-        let child = child.unwrap_or(Entity::PLACEHOLDER);
+        let child = session.last_child(session.parent);
         let child_id = session.app.world().get::<AgentId>(child).cloned();
         session.app.update();
         // The subagent answers; its log keeps the answer, and the parent's
@@ -1562,8 +1555,7 @@ fn a_peer_without_the_tools_to_reach_its_peers_is_not_told_to() {
     drop(session);
     let mut session = Session::new(&store, None);
     session.passes(|_| false);
-    let child = session.children(session.parent).last().copied();
-    let child = child.unwrap_or(Entity::PLACEHOLDER);
+    let child = session.last_child(session.parent);
     assert_eq!(told(&mut session, child), (true, false));
 }
 
@@ -1598,8 +1590,7 @@ fn peers_and_an_access_set_together_give_one_role_that_narrowing_removes() {
     let mut session = Session::new(&MemoryStore::default(), Some(&parent));
     let args = json!({ "description": "Lone", "prompt": "Work alone." });
     session.call(session.parent, TASK, "lone", args);
-    let child = session.children(session.parent).last().copied();
-    let child = child.unwrap_or(Entity::PLACEHOLDER);
+    let child = session.last_child(session.parent);
     let roles = |session: &mut Session| {
         let world = session.app.world_mut();
         let mut roles = world.query::<(&Name, &SectionOf)>();

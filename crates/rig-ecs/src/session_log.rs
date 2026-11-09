@@ -245,7 +245,6 @@ pub fn open_session(world: &mut World, store: Arc<dyn Store>) -> Result<(), Sess
 /// before the restore) is announced all the same.
 #[derive(Message, Clone, Debug)]
 pub struct ConversationChanged {
-    /// The agent.
     pub agent: Entity,
     /// The change: what changed, who made it and when.
     pub change: ChangeRecord,

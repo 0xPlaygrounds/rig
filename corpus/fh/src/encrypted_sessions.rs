@@ -1,26 +1,19 @@
-//! FH-18: encrypted sessions at rest.
+//! Encrypted sessions at rest. With `RIG_HOME/crypt.toml` saying so (`enabled = true`, or `projects
+//! = ["/path"]` for some projects), every session's store, this one's and those `/resume` lists, is
+//! a [`CryptStore`]. Every file the harness and its plugins keep of a session (agent logs, saved
+//! plugin state, blobs, the effect log, the listing, the terminal view's notices and draft, a
+//! plugin's own files) is sealed with ChaCha20-Poly1305 under a key Argon2id derives from the
+//! passphrase, the secret `crypt`. The launcher asks for it once when started at a terminal, and a
+//! scripted run takes it from `RIG_SECRET_CRYPT`. A run without it, or with a wrong one, is refused
+//! and keeps nothing. A file that does not authenticate fails to load with [`TAMPERED`] and is left
+//! as it is. What rig keeps plain by path (cut tool output, pasted images, the text log) is kept
+//! nowhere, and typed prompts stay out of the prompt history.
 //!
-//! With `RIG_HOME/crypt.toml` saying so (`enabled = true`, or `projects =
-//! ["/path"]` for some projects), every session's store, this one's and
-//! those `/resume` lists, is a [`CryptStore`]: every file the harness and
-//! its plugins keep of a session (agent logs, saved plugin state, blobs,
-//! the effect log, the listing, the terminal view's notices and draft, a
-//! plugin's own files) is sealed with ChaCha20-Poly1305 under a key
-//! Argon2id derives from the passphrase,
-//! the secret `crypt`: the launcher asks for it once when started at a
-//! terminal, and a scripted run takes it from `RIG_SECRET_CRYPT`. A run
-//! without it, or with a wrong one, is refused and keeps nothing. A file
-//! that does not authenticate fails to load with [`TAMPERED`] and is left
-//! as it is. What rig keeps plain by path (cut tool output, pasted images,
-//! the text log) is kept nowhere, and typed prompts stay out of the prompt
-//! history.
-//!
-//! A session is told sealed or plain by its logs' header: a plain session
-//! of a project that is not encrypted opens as it is, and one of a project
-//! that is is refused until `rig crypt migrate` encrypts the plain
-//! sessions in place. `rig crypt rekey` seals every session again under
-//! the passphrase in `RIG_SECRET_CRYPT_NEW`, and `rig crypt list` shows
-//! each session's date and size without the key.
+//! A session is told sealed or plain by its logs' header: a plain session of a project that is not
+//! encrypted opens as it is, and one of a project that is is refused until `rig crypt migrate`
+//! encrypts the plain sessions in place. `rig crypt rekey` seals every session again under the
+//! passphrase in `RIG_SECRET_CRYPT_NEW`, and `rig crypt list` shows each session's date and size
+//! without the key.
 
 use std::fs;
 use std::io;

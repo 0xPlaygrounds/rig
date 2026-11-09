@@ -21,7 +21,7 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
 use rig_harness_protocol::{
-    AgentDescription, Home, SessionId, config, env, first_errors, secret_variables,
+    AgentDescription, Home, SessionId, config, env, first_errors, without_secrets,
 };
 
 use super::project::{self, PACKAGE, RigSource};
@@ -247,13 +247,11 @@ fn artifact(home: &Home) -> PathBuf {
 }
 
 /// A process the launcher starts that is not the agent, such as cargo or
-/// `stty`: without any secret ([`secret_variables`]), which a user who
+/// `stty`: without any secret ([`without_secrets`]), which a user who
 /// exported one for a headless run gave the agent alone.
 pub fn child(program: impl AsRef<OsStr>) -> Command {
     let mut command = Command::new(program);
-    for secret in secret_variables() {
-        command.env_remove(secret);
-    }
+    without_secrets(&mut command);
     command
 }
 

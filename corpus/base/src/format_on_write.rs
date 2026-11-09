@@ -1,13 +1,10 @@
-//! Format and lint on every write (spec `33-format-on-write.md`).
-//!
-//! Each `write` and `edit` call is wrapped, as it is admitted, in a layer
-//! that runs once the tool answered: on a success it runs the written
-//! file's formatter, then its linter, chosen by its extension in
-//! [`FormatOnWrite`], and appends what they did to the result, which stays
-//! a success: "(formatted with rustfmt)" and the changed lines as they now
-//! read, a formatter's failure (the file is then put back as written), or
-//! the linter's diagnostics. The call settles only once they are done, so
-//! a later `read` sees the formatted file.
+//! Format and lint on every write. Each `write` and `edit` call is wrapped, as it is admitted,
+//! in a layer that runs once the tool answered: on a success it runs the written file's
+//! formatter, then its linter, chosen by its extension in [`FormatOnWrite`], and appends what
+//! they did to the result, which stays a success: "(formatted with rustfmt)" and the changed
+//! lines as they now read, a formatter's failure (the file is then put back as written), or the
+//! linter's diagnostics. The call settles only once they are done, so a later `read` sees the
+//! formatted file.
 
 use std::collections::HashMap;
 use std::fmt::Write as _;
@@ -19,8 +16,9 @@ use rig_harness::rig_core::error::ErrorReport;
 use rig_harness::rig_core::serve::{AfterServe, BeforeServe, Intercept};
 use rig_harness::rig_core::tool::{ExitStatus, ToolOutput};
 use rig_harness::rig_ecs::effects::Handler;
-use rig_tools::fs::{resolve, write_atomic};
+use rig_tools::fs::write_atomic;
 use rig_tools::process::Launcher;
+use rig_tools::workspace::{Local, Workspace};
 use rig_tools::{Edit, Shell, ShellArgs, ShellRun, Write};
 use serde::Deserialize;
 
@@ -159,7 +157,13 @@ impl Intercept for Formatting {
         if !result.is_success() {
             return AfterServe::Keep;
         }
-        let notes = self.check(&resolve(self.base.as_deref(), &path)).await;
+        let notes = self
+            .check(&<dyn Workspace>::resolve(
+                &Local,
+                self.base.as_deref(),
+                &path,
+            ))
+            .await;
         if notes.is_empty() {
             return AfterServe::Keep;
         }

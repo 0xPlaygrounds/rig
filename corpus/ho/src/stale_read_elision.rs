@@ -1,13 +1,8 @@
-//! Plugin corpus (held-out): H06: Elide superseded file reads from requests
-//! (spec `H06-stale-read-elision.md`).
-//!
-//! Each turn's model request, never the stored conversation, sends a
-//! one-line stub in place of a `read` result from an earlier turn that a
-//! later read of the same file covers, or that a later successful `edit` or
-//! `write` of the file made stale. The calls stay, so every call keeps its
-//! result. A Prepare system edits the request as it is admitted, before
-//! compaction measures it; `/elided` says what the agent's last request
-//! stubbed.
+//! Elide superseded file reads from requests. Each turn's model request, never the stored
+//! conversation, sends a one-line stub in place of a `read` result from an earlier turn that a
+//! later read of the same file covers, or that a later successful `edit` or `write` of the file
+//! made stale. The calls stay, so every call keeps its result. The request is edited before
+//! compaction measures it. `/elided` says what the agent's last request stubbed.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -18,7 +13,7 @@ use rig_harness::rig_core::completion::tokens_label;
 use rig_harness::rig_core::message::{CallId, Message, ToolResult, ToolResultContent};
 use rig_harness::rig_core::tool::Tool;
 use rig_memory::{HeuristicTokenCounter, TokenCounter};
-use rig_tools::fs::resolve;
+use rig_tools::workspace::{Local, Workspace};
 use rig_tools::{Edit, EditArgs, Read, ReadArgs, Write, WriteArgs};
 use serde_json::{Map, Value};
 
@@ -131,7 +126,7 @@ fn file_result(
     };
     Some(FileResult {
         call: result.call.clone(),
-        file: resolve(dir, &path),
+        file: <dyn Workspace>::resolve(&Local, dir, &path),
         path,
         access,
     })

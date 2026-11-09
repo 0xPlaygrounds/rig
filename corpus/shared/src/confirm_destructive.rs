@@ -1,14 +1,10 @@
-//! Plugin corpus: 01. Confirm destructive shell commands (spec
-//! `01-confirm-destructive.md`).
-//!
-//! A Gate system sees each `shell` call when it is about to run. A command
-//! that matches no [`DestructivePatterns`], or a pattern the user allowed
-//! for the session ([`SessionAllowances`]), runs as the `shell` tool's
-//! call. One that matches is held by an [`Ask`] that any front answers:
-//! allow it once, allow its pattern for the session, or deny it (a line of
-//! text denies it with that reason). With nobody to answer, it is refused
-//! at once. The user's own patterns are the `[confirm]` table of
-//! `settings.toml`: `patterns = ['\bterraform\s+destroy\b']`.
+//! Confirm destructive shell commands. A Gate system sees each `shell` call when it is about to
+//! run. A command that matches no [`DestructivePatterns`], or a pattern the user allowed for the
+//! session ([`SessionAllowances`]), runs as the `shell` tool's call. One that matches is held by an
+//! [`Ask`] that any front answers: allow it once, allow its pattern for the session, or deny it (a
+//! line of text denies it with that reason). With nobody to answer, it is refused at once. The
+//! user's own patterns are the `[confirm]` table of `settings.toml`: `patterns =
+//! ['\bterraform\s+destroy\b']`.
 
 use bevy_log::warn;
 use regex::Regex;

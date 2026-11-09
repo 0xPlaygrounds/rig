@@ -1,29 +1,19 @@
 //! Execution and format contracts shared by the raw-capture matrices.
 //!
 //! The matrices under `tests/providers/*/raw_capture_matrix.rs`,
-//! `raw_stream_capture_matrix.rs` and `raw_completion_parity_matrix.rs` all
-//! do the same three things: run one recorded turn, park what it produced,
-//! and compare the normalized view against the recorded bytes in the
-//! vocabulary of the provider's wire format. The first is the same operation
-//! for every provider and lives here; the third is the same operation for
-//! every provider *of one format* and lives in [`chat`] and [`responses`].
-//! Everything else — the model, the request, the fixture premises, and what a
-//! particular provider puts in `raw` that nothing normalizes — stays in the
-//! cell, where a reader can see it.
+//! `raw_stream_capture_matrix.rs` and `raw_completion_parity_matrix.rs` each
+//! run one recorded turn and compare its normalized view against the recorded
+//! bytes. Running the turn is the same for every provider and lives here;
+//! comparing is the same for every provider of one wire format and lives in
+//! [`chat`] and [`responses`]. The model, request, fixture premises and
+//! provider-specific `raw` fields stay in each cell.
 //!
-//! Two things deliberately do **not** move here.
-//!
-//! The cassette wrapper call stays at each `#[tokio::test]` site with its
-//! scenario as a string literal: `crates/rig-cassette/tests/common/cassette_safety.rs` discovers
-//! fixtures by parsing that literal out of the wrapper call's first argument,
-//! so a hoisted or variable scenario would orphan the cassette. The execution
-//! helpers below are therefore written to be the *body* passed to that
-//! wrapper, never its caller.
-//!
-//! Expected values stay independent of the code that produced the actual
-//! result: every assertion here compares a normalized field against recorded
-//! bytes or against the provider-native record the cell hands it. Nothing
-//! here re-derives an expectation by running the decoder under test.
+//! The helpers here are the body passed to the cassette wrapper, never its
+//! caller, because `crates/rig-cassette/tests/common/cassette_safety.rs` finds
+//! fixtures by parsing the scenario literal out of the wrapper call at each
+//! `#[tokio::test]` site. Assertions compare normalized fields against recorded
+//! bytes or the provider-native record a cell passes in, never against an
+//! expectation re-derived by the decoder under test.
 
 pub mod chat;
 pub mod responses;

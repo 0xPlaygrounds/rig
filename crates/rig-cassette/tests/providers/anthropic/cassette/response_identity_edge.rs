@@ -1,4 +1,4 @@
-//! Adversarial response-identity coverage (rig#2265 / PR #2313 follow-up):
+//! Adversarial response-identity coverage:
 //! feature collisions, failure/recovery paths, and replay semantics, chosen
 //! because a plausible implementation error would make each cell fail.
 

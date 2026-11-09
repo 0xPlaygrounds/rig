@@ -14,8 +14,6 @@ use rig_ecs::model::ReasoningSetting;
 use rig_ecs::session_log::{SessionLog, SessionLogPlugin, SessionStore};
 use rig_harness_protocol::{Home, Invocation, SessionDir, SessionId, StartReason};
 use rig_harness_test_support::{commit_message, first_agent, scratch_home};
-use rig_memory::migration::KEPT;
-use rig_memory::migration::testing::{self, SYNTHETIC};
 use rig_memory::{DirStore, Files, MemoryStore, SessionMeta, Store, Strings, save};
 
 use super::{
@@ -297,46 +295,6 @@ fn resuming_a_session_an_older_rig_saved_changes_none_of_its_bytes() {
         assert!(logged.starts_with("this run\n"), "{logged}");
         fs::remove_dir_all(run.path()).ok();
     }
-    fs::remove_dir_all(home.root()).ok();
-}
-
-/// A session in an earlier format a step of the chain starts from is
-/// migrated through its store as the run opens it, and restored; the
-/// store keeps a copy of it as it was. The chain of this crate's tests
-/// starts from the synthetic format.
-#[test]
-fn resuming_a_session_in_an_earlier_format_migrates_and_restores_it() {
-    let home = scratch_home("rig-session-migrated");
-    let session = home.session(&SessionId::generate());
-    let written = dir_store(&session).map(|store| testing::write_fixture(&store));
-    assert!(matches!(written, Some(Ok(()))), "{written:?}");
-    session.mark_saved().ok();
-
-    let mut app = App::new();
-    app.insert_resource(RigHome(home.clone()))
-        .insert_resource(SessionPaths(session.clone()))
-        .add_plugins((TaskPoolPlugin::default(), AgentPlugin, SessionLogPlugin))
-        .add_plugins(SessionPlugin);
-    app.finish();
-    app.update();
-    app.update();
-    let stored = app.world().contains_resource::<SessionStore>();
-    let mut conversations = app.world_mut().query::<&Conversation>();
-    let restored = conversations
-        .iter(app.world())
-        .any(|conversation| conversation.messages().len() == 2);
-    drop(app);
-    assert!(stored && restored, "stored {stored}, restored {restored}");
-    let store = dir_store(&session);
-    let read = store
-        .as_ref()
-        .map(|store| rig_memory::Session::read(store).is_ok());
-    assert_eq!(read, Some(true));
-    let files = store
-        .and_then(|store| store.files().ok())
-        .unwrap_or_default();
-    let kept = format!("{KEPT}{SYNTHETIC}/logs/agent.jsonl");
-    assert!(files.contains(&kept), "{files:?}");
     fs::remove_dir_all(home.root()).ok();
 }
 
@@ -899,11 +857,11 @@ impl rig_memory::Rewrite for Secret {
     }
 }
 
-/// An edit and a rewrite of a stopped session keep its listing, as a
-/// running rig does: a listed value set or rewritten is listed (an unlisted
-/// one is not), the message count follows, and `updated` moves on.
+/// A rewrite of a stopped session keeps its listing, as a running rig
+/// does: a listed value rewritten is listed (an unlisted one is not), the
+/// message count follows, and `updated` moves on.
 #[test]
-fn an_edit_or_a_rewrite_of_a_stopped_session_keeps_its_listing() {
+fn a_rewrite_of_a_stopped_session_keeps_its_listing() {
     let home = scratch_home("rig-stopped-listing");
     let (Ok(here), Ok(there)) = (
         "1700000000-41".parse::<SessionId>(),
@@ -918,8 +876,15 @@ fn an_edit_or_a_rewrite_of_a_stopped_session_keeps_its_listing() {
     let Some(store) = store else {
         return;
     };
-    let mut said = conversation::Conversation::from_messages([Message::user("hi")]);
+    let mut said = conversation::Conversation::from_messages([
+        Message::user("hi"),
+        Message::assistant("hello"),
+    ]);
     assert!(save(&*store, "agent-1", &mut said).is_ok());
+    let mut read = rig_memory::Session::read(&*store).unwrap_or_default();
+    read.saved.insert("goals.goal".to_owned(), "ship".into());
+    read.saved.insert("goals.count".to_owned(), 3.into());
+    assert!(read.save(&*store).is_ok());
     let old = SessionMeta {
         title: "hi".to_owned(),
         updated: 1,
@@ -938,24 +903,8 @@ fn an_edit_or_a_rewrite_of_a_stopped_session_keeps_its_listing() {
     app.finish();
     app.update();
     let stores = app.world().resource::<StoreOpener>().clone();
-    let edited = super::edit_stopped(&stores, &session, &stopped, |read| {
-        read.saved.insert("goals.goal".to_owned(), "ship".into());
-        read.saved.insert("goals.count".to_owned(), 3.into());
-        let agent = read.agent_mut("agent-1").ok_or("no agent")?;
-        agent.conversation.push(Message::assistant("hello"));
-        Ok(())
-    });
-    assert_eq!(edited, Ok(()));
     let listed =
         |goal: &str| BTreeMap::from([("goals.goal".to_owned(), serde_json::Value::from(goal))]);
-    let meta = SessionMeta::read(&*store).unwrap_or_default();
-    assert_eq!(
-        (meta.title.as_str(), meta.messages, &meta.listed),
-        ("hi", 2, &listed("ship"))
-    );
-    assert!(meta.updated > 1, "updated");
-
-    assert!(old.write(&*store).is_ok());
     let by = Author::plugin("redact");
     let rewritten = rewrite_stopped(&stores, &session, &stopped, by, &Secret);
     assert!(rewritten.is_ok());
