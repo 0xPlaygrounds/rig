@@ -17,7 +17,7 @@ use rig::providers::anthropic::completion::{CLAUDE_HAIKU_4_5, CLAUDE_SONNET_4_6}
 use rig_cassette::agent::AgentReplayExt;
 use rig_test_support::cassette_models::AnthropicModels;
 
-use super::super::support::{with_anthropic_cassette, with_anthropic_corpus_serving_cassette};
+use super::super::support::with_anthropic_cassette;
 use crate::goldens::{RouteAfterFirstTurn, families};
 use crate::support::{
     Adder, AlphaSignal, BetaSignal, TOOLS_PREAMBLE, TWO_TOOL_STREAM_PREAMBLE,
@@ -162,7 +162,7 @@ async fn capacity_one_effect_log_is_the_golden_fixture() {
 /// both.
 #[tokio::test]
 async fn model_route_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_serving_cassette("corpus_serving/model_route", |client| async move {
+    with_anthropic_cassette("corpus_serving/model_route", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
             .name("golden")
@@ -314,7 +314,7 @@ async fn over_host_bus(
 
 #[tokio::test]
 async fn host_bus_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_serving_cassette("corpus_serving/host_bus", |client| async move {
+    with_anthropic_cassette("corpus_serving/host_bus", |client| async move {
         let log = over_host_bus(client, false).await;
         crate::goldens::golden_effects("anthropic_serving_host_bus", &log);
     })
@@ -323,12 +323,9 @@ async fn host_bus_effect_log_is_the_golden_fixture() {
 
 #[tokio::test]
 async fn host_bus_streamed_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_serving_cassette(
-        "corpus_serving/host_bus_streamed",
-        |client| async move {
-            let log = over_host_bus(client, true).await;
-            crate::goldens::golden_effects("anthropic_serving_host_bus_streamed", &log);
-        },
-    )
+    with_anthropic_cassette("corpus_serving/host_bus_streamed", |client| async move {
+        let log = over_host_bus(client, true).await;
+        crate::goldens::golden_effects("anthropic_serving_host_bus_streamed", &log);
+    })
     .await;
 }

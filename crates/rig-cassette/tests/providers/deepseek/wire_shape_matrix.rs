@@ -50,8 +50,7 @@ use rig::providers::deepseek;
 use serde_json::{Value, json};
 
 use super::support::{
-    recorded_interactions, with_deepseek_cassette_bogus_key_result,
-    with_deepseek_wire_shape_cassette_result,
+    recorded_interactions, with_deepseek_cassette_bogus_key_result, with_deepseek_cassette_result,
 };
 use rig::completion::{CompletionRequest, GenerationOptions, Reasoning};
 
@@ -73,7 +72,7 @@ fn non_thinking() -> GenerationOptions {
 async fn forced_tool_choice_under_thinking_is_rejected_upstream() {
     const SCENARIO: &str =
         "wire_shape_matrix/forced_tool_choice_under_thinking_is_rejected_upstream";
-    with_deepseek_wire_shape_cassette_result(
+    with_deepseek_cassette_result(
         "wire_shape_matrix/forced_tool_choice_under_thinking_is_rejected_upstream",
         |client| async move {
             // The wire's `encode` rewrites any forced `tool_choice` rig

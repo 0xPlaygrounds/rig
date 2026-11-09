@@ -42,7 +42,7 @@ use rig::completion::ToolDefinition;
 use rig::providers::anthropic;
 use serde_json::json;
 
-use super::super::support::{recorded_response_body, with_anthropic_empty_stop_cassette};
+use super::super::support::{recorded_response_body, with_anthropic_cassette};
 use rig::completion::CompletionRequest;
 
 /// Asks for exactly one word so a stop sequence naming that word matches
@@ -99,7 +99,7 @@ pub(super) fn assert_recorded_empty_stop(scenario: &str) {
 
 #[tokio::test]
 async fn with_preamble_empty_stop() {
-    with_anthropic_empty_stop_cassette(
+    with_anthropic_cassette(
         "empty_stop_sequence_matrix/with_preamble_empty_stop",
         |client| async move {
             let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
@@ -121,7 +121,7 @@ async fn with_preamble_empty_stop() {
 
 #[tokio::test]
 async fn with_tools_empty_stop() {
-    with_anthropic_empty_stop_cassette(
+    with_anthropic_cassette(
         "empty_stop_sequence_matrix/with_tools_empty_stop",
         |client| async move {
             let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);

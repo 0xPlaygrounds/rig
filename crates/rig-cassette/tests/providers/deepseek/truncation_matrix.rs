@@ -44,7 +44,7 @@ use serde_json::{Value, json};
 
 use super::support::{
     collect_raw_stream_outcome, recorded_response, recorded_stream_chunks,
-    with_deepseek_truncation_cassette_result,
+    with_deepseek_cassette_result,
 };
 use rig::completion::{CompletionRequest, GenerationOptions, Reasoning};
 
@@ -226,7 +226,7 @@ fn assert_parseable(arguments: &str, scenario: &str) {
 async fn blocking_budget_16_empty_arguments_are_dropped_on_length() {
     const SCENARIO: &str =
         "truncation_matrix/blocking_budget_16_empty_arguments_are_dropped_on_length";
-    with_deepseek_truncation_cassette_result(
+    with_deepseek_cassette_result(
         "truncation_matrix/blocking_budget_16_empty_arguments_are_dropped_on_length",
         |client| async move {
             let model = client.completion(MODEL);
@@ -266,7 +266,7 @@ async fn blocking_budget_16_empty_arguments_are_dropped_on_length() {
 #[tokio::test]
 async fn blocking_parallel_calls_keep_the_complete_one() {
     const SCENARIO: &str = "truncation_matrix/blocking_parallel_calls_keep_the_complete_one";
-    with_deepseek_truncation_cassette_result(
+    with_deepseek_cassette_result(
         "truncation_matrix/blocking_parallel_calls_keep_the_complete_one",
         |client| async move {
             let model = client.completion(MODEL);
@@ -314,7 +314,7 @@ async fn blocking_parallel_calls_keep_the_complete_one() {
 #[ignore = "deepseek-v4-flash now spends the 56-token budget before the second call's arguments start, even for the original request bytes (3 live attempts, 2026-10-03)"]
 async fn streaming_parallel_calls_keep_the_complete_one() {
     const SCENARIO: &str = "truncation_matrix/streaming_parallel_calls_keep_the_complete_one";
-    with_deepseek_truncation_cassette_result(
+    with_deepseek_cassette_result(
         "truncation_matrix/streaming_parallel_calls_keep_the_complete_one",
         |client| async move {
             let model = client.completion(MODEL);

@@ -14,7 +14,7 @@ use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig::run::OutputMode;
 use rig_cassette::agent::AgentReplayExt;
 
-use super::super::support::with_anthropic_corpus_output_cassette;
+use super::super::support::with_anthropic_cassette;
 use crate::goldens::{event_schema, families};
 use crate::support::{Adder, BASIC_PREAMBLE, STRUCTURED_OUTPUT_PROMPT, TOOLS_PREAMBLE};
 
@@ -73,7 +73,7 @@ async fn final_output(stream: &mut rig::agent::StreamingResult) -> String {
 /// settled by the run without a dispatch.
 #[tokio::test]
 async fn tool_unary_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_output_cassette("corpus_output/tool_unary", |client| async move {
+    with_anthropic_cassette("corpus_output/tool_unary", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
             .name("golden")
@@ -110,7 +110,7 @@ async fn tool_unary_effect_log_is_the_golden_fixture() {
 /// The same, streamed with events.
 #[tokio::test]
 async fn tool_streamed_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_output_cassette("corpus_output/tool_streamed", |client| async move {
+    with_anthropic_cassette("corpus_output/tool_streamed", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
         let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
             .name("golden")
@@ -137,7 +137,7 @@ async fn tool_streamed_effect_log_is_the_golden_fixture() {
 /// schema and the answer is JSON text.
 #[tokio::test]
 async fn prompted_unary_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_output_cassette("corpus_output/prompted_unary", |client| async move {
+    with_anthropic_cassette("corpus_output/prompted_unary", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
             .name("golden")
@@ -171,7 +171,7 @@ async fn prompted_unary_effect_log_is_the_golden_fixture() {
 /// The same, streamed with events.
 #[tokio::test]
 async fn prompted_streamed_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_output_cassette("corpus_output/prompted_streamed", |client| async move {
+    with_anthropic_cassette("corpus_output/prompted_streamed", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
         let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
             .name("golden")
@@ -197,46 +197,43 @@ async fn prompted_streamed_effect_log_is_the_golden_fixture() {
 /// dispatch), then `final_result` (settled, no dispatch).
 #[tokio::test]
 async fn tool_with_real_tool_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_output_cassette(
-        "corpus_output/tool_with_real_tool",
-        |client| async move {
-            let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
-                .name("golden")
-                .preamble(TOOLS_PREAMBLE)
-                .temperature(0.0)
-                .output_schema_raw(event_schema())
-                .output_mode(OutputMode::Tool)
-                .tool(Adder)
-                .record_to(recorder.clone())
-                .build();
-            let response = agent
-                .prompt(SUM_EVENT_PROMPT)
-                .max_turns(3)
-                .await
-                .expect("the agent answers");
-            assert_event(&response.output());
-            assert!(response.output().contains("42"), "{}", response.output());
-            let log = agent.stamp(recorder.take());
-            assert_eq!(
-                families(&log),
-                [
-                    EffectFamily::Completion,
-                    EffectFamily::Tool,
-                    EffectFamily::Completion
-                ]
-            );
-            assert_eq!(tool_names(request_at(&log, 0)), ["add", "final_result"]);
-            crate::goldens::golden_effects("anthropic_output_tool_with_real_tool", &log);
-        },
-    )
+    with_anthropic_cassette("corpus_output/tool_with_real_tool", |client| async move {
+        let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
+        let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
+            .name("golden")
+            .preamble(TOOLS_PREAMBLE)
+            .temperature(0.0)
+            .output_schema_raw(event_schema())
+            .output_mode(OutputMode::Tool)
+            .tool(Adder)
+            .record_to(recorder.clone())
+            .build();
+        let response = agent
+            .prompt(SUM_EVENT_PROMPT)
+            .max_turns(3)
+            .await
+            .expect("the agent answers");
+        assert_event(&response.output());
+        assert!(response.output().contains("42"), "{}", response.output());
+        let log = agent.stamp(recorder.take());
+        assert_eq!(
+            families(&log),
+            [
+                EffectFamily::Completion,
+                EffectFamily::Tool,
+                EffectFamily::Completion
+            ]
+        );
+        assert_eq!(tool_names(request_at(&log, 0)), ["add", "final_result"]);
+        crate::goldens::golden_effects("anthropic_output_tool_with_real_tool", &log);
+    })
     .await;
 }
 
 /// `Prompted` mode beside a real tool.
 #[tokio::test]
 async fn prompted_with_real_tool_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_output_cassette(
+    with_anthropic_cassette(
         "corpus_output/prompted_with_real_tool",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
@@ -275,7 +272,7 @@ async fn prompted_with_real_tool_effect_log_is_the_golden_fixture() {
 /// tool is the only call allowed, and it is called.
 #[tokio::test]
 async fn tool_choice_specific_output_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_output_cassette(
+    with_anthropic_cassette(
         "corpus_output/tool_choice_specific_output",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
@@ -311,30 +308,27 @@ async fn tool_choice_specific_output_effect_log_is_the_golden_fixture() {
 /// second turn.
 #[tokio::test]
 async fn tool_choice_required_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_output_cassette(
-        "corpus_output/tool_choice_required",
-        |client| async move {
-            let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
-                .name("golden")
-                .preamble(BASIC_PREAMBLE)
-                .temperature(0.0)
-                .output_schema_raw(event_schema())
-                .output_mode(OutputMode::Tool)
-                .tool_choice(ToolChoice::Required)
-                .record_to(recorder.clone())
-                .build();
-            let response = agent
-                .prompt(STRUCTURED_OUTPUT_PROMPT)
-                .max_turns(2)
-                .await
-                .expect("the agent answers");
-            assert_event(&response.output());
-            let log = agent.stamp(recorder.take());
-            assert_eq!(families(&log), [EffectFamily::Completion]);
-            crate::goldens::golden_effects("anthropic_output_tool_choice_required", &log);
-        },
-    )
+    with_anthropic_cassette("corpus_output/tool_choice_required", |client| async move {
+        let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
+        let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
+            .name("golden")
+            .preamble(BASIC_PREAMBLE)
+            .temperature(0.0)
+            .output_schema_raw(event_schema())
+            .output_mode(OutputMode::Tool)
+            .tool_choice(ToolChoice::Required)
+            .record_to(recorder.clone())
+            .build();
+        let response = agent
+            .prompt(STRUCTURED_OUTPUT_PROMPT)
+            .max_turns(2)
+            .await
+            .expect("the agent answers");
+        assert_event(&response.output());
+        let log = agent.stamp(recorder.take());
+        assert_eq!(families(&log), [EffectFamily::Completion]);
+        crate::goldens::golden_effects("anthropic_output_tool_choice_required", &log);
+    })
     .await;
 }
 
@@ -343,7 +337,7 @@ async fn tool_choice_required_effect_log_is_the_golden_fixture() {
 /// rather than a turn that cannot finalize.
 #[tokio::test]
 async fn tool_under_none_degrades_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_output_cassette(
+    with_anthropic_cassette(
         "corpus_output/tool_under_none_degrades",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
@@ -379,7 +373,7 @@ async fn tool_under_none_degrades_effect_log_is_the_golden_fixture() {
 /// block and the output tool's call.
 #[tokio::test]
 async fn tool_thinking_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_output_cassette("corpus_output/tool_thinking", |client| async move {
+    with_anthropic_cassette("corpus_output/tool_thinking", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
             .name("golden")

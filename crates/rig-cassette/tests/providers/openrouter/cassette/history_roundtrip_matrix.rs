@@ -42,7 +42,7 @@ use rig::message::{AssistantContent, ToolResultContent, UserContent};
 use rig::streaming::StreamEvent;
 use serde_json::{Value, json};
 
-use super::super::support::with_openrouter_history_roundtrip_cassette_result;
+use super::super::support::with_openrouter_cassette_result;
 use rig::completion::CompletionRequest;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -430,7 +430,7 @@ fn cell(transport: Transport, model: ModelVariant, surface: Surface, shape: Shap
 // mapping between tests and fixtures.
 
 crate::matrix::case_matrix! {
-    wrapper: with_openrouter_history_roundtrip_cassette_result, family: history_roundtrip_matrix_case;
+    wrapper: with_openrouter_cassette_result, family: history_roundtrip_matrix_case;
     # [tokio :: test]
     blocking_gpt_4_1_mini_normalized_single_tool: ("history_roundtrip_matrix/blocking_gpt_4_1_mini_normalized_single_tool", configured, cell (Transport :: Blocking , ModelVariant :: Gpt41Mini , Surface :: Normalized , Shape :: SingleTool ,));
     # [tokio :: test]

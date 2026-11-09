@@ -50,7 +50,7 @@ use crate::cache_conformance::{
     run_cache_probe_streaming,
 };
 
-use super::support::with_mistral_prompt_caching_cassette;
+use super::support::with_mistral_cassette;
 
 const CACHE_MODEL: &str = mistral::MISTRAL_LARGE;
 
@@ -78,7 +78,7 @@ fn probe() -> CacheProbe {
 async fn blocking_probe_surfaces_the_cache_read_mistral_reports() {
     const SCENARIO: &str = "prompt_caching/blocking_probe";
 
-    with_mistral_prompt_caching_cassette("prompt_caching/blocking_probe", |client| async move {
+    with_mistral_cassette("prompt_caching/blocking_probe", |client| async move {
         let model = client.completion(CACHE_MODEL);
         let observation = run_cache_probe(model, &probe()).await;
         assert_cache_read_is_surfaced(&observation, &MISTRAL_CACHE_SUPPORT, "blocking probe");
@@ -92,7 +92,7 @@ async fn blocking_probe_surfaces_the_cache_read_mistral_reports() {
 async fn streaming_probe_surfaces_the_cache_read_mistral_reports() {
     const SCENARIO: &str = "prompt_caching/streaming_probe";
 
-    with_mistral_prompt_caching_cassette("prompt_caching/streaming_probe", |client| async move {
+    with_mistral_cassette("prompt_caching/streaming_probe", |client| async move {
         let model = client.completion(CACHE_MODEL);
         let observation = run_cache_probe_streaming(model, &probe()).await;
         assert_cache_read_is_surfaced(&observation, &MISTRAL_CACHE_SUPPORT, "streaming probe");

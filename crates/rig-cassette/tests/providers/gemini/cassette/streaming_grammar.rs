@@ -203,7 +203,7 @@ async fn parallel_function_calls_stay_distinct() {
 /// one recorded exchange, asserted through the normalized conversion.
 #[tokio::test]
 async fn interactions_requires_action_roundtrip() {
-    super::super::support::with_gemini_interactions_cassette(
+    super::super::support::with_gemini_cassette(
         "streaming_grammar/interactions_requires_action",
         |client| async move {
             let model = client.interactions("gemini-3-flash-preview");
@@ -307,7 +307,7 @@ async fn interactions_requires_action_roundtrip() {
 /// `RIG_PROVIDER_TEST_MODE=record GEMINI_API_KEY=... cargo test -p rig-cassette --all-features --test integration gemini::cassette::streaming_grammar::interactions_signature_without_summaries -- --test-threads=1`
 #[tokio::test]
 async fn interactions_signature_without_summaries_never_fabricates_an_empty_sibling() {
-    super::super::support::with_gemini_interactions_cassette(
+    super::super::support::with_gemini_cassette(
         "streaming_grammar/interactions_signature_without_summaries",
         |client| async move {
             let model = client.interactions("gemini-3-flash-preview");

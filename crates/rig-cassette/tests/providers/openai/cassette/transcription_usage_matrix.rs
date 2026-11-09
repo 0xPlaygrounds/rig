@@ -64,7 +64,7 @@
 use rig::providers::openai::{self, TranscriptionUsage};
 use serde_json::json;
 
-use super::super::support::with_openai_transcription_cassette;
+use super::super::support::with_openai_cassette;
 use crate::support::AUDIO_FIXTURE_PATH;
 use rig::transcription::TranscriptionRequestBuilder;
 
@@ -96,7 +96,7 @@ fn assert_transcribed(text: &str) {
 /// Completions credential: the same transcription wire must decode it.
 #[tokio::test]
 async fn completions_client_reports_duration_usage() {
-    with_openai_transcription_cassette(
+    with_openai_cassette(
         "transcription_usage_matrix/completions_client_reports_duration_usage",
         |client| async move {
             let response = client
@@ -122,7 +122,7 @@ async fn completions_client_reports_duration_usage() {
 
 #[tokio::test]
 async fn completions_client_reports_token_usage() {
-    with_openai_transcription_cassette(
+    with_openai_cassette(
         "transcription_usage_matrix/completions_client_reports_token_usage",
         |client| async move {
             let response = client
@@ -152,7 +152,7 @@ async fn completions_client_reports_token_usage() {
 /// multipart unit tests, not here — see the module doc.
 #[tokio::test]
 async fn verbose_json_still_reports_duration_usage() {
-    with_openai_transcription_cassette(
+    with_openai_cassette(
         "transcription_usage_matrix/verbose_json_still_reports_duration_usage",
         |client| async move {
             let response = client
@@ -201,7 +201,7 @@ async fn verbose_json_still_reports_duration_usage() {
 /// new field did not change that.
 #[tokio::test]
 async fn rejected_request_surfaces_the_provider_body() {
-    with_openai_transcription_cassette(
+    with_openai_cassette(
         "transcription_usage_matrix/rejected_request_surfaces_the_provider_body",
         |client| async move {
             let Err(error) = client

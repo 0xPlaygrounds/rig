@@ -268,20 +268,3 @@ fn recorded_embedding_calls(scenario: &str) -> Vec<RecordedEmbeddingCall> {
         })
         .collect()
 }
-
-/// Cassette wrapper for the doubleword prompt-caching matrix
-/// (`crates/rig-cassette/fixtures/cassettes/doubleword/prompt_caching/`).
-///
-/// Delegates to [`with_doubleword_cassette`] — the behavior is identical, and deliberately shared
-/// so the two cannot drift apart when the base wrapper gains policy. What the
-/// separate name buys is a per-suite entry in the cassette-safety registry, so
-/// the cache fixtures are auditable as one concern's evidence.
-pub(super) async fn with_doubleword_prompt_caching_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(OpenAiModels) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    with_doubleword_cassette(spec, test_body).await;
-}

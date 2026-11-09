@@ -64,7 +64,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
 
-use super::super::support::{pinned_order, with_openrouter_usage_cassette};
+use super::super::support::{pinned_order, with_openrouter_cassette};
 use crate::cassettes;
 use crate::support::collect_text_and_terminal;
 use rig::completion::{CompletionRequest, Effort};
@@ -111,7 +111,7 @@ async fn blocking_excluded_reasoning_still_counts_tokens() {
     let delivered = Arc::new(Mutex::new(None));
     let recorder = delivered.clone();
 
-    with_openrouter_usage_cassette(
+    with_openrouter_cassette(
         "reasoning_usage_matrix/blocking_excluded_reasoning_still_counts_tokens",
         |client| async move {
             let model = client.completion(O4_MINI);
@@ -157,7 +157,7 @@ async fn transports_agree_on_reasoning_tokens() {
     let delivered = Arc::new(Mutex::new((None, None)));
     let recorder = delivered.clone();
 
-    with_openrouter_usage_cassette(
+    with_openrouter_cassette(
         "reasoning_usage_matrix/transports_agree_on_reasoning_tokens",
         |client| async move {
             let model = client.completion(O4_MINI);

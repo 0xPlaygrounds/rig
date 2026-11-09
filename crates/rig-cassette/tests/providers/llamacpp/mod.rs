@@ -32,10 +32,7 @@
 //! | 8092 | `with_llamacpp_gemma_family_cassette` | `-m gemma-3-12b-it-Q4_K_M.gguf --jinja --seed 42 --temp 0 -c 4096` |
 //! | 8093 | `with_llamacpp_large_vision_cassette` | `-m Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf --mmproj mmproj-… --jinja --seed 42 --temp 0 -c 8192` |
 //!
-//! `with_llamacpp_prompt_caching_cassette` and
-//! `with_llamacpp_bare_openai_cassette` both use port 8080; they exist as
-//! separate names so the cassette-safety registry can attribute their fixtures
-//! to their own concern.
+//! `with_llamacpp_bare_openai_cassette` also uses port 8080.
 //!
 //! # The dimensions, and where each lives
 //!

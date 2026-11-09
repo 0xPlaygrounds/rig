@@ -43,7 +43,7 @@ use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use super::super::support::{OpenAiCassette, with_openai_tool_lifecycle_cassette_result};
+use super::super::support::{OpenAiCassette, with_openai_cassette_result};
 use rig::completion::CompletionRequest;
 
 pub(super) const PREAMBLE: &str =
@@ -619,7 +619,7 @@ pub(super) async fn execute(scenario: &'static str, cell: Cell, observed: Shared
 // parses source rather than macro expansion.
 
 crate::matrix::case_matrix! {
-    wrapper: with_openai_tool_lifecycle_cassette_result, family: tool_lifecycle_matrix_case;
+    wrapper: with_openai_cassette_result, family: tool_lifecycle_matrix_case;
     # [tokio :: test]
     blocking_gpt4o_zero_agent: ("chat_tool_lifecycle_matrix/blocking_gpt4o_zero_agent", configured, cell (Transport :: Blocking , Model :: Gpt4oMini , Shape :: Zero , Surface :: Agent ,));
     # [tokio :: test]

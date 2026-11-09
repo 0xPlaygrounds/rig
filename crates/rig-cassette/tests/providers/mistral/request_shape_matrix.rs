@@ -41,7 +41,7 @@ use rig::message::AssistantContent;
 use rig::streaming::StreamEvent;
 use serde_json::{Value, json};
 
-use super::support::with_mistral_request_shape_cassette_result;
+use super::support::with_mistral_cassette_result;
 use rig::completion::CompletionRequest;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -439,7 +439,7 @@ async fn blocking_mistral_small_json_none() -> Result<()> {
     );
     let observed = SharedObservation::default();
     let capture = Arc::clone(&observed);
-    with_mistral_request_shape_cassette_result(
+    with_mistral_cassette_result(
         "request_shape_matrix/blocking_mistral_small_json_none",
         |client| async move { run_cell(client, cell, capture).await },
     )
@@ -459,7 +459,7 @@ async fn streaming_mistral_small_json_any() -> Result<()> {
     );
     let observed = SharedObservation::default();
     let capture = Arc::clone(&observed);
-    with_mistral_request_shape_cassette_result(
+    with_mistral_cassette_result(
         "request_shape_matrix/streaming_mistral_small_json_any",
         |client| async move { run_cell(client, cell, capture).await },
     )

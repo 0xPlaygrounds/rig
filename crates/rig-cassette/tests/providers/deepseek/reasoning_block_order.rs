@@ -24,7 +24,7 @@ use rig::completion::ToolDefinition;
 use rig::providers::deepseek;
 use serde_json::json;
 
-use super::support::{collect_raw_stream_outcome, with_deepseek_block_order_cassette_result};
+use super::support::{collect_raw_stream_outcome, with_deepseek_cassette_result};
 use crate::reasoning::{self};
 use rig::completion::CompletionRequest;
 
@@ -93,7 +93,7 @@ fn assert_reasoning_leads(kinds: &[&str], context: &str) {
 
 #[tokio::test]
 async fn streaming_reasoner_parallel_tool_turn_leads_with_reasoning() {
-    with_deepseek_block_order_cassette_result(
+    with_deepseek_cassette_result(
         "reasoning_block_order/streaming_reasoner_parallel_tool_turn_leads_with_reasoning",
         |client| async move {
             let model = client.completion(MODEL);

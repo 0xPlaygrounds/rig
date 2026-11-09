@@ -39,7 +39,7 @@ use anyhow::{Context, Result};
 use futures::StreamExt as _;
 use serde_json::{Value, json};
 
-use super::super::support::{OpenAiCassette, with_openai_terminal_metadata_cassette_result};
+use super::super::support::{OpenAiCassette, with_openai_cassette_result};
 use crate::support::assert_matches_recorded_document;
 use rig::completion::CompletionRequest;
 
@@ -387,7 +387,7 @@ fn cell(transport: Transport, model: ModelVariant, limit: Limit, shape: Shape) -
 // matching streaming half traverses the shared compatible stream adapter.
 
 crate::matrix::case_matrix! {
-    wrapper: with_openai_terminal_metadata_cassette_result, family: terminal_metadata_matrix_case;
+    wrapper: with_openai_cassette_result, family: terminal_metadata_matrix_case;
     # [tokio :: test]
     blocking_gpt_4o_mini_tiny_plain_two: ("chat_terminal_metadata_matrix/blocking_gpt_4o_mini_tiny_plain_two", configured, cell (Transport :: Blocking , ModelVariant :: Gpt4oMini , Limit :: Tiny , Shape :: PlainTwo ,));
     # [tokio :: test]

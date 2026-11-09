@@ -39,7 +39,7 @@ use crate::cache_conformance::{
     report_and_assert_live, run_cache_probe, run_cache_probe_streaming,
 };
 
-use super::support::with_xai_prompt_caching_cassette;
+use super::support::with_xai_cassette;
 
 const CACHE_MODEL: &str = xai::GROK_3_MINI;
 
@@ -61,7 +61,7 @@ fn probe() -> CacheProbe {
 async fn blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
     const SCENARIO: &str = "prompt_caching/blocking_probe";
 
-    with_xai_prompt_caching_cassette("prompt_caching/blocking_probe", |client| async move {
+    with_xai_cassette("prompt_caching/blocking_probe", |client| async move {
         let model = client.completion(CACHE_MODEL);
         let observation = run_cache_probe(model, &probe()).await;
         assert_cache_conformance(&observation, &XAI_CACHE_SUPPORT, "blocking probe");
@@ -75,7 +75,7 @@ async fn blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
 async fn streaming_probe_survives_the_streaming_accumulator() {
     const SCENARIO: &str = "prompt_caching/streaming_probe";
 
-    with_xai_prompt_caching_cassette("prompt_caching/streaming_probe", |client| async move {
+    with_xai_cassette("prompt_caching/streaming_probe", |client| async move {
         let model = client.completion(CACHE_MODEL);
         let observation = run_cache_probe_streaming(model, &probe()).await;
         assert_cache_conformance(&observation, &XAI_CACHE_SUPPORT, "streaming probe");

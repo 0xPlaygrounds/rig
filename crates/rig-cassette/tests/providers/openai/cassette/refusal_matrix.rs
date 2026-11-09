@@ -52,7 +52,7 @@
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use super::super::support::with_openai_refusal_cassette;
+use super::super::support::with_openai_cassette;
 use crate::cassettes;
 use crate::support::{
     assert_nonempty_response, assistant_text_response, collect_stream_observation,
@@ -113,7 +113,7 @@ fn responses_text_format() -> Value {
 async fn chat_streaming_agent_surfaces_refusal() {
     const SCENARIO: &str = "refusal_matrix/chat_streaming_agent_surfaces_refusal";
 
-    with_openai_refusal_cassette(
+    with_openai_cassette(
         "refusal_matrix/chat_streaming_agent_surfaces_refusal",
         |client| async move {
             let agent = rig::AgentBuilder::new(client.chat.completion(REFUSING_MODEL))
@@ -144,7 +144,7 @@ async fn chat_streaming_agent_surfaces_refusal() {
 async fn responses_agent_streaming_refusal_surfaces() {
     const SCENARIO: &str = "refusal_matrix/responses_agent_streaming_refusal_surfaces";
 
-    with_openai_refusal_cassette(
+    with_openai_cassette(
         "refusal_matrix/responses_agent_streaming_refusal_surfaces",
         |client| async move {
             let agent = rig::AgentBuilder::new(client.openai.completion(REFUSING_MODEL))
@@ -169,7 +169,7 @@ async fn responses_agent_streaming_refusal_surfaces() {
 async fn cross_surface_refusal_parity() {
     const SCENARIO: &str = "refusal_matrix/cross_surface_refusal_parity";
 
-    with_openai_refusal_cassette(
+    with_openai_cassette(
         "refusal_matrix/cross_surface_refusal_parity",
         |client| async move {
             let responses_model = client.openai.completion(REFUSING_MODEL);

@@ -266,42 +266,6 @@ where
     }
 }
 
-/// The effect corpus's provider-breadth matrix (Matrix N):
-/// `crates/rig-cassette/fixtures/cassettes/gemini/corpus_breadth/`.
-pub(super) async fn with_gemini_corpus_breadth_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(GeminiModels) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    with_gemini_cassette(spec, test_body).await;
-}
-
-/// The effect corpus's delta-wire matrix (Matrix K):
-/// `crates/rig-cassette/fixtures/cassettes/gemini/corpus_delta/`.
-pub(super) async fn with_gemini_corpus_delta_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(GeminiModels) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    with_gemini_cassette(spec, test_body).await;
-}
-
-/// The effect corpus's retrieval matrix (Matrix A):
-/// `crates/rig-cassette/fixtures/cassettes/gemini/corpus_retrieval/`.
-pub(super) async fn with_gemini_corpus_retrieval_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(GeminiModels) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    with_gemini_cassette(spec, test_body).await;
-}
-
 pub(super) async fn with_gemini_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
     F: FnOnce(GeminiModels) -> Fut,
@@ -341,52 +305,6 @@ pub(super) async fn with_gemini_checked_cassette<F, Fut>(
     crate::cassettes::finish_checked(cassette, "gemini", spec.scenario(), result, check).await;
 }
 
-pub(super) async fn with_gemini_interactions_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(GeminiModels) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    let (cassette, client) = gemini_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(GeminiModels::new(
-        client,
-        rig_test_support::cassettes::local_http(),
-    )))
-    .catch_unwind()
-    .await;
-    cassette.finish_after_test(result).await;
-}
-
-/// Code-execution edge matrix (`crates/rig-cassette/fixtures/cassettes/gemini/code_execution_matrix/`).
-///
-/// A separate registered wrapper so one bug's matrix stays auditable as a
-/// unit: `cassette_files_match_registered_scenarios` pairs the fixtures under
-/// that directory with the calls made through this name and nothing else.
-pub(super) async fn with_gemini_code_execution_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(GeminiModels) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    with_gemini_cassette(spec, test_body).await;
-}
-
-/// Thought-text edge matrix (`crates/rig-cassette/fixtures/cassettes/gemini/thought_text_matrix/`).
-///
-/// Separate from [`with_gemini_code_execution_cassette`] for the same reason:
-/// one registered wrapper per bug keeps each matrix's fixture set closed.
-pub(super) async fn with_gemini_thought_text_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(GeminiModels) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    with_gemini_cassette(spec, test_body).await;
-}
-
 /// Bogus-key variant for recording real 401/403s (rig#2314 error matrix).
 pub(super) async fn with_gemini_cassette_bogus_key<F, Fut>(
     spec: impl Into<CassetteSpec>,
@@ -412,23 +330,6 @@ pub(super) async fn with_gemini_cassette_bogus_key<F, Fut>(
     .catch_unwind()
     .await;
     cassette.finish_after_test(result).await;
-}
-
-/// Cassette wrapper for the gemini prompt-caching matrix
-/// (`crates/rig-cassette/fixtures/cassettes/gemini/prompt_caching/`).
-///
-/// Delegates to [`with_gemini_cassette`] — the behavior is identical, and deliberately
-/// shared so the two cannot drift apart when the base wrapper gains policy. What
-/// the separate name buys is a per-suite entry in the cassette-safety registry,
-/// so the cache fixtures are auditable as one concern's evidence.
-pub(super) async fn with_gemini_prompt_caching_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(GeminiModels) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    with_gemini_cassette(spec, test_body).await;
 }
 
 /// Run `body`, then delete `handles` — including when `body` panics.

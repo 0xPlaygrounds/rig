@@ -42,7 +42,7 @@ use crate::cache_conformance::{
     report_and_assert_live, run_cache_probe, run_cache_probe_streaming,
 };
 
-use super::support::with_deepseek_prompt_caching_cassette;
+use super::support::with_deepseek_cassette;
 
 const CACHE_MODEL: &str = deepseek::DEEPSEEK_V4_FLASH;
 
@@ -63,7 +63,7 @@ fn probe() -> CacheProbe {
 async fn streaming_probe_survives_the_streaming_accumulator() {
     const SCENARIO: &str = "prompt_caching/streaming_probe";
 
-    with_deepseek_prompt_caching_cassette("prompt_caching/streaming_probe", |client| async move {
+    with_deepseek_cassette("prompt_caching/streaming_probe", |client| async move {
         let model = client.completion(CACHE_MODEL);
         let observation = run_cache_probe_streaming(model, &probe()).await;
         assert_cache_conformance(&observation, &DEEPSEEK_CACHE_SUPPORT, "streaming probe");

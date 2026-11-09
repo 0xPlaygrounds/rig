@@ -59,7 +59,7 @@ use crate::cache_conformance::{
     assert_prefix_stable, report_and_assert_live, run_cache_probe,
 };
 
-use super::super::support::with_gemini_prompt_caching_cassette;
+use super::super::support::with_gemini_cassette;
 
 /// Gemini 2.5 Flash: implicit caching, and the cheapest model that has it.
 pub(super) const CACHE_MODEL: &str = gemini::completion::GEMINI_2_5_FLASH;
@@ -101,7 +101,7 @@ pub(super) fn probe() -> CacheProbe {
 async fn blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
     const SCENARIO: &str = "prompt_caching/blocking_probe";
 
-    with_gemini_prompt_caching_cassette("prompt_caching/blocking_probe", |client| async move {
+    with_gemini_cassette("prompt_caching/blocking_probe", |client| async move {
         let model = client.completion(CACHE_MODEL);
         let observation = run_cache_probe(model, &probe()).await;
         assert_cache_conformance(&observation, &GEMINI_CACHE_SUPPORT, "blocking probe");
@@ -254,7 +254,7 @@ fn cache_tokens_details_are_populated_and_agree_with_the_aggregate() {
 /// long ago it went, and collapsing both is the point of the variant.
 #[tokio::test]
 async fn a_deleted_handle_reports_expired_rather_than_a_status_code() {
-    with_gemini_prompt_caching_cassette(
+    with_gemini_cassette(
         "prompt_caching/explicit_cache_expired",
         |client| async move {
             let caches = client.cached_contents();

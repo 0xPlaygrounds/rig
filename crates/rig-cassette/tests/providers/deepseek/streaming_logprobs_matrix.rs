@@ -30,8 +30,7 @@ use rig::providers::deepseek;
 use serde_json::{Value, json};
 
 use super::support::{
-    recorded_request, recorded_response, recorded_stream_chunks,
-    with_deepseek_stream_logprobs_cassette_result,
+    recorded_request, recorded_response, recorded_stream_chunks, with_deepseek_cassette_result,
 };
 use rig::completion::{CompletionRequest, GenerationOptions, Reasoning};
 
@@ -303,7 +302,7 @@ fn cell(transport: Transport, thinking: Thinking, termination: Termination, top:
 // configurations. The matching streaming half below traverses the fixed path.
 
 crate::matrix::case_matrix! {
-    wrapper: with_deepseek_stream_logprobs_cassette_result, family: streaming_logprobs_matrix_case;
+    wrapper: with_deepseek_cassette_result, family: streaming_logprobs_matrix_case;
     # [tokio :: test]
     blocking_disabled_stop_top_zero: ("streaming_logprobs_matrix/blocking_disabled_stop_top_zero", configured, cell (Transport :: Blocking , Thinking :: Disabled , Termination :: Stop , Top :: Zero ,));
     # [tokio :: test]

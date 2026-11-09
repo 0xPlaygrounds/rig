@@ -16,7 +16,7 @@ use rig::message::{AssistantContent, ToolChoice};
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig_cassette::agent::AgentReplayExt;
 
-use super::super::support::with_anthropic_corpus_request_shape_cassette;
+use super::super::support::with_anthropic_cassette;
 use crate::goldens::{EVENT_SCHEMA, event_schema, families, prior_history};
 use crate::support::{
     Adder, BASIC_PREAMBLE, BASIC_PROMPT, CONTEXT_DOCS, CONTEXT_PROMPT, STRUCTURED_OUTPUT_PROMPT,
@@ -75,7 +75,7 @@ pub(super) fn last_text(log: &rig::cassette::effect_log::EffectLog) -> String {
 /// `tool_choice(Auto)` with `add` advertised: the model calls it.
 #[tokio::test]
 async fn tool_choice_auto_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_request_shape_cassette(
+    with_anthropic_cassette(
         "corpus_request_shape/tool_choice_auto",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
@@ -115,7 +115,7 @@ async fn tool_choice_auto_effect_log_is_the_golden_fixture() {
 /// that this is what the engine does with a per-run `Required`.
 #[tokio::test]
 async fn tool_choice_required_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_request_shape_cassette(
+    with_anthropic_cassette(
         "corpus_request_shape/tool_choice_required",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
@@ -160,7 +160,7 @@ async fn tool_choice_required_effect_log_is_the_golden_fixture() {
 /// calls.
 #[tokio::test]
 async fn tool_choice_specific_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_request_shape_cassette(
+    with_anthropic_cassette(
         "corpus_request_shape/tool_choice_specific",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
@@ -214,7 +214,7 @@ async fn tool_choice_specific_effect_log_is_the_golden_fixture() {
 /// tool still advertised.
 #[tokio::test]
 async fn tool_choice_none_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_request_shape_cassette(
+    with_anthropic_cassette(
         "corpus_request_shape/tool_choice_none",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
@@ -252,29 +252,26 @@ async fn tool_choice_none_effect_log_is_the_golden_fixture() {
 /// `max_tokens(32)`: the request carries the cap; the answer stops at it.
 #[tokio::test]
 async fn max_tokens_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_request_shape_cassette(
-        "corpus_request_shape/max_tokens",
-        |client| async move {
-            let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
-                .name("golden")
-                .preamble(BASIC_PREAMBLE)
-                .temperature(0.0)
-                .max_tokens(32)
-                .record_to(recorder.clone())
-                .build();
-            let response = agent.prompt(BASIC_PROMPT).await.expect("the agent answers");
-            assert!(!response.output().is_empty());
-            let log = agent.stamp(recorder.take());
-            assert_eq!(families(&log), [EffectFamily::Completion]);
-            let request = match &log.records[0].kind {
-                rig::effect::EffectKind::Completion { request, .. } => request,
-                other => panic!("a completion, not {other:?}"),
-            };
-            assert_eq!(request.max_tokens, Some(32));
-            crate::goldens::golden_effects("anthropic_request_shape_max_tokens", &log);
-        },
-    )
+    with_anthropic_cassette("corpus_request_shape/max_tokens", |client| async move {
+        let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
+        let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
+            .name("golden")
+            .preamble(BASIC_PREAMBLE)
+            .temperature(0.0)
+            .max_tokens(32)
+            .record_to(recorder.clone())
+            .build();
+        let response = agent.prompt(BASIC_PROMPT).await.expect("the agent answers");
+        assert!(!response.output().is_empty());
+        let log = agent.stamp(recorder.take());
+        assert_eq!(families(&log), [EffectFamily::Completion]);
+        let request = match &log.records[0].kind {
+            rig::effect::EffectKind::Completion { request, .. } => request,
+            other => panic!("a completion, not {other:?}"),
+        };
+        assert_eq!(request.max_tokens, Some(32));
+        crate::goldens::golden_effects("anthropic_request_shape_max_tokens", &log);
+    })
     .await;
 }
 
@@ -282,27 +279,24 @@ async fn max_tokens_effect_log_is_the_golden_fixture() {
 /// carries a reasoning block with its signature.
 #[tokio::test]
 async fn thinking_unary_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_request_shape_cassette(
-        "corpus_request_shape/thinking_unary",
-        |client| async move {
-            let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
-                .name("golden")
-                .preamble(BASIC_PREAMBLE)
-                .additional_params(thinking_params())
-                .record_to(recorder.clone())
-                .build();
-            let response = agent
-                .prompt(THINKING_PROMPT)
-                .await
-                .expect("the agent answers");
-            assert!(response.output().contains("144"), "{}", response.output());
-            let log = agent.stamp(recorder.take());
-            assert_eq!(families(&log), [EffectFamily::Completion]);
-            assert!(reasoning_blocks(&log) >= 1, "the completion reasons");
-            crate::goldens::golden_effects("anthropic_request_shape_thinking_unary", &log);
-        },
-    )
+    with_anthropic_cassette("corpus_request_shape/thinking_unary", |client| async move {
+        let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
+        let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
+            .name("golden")
+            .preamble(BASIC_PREAMBLE)
+            .additional_params(thinking_params())
+            .record_to(recorder.clone())
+            .build();
+        let response = agent
+            .prompt(THINKING_PROMPT)
+            .await
+            .expect("the agent answers");
+        assert!(response.output().contains("144"), "{}", response.output());
+        let log = agent.stamp(recorder.take());
+        assert_eq!(families(&log), [EffectFamily::Completion]);
+        assert!(reasoning_blocks(&log) >= 1, "the completion reasons");
+        crate::goldens::golden_effects("anthropic_request_shape_thinking_unary", &log);
+    })
     .await;
 }
 
@@ -310,7 +304,7 @@ async fn thinking_unary_effect_log_is_the_golden_fixture() {
 /// block's signature are on the record, and both interpreters carry them.
 #[tokio::test]
 async fn thinking_streamed_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_request_shape_cassette(
+    with_anthropic_cassette(
         "corpus_request_shape/thinking_streamed",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
@@ -348,40 +342,37 @@ async fn thinking_streamed_effect_log_is_the_golden_fixture() {
 /// uses them.
 #[tokio::test]
 async fn static_context_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_request_shape_cassette(
-        "corpus_request_shape/static_context",
-        |client| async move {
-            let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
-                .name("golden")
-                .preamble(BASIC_PREAMBLE)
-                .temperature(0.0)
-                .context(CONTEXT_DOCS[0])
-                .context(CONTEXT_DOCS[1])
-                .record_to(recorder.clone())
-                .build();
-            let response = agent
-                .prompt(CONTEXT_PROMPT)
-                .await
-                .expect("the agent answers");
-            assert!(!response.output().is_empty());
-            let log = agent.stamp(recorder.take());
-            assert_eq!(families(&log), [EffectFamily::Completion]);
-            let request = match &log.records[0].kind {
-                rig::effect::EffectKind::Completion { request, .. } => request,
-                other => panic!("a completion, not {other:?}"),
-            };
-            assert_eq!(request.documents.len(), 2, "{:?}", request.documents);
-            crate::goldens::golden_effects("anthropic_request_shape_static_context", &log);
-        },
-    )
+    with_anthropic_cassette("corpus_request_shape/static_context", |client| async move {
+        let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
+        let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
+            .name("golden")
+            .preamble(BASIC_PREAMBLE)
+            .temperature(0.0)
+            .context(CONTEXT_DOCS[0])
+            .context(CONTEXT_DOCS[1])
+            .record_to(recorder.clone())
+            .build();
+        let response = agent
+            .prompt(CONTEXT_PROMPT)
+            .await
+            .expect("the agent answers");
+        assert!(!response.output().is_empty());
+        let log = agent.stamp(recorder.take());
+        assert_eq!(families(&log), [EffectFamily::Completion]);
+        let request = match &log.records[0].kind {
+            rig::effect::EffectKind::Completion { request, .. } => request,
+            other => panic!("a completion, not {other:?}"),
+        };
+        assert_eq!(request.documents.len(), 2, "{:?}", request.documents);
+        crate::goldens::golden_effects("anthropic_request_shape_static_context", &log);
+    })
     .await;
 }
 
 /// `append_preamble`: the spec's preamble is the base and the document.
 #[tokio::test]
 async fn append_preamble_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_request_shape_cassette(
+    with_anthropic_cassette(
         "corpus_request_shape/append_preamble",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
@@ -405,7 +396,7 @@ async fn append_preamble_effect_log_is_the_golden_fixture() {
 /// `without_preamble`: the request carries no system prompt at all.
 #[tokio::test]
 async fn without_preamble_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_request_shape_cassette(
+    with_anthropic_cassette(
         "corpus_request_shape/without_preamble",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
@@ -435,7 +426,7 @@ async fn without_preamble_effect_log_is_the_golden_fixture() {
 /// `output_schema_raw`, unary: the answer is the schema's object.
 #[tokio::test]
 async fn output_schema_unary_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_request_shape_cassette(
+    with_anthropic_cassette(
         "corpus_request_shape/output_schema_unary",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
@@ -465,7 +456,7 @@ async fn output_schema_unary_effect_log_is_the_golden_fixture() {
 /// `output_schema_raw`, streamed with events kept.
 #[tokio::test]
 async fn output_schema_streamed_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_request_shape_cassette(
+    with_anthropic_cassette(
         "corpus_request_shape/output_schema_streamed",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
@@ -503,41 +494,38 @@ async fn output_schema_streamed_effect_log_is_the_golden_fixture() {
 /// holds two turns before the prompt.
 #[tokio::test]
 async fn prior_history_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_request_shape_cassette(
-        "corpus_request_shape/prior_history",
-        |client| async move {
-            let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
-                .name("golden")
-                .preamble(BASIC_PREAMBLE)
-                .temperature(0.0)
-                .record_to(recorder.clone())
-                .build();
-            let response = agent
-                .prompt(NAME_PROMPT)
-                .history(prior_history())
-                .await
-                .expect("the agent answers");
-            assert!(response.output().contains("Ada"), "{}", response.output());
-            let log = agent.stamp(recorder.take());
-            assert_eq!(families(&log), [EffectFamily::Completion]);
-            let request = match &log.records[0].kind {
-                rig::effect::EffectKind::Completion { request, .. } => request,
-                other => panic!("a completion, not {other:?}"),
-            };
-            let turns = request
-                .chat_history
-                .iter()
-                .filter(|message| !matches!(&***message, rig::message::Message::System { .. }))
-                .count();
-            assert_eq!(
-                turns, 3,
-                "two prior turns and the prompt: {:?}",
-                request.chat_history
-            );
-            crate::goldens::golden_effects("anthropic_request_shape_prior_history", &log);
-        },
-    )
+    with_anthropic_cassette("corpus_request_shape/prior_history", |client| async move {
+        let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
+        let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
+            .name("golden")
+            .preamble(BASIC_PREAMBLE)
+            .temperature(0.0)
+            .record_to(recorder.clone())
+            .build();
+        let response = agent
+            .prompt(NAME_PROMPT)
+            .history(prior_history())
+            .await
+            .expect("the agent answers");
+        assert!(response.output().contains("Ada"), "{}", response.output());
+        let log = agent.stamp(recorder.take());
+        assert_eq!(families(&log), [EffectFamily::Completion]);
+        let request = match &log.records[0].kind {
+            rig::effect::EffectKind::Completion { request, .. } => request,
+            other => panic!("a completion, not {other:?}"),
+        };
+        let turns = request
+            .chat_history
+            .iter()
+            .filter(|message| !matches!(&***message, rig::message::Message::System { .. }))
+            .count();
+        assert_eq!(
+            turns, 3,
+            "two prior turns and the prompt: {:?}",
+            request.chat_history
+        );
+        crate::goldens::golden_effects("anthropic_request_shape_prior_history", &log);
+    })
     .await;
 }
 

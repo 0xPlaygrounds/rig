@@ -38,7 +38,7 @@ use rig::message::{AssistantContent, ToolResultContent, UserContent};
 use rig::streaming::StreamEvent;
 use serde_json::{Value, json};
 
-use super::super::support::{OpenAiCassette, with_openai_history_roundtrip_cassette_result};
+use super::super::support::{OpenAiCassette, with_openai_cassette_result};
 use rig::completion::CompletionRequest;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -336,7 +336,7 @@ fn cell(transport: Transport, model: ModelVariant, surface: Surface, shape: Shap
 // mapping between tests and fixtures.
 
 crate::matrix::case_matrix! {
-    wrapper: with_openai_history_roundtrip_cassette_result, family: history_roundtrip_matrix_case;
+    wrapper: with_openai_cassette_result, family: history_roundtrip_matrix_case;
     # [tokio :: test]
     streaming_gpt_4o_mini_normalized_parallel_tool: ("chat_history_roundtrip_matrix/streaming_gpt_4o_mini_normalized_parallel_tool", configured, cell (Transport :: Streaming , ModelVariant :: Gpt4oMini , Surface :: Normalized , Shape :: ParallelTool ,));
 }

@@ -60,7 +60,7 @@ use rig::providers::openai;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use super::super::support::with_openai_image_params_cassette;
+use super::super::support::with_openai_cassette;
 use crate::cassettes;
 use rig::image_generation::ImageGenerationRequestBuilder;
 
@@ -87,7 +87,7 @@ fn rejection_body(error: &ProviderError) -> String {
 async fn retired_model_reaches_model_validation() {
     const SCENARIO: &str = "image_params_matrix/retired_model_reaches_model_validation";
 
-    with_openai_image_params_cassette(
+    with_openai_cassette(
         "image_params_matrix/retired_model_reaches_model_validation",
         |client| async move {
             let model = client.openai.image_generation(openai::DALL_E_3);
@@ -122,7 +122,7 @@ async fn retired_model_reaches_model_validation() {
 async fn additional_params_quality_reaches_the_api() {
     const SCENARIO: &str = "image_params_matrix/additional_params_quality_reaches_the_api";
 
-    with_openai_image_params_cassette(
+    with_openai_cassette(
         "image_params_matrix/additional_params_quality_reaches_the_api",
         |client| async move {
             let model = client.openai.image_generation(UNLISTED_MODEL);
@@ -151,7 +151,7 @@ async fn additional_params_quality_reaches_the_api() {
 async fn additional_params_output_format_reaches_the_api() {
     const SCENARIO: &str = "image_params_matrix/additional_params_output_format_reaches_the_api";
 
-    with_openai_image_params_cassette(
+    with_openai_cassette(
         "image_params_matrix/additional_params_output_format_reaches_the_api",
         |client| async move {
             let model = client.openai.image_generation(UNLISTED_MODEL);
@@ -184,7 +184,7 @@ async fn additional_params_output_format_reaches_the_api() {
 async fn additional_params_invalid_background_is_rejected() {
     const SCENARIO: &str = "image_params_matrix/additional_params_invalid_background_is_rejected";
 
-    with_openai_image_params_cassette(
+    with_openai_cassette(
         "image_params_matrix/additional_params_invalid_background_is_rejected",
         |client| async move {
             let model = client.openai.image_generation(UNLISTED_MODEL);
@@ -213,7 +213,7 @@ async fn additional_params_invalid_output_format_is_rejected() {
     const SCENARIO: &str =
         "image_params_matrix/additional_params_invalid_output_format_is_rejected";
 
-    with_openai_image_params_cassette(
+    with_openai_cassette(
         "image_params_matrix/additional_params_invalid_output_format_is_rejected",
         |client| async move {
             let model = client.openai.image_generation(UNLISTED_MODEL);
@@ -244,7 +244,7 @@ async fn additional_params_invalid_output_format_is_rejected() {
 async fn caller_can_reinstate_response_format() {
     const SCENARIO: &str = "image_params_matrix/caller_can_reinstate_response_format";
 
-    with_openai_image_params_cassette(
+    with_openai_cassette(
         "image_params_matrix/caller_can_reinstate_response_format",
         |client| async move {
             let model = client.openai.image_generation(UNLISTED_MODEL);

@@ -37,7 +37,7 @@ use rig::completion::{AssistantContent, FinishReason};
 use rig::streaming::StreamEvent;
 use serde_json::{Value, json};
 
-use super::support::with_mistral_tool_truncation_cassette_result;
+use super::support::with_mistral_cassette_result;
 use rig::completion::CompletionRequest;
 
 const PREAMBLE: &str = "Call file_report exactly once. Copy the entire user incident verbatim into the required summary argument. Do not answer in prose.";
@@ -331,13 +331,10 @@ async fn streaming_ministral_3b_low_model() -> Result<()> {
         Surface::Model,
     );
     let o = SharedObservation::default();
-    with_mistral_tool_truncation_cassette_result(
-        "tool_truncation_matrix/streaming_ministral_3b_low_model",
-        {
-            let o = Arc::clone(&o);
-            move |x| run_cell(x, c, o)
-        },
-    )
+    with_mistral_cassette_result("tool_truncation_matrix/streaming_ministral_3b_low_model", {
+        let o = Arc::clone(&o);
+        move |x| run_cell(x, c, o)
+    })
     .await?;
     execute(S, c, o).await;
     Ok(())

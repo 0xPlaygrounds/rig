@@ -128,7 +128,7 @@ fn recorded_cache_counters(scenario: &str) -> Vec<(u64, u64, u64)> {
 
 #[tokio::test]
 async fn streaming_probe_survives_the_streaming_accumulator() {
-    with_llamacpp_prompt_caching_cassette("prompt_caching/streaming_probe", |client| async move {
+    with_llamacpp_cassette("prompt_caching/streaming_probe", |client| async move {
         let model = client.completion(CASSETTE_MODEL);
         let observation =
             run_cache_probe_streaming(model, &probe_for("llamacpp streaming probe")).await;
@@ -154,7 +154,7 @@ async fn streaming_probe_survives_the_streaming_accumulator() {
 /// whole conversation.
 #[tokio::test]
 async fn cache_prompt_false_turns_the_cache_off_for_that_turn_only() {
-    with_llamacpp_prompt_caching_cassette(
+    with_llamacpp_cassette(
         "prompt_caching/cache_prompt_disabled",
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
@@ -236,7 +236,7 @@ async fn cache_prompt_false_turns_the_cache_off_for_that_turn_only() {
 /// A real agent loop with a tool round-trip, asserted on prefix stability.
 #[tokio::test]
 async fn agent_loop_does_not_move_its_own_prefix() {
-    with_llamacpp_prompt_caching_cassette("prompt_caching/agent_loop", |client| async move {
+    with_llamacpp_cassette("prompt_caching/agent_loop", |client| async move {
         let response = rig::AgentBuilder::new(client.completion(CASSETTE_MODEL))
             .preamble(&probe_for("llamacpp agent loop").preamble)
             .tool(CacheProbeLookupTool)

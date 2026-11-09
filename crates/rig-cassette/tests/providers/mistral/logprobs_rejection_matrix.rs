@@ -30,7 +30,7 @@ use anyhow::{Context, Result, bail};
 use futures::StreamExt as _;
 use serde_json::{Value, json};
 
-use super::support::with_mistral_logprobs_rejection_cassette_result;
+use super::support::with_mistral_cassette_result;
 use rig::completion::CompletionRequest;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -148,7 +148,7 @@ async fn blocking_ministral_3b() -> Result<()> {
     };
     let observed = SharedError::default();
     let capture = Arc::clone(&observed);
-    with_mistral_logprobs_rejection_cassette_result(
+    with_mistral_cassette_result(
         "logprobs_rejection_matrix/blocking_ministral_3b",
         |client| async move { run_cell(client, cell, capture).await },
     )
@@ -166,7 +166,7 @@ async fn streaming_ministral_3b() -> Result<()> {
     };
     let observed = SharedError::default();
     let capture = Arc::clone(&observed);
-    with_mistral_logprobs_rejection_cassette_result(
+    with_mistral_cassette_result(
         "logprobs_rejection_matrix/streaming_ministral_3b",
         |client| async move { run_cell(client, cell, capture).await },
     )

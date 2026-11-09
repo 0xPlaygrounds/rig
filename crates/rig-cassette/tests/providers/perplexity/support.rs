@@ -34,20 +34,3 @@ where
     .await;
     cassette.finish_after_test(result).await;
 }
-
-/// Cassette wrapper for the perplexity prompt-caching matrix
-/// (`crates/rig-cassette/fixtures/cassettes/perplexity/prompt_caching/`).
-///
-/// Delegates to [`with_perplexity_cassette`] — the behavior is identical, and deliberately shared
-/// so the two cannot drift apart when the base wrapper gains policy. What the
-/// separate name buys is a per-suite entry in the cassette-safety registry, so
-/// the cache fixtures are auditable as one concern's evidence.
-pub(super) async fn with_perplexity_prompt_caching_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(OpenAiModels) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    with_perplexity_cassette(spec, test_body).await;
-}

@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 
 use super::support::{
     collect_raw_stream_outcome, recorded_request, recorded_response, recorded_stream_chunks,
-    with_deepseek_followup_hunt_cassette_result,
+    with_deepseek_cassette_result,
 };
 use rig::completion::{CompletionRequest, GenerationOptions, Reasoning};
 
@@ -42,7 +42,7 @@ fn stream_choices(scenario: &str) -> Vec<Value> {
 async fn blocking_stop_sequence_reaches_the_wire_and_stops_generation() {
     const SCENARIO: &str =
         "followup_hunt_matrix/blocking_stop_sequence_reaches_the_wire_and_stops_generation";
-    with_deepseek_followup_hunt_cassette_result(
+    with_deepseek_cassette_result(
         "followup_hunt_matrix/blocking_stop_sequence_reaches_the_wire_and_stops_generation",
         |client| async move {
             let model = client.completion(MODEL);
@@ -78,7 +78,7 @@ async fn blocking_stop_sequence_reaches_the_wire_and_stops_generation() {
 async fn streaming_stop_sequence_reaches_the_wire_and_stops_generation() {
     const SCENARIO: &str =
         "followup_hunt_matrix/streaming_stop_sequence_reaches_the_wire_and_stops_generation";
-    with_deepseek_followup_hunt_cassette_result(
+    with_deepseek_cassette_result(
         "followup_hunt_matrix/streaming_stop_sequence_reaches_the_wire_and_stops_generation",
         |client| async move {
             let model = client.completion(MODEL);
@@ -115,7 +115,7 @@ async fn streaming_stop_sequence_reaches_the_wire_and_stops_generation() {
 #[tokio::test]
 async fn low_reasoning_effort_produces_a_reasoning_turn() {
     const SCENARIO: &str = "followup_hunt_matrix/low_reasoning_effort_produces_a_reasoning_turn";
-    with_deepseek_followup_hunt_cassette_result(
+    with_deepseek_cassette_result(
         "followup_hunt_matrix/low_reasoning_effort_produces_a_reasoning_turn",
         |client| async move {
             let model = client.completion(MODEL);

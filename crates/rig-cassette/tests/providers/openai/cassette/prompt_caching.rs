@@ -48,7 +48,7 @@ use crate::cache_conformance::{
     run_cache_probe_streaming,
 };
 
-use super::super::support::{shared_options, stateless, with_openai_prompt_caching_cassette};
+use super::super::support::{shared_options, stateless, with_openai_cassette};
 
 /// A cheap model that still participates in prompt caching.
 pub(super) const CACHE_MODEL: &str = openai::GPT_4O_MINI;
@@ -114,7 +114,7 @@ fn keyed_probe() -> CacheProbe {
 async fn responses_without_a_cache_key_does_not_hit_until_the_third_turn() {
     const SCENARIO: &str = "prompt_caching/responses_unkeyed_probe";
 
-    with_openai_prompt_caching_cassette("prompt_caching/responses_unkeyed_probe", |client| async move {
+    with_openai_cassette("prompt_caching/responses_unkeyed_probe", |client| async move {
         let model = client.openai.completion(CACHE_MODEL);
         let observation = run_cache_probe(model, &responses_probe()).await;
 
@@ -154,7 +154,7 @@ async fn responses_without_a_cache_key_does_not_hit_until_the_third_turn() {
 async fn responses_streaming_probe_survives_the_streaming_accumulator() {
     const SCENARIO: &str = "prompt_caching/responses_streaming_probe";
 
-    with_openai_prompt_caching_cassette(
+    with_openai_cassette(
         "prompt_caching/responses_streaming_probe",
         |client| async move {
             let model = client.openai.completion(CACHE_MODEL);
@@ -186,7 +186,7 @@ async fn responses_cache_point_breakpoint_serves_a_changed_question() {
         .collect::<Vec<_>>()
         .join(" ");
     let mut cached = 0;
-    with_openai_prompt_caching_cassette(
+    with_openai_cassette(
         "prompt_caching/responses_cache_point_breakpoint",
         |client| {
             let cached = &mut cached;

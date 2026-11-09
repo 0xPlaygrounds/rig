@@ -32,7 +32,7 @@ use rig::message::{AssistantContent, UserContent};
 use rig::streaming::StreamEvent;
 use serde_json::Value;
 
-use super::support::with_mistral_history_roundtrip_cassette_result;
+use super::support::with_mistral_cassette_result;
 use rig::completion::CompletionRequest;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -286,7 +286,7 @@ fn cell(transport: Transport, model: ModelVariant, surface: Surface, shape: Shap
 // mapping between tests and fixtures.
 
 crate::matrix::case_matrix! {
-    wrapper: with_mistral_history_roundtrip_cassette_result, family: history_roundtrip_matrix_case;
+    wrapper: with_mistral_cassette_result, family: history_roundtrip_matrix_case;
     # [tokio :: test]
     # [ignore = "stale cassette: its request predates item-shaped history, and Mistral rate-limited the re-record"]
     blocking_mistral_small_raw_text: ("history_roundtrip_matrix/blocking_mistral_small_raw_text", configured, cell (Transport :: Blocking , ModelVariant :: MistralSmall , Surface :: Raw , Shape :: Text ,));

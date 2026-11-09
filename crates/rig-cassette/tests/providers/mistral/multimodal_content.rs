@@ -22,7 +22,7 @@ use rig::providers::mistral;
 
 use crate::support::{AUDIO_FIXTURE_PATH, collect_stream_final_response};
 
-use super::support::with_mistral_multimodal_cassette;
+use super::support::with_mistral_cassette_result;
 use rig::completion::CompletionRequest;
 
 /// Vision-capable and the model every other Mistral fixture already uses.
@@ -135,7 +135,7 @@ fn assert_recorded_contains(scenario: &str, needle: &str, why: &str) {
 #[tokio::test]
 #[ignore = "stale cassette: its request predates item-shaped history, and Mistral rate-limited the re-record"]
 async fn blocking_image_survives_a_replayed_history() -> Result<()> {
-    with_mistral_multimodal_cassette(
+    with_mistral_cassette_result(
         "multimodal_content/blocking_image_survives_a_replayed_history",
         |client| async move {
             let agent = rig::AgentBuilder::new(client.completion(VISION_MODEL))
@@ -167,7 +167,7 @@ async fn blocking_image_survives_a_replayed_history() -> Result<()> {
 #[tokio::test]
 #[ignore = "stale cassette: its request predates item-shaped history, and Mistral rate-limited the re-record"]
 async fn streaming_image_survives_a_replayed_history() -> Result<()> {
-    with_mistral_multimodal_cassette(
+    with_mistral_cassette_result(
         "multimodal_content/streaming_image_survives_a_replayed_history",
         |client| async move {
             let agent = rig::AgentBuilder::new(client.completion(VISION_MODEL))
@@ -202,7 +202,7 @@ async fn streaming_image_survives_a_replayed_history() -> Result<()> {
 
 #[tokio::test]
 async fn blocking_document_and_image_in_one_message() -> Result<()> {
-    with_mistral_multimodal_cassette(
+    with_mistral_cassette_result(
         "multimodal_content/blocking_document_and_image_in_one_message",
         |client| async move {
             let agent = rig::AgentBuilder::new(client.completion(VISION_MODEL))
@@ -239,7 +239,7 @@ async fn blocking_document_and_image_in_one_message() -> Result<()> {
 
 #[tokio::test]
 async fn blocking_raw_model_sends_audio() -> Result<()> {
-    with_mistral_multimodal_cassette(
+    with_mistral_cassette_result(
         "multimodal_content/blocking_raw_model_sends_audio",
         |client| async move {
             let model = client.completion(AUDIO_MODEL);
@@ -274,7 +274,7 @@ async fn blocking_raw_model_sends_audio() -> Result<()> {
 
 #[tokio::test]
 async fn streaming_agent_sends_audio() -> Result<()> {
-    with_mistral_multimodal_cassette(
+    with_mistral_cassette_result(
         "multimodal_content/streaming_agent_sends_audio",
         |client| async move {
             let agent = rig::AgentBuilder::new(client.completion(AUDIO_MODEL))
@@ -352,7 +352,7 @@ impl rig::tool::Tool for RecordColour {
 #[tokio::test]
 #[ignore = "stale cassette: its request predates item-shaped history, and Mistral rate-limited the re-record"]
 async fn blocking_image_with_a_tool_configured() -> Result<()> {
-    with_mistral_multimodal_cassette(
+    with_mistral_cassette_result(
         "multimodal_content/blocking_image_with_a_tool_configured",
         |client| async move {
             let agent = rig::AgentBuilder::new(client.completion(VISION_MODEL))
@@ -388,7 +388,7 @@ async fn blocking_image_with_a_tool_configured() -> Result<()> {
 #[tokio::test]
 #[ignore = "stale cassette: its request predates item-shaped history, and Mistral rate-limited the re-record"]
 async fn streaming_image_with_a_tool_configured() -> Result<()> {
-    with_mistral_multimodal_cassette(
+    with_mistral_cassette_result(
         "multimodal_content/streaming_image_with_a_tool_configured",
         |client| async move {
             let agent = rig::AgentBuilder::new(client.completion(VISION_MODEL))

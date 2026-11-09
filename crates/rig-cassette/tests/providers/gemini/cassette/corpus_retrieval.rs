@@ -16,7 +16,7 @@ use rig::effect::{Answered, EffectFamily, EffectKind, RetrieveQuery, RetrievedDo
 use rig::providers::gemini;
 use rig_cassette::agent::AgentReplayExt;
 
-use super::super::support::with_gemini_corpus_retrieval_cassette;
+use super::super::support::with_gemini_cassette;
 use crate::goldens::{
     ADD_THEN_SUBTRACT_PROMPT, EmbedSubtract, FACT_PROMPT, FACTS, RETRIEVED_TOOLS_PREAMBLE,
     SUBTRACT_PROMPT, facts_index, families, retrievable_toolset, tool_index,
@@ -87,7 +87,7 @@ async fn final_output(stream: &mut rig::agent::StreamingResult) -> String {
 /// whose request holds the retrieved fact as a document.
 #[tokio::test]
 async fn dynamic_context_one_effect_log_is_the_golden_fixture() {
-    with_gemini_corpus_retrieval_cassette(
+    with_gemini_cassette(
         "corpus_retrieval/dynamic_context_one",
         |client| async move {
             let index = facts_index(client.embedding(EMBEDDING, None), &FACTS).await;
@@ -128,7 +128,7 @@ async fn dynamic_context_one_effect_log_is_the_golden_fixture() {
 /// `dynamic_context(2, facts)`, streamed with events.
 #[tokio::test]
 async fn dynamic_context_two_streamed_effect_log_is_the_golden_fixture() {
-    with_gemini_corpus_retrieval_cassette(
+    with_gemini_cassette(
         "corpus_retrieval/dynamic_context_two_streamed",
         |client| async move {
             let index = facts_index(client.embedding(EMBEDDING, None), &FACTS).await;
@@ -161,7 +161,7 @@ async fn dynamic_context_two_streamed_effect_log_is_the_golden_fixture() {
 /// all three.
 #[tokio::test]
 async fn dynamic_context_over_sampled_effect_log_is_the_golden_fixture() {
-    with_gemini_corpus_retrieval_cassette(
+    with_gemini_cassette(
         "corpus_retrieval/dynamic_context_over_sampled",
         |client| async move {
             let index = facts_index(client.embedding(EMBEDDING, None), &FACTS).await;
@@ -191,7 +191,7 @@ async fn dynamic_context_over_sampled_effect_log_is_the_golden_fixture() {
 /// with no documents, the request carries none.
 #[tokio::test]
 async fn dynamic_context_empty_index_effect_log_is_the_golden_fixture() {
-    with_gemini_corpus_retrieval_cassette(
+    with_gemini_cassette(
         "corpus_retrieval/dynamic_context_empty_index",
         |client| async move {
             let index = facts_index(client.embedding(EMBEDDING, None), &[]).await;
@@ -226,7 +226,7 @@ async fn dynamic_context_empty_index_effect_log_is_the_golden_fixture() {
 /// call, the retrieved tool advertised and called.
 #[tokio::test]
 async fn retrieved_tools_one_effect_log_is_the_golden_fixture() {
-    with_gemini_corpus_retrieval_cassette(
+    with_gemini_cassette(
         "corpus_retrieval/retrieved_tools_one",
         |client| async move {
             let toolset = retrievable_toolset();
@@ -274,7 +274,7 @@ async fn retrieved_tools_one_effect_log_is_the_golden_fixture() {
 /// advertised, the retrieved one when its index says so.
 #[tokio::test]
 async fn retrieved_tools_with_static_effect_log_is_the_golden_fixture() {
-    with_gemini_corpus_retrieval_cassette(
+    with_gemini_cassette(
         "corpus_retrieval/retrieved_tools_with_static",
         |client| async move {
             let mut toolset = rig::tool::ToolSet::default();
@@ -321,46 +321,43 @@ async fn retrieved_tools_with_static_effect_log_is_the_golden_fixture() {
 /// model call, in that order.
 #[tokio::test]
 async fn context_and_tools_effect_log_is_the_golden_fixture() {
-    with_gemini_corpus_retrieval_cassette(
-        "corpus_retrieval/context_and_tools",
-        |client| async move {
-            let facts = facts_index(client.embedding(EMBEDDING, None), &FACTS).await;
-            let toolset = retrievable_toolset();
-            let tools = tool_index(client.embedding(EMBEDDING, None), &toolset).await;
-            let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = rig::AgentBuilder::new(client.completion(MODEL))
-                .name("golden")
-                .preamble(RETRIEVED_TOOLS_PREAMBLE)
-                .temperature(0.0)
-                .dynamic_context(1, facts)
-                .retrieved_tools(1, tools, toolset)
-                .record_to(recorder.clone())
-                .build();
-            let response = agent
-                .prompt(SUBTRACT_PROMPT)
-                .max_turns(3)
-                .await
-                .expect("the agent answers");
-            assert!(response.output().contains("42"), "{}", response.output());
-            let log = agent.stamp(recorder.take());
-            assert_eq!(
-                families(&log),
-                [
-                    EffectFamily::Retrieve,
-                    EffectFamily::Retrieve,
-                    EffectFamily::Completion,
-                    EffectFamily::Tool,
-                    EffectFamily::Retrieve,
-                    EffectFamily::Retrieve,
-                    EffectFamily::Completion
-                ]
-            );
-            assert_eq!(
-                retrieve_kinds(&log),
-                ["top_n", "top_n_ids", "top_n", "top_n_ids"]
-            );
-            crate::goldens::golden_effects("gemini_retrieval_context_and_tools", &log);
-        },
-    )
+    with_gemini_cassette("corpus_retrieval/context_and_tools", |client| async move {
+        let facts = facts_index(client.embedding(EMBEDDING, None), &FACTS).await;
+        let toolset = retrievable_toolset();
+        let tools = tool_index(client.embedding(EMBEDDING, None), &toolset).await;
+        let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
+        let agent = rig::AgentBuilder::new(client.completion(MODEL))
+            .name("golden")
+            .preamble(RETRIEVED_TOOLS_PREAMBLE)
+            .temperature(0.0)
+            .dynamic_context(1, facts)
+            .retrieved_tools(1, tools, toolset)
+            .record_to(recorder.clone())
+            .build();
+        let response = agent
+            .prompt(SUBTRACT_PROMPT)
+            .max_turns(3)
+            .await
+            .expect("the agent answers");
+        assert!(response.output().contains("42"), "{}", response.output());
+        let log = agent.stamp(recorder.take());
+        assert_eq!(
+            families(&log),
+            [
+                EffectFamily::Retrieve,
+                EffectFamily::Retrieve,
+                EffectFamily::Completion,
+                EffectFamily::Tool,
+                EffectFamily::Retrieve,
+                EffectFamily::Retrieve,
+                EffectFamily::Completion
+            ]
+        );
+        assert_eq!(
+            retrieve_kinds(&log),
+            ["top_n", "top_n_ids", "top_n", "top_n_ids"]
+        );
+        crate::goldens::golden_effects("gemini_retrieval_context_and_tools", &log);
+    })
     .await;
 }

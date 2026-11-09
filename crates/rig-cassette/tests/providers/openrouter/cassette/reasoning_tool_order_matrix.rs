@@ -45,7 +45,7 @@ use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use super::super::support::{pinned_order, with_openrouter_reasoning_tool_order_cassette_result};
+use super::super::support::{pinned_order, with_openrouter_cassette_result};
 use rig::completion::{CompletionRequest, Reasoning};
 
 const MODEL: &str = "anthropic/claude-haiku-4.5";
@@ -450,7 +450,7 @@ async fn blocking_single() -> Result<()> {
     };
     let observed = SharedChoice::default();
     let capture = Arc::clone(&observed);
-    with_openrouter_reasoning_tool_order_cassette_result(
+    with_openrouter_cassette_result(
         "reasoning_tool_order_matrix/blocking_single",
         |client| async move { run_cell(client, cell, capture).await },
     )
@@ -468,7 +468,7 @@ async fn streaming_single() -> Result<()> {
     };
     let observed = SharedChoice::default();
     let capture = Arc::clone(&observed);
-    with_openrouter_reasoning_tool_order_cassette_result(
+    with_openrouter_cassette_result(
         "reasoning_tool_order_matrix/streaming_single",
         |client| async move { run_cell(client, cell, capture).await },
     )
@@ -482,7 +482,7 @@ async fn streaming_signed_agent_roundtrip() -> Result<()> {
     const S: &str = "reasoning_tool_order_matrix/streaming_signed_agent_roundtrip";
     let invocations = Arc::new(AtomicUsize::new(0));
     let capture = Arc::clone(&invocations);
-    with_openrouter_reasoning_tool_order_cassette_result(
+    with_openrouter_cassette_result(
         "reasoning_tool_order_matrix/streaming_signed_agent_roundtrip",
         |client| async move { run_signed_agent(client, Transport::Streaming, capture).await },
     )

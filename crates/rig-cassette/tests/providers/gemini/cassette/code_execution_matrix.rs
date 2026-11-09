@@ -50,9 +50,7 @@ use rig::streaming::Item;
 use rig::streaming::StreamEvent;
 use serde_json::{Value, json};
 
-use super::super::support::{
-    assert_recorded_response_contains, with_gemini_code_execution_cassette,
-};
+use super::super::support::{assert_recorded_response_contains, with_gemini_cassette};
 use rig::completion::CompletionRequest;
 
 /// Wire markers of the two code-execution part kinds, as Gemini spells them.
@@ -162,7 +160,7 @@ const THINKING_PROMPT: &str = "Use the code execution tool to compute the 20th F
 async fn streaming_code_execution_with_visible_thoughts() {
     const SCENARIO: &str = "code_execution_matrix/streaming_code_execution_with_visible_thoughts";
 
-    with_gemini_code_execution_cassette(
+    with_gemini_cassette(
         "code_execution_matrix/streaming_code_execution_with_visible_thoughts",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
@@ -209,7 +207,7 @@ async fn streaming_code_execution_with_visible_thoughts() {
 async fn blocking_code_execution_replayed_in_chat_history() {
     const SCENARIO: &str = "code_execution_matrix/blocking_code_execution_replayed_in_chat_history";
 
-    with_gemini_code_execution_cassette(
+    with_gemini_cassette(
         "code_execution_matrix/blocking_code_execution_replayed_in_chat_history",
         |client| async move {
             let agent =

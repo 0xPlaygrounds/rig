@@ -40,7 +40,7 @@ use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use super::super::support::with_openrouter_tool_lifecycle_cassette_result;
+use super::super::support::with_openrouter_cassette_result;
 
 const PREAMBLE: &str = "Follow the user's tool-call instruction exactly. Do not answer in prose.";
 
@@ -515,7 +515,7 @@ async fn execute(scenario: &'static str, cell: Cell, observed: SharedObservation
 // parses source rather than macro expansion.
 
 crate::matrix::case_matrix! {
-    wrapper: with_openrouter_tool_lifecycle_cassette_result, family: tool_lifecycle_matrix_case;
+    wrapper: with_openrouter_cassette_result, family: tool_lifecycle_matrix_case;
     # [tokio :: test]
     blocking_gpt41_zero_agent: ("tool_lifecycle_matrix/blocking_gpt41_zero_agent", configured, cell (Transport :: Blocking , Model :: Gpt41Mini , Shape :: Zero , Surface :: Agent ,));
     # [tokio :: test]

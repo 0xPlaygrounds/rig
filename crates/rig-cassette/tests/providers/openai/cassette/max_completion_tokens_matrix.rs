@@ -41,7 +41,7 @@
 //! which the untouched `mistralrs`, `vllm`, and `doubleword` suites replay as
 //! their own proof.
 
-use super::super::support::with_openai_max_tokens_cassette;
+use super::super::support::with_openai_cassette;
 use crate::support::{
     Adder, assert_nonempty_response, assistant_text_response, collect_stream_observation,
 };
@@ -63,7 +63,7 @@ const PROMPT: &str = "Reply with the single word OK.";
 
 #[tokio::test]
 async fn reasoning_gpt5_nano_tool_turn_streaming_cap() {
-    with_openai_max_tokens_cassette(
+    with_openai_cassette(
         "max_completion_tokens_matrix/reasoning_gpt5_nano_tool_turn_streaming_cap",
         |client| async move {
             let agent = rig::AgentBuilder::new(client.chat.completion("gpt-5-nano"))
@@ -90,7 +90,7 @@ async fn reasoning_gpt5_nano_tool_turn_streaming_cap() {
 /// The oldest chat model rig names: the far end of the untouched set.
 #[tokio::test]
 async fn legacy_gpt_3_5_turbo_blocking_cap() {
-    with_openai_max_tokens_cassette(
+    with_openai_cassette(
         "max_completion_tokens_matrix/legacy_gpt_3_5_turbo_blocking_cap",
         |client| async move {
             let model = client.openai.chat("gpt-3.5-turbo");

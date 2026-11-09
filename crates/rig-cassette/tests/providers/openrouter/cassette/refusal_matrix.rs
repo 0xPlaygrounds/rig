@@ -55,7 +55,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
 
-use super::super::support::with_openrouter_refusal_cassette;
+use super::super::support::with_openrouter_cassette;
 use crate::cassettes;
 use crate::support::{
     assert_nonempty_response, assistant_text_response, collect_raw_stream_observation,
@@ -102,7 +102,7 @@ fn refusal_request_params() -> Value {
 async fn blocking_refusal_with_tools_in_request() {
     const SCENARIO: &str = "refusal_matrix/blocking_refusal_with_tools_in_request";
 
-    with_openrouter_refusal_cassette(
+    with_openrouter_cassette(
         "refusal_matrix/blocking_refusal_with_tools_in_request",
         |client| async move {
             let model = client.completion(REFUSING_MODEL);
@@ -138,7 +138,7 @@ async fn blocking_refusal_with_tools_in_request() {
 async fn streaming_refusal_emits_no_tool_calls() {
     const SCENARIO: &str = "refusal_matrix/streaming_refusal_emits_no_tool_calls";
 
-    with_openrouter_refusal_cassette(
+    with_openrouter_cassette(
         "refusal_matrix/streaming_refusal_emits_no_tool_calls",
         |client| async move {
             let model = client.completion(REFUSING_MODEL);
@@ -177,7 +177,7 @@ async fn transports_agree_on_the_refusal_text() {
     let delivered = Arc::new(Mutex::new((String::new(), String::new())));
     let recorder = delivered.clone();
 
-    with_openrouter_refusal_cassette(
+    with_openrouter_cassette(
         "refusal_matrix/transports_agree_on_the_refusal_text",
         |client| async move {
             let model = client.completion(REFUSING_MODEL);

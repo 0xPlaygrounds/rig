@@ -42,7 +42,7 @@ use rig::providers::gemini::extension::{GeminiExt, InteractionStatus};
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
 
-use super::super::support::with_gemini_interactions_cassette;
+use super::super::support::with_gemini_cassette;
 use crate::support::{json_contains_key, normalized_without_raw};
 use rig::completion::CompletionRequest;
 
@@ -88,7 +88,7 @@ fn assert_recorded_completed_interaction(scenario: &str) -> Value {
 #[tokio::test]
 async fn raw_roundtrips_interaction() {
     const SCENARIO: &str = "interactions_raw_capture_matrix/raw_roundtrips_interaction";
-    with_gemini_interactions_cassette(
+    with_gemini_cassette(
         "interactions_raw_capture_matrix/raw_roundtrips_interaction",
         |client| async move {
             let model = client.interactions(MODEL);
@@ -149,7 +149,7 @@ async fn raw_exposes_lifecycle_fields() {
     const SCENARIO: &str = "interactions_raw_capture_matrix/raw_exposes_lifecycle_fields";
     let observed: Arc<Mutex<Option<Value>>> = Arc::new(Mutex::new(None));
     let sink = Arc::clone(&observed);
-    with_gemini_interactions_cassette(
+    with_gemini_cassette(
         "interactions_raw_capture_matrix/raw_exposes_lifecycle_fields",
         |client| async move {
             let model = client.interactions(MODEL);

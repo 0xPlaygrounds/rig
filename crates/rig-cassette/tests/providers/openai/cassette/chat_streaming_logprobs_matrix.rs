@@ -42,9 +42,7 @@ use serde_json::{Value, json};
 
 use rig::providers::openai::extension::{ChatOptions, OpenAiOptions};
 
-use super::super::support::{
-    OpenAiCassette, openai_options, with_openai_chat_stream_logprobs_cassette_result,
-};
+use super::super::support::{OpenAiCassette, openai_options, with_openai_cassette_result};
 use rig::completion::CompletionRequest;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -302,7 +300,7 @@ fn cell(transport: Transport, model: ModelVariant, termination: Termination, top
 // configurations. The matching streaming half below traverses the fixed path.
 
 crate::matrix::case_matrix! {
-    wrapper: with_openai_chat_stream_logprobs_cassette_result, family: streaming_logprobs_matrix_case;
+    wrapper: with_openai_cassette_result, family: streaming_logprobs_matrix_case;
     # [tokio :: test]
     blocking_gpt_4_1_mini_stop_top_absent: ("chat_streaming_logprobs_matrix/blocking_gpt_4_1_mini_stop_top_absent", configured, cell (Transport :: Blocking , ModelVariant :: Gpt41Mini , Termination :: Stop , Top :: Absent ,));
     # [tokio :: test]

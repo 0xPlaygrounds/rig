@@ -86,8 +86,7 @@ use rig_test_support::cassette_models::GeminiModels;
 use serde_json::{Value, json};
 
 use super::super::support::{
-    assert_recorded_response_contains, assert_recorded_response_excludes,
-    with_gemini_thought_text_cassette,
+    assert_recorded_response_contains, assert_recorded_response_excludes, with_gemini_cassette,
 };
 use crate::support::AUDIO_FIXTURE_PATH;
 use rig::completion::{CompletionRequest, GenerationOptions, ProviderOptions, Reasoning};
@@ -266,7 +265,7 @@ async fn transcription_with_thoughts_and_temperature() {
     const SCENARIO: &str = "thought_text_matrix/transcription_with_thoughts_and_temperature";
     // The literal is repeated here on purpose: the cassette safety
     // scan reads each scenario out of this call site's AST.
-    with_gemini_thought_text_cassette(
+    with_gemini_cassette(
         "thought_text_matrix/transcription_with_thoughts_and_temperature",
         |client| {
             transcription_body(
@@ -382,7 +381,7 @@ async fn text_response_with_structured_output() {
     const SCENARIO: &str = "thought_text_matrix/text_response_with_structured_output";
     // The literal is repeated here on purpose: the cassette safety
     // scan reads each scenario out of this call site's AST.
-    with_gemini_thought_text_cassette(
+    with_gemini_cassette(
         "thought_text_matrix/text_response_with_structured_output",
         |client| {
             text_response_body(
@@ -427,7 +426,7 @@ async fn text_response_across_two_candidates() {
     // `candidateCount: 2` is where a folding reader and the normalized choice
     // legitimately differ: the choice is candidate 0 alone. The thought
     // filter must still apply, and no second candidate may be folded in.
-    with_gemini_thought_text_cassette(
+    with_gemini_cassette(
         "thought_text_matrix/text_response_across_two_candidates",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);

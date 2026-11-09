@@ -39,7 +39,7 @@ use rig::providers::anthropic::extension::{AnthropicExt, AnthropicExtras};
 use rig::providers::anthropic::wire::Messages;
 use serde_json::json;
 
-use super::super::support::with_anthropic_stop_sequence_cassette;
+use super::super::support::with_anthropic_cassette;
 
 type AnthropicModel = Model<Messages>;
 
@@ -182,7 +182,7 @@ pub(super) fn assert_recorded_terminal_stop_sequence(scenario: &str, expected: O
 
 #[tokio::test]
 async fn raw_with_tools_sequence_fires() {
-    with_anthropic_stop_sequence_cassette(
+    with_anthropic_cassette(
         "stop_sequence_terminal_matrix/raw_with_tools_sequence_fires",
         |client| async move {
             let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
@@ -206,7 +206,7 @@ async fn raw_with_tools_sequence_fires() {
 
 #[tokio::test]
 async fn raw_with_preamble_sequence_fires() {
-    with_anthropic_stop_sequence_cassette(
+    with_anthropic_cassette(
         "stop_sequence_terminal_matrix/raw_with_preamble_sequence_fires",
         |client| async move {
             let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);

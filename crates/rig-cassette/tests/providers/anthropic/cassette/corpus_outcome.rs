@@ -19,10 +19,7 @@ use rig::streaming::Item;
 use rig::streaming::StreamEvent;
 use rig_cassette::agent::AgentReplayExt;
 
-use super::super::support::{
-    with_anthropic_cassette, with_anthropic_cassette_bogus_key,
-    with_anthropic_corpus_outcome_cassette,
-};
+use super::super::support::{with_anthropic_cassette, with_anthropic_cassette_bogus_key};
 use crate::goldens::{BROKEN_ADD, FailingAdd, WriteNote, families};
 use crate::support::{Adder, BASIC_PREAMBLE, BASIC_PROMPT, TOOLS_PREAMBLE};
 
@@ -59,7 +56,7 @@ pub(super) fn tool_outcome(log: &rig::cassette::effect_log::EffectLog) -> &rig::
 /// landed and recorded a success), so the drop lands mid-call.
 #[tokio::test]
 async fn cancel_after_tool_call_delta_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_outcome_cassette(
+    with_anthropic_cassette(
         "corpus_outcome/cancel_after_tool_call_delta",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
@@ -102,7 +99,7 @@ async fn cancel_after_tool_call_delta_effect_log_is_the_golden_fixture() {
 /// model sees the failure and answers around it.
 #[tokio::test]
 async fn tool_error_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_outcome_cassette("corpus_outcome/tool_error", |client| async move {
+    with_anthropic_cassette("corpus_outcome/tool_error", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
             .name("golden")
@@ -137,35 +134,32 @@ async fn tool_error_effect_log_is_the_golden_fixture() {
 /// The same, streamed with events kept.
 #[tokio::test]
 async fn tool_error_streamed_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_outcome_cassette(
-        "corpus_outcome/tool_error_streamed",
-        |client| async move {
-            let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
-            let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
-                .name("golden")
-                .preamble(TOOLS_PREAMBLE)
-                .temperature(0.0)
-                .tool(FailingAdd)
-                .record_to(recorder.clone())
-                .build();
-            let mut stream = agent.prompt(ADD_PROMPT).max_turns(3).stream();
-            let output = final_output(&mut stream).await;
-            drop(stream);
-            assert!(!output.is_empty());
-            let log = agent.stamp(recorder.take());
-            assert_eq!(
-                families(&log),
-                [
-                    EffectFamily::Completion,
-                    EffectFamily::Tool,
-                    EffectFamily::Completion
-                ]
-            );
-            assert!(log.records[0].events.is_some(), "events are kept");
-            assert!(tool_outcome(&log).is_error());
-            crate::goldens::golden_effects("anthropic_outcome_tool_error_streamed", &log);
-        },
-    )
+    with_anthropic_cassette("corpus_outcome/tool_error_streamed", |client| async move {
+        let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
+        let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
+            .name("golden")
+            .preamble(TOOLS_PREAMBLE)
+            .temperature(0.0)
+            .tool(FailingAdd)
+            .record_to(recorder.clone())
+            .build();
+        let mut stream = agent.prompt(ADD_PROMPT).max_turns(3).stream();
+        let output = final_output(&mut stream).await;
+        drop(stream);
+        assert!(!output.is_empty());
+        let log = agent.stamp(recorder.take());
+        assert_eq!(
+            families(&log),
+            [
+                EffectFamily::Completion,
+                EffectFamily::Tool,
+                EffectFamily::Completion
+            ]
+        );
+        assert!(log.records[0].events.is_some(), "events are kept");
+        assert!(tool_outcome(&log).is_error());
+        crate::goldens::golden_effects("anthropic_outcome_tool_error_streamed", &log);
+    })
     .await;
 }
 
@@ -242,34 +236,31 @@ async fn model_error_streamed_effect_log_is_the_golden_fixture() {
 /// unused.
 #[tokio::test]
 async fn max_turns_exhausted_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_outcome_cassette(
-        "corpus_outcome/max_turns_exhausted",
-        |client| async move {
-            let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
-                .name("golden")
-                .preamble(TOOLS_PREAMBLE)
-                .temperature(0.0)
-                .tool(Adder)
-                .record_to(recorder.clone())
-                .build();
-            let error = agent
-                .prompt(ADD_PROMPT)
-                .max_turns(1)
-                .await
-                .expect_err("one call cannot finish a tool turn");
-            assert!(
-                matches!(error, PromptError::MaxTurns { max_turns: 1, .. }),
-                "{error:?}"
-            );
-            let log = agent.stamp(recorder.take());
-            assert_eq!(
-                families(&log),
-                [EffectFamily::Completion, EffectFamily::Tool]
-            );
-            crate::goldens::golden_effects("anthropic_outcome_max_turns_exhausted", &log);
-        },
-    )
+    with_anthropic_cassette("corpus_outcome/max_turns_exhausted", |client| async move {
+        let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
+        let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
+            .name("golden")
+            .preamble(TOOLS_PREAMBLE)
+            .temperature(0.0)
+            .tool(Adder)
+            .record_to(recorder.clone())
+            .build();
+        let error = agent
+            .prompt(ADD_PROMPT)
+            .max_turns(1)
+            .await
+            .expect_err("one call cannot finish a tool turn");
+        assert!(
+            matches!(error, PromptError::MaxTurns { max_turns: 1, .. }),
+            "{error:?}"
+        );
+        let log = agent.stamp(recorder.take());
+        assert_eq!(
+            families(&log),
+            [EffectFamily::Completion, EffectFamily::Tool]
+        );
+        crate::goldens::golden_effects("anthropic_outcome_max_turns_exhausted", &log);
+    })
     .await;
 }
 

@@ -42,7 +42,7 @@ use anyhow::{Context, Result};
 use futures::StreamExt as _;
 use serde_json::{Value, json};
 
-use super::super::support::with_openrouter_stream_logprobs_cassette_result;
+use super::super::support::with_openrouter_cassette_result;
 use rig::completion::CompletionRequest;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -332,7 +332,7 @@ fn cell(transport: Transport, model: ModelVariant, termination: Termination, top
 // configurations. The matching streaming half below traverses the fixed path.
 
 crate::matrix::case_matrix! {
-    wrapper: with_openrouter_stream_logprobs_cassette_result, family: streaming_logprobs_matrix_case;
+    wrapper: with_openrouter_cassette_result, family: streaming_logprobs_matrix_case;
     # [tokio :: test]
     blocking_gpt_4o_mini_length_top_zero: ("streaming_logprobs_matrix/blocking_gpt_4o_mini_length_top_zero", configured, cell (Transport :: Blocking , ModelVariant :: Gpt4oMini , Termination :: Length , Top :: Zero ,));
     # [tokio :: test]

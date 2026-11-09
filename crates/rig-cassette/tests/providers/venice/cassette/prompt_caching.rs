@@ -27,7 +27,7 @@ use crate::cache_conformance::{
     run_cache_probe_streaming,
 };
 
-use super::super::support::with_venice_prompt_caching_cassette;
+use super::super::support::with_venice_cassette;
 
 pub(super) const CACHE_MODEL: &str = venice::QWEN3_5_9B;
 
@@ -59,7 +59,7 @@ pub(super) fn probe() -> CacheProbe {
 async fn blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
     const SCENARIO: &str = "prompt_caching/blocking_probe";
 
-    with_venice_prompt_caching_cassette("prompt_caching/blocking_probe", |client| async move {
+    with_venice_cassette("prompt_caching/blocking_probe", |client| async move {
         let model = client.completion(CACHE_MODEL);
         let observation = run_cache_probe(model, &probe()).await;
         assert_cache_conformance(&observation, &VENICE_CACHE_SUPPORT, "blocking probe");
@@ -74,7 +74,7 @@ async fn blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
 async fn streaming_probe_survives_the_streaming_accumulator() {
     const SCENARIO: &str = "prompt_caching/streaming_probe";
 
-    with_venice_prompt_caching_cassette("prompt_caching/streaming_probe", |client| async move {
+    with_venice_cassette("prompt_caching/streaming_probe", |client| async move {
         let model = client.completion(CACHE_MODEL);
         let observation = run_cache_probe_streaming(model, &probe()).await;
         assert_cache_conformance(&observation, &VENICE_CACHE_SUPPORT, "streaming probe");
@@ -97,7 +97,7 @@ async fn streaming_probe_survives_the_streaming_accumulator() {
 async fn prompt_cache_key_reaches_the_wire_and_is_stable() {
     const SCENARIO: &str = "prompt_caching/cache_key_stable";
 
-    with_venice_prompt_caching_cassette("prompt_caching/cache_key_stable", |client| async move {
+    with_venice_cassette("prompt_caching/cache_key_stable", |client| async move {
         let model = client.completion(CACHE_MODEL);
         let probe = CacheProbe {
             max_tokens: ANSWERING_MAX_TOKENS,

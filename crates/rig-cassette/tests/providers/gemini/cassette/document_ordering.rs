@@ -41,7 +41,7 @@ fn assistant_text(choice: &[AssistantContent]) -> String {
 
 #[tokio::test]
 async fn interactions_keeps_documents_after_system_before_history() {
-    super::super::support::with_gemini_interactions_cassette(
+    super::super::support::with_gemini_cassette(
         "document_ordering/interactions_keeps_documents_after_system_before_history",
         |client| async move {
             let response = client

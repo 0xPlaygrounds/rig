@@ -25,10 +25,7 @@ use rig::providers::gemini::cached_content::{CacheExpiry, NewCachedContent};
 use rig::providers::gemini::extension::{GeminiOptions, InteractionsOptions};
 use serde_json::{Value, json};
 
-use super::super::support::{
-    always_deleting_cached_contents, with_gemini_interactions_cassette,
-    with_gemini_prompt_caching_cassette,
-};
+use super::super::support::{always_deleting_cached_contents, with_gemini_cassette};
 
 const CACHE_MODEL: &str = gemini::completion::GEMINI_2_5_FLASH;
 const INTERACTIONS_MODEL: &str = "gemini-3-flash-preview";
@@ -84,7 +81,7 @@ fn ask(prompt: &str) -> CompletionRequest {
 #[tokio::test]
 async fn cached_content_lifecycle_chain() {
     const SCENARIO: &str = "stateful_chain_matrix/cached_content_lifecycle_chain";
-    with_gemini_prompt_caching_cassette(
+    with_gemini_cassette(
         "stateful_chain_matrix/cached_content_lifecycle_chain",
         |client: GeminiModels| async move {
             let caches = client.cached_contents();
@@ -315,7 +312,7 @@ async fn deleting_interactions<F: Future<Output = ()>>(
 #[tokio::test]
 async fn interactions_chain_with_tool_call() {
     const SCENARIO: &str = "stateful_chain_matrix/interactions_chain_with_tool_call";
-    with_gemini_interactions_cassette(
+    with_gemini_cassette(
         "stateful_chain_matrix/interactions_chain_with_tool_call",
         |client| async move {
             let stored = Arc::new(Mutex::new(Vec::new()));
@@ -427,7 +424,7 @@ async fn interactions_chain_with_tool_call() {
 #[tokio::test]
 async fn file_uri_chain() {
     const SCENARIO: &str = "stateful_chain_matrix/file_uri_chain";
-    with_gemini_interactions_cassette(
+    with_gemini_cassette(
         "stateful_chain_matrix/file_uri_chain",
         |client| async move {
             let base = client.config.base_url.trim_end_matches('/').to_owned();

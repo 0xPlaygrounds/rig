@@ -17,7 +17,7 @@ use rig::tool::RegisteredTool;
 use rig_cassette::agent::AgentReplayExt;
 use rig_test_support::cassette_models::AnthropicModels;
 
-use super::super::support::with_anthropic_corpus_causal_cassette;
+use super::super::support::with_anthropic_cassette;
 use crate::goldens::{Lookup, NestedChild, Nesting, families, parent_positions};
 
 pub(super) const TOOLS_PREAMBLE: &str =
@@ -109,7 +109,7 @@ async fn over_host(client: AnthropicModels, host: Host) -> rig::cassette::effect
 
 #[tokio::test]
 async fn completion_serial_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_causal_cassette("corpus_causal/completion_serial", |client| async move {
+    with_anthropic_cassette("corpus_causal/completion_serial", |client| async move {
         let log = over_host(client, Host { streamed: false }).await;
         crate::goldens::golden_effects("anthropic_causal_completion_serial", &log);
     })
@@ -118,29 +118,23 @@ async fn completion_serial_effect_log_is_the_golden_fixture() {
 
 #[tokio::test]
 async fn completion_concurrent_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_causal_cassette(
-        "corpus_causal/completion_concurrent",
-        |client| async move {
-            let log = over_host(client, Host { streamed: false }).await;
-            crate::goldens::golden_effects("anthropic_causal_completion_concurrent", &log);
-        },
-    )
+    with_anthropic_cassette("corpus_causal/completion_concurrent", |client| async move {
+        let log = over_host(client, Host { streamed: false }).await;
+        crate::goldens::golden_effects("anthropic_causal_completion_concurrent", &log);
+    })
     .await;
 }
 
 #[tokio::test]
 async fn completion_streamed_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_causal_cassette(
-        "corpus_causal/completion_streamed",
-        |client| async move {
-            let log = over_host(client, Host { streamed: true }).await;
-            // The run's completions are streamed with their events; the
-            // tool's nested completion is unary.
-            assert!(log.records[0].events.is_some());
-            assert!(log.records[2].events.is_none());
-            assert!(log.records[3].events.is_some());
-            crate::goldens::golden_effects("anthropic_causal_completion_streamed", &log);
-        },
-    )
+    with_anthropic_cassette("corpus_causal/completion_streamed", |client| async move {
+        let log = over_host(client, Host { streamed: true }).await;
+        // The run's completions are streamed with their events; the
+        // tool's nested completion is unary.
+        assert!(log.records[0].events.is_some());
+        assert!(log.records[2].events.is_none());
+        assert!(log.records[3].events.is_some());
+        crate::goldens::golden_effects("anthropic_causal_completion_streamed", &log);
+    })
     .await;
 }

@@ -81,29 +81,3 @@ where
     .await;
     cassette.finish_after_test(result).await;
 }
-
-/// Cassette wrapper for the xai prompt-caching matrix
-/// (`crates/rig-cassette/fixtures/cassettes/xai/prompt_caching/`).
-///
-/// Builds the cassette directly rather than delegating to [`with_xai_cassette`]: this
-/// provider's cassette-safety `source_dir` covers `support.rs` itself, and the
-/// scan requires every call to a *registered* wrapper to pass a string-literal
-/// scenario. A delegating wrapper passes its `spec` variable through, which the
-/// scan reports as an unregistered scenario. The duplication is three lines and
-/// the alternative is an unscannable suite.
-pub(super) async fn with_xai_prompt_caching_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(OpenAiModels) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    let (cassette, client) = xai_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(OpenAiModels::new(
-        client,
-        rig_test_support::cassettes::local_http(),
-    )))
-    .catch_unwind()
-    .await;
-    cassette.finish_after_test(result).await;
-}

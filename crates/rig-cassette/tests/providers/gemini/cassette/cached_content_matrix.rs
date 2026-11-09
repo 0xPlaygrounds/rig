@@ -58,7 +58,7 @@ use std::time::Duration;
 
 use super::super::support::{
     always_deleting_cached_contents, assert_recorded_requests_read_from_a_cache,
-    assert_recorded_response_contains, with_gemini_prompt_caching_cassette,
+    assert_recorded_response_contains, with_gemini_cassette,
 };
 
 /// Deterministic, committed timestamp for the absolute-expiry arm. A computed
@@ -377,7 +377,7 @@ async fn an_agent_with_tools_cannot_read_from_a_cache() {
 async fn a_cache_carrying_a_provider_hosted_tool_is_usable_from_an_agent() {
     use rig::agent::AgentBuilder;
 
-    with_gemini_prompt_caching_cassette(
+    with_gemini_cassette(
         "cached_content_matrix/edge_cached_code_execution",
         |client| async move {
             let cache = client
@@ -440,7 +440,7 @@ async fn a_cache_carrying_a_provider_hosted_tool_is_usable_from_an_agent() {
 
 #[tokio::test]
 async fn sys_notools_nocfg_noname_abs() {
-    with_gemini_prompt_caching_cassette(
+    with_gemini_cassette(
         "cached_content_matrix/sys_notools_nocfg_noname_abs",
         |client| async move {
             run_cell(
@@ -461,7 +461,7 @@ async fn sys_notools_nocfg_noname_abs() {
 
 #[tokio::test]
 async fn sys_onetool_nocfg_noname_ttl() {
-    with_gemini_prompt_caching_cassette(
+    with_gemini_cassette(
         "cached_content_matrix/sys_onetool_nocfg_noname_ttl",
         |client| async move {
             run_cell(
@@ -482,7 +482,7 @@ async fn sys_onetool_nocfg_noname_ttl() {
 
 #[tokio::test]
 async fn sys_threetools_autocfg_noname_ttl() {
-    with_gemini_prompt_caching_cassette(
+    with_gemini_cassette(
         "cached_content_matrix/sys_threetools_autocfg_noname_ttl",
         |client| async move {
             run_cell(
@@ -503,7 +503,7 @@ async fn sys_threetools_autocfg_noname_ttl() {
 
 #[tokio::test]
 async fn contents_notools_nocfg_noname_ttl() {
-    with_gemini_prompt_caching_cassette(
+    with_gemini_cassette(
         "cached_content_matrix/contents_notools_nocfg_noname_ttl",
         |client| async move {
             run_cell(
@@ -524,7 +524,7 @@ async fn contents_notools_nocfg_noname_ttl() {
 
 #[tokio::test]
 async fn both_notools_nocfg_noname_ttl() {
-    with_gemini_prompt_caching_cassette(
+    with_gemini_cassette(
         "cached_content_matrix/both_notools_nocfg_noname_ttl",
         |client| async move {
             run_cell(
@@ -550,7 +550,7 @@ async fn both_notools_nocfg_noname_ttl() {
 /// Omitting both expiry forms defaults to one hour.
 #[tokio::test]
 async fn omitting_expiry_defaults_to_one_hour() {
-    with_gemini_prompt_caching_cassette(
+    with_gemini_cassette(
         "cached_content_matrix/edge_default_expiry_is_one_hour",
         |client| async move {
             let created = client
@@ -586,7 +586,7 @@ async fn omitting_expiry_defaults_to_one_hour() {
 /// mask, not the `ttl` one.
 #[tokio::test]
 async fn update_expiry_accepts_an_absolute_timestamp() {
-    with_gemini_prompt_caching_cassette(
+    with_gemini_cassette(
         "cached_content_matrix/edge_update_expiry_absolute",
         |client| async move {
             let caches = client.cached_contents();
@@ -624,63 +624,60 @@ async fn update_expiry_accepts_an_absolute_timestamp() {
 async fn streaming_against_a_cache_reports_the_cache_read() {
     use futures::StreamExt;
 
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/use_streaming",
-        |client| async move {
-            let cache = client
-                .cached_contents()
-                .create(
-                    NewCachedContent::new(CACHE_MODEL)
-                        .system_instruction(pad())
-                        .expiry(CacheExpiry::ttl(Duration::from_secs(180))),
-                )
+    with_gemini_cassette("cached_content_matrix/use_streaming", |client| async move {
+        let cache = client
+            .cached_contents()
+            .create(
+                NewCachedContent::new(CACHE_MODEL)
+                    .system_instruction(pad())
+                    .expiry(CacheExpiry::ttl(Duration::from_secs(180))),
+            )
+            .await
+            .expect("create should succeed");
+
+        let handles = [cache.name.clone()];
+        always_deleting_cached_contents(&client, &handles, async {
+            let model = client
+                .completion(CACHE_MODEL)
+                .map_wire(|wire| wire.with_cached_content(cache.name.clone()));
+
+            let mut request =
+                rig::completion::CompletionRequest::from(vec![rig::message::Message::User {
+                    content: vec![rig::message::UserContent::text(
+                        "Reply with exactly: streamed",
+                    )],
+                }]);
+            request.temperature = Some(0.0);
+            request.max_tokens = Some(16);
+            request.additional_params = Some(serde_json::json!({
+                "generationConfig": { "thinkingConfig": { "thinkingBudget": 0 } }
+            }));
+
+            let mut stream = model
+                .stream(request)
+                .expect("streamed cached-content request should start");
+            while let Some(item) = stream.next().await {
+                item.expect("stream item should succeed");
+            }
+            let usage = stream
+                .finish()
                 .await
-                .expect("create should succeed");
-
-            let handles = [cache.name.clone()];
-            always_deleting_cached_contents(&client, &handles, async {
-                let model = client
-                    .completion(CACHE_MODEL)
-                    .map_wire(|wire| wire.with_cached_content(cache.name.clone()));
-
-                let mut request =
-                    rig::completion::CompletionRequest::from(vec![rig::message::Message::User {
-                        content: vec![rig::message::UserContent::text(
-                            "Reply with exactly: streamed",
-                        )],
-                    }]);
-                request.temperature = Some(0.0);
-                request.max_tokens = Some(16);
-                request.additional_params = Some(serde_json::json!({
-                    "generationConfig": { "thinkingConfig": { "thinkingBudget": 0 } }
-                }));
-
-                let mut stream = model
-                    .stream(request)
-                    .expect("streamed cached-content request should start");
-                while let Some(item) = stream.next().await {
-                    item.expect("stream item should succeed");
-                }
-                let usage = stream
-                    .finish()
-                    .await
-                    .expect(
-                        "the stream should carry final usage; losing it on the streaming path is \
+                .expect(
+                    "the stream should carry final usage; losing it on the streaming path is \
                          the exact bug this cell exists to catch",
-                    )
-                    .usage;
-                let cached = usage.cached_input_tokens.unwrap_or(0);
-                let input = usage.input_tokens.unwrap_or(0);
-                let ratio = cached as f64 / input as f64;
-                assert!(
-                    ratio >= 0.95,
-                    "a streamed request against a cache handle should read essentially the whole \
+                )
+                .usage;
+            let cached = usage.cached_input_tokens.unwrap_or(0);
+            let input = usage.input_tokens.unwrap_or(0);
+            let ratio = cached as f64 / input as f64;
+            assert!(
+                ratio >= 0.95,
+                "a streamed request against a cache handle should read essentially the whole \
                      prefix from cache, got {cached} of {input} ({:.1}%)",
-                    ratio * 100.0
-                );
-            })
-            .await;
-        },
-    )
+                ratio * 100.0
+            );
+        })
+        .await;
+    })
     .await;
 }
