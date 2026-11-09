@@ -291,6 +291,87 @@ async fn vector_search_test() {
     assert_eq!(matched, ["flurbo", "linglingdong"]);
 }
 
+/// An empty membership stays false through negation and composition, with
+/// the other conditions' parameters still bound to the right values.
+#[tokio::test]
+async fn empty_membership_filters_match_set_semantics() -> Result<(), Box<dyn std::error::Error>> {
+    let container = start_container().await;
+    let pool = connect_to_postgres(
+        container.get_host().await?.to_string(),
+        container.get_host_port_ipv4(POSTGRES_PORT).await?,
+    )
+    .await;
+    sqlx::query("CREATE EXTENSION IF NOT EXISTS vector")
+        .execute(&pool)
+        .await?;
+    sqlx::query("CREATE TABLE member_docs (id uuid, document jsonb, embedding vector(2))")
+        .execute(&pool)
+        .await?;
+    sqlx::query("INSERT INTO member_docs VALUES ('00000000-0000-0000-0000-000000000001', '{\"kind\":\"fruit\"}', '[1,0]'), ('00000000-0000-0000-0000-000000000002', '{\"kind\":null}', '[1,0]')").execute(&pool).await?;
+    let server = httpmock::MockServer::start();
+    mock_embeddings(
+        &server,
+        json!({"dimensions": 2, "input": ["q"], "model": "text-embedding-3-small"}),
+        [vec![1.0, 0.0]],
+    );
+    let model = openai_client(&server).embedding(openai::TEXT_EMBEDDING_3_SMALL, Some(2));
+    let store = PostgresVectorStore::new(
+        model,
+        pool,
+        Some("member_docs".into()),
+        rig::postgres::PgVectorDistanceFunction::Cosine,
+    );
+    let empty = || PgSearchFilter::member("document->>'kind'", vec![]);
+    let fruit = || PgSearchFilter::eq("document->>'kind'", json!("fruit"));
+    let first = "00000000-0000-0000-0000-000000000001";
+    let second = "00000000-0000-0000-0000-000000000002";
+    for (filter, expected) in [
+        (
+            PgSearchFilter::member("document->>'kind'", vec![json!("fruit")]),
+            vec![first],
+        ),
+        (empty(), vec![]),
+        (empty().not(), vec![first, second]),
+        (empty().and(fruit()), vec![]),
+        (empty().or(fruit()), vec![first]),
+        (fruit().and(empty().not()), vec![first]),
+    ] {
+        let request = VectorSearchRequest::builder()
+            .query("q")
+            .samples(10)
+            .threshold(0.5)
+            .filter(filter)
+            .build();
+        let mut ids: Vec<_> = store
+            .top_n_ids(request.clone())
+            .await?
+            .into_iter()
+            .map(|result| result.id)
+            .collect();
+        let mut documents: Vec<_> = store
+            .top_n::<serde_json::Value>(request)
+            .await?
+            .into_iter()
+            .map(|result| result.id)
+            .collect();
+        ids.sort();
+        documents.sort();
+        if ids != expected {
+            return Err(std::io::Error::other(format!(
+                "id search: {ids:?}, expected {expected:?}"
+            ))
+            .into());
+        }
+        if documents != expected {
+            return Err(std::io::Error::other(format!(
+                "document search: {documents:?}, expected {expected:?}"
+            ))
+            .into());
+        }
+    }
+    Ok(())
+}
+
 async fn start_container() -> ContainerAsync<GenericImage> {
     // Setup a local postgres container for testing. NOTE: docker service must be running.
     GenericImage::new("pgvector/pgvector", "pg17")

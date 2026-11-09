@@ -151,8 +151,13 @@ impl PgSearchFilter {
         ))
     }
 
+    /// Matches a value in `values`; an empty list matches no rows.
     pub fn member(key: &str, values: Vec<<Self as SearchFilter>::Value>) -> Self {
-        Self(SqlCondition::list(key, "IN", PLACEHOLDER, values))
+        Self(if values.is_empty() {
+            SqlCondition::raw("FALSE")
+        } else {
+            SqlCondition::list(key, "IN", PLACEHOLDER, values)
+        })
     }
 
     // String matching ops
