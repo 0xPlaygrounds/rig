@@ -13948,7 +13948,6 @@ dependencies = [
  "futures",
  "http",
  "indexmap 2.14.0",
- "rig-cassette",
  "rig-core",
  "rig-derive",
  "rig-memory",
