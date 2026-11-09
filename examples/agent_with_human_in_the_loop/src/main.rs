@@ -1,24 +1,13 @@
-//! Human-in-the-loop (HITL) tool-call approval with `AgentHook`.
+//! Tool-call approval on stdin from an `AgentHook`.
 //!
-//! An agent is given two side-effecting tools (`send_email`, `delete_file`).
-//! Before *any* tool runs, an [`ApprovalHook`] pauses the run on the
-//! [`DispatchEvent`] for the tool call, shows the human the tool name and arguments,
-//! and waits for a decision on stdin. Each decision maps to an existing
-//! event-specific action — no special HITL machinery is required:
+//! [`ApprovalHook`] pauses on each tool call's [`DispatchEvent`], shows its name
+//! and arguments, and awaits a decision. Approve returns
+//! [`DispatchAction::proceed`], deny returns [`DispatchAction::skip`] with the
+//! reason as the tool result, edit returns [`DispatchAction::rewrite_tool_args`],
+//! and abort returns [`DispatchAction::stop`]. Because `on_dispatch` is async, the
+//! hook awaits input inline, and it works unchanged with `prompt(..).stream()`.
 //!
-//! | Human decision | Action returned                  | Effect                                                              |
-//! |----------------|----------------------------------|--------------------------------------------------------------------|
-//! | **approve**    | [`DispatchAction::proceed`]      | the tool executes as the model requested                           |
-//! | **deny**       | [`DispatchAction::skip`]         | the tool does *not* run; the reason becomes the tool result the model sees, so it can adapt |
-//! | **edit**       | [`DispatchAction::rewrite_tool_args`] | the tool executes with human-supplied arguments instead       |
-//! | **abort**      | [`DispatchAction::stop`]         | the whole run stops and surfaces the reason as an error            |
-//!
-//! Because `AgentHook::on_dispatch` is `async`, the hook can simply `.await` the
-//! human's input inline (here from stdin; in a real app this might be an HTTP
-//! request to an approval UI, a Slack round-trip, or a database poll). The same
-//! hook works unchanged on the streaming driver (`prompt(..).stream()`).
-//!
-//! Requires `OPENAI_API_KEY`. Run with: `cargo run -p agent_with_human_in_the_loop`
+//! Requires `OPENAI_API_KEY`. Run with `cargo run -p agent_with_human_in_the_loop`.
 
 use anyhow::Result;
 use rig::agent::{AgentHook, DispatchAction, DispatchEvent, HookContext};

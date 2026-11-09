@@ -1,22 +1,11 @@
-//! # Forcing a tool on the first turn: a `RequestPatch` footgun and its fix
+//! Forces a tool call on the first turn only.
 //!
-//! A hook can steer a single model turn by returning [`CompletionCallAction::patch`] on
-//! the [`CompletionCallEvent`] event. A common wish is "make the model call
-//! a tool *first*", done by patching `tool_choice = Required`.
-//!
-//! **The footgun.** A [`RequestPatch`] is **per-turn and non-sticky**: the
-//! `CompletionCall` event re-fires on *every* turn, so a hook that patches
-//! `Required` unconditionally forces a tool call on *every* turn. The model never
-//! reaches a turn where it is free to stop calling tools and write the final
-//! answer, so the run loops until `max_turns` and fails with
-//! [`PromptError::MaxTurns`].
-//!
-//! **The fix.** Gate the patch on the turn index — force `Required` only on the
-//! first turn (`ctx.turn() == 1`). The model is nudged to call the tool up front;
-//! later turns inherit the agent's baseline (`auto`), so it can stop and answer.
-//!
-//! This example runs the footgun first (and catches the resulting
-//! `MaxTurns`), then runs the fix.
+//! A [`RequestPatch`] returned with [`CompletionCallAction::patch`] applies to one
+//! turn, and the [`CompletionCallEvent`] fires on every turn. Patching
+//! `tool_choice = Required` unconditionally forces a tool on every turn, so the run
+//! never answers and fails with [`PromptError::MaxTurns`]. Gating the patch on
+//! `ctx.turn() == 1` lets later turns fall back to `auto`. The example runs the
+//! unconditional hook first, catching `MaxTurns`, then the gated one.
 //!
 //! Requires `OPENAI_API_KEY`.
 

@@ -2,8 +2,7 @@
 //!
 //! Scenarios live in `rig_core::test_utils::streaming_conformance`; this file
 //! instantiates each sequence family per provider fixture. Every family pins a
-//! shipped bug from the #2257 review rounds — the scenario doc comments cite
-//! the `rig-2257-code-review-findings-*.md` entry.
+//! shipped bug.
 //!
 //! Run the suite with:
 //! `cargo test -p rig --test integration core::streaming_conformance`
@@ -207,9 +206,8 @@ pub const SUITE_FAMILIES: &[&str] = &[
     copilot_chat_suite::WIRE_FAMILY,
 ];
 
-// Grammar-level guards (#2258 Part III (c) item 5). The other two scenarios
-// that item names — per-wire unknown-frame-warn-and-skip and
-// corrupt-frame-error — are the `unknown_event_is_skipped`,
+// Grammar-level guards. Per-wire unknown-frame-warn-and-skip and
+// corrupt-frame-error are the `unknown_event_is_skipped`,
 // `malformed_frame_surfaces_err_and_terminal_still_completes`, and
 // `defective_known_event_surfaces_err` families every suite above already
 // instantiates; illegal-transition cases live once in parts.rs unit tests.
@@ -255,7 +253,7 @@ mod grammar_guards {
     exactly_one_text_block_test!(copilot_responses, super::copilot::responses_fixture);
     exactly_one_text_block_test!(copilot_chat, super::copilot::chat_fixture);
 
-    /// The item-4 identity pin (#2258): two `message` output items on the
+    /// Text identity pin: two `message` output items on the
     /// OpenAI Responses wire carry distinct `item_id`s and must aggregate as
     /// two distinct text parts, in wire order — before TextStart carried
     /// identity, their deltas concatenated boundary-less into one block.
@@ -356,7 +354,7 @@ mod grammar_guards {
         );
     }
 
-    /// The item-0 identity pin (#2258) on the wire: several llama.cpp/vllm-
+    /// Tool-call identity pin on the wire: several llama.cpp/vllm-
     /// style chat-compat gateways stream tool-call deltas with NO ids, keyed
     /// by chunk index alone. Two such calls interleaving their argument
     /// fragments must aggregate as two distinct uncorrupted calls under
@@ -534,7 +532,7 @@ async fn terminal_body_content_merges_per_kind() {
     .expect("scenario should hold");
 }
 
-// Pins #2258 F3 on the real buffered pipeline: an envelope-less reasoning
+// Pinned on the real buffered pipeline: an envelope-less reasoning
 // delta (ChatGPT replay; repair injects `output_index: 0`) followed by the
 // item's envelope-full `output_item.done` is one reasoning block whose text
 // holds the restated summary exactly once.
@@ -568,10 +566,10 @@ async fn envelope_less_reasoning_deltas_are_superseded_without_duplication() {
 mod reasoning {
     use super::*;
 
-    // Pins P1-1 of `rig-2257-code-review-findings-34ee8ba5.md`: the
-    // `reasoning_summary_text.delta` handler drops `item_id`, so the strict
-    // same-item table appends the full block beside the delta-built item and
-    // every o-series reasoning-summary stream aggregates the summary twice.
+    // Pins the bug where the `reasoning_summary_text.delta` handler dropped
+    // `item_id`, so the strict same-item table appended the full block beside
+    // the delta-built item and every o-series reasoning-summary stream
+    // aggregated the summary twice.
     #[tokio::test]
     async fn summary_deltas_are_superseded_without_duplication() {
         let driver = openai_responses::driver();
@@ -583,9 +581,9 @@ mod reasoning {
         .expect("scenario should hold");
     }
 
-    // Pins P1-2 of `rig-2257-code-review-findings-34ee8ba5.md`: the
-    // `rposition` by-id fallback replaces the just-appended same-id sibling,
-    // so a multi-part reasoning item survives only as its last part.
+    // Pins the bug where the `rposition` by-id fallback replaced the
+    // just-appended same-id sibling, so a multi-part reasoning item survived
+    // only as its last part.
     #[tokio::test]
     async fn multi_part_same_id_reasoning_keeps_every_part() {
         let driver = openai_responses::driver();
@@ -605,7 +603,7 @@ mod reasoning {
     }
 }
 
-// The F1b boundary family (#2258 review): constant-id wires mint a per-stream
+// The boundary family: constant-id wires mint a per-stream
 // reasoning identity, so the only interleaving signal is other output — main's
 // "other output closes the reasoning item" boundary must survive aggregation.
 // The Responses fixture stays on `interleaved_reasoning_aggregates_to_one_item`

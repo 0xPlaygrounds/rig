@@ -1,48 +1,14 @@
-//! Live Gemini example: obtaining a token-count estimate when a streaming
-//! generation is disrupted **mid-response** — for *any* reason.
+//! Estimates token usage with Gemini's `countTokens` endpoint when a streaming
+//! generation stops before its final chunk.
 //!
-//! Requires `GEMINI_API_KEY`.
-//! Run with: `cargo run --example gemini_stream_kill_token_count`
+//! Gemini sends `usageMetadata` only on the last chunk of a stream. `Disrupt`
+//! injects four disruptions into a live stream: a dropped stream, a transport
+//! error, an early clean close, and a stall caught by a per-read timeout. Each goes
+//! through `drain_with_accounting`, which counts the partial output whenever no
+//! usage arrived. The count is an estimate, and a lower bound when thinking tokens
+//! are hidden.
 //!
-//! ## The problem
-//!
-//! Gemini only emits authoritative `usageMetadata` on the *final* chunk of a
-//! `streamGenerateContent` response. Any mid-stream disruption skips that chunk,
-//! so the exact server-side token count is unrecoverable. There is also no
-//! "cancel" flag to send Gemini — killing a stream is purely a client-side
-//! connection close: dropping the stream.
-//!
-//! ## The approach — one accounting path for every disruption
-//!
-//! Disruptions reach a consumer in four different shapes:
-//!   1. Manual kill / drop          -> stream ends with `None`, no `Done`
-//!   2. Transport/server error      -> stream yields `Some(Err(..))`
-//!   3. Premature clean close       -> stream ends with no `Done`
-//!      (absence of a terminal record = truncation)
-//!   4. Stall / half-open socket    -> `next()` never returns
-//!
-//! Rather than branch on *why* the stream stopped, we key on a single question:
-//! **did we ever receive authoritative usage?** If not — for ANY of
-//! the reasons above — we estimate locally from whatever partial output arrived,
-//! using Gemini's free `countTokens` endpoint (no inference, not billed).
-//!
-//! To make that robust against all four shapes the consumer needs:
-//!   - incremental accumulation of output as deltas arrive (never on a terminal
-//!     event),
-//!   - a per-read timeout (turns a silent stall into the same fallback),
-//!   - the "no authoritative usage" trigger (collapses kill/error/early-close).
-//!
-//! This example forces all four shapes against a *real* live Gemini stream (the
-//! disruptions are injected at the stream boundary by `Disrupt`) and shows each
-//! funnel into the identical `drain_with_accounting` routine.
-//!
-//! ## Honest caveats
-//!   - The fallback is always an *estimate* (countTokens on the partial text),
-//!     never the server's exact number.
-//!   - Hidden "thinking" tokens Gemini generated but never streamed cannot be
-//!     counted, so the output estimate is a *lower bound* when thoughts are hidden.
-//!   - Out-of-process death (kill -9, OOM, power loss) runs no in-process code;
-//!     surviving that would require persisting the accumulator to disk.
+//! Requires `GEMINI_API_KEY`. Run with `cargo run -p gemini_stream_kill_token_count`.
 
 use std::pin::Pin;
 use std::task::{Context, Poll};

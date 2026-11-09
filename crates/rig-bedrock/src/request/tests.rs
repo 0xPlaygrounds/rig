@@ -195,7 +195,7 @@ fn a_later_system_message_stays_in_place() {
 }
 
 /// A short cache marks the system prompt and the last message, also after
-/// a reasoning turn on a Claude model the catalog lists (#1673, #3088).
+/// a reasoning turn on a Claude model the catalog lists.
 /// Reasoning another model made goes as text, so it is no reasoning turn
 /// for the model it goes to.
 #[test]
@@ -341,9 +341,9 @@ fn a_message_checkpoint_after_reasoning_is_reported_not_skipped() {
     }
 }
 
-/// #43, #652: request documents reach the first user message through the
+/// Request documents reach the first user message through the
 /// adapter, which sends a string document as its text. A document's name
-/// is its content's digest, unique within the request (#404, #405).
+/// is its content's digest, unique within the request.
 #[test]
 fn documents_are_named_by_content_and_land_in_the_first_user_message() {
     use rig_core::message::Document;
@@ -512,7 +512,7 @@ fn only_nova_and_claude_get_a_result_status() {
     }
 }
 
-/// #2137: structured results are Converse JSON, wrapped when not an object;
+/// Structured results are Converse JSON, wrapped when not an object;
 /// blank text is never sent and a message left empty says so.
 #[test]
 fn user_content_has_its_converse_form() {

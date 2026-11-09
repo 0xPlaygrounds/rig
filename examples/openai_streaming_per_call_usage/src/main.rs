@@ -1,23 +1,16 @@
-//! Shows how to inspect per-completion-call usage in an agent stream.
+//! Inspects per-completion-call usage in a streamed agent run that calls a tool.
 //!
-//! This is useful when an agent uses tools. The final `response.usage()` is
-//! intentionally aggregated across all completion calls in the agent run:
+//! `response.usage()` sums every completion call, which suits total cost but not
+//! the final context size. The last entry of `response.completion_calls()` carries
+//! that call's `input_tokens` when usage is reported.
 //!
-//! - call 0: prompt + tool request
-//! - call 1: prompt + prior tool call + tool result + final answer
+//! Requires `OPENAI_API_KEY`. `OPENAI_BASE_URL` and `OPENAI_MODEL` point it at an
+//! OpenAI-compatible server such as llama.cpp.
 //!
-//! That aggregate is useful for total cost, but it does not tell you the final
-//! prompt/context size. For that, inspect the last entry from
-//! `response.completion_calls()` and use `input_tokens` when usage is
-//! reported.
-//!
-//! Requires `OPENAI_API_KEY`.
-//!
-//! For OpenAI:
-//! `cargo run --example openai_streaming_per_call_usage`
-//!
-//! For OpenAI-compatible servers, for example llama.cpp:
-//! `OPENAI_BASE_URL=http://localhost:8080/v1 OPENAI_API_KEY=local OPENAI_MODEL=local-model cargo run --example openai_streaming_per_call_usage`
+//! ```sh
+//! cargo run -p openai_streaming_per_call_usage
+//! OPENAI_BASE_URL=http://localhost:8080/v1 OPENAI_API_KEY=local OPENAI_MODEL=local-model cargo run -p openai_streaming_per_call_usage
+//! ```
 
 use anyhow::{Result, anyhow};
 use futures::StreamExt;
