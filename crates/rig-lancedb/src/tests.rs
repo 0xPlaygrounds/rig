@@ -151,7 +151,7 @@ async fn insert_refuses_documents_the_table_cannot_hold() -> anyhow::Result<()> 
     let dir = TempDir::new()?;
     let index = index_on_disk(&dir, DataType::Float32, SearchParams::default()).await?;
     let fits = || vec![embedding(&[1.0, 0.0])];
-    let not_finite = "\"a\" has a value that is not finite";
+    let not_finite = "embedding of document \"a\"";
     let refused = [
         (json!({"definition": "no id"}), fits(), "`id`"),
         (json!({"id": null}), fits(), "`id`"),
@@ -224,11 +224,16 @@ async fn insert_refuses_documents_the_table_cannot_hold() -> anyhow::Result<()> 
         "a non-vector search column should be refused, got {message:?}"
     );
 
-    // 1e300 overflows only a Float32 column.
+    // LanceDB computes Float64 distances in Float32 too, where 1e300 squared overflows.
     let dir = TempDir::new()?;
     let index = index_on_disk(&dir, DataType::Float64, SearchParams::default()).await?;
-    index
+    let outcome = index
         .insert_documents(vec![(json!({"id": "a"}), vec![embedding(&[1e300, 0.0])])])
-        .await?;
+        .await;
+    let message = outcome.err().map(|e| e.to_string()).unwrap_or_default();
+    anyhow::ensure!(
+        message.contains("\"a\" cannot be scored: with value 1e300"),
+        "1e300 in a Float64 embedding should be refused, got {message:?}"
+    );
     Ok(())
 }
