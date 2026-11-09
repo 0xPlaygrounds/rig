@@ -49,7 +49,7 @@ use async_channel::Receiver;
 use bevy_ecs::message::{MessageCursor, Messages};
 use bevy_ecs::system::SystemParam;
 use rig_core::json_utils::remove_preserving_order;
-use rig_ecs::{StopTurnsOnExit, WriteLogs};
+use rig_ecs::{StartupSystems, StopTurnsOnExit, WriteLogs};
 use rig_harness::harness_protocol::REFUSED_EXIT_CODE;
 use rig_harness::host::launcher::Refused;
 use rig_harness::host::pipes::{self, Stream, TooLarge, Writer};
@@ -184,10 +184,11 @@ impl Plugin for PrintPlugin {
                 .add_observer(spent)
                 .add_observer(json_ended)
                 .add_systems(
-                    Update,
+                    Startup,
                     ready
-                        .run_if(resource_added::<SessionRestored>)
-                        .before(AgentLoop),
+                        .run_if(resource_exists::<SessionRestored>)
+                        .after(StartupSystems::FirstAgent)
+                        .before(StartupSystems::Reconcile),
                 )
                 .init_resource::<LinesRead>()
                 .add_systems(PostUpdate, flush)
@@ -1333,8 +1334,9 @@ fn session_id(paths: Option<Res<SessionPaths>>) -> Option<String> {
     Some(paths?.0.id()?.as_str().to_owned())
 }
 
-/// The first line, once the session is restored, before the agent loop
-/// starts or resumes a turn.
+/// The first line, once the session is restored and its first agent
+/// exists: at startup, before a restored turn resumes and before any frame
+/// reads a request.
 fn ready(primary: MainAgentQuery, paths: Option<Res<SessionPaths>>, mut out: Out) {
     let session = session_id(paths);
     // First: what came before it follows.

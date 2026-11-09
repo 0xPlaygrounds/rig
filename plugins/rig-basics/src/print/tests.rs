@@ -1251,6 +1251,82 @@ fn each_recorded_call_is_a_usage_line() {
     assert_eq!(tokens, Some(json!(3)));
 }
 
+/// A request already waiting on stdin when the run starts is answered
+/// after `ready`, which stays the first line.
+#[test]
+fn ready_comes_first_when_a_request_is_already_waiting() {
+    let lines = Lines::default();
+    let (input, requests) = JsonIn::channel();
+    let invoked = Invocation {
+        flags: vec![(JSON.to_owned(), None)],
+        ..Invocation::default()
+    };
+    let (mut app, wakes) = noting(&MemoryStore::default(), invoked);
+    send(&input, json!({ "v": VERSION, "type": "state", "id": "a" }));
+    // The request stream wakes the app once it holds the line, and nothing
+    // else here wakes it before the first update: so the first update
+    // polls the request, as when stdin had it at the start.
+    let wakes = Arc::new(Mutex::new(wakes));
+    let woken = Arc::clone(&wakes);
+    let streamed = move || {
+        if let Ok(wakes) = woken.lock() {
+            wakes.recv_timeout(Duration::from_secs(10)).ok();
+        }
+    };
+    // On main `ready` ran in `Update`, unordered against the requests: a
+    // system between them has the reply written first, as the default
+    // plugins' order did.
+    let between = || {};
+    app.insert_resource(JsonOut::new(lines.clone()))
+        .insert_resource(requests)
+        .add_plugins((SessionLogPlugin, ExitPlugin, PrintPlugin))
+        .add_systems(PostStartup, streamed)
+        .add_systems(
+            Update,
+            between.after(rig_ecs::tasks::PollTasks).before(ready),
+        );
+    app.finish();
+    app.update();
+    if let Ok(wakes) = wakes.lock() {
+        reply_to(&mut app, &wakes, &lines, "a");
+    }
+    let kinds: Vec<(Value, Value)> = lines
+        .parsed()
+        .iter()
+        .map(|line| (at(line, "type").clone(), at(line, "id").clone()))
+        .collect();
+    let first = [(json!("ready"), Value::Null), (json!("reply"), json!("a"))];
+    assert_eq!(kinds.get(..2), Some(&first[..]), "{kinds:?}");
+}
+
+/// `rig -r <id> --json` on a session killed while it waited on the model:
+/// `ready` comes before the restored turn's `turn_start`.
+#[test]
+fn ready_comes_first_when_a_restored_turn_resumes() {
+    let store = MemoryStore::default();
+    killed_two_frames_in(&store);
+    let lines = Lines::default();
+    let (_input, requests) = JsonIn::channel();
+    let invoked = Invocation {
+        flags: vec![(JSON.to_owned(), None)],
+        ..Invocation::default()
+    };
+    let (mut app, wakes) = noting(&store, invoked);
+    let model = silent();
+    app.insert_resource(JsonOut::new(lines.clone()))
+        .insert_resource(requests)
+        .insert_resource(scripted_models([(MODEL, &model)]))
+        .add_plugins((SessionLogPlugin, ExitPlugin, PrintPlugin));
+    app.finish();
+    test_support::run_until(&mut app, &wakes, |_| !lines.of("turn_start").is_empty());
+    let kinds: Vec<Value> = lines
+        .parsed()
+        .iter()
+        .map(|line| at(line, "type").clone())
+        .collect();
+    assert_eq!(kinds.first(), Some(&json!("ready")), "{kinds:?}");
+}
+
 #[test]
 fn a_driver_sends_a_message_mid_turn_and_reads_the_answer() {
     let model = MockCompletionModel::from_stream_turns([

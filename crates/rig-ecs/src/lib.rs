@@ -125,6 +125,20 @@ use tasks::{PollTasks, Wake, poll_tasks, run_settle_frames};
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct StopTurnsOnExit;
 
+/// The kernel's `Startup` steps, in order: [`StartupSystems::FirstAgent`]
+/// spawns the first agent when the restored session has none, then
+/// [`StartupSystems::Reconcile`] spawns what the restored agents left half
+/// done as [`Restored`](restore::Restored) work, which starts their turns. A
+/// system that needs the first agent before any restored turn starts goes
+/// between them.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum StartupSystems {
+    /// Spawns the first agent when the restored session has none.
+    FirstAgent,
+    /// Spawns the restored agents' half-done work.
+    Reconcile,
+}
+
 /// The systems in `Last` that queue what the frame changed for the session
 /// log: every conversation changed and every
 /// [`ReflectSaved`](session_log::ReflectSaved) value, after
@@ -208,7 +222,14 @@ impl Plugin for AgentPlugin {
                     .in_set(bevy_app::OnAppExitSystems),
             )
             .configure_sets(Last, SaveSystems.after(StopTurnsOnExit).before(WriteLogs))
-            .add_systems(Startup, spawn_first_agent)
+            .configure_sets(
+                Startup,
+                (StartupSystems::FirstAgent, StartupSystems::Reconcile).chain(),
+            )
+            .add_systems(
+                Startup,
+                spawn_first_agent.in_set(StartupSystems::FirstAgent),
+            )
             // A reply that came in this frame has its calls started in it.
             .configure_sets(Update, PollTasks.before(stage::AgentLoop))
             .add_systems(Update, poll_tasks.in_set(PollTasks))
