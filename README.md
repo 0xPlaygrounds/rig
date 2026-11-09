@@ -64,7 +64,7 @@ cargo install --locked --force --path crates/rig-cli
 
 Then:
 
-1. `rig` builds the agent, which takes a few minutes the first time, and opens it.
+1. `rig` builds the agent, which takes several minutes the first time, and opens it.
 2. `/login` signs in with a ChatGPT plan or saves a provider's API key. Or
    export a key, such as `OPENAI_API_KEY`, before starting `rig`.
 3. `/model` picks a model. A local Ollama or llama.cpp server is listed once

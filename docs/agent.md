@@ -42,7 +42,7 @@ cargo install --locked --force --path crates/rig-cli
 
 Then:
 
-1. `rig` builds the agent, which takes a few minutes the first time, and
+1. `rig` builds the agent, which takes several minutes the first time, and
    opens it. Later starts rebuild only what changed.
 2. `/login` signs in with a ChatGPT plan or saves a provider's API key
    ([Models and sign-in](#models-and-sign-in)). Or export a key, such as
@@ -68,8 +68,8 @@ rebuilds the agent at its version:
 - From a checkout: `git pull`, then `cargo install --locked --force --path
   crates/rig-cli` again.
 
-A running agent keeps its build until you restart it. The rebuild takes a
-few minutes, and `RIG_HOME/target` keeps the old version's build too.
+A running agent keeps its build until you restart it. The rebuild takes
+several minutes, and `RIG_HOME/target` keeps the old version's build too.
 Sessions resume while their format is the same. A session in another format
 is refused, unchanged, with `this session was made by another version of rig;
 start a new session`.
