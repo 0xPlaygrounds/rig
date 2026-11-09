@@ -1383,3 +1383,182 @@ fn a_wait_of_zero_seconds_does_not_read() {
         );
     }
 }
+
+/// The header every request to [`Loopback`] must carry, and its value.
+const TOKEN_HEADER: &str = "x-rig-token";
+const TOKEN: &str = "loopback-secret";
+
+/// An MCP server over streamable HTTP in this process: `add(a, b)` answers
+/// with the sum, and `mul` is listed once `grown` is set.
+#[derive(Clone, Default)]
+struct Loopback {
+    grown: Arc<std::sync::atomic::AtomicBool>,
+    /// The client of each session, once it said it is ready.
+    peers: Arc<Mutex<Vec<rmcp::Peer<rmcp::RoleServer>>>>,
+}
+
+impl rmcp::ServerHandler for Loopback {
+    fn get_info(&self) -> rmcp::model::ServerConfig {
+        let capabilities = rmcp::model::ServerCapabilities::builder()
+            .enable_tools()
+            .enable_tool_list_changed()
+            .build();
+        rmcp::model::ServerConfig::new(capabilities)
+    }
+
+    async fn on_initialized(&self, context: NotificationContext<rmcp::RoleServer>) {
+        let mut peers = self.peers.lock().unwrap_or_else(PoisonError::into_inner);
+        peers.push(context.peer);
+    }
+
+    async fn list_tools(
+        &self,
+        _: Option<rmcp::model::PaginatedRequestParams>,
+        _: rmcp::service::RequestContext<rmcp::RoleServer>,
+    ) -> Result<rmcp::model::ListToolsResult, rmcp::ErrorData> {
+        let object = json!({
+            "type": "object",
+            "properties": { "a": { "type": "number" }, "b": { "type": "number" } },
+        });
+        let schema = Arc::new(object.as_object().cloned().unwrap_or_default());
+        let mut tools = vec![McpDefinition::new(
+            "add",
+            "Adds two numbers.",
+            schema.clone(),
+        )];
+        if self.grown.load(std::sync::atomic::Ordering::SeqCst) {
+            tools.push(McpDefinition::new("mul", "Multiplies two numbers.", schema));
+        }
+        Ok(rmcp::model::ListToolsResult::with_all_items(tools))
+    }
+
+    async fn call_tool(
+        &self,
+        request: rmcp::model::CallToolRequestParams,
+        _: rmcp::service::RequestContext<rmcp::RoleServer>,
+    ) -> Result<rmcp::model::CallToolResponse, rmcp::ErrorData> {
+        let number = |key| {
+            let arguments = request.arguments.as_ref();
+            let value = arguments.and_then(|arguments| arguments.get(key));
+            value.and_then(Value::as_f64).unwrap_or_default()
+        };
+        let sum = number("a") + number("b");
+        let text = rmcp::model::ContentBlock::text(sum.to_string());
+        Ok(rmcp::model::CallToolResult::success(vec![text]).into())
+    }
+}
+
+/// Refuses a request without the token, counting it in `refused`.
+async fn token_only(
+    refused: Arc<std::sync::atomic::AtomicUsize>,
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let token = request.headers().get(TOKEN_HEADER);
+    if token.is_some_and(|token| token == TOKEN) {
+        return next.run(request).await;
+    }
+    refused.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    axum::response::IntoResponse::into_response(http::StatusCode::UNAUTHORIZED)
+}
+
+#[test]
+fn a_streamable_http_server_connects_lists_answers_and_changes_its_tools() {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(1)
+        .enable_all()
+        .build();
+    assert!(runtime.is_ok(), "{runtime:?}");
+    let Ok(runtime) = runtime else { return };
+    let server = Loopback::default();
+    let refused = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let factory = server.clone();
+    let service = rmcp::transport::StreamableHttpService::new(
+        move || Ok(factory.clone()),
+        Arc::new(
+            rmcp::transport::streamable_http_server::session::local::LocalSessionManager::default(),
+        ),
+        rmcp::transport::StreamableHttpServerConfig::default(),
+    );
+    let counted = refused.clone();
+    let router =
+        axum::Router::new()
+            .nest_service("/mcp", service)
+            .layer(axum::middleware::from_fn(move |request, next| {
+                token_only(counted.clone(), request, next)
+            }));
+    let listener = runtime.block_on(tokio::net::TcpListener::bind("127.0.0.1:0"));
+    let bound = listener.and_then(|listener| Ok((listener.local_addr()?, listener)));
+    assert!(bound.is_ok(), "{bound:?}");
+    let Ok((address, listener)) = bound else {
+        return;
+    };
+    runtime.spawn(async move { axum::serve(listener, router).await });
+
+    let project = project("http");
+    let url = format!("http://{address}/mcp");
+    write_servers(
+        &project.join("home/mcp.json"),
+        json!({ "web": { "type": "http", "url": url, "headers": { TOKEN_HEADER: TOKEN } } }),
+    );
+    let model = MockCompletionModel::from_stream_turns([
+        calls("c1", "web__add", json!({ "a": 2, "b": 3 })),
+        reply("2 + 3 = 5."),
+    ]);
+    let (mut app, wakes) = app_in(&project, "[mcp]\nfirst_retry_secs = 3600", None);
+    app.init_resource::<Outputs>().add_observer(
+        |settled: On<Add<Settled>>,
+         calls: Query<&Outcome, With<ToolRequest>>,
+         mut log: ResMut<Outputs>| {
+            if let Ok(outcome) = calls.get(settled.entity) {
+                log.0.push(outcome.tool_result().output().render());
+            }
+        },
+    );
+    app.finish();
+    app.update();
+    let agent = rig_harness_test_support::first_agent(app.world_mut());
+    let connection = connect(&model);
+    assert!(agent.is_some() && connection.is_some());
+    let (Some(agent), Some(connection)) = (agent, connection) else {
+        return;
+    };
+    app.world_mut().entity_mut(agent).insert(connection);
+
+    run_until(&mut app, &wakes, |world| has(world, "web__add"));
+    let told = notices(app.world());
+    assert!(
+        told.contains(&"MCP server `web` connected: 1 tool.".to_owned()),
+        "{told:?}"
+    );
+    app.world_mut()
+        .trigger(Deliver::new(agent, "Add 2 and 3.", DeliveryMode::Queue));
+    run_until(&mut app, &wakes, |world| {
+        model.request_count() == 2 && !world.entity(agent).contains::<ActiveTurn>()
+    });
+    assert_eq!(app.world().resource::<Outputs>().0, ["5"]);
+
+    // The server's word that its tools changed, outside any request of the
+    // client's, brings the new list.
+    server
+        .grown
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    let peers = server
+        .peers
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clone();
+    assert_eq!(peers.len(), 1);
+    for peer in peers {
+        let said = runtime.block_on(peer.notify_tool_list_changed());
+        assert!(said.is_ok(), "{said:?}");
+    }
+    run_until(&mut app, &wakes, |world| has(world, "web__mul"));
+    let state = status(app.world_mut(), "web").map(|status| (status.state, status.tools));
+    assert_eq!(state, Some((McpState::Connected, 2)));
+    // Every request carried the header.
+    assert_eq!(refused.load(std::sync::atomic::Ordering::SeqCst), 0);
+    drop(app);
+    runtime.shutdown_background();
+    std::fs::remove_dir_all(project).ok();
+}

@@ -14415,6 +14415,7 @@ name = "rig-mcp-client"
 version = "0.46.0"
 dependencies = [
  "async-channel",
+ "axum",
  "bevy_ecs",
  "bevy_reflect",
  "bevy_tasks",
