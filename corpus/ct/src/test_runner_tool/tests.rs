@@ -5,7 +5,7 @@ use std::sync::mpsc::Receiver;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness_test_support::{
     Ended, MemoryStore, ToolOutputs, app_on, calls, first_agent, log_ended, log_tool_outputs,
-    reply, run_until, scripted_models,
+    reply, run_until, scratch_dir, scripted_models,
 };
 use serde_json::json;
 
@@ -106,10 +106,7 @@ esac
 /// A fixture project named `name` beside the test binary, its output in
 /// `mode`.
 fn fixture(name: &str, mode: &str) -> PathBuf {
-    let exe = std::env::current_exe().unwrap_or_default();
-    let dir = exe.with_file_name(name);
-    fs::remove_dir_all(&dir).ok();
-    assert!(fs::create_dir_all(&dir).is_ok());
+    let dir = scratch_dir(name);
     assert!(fs::write(dir.join("run.sh"), RUN_SH).is_ok());
     set_mode(&dir, mode);
     dir

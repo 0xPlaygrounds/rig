@@ -9,7 +9,7 @@ use rig_harness::rig_ecs::session_log::SessionLogPlugin;
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     AnswerAsks, Answers, Ended, ToolOutputs, answer_open, app_on, calls, connect, first_agent,
-    log_ended, log_tool_outputs, reply, run_until,
+    log_ended, log_tool_outputs, reply, run_until, scratch_dir,
 };
 use serde_json::json;
 
@@ -18,11 +18,7 @@ use super::*;
 /// A project directory named `name` with `big.rs` (200 lines) and
 /// `small.rs` (5 lines).
 fn project(name: &str) -> PathBuf {
-    let dir = std::env::current_exe()
-        .unwrap_or_default()
-        .with_file_name(name);
-    std::fs::remove_dir_all(&dir).ok();
-    assert!(std::fs::create_dir_all(&dir).is_ok());
+    let dir = scratch_dir(name);
     let dir = std::fs::canonicalize(&dir).unwrap_or(dir);
     assert!(std::fs::write(dir.join("big.rs"), big()).is_ok());
     assert!(std::fs::write(dir.join("small.rs"), "a\nb\nc\nd\ne\n").is_ok());

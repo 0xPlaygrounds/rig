@@ -7,7 +7,7 @@ use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     Ended, ToolOutputs, app_on, calls, first_agent, log_ended, log_tool_outputs, reply, run_until,
-    scripted_models,
+    scratch_dir, scripted_models,
 };
 use rig_tui::AppStatus;
 use serde_json::json;
@@ -20,10 +20,7 @@ const OUTSIDE: &str = "Outside the current scope";
 
 /// A project beside the test binary with `src/parser/a.rs` and `docs/`.
 fn project() -> PathBuf {
-    let dir = std::env::current_exe()
-        .unwrap_or_default()
-        .with_file_name("sn-scope-fence-project");
-    std::fs::remove_dir_all(&dir).ok();
+    let dir = scratch_dir("sn-scope-fence-project");
     assert!(std::fs::create_dir_all(dir.join("src/parser")).is_ok());
     assert!(std::fs::create_dir_all(dir.join("docs")).is_ok());
     assert!(std::fs::write(dir.join("src/parser/a.rs"), "let x = 1;\n").is_ok());

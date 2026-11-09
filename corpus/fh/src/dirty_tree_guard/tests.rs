@@ -8,7 +8,7 @@ use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::harness_protocol::SessionId;
 use rig_harness_test_support::{
     Ended, ToolOutputs, answer_open, app_in, calls, first_agent, log_ended, log_tool_outputs,
-    reply, run_until, scratch_home, scripted_models,
+    reply, run_until, scratch_dir, scratch_home, scripted_models,
 };
 use serde_json::json;
 
@@ -40,11 +40,7 @@ fn text(path: &Path) -> String {
 /// A repository named `name` with `a.txt` to `d.txt` committed and `a.txt`
 /// modified since.
 fn repo(name: &str) -> PathBuf {
-    let dir = std::env::current_exe()
-        .unwrap_or_default()
-        .with_file_name(name);
-    std::fs::remove_dir_all(&dir).ok();
-    assert!(std::fs::create_dir_all(&dir).is_ok());
+    let dir = scratch_dir(name);
     let dir = std::fs::canonicalize(&dir).unwrap_or(dir);
     git_in(&dir, &["init", "-q"]);
     git_in(&dir, &["config", "user.email", "test@example.com"]);

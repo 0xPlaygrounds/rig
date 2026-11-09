@@ -7,7 +7,7 @@ use rig_core::test_utils::MockCompletionModel;
 use rig_harness::prelude::*;
 use rig_harness_test_support::{
     MemoryStore, ToolOutputs, app_on, calls, connect, log_tool_outputs, reply, run_until,
-    start_call,
+    scratch_dir, start_call,
 };
 use serde_json::json;
 
@@ -30,9 +30,7 @@ const BROKEN: &str = "name: demo\njobs:\n  test: run: x\n";
 /// A directory of its own for `name`, beside the test binary, holding the
 /// fixtures.
 fn project(name: &str) -> PathBuf {
-    let exe = std::env::current_exe().unwrap_or_default();
-    let dir = exe.with_file_name(name);
-    std::fs::remove_dir_all(&dir).ok();
+    let dir = scratch_dir(name);
     std::fs::create_dir_all(dir.join(".github")).ok();
     for (file, text) in [
         ("Cargo.toml", CARGO),

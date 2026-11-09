@@ -65,12 +65,26 @@ fn app() -> (App, Receiver<()>) {
     (app, wakes)
 }
 
-/// A `RIG_HOME` of the test's own named `name`, beside its binary, emptied.
+/// The path `name` beside the test's binary, with nothing there.
+fn removed(name: &str) -> PathBuf {
+    let path = std::env::current_exe()
+        .unwrap_or_default()
+        .with_file_name(name);
+    fs::remove_dir_all(&path).ok();
+    path
+}
+
+/// A directory of the test's own named `name`, beside its binary, emptied.
+pub fn scratch_dir(name: &str) -> PathBuf {
+    let dir = removed(name);
+    fs::create_dir_all(&dir).ok();
+    dir
+}
+
+/// A `RIG_HOME` of the test's own named `name`, beside its binary, not yet
+/// made.
 pub fn scratch_home(name: &str) -> Home {
-    let exe = std::env::current_exe().unwrap_or_default();
-    let root: PathBuf = exe.with_file_name(name);
-    fs::remove_dir_all(&root).ok();
-    Home::at(root)
+    Home::at(removed(name))
 }
 
 /// An app with a task pool on the session `id` of `home`, kept in its

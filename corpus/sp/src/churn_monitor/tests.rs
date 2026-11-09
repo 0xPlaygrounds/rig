@@ -5,7 +5,8 @@ use rig_basics::coding_tools::EditTool;
 use rig_basics::subagents::SubagentsPlugin;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness_test_support::{
-    Collected, MemoryStore, app_on, calls, collect, reply, run_until, scripted_models, tui_view,
+    Collected, MemoryStore, app_on, calls, collect, reply, run_until, scratch_dir, scripted_models,
+    tui_view,
 };
 use rig_tui::{ShowAgent, TuiTestScreen};
 use serde_json::json;
@@ -17,10 +18,7 @@ const SUB_MODEL: &str = "churn/sub";
 
 /// A project beside the test binary with `src/a.rs` and `src/b.rs`.
 fn project(name: &str) -> PathBuf {
-    let dir = std::env::current_exe()
-        .unwrap_or_default()
-        .with_file_name(name);
-    std::fs::remove_dir_all(&dir).ok();
+    let dir = scratch_dir(name);
     assert!(std::fs::create_dir_all(dir.join("src")).is_ok());
     assert!(std::fs::write(dir.join("src/a.rs"), "one\ntwo\nthree\n").is_ok());
     assert!(std::fs::write(dir.join("src/b.rs"), "fn b() {}\n").is_ok());

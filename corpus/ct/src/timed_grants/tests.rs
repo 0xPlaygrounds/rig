@@ -8,7 +8,7 @@ use rig_harness::ask::AskPlugin;
 use rig_harness::clock::ClockPlugin;
 use rig_harness_test_support::{
     Collected, Ended, MemoryStore, ToolOutputs, app_on, calls, collect, connect, first_agent,
-    log_ended, log_tool_outputs, pass_wall_clock, reply, run_until,
+    log_ended, log_tool_outputs, pass_wall_clock, reply, run_until, scratch_dir,
 };
 use serde_json::json;
 
@@ -46,9 +46,7 @@ fn protect(mut calls: Query<(&Footprint, &mut Decision), (ReadyToStart, ToolCall
 }
 
 fn project(name: &str) -> PathBuf {
-    let exe = std::env::current_exe().unwrap_or_default();
-    let dir = exe.with_file_name(format!("timed-grants-{name}-{}", std::process::id()));
-    std::fs::remove_dir_all(&dir).ok();
+    let dir = scratch_dir(&format!("timed-grants-{name}-{}", std::process::id()));
     for sub in ["src/locked", "docs"] {
         std::fs::create_dir_all(dir.join(sub)).ok();
     }

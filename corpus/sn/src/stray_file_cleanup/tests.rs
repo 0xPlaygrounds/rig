@@ -7,7 +7,7 @@ use rig_harness::commands::CommandPlugin;
 use rig_harness::pick::PickPlugin;
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
-    Ended, app_on, first_agent, log_ended, reply, run_until, scripted_models,
+    Ended, app_on, first_agent, log_ended, reply, run_until, scratch_dir, scripted_models,
 };
 
 use super::*;
@@ -17,9 +17,7 @@ const MODEL: &str = "corpus-scripted/agent";
 /// A repository with a committed `src/lib.rs` and the user's untracked
 /// `notes.txt`, in a directory beside the test binary.
 fn repository(name: &str) -> PathBuf {
-    let exe = std::env::current_exe().unwrap_or_default();
-    let dir = exe.with_file_name(format!("sn-stray-{name}"));
-    fs::remove_dir_all(&dir).ok();
+    let dir = scratch_dir(&format!("sn-stray-{name}"));
     fs::create_dir_all(dir.join("src")).ok();
     fs::write(dir.join("src/lib.rs"), "// one\n").ok();
     for args in [

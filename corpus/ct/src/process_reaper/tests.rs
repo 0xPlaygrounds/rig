@@ -9,7 +9,7 @@ use rig_harness::harness_protocol::{Home, SessionId};
 use rig_harness::host::exit::ExitPlugin;
 use rig_harness_test_support::{
     Collected, Ended, ToolOutputs, app_in, calls, collect, connect, first_agent, log_ended,
-    log_tool_outputs, reply, run_until, scratch_home,
+    log_tool_outputs, reply, run_until, scratch_dir, scratch_home,
 };
 use serde_json::json;
 
@@ -92,11 +92,7 @@ fn start_fixture(id: &str, file: &Path) -> Vec<MockStreamEvent> {
 
 /// A directory of the test's own beside its binary, emptied.
 fn scratch(name: &str) -> PathBuf {
-    let exe = std::env::current_exe().unwrap_or_default();
-    let dir = exe.with_file_name(format!("process-reaper-{name}-{}", std::process::id()));
-    std::fs::remove_dir_all(&dir).ok();
-    std::fs::create_dir_all(&dir).ok();
-    dir
+    scratch_dir(&format!("process-reaper-{name}-{}", std::process::id()))
 }
 
 /// The kernel, the default shell, the reaper and the exit on the session

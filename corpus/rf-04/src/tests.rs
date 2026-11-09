@@ -7,7 +7,7 @@ use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::ask::AskPlugin;
 use rig_harness_test_support::{
     AnswerAsks, Answers, MemoryStore, ToolOutputs, answer_open, app_on, calls, connect,
-    log_tool_outputs, reply, run_until, start_call,
+    log_tool_outputs, reply, run_until, scratch_dir, start_call,
 };
 use serde_json::json;
 
@@ -16,10 +16,7 @@ use super::*;
 /// A fresh, canonical directory for a test's files, beside the test's
 /// binary, with `files` written in it.
 fn scratch(name: &str, files: &[(&str, &str)]) -> PathBuf {
-    let exe = std::env::current_exe().unwrap_or_default();
-    let dir = exe.with_file_name(format!("rig-policy-{name}"));
-    std::fs::remove_dir_all(&dir).ok();
-    std::fs::create_dir_all(&dir).ok();
+    let dir = scratch_dir(&format!("rig-policy-{name}"));
     let dir = std::fs::canonicalize(&dir).unwrap_or(dir);
     for (path, text) in files {
         let path = dir.join(path);

@@ -9,7 +9,7 @@ use rig_harness::ask::AskPlugin;
 use rig_harness::harness_protocol::SessionId;
 use rig_harness_test_support::{
     AnswerAsks, Answers, Ended, ToolOutputs, app_in, calls, connect, first_agent, log_ended,
-    log_tool_outputs, reply, run_until, scratch_home,
+    log_tool_outputs, reply, run_until, scratch_dir, scratch_home,
 };
 use serde_json::json;
 
@@ -30,10 +30,7 @@ fn git(dir: &Path, args: &[&str]) -> String {
 /// force push would change the remote), a `feature` branch, a `sub/`
 /// directory and the user's untracked `draft.md`.
 fn repo(name: &str) -> (PathBuf, PathBuf) {
-    let root = std::env::current_exe()
-        .unwrap_or_default()
-        .with_file_name(name);
-    std::fs::remove_dir_all(&root).ok();
+    let root = scratch_dir(name);
     assert!(std::fs::create_dir_all(root.join("work/sub")).is_ok());
     let root = std::fs::canonicalize(&root).unwrap_or(root);
     let (remote, work) = (root.join("remote.git"), root.join("work"));

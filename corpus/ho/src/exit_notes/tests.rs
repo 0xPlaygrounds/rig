@@ -5,6 +5,7 @@ use rig_basics::coding_tools::WriteTool;
 use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
 use rig_harness_test_support::{
     Ended, MemoryStore, app_on, calls, connect, first_agent, log_ended, reply, run_until,
+    scratch_dir,
 };
 
 use super::*;
@@ -14,11 +15,7 @@ const SUMMARY: &str = "## Goal\nWrite a.txt.";
 
 /// A project of the test's own, beside its binary, emptied.
 fn project(name: &str) -> PathBuf {
-    let exe = std::env::current_exe().unwrap_or_default();
-    let root = exe.with_file_name(format!("exit-notes-{name}-{}", std::process::id()));
-    std::fs::remove_dir_all(&root).ok();
-    std::fs::create_dir_all(&root).ok();
-    root
+    scratch_dir(&format!("exit-notes-{name}-{}", std::process::id()))
 }
 
 /// The notes written in `root`, as `(file name, text)`.

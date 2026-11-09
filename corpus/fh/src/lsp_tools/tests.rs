@@ -7,7 +7,7 @@ use rig_harness_test_support::MemoryStore;
 use serde_json::{Value, json};
 
 use super::*;
-use rig_harness_test_support::{app_on, calls, connect, reply, run_until};
+use rig_harness_test_support::{app_on, calls, connect, reply, run_until, scratch_dir};
 
 /// Set in the environment of the fake server this test binary runs as:
 /// the file it logs each text it is given to.
@@ -185,12 +185,7 @@ fn running(world: &World) -> Vec<(String, u32)> {
 
 #[test]
 fn a_fake_server_answers_follows_edits_restarts_and_shuts_down() {
-    let project = std::env::current_exe()
-        .ok()
-        .and_then(|exe| exe.parent().map(|deps| deps.join("corpus-fh-lsp-tools")))
-        .unwrap_or_default()
-        .join(std::process::id().to_string());
-    std::fs::remove_dir_all(&project).ok();
+    let project = scratch_dir(&format!("corpus-fh-lsp-tools/{}", std::process::id()));
     std::fs::create_dir_all(project.join(".rig")).ok();
     let project = std::fs::canonicalize(&project).unwrap_or(project);
     let log = project.join("received.log");
