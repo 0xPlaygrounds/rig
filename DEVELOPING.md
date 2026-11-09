@@ -252,9 +252,6 @@ cargo xtask catalog sync --from ../api.json
   `tests/core/catalog_constants.rs` enforces it.
 - **A reviewed fact that changes what rig sends or refuses** gets a focused
   behaviour test.
-- **Review the request-body golden against the report** before regenerating
-  it (`tests/core/request_bodies.rs`): every change there should trace to a
-  line of the report.
 
 ## PR completion
 
