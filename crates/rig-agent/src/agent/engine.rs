@@ -732,6 +732,9 @@ impl TurnSource for StreamingTurnSource {
             // does not allow, by part, held until its end resolves the call.
             let mut held: BTreeMap<Part, Vec<StreamEvent>> = BTreeMap::new();
 
+            // A delta hook's stop is the run's: the stream is dropped, cancelling
+            // the dispatch in flight before the error surfaces, so the record
+            // is the same cancel on every transport.
             'turn: while let Some(item) = stream.next().await {
                 // A stream error ends the reply. At most one event per item
                 // forwards the item itself, so moving it out of the slot
@@ -775,9 +778,6 @@ impl TurnSource for StreamingTurnSource {
                                         .await,
                                 )
                             {
-                                // The stop is the run's: the dispatch in flight is
-                                // cancelled here, before the error surfaces, so the
-                                // record is the same cancel on every transport.
                                 drop(stream);
                                 yield Err(run.cancel_error(reason));
                                 return;
@@ -804,9 +804,6 @@ impl TurnSource for StreamingTurnSource {
                                         .await,
                                 )
                             {
-                                // The stop is the run's: the dispatch in flight is
-                                // cancelled here, before the error surfaces, so the
-                                // record is the same cancel on every transport.
                                 drop(stream);
                                 yield Err(run.cancel_error(reason));
                                 return;
@@ -842,9 +839,6 @@ impl TurnSource for StreamingTurnSource {
                                         .await,
                                 )
                             {
-                                // The stop is the run's: the dispatch in flight is
-                                // cancelled here, before the error surfaces, so the
-                                // record is the same cancel on every transport.
                                 drop(stream);
                                 yield Err(run.cancel_error(reason));
                                 return;
@@ -895,9 +889,6 @@ impl TurnSource for StreamingTurnSource {
                                             .await,
                                     )
                                 {
-                                    // The stop is the run's: the dispatch in flight is
-                                    // cancelled here, before the error surfaces, so the
-                                    // record is the same cancel on every transport.
                                     drop(stream);
                                     yield Err(run.cancel_error(reason));
                                     return;
