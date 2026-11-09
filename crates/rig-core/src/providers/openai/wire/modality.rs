@@ -1082,7 +1082,7 @@ impl Wire for Images {
         // Merged last, so a caller can reach the endpoint's other parameters
         // and override what is derived above.
         if let Some(additional_params) = request.additional_params {
-            crate::json_utils::merge_inplace(&mut body, additional_params);
+            body = crate::json_utils::merge(body, additional_params);
         }
 
         let uri = self
@@ -1256,7 +1256,7 @@ impl Wire for Speech {
         }
         // Caller parameters take precedence, including response format and instructions.
         if let Some(additional_params) = additional_params {
-            crate::json_utils::merge_inplace(&mut body, additional_params);
+            body = crate::json_utils::merge(body, additional_params);
         }
 
         // Azure versions its speech endpoint separately from every other

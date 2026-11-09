@@ -41,15 +41,6 @@ fn remove_preserving_order_distinguishes_missing_and_null_values() {
 }
 
 #[test]
-fn test_merge_inplace() {
-    let mut a = serde_json::json!({"key1": "value1"});
-    let b = serde_json::json!({"key2": "value2"});
-    merge_inplace(&mut a, b);
-    let expected = serde_json::json!({"key1": "value1", "key2": "value2"});
-    assert_eq!(a, expected);
-}
-
-#[test]
 fn text_that_states_no_object_has_none() {
     for text in ["not json", "[1, 2", "\"str", "12"] {
         assert_eq!(parse_partial_object(text), None, "{text}");

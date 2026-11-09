@@ -196,16 +196,6 @@ pub(crate) fn merge_params(
     })
 }
 
-// Callers require the image or audio feature.
-#[cfg_attr(not(any(feature = "image", feature = "audio")), allow(dead_code))]
-pub fn merge_inplace(a: &mut serde_json::Value, b: serde_json::Value) {
-    if let (serde_json::Value::Object(a_map), serde_json::Value::Object(b_map)) = (a, b) {
-        b_map.into_iter().for_each(|(key, value)| {
-            a_map.insert(key, value);
-        });
-    }
-}
-
 /// Normalize a provider-wire field that may contain encoded JSON in a string.
 ///
 /// This deliberately unwraps [`serde_json::Value::String`] and is only for

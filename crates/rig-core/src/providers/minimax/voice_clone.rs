@@ -305,7 +305,7 @@ impl Wire for VoiceClones {
                 let additional_params = clone.additional_params.take();
                 let mut body = serde_json::to_value(clone)?;
                 if let Some(additional_params) = additional_params {
-                    crate::json_utils::merge_inplace(&mut body, additional_params);
+                    body = crate::json_utils::merge(body, additional_params);
                 }
                 crate::providers::openai::wire::json_post(provider, VOICE_CLONE_PATH, None, &body)
             }
