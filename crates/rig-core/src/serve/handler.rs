@@ -608,24 +608,7 @@ pub struct Dispatch {
     /// How many handlers serve it now, one inside another: only the
     /// outermost tells the observer and the fold, once it answered.
     serving: Arc<AtomicUsize>,
-    /// The layer whose verdict replaced the answer the consumer receives,
-    /// once one did. Shared down the layer chain; a driver reads it after
-    /// the reply ([`Dispatch::replaced_by`]).
-    replaced_by: Arc<Mutex<Option<String>>>,
     folded: Option<Folded>,
-}
-
-/// A layer's handle for attributing its verdict once its inner handler
-/// answered: [`Dispatch::attribution`].
-#[derive(Clone)]
-pub(crate) struct Attribution(Arc<Mutex<Option<String>>>);
-
-impl Attribution {
-    /// The layer named replaced the answer the consumer receives. The
-    /// outermost layer to say so is the one the consumer's answer is from.
-    pub(crate) fn replaced(&self, layer: &str) {
-        *lock(&self.0) = Some(layer.to_owned());
-    }
 }
 
 impl Dispatch {
@@ -639,18 +622,8 @@ impl Dispatch {
             scopes: Vec::new(),
             observer: None,
             serving: Arc::default(),
-            replaced_by: Arc::new(Mutex::new(None)),
             folded: None,
         }
-    }
-
-    /// The slot a layer's replacement verdict is named in: `None` until a
-    /// layer replaced the answer on its way out, then that layer's name.
-    /// The record keeps the handler's answer regardless; this says who the
-    /// consumer's answer is from. Shared with every inner dispatch, so a
-    /// driver reads it from the dispatch it built.
-    pub fn replaced_by(&self) -> Arc<Mutex<Option<String>>> {
-        self.replaced_by.clone()
     }
 
     /// The effect being served.
@@ -744,13 +717,6 @@ impl Dispatch {
         }
     }
 
-    /// The handle a layer keeps to attribute its verdict once its inner
-    /// handler answered (the observer itself moves inward with
-    /// [`Self::inner`]).
-    pub(crate) fn attribution(&self) -> Attribution {
-        Attribution(self.replaced_by.clone())
-    }
-
     pub(crate) fn inner(&mut self, folded: Option<Folded>) -> Self {
         let observer = self.observer.as_ref().and_then(|slot| lock(slot).take());
         Self {
@@ -761,7 +727,6 @@ impl Dispatch {
             scopes: self.scopes.clone(),
             observer: observer.map(|seen| Arc::new(Mutex::new(Some(seen)))),
             serving: Arc::default(),
-            replaced_by: self.replaced_by.clone(),
             folded,
         }
     }
