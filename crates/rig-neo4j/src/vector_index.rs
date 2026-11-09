@@ -113,7 +113,7 @@ impl FromStr for VectorSimilarityFunction {
 
 const BASE_VECTOR_SEARCH_QUERY: &str = "
     CALL db.index.vector.queryNodes($index_name, $num_candidates, $queryVector)
-    YIELD node, score
+    YIELD node AS n, score
 ";
 
 impl Neo4jVectorIndex {
@@ -154,13 +154,13 @@ impl Neo4jVectorIndex {
             "\
             {}\
             \t{}\n\
-            \tRETURN score, ID(node) as element_id {}
+            \tRETURN score, ID(n) as element_id {}
             ",
             BASE_VECTOR_SEARCH_QUERY,
             where_clause,
             if return_node {
                 format!(
-                    ", node {{.*, {}:null }} as node",
+                    ", n {{.*, {}:null }} as node",
                     self.index_config.embedding_property
                 )
             } else {

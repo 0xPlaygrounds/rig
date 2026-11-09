@@ -3,9 +3,9 @@ use testcontainers::{GenericImage, ImageExt, core::IntoContainerPort, runners::A
 
 use crate::common::{WORD_DEFINITIONS, mock_embeddings, openai_client};
 use futures::{StreamExt, TryStreamExt};
-use rig::neo4j::{Neo4jClient, ToBoltType};
+use rig::neo4j::{Neo4jClient, Neo4jSearchFilter, ToBoltType, vector_index::Neo4jVectorIndex};
 use rig::vector_store::VectorStoreIndex;
-use rig::vector_store::request::VectorSearchRequest;
+use rig::vector_store::request::{SearchFilter, VectorSearchRequest};
 use rig::{
     Embed,
     driver::Model,
@@ -175,6 +175,62 @@ async fn vector_search_test() {
             "embedding": serde_json::Value::Null
         })
     );
+
+    let filtered = filtered_searches(&index).await;
+    assert!(filtered.is_ok(), "{filtered:?}");
+}
+
+async fn filtered_searches(index: &Neo4jVectorIndex) -> Result<(), Box<dyn std::error::Error>> {
+    let cases = [
+        (Neo4jSearchFilter::eq("id", json!("doc1")), vec!["doc1"]),
+        (Neo4jSearchFilter::eq("id", json!("missing")), vec![]),
+        (
+            Neo4jSearchFilter::gt("id", json!("doc0"))
+                .and(Neo4jSearchFilter::lt("id", json!("doc2"))),
+            vec!["doc1"],
+        ),
+        (
+            Neo4jSearchFilter::eq("id", json!("doc1"))
+                .or(Neo4jSearchFilter::eq("id", json!("doc2")))
+                .and(Neo4jSearchFilter::eq("id", json!("doc2")).not()),
+            vec!["doc1"],
+        ),
+        (
+            Neo4jSearchFilter::member("id", vec![json!("doc0"), json!("doc2")]),
+            vec!["doc0", "doc2"],
+        ),
+    ];
+    for (filter, expected) in cases {
+        let req = VectorSearchRequest::builder()
+            .query("What is a glarb?")
+            .samples(3)
+            .filter(filter)
+            .build();
+        let documents = index.top_n::<serde_json::Value>(req.clone()).await?;
+        let ids = index.top_n_ids(req).await?;
+        let mut actual = documents
+            .iter()
+            .filter_map(|row| row.document.get("id").and_then(serde_json::Value::as_str))
+            .collect::<Vec<_>>();
+        actual.sort_unstable();
+        if actual != expected || documents.len() != expected.len() {
+            return Err(std::io::Error::other(format!(
+                "expected documents {expected:?}, got {documents:?}"
+            ))
+            .into());
+        }
+        let mut document_ids = documents.iter().map(|row| &row.id).collect::<Vec<_>>();
+        let mut actual_ids = ids.iter().map(|row| &row.id).collect::<Vec<_>>();
+        document_ids.sort_unstable();
+        actual_ids.sort_unstable();
+        if actual_ids != document_ids {
+            return Err(std::io::Error::other(format!(
+                "document and ID searches disagree: {documents:?}, {ids:?}"
+            ))
+            .into());
+        }
+    }
+    Ok(())
 }
 
 async fn create_embeddings(model: Model<openai::wire::Embeddings>) -> Vec<(Word, Vec<Embedding>)> {
