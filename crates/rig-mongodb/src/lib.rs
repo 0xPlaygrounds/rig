@@ -407,9 +407,9 @@ impl MongoDbSearchFilter {
 }
 
 impl DynamicSearchFilter for MongoDbSearchFilter {
-    /// Values that cannot be represented in BSON become `Bson::Null`.
+    /// Fails with [`FilterError::Serialization`] for a value BSON cannot represent.
     fn from_dynamic_filter(filter: Filter<serde_json::Value>) -> Result<Self, FilterError> {
-        Ok(filter.interpret_with(|v| to_bson(&v).unwrap_or(Bson::Null)))
+        filter.try_interpret(|v| to_bson(&v).map_err(|e| FilterError::Serialization(e.to_string())))
     }
 }
 
