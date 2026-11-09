@@ -170,12 +170,6 @@ impl<O> AgentRunner<O> {
         self
     }
 
-    /// This run neither loads nor saves a conversation.
-    pub fn without_memory(mut self) -> Self {
-        self.config.memory = None;
-        self
-    }
-
     /// The store and log this run keeps its conversation in: none without a
     /// store, or with an explicit [`history`](AgentRunner::history).
     pub(crate) fn memory_log(&self) -> Option<(super::memory::Memory, String)> {
