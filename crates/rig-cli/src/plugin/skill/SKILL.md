@@ -6,8 +6,7 @@ description: Write, change or debug a plugin for the rig agent, a Bevy plugin cr
 # Writing rig plugins
 
 Rig writes this file at each build of the agent, for rig __VERSION__, and
-overwrites changes to it. A skill named `writing-rig-plugins` in a project's
-`.rig/skills` is found first and replaces it there.
+overwrites changes to it.
 
 1. Read the plugin guide first: `__GUIDE__`. It is the guide of the rig
    crates this agent is built from, with the rules every plugin follows and an

@@ -52,3 +52,52 @@ fn a_crates_io_build_names_the_guide_cargo_fetched() {
         "{after}"
     );
 }
+
+fn home(test: &str) -> Home {
+    Home::at(std::env::temp_dir().join(format!("rig-skill-{test}-{}", std::process::id())))
+}
+
+#[test]
+fn the_skill_is_rewritten_only_when_its_text_changes() {
+    let home = home("write");
+    let checkout = RigSource::Local(
+        std::path::absolute(super::super::super::project::CHECKOUT).unwrap_or_default(),
+    );
+    let file = file(&home);
+    let old = std::time::SystemTime::UNIX_EPOCH;
+    let result = (|| -> Result<_> {
+        write(&home, &checkout)?;
+        fs::File::options()
+            .write(true)
+            .open(&file)?
+            .set_modified(old)?;
+        write(&home, &checkout)?;
+        let unchanged = fs::metadata(&file)?.modified()?;
+        fs::write(&file, "edited")?;
+        write(&home, &checkout)?;
+        Ok((unchanged, fs::read_to_string(&file)?))
+    })();
+    fs::remove_dir_all(home.root()).ok();
+    assert!(result.is_ok(), "{result:?}");
+    let (unchanged, text) = result.unwrap_or((old, String::new()));
+    assert_eq!(unchanged, old);
+    assert_eq!(text, super::text(&checkout, None));
+}
+
+#[test]
+fn a_skill_that_cannot_be_written_is_a_warning() {
+    let home = home("blocked");
+    // A file where the skill's directory goes.
+    let blocked = (|| -> Result<_> {
+        fs::create_dir_all(home.root().join("skills"))?;
+        fs::write(home.root().join("skills/writing-rig-plugins"), "")?;
+        Ok(refresh(&home, &RigSource::Registry))
+    })();
+    fs::remove_dir_all(home.root()).ok();
+    let warning = blocked.ok().flatten().unwrap_or_default();
+    assert!(
+        warning.starts_with("warning: could not write ")
+            && warning.contains("skills/writing-rig-plugins/SKILL.md"),
+        "{warning}"
+    );
+}

@@ -16,10 +16,26 @@ use super::super::{Result, VERSION};
 /// the rig version, the guide and the corpus.
 const SKILL: &str = include_str!("skill/SKILL.md");
 
+/// Writes the skill as [`write`] does, and returns a warning naming the
+/// file and why when it could not: the skill is a help, so failing to
+/// write it never fails the build it comes with.
+pub fn refresh(home: &Home, source: &RigSource) -> Option<String> {
+    let failure = write(home, source).err()?;
+    Some(format!(
+        "warning: could not write {}: {failure}",
+        file(home).display()
+    ))
+}
+
+/// Where the skill is written.
+fn file(home: &Home) -> PathBuf {
+    home.root().join("skills/writing-rig-plugins/SKILL.md")
+}
+
 /// Writes the skill to `RIG_HOME/skills/writing-rig-plugins/SKILL.md` for
 /// the rig crates of `source`, unless it holds that text already.
-pub fn write(home: &Home, source: &RigSource) -> Result<()> {
-    let file = home.root().join("skills/writing-rig-plugins/SKILL.md");
+fn write(home: &Home, source: &RigSource) -> Result<()> {
+    let file = file(home);
     let text = text(source, cargo_home().as_deref());
     if fs::read_to_string(&file).is_ok_and(|old| old == text) {
         return Ok(());
