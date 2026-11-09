@@ -56,7 +56,7 @@ async fn extras_from_a_unary_recording() {
 /// cache counters included.
 #[tokio::test]
 async fn extras_read_alike_from_a_recorded_stream() {
-    use crate::test_utils::provider_extensions::{recorded_stream, streamed_reply_of};
+    use crate::test_utils::provider_extensions::{recorded_reply, streamed_reply_of};
 
     const SCENARIO: &str =
         "followup_hunt_matrix/{}_stop_sequence_reaches_the_wire_and_stops_generation";
@@ -70,7 +70,7 @@ async fn extras_read_alike_from_a_recorded_stream() {
     let streamed = read(
         streamed_reply_of(
             wire(),
-            recorded_stream("deepseek", &SCENARIO.replace("{}", "streaming"), 0),
+            recorded_reply("deepseek", &SCENARIO.replace("{}", "streaming"), 0),
         )
         .await,
     );

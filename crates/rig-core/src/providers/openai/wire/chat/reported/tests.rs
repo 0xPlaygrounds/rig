@@ -15,8 +15,7 @@ use crate::providers::openai::wire::{
     Dialect, MISTRAL, OPENAI, OPENROUTER, OpenAIConfig, PERPLEXITY, VENICE, XIAOMIMIMO, ZAI,
 };
 use crate::test_utils::provider_extensions::{
-    chat_reply, chat_stream, encoded_body, recorded_reply, recorded_stream, reply_of,
-    streamed_reply_of,
+    chat_reply, chat_stream, encoded_body, recorded_reply, reply_of, streamed_reply_of,
 };
 use crate::wire::Mode;
 
@@ -101,7 +100,7 @@ async fn perplexity_cites_its_url_list_and_reports_its_cost() {
 /// a stream restating its list on every chunk cites each URL once.
 #[tokio::test]
 async fn a_perplexity_stream_cites_its_url_list_once() {
-    let stream = recorded_stream(
+    let stream = recorded_reply(
         "perplexity",
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_usage_and_object",
         0,
@@ -154,7 +153,7 @@ async fn venice_cites_its_web_search_and_reports_its_cost() {
 /// the last chunk.
 #[tokio::test]
 async fn a_venice_stream_reports_its_cost() {
-    let stream = recorded_stream("venice", "streaming/streaming_smoke", 0);
+    let stream = recorded_reply("venice", "streaming/streaming_smoke", 0);
     let response = streamed_and_refolded(wire(&VENICE, "qwen3-5-9b"), stream).await;
     assert_eq!(
         response.usage.cost,
@@ -176,7 +175,7 @@ async fn openrouter_reports_its_cost_on_both_reply_shapes() {
     assert_eq!(unary.usage.input_tokens, Some(38));
     assert_eq!(unary.usage.output_tokens, Some(49));
 
-    let stream = recorded_stream("openrouter", "streaming/example_streaming_prompt", 0);
+    let stream = recorded_reply("openrouter", "streaming/example_streaming_prompt", 0);
     let streamed = streamed_and_refolded(wire(&OPENROUTER, "openai/gpt-4o-mini"), stream).await;
     assert_eq!(streamed.usage.cost, Some(Cost::from_total(0.0000258)));
 }

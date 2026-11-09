@@ -136,7 +136,7 @@ async fn extras_from_a_unary_recording() {
 /// answer measures its own milliseconds.
 #[tokio::test]
 async fn extras_read_alike_from_a_recorded_stream() {
-    use crate::test_utils::provider_extensions::{recorded_stream, streamed_reply_of};
+    use crate::test_utils::provider_extensions::{recorded_reply, streamed_reply_of};
 
     let read = |reply: crate::completion::CompletionResponse| {
         reply
@@ -149,7 +149,7 @@ async fn extras_read_alike_from_a_recorded_stream() {
     let streamed = read(
         streamed_reply_of(
             chat_wire(),
-            recorded_stream(
+            recorded_reply(
                 "llamacpp",
                 "truncation_matrix/streaming_tool_call_cut_mid_arguments",
                 0,

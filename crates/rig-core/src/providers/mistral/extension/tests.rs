@@ -105,7 +105,7 @@ async fn extras_from_a_unary_recording() {
 /// cache was cold for one answer only.
 #[tokio::test]
 async fn extras_read_alike_from_a_recorded_stream() {
-    use crate::test_utils::provider_extensions::{recorded_stream, streamed_reply_of};
+    use crate::test_utils::provider_extensions::{recorded_reply, streamed_reply_of};
 
     let read = |reply: crate::completion::CompletionResponse| {
         reply
@@ -116,7 +116,7 @@ async fn extras_read_alike_from_a_recorded_stream() {
     let streamed = read(
         streamed_reply_of(
             chat_wire("model"),
-            recorded_stream("mistral", "history_survival_matrix/streaming", 0),
+            recorded_reply("mistral", "history_survival_matrix/streaming", 0),
         )
         .await,
     );
