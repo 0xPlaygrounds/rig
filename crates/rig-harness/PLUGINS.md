@@ -1890,8 +1890,7 @@ effect, which a holder may take as "stop waiting".
   through }` announces each fork made to everyone. `rig_basics::sessions`'
   `/fork`, `/agents` and rewind are built on it, and show the fork, which
   makes it the session's `CurrentAgent`.
-- **Edit a stopped one:** `edit_stopped(&stores, &paths.0, &dir, |session|
-  ..)` under its lock; `PluginData::of(&stores, &dir)` opens its plugin files.
+- **Open a stopped one's plugin files:** `PluginData::of(&stores, &dir)`.
 - **Delete:** `DeleteSession(id)`, finished by the next start if a crash cut
   it short (`SessionDeleted`, else `SessionDeleteFailed`). It checks that no
   rig runs the session, then removes it without holding the lock, so a session
@@ -1999,8 +1998,7 @@ fn made(made: On<Add<ForkResult>>, results: Query<(&ForkResult, &RequestOf)>, mu
 A plugin keeps any serde value with the session under a key of its own:
 `app.saved_as::<T>("goals.goal")` logs a saved resource or agent component
 under that key, not its type's path. A program without Bevy reads it typed,
-`Session::value::<T>(key)` (an agent's, `SavedAgent::value`), and writes a
-stopped session's through `edit_stopped` (which keeps its listing).
+`Session::value::<T>(key)` (an agent's, `SavedAgent::value`).
 `.listed()` also copies it into the session's listing (`SessionMeta.listed`;
 keep it small), so `/resume`, `SessionMeta::read` and a `SessionPicker`'s
 filter show and find it without reading a log.

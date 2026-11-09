@@ -857,11 +857,11 @@ impl rig_memory::Rewrite for Secret {
     }
 }
 
-/// An edit and a rewrite of a stopped session keep its listing, as a
-/// running rig does: a listed value set or rewritten is listed (an unlisted
-/// one is not), the message count follows, and `updated` moves on.
+/// A rewrite of a stopped session keeps its listing, as a running rig
+/// does: a listed value rewritten is listed (an unlisted one is not), the
+/// message count follows, and `updated` moves on.
 #[test]
-fn an_edit_or_a_rewrite_of_a_stopped_session_keeps_its_listing() {
+fn a_rewrite_of_a_stopped_session_keeps_its_listing() {
     let home = scratch_home("rig-stopped-listing");
     let (Ok(here), Ok(there)) = (
         "1700000000-41".parse::<SessionId>(),
@@ -876,8 +876,15 @@ fn an_edit_or_a_rewrite_of_a_stopped_session_keeps_its_listing() {
     let Some(store) = store else {
         return;
     };
-    let mut said = conversation::Conversation::from_messages([Message::user("hi")]);
+    let mut said = conversation::Conversation::from_messages([
+        Message::user("hi"),
+        Message::assistant("hello"),
+    ]);
     assert!(save(&*store, "agent-1", &mut said).is_ok());
+    let mut read = rig_memory::Session::read(&*store).unwrap_or_default();
+    read.saved.insert("goals.goal".to_owned(), "ship".into());
+    read.saved.insert("goals.count".to_owned(), 3.into());
+    assert!(read.save(&*store).is_ok());
     let old = SessionMeta {
         title: "hi".to_owned(),
         updated: 1,
@@ -896,24 +903,8 @@ fn an_edit_or_a_rewrite_of_a_stopped_session_keeps_its_listing() {
     app.finish();
     app.update();
     let stores = app.world().resource::<StoreOpener>().clone();
-    let edited = super::edit_stopped(&stores, &session, &stopped, |read| {
-        read.saved.insert("goals.goal".to_owned(), "ship".into());
-        read.saved.insert("goals.count".to_owned(), 3.into());
-        let agent = read.agent_mut("agent-1").ok_or("no agent")?;
-        agent.conversation.push(Message::assistant("hello"));
-        Ok(())
-    });
-    assert_eq!(edited, Ok(()));
     let listed =
         |goal: &str| BTreeMap::from([("goals.goal".to_owned(), serde_json::Value::from(goal))]);
-    let meta = SessionMeta::read(&*store).unwrap_or_default();
-    assert_eq!(
-        (meta.title.as_str(), meta.messages, &meta.listed),
-        ("hi", 2, &listed("ship"))
-    );
-    assert!(meta.updated > 1, "updated");
-
-    assert!(old.write(&*store).is_ok());
     let by = Author::plugin("redact");
     let rewritten = rewrite_stopped(&stores, &session, &stopped, by, &Secret);
     assert!(rewritten.is_ok());

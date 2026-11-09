@@ -116,8 +116,8 @@ impl StoreOpener {
     /// `store`, which no rig runs, up to it, as a running rig keeps its
     /// own: its listed values, its main agent's model and message count,
     /// and when it changed ([`SessionMeta::relist`]). Every writer of a
-    /// stopped session calls it after writing; [`edit_stopped`] and
-    /// [`rewrite_stopped`] do.
+    /// stopped session calls it after writing; [`rewrite_stopped`]
+    /// does.
     ///
     /// # Errors
     ///
@@ -487,36 +487,6 @@ fn discard_unsaved(
     fs::remove_dir_all(paths.path()).ok();
 }
 
-/// Changes the saved session in `dir`, which no rig runs, as
-/// [`rewrite_stopped`] rewrites one: read, given
-/// to `edit`, and saved, its listing brought up to it
-/// ([`StoreOpener::relist`]). It holds the session's launcher lock
-/// ([`SessionDir::hold`]) from the check to the last write, so a rig
-/// starting meanwhile finds it running elsewhere. The running session,
-/// `running`, is refused: edit its agents' `Conversation` instead.
-///
-/// # Errors
-///
-/// When `dir` is the running session or another rig runs it, when its
-/// store does not open or its session cannot be read (nothing written),
-/// when `edit` fails (nothing written), or when a write fails.
-pub fn edit_stopped(
-    stores: &StoreOpener,
-    running: &SessionDir,
-    dir: &SessionDir,
-    edit: impl FnOnce(&mut Session) -> Result<(), String>,
-) -> Result<(), String> {
-    let _held = hold_stopped(running, dir, "edit its agents' conversations instead")?;
-    let store = stores.open(dir).map_err(|failure| failure.to_string())?;
-    let mut session = Session::read(&*store).map_err(|failure| failure.to_string())?;
-    edit(&mut session)?;
-    session
-        .save(&*store)
-        .map_err(|failure| failure.to_string())?;
-    relist(stores, &*store, &session);
-    Ok(())
-}
-
 /// Brings the listing of `session`, saved to `store`, up to it; a listing
 /// not written is logged, as a running rig's is, since the session is.
 fn relist(stores: &StoreOpener, store: &dyn Store, session: &Session) {
@@ -525,12 +495,12 @@ fn relist(stores: &StoreOpener, store: &dyn Store, session: &Session) {
     }
 }
 
-/// The launcher lock of the session in `dir`, held for an edit of it:
-/// refused for the running session (`running`, which is edited as `this`
-/// says), a session that is not there and one another rig runs.
-fn hold_stopped(running: &SessionDir, dir: &SessionDir, this: &str) -> Result<File, String> {
+/// The launcher lock of the session in `dir`, held for a rewrite of it:
+/// refused for the running session (`running`), a session that is not
+/// there and one another rig runs.
+fn hold_stopped(running: &SessionDir, dir: &SessionDir) -> Result<File, String> {
     if dir.path() == running.path() {
-        return Err(format!("it is this session: {this}"));
+        return Err("it is this session: only a stopped session is rewritten".to_owned());
     }
     if !dir.path().is_dir() {
         return Err("there is no such session".to_owned());
@@ -542,7 +512,7 @@ fn hold_stopped(running: &SessionDir, dir: &SessionDir, this: &str) -> Result<Fi
 
 /// Rewrites the saved session in `dir`, which no rig runs, through
 /// `with`, as done by `by` (rig-memory's `rewrite`), holding its launcher
-/// lock throughout, as [`edit_stopped`] does: its store opened by
+/// lock throughout: its store opened by
 /// `stores`, then the files kept in its directory: its name
 /// ([`SessionDir::name`]), the text log and the spilled tool output, and
 /// its listing brought up to it ([`StoreOpener::relist`]). The running
@@ -581,7 +551,7 @@ pub fn rewrite_stopped(
     by: Author,
     with: &dyn Rewrite,
 ) -> Result<Rewritten, String> {
-    let _held = hold_stopped(running, dir, "only a stopped session is rewritten")?;
+    let _held = hold_stopped(running, dir)?;
     let store = stores.open(dir).map_err(|failure| failure.to_string())?;
     let rewritten = rewrite(&*store, by, with).map_err(|failure| failure.to_string())?;
     let scratch = DirFiles::new(dir.path());
