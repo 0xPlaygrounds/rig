@@ -27,9 +27,8 @@ use super::{
     hook::{
         AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, HookStack,
         InvalidToolCallAction, ModelSelection, ModelSelectionAction, ModelTurnAction,
-        ModelTurnFinished, ObservationAction, OutcomeAction, ReasoningDelta, RequestPatch,
-        RunSettled, RunStart, RunStartAction, SettledOutcome, StepEventKind, TextDelta,
-        ToolCallDelta,
+        ModelTurnFinished, ObservationAction, OutcomeAction, ReasoningDelta, RunSettled, RunStart,
+        RunStartAction, SettledOutcome, StepEventKind, TextDelta, ToolCallDelta,
     },
     runner::AgentRunner,
     telemetry::{build_chat_span, new_execute_tool_span},
@@ -279,13 +278,14 @@ where
                     hook_ctx.set_turn(turn);
 
                     // Selection must see merged request patches and must not run after a stop.
-                    let request_patch =
-                        match resolve_completion_call(&runner.config.hooks, &hook_ctx, &prompt, &history, turn).await {
-                            CompletionCallOutcome::Terminate(reason) => {
-                                fail!(run.cancel_error(reason), break 'outer)
-                            }
-                            CompletionCallOutcome::Proceed(request_patch) => request_patch,
-                        };
+                    let completion_call = CompletionCallEvent { prompt: &prompt, history: &history, turn };
+                    let request_patch = match runner.config.hooks.on_completion_call(&hook_ctx, completion_call).await {
+                        CompletionCallAction::Stop(reason) => {
+                            fail!(run.cancel_error(reason), break 'outer)
+                        }
+                        CompletionCallAction::Patch(patch) => Some(patch),
+                        CompletionCallAction::Continue => None,
+                    };
 
                     // Preparation and execution must use the same selected model's capabilities.
                     let default_label = runner.config.model_label();
@@ -680,12 +680,11 @@ impl StreamingTurnSource {
         agent_span: &tracing::Span,
         chat_span: &tracing::Span,
         choice: &[AssistantContent],
-        record_content: bool,
     ) {
         if self.created_agent_span && self.record_telemetry_content {
             agent_span.record("gen_ai.completion", choice_text(choice));
         }
-        rig_core::telemetry::record_model_output(chat_span, choice, record_content);
+        rig_core::telemetry::record_model_output(chat_span, choice, self.record_telemetry_content);
     }
 }
 
@@ -1066,7 +1065,6 @@ impl TurnSource for StreamingTurnSource {
                         agent_span,
                         &chat_span,
                         scope.choice(),
-                        runner.config.record_telemetry_content,
                     );
                     yield Err(run.cancel_error(reason));
                     return;
@@ -1082,7 +1080,6 @@ impl TurnSource for StreamingTurnSource {
                 agent_span,
                 &chat_span,
                 scope.choice(),
-                runner.config.record_telemetry_content,
             );
 
             self.last_final_choice = final_turn_content;
@@ -1214,40 +1211,6 @@ pub(crate) async fn settle_model_turn<M>(
             Ok(ModelTurnDecision::Retried)
         }
         ModelTurnAction::Stop(reason) => Ok(ModelTurnDecision::Terminate(reason)),
-    }
-}
-
-/// Outcome of firing the `CompletionCallEvent` hook for a turn.
-pub(crate) enum CompletionCallOutcome {
-    /// Proceed, optionally applying a per-turn request patch (the merged patch
-    /// from every hook that contributed one).
-    Proceed(Option<RequestPatch>),
-    /// Terminate the run with this reason.
-    Terminate(String),
-}
-
-/// Fire the event-specific completion-call hook for a turn.
-pub(crate) async fn resolve_completion_call(
-    hooks: &HookStack,
-    ctx: &HookContext,
-    prompt: &Message,
-    history: &[Arc<Message>],
-    turn: usize,
-) -> CompletionCallOutcome {
-    match hooks
-        .on_completion_call(
-            ctx,
-            CompletionCallEvent {
-                prompt,
-                history,
-                turn,
-            },
-        )
-        .await
-    {
-        CompletionCallAction::Stop(reason) => CompletionCallOutcome::Terminate(reason),
-        CompletionCallAction::Patch(patch) => CompletionCallOutcome::Proceed(Some(patch)),
-        CompletionCallAction::Continue => CompletionCallOutcome::Proceed(None),
     }
 }
 
