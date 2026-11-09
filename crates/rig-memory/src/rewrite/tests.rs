@@ -6,7 +6,7 @@ use rig_core::conversation::{Aside, Author, Change, Conversation};
 use rig_core::message::{ImageMediaType, UserContent};
 use serde_json::json;
 
-use super::{Messages, Place, Rewrite, Strings, rewrite_file, rewrite_value};
+use super::{Messages, Place, Rewrite, Strings, rewrite_file};
 use crate::format::stamp_of;
 use crate::{
     Files, LogRewrite, MemoryStore, SESSION, Session, SessionError, Store, Writer, load, rewrite,
@@ -298,19 +298,6 @@ fn what_a_plugin_keeps_outside_the_store_maps_through_the_same_rewrite() {
     let mapped = kept.read_file("tui/history.jsonl").expect("read");
     assert_eq!(mapped, b"\"my key is [R]\"\n\"hello\"\n");
     assert!(!rewrite_file(&kept, "tui/missing.jsonl", &redact()).expect("left"));
-
-    let at = Place::File { name: "copy" };
-    let mut call = Message::user("run `echo sk-1`");
-    assert!(rewrite_value(&redact(), &at, "copy", &mut call).expect("reads back"));
-    assert_eq!(call, Message::user("run `echo [R]`"));
-    assert!(!rewrite_value(&redact(), &at, "copy", &mut call).expect("reads back"));
-    // A map that leaves the value unreadable leaves it as it was.
-    let everything = Strings(|text: &mut String| {
-        *text = "x".to_owned();
-        true
-    });
-    assert!(rewrite_value(&everything, &at, "copy", &mut call).is_err());
-    assert_eq!(call, Message::user("run `echo [R]`"));
 }
 
 /// What the calls of an entry published is rewritten with it, in a push

@@ -313,29 +313,6 @@ fn map_leaf(value: &mut Value, leaf: &Leaf, f: &dyn Fn(&mut String) -> bool) -> 
     }
 }
 
-/// `item` mapped through `with` by its serde form, as a JSON value of a
-/// file is ([`Rewrite::value`] at `at`, under `key`): whether it changed.
-/// How a host or a plugin maps what it keeps of a rewritten session, such
-/// as a copy of a tool call held in memory.
-///
-/// # Errors
-///
-/// When the mapped form no longer reads as a `T`; `item` is left as it was,
-/// and the owner drops it or keeps it unreadable to no one.
-pub fn rewrite_value<T: Serialize + DeserializeOwned>(
-    with: &dyn Rewrite,
-    at: &Place<'_>,
-    key: &str,
-    item: &mut T,
-) -> Result<bool, serde_json::Error> {
-    let mut value = serde_json::to_value(&*item)?;
-    if !with.value(at, key, &mut value) {
-        return Ok(false);
-    }
-    *item = T::deserialize(value)?;
-    Ok(true)
-}
-
 /// The file `name` of `files` through [`Rewrite::file`], written back
 /// whole ([`Files::write_file`], atomic) when it changed: whether it did.
 /// A file that is not there is left. How a host or a plugin maps a file it
@@ -639,7 +616,7 @@ fn map_state(state: &mut Conversation, at: &Place<'_>, with: &dyn Rewrite) -> Re
 /// process may rewrite a running session; rig-memory cannot tell, so a
 /// program rewriting a rig session first checks that no rig runs it.
 /// Files kept outside the store are the program's to map with the same
-/// `with` ([`rewrite_value`], [`rewrite_file`]).
+/// `with` ([`rewrite_file`]).
 ///
 /// # Errors
 ///

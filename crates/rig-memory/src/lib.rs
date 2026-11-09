@@ -65,7 +65,7 @@ mod store;
 mod tokens;
 mod writer;
 
-pub use blobs::{BLOBS, load_images, store_images};
+pub use blobs::BLOBS;
 pub use compaction::{
     AFTER_OVERFLOW, COMPACTED, ClearPlan, ClearToolOutputs, Cleared, CompactReason, Compacted,
     CompactionPolicy, NearWindow, Summarized, Summarizer, SummaryCut, SummaryError, SummaryLimits,
@@ -80,7 +80,6 @@ pub use listing::read_conversation;
 pub use meta::{META, SessionMeta, excerpt, title_of};
 pub use rewrite::{
     Messages, Place, Rewrite, Rewritten, RewrittenLog, Strings, map_strings, rewrite, rewrite_file,
-    rewrite_value,
 };
 pub use saved::{CURRENT, MODEL, TITLE};
 pub use session::{
