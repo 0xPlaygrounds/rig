@@ -1,11 +1,16 @@
-use ratatui::style::Modifier;
+use ratatui_core::style::Modifier;
+use ratatui_core::text::Line;
 use unicode_width::UnicodeWidthStr;
 
-use crate::Theme;
-use crate::markdown::tests::rendered;
+use crate::markdown::{Palette, Plain, render};
+
+fn rendered(markdown: &str, width: Option<usize>) -> Vec<Line<'static>> {
+    let lines = render(markdown, &Palette::default(), width, &Plain);
+    lines.into_iter().map(|(line, _)| line).collect()
+}
 
 fn text(markdown: &str, width: usize) -> Vec<String> {
-    let lines = rendered(markdown, &Theme::default(), Some(width));
+    let lines = rendered(markdown, Some(width));
     lines
         .iter()
         .map(|line| line.to_string().trim_end().to_owned())
@@ -23,7 +28,7 @@ const WIDE: &str = "\
 fn a_table_that_fits_is_drawn_at_its_widest_cells_with_a_bold_header() {
     let markdown = "| a | bb |\n| - | - |\n| ccc | d |\n";
     assert_eq!(text(markdown, 80), ["a     bb", "ccc   d"]);
-    let lines = rendered(markdown, &Theme::default(), Some(80));
+    let lines = rendered(markdown, Some(80));
     let header = lines
         .first()
         .and_then(|line| line.spans.iter().find(|span| span.content == "a"));

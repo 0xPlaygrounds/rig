@@ -332,6 +332,7 @@ qdrant-client = { version = "1.10", default-features = false, features = [
 quick-xml = "0.41"
 quote = "1"
 ratatui = "0.30.2"
+ratatui-core = { version = "0.1.2", features = ["std"] }
 redis = "1"
 regex = "1.12.3"
 reqwest = { version = "0.13", default-features = false }

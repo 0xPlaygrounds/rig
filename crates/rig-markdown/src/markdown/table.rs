@@ -3,8 +3,8 @@
 //! and when even that leaves a column too narrow to read, each row as a
 //! record of `header  value` lines.
 
-use ratatui::style::{Modifier, Stylize};
-use ratatui::text::{Line, Span};
+use ratatui_core::style::{Modifier, Stylize};
+use ratatui_core::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
 
 use crate::wrap::wrap;

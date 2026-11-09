@@ -60,7 +60,7 @@ mod theme;
 mod transcript;
 mod turns;
 mod view;
-pub mod wrap;
+pub use rig_markdown::wrap;
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
