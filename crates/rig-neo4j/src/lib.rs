@@ -65,8 +65,8 @@ pub struct Neo4jClient {
 
 /// Cypher predicate over the matched node `n`.
 ///
-/// Property keys are spliced into the query verbatim and string values are only
-/// single-quote escaped, so neither should carry untrusted input.
+/// Property and object keys are spliced into the query verbatim, so they must
+/// not carry untrusted input. String values escape quotes and backslashes.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Neo4jSearchFilter(String);
 
@@ -163,14 +163,14 @@ impl Neo4jSearchFilter {
     }
 }
 
-/// Renders a JSON value as a Cypher literal, escaping single quotes in strings.
+/// Renders a JSON value as a Cypher literal, escaping quotes and backslashes in strings.
 fn serialize_cypher(value: serde_json::Value) -> String {
     use serde_json::Value::*;
     match value {
         Null => "null".into(),
         Bool(b) => b.to_string(),
         Number(n) => n.to_string(),
-        String(s) => format!("'{}'", s.replace('\'', "\\'")),
+        String(s) => format!("'{}'", s.replace('\\', "\\\\").replace('\'', "\\'")),
         Array(arr) => {
             format!(
                 "[{}]",

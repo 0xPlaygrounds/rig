@@ -3,9 +3,9 @@ use testcontainers::{GenericImage, ImageExt, core::IntoContainerPort, runners::A
 
 use crate::common::{WORD_DEFINITIONS, mock_embeddings, openai_client};
 use futures::{StreamExt, TryStreamExt};
-use rig::neo4j::{Neo4jClient, ToBoltType};
+use rig::neo4j::{Neo4jClient, Neo4jSearchFilter, ToBoltType};
 use rig::vector_store::VectorStoreIndex;
-use rig::vector_store::request::VectorSearchRequest;
+use rig::vector_store::request::{SearchFilter, VectorSearchRequest};
 use rig::{
     Embed,
     driver::Model,
@@ -175,6 +175,60 @@ async fn vector_search_test() {
             "embedding": serde_json::Value::Null
         })
     );
+
+    let literals = string_filters_preserve_values(&neo4j_client.graph).await;
+    assert!(literals.is_ok(), "{literals:?}");
+}
+
+async fn string_filters_preserve_values(
+    graph: &neo4rs::Graph,
+) -> Result<(), Box<dyn std::error::Error>> {
+    for value in [
+        r"C:\notes\temp.txt",
+        r"literal\n\t\b\r\f\u0027\U00000027",
+        r"trailing\",
+        "quote' and \"double\"",
+        r"backslash\'quote",
+        "line\nbreak\ttab\rcarriage\u{0008}\u{000c}",
+        "Unicode 😺 and backslash \\",
+    ] {
+        for predicate in [
+            Neo4jSearchFilter::eq("value", json!(value)),
+            Neo4jSearchFilter::member("value", vec![json!("absent"), json!(value)]),
+            Neo4jSearchFilter::contains("value", value),
+            Neo4jSearchFilter::starts_with("value", value),
+            Neo4jSearchFilter::ends_with("value", value),
+        ] {
+            let query = format!(
+                "WITH {{value: $value}} AS n {} RETURN n.value AS value",
+                predicate.render()
+            );
+            let mut rows = graph
+                .execute(neo4rs::query(&query).param("value", value))
+                .await?;
+            let row = rows
+                .next()
+                .await?
+                .ok_or_else(|| std::io::Error::other(format!("filter dropped {value:?}")))?;
+            let actual: String = row.get("value")?;
+            if actual != value {
+                return Err(std::io::Error::other(format!(
+                    "filter changed {value:?} to {actual:?}"
+                ))
+                .into());
+            }
+        }
+    }
+    let predicate = Neo4jSearchFilter::matches("value", r"\d+\.\d+").render();
+    let mut rows = graph
+        .execute(neo4rs::query(&format!(
+            "WITH {{value: '12.34'}} AS n {predicate} RETURN n.value AS value"
+        )))
+        .await?;
+    if rows.next().await?.is_none() {
+        return Err(std::io::Error::other("regex filter lost its backslashes").into());
+    }
+    Ok(())
 }
 
 async fn create_embeddings(model: Model<openai::wire::Embeddings>) -> Vec<(Word, Vec<Embedding>)> {
