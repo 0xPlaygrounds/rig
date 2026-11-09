@@ -128,5 +128,3 @@ impl ImageGenerationRequestBuilder {
 
 #[cfg(test)]
 mod builder_tests;
-#[cfg(test)]
-mod provider_response_tests;

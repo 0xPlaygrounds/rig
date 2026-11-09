@@ -120,9 +120,6 @@ impl PartialEq for Embedding {
 
 impl Eq for Embedding {}
 
-#[cfg(test)]
-mod provider_response_tests;
-
 /// The media type of an encoded image, sniffed from its magic bytes.
 ///
 /// The image-embedding wires need it twice: once to reject a format the

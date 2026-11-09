@@ -56,6 +56,15 @@ fn funnel_preserves_status_and_body() {
     let err = E::from_provider_body("");
     assert_eq!(err.provider_response_body(), Some(""));
     assert!(err.provider_response_json().expect("ok").is_none());
+    // A plain-text body is kept, and reading it as JSON fails.
+    let err = E::from_provider_body("not json");
+    assert_eq!(err.provider_response_body(), Some("not json"));
+    assert!(err.provider_response_json().is_err());
+    // A rig diagnostic is not a provider's reply.
+    let err = E::Provider("internal diagnostic".to_string());
+    assert_eq!(err.provider_response_body(), None);
+    assert_eq!(err.provider_response_status(), None);
+    assert_eq!(err.provider_response_json().expect("no body"), None);
 
     // A transport that reported the reply as an error routes through the
     // same funnel: status, body and headers -> ProviderResponse; no
