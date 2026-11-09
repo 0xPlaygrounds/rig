@@ -595,73 +595,34 @@ pub struct AsideView<'a> {
     pub theme: Theme,
 }
 
-/// Whose text a [`MessageView`] is.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Role {
-    /// What the user typed.
-    User,
-    /// A text block of a reply, or the reply streaming in.
-    Assistant,
-    /// A reply's reasoning.
-    Reasoning,
+/// The user's text after `›`.
+pub(crate) fn user_lines(text: &str) -> Vec<LookLine> {
+    let lines = text.lines().enumerate();
+    let rows = lines.map(|(index, line)| {
+        let prefix = if index == 0 { "› " } else { "  " };
+        let text = line.replace('\t', "    ");
+        Line::from(vec![Span::from(prefix).dim(), Span::from(text).bold()]).into()
+    });
+    rows.collect()
 }
 
-impl Role {
-    /// Its name: `user`, `assistant` or `reasoning`.
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::User => "user",
-            Self::Assistant => "assistant",
-            Self::Reasoning => "reasoning",
-        }
-    }
+/// A reply's text as markdown wrapped to `width`, with the labels drawn
+/// inside it ([`TextMark`](crate::TextMark)), each before its byte.
+pub(crate) fn reply_lines(
+    text: &str,
+    marks: &[(usize, Span<'static>)],
+    width: usize,
+    theme: &Theme,
+) -> Vec<LookLine> {
+    markdown::render_marked(text, marks, theme, Some(width))
 }
 
-/// A text of a message, as the transcript draws it.
-pub struct MessageView<'a> {
-    /// Whose text it is.
-    pub role: Role,
-    /// The message it is in; `None` for the reply streaming in.
-    pub message: Option<MessageId>,
-    /// The text's place among the message's content.
-    pub block: usize,
-    /// The text.
-    pub text: &'a str,
-    /// The labels drawn inside it ([`TextMark`](crate::TextMark)), each
-    /// before its byte.
-    pub marks: &'a [(usize, Span<'static>)],
-    /// The width its lines are wrapped to, which a reply's tables are fit
-    /// to.
-    pub width: usize,
-    /// The colors a reply's code, alerts and tables are drawn in.
-    pub theme: Theme,
-}
-
-impl MessageView<'_> {
-    /// The default look: the user's text after `›`, a reply's as markdown
-    /// with its marks, reasoning as dimmed markdown.
-    pub fn default_lines(&self) -> Vec<LookLine> {
-        match self.role {
-            Role::User => {
-                let lines = self.text.lines().enumerate();
-                let rows = lines.map(|(index, line)| {
-                    let prefix = if index == 0 { "› " } else { "  " };
-                    let text = line.replace('\t', "    ");
-                    Line::from(vec![Span::from(prefix).dim(), Span::from(text).bold()]).into()
-                });
-                rows.collect()
-            }
-            Role::Assistant => {
-                markdown::render_marked(self.text, self.marks, &self.theme, Some(self.width))
-            }
-            Role::Reasoning => {
-                let lines = markdown::render(self.text, &self.theme, Some(self.width));
-                let style = Style::new().dim().italic();
-                let lines = lines.into_iter();
-                lines.map(|line| line.patch_style(style)).collect()
-            }
-        }
-    }
+/// A reply's reasoning as dimmed, italic markdown wrapped to `width`.
+pub(crate) fn reasoning_lines(text: &str, width: usize, theme: &Theme) -> Vec<LookLine> {
+    let lines = markdown::render(text, theme, Some(width));
+    let style = Style::new().dim().italic();
+    let lines = lines.into_iter();
+    lines.map(|line| line.patch_style(style)).collect()
 }
 
 /// Runs presentation systems for the changed items of one pane or export.

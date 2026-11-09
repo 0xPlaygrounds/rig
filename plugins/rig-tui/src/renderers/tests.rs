@@ -64,16 +64,8 @@ fn a_result_is_drawn_whole_with_its_cut_marker_on_its_side() {
 /// of it stays dim and italic.
 #[test]
 fn reasoning_is_dimmed_markdown() {
-    let view = MessageView {
-        role: Role::Reasoning,
-        message: None,
-        block: 0,
-        text: "**Planning the search**\n\nCheck the `cache` first.",
-        marks: &[],
-        width: 80,
-        theme: Theme::default(),
-    };
-    let lines = view.default_lines();
+    let text = "**Planning the search**\n\nCheck the `cache` first.";
+    let lines = reasoning_lines(text, 80, &Theme::default());
     let text: Vec<String> = lines.iter().map(ToString::to_string).collect();
     assert_eq!(
         text,
