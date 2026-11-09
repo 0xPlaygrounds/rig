@@ -11,12 +11,13 @@
 //! entity's [`WakeAt`] is the soonest, so the loop sleeps until it. A run is
 //! one-job [`SpawnSubagent`] helper, which retires once it answered.
 
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::UNIX_EPOCH;
 
 use bevy_ecs::system::SystemParam;
 use rig_basics::subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
 use rig_harness::clock::ClockPlugin;
 use rig_harness::prelude::*;
+use rig_harness::rig_core::now_ms;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -125,14 +126,6 @@ fn name(job: u32) -> String {
     format!("cron:{job}")
 }
 
-/// Wall time, in milliseconds since the Unix epoch.
-fn now() -> u64 {
-    let since = SystemTime::now().duration_since(UNIX_EPOCH);
-    since.map_or(0, |since| {
-        u64::try_from(since.as_millis()).unwrap_or(u64::MAX)
-    })
-}
-
 /// What starts a job's runs and tells its owner.
 #[derive(SystemParam)]
 struct Runs<'w, 's> {
@@ -179,7 +172,7 @@ impl Runs<'_, '_> {
     /// `catch_up`, and moves each to its next tick after now; a job that
     /// never runs again goes.
     fn tick(&mut self, jobs: &mut CronJobs, at: u64, fire: Fire) {
-        let now = now();
+        let now = now_ms();
         let mut kept = Vec::new();
         for mut job in std::mem::take(&mut jobs.jobs) {
             if job.next > at {
@@ -218,7 +211,7 @@ fn add(
         return Err("The job needs a prompt.".to_owned());
     }
     let next = Schedule::parse(schedule)?
-        .next(None, now())
+        .next(None, now_ms())
         .ok_or_else(|| format!("`{schedule}` never runs."))?;
     jobs.next_id = jobs.next_id.saturating_add(1);
     let job = CronJob {
@@ -390,14 +383,14 @@ fn due(
 ) {
     if timers.contains(due.entity) {
         let soonest = jobs.jobs.iter().map(|job| job.next).min();
-        let at = soonest.unwrap_or_default().max(now());
+        let at = soonest.unwrap_or_default().max(now_ms());
         runs.tick(&mut jobs, at, Fire::Due);
     }
 }
 
 /// At startup, the ticks missed while the agent was not running.
 fn catch_up(mut jobs: ResMut<CronJobs>, mut runs: Runs) {
-    runs.tick(&mut jobs, now(), Fire::Startup);
+    runs.tick(&mut jobs, now_ms(), Fire::Startup);
 }
 
 /// Sets the timer to the soonest tick, or takes it off with no jobs left.

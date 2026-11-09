@@ -25,11 +25,12 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::io::{self, BufRead, Write as _};
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime};
 
 use rig_basics::session_picker::SessionEntry;
 use rig_harness::harness_protocol::SessionDir;
 use rig_harness::prelude::*;
+use rig_harness::rig_core::millis;
 use serde::Serialize;
 
 /// The command, and the front that runs it.
@@ -637,12 +638,6 @@ fn normal(path: &Path) -> PathBuf {
     fs::canonicalize(path)
         .or_else(|_| std::path::absolute(path))
         .unwrap_or_else(|_| path.to_owned())
-}
-
-/// `at` in milliseconds since the Unix epoch.
-fn millis(at: SystemTime) -> u64 {
-    let since = at.duration_since(UNIX_EPOCH).unwrap_or_default();
-    u64::try_from(since.as_millis()).unwrap_or(u64::MAX)
 }
 
 #[cfg(test)]

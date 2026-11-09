@@ -17,11 +17,11 @@ use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::Section;
 use rig_harness::rig_core::effect::Answered;
+use rig_harness::rig_core::now_ms;
 use rig_harness::rig_core::tool::{ExitStatus, FilesChanged, ToolOutput};
 use rig_harness::rig_tools::Shell;
 use rig_harness::rig_tools::split_status;
@@ -248,14 +248,6 @@ struct Failure {
 #[derive(Component)]
 #[component(storage = "SparseSet")]
 struct Checked;
-
-/// Milliseconds since the Unix epoch now.
-fn now_ms() -> u64 {
-    let since = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default();
-    u64::try_from(since.as_millis()).unwrap_or(u64::MAX)
-}
 
 /// The agent's turn now, from 1: its running turn, else its last one, else 0.
 fn turn_of(turn: Option<&Turn>, conversation: Option<&Conversation>) -> u64 {

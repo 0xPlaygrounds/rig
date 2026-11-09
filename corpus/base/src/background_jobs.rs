@@ -26,11 +26,11 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use bevy_app::OnAppExitSystems;
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::*;
+use rig_harness::rig_core::now_ms;
 use rig_harness::rig_ecs::session_log::Reset;
 use rig_tools::process::Launcher;
 use schemars::JsonSchema;
@@ -698,13 +698,6 @@ fn default_name(command: &str) -> String {
 
 fn code_label(code: Option<i32>) -> String {
     code.map_or_else(|| "a signal".to_owned(), |code| code.to_string())
-}
-
-fn now_ms() -> u64 {
-    let since = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default();
-    u64::try_from(since.as_millis()).unwrap_or(u64::MAX)
 }
 
 /// `3m12s` from `start` to `end`, in ms.
