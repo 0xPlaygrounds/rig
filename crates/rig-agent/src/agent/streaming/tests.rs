@@ -2531,17 +2531,9 @@ async fn final_response_can_remain_empty_for_truly_textless_turns() {
     assert_eq!(final_response_text.as_deref(), Some(""));
 }
 
-/// rig#2322 — a turn that produced **nothing** and was cut short at the
-/// output-token limit must not finalize as a successful empty answer.
-///
-/// Not a cassette test: a provider cannot be made to emit an exactly-empty
-/// `MAX_TOKENS` turn on demand, so the wire shape is scripted. The Gemini
-/// cassette suite pins the *request* side of rig#2322; this pins what the
-/// agent does with the response.
-///
-/// This is the failure users actually saw. The 4096 cap truncated the turn,
-/// the assembler dropped `FinishReason::Length`, and the run finished as a
-/// successful `""` — a blank answer with no error and nothing to inspect.
+/// A turn that produced nothing and was cut short at the output-token limit
+/// fails instead of finalizing as a successful empty answer. Scripted because
+/// a provider cannot be made to emit an exactly-empty `MAX_TOKENS` turn.
 #[tokio::test]
 async fn empty_turn_truncated_at_max_tokens_is_an_error_not_an_empty_answer() {
     let model =
@@ -2586,12 +2578,8 @@ async fn empty_turn_truncated_at_max_tokens_is_an_error_not_an_empty_answer() {
     );
 }
 
-/// rig#2322 — the guard against over-correcting the test above: a turn that
-/// streamed **real output** before hitting the limit stays valid.
-///
-/// Truncation after partial output is a normal, useful result — the caller
-/// gets the prefix the model produced. Only a turn that delivered nothing
-/// is an error. Scripted for the same reason as above.
+/// A turn that streamed real output before hitting the limit stays a valid
+/// answer: only a turn that delivered nothing is an error.
 #[tokio::test]
 async fn partial_output_truncated_at_max_tokens_stays_a_valid_answer() {
     let model = MockCompletionModel::from_stream_turns([[
@@ -2635,11 +2623,7 @@ async fn partial_output_truncated_at_max_tokens_stays_a_valid_answer() {
     );
 }
 
-/// rig#2322 — a content-filtered turn that delivered nothing gets the same
-/// treatment as a truncated one: it is not a successful empty answer.
-///
-/// Scripted rather than recorded because a safety filter cannot be
-/// provoked reliably or ethically on demand.
+/// A content-filtered turn that delivered nothing fails like a truncated one.
 #[tokio::test]
 async fn empty_content_filtered_turn_is_an_error_not_an_empty_answer() {
     let model =
@@ -2716,20 +2700,9 @@ async fn empty_turn_with_an_unknown_finish_reason_fails_the_run() {
     );
 }
 
-/// rig#2322 — a turn that spent its whole budget **thinking** and was cut
-/// off before answering must error, not report success with `""`.
-///
-/// This is the common shape of the bug, not a corner of it: Gemini counts
-/// thinking tokens against `maxOutputTokens` (the committed cassettes show
-/// `thoughtsTokenCount` of 176–307 on ordinary prompts), so a truncated
-/// thinking turn *typically* carries reasoning and no text.
-///
-/// The first version of this guard keyed on `is_empty_assistant_turn`,
-/// which is false for a reasoning-only turn — so the headline scenario
-/// still finalized as a successful empty answer. The predicate is now
-/// `turn_delivered_no_answer`.
-///
-/// Synthetic: a provider cannot be made to truncate mid-thought on demand.
+/// A turn that spent its whole budget thinking and was cut off before
+/// answering fails instead of reporting success with `""`. Reasoning alone is
+/// not an answer, since providers count thinking tokens against the cap.
 #[tokio::test]
 async fn reasoning_only_turn_truncated_at_max_tokens_is_an_error() {
     let model = MockCompletionModel::from_stream_turns([[
@@ -2766,10 +2739,7 @@ async fn reasoning_only_turn_truncated_at_max_tokens_is_an_error() {
     );
 }
 
-/// rig#2322 — the same shape under a content filter takes the same path.
-///
-/// Synthetic for the same reason, plus: a safety filter cannot be provoked
-/// reliably or ethically on demand.
+/// A reasoning-only turn stopped by a content filter fails the same way.
 #[tokio::test]
 async fn reasoning_only_turn_content_filtered_is_an_error() {
     let model = MockCompletionModel::from_stream_turns([[
@@ -2810,11 +2780,8 @@ async fn reasoning_only_turn_content_filtered_is_an_error() {
     );
 }
 
-/// rig#2322 — the guard against over-correcting into "reasoning present
-/// means failure": a turn that thought **and then answered** before being
-/// truncated is a valid answer.
-///
-/// Synthetic: same reason as above.
+/// A turn that thought and then answered before being truncated is a valid
+/// answer.
 #[tokio::test]
 async fn reasoning_then_text_truncated_stays_a_valid_answer() {
     let model = MockCompletionModel::from_stream_turns([[
@@ -2852,16 +2819,10 @@ async fn reasoning_then_text_truncated_stays_a_valid_answer() {
     );
 }
 
-/// rig#2322 — what happens to the partial reasoning when the turn errors.
-///
-/// A caller debugging a truncated thinking turn wants to see how far the
-/// model got. The reasoning reaches them because it was *streamed*: every
-/// part's end is delivered before the run reads the finish reason. History
-/// keeps nothing — the truncation guard runs before the push, so a
-/// reasoning-only turn nobody can answer around is not committed on either
-/// runtime (CONTRACT §4; `run::tests::a_truncated_reasoning_only_turn_commits_nothing`).
-/// This test once pinned the opposite ordering (push, then guard); the
-/// stream is the surface that keeps the partial reasoning debuggable.
+/// The partial reasoning of a truncated turn that errors reaches the stream
+/// consumer, because every part's end is delivered before the run reads the
+/// finish reason. History keeps nothing: the truncation guard runs before the
+/// push (CONTRACT §4).
 #[tokio::test]
 async fn partial_reasoning_reaches_the_consumer_when_the_truncated_turn_errors() {
     let model = MockCompletionModel::from_stream_turns([[

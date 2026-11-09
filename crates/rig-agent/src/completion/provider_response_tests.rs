@@ -27,7 +27,7 @@ fn prompt_error_provider_response_helpers_forward_http_status_and_body() {
     );
 }
 
-/// rig#2210: the response headers forward through both wrappers, so an
+/// The response headers forward through both wrappers, so an
 /// agent-level caller can back off on `Retry-After` without unwrapping to
 /// the transport error by hand. Covered on both classifications, since
 /// the two store the headers in different places.
@@ -92,7 +92,7 @@ fn prompt_error_reports_no_headers_for_unrelated_variants() {
     );
 }
 
-/// rig#2314: a wrapped completion error's transport request id forwards
+/// A wrapped completion error's transport request id forwards
 /// through `PromptError` (and, transitively, `StructuredOutputError`).
 #[test]
 fn prompt_error_forwards_the_provider_request_id() {

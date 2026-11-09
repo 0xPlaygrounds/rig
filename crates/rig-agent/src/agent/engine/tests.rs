@@ -269,7 +269,7 @@ async fn completion_response_hook_and_calls_carry_identity_metadata() {
     assert_eq!(call.provider_request_id.as_deref(), Some("req_1"));
 }
 
-/// rig#2314 error matrix: a failed attempt's error carries its *own*
+/// A failed attempt's error carries its *own*
 /// transport id through the surfaced `PromptError`, and a run that fails
 /// after a successful call never cross-attributes — the error's id and
 /// the earlier success's id stay distinct.
@@ -324,8 +324,8 @@ async fn failed_attempt_error_carries_its_own_request_id() {
 }
 
 /// Hook capturing every `ModelTurnFinished` identity plus every
-/// `CompletionResponse` identity — the cross-surface "every completed
-/// call" observer #2265 requires.
+/// `CompletionResponse` identity: an observer of every completed call on
+/// both surfaces.
 #[derive(Clone, Default)]
 struct TurnIdentityHook {
     turns: Arc<Mutex<Vec<rig_core::completion::ResponseIdentity>>>,
@@ -4277,11 +4277,8 @@ impl AgentHook for BoundedResponseRetry {
         let has_rejected_text = event.content.iter().any(
             |content| matches!(content, AssistantContent::Text(text) if text.text == self.rejected_text),
         );
-        // A hook watching for the empty response has to recognise both
-        // spellings of it. Blocking turns carry an explicit empty text part;
-        // a stream that produced nothing now carries no parts at all, where
-        // it used to be padded with a fabricated empty-text part that made
-        // the two look alike.
+        // Blocking turns carry an explicit empty text part; a stream that
+        // produced nothing carries no parts at all.
         let rejected =
             has_rejected_text || (self.rejected_text.is_empty() && event.content.is_empty());
         if !rejected {
@@ -4316,13 +4313,8 @@ fn retry_usage(input_tokens: u64, output_tokens: u64) -> Usage {
         .total_tokens(input_tokens + output_tokens)
 }
 
-// ---------------------------------------------------------------------
-// rig#2184: portable model-turn termination metadata.
-//
-// A hook must be able to tell *why* a turn stopped and *what cap* that
-// exact attempt ran under, without naming a provider or touching a raw
-// response type, and must see the same thing on both surfaces.
-// ---------------------------------------------------------------------
+// A hook can tell why a turn stopped and what cap that attempt ran under,
+// without naming a provider, and sees the same thing on both surfaces.
 
 #[tokio::test]
 async fn blocking_empty_feedback_retry_omits_empty_assistant_history() {

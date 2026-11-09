@@ -43,7 +43,7 @@ fn resolve_output_mode_auto_keeps_native_when_provider_composes() {
 fn resolve_output_mode_degrades_to_native_when_output_tool_not_callable() {
     // Tool mode finalizes via the output-tool call; when the tool choice
     // forbids it (None / Specific), structured output must still be enforced
-    // via Native rather than silently dropped (#1928 regression guard).
+    // via Native rather than silently dropped.
     assert_eq!(
         resolve_output_mode(true, true, false, false, &OutputMode::Auto),
         OutputMode::Native,
