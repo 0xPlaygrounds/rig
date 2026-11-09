@@ -184,10 +184,8 @@ impl Plugin for PrintPlugin {
                 .add_observer(spent)
                 .add_observer(json_ended)
                 .add_systems(
-                    Update,
-                    ready
-                        .run_if(resource_added::<SessionRestored>)
-                        .before(AgentLoop),
+                    PostStartup,
+                    ready.run_if(resource_exists::<SessionRestored>),
                 )
                 .init_resource::<LinesRead>()
                 .add_systems(PostUpdate, flush)
@@ -1333,8 +1331,8 @@ fn session_id(paths: Option<Res<SessionPaths>>) -> Option<String> {
     Some(paths?.0.id()?.as_str().to_owned())
 }
 
-/// The first line, once the session is restored, before the agent loop
-/// starts or resumes a turn.
+/// The first line, once the session is restored: at startup, before any
+/// frame reads a request or the agent loop starts or resumes a turn.
 fn ready(primary: MainAgentQuery, paths: Option<Res<SessionPaths>>, mut out: Out) {
     let session = session_id(paths);
     // First: what came before it follows.

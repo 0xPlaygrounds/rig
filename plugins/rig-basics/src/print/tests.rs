@@ -1251,6 +1251,49 @@ fn each_recorded_call_is_a_usage_line() {
     assert_eq!(tokens, Some(json!(3)));
 }
 
+/// A request already waiting on stdin when the run starts is answered
+/// after `ready`, which stays the first line.
+#[test]
+fn ready_comes_first_when_a_request_is_already_waiting() {
+    let lines = Lines::default();
+    let (input, requests) = JsonIn::channel();
+    let invoked = Invocation {
+        flags: vec![(JSON.to_owned(), None)],
+        ..Invocation::default()
+    };
+    let (mut app, wakes) = noting(&MemoryStore::default(), invoked);
+    send(&input, json!({ "v": VERSION, "type": "state", "id": "a" }));
+    // Before the first update, the request stream holds the line, as it
+    // does when stdin had it at the start.
+    let taken = input.clone();
+    let streamed = move || {
+        let started = Instant::now();
+        while !taken.is_empty() && started.elapsed() < Duration::from_secs(10) {
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    // A plugin's system between the tasks' outputs and `ready` in a frame
+    // has those outputs applied first, as the default plugins may.
+    let between = || {};
+    app.insert_resource(JsonOut::new(lines.clone()))
+        .insert_resource(requests)
+        .add_plugins((SessionLogPlugin, ExitPlugin, PrintPlugin))
+        .add_systems(PostStartup, streamed)
+        .add_systems(
+            Update,
+            between.after(rig_ecs::tasks::PollTasks).before(ready),
+        );
+    app.finish();
+    reply_to(&mut app, &wakes, &lines, "a");
+    let kinds: Vec<Value> = lines
+        .parsed()
+        .iter()
+        .map(|line| at(line, "type").clone())
+        .collect();
+    assert_eq!(kinds.first(), Some(&json!("ready")), "{kinds:?}");
+}
+
 #[test]
 fn a_driver_sends_a_message_mid_turn_and_reads_the_answer() {
     let model = MockCompletionModel::from_stream_turns([
