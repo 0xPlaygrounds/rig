@@ -1,27 +1,14 @@
-//! The provider-cache wire-prefix rule, shared by the corpus scan and the
-//! per-scenario conformance harness.
+//! The provider-cache wire-prefix rule, shared by the corpus scan in
+//! `tests/cassette_cache_prefix.rs` and the per-scenario harness
+//! [`crate::cache_conformance`], so the two cannot drift.
 //!
-//! Prompt caching is a **prefix match**: the cache key is derived from the exact
-//! bytes up to each breakpoint, so any change to an earlier block invalidates
-//! everything after it. A conversation whose turn-2 request rewrites, reorders,
-//! or drops a block that turn-1 already sent therefore busts the cache on every
-//! turn, and the cost shows up in production rather than in CI.
-//!
-//! Two callers apply the same rule to different inputs, and they must not drift:
-//!
-//! * `tests/cassette_cache_prefix.rs` sweeps every committed cassette, so the
-//!   rule applies retroactively to the whole corpus at zero provider cost.
-//! * [`crate::cache_conformance`] applies it to the three turns one cache probe
-//!   just recorded, so a violation is reported by the scenario that caused it
-//!   while the recording session is still open.
-//!
-//! A second, divergent copy of the flattening would be worse than no check —
-//! the corpus scan would keep passing while the per-scenario check quietly
-//! modeled a different shape. Hence this module.
+//! Prompt caching is a prefix match: the cache key is derived from the exact
+//! bytes up to each breakpoint. [`canonical_prefix_blocks`] flattens a request
+//! body into cache-ordered blocks, and [`compare`] reports a later turn that
+//! rewrites, reorders or drops a block an earlier turn already sent.
 //!
 //! The invariant is ported from `inspirations/pydantic-ai`
-//! (`tests/cassette_utils.py` `check_cache_prefix_stability`); the plumbing is
-//! rig's.
+//! (`tests/cassette_utils.py` `check_cache_prefix_stability`).
 
 use rig_core::json_utils::remove_preserving_order;
 use serde_json::Value;

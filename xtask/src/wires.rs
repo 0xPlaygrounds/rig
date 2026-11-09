@@ -1,22 +1,13 @@
 //! `check-wires`: inside `crates/rig-core/src/providers/`, everything is a
-//! wire.
-//!
-//! A wire is data plus an encoder and a decoder, which keeps providers testable
+//! wire: data plus an encoder and a decoder, which keeps providers testable
 //! from bytes and independent of the host's I/O.
 //!
-//! The rules, each with the failure it prevents:
-//!
-//! | rule | what it prevents |
-//! |---|---|
-//! | no `.await`, `async fn`, or `async` block | a provider owning its transport |
-//! | no `Arc`, `Box<dyn`, or `impl Future` in an `impl Wire` block | a wire that is not data |
-//! | no `struct`/`enum` parameter bounded by `HttpClientExt` or defaulted to `DynHttpClient` | the transport parameter returning |
-//! | no `Transport` impl | a provider owning how its payloads are sent |
-//!
-//! `openai/responses_api/websocket.rs` is exempt because a session spans many
-//! turns over one connection rather than a single exchange. The credential
-//! exchanges named in [`CREDENTIAL_EXCHANGES`] are exempt from the `async` rules
-//! only.
+//! The check rejects `.await`, `async fn` and `async` blocks; `Arc`, `Box<dyn`
+//! and `impl Future` in an `impl Wire` block; a `struct` or `enum` parameter
+//! bounded by `HttpClientExt` or defaulted to `DynHttpClient`; and any
+//! `Transport` impl. `openai/responses_api/websocket.rs` is exempt because a
+//! session spans many turns over one connection, and the credential exchanges
+//! named in [`CREDENTIAL_EXCHANGES`] are exempt from the `async` rules only.
 //!
 //! Source is parsed with `syn`, so awaits in comments or strings cannot trip the
 //! check and an unparsable file is an error. Because `syn` does not descend into

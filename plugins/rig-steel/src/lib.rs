@@ -7,14 +7,13 @@
 //!
 //! The program reaches the host only through four functions, each one call
 //! of the [`Harness`] handle: `spawn-agent`, `send`, `reply` and
-//! `call-tool`. Steel cannot await a host future from inside the VM, so the
-//! program runs on a thread of its own and each host function blocks that
-//! thread on its [`Harness`] future with [`bevy_tasks::block_on`]. The
-//! agents it messages run concurrently in the app meanwhile, so sending to
-//! several agents before waiting on any of them fans out. Neither the app's
-//! loop nor a task pool thread ever waits on a program: a pool thread
-//! blocked on a child agent would deadlock with that child's own tool calls,
-//! which run on the same pool.
+//! `call-tool`. It runs on a thread of its own, so the agents it messages run
+//! concurrently and sending to several before waiting on any fans out; the
+//! app's loop and its task pool never wait on a program, since a pool thread
+//! blocked on a child agent would deadlock with that child's tool calls. Its
+//! tool calls are tool call effects ([`ToolRequest`](rig_ecs::tools::ToolRequest))
+//! like the model's own: gated, started and recorded, and children of its
+//! `run_steel` call, which end with it.
 //!
 //! The sandbox is Steel's own sandboxed engine with every host module
 //! (process, git, network, foreign functions) replaced by an empty one, and
@@ -24,16 +23,8 @@
 //! `[steel] max_output_bytes`; the program's own execution time (its waits
 //! on host functions not counted) and its host calls are limited by
 //! `[steel] max_seconds` and `max_calls`, 60 s and 1000 by default, and Esc
-//! cancels it like any tool call. Steel has no memory limit.
-//!
-//! The plugin reads `[steel]` through rig-harness's settings, and is
-//! otherwise written against rig-ecs's public primitives: an
-//! open tool ([`AppToolsExt::add_open_tool`]) whose call is answered by a
-//! [`Running`] task, and its own [`Harness`] handle, whose tool calls are
-//! tool call effects ([`ToolRequest`](rig_ecs::tools::ToolRequest)) like
-//! the model's own: gated, started and recorded, and children (`ChildOf`)
-//! of its `run_steel` call, which end with it. It is off by default; turn
-//! it on in `settings.toml` with
+//! cancels it like any tool call. Steel has no memory limit. The plugin is
+//! off by default; turn it on in `settings.toml` with
 //!
 //! ```toml
 //! [plugins]

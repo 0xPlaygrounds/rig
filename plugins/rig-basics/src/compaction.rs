@@ -1,60 +1,34 @@
-//! Compaction: keeps each agent's requests inside its model's input
-//! limit.
+//! Compaction: keeps each agent's requests inside its model's input limit.
+//! It runs before a turn's request that nears the limit
+//! ([`PrepareSystems::Fit`], after every plugin's edits, by an estimate
+//! anchored to the usage the provider last reported, rig-memory's
+//! [`next_request_tokens`]; the output limit is clamped there to the room
+//! left), after a request refused as too long ([`ReviewSystems::Act`], read
+//! from its [`RetryVerdict`]), and on `/compact <focus>`.
 //!
-//! - **When:**
-//!   - before a turn's request that nears the input limit, in
-//!     [`PrepareSystems::Fit`], after every plugin's edits, by an estimate
-//!     anchored to the usage the provider last reported (rig-memory's
-//!     [`next_request_tokens`]); there too the request's output limit is
-//!     clamped to the room the window leaves;
-//!   - after a request refused as too long, in [`ReviewSystems::Act`], read
-//!     from its [`RetryVerdict`];
-//!   - on `/compact <focus>`.
-//! - **Bounded by progress:** a request that does not fit goes through one
-//!   recovery path ([`Recovering`]): as it is, then with old tool outputs
-//!   cleared, then summarized, then the turn fails. A summary that fails,
-//!   or is cut off at its output limit, is never asked again, and the call
-//!   goes only if it fits as it is.
-//!   Each step happens once, carried through retries, until a model reply
-//!   moves the conversation on, so a turn compacts as often as it needs but
-//!   never twice without a reply in between.
-//! - **How:** older tool outputs are cleared first, all but the newest
-//!   20k tokens of them as the provider counts them, so a clearing, which
-//!   rewrites what the prompt cache holds, comes seldom. Before that the
-//!   model writes notes on them ([`Noting`]), which stay after them, unless
-//!   reading every one again, off the frame, gives it back unchanged. An
-//!   output is never cleared otherwise: notes that would not fit give way
-//!   to a summary, and when notes fail, or neither can be asked, the
-//!   outputs stay and a notice says why. After an
-//!   overflow no notes are asked: outputs are cleared at once only when
-//!   each reads back unchanged, and the older messages summarized otherwise.
-//!   If clearing would still leave more than half the room used, the model
-//!   summarizes the older messages into a checkpoint instead, built on the
-//!   [`summary_state`], when that takes out at least a quarter of the
-//!   conversation. Each is a splice by [`summary_author`], so it is logged,
-//!   restored and announced as [`ConversationChanged`]. A notes or summary
-//!   call is a model call of the turn holding the call it is for
-//!   ([`HoldOf`]), so stopping the turn cancels it; a call built from the
-//!   changed conversation then supersedes the held one. It is the agent's
-//!   own request cut where its reading ends, plus one instruction, so the
-//!   provider reads it from its prompt cache and the model reads every
-//!   output whole, when that fits the model with room for the answer.
-//!   Otherwise, and always after an overflow, it is a summary request of
-//!   its own ([`plan`]) to the same model, sized to fit. A summary asked
-//!   in place gets the room its request leaves, up to the summarizer's
-//!   limit, and is told how much. A notes or summary call that fails for a
-//!   passing reason is sent again, as the same request, after the turn's
-//!   retry wait, counted with its retries, as `[retry]` says.
-//! - **Review:** once answered, [`Summarizing::summary`] and
-//!   [`Noting::notes`] hold the text in [`ReviewSystems::Act`]. A reviewer
-//!   may hold the call, edit the text, or set it to `None` to cancel.
-//! - **Undo:** every compaction keeps what it replaced
-//!   ([`Compacted`](rig_memory::Compacted)); [`Uncompact`] restores the
-//!   newest one with its message ids. The next compaction builds on
-//!   [`summary_state`].
-//! - **Policy:** [`CompactionDefault`], `[compaction]` in settings. Other
-//!   compaction, per agent or by other rules, is a plugin that replaces this
-//!   one.
+//! A request that does not fit goes through one recovery path
+//! ([`Recovering`]): as it is, then with old tool outputs cleared, then
+//! summarized, then the turn fails. Each step happens once until a model
+//! reply moves the conversation on. Clearing keeps the newest 20k tokens of
+//! tool outputs, so it rewrites the prompt cache seldom, and an output is
+//! cleared only once the model has written notes on it ([`Noting`]) or it
+//! reads back unchanged; otherwise the older messages are summarized, or the
+//! outputs stay and a notice says why. If clearing would leave more than half
+//! the room used, the model summarizes the older messages into a checkpoint
+//! built on [`summary_state`]. Each change is a splice by [`summary_author`],
+//! so it is logged, restored and announced as [`ConversationChanged`]. A notes
+//! or summary call belongs to the turn holding the call it is for
+//! ([`HoldOf`]), so stopping the turn cancels it; it reuses the agent's own
+//! request for the prompt cache when that fits, else it is a request of its
+//! own ([`plan`]), and a passing failure is retried as `[retry]` says.
+//!
+//! Once answered, [`Summarizing::summary`] and [`Noting::notes`] hold the
+//! text in [`ReviewSystems::Act`], where a reviewer may hold the call, edit
+//! the text, or set it to `None` to cancel. Every compaction keeps what it
+//! replaced ([`Compacted`](rig_memory::Compacted)), and [`Uncompact`]
+//! restores the newest one with its message ids. [`CompactionDefault`] and
+//! `[compaction]` in settings are the policy; other compaction is a plugin
+//! that replaces this one.
 
 use std::num::NonZeroU64;
 use std::sync::Arc;

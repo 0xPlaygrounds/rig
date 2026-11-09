@@ -5,7 +5,11 @@
 //! owns the app's loop: a thread reads the terminal and wakes the loop,
 //! `PreUpdate` handles input one key at a time ([`TuiKeys`]), and
 //! `PostUpdate` lays out and draws a frame only when something drawn
-//! changed ([`TuiSystems`]).
+//! changed ([`TuiSystems`]). It shows every plugin's pickers and every
+//! agent's questions, one at a time ([`PickerInput`]). All of this exists in
+//! every run, also under another front such as `--print`, which never draws
+//! a frame. [`ratatui`] and [`crossterm`] are re-exported so a plugin uses
+//! the same versions.
 //!
 //! [`TuiPlugin`] is [`TuiViewPlugin`] plus [`DefaultScreenPlugin`]. Where a
 //! plugin hooks in:
@@ -32,11 +36,6 @@
 //!   [`text_rows`], and
 //!   the colors of what each thing is and the flat surfaces of panels,
 //!   [`Theme`].
-//!
-//! The view shows every plugin's pickers and every agent's questions, one
-//! at a time ([`PickerInput`]). All of this exists in every run, also under
-//! another front such as `--print`, which never draws a frame. [`ratatui`]
-//! and [`crossterm`] are re-exported so a plugin uses the same versions.
 
 mod clipboard;
 mod complete;

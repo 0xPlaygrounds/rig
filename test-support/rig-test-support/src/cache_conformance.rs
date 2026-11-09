@@ -1,54 +1,19 @@
-//! Cross-provider prompt-cache conformance harness.
+//! Cross-provider prompt-cache conformance harness: one three-turn probe per
+//! model, asserted against a per-provider [`CacheSupport`] descriptor.
 //!
-//! Rig normalizes `Usage::cached_input_tokens` and
-//! `Usage::cache_creation_input_tokens` for a dozen providers, but until this
-//! harness existed exactly one of them — Anthropic — had ever been *observed*
-//! caching. Every other provider shipped cache accounting no test had seen work.
+//! [`run_cache_probe`] and [`run_cache_probe_streaming`] send a warm turn, a
+//! byte-identical hit turn, and a hit-after-append turn that appends turn 2's
+//! reply and a follow-up user turn so the prefix grows. The hit turn replays
+//! only because cassettes are consumed in order, so a cache scenario must never
+//! be marked `.unordered()`. [`assert_hit_ratio`] checks how much of the prefix
+//! was cached, not only that something was, and [`assert_growth_still_hits`]
+//! checks that turn 3 still hits after the append.
 //!
-//! What this harness adds over "assert `cached_input_tokens > 0`" is the
-//! distinction that costs real money. Prompt caching is a prefix match, so the
-//! interesting failure is not "caching is off", it is "caching silently
-//! degraded": a serializer that reorders a map, a loop that rewrites an earlier
-//! turn, a tool set re-advertised in a different order. Any of those moves the
-//! wire prefix, and a bare `> 0` assertion passes happily while 39,800 of 40,000
-//! prefix tokens go uncached. [`assert_hit_ratio`] is the assertion that
-//! actually answers the question.
-//!
-//! # The three-turn probe
-//!
-//! Every probe runs three turns against one model:
-//!
-//! 1. **warm** — the padded preamble, tool set, and prompt are sent for the
-//!    first time. The provider writes a cache entry (or reads one an unrelated
-//!    request already warmed — see [`assert_warms`]).
-//! 2. **hit** — byte-identical to turn 1. This is only replayable because the
-//!    cassette harness consumes interactions *in order*
-//!    (`test-support/rig-test-support/src/cassettes.rs`, `matching_interaction_index`), so two
-//!    identical requests replay two different recorded responses. A cache
-//!    scenario must therefore never be marked `.unordered()`.
-//! 3. **hit-after-append** — turn 2's assistant reply and a follow-up user turn
-//!    are appended, so the prefix strictly *grows*. This is the agent-loop shape,
-//!    and [`assert_growth_still_hits`] is the regression nothing in the tree
-//!    caught before: a loop that re-normalizes the earlier turns on the way back
-//!    in busts the cache from turn 3 onward, silently.
-//!
-//! # What replay does and does not prove
-//!
-//! Replay does not merely replay a number. The harness *matches request bodies*
-//! (`request_matches`, `test-support/rig-test-support/src/cassettes.rs`), so a rig change that
-//! perturbs the outbound prefix fails as a replay miss with a per-field
-//! diagnostic, in CI, with no API key. That is what converts a recorded cassette
-//! into a permanent cache regression test.
-//!
-//! It does have two blind spots, and both are covered elsewhere rather than
-//! papered over:
-//!
-//! * Body matching compares *canonical* JSON (`canonical_json` sorts object
-//!   keys), so a change in map iteration order does **not** fail replay — while
-//!   it very much does bust a real provider cache. Only the in-process
-//!   determinism check in `tests/cassette_cache_prefix.rs` can catch that.
-//! * A cassette pins what the provider did at record time. Only the live
-//!   economics suite catches the provider changing its cache semantics under us.
+//! Replay matches request bodies, so a change that moves the outbound prefix
+//! fails in CI as a replay miss with no API key. Map-order changes and changes
+//! in a provider's cache semantics are caught by the other layers that
+//! `tests/README.md` ("Prompt Cache Testing") describes, with the rules for
+//! recording cache fixtures.
 
 use rig_agent::completion::CompletionRequest;
 
