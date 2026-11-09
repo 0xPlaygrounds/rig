@@ -191,3 +191,48 @@ fn the_scaffold_depends_on_the_rig_version_and_patches_a_checkout() {
         .and_then(|manifest| manifest.get("package")?.get("name")?.as_str());
     assert_eq!(name, Some("viz"));
 }
+
+/// A plugin crate whose `Cargo.toml` is missing, unreadable or not TOML is
+/// refused with why: the operating system's error, or the TOML error.
+#[test]
+fn a_plugin_whose_manifest_cannot_be_read_is_refused_with_why() {
+    let directory =
+        std::env::temp_dir().join(format!("rig-plugin-manifest-{}", std::process::id()));
+    let manifest = directory.join("Cargo.toml");
+    let extra = Extra {
+        plugin: "my_thing::MyThingPlugin".to_owned(),
+        krate: "my-thing".to_owned(),
+        source: config::Source::Path(directory.clone()),
+    };
+    let malformed = "[package\nname = \"my-thing\"\n";
+    let toml_error =
+        (malformed.parse::<config::toml_edit::DocumentMut>().err()).map(|error| error.to_string());
+    let mut refusals = Vec::new();
+    for case in ["missing", "unreadable", "malformed"] {
+        fs::remove_dir_all(&directory).ok();
+        fs::create_dir_all(&directory).ok();
+        if case != "missing" {
+            fs::write(&manifest, malformed).ok();
+        }
+        #[cfg(unix)]
+        if case == "unreadable" {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&manifest, fs::Permissions::from_mode(0o000)).ok();
+        }
+        // The operating system's own words, unless the file reads (as root).
+        let why = match fs::read_to_string(&manifest) {
+            Err(error) => Some(error.to_string()),
+            Ok(_) => toml_error.clone(),
+        };
+        let refusal = check_plugin(&extra, &RigSource::Registry).unwrap_or_default();
+        refusals.push((case, why, refusal));
+    }
+    fs::remove_dir_all(&directory).ok();
+    for (case, why, refusal) in refusals {
+        assert!(
+            why.is_some_and(|why| refusal.contains(&why))
+                && refusal.contains(&manifest.display().to_string()),
+            "{case}: {refusal}"
+        );
+    }
+}
