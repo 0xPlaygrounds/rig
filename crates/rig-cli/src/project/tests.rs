@@ -276,3 +276,59 @@ fn the_version_names_the_commit_of_the_checkout_it_was_built_in() {
     };
     assert_eq!(LONG_VERSION, expected);
 }
+
+/// A build stays current until a source file it read changes: here a path
+/// plugin's, as when one `rig plugin new` made gains a command.
+#[test]
+fn a_build_is_not_current_once_a_source_it_read_changes() {
+    use std::time::{Duration, SystemTime};
+
+    let root = std::env::temp_dir().join(format!("rig-current-{}", std::process::id()));
+    fs::remove_dir_all(&root).ok();
+    let home = Home::at(root.join("home"));
+    let plugin = root.join("my foo");
+    let lib = plugin.join("src/lib.rs");
+    fs::create_dir_all(plugin.join("src")).ok();
+    fs::create_dir_all(home.bin()).ok();
+    fs::write(plugin.join("Cargo.toml"), "[package]\nname = \"foo\"\n").ok();
+    fs::write(&lib, "").ok();
+    let settings = format!(
+        "[[plugins.extra]]\ncrate = \"foo\"\npath = {}\nplugin = \"foo::FooPlugin\"\n",
+        quoted_path(&plugin)
+    );
+    fs::write(home.settings(), settings).ok();
+    let generated = config::chosen(&home)
+        .map_err(|why| why.to_string())
+        .and_then(|plugins| {
+            let source = RigSource::detect().map_err(|why| why.to_string())?;
+            generate(&home, &plugins, &source).map_err(|why| why.to_string())
+        });
+    let escaped = |path: &Path| path.display().to_string().replace(' ', "\\ ");
+    let binary = home.good();
+    let listed = format!(
+        "{}: {} {}\n",
+        escaped(&binary),
+        escaped(&home.project().join("src/main.rs")),
+        escaped(&lib)
+    );
+    if let Some(parent) = dep_info(&home).parent() {
+        fs::create_dir_all(parent).ok();
+    }
+    fs::write(dep_info(&home), listed).ok();
+    let built = SystemTime::now() + Duration::from_secs(5);
+    let touch = |path: &Path, when: SystemTime| {
+        fs::File::options()
+            .write(true)
+            .open(path)
+            .and_then(|file| file.set_modified(when))
+            .ok();
+    };
+    fs::write(&binary, "").ok();
+    touch(&binary, built);
+    let before = is_current(&home, &binary);
+    touch(&lib, built + Duration::from_secs(5));
+    let after = is_current(&home, &binary);
+    fs::remove_dir_all(&root).ok();
+    assert_eq!(generated, Ok(()));
+    assert!(before && !after, "before {before}, after the edit {after}");
+}

@@ -142,6 +142,11 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
     let invocation = match report.invocation(args) {
         Ok(invocation) => invocation,
         Err(why) => {
+            // The build this run made is staged for every launcher, as by
+            // `rig build`, so the next start reads its report before
+            // building again.
+            let _lock = locks::hold_build_lock(home, output)?;
+            absent(fs::rename(home.staged_for(&claimed.id), home.staged()))?;
             claimed.discard_if_unsaved(home);
             eprintln!("rig: {why}");
             return Ok(ExitCode::from(REFUSED_EXIT_CODE));

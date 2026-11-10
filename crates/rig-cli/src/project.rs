@@ -253,15 +253,17 @@ pub fn rig_version(source: &RigSource) -> String {
 /// Whether the build `binary` is what building now would make, as far as
 /// the launcher can tell without cargo: the agent project generated from
 /// the settings and source of now is the one on disk, and `binary` is
-/// newer than its files and than this launcher. False when that cannot be
-/// read.
+/// newer than its files and than every source file the last agent build
+/// read ([`dep_info`]), a checkout's and a path plugin's included. False
+/// when that cannot be read.
 pub fn is_current(home: &Home, binary: &Path) -> bool {
     let current = || -> Result<bool> {
         let plugins = config::chosen(home)?;
         let source = RigSource::detect()?;
         let built = fs::metadata(binary)?.modified()?;
-        let launcher = fs::metadata(std::env::current_exe()?)?.modified()?;
-        let mut same = launcher <= built;
+        let not_newer =
+            |path: &Path| -> Result<bool> { Ok(fs::metadata(path)?.modified()? <= built) };
+        let mut same = true;
         for (file, text) in [
             ("Cargo.toml", manifest(home, &plugins, &source)?),
             ("src/main.rs", main_rs(home, &plugins, &source)),
@@ -269,11 +271,47 @@ pub fn is_current(home: &Home, binary: &Path) -> bool {
             let path = home.project().join(file);
             same = same
                 && fs::read_to_string(&path).is_ok_and(|written| written == text)
-                && fs::metadata(&path)?.modified()? <= built;
+                && not_newer(&path)?;
+        }
+        for path in sources(&fs::read_to_string(dep_info(home))?) {
+            same = same && not_newer(&path)?;
         }
         Ok(same)
     };
     current().unwrap_or(false)
+}
+
+/// cargo's dep-info file of the agent binary: every source file outside
+/// the registry that its last build read.
+pub fn dep_info(home: &Home) -> PathBuf {
+    home.target().join("debug").join(format!("{PACKAGE}.d"))
+}
+
+/// The paths a dep-info file lists after its target's `: `; a space in a
+/// path is written `\ `.
+fn sources(dep_info: &str) -> Vec<PathBuf> {
+    let Some((_, listed)) = dep_info
+        .lines()
+        .next()
+        .and_then(|line| line.split_once(": "))
+    else {
+        return Vec::new();
+    };
+    let mut paths = Vec::new();
+    let mut path = String::new();
+    let mut chars = listed.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => path.extend(chars.next()),
+            ' ' if !path.is_empty() => paths.push(PathBuf::from(std::mem::take(&mut path))),
+            ' ' => {}
+            c => path.push(c),
+        }
+    }
+    if !path.is_empty() {
+        paths.push(PathBuf::from(path));
+    }
+    paths
 }
 
 /// Writes the agent project with the plugins on of `plugins`.

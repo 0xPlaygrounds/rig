@@ -794,6 +794,11 @@ fn an_unknown_command_is_refused_before_the_build_only_while_that_build_is_curre
             let source = project::RigSource::detect().map_err(|why| why.to_string())?;
             project::generate(&home, &plugins, &source).map_err(|why| why.to_string())
         });
+    // What cargo lists as read by the build.
+    let main = home.project().join("src/main.rs");
+    fs::create_dir_all(home.target().join("debug")).ok();
+    let listed = format!("{}: {}\n", home.staged().display(), main.display());
+    fs::write(project::dep_info(&home), listed).ok();
     // Built after the project was written, as cargo builds it.
     for binary in [home.staged(), home.good()] {
         File::options()

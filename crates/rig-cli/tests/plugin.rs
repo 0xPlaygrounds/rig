@@ -190,3 +190,65 @@ fn disable_takes_out_an_unknown_plugin_the_start_refuses_over() {
     })();
     assert!(result.is_ok(), "{result:?}");
 }
+
+/// A first start whose command the new build does not have refuses it, and
+/// leaves that build for the next start, which refuses the same word from
+/// its report without building again. The build is a stand-in cargo that
+/// writes the agent and its dep-info file.
+#[cfg(unix)]
+#[test]
+fn an_unknown_command_builds_once_and_is_refused_from_the_report_after() {
+    let result = (|| -> anyhow::Result<()> {
+        let root = assert_fs::TempDir::new()?;
+        let home = root.path().join("home");
+        let tools = root.path().join("tools");
+        let calls = root.path().join("cargo-calls");
+        script(
+            &tools.join("agent"),
+            "[ -n \"$RIG_DESCRIBE\" ] || exit 0\n\
+             printf 'rig-describe 1\\ncommand\\tstats\\t-\\theadless\\tsession\\tCount\\n' \
+             > \"$RIG_DESCRIBE\"",
+        )?;
+        script(
+            &tools.join("cargo"),
+            &format!(
+                "echo \"$1\" >> {calls}\n\
+                 [ \"$1\" = build ] || exit 0\n\
+                 out=\"$RIG_HOME/target/debug\"\n\
+                 mkdir -p \"$out\" && cp {agent} \"$out/rig-harness-agent\"\n\
+                 printf '%s: %s\\n' \"$out/rig-harness-agent\" \"$RIG_HOME/project/src/main.rs\" \
+                 > \"$out/rig-harness-agent.d\"",
+                calls = calls.display(),
+                agent = tools.join("agent").display(),
+            ),
+        )?;
+        let path = std::env::join_paths(std::iter::once(tools).chain(std::env::split_paths(
+            &std::env::var_os("PATH").unwrap_or_default(),
+        )))?;
+        let start = || {
+            Command::new(env!("CARGO_BIN_EXE_rig"))
+                .env("RIG_HOME", &home)
+                .env("PATH", &path)
+                .env_remove("RIG_SOURCE")
+                .current_dir(root.path())
+                .arg("nosuchcmd")
+                .stdin(Stdio::null())
+                .output()
+        };
+        let builds = || {
+            let calls = fs::read_to_string(&calls).unwrap_or_default();
+            calls.lines().filter(|call| *call == "build").count()
+        };
+        let first = start()?;
+        anyhow::ensure!(first.status.code() == Some(2), "{first:?}");
+        anyhow::ensure!(builds() == 1, "the first start did not build");
+        let again = start()?;
+        let said = String::from_utf8(again.stderr)?;
+        anyhow::ensure!(again.status.code() == Some(2), "{said}");
+        anyhow::ensure!(builds() == 1, "the second start built again: {said}");
+        anyhow::ensure!(said.contains("the last build's commands"), "{said}");
+        anyhow::ensure!(said.contains("stats"), "{said}");
+        Ok(())
+    })();
+    assert!(result.is_ok(), "{result:?}");
+}
