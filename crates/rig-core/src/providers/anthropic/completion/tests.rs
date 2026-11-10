@@ -544,6 +544,26 @@ fn pointer_references_into_moved_keywords_follow_them() {
             "not": {"not": {"anyOf": [branch]}},
         })
     );
+
+    let payload = |reference: &str| {
+        json!({
+            "type": "string",
+            "contentMediaType": "application/json",
+            "contentSchema": {"$ref": reference},
+        })
+    };
+    assert_eq!(
+        sent_input_schema(json!({
+            "type": "object",
+            "properties": {"payload": payload("#/anyOf/0")},
+            "anyOf": [branch],
+        })),
+        json!({
+            "type": "object",
+            "properties": {"payload": payload("#/not/not/anyOf/0")},
+            "not": {"not": {"anyOf": [branch]}},
+        })
+    );
 }
 
 /// A tool schema with no root combinator is sent as written, combinators
