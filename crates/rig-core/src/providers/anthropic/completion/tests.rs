@@ -442,6 +442,36 @@ fn root_combinators_of_a_tool_schema_go_under_a_double_not() {
     );
 }
 
+/// A root `unevaluatedProperties` or `unevaluatedItems` reads what the
+/// root's other validating keywords evaluate, and a subschema under `not`
+/// reports nothing, so those keywords go under the double `not` with it.
+/// The root keeps its `type`, its definitions and its annotations.
+#[test]
+fn root_unevaluated_keywords_go_under_the_double_not_with_what_they_read() {
+    let a = json!({"properties": {"a": {"type": "string"}}, "required": ["a"]});
+    let b = json!({"properties": {"b": {"type": "integer"}}, "required": ["b"]});
+    let definitions = json!({"Id": {"type": "integer"}});
+    let properties = json!({"id": {"$ref": "#/$defs/Id"}});
+    for keyword in ["unevaluatedProperties", "unevaluatedItems"] {
+        assert_eq!(
+            sent_input_schema(json!({
+                "type": "object",
+                "description": "Act on a or b.",
+                "$defs": definitions,
+                "properties": properties,
+                "oneOf": [a, b],
+                keyword: false,
+            })),
+            json!({
+                "type": "object",
+                "description": "Act on a or b.",
+                "$defs": definitions,
+                "not": {"not": {"properties": properties, "oneOf": [a, b], keyword: false}},
+            })
+        );
+    }
+}
+
 /// A tool schema with no root combinator is sent as written, combinators
 /// below the root included.
 #[test]
