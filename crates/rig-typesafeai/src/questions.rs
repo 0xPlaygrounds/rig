@@ -224,12 +224,9 @@ impl<T: Serialize + DeserializeOwned + Ord> Choice<T> {
                     "choice values must serialize to strings",
                 ));
             };
-            let decoded: T =
-                serde_json::from_value(Value::String(label.clone())).map_err(|_| {
-                    ProviderError::request(
-                        "choice labels must deserialize to their original values",
-                    )
-                })?;
+            let decoded: T = crate::decode::choice_label(&label).map_err(|_| {
+                ProviderError::request("choice labels must deserialize to their original values")
+            })?;
             if decoded != value {
                 return Err(ProviderError::request(
                     "choice labels must round-trip without changing values",
