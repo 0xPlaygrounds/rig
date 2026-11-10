@@ -41,6 +41,7 @@ use rig_harness_protocol::{
 };
 
 use super::build::{self, BuildFailure, BuildOutput, FailedAt, Staging, child};
+use super::update::{Reexec, Stamp};
 use super::{LONG_VERSION, Result, locks};
 
 mod stop;
@@ -143,7 +144,7 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
         .and_then(|command| report.command(command));
     let headless =
         invocation.is_headless() || !terminal || command.is_some_and(|command| !command.terminal);
-    let ended = launch(
+    let mut ended = launch(
         home,
         run.dir(),
         &invocation,
@@ -153,6 +154,7 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
         build_failure,
     )?;
     let code = ended.code;
+    let reexec = ended.reexec.take();
     let close = move || {
         if ended.restore {
             restore_terminal();
@@ -170,7 +172,10 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
     // The run's own cleanup, before the signal ends the launcher.
     drop(run);
     stop::end_as_heard();
-    Ok(code)
+    match reexec {
+        Some(reexec) => reexec.run(),
+        None => Ok(code),
+    }
 }
 
 /// The session `--resume` names, by id or name ([`Home::find`]), or a new
@@ -229,6 +234,7 @@ fn launch(
     mut build_failure: Option<String>,
 ) -> Result<Ended> {
     let launcher = std::env::current_exe()?;
+    let installed = Stamp::of(&launcher);
     // The secrets asked for, for every restart: asked whenever someone is
     // at the terminal, whatever the front, so a command typed there can be
     // asked too; a piped run passes only what its environment has.
@@ -327,11 +333,14 @@ fn launch(
         drop(watch);
         let reload = status.code() == Some(i32::from(RELOAD_EXIT_CODE)) && stop::heard().is_none();
         let restart = !headless || (answers_prompt && !directory.switch().exists());
+        // A view reloading after its launcher's file was replaced restarts
+        // on the new launcher, which takes over from here.
+        let replaced = reload && !headless && Stamp::of(&launcher) != installed;
         screen |= run.screen().exists();
         // A reload that restarts leaves the jobs running, listed for the
         // next build to take over. Best effort: a list that cannot be read
         // must not keep the terminal from being put back below.
-        if !(reload && restart) {
+        if !(reload && restart) || replaced {
             run.kill_left_groups().ok();
         }
         promoted?;
@@ -339,6 +348,17 @@ fn launch(
         if rejected {
             build::reject(home, &trial)?;
             fs::remove_file(&trial)?;
+        }
+        if replaced {
+            take_switch(&directory)?;
+            let saved = home.session(&session).is_saved();
+            claimed.discard_if_unsaved(home);
+            let resume = saved.then_some(session.as_str());
+            let reexec = Reexec::new(&launcher, resume, invocation.to_args());
+            return Ok(Ended {
+                reexec: Some(reexec),
+                ..Ended::quiet(ExitCode::SUCCESS).restoring(screen)
+            });
         }
         if reload && restart {
             if headless {
@@ -447,6 +467,8 @@ struct Ended {
     code: ExitCode,
     said: Option<String>,
     restore: bool,
+    /// The new launcher to start once the session is let go.
+    reexec: Option<Reexec>,
 }
 
 impl Ended {
@@ -456,6 +478,7 @@ impl Ended {
             code: exit_code(status),
             said,
             restore: false,
+            reexec: None,
         }
     }
 
@@ -465,6 +488,7 @@ impl Ended {
             code,
             said: None,
             restore: false,
+            reexec: None,
         }
     }
 

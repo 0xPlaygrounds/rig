@@ -14,8 +14,10 @@ cargo install --locked --force --path crates/rig-cli
 rig
 ```
 
-To update, install again: `git pull` first in a checkout. The next start
-rebuilds the agent at the new version.
+To update, run `rig update` (`/update` in the agent): it reinstalls rig from
+where it came from, crates.io or the checkout as it is now (`git pull` first
+is yours), printing the cargo command first, and builds the agent at the new
+version. `/update` then resumes the session on it.
 
 It generates a small Cargo project for the agent under `RIG_HOME` (default
 `~/.rig`) with the plugins `RIG_HOME/settings.toml` turns on, builds it, and

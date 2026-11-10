@@ -164,7 +164,7 @@ fn the_command_line_is_read_against_the_report() {
     let unknown = refused(&["statz"]);
     assert!(
         unknown.contains(
-            "unknown command `statz`; commands: build, plugin, help, help-agents, stats, import"
+            "unknown command `statz`; commands: build, update, plugin, help, help-agents, stats, import"
         ),
         "{unknown}"
     );

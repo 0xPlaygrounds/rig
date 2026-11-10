@@ -73,7 +73,7 @@ Then:
 4. Type a prompt and press Enter. `/help` lists the commands.
 5. `rig -p "fix the failing test"` answers one prompt without the terminal view.
 
-The [agent guide](docs/agent.md#update) says how to update, and what is
+`rig update` updates rig ([how](docs/agent.md#update)). The agent guide also says what is
 [per home and what is per project](docs/agent.md#what-is-per-home-and-what-is-per-project).
 
 - **Everything is a plugin.** The agent is a [Bevy](https://bevy.org) app; its
@@ -82,7 +82,8 @@ The [agent guide](docs/agent.md#update) says how to update, and what is
   added to.
 - **It rebuilds itself.** `/reload` rebuilds the agent with your plugin
   crates and restarts it in the same session, and keeps the old build running
-  if the new one does not compile.
+  if the new one does not compile. `rig update`, or `/update` in the agent,
+  reinstalls rig with cargo and restarts on it.
 - **Scriptable.** `rig -p --json` and `rig --json` drive it over pipes;
   `rig help-agents` is the protocol.
 - **More when you want it.** Subagents are an optional plugin, and the tools

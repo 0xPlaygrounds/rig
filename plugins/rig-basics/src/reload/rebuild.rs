@@ -11,10 +11,14 @@ use rig_harness::harness_protocol::{first_errors, without_secrets};
 use rig_harness::prelude::*;
 use rig_tools::process::{Process, STOP_GRACE};
 
-use crate::reload::ReloadStatus;
+use crate::reload::{Rebuild, ReloadStatus};
 
 /// Lines of a failed build in the note to the model, from its first error.
 const MESSAGE_LINES: usize = 40;
+
+/// How `rig update` starts each line that says what it does, such as the
+/// command it runs; each is shown as a notice.
+const UPDATE_SAYS: &str = "rig update: ";
 
 pub(crate) fn add(app: &mut App) {
     app.add_systems(
@@ -38,6 +42,7 @@ struct ReloadBuild {
     process: Mutex<Process>,
     /// The agent that asked, whose model is told when the build fails.
     agent: Entity,
+    rebuild: Rebuild,
     lines: Receiver<String>,
     /// This build's output so far. Not read back from the build log, which
     /// a build queued behind this one, or an older one when this one fails
@@ -46,10 +51,15 @@ struct ReloadBuild {
 }
 
 impl ReloadBuild {
-    fn start(launcher: &std::ffi::OsStr, agent: Entity, wake: Wake) -> std::io::Result<Self> {
+    fn start(
+        launcher: &std::ffi::OsStr,
+        rebuild: Rebuild,
+        agent: Entity,
+        wake: Wake,
+    ) -> std::io::Result<Self> {
         let mut command = Command::new(launcher);
         command
-            .arg("build")
+            .arg(rebuild.command())
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::piped());
@@ -67,6 +77,7 @@ impl ReloadBuild {
         Ok(Self {
             process: Mutex::new(process),
             agent,
+            rebuild,
             lines,
             output: Vec::new(),
         })
@@ -119,7 +130,7 @@ fn start_queued_reload(
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let ReloadStatus::Queued { agent } = *status else {
+    let ReloadStatus::Queued { agent, rebuild } = *status else {
         return;
     };
     if !turns.is_empty() {
@@ -129,11 +140,16 @@ fn start_queued_reload(
     let Some(launcher) = harness_protocol::launcher() else {
         return;
     };
-    let notice = match ReloadBuild::start(&launcher, agent, wake.clone()) {
+    let notice = match ReloadBuild::start(&launcher, rebuild, agent, wake.clone()) {
         Ok(build) => {
             commands.insert_resource(build);
             *status = ReloadStatus::Building { latest: None };
-            "Rebuilding the agent…".to_owned()
+            match rebuild {
+                Rebuild::Build => "Rebuilding the agent…".to_owned(),
+                Rebuild::Update => "Updating rig with `rig update`; with the agent build after \
+                                    it, this takes a few minutes…"
+                    .to_owned(),
+            }
         }
         Err(failure) => format!("Could not start the rebuild: {failure}"),
     };
@@ -157,6 +173,10 @@ fn drain_reload(
     let ended = loop {
         match build.lines.try_recv() {
             Ok(line) if line.trim().is_empty() => {}
+            Ok(line) if line.starts_with(UPDATE_SAYS) => {
+                notices.write(Notice::info(None, line.trim_end()));
+                build.output.push(line);
+            }
             Ok(line) => {
                 // Without the source path cargo appends, so it fits the
                 // status line: `Compiling serde v1.0.228`.
@@ -192,10 +212,30 @@ fn drain_reload(
     commands.remove_resource::<ReloadBuild>();
     if exit.success() {
         *status = ReloadStatus::Ready;
-        notices.write(Notice::info(None, "Build ready; restarting."));
+        let ready = match build.rebuild {
+            Rebuild::Build => "Build ready; restarting.",
+            Rebuild::Update => "rig updated; restarting on the new rig.",
+        };
+        notices.write(Notice::info(None, ready));
         return;
     }
     *status = ReloadStatus::Failed;
+    if build.rebuild == Rebuild::Update {
+        // `rig update` said why in its last line, a notice already.
+        notices.write(Notice::error(
+            None,
+            format!("The update failed ({exit}); this rig keeps running."),
+        ));
+        let text = launcher::build_failure_message(
+            "/update",
+            &format!(
+                "`rig update` exited with {exit}. Its output from the first error:\n{}",
+                build.errors(MESSAGE_LINES)
+            ),
+        );
+        launcher::inform_build_failure(&mut commands, build.agent, text);
+        return;
+    }
     // The notice is the one log line: the whole output is in the build log
     // it names.
     let first = first_errors(build.output.iter().map(String::as_str), 1)

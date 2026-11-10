@@ -59,17 +59,24 @@ newer and runs on Linux and macOS. Windows is not supported.
 
 ## Update
 
-rig has no update command. Install the new launcher, and the next start
-rebuilds the agent at its version:
+`rig update` reinstalls the launcher where it is installed, then builds the
+agent with the new one. It prints the command before running it:
 
-- From crates.io: 0.46.0 is the latest release. Once `rig-cli` is released,
-  `cargo install --force rig-cli` installs it; `--force` replaces the `rig`
-  that the `rig` crate installed.
-- From a checkout: `git pull`, then `cargo install --locked --force --path
-  crates/rig-cli` again.
+- From crates.io: `cargo install --force rig-cli`. 0.46.0 is the latest
+  release, and `rig-cli` is not on crates.io until the next one, so until
+  then cargo cannot find it; `--force` replaces the `rig` that the `rig`
+  crate installed.
+- From a checkout: `cargo install --force --locked --path
+  <checkout>/crates/rig-cli`. It rebuilds the checkout as it is: `git pull`
+  first is yours.
 
-A running agent keeps its build until you restart it. The rebuild takes
-several minutes, and `RIG_HOME/target` keeps the old version's build too.
+A failed install, such as one offline, leaves the installed rig as it was and
+exits 1. In the agent, `/update` runs it, showing its lines and cargo's latest
+one, and then restarts as `/reload` does: the launcher, whose own file was
+replaced, starts the new one on the same session. Installing by hand works
+too: the next start, or `/reload`, runs the new launcher. The agent build
+takes several minutes, and `RIG_HOME/target` keeps the old version's build
+too.
 Sessions resume while their format is the same. A session in another format
 is refused, unchanged, with `this session was made by another version of rig;
 start a new session`.

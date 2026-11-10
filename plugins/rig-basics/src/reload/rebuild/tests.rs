@@ -31,7 +31,12 @@ fn the_rebuild_gets_no_secret() {
     let script = "#!/bin/sh\nprintf %s \"${RIG_SECRET_PROBE-none}\" > \"$0.seen\"\n";
     std::fs::write(&launcher, script).ok();
     std::fs::set_permissions(&launcher, std::fs::Permissions::from_mode(0o755)).ok();
-    let build = ReloadBuild::start(launcher.as_os_str(), Entity::PLACEHOLDER, Wake::default());
+    let build = ReloadBuild::start(
+        launcher.as_os_str(),
+        Rebuild::Build,
+        Entity::PLACEHOLDER,
+        Wake::default(),
+    );
     let exited = build.map(|mut build| {
         let process = build
             .process
@@ -72,7 +77,12 @@ fn a_stopped_rebuild_leaves_no_cargo() {
                   setsid sleep 60 & echo $! > \"$0.pid\"\nwait\n";
     std::fs::write(&launcher, script).ok();
     std::fs::set_permissions(&launcher, std::fs::Permissions::from_mode(0o755)).ok();
-    let build = ReloadBuild::start(launcher.as_os_str(), Entity::PLACEHOLDER, Wake::default());
+    let build = ReloadBuild::start(
+        launcher.as_os_str(),
+        Rebuild::Build,
+        Entity::PLACEHOLDER,
+        Wake::default(),
+    );
     let pid_file = dir.join("rig.pid");
     let deadline = std::time::Instant::now() + Duration::from_secs(5);
     while !pid_file.exists() && std::time::Instant::now() < deadline {
@@ -149,7 +159,7 @@ fn a_failed_build_leaves_its_errors_as_a_note() {
         kind: ChoiceKind::ForThisRun,
     });
     let wake = app.world().resource::<Wake>().clone();
-    if let Ok(build) = ReloadBuild::start(launcher.as_os_str(), agent, wake) {
+    if let Ok(build) = ReloadBuild::start(launcher.as_os_str(), Rebuild::Build, agent, wake) {
         app.insert_resource(build);
         *app.world_mut().resource_mut::<ReloadStatus>() = ReloadStatus::Building { latest: None };
     }
@@ -167,4 +177,61 @@ fn a_failed_build_leaves_its_errors_as_a_note() {
     if let Some(dir) = launcher.parent() {
         std::fs::remove_dir_all(dir).ok();
     }
+}
+
+/// The notices said so far.
+#[derive(Resource, Default)]
+struct Said(Vec<String>);
+
+/// A failed `/update` runs `rig update`, shows the lines it starts with
+/// `rig update: `, such as the command it runs, and keeps this build.
+#[test]
+fn a_failed_update_shows_what_rig_update_said() {
+    use rig_harness_test_support::{MemoryStore, app_on, run_until};
+
+    use crate::reload::ReloadPlugin;
+
+    let said = "rig update: `cargo install --force rig-cli` failed; this rig is unchanged.";
+    let launcher = failing_launcher("update", "Compiling rig-cli");
+    let script =
+        format!("#!/bin/sh\necho \"rig update: running $1\" >&2\necho '{said}' >&2\nexit 1\n");
+    std::fs::write(&launcher, script).ok();
+    let (mut app, wakes) = app_on(&MemoryStore::default());
+    app.add_plugins((AgentPlugin, SessionLogPlugin, ReloadPlugin))
+        .init_resource::<Said>()
+        .add_systems(
+            Last,
+            |mut notices: MessageReader<Notice>, mut all: ResMut<Said>| {
+                all.0
+                    .extend(notices.read().map(|notice| notice.text.clone()));
+            },
+        );
+    app.finish();
+    app.update();
+    let wake = app.world().resource::<Wake>().clone();
+    let build = ReloadBuild::start(
+        launcher.as_os_str(),
+        Rebuild::Update,
+        Entity::PLACEHOLDER,
+        wake,
+    );
+    if let Ok(build) = build {
+        app.insert_resource(build);
+        *app.world_mut().resource_mut::<ReloadStatus>() = ReloadStatus::Building { latest: None };
+    }
+    let failed = |world: &World| *world.resource::<ReloadStatus>() == ReloadStatus::Failed;
+    run_until(&mut app, &wakes, failed);
+    app.update();
+    let notices = app.world().resource::<Said>().0.clone();
+    if let Some(dir) = launcher.parent() {
+        std::fs::remove_dir_all(dir).ok();
+    }
+    assert_eq!(
+        notices.get(..3).map(<[String]>::to_vec),
+        Some(vec![
+            "rig update: running update".to_owned(),
+            said.to_owned(),
+            "The update failed (exit status: 1); this rig keeps running.".to_owned(),
+        ])
+    );
 }

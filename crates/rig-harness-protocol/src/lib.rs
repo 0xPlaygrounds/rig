@@ -1182,7 +1182,7 @@ pub fn is_name(name: &str) -> bool {
 }
 
 /// The launcher's own first words, which no plugin's command may take.
-pub const RESERVED_COMMANDS: &[&str] = &["build", "plugin", "help", "help-agents"];
+pub const RESERVED_COMMANDS: &[&str] = &["build", "update", "plugin", "help", "help-agents"];
 
 /// The first line of a [`AgentDescription`] report.
 const DESCRIBED_HEADER: &str = "rig-describe 1";
