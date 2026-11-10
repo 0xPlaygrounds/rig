@@ -637,11 +637,30 @@ fn tools(
 /// The keywords Anthropic refuses at the root of a tool's input schema.
 const ROOT_COMBINATORS: [&str; 3] = ["allOf", "anyOf", "oneOf"];
 
+/// The root keywords that read what the root's other keywords evaluate.
+const ROOT_UNEVALUATED: [&str; 2] = ["unevaluatedProperties", "unevaluatedItems"];
+
+/// The root keywords that stay at the root when every keyword that
+/// validates moves: its type, what names it or holds its definitions, and
+/// its annotations.
+const ROOT_KEPT: [&str; 9] = [
+    "type",
+    "$schema",
+    "$id",
+    "$anchor",
+    "$dynamicAnchor",
+    "$defs",
+    "definitions",
+    "title",
+    "description",
+];
+
 /// Move a root `allOf`, `anyOf` or `oneOf`, with any root `not`, under
-/// `not: {not: ...}`, and type the root `object`, the root Anthropic takes.
-/// That accepts the same inputs, except that a root `unevaluatedProperties`
-/// no longer sees the properties the moved branches declare. A schema with
-/// no root combinator is left as written.
+/// `not: {not: ...}`, which accepts the same inputs, and type the root
+/// `object`, the root Anthropic takes. A subschema under `not` reports no
+/// evaluated properties or items, so with a root `unevaluatedProperties` or
+/// `unevaluatedItems` every root keyword but [`ROOT_KEPT`] moves. A schema
+/// with no root combinator is left as written.
 fn nest_root_combinators(schema: &mut Value) {
     let Value::Object(root) = schema else {
         return;
@@ -649,10 +668,25 @@ fn nest_root_combinators(schema: &mut Value) {
     if !ROOT_COMBINATORS.iter().any(|key| root.contains_key(*key)) {
         return;
     }
-    let nested: Map<String, Value> = ROOT_COMBINATORS
+    let unevaluated = ROOT_UNEVALUATED.iter().any(|key| root.contains_key(*key));
+    let moved: Vec<String> = root
+        .keys()
+        .filter(|key| {
+            let key = key.as_str();
+            if unevaluated {
+                !ROOT_KEPT.contains(&key)
+            } else {
+                ROOT_COMBINATORS.contains(&key) || key == "not"
+            }
+        })
+        .cloned()
+        .collect();
+    let nested: Map<String, Value> = moved
         .into_iter()
-        .chain(["not"])
-        .filter_map(|key| Some((key.to_owned(), remove_preserving_order(root, key)?)))
+        .filter_map(|key| {
+            let value = remove_preserving_order(root, &key)?;
+            Some((key, value))
+        })
         .collect();
     root.entry("type").or_insert_with(|| json!("object"));
     root.insert("not".to_owned(), json!({ "not": nested }));
