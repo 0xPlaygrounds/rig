@@ -60,6 +60,6 @@ Run once by hand on 2026-11-09 against rig commit `b1321662b`.
   failure is unsupported OAuth (33) or elicitation (1), or a `2026-07-28`
   draft item that comes from rmcp 3.9's stateful `initialize` lifecycle (3).
 - ACP TCK (`agentclientprotocol/acp-tck` at `b7f40fb3c003`), `rig acp`, ACP
-  v1: all 31 mandatory requirements pass. The 5 failures (`ACP-LOAD-001` to
-  `003`, `ACP-RESUME-001` and `002`) come from rig refusing to load or resume
-  a session the same connection already has open, which it does on purpose.
+  v1, with the scripted model, run on 2026-11-09 against rig commit
+  `85b403cd7`: CONFORMANT, 62 passed and 12 skipped (features rig does not
+  advertise).
