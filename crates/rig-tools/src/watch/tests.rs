@@ -54,6 +54,38 @@ fn a_local_watch_reports_what_files_would_list() {
     std::fs::remove_dir_all(root).ok();
 }
 
+/// A recursive watch reports the files of a directory moved in from outside
+/// it, nested ones too, as it does for a directory created there, and hears
+/// of a later edit inside it.
+#[test]
+fn a_recursive_watch_reports_the_files_of_a_directory_moved_in() {
+    let base = std::env::temp_dir().join(format!("rig-tools-watch-moved-{}", std::process::id()));
+    std::fs::remove_dir_all(&base).ok();
+    std::fs::create_dir_all(base.join("root")).ok();
+    std::fs::create_dir_all(base.join("staging/nested")).ok();
+    std::fs::write(base.join("staging/top.rs"), "x").ok();
+    std::fs::write(base.join("staging/nested/deep.rs"), "x").ok();
+    let base = std::fs::canonicalize(&base).unwrap_or(base);
+    let root = base.join("root");
+    let watch = Arc::new(Local).watch(&root, true, Listing::Visible);
+    assert!(watch.is_ok(), "{watch:?}");
+    let Ok(watch) = watch else { return };
+    let batches = batches(watch);
+    std::fs::rename(base.join("staging"), root.join("moved")).ok();
+    let mut moved_in = seen(&batches, Duration::from_secs(2));
+    moved_in.sort();
+    moved_in.dedup();
+    let deep = root.join("moved/nested/deep.rs");
+    std::fs::write(&deep, "edited").ok();
+    let mut edited = seen(&batches, Duration::from_secs(2));
+    edited.dedup();
+    std::fs::remove_dir_all(&base).ok();
+    assert_eq!(
+        (moved_in, edited),
+        (vec![deep.clone(), root.join("moved/top.rs")], vec![deep])
+    );
+}
+
 /// A watch of a relative directory and one of a relative file each hear of a
 /// change. The fixture is below the current directory, which the test leaves
 /// alone because tests may share a process.
