@@ -1002,3 +1002,88 @@ fn a_reload_after_the_launcher_was_replaced_restarts_on_the_new_one() {
         ended.reexec.is_none() && ended.code == ExitCode::SUCCESS && kept
     }));
 }
+
+/// The warnings each start of a run of `home` got, one start per item,
+/// from an agent that reloads once and then exits.
+#[cfg(unix)]
+fn warned(home: &Home) -> Result<Vec<String>> {
+    let agent = "#!/bin/sh
+printf '%s\\n---\\n' \"$RIG_WARNING\" >> \"$RIG_HOME/warned\"
+touch \"$RIG_RUN/ready\"
+[ $(grep -c -- --- \"$RIG_HOME/warned\") -lt 2 ] && exit 75
+exit 0";
+    for build in [home.staged(), home.good()] {
+        fs::write(build, agent)?;
+    }
+    let run = locks::hold_run(home)?;
+    let (claimed, _) = claim(home, Start::New, None)?;
+    launch(
+        home,
+        Path::new(NO_LAUNCHER),
+        run.dir(),
+        &Invocation::default(),
+        false,
+        claimed,
+        None,
+        None,
+    )?;
+    let warned = fs::read_to_string(home.root().join("warned"))?;
+    Ok(warned
+        .split_terminator("---\n")
+        .map(|start| start.trim_end().to_owned())
+        .collect())
+}
+
+/// A home rig 0.46 left, with `plugins.toml` and `defaults.json` that
+/// `settings.toml` has no `[plugins]` or `[model]` for, is warned of once
+/// per run, a line per file naming where its settings go now, and its
+/// files are left as they are. A home whose settings cover them, and a
+/// fresh home, are not warned of.
+#[cfg(unix)]
+#[test]
+fn a_0_46_home_is_warned_of_once_per_run_and_left_as_it_is() {
+    let plugins = "[[plugin]]\ncrate = \"rig-basics\"\nplugin = \"rig_basics::prompt::DefaultPromptPlugin\"\n";
+    let defaults = "{\n  \"model\": \"ollama/qwen3\",\n  \"effort\": null\n}";
+    let old = builds("legacy-old", "", "");
+    let wrote = fs::write(old.root().join("plugins.toml"), plugins)
+        .and_then(|()| fs::write(old.root().join("defaults.json"), defaults));
+    let starts = wrote.map_err(Into::into).and_then(|()| warned(&old));
+    let left = (
+        fs::read_to_string(old.root().join("plugins.toml")).ok(),
+        fs::read_to_string(old.root().join("defaults.json")).ok(),
+    );
+    fs::remove_dir_all(old.root()).ok();
+    let starts = starts.map_err(|failure| failure.to_string());
+    assert_eq!(starts.as_ref().map(Vec::len), Ok(2), "{starts:?}");
+    let first = starts.as_ref().ok().and_then(|starts| starts.first());
+    let lines: Vec<&str> = first
+        .map(|first| first.lines().collect())
+        .unwrap_or_default();
+    assert_eq!(lines.len(), 2, "{first:?}");
+    for (file, table) in [("plugins.toml", "[plugins]"), ("defaults.json", "[model]")] {
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains(file) && line.contains(table)),
+            "no warning names {file} and {table}: {lines:?}"
+        );
+    }
+    let again = starts.as_ref().ok().and_then(|starts| starts.get(1));
+    assert_eq!(again.map(String::as_str), Some(""), "a reload warned again");
+    assert_eq!(left, (Some(plugins.to_owned()), Some(defaults.to_owned())));
+
+    let covered = builds("legacy-covered", "", "");
+    let settings = "[plugins]\ndisable = []\n\n[model]\ndefault = \"ollama/qwen3\"\n";
+    let wrote = fs::write(covered.root().join("plugins.toml"), plugins)
+        .and_then(|()| fs::write(covered.root().join("defaults.json"), defaults))
+        .and_then(|()| fs::write(covered.settings(), settings));
+    let starts = wrote.map_err(Into::into).and_then(|()| warned(&covered));
+    fs::remove_dir_all(covered.root()).ok();
+    let starts = starts.map_err(|failure| failure.to_string());
+    assert_eq!(starts, Ok(vec![String::new(), String::new()]));
+
+    let fresh = builds("legacy-fresh", "", "");
+    let starts = warned(&fresh).map_err(|failure| failure.to_string());
+    fs::remove_dir_all(fresh.root()).ok();
+    assert_eq!(starts, Ok(vec![String::new(), String::new()]));
+}
