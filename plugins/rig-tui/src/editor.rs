@@ -153,7 +153,7 @@ impl Editor {
     /// Shows `text`, with the cursor at its end, keeping the history's
     /// place.
     fn show(&mut self, text: String) {
-        self.text = newlines(text);
+        self.text = text;
         self.cursor = self.text.len();
     }
 

@@ -189,3 +189,20 @@ fn a_narrow_key_row_keeps_what_matters_most_and_says_it_dropped_some() {
     }
     assert!(fit_keys(hint(true, false), 15).contains("Esc stops"));
 }
+
+#[test]
+fn a_history_entry_with_a_carriage_return_is_walked_like_any_other() {
+    let history = ["old".to_owned(), "a\r\nb".to_owned(), "new".to_owned()];
+    let mut editor = Editor::default();
+    editor.set("draft");
+    editor.home();
+    editor.up(&history);
+    editor.up(&history);
+    assert!(editor.recalled());
+    editor.up(&history);
+    assert_eq!(editor.text(), "old");
+    editor.down(&history);
+    editor.down(&history);
+    editor.down(&history);
+    assert_eq!(editor.text(), "draft");
+}
