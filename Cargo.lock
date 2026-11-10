@@ -13974,11 +13974,14 @@ dependencies = [
  "bevy_reflect",
  "bevy_tasks",
  "crossbeam-channel",
+ "crossterm",
+ "ratatui-core",
  "rig-cassette",
  "rig-core",
  "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
+ "rig-markdown",
  "rig-memory",
  "rig-reqwest",
  "rig-tools",
@@ -14411,6 +14414,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rig-markdown"
+version = "0.46.0"
+dependencies = [
+ "pulldown-cmark",
+ "ratatui-core",
+ "unicode-segmentation",
+ "unicode-width 0.2.2",
+]
+
+[[package]]
 name = "rig-mcp-client"
 version = "0.46.0"
 dependencies = [
@@ -14752,11 +14765,11 @@ dependencies = [
  "crossbeam-channel",
  "crossterm",
  "libc",
- "pulldown-cmark",
  "ratatui",
  "rig-core",
  "rig-ecs",
  "rig-harness",
+ "rig-markdown",
  "rig-tools",
  "serde",
  "serde_json",
@@ -14764,7 +14777,6 @@ dependencies = [
  "syntect",
  "terminal-colorsaurus",
  "two-face",
- "unicode-segmentation",
  "unicode-width 0.2.2",
 ]
 

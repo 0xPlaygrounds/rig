@@ -44,6 +44,10 @@ pub struct CodingToolLooks;
 mod looks;
 pub mod remote;
 
+/// How far a shell call's command lines after the first are indented
+/// under it, in the terminal view's look and in `-p`'s line for the call.
+pub(crate) const COMMAND_INDENT: &str = "    ";
+
 /// The files `read` showed and `edit` left, which [`ReadTool`] and
 /// [`EditTool`] share, so an edit whose text is not found asks for a new
 /// read only of a file that changed since one.

@@ -768,3 +768,66 @@ fn a_calls_lines_name_it_by_its_place_in_the_reply() {
     assert_eq!(ids("tool_call"), asked);
     assert_eq!(ids("tool_result"), asked);
 }
+
+/// What a `-p` run writes to stdout and stderr, stderr being `err`, when
+/// its model says a line, calls `read` (which reports progress), then
+/// answers.
+fn narrated_run(err: Option<Terminal>) -> (String, String) {
+    let model = MockCompletionModel::from_stream_turns([
+        vec![
+            MockStreamEvent::text("Looking at the file first."),
+            MockStreamEvent::tool_call(
+                "c1",
+                "read",
+                json!({ "path": "src/lib.rs", "token": "s3cret" }),
+            ),
+            MockStreamEvent::final_response_with_default_usage(),
+        ],
+        reply("Done."),
+    ]);
+    let (out, stderr) = (Lines::default(), Lines::default());
+    let invoked = Invocation {
+        print: Some("Read it.".to_owned()),
+        ..Invocation::default()
+    };
+    let (mut app, _) = noting(&MemoryStore::default(), invoked);
+    let writer = Writer::inline(out.clone(), stderr.clone());
+    app.insert_resource(scripted_models([(MODEL, &model)]))
+        .insert_resource(Printed::by(writer, None, err))
+        .add_plugins((ExitPlugin, PrintPlugin))
+        .add_open_tool(
+            "read",
+            "Read a file.",
+            ToolOptions::default(),
+            |called: On<ToolCalled<Value>>, mut commands: Commands| {
+                commands.entity(called.call).insert((
+                    ToolProgress("halfway".to_owned()),
+                    Outcome::from(rig_core::tool::ToolResult::success("Read.".into())),
+                ));
+            },
+        );
+    app.finish();
+    app.cleanup();
+    run_until(&mut app, |_| false);
+    (out.text().join("\n"), stderr.text().join("\n"))
+}
+
+#[test]
+fn a_terminal_stderr_shows_the_narration_and_each_call_and_progress_is_no_error() {
+    let terminal = Terminal {
+        width: Some(80),
+        color: false,
+    };
+    let (out, err) = narrated_run(Some(terminal));
+    assert_eq!(out, "Done.");
+    let narration = err.find("Looking at the file first.");
+    let call = err.find("· read src/lib.rs");
+    assert!(narration.zip(call).is_some_and(|(n, c)| n < c), "{err}");
+    assert!(!err.contains("s3cret") && !err.contains("Done."), "{err}");
+    assert!(err.lines().any(|line| line == "read: halfway"), "{err}");
+    assert!(!err.contains("rig: "), "{err}");
+    // Not a terminal: neither the narration nor the call lines.
+    let (out, err) = narrated_run(None);
+    assert_eq!(out, "Done.");
+    assert_eq!(err, "read: halfway");
+}

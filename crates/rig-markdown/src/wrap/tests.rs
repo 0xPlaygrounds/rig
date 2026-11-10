@@ -1,5 +1,5 @@
-use ratatui::style::Style;
-use ratatui::text::Line;
+use ratatui_core::style::Style;
+use ratatui_core::text::Line;
 
 use super::{join, words, wrap};
 
@@ -47,7 +47,7 @@ fn a_line_wraps_by_its_text_alone_however_its_spans_split_it() {
     let (dim, bold) = (Style::new().dim(), Style::new().bold());
     let pieces = text.chars().enumerate().map(|(at, ch)| {
         let style = if at % 2 == 0 { dim } else { bold };
-        ratatui::text::Span::styled(ch.to_string(), style)
+        ratatui_core::text::Span::styled(ch.to_string(), style)
     });
     let split = Line::from(pieces.collect::<Vec<_>>());
     let rows = |line: &Line<'_>, width| {

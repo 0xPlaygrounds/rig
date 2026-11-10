@@ -1,0 +1,19 @@
+[package]
+name = "rig-markdown"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT"
+readme = "README.md"
+description = "Markdown drawn as styled lines and word wrapping to a width, shared by the rig coding agent's terminal view and its print mode."
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[lints]
+workspace = true
+
+[dependencies]
+pulldown-cmark = { workspace = true }
+# Styled lines, spans and their widths, without a terminal backend.
+ratatui-core = { workspace = true }
+unicode-segmentation = { workspace = true }
+unicode-width = { workspace = true }

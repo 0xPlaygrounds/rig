@@ -348,16 +348,8 @@ impl DrawnLine {
 }
 
 /// How a [`DrawnRow`] continues the row before it, the view having
-/// wrapped one line into both: the line is the row before, then `gap`,
-/// then this row's text past its `indent`.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct RowWrap {
-    /// The blanks the wrap dropped at the break.
-    pub gap: String,
-    /// How many spaces the row starts with that the line does not have,
-    /// such as those keeping a list item's wrapped text under its text.
-    pub indent: usize,
-}
+/// wrapped one line into both.
+pub use rig_markdown::wrap::RowWrap;
 
 impl DrawnRow {
     /// How many matches of every highlight the view lit in it.

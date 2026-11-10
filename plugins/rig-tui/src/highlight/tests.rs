@@ -16,7 +16,7 @@ fn whole(text: &str, path: &str) -> Vec<Vec<Span<'static>>> {
         return Vec::new();
     };
     let mut parser = HighlightLines::new(syntax, &THEME);
-    let lines = LinesWithEndings::from(text).map(|line| spans(&mut parser, line));
+    let lines = rig_markdown::code::lines(text).map(|line| spans(&mut parser, line));
     lines.map(Option::unwrap_or_default).collect()
 }
 

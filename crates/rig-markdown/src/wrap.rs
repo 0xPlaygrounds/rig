@@ -1,18 +1,33 @@
-//! Word wrapping of styled lines to a width, as the transcript wraps its
-//! rows: at word boundaries, a list item's continuation rows under its
-//! text. A plugin drawing its own lines wraps them with [`wrap_all`] to
-//! look the same.
+//! Word wrapping of styled lines to a width: at word boundaries, a list
+//! item's continuation rows under its text.
+//!
+//! ```
+//! use ratatui_core::text::Line;
+//! use rig_markdown::wrap::wrap_all;
+//!
+//! let rows = wrap_all(&[Line::from("one two three")], 8);
+//! assert_eq!(rows.len(), 2);
+//! ```
 
-use ratatui::style::Style;
-use ratatui::text::{Line, Span};
+use ratatui_core::style::Style;
+use ratatui_core::text::{Line, Span};
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
-
-use crate::RowWrap;
 
 /// Markers after which a wrapped line's continuation rows are indented, so
 /// a list item or a tool result keeps its left edge.
 const HANGING_MARKERS: [&str; 5] = ["•", "-", "*", "›", ">"];
+
+/// How a wrapped row continues the row before it: the line is the row
+/// before, then `gap`, then this row's text past its `indent`.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct RowWrap {
+    /// The blanks the wrap dropped at the break.
+    pub gap: String,
+    /// How many spaces the row starts with that the line does not have,
+    /// such as those keeping a list item's wrapped text under its text.
+    pub indent: usize,
+}
 
 /// `line` wrapped at word boundaries into rows at most `width` columns
 /// wide, each with how it continues the row before it (`None` for the
