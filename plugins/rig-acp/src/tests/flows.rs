@@ -566,6 +566,108 @@ fn a_loaded_session_replays_its_history_as_it_went_and_a_resumed_one_does_not() 
     assert!(router.is_some());
 }
 
+/// The updates of `session` among `events`.
+fn updates_in(events: &[Event], session: &acp::SessionId) -> Vec<acp::SessionUpdate> {
+    let updates = events.iter().filter_map(|event| match event {
+        Event::Update(of, update) if of == session => Some(update.clone()),
+        _ => None,
+    });
+    updates.collect()
+}
+
+#[test]
+fn a_session_the_client_has_open_loads_with_its_history_first_and_resumes_without() {
+    let place = Place::new("reattach");
+    let router = drive(&place, acp::ClientCapabilities::new(), async |driven| {
+        let new = driven.new_session(Vec::new()).await;
+        assert!(new.is_some(), "no session");
+        let Some(new) = new else { return };
+        let id = new.session_id;
+        assert!(driven.model(&id, "test/reply").await);
+        assert!(driven.prompt(&id, "Say something.").await.is_ok());
+        // Loaded while open: its history, then the answer, an object.
+        let before = driven.seen().events.len();
+        let load = acp::LoadSessionRequest::new(id.clone(), &driven.project);
+        let loaded = driven.reopen(&id, load).await;
+        let loaded = loaded.ok().and_then(|it| serde_json::to_value(it).ok());
+        assert!(loaded.is_some_and(|it| it.is_object()));
+        let after: Vec<_> = driven.seen().events.iter().skip(before).cloned().collect();
+        let answered = after
+            .iter()
+            .position(|event| matches!(event, Event::Opened(of) if *of == id));
+        let history = after
+            .get(..answered.unwrap_or_default())
+            .unwrap_or_default();
+        let user = updates_in(history, &id).into_iter().any(|update| {
+            matches!(update, acp::SessionUpdate::UserMessageChunk(chunk)
+                if text(&chunk.content).as_deref() == Some("Say something."))
+        });
+        assert!(answered.is_some() && user, "{after:?}");
+        // Resumed while open: the answer, and no history.
+        let before = driven.seen().events.len();
+        let resume = acp::ResumeSessionRequest::new(id.clone(), &driven.project);
+        assert!(driven.reopen(&id, resume).await.is_ok());
+        let after: Vec<_> = driven.seen().events.iter().skip(before).cloned().collect();
+        let replayed = updates_in(&after, &id).into_iter().any(|update| {
+            matches!(
+                update,
+                acp::SessionUpdate::UserMessageChunk(_)
+                    | acp::SessionUpdate::AgentMessageChunk(_)
+                    | acp::SessionUpdate::ToolCall(_)
+            )
+        });
+        assert!(!replayed, "{after:?}");
+        assert!(driven.prompt(&id, "Again.").await.is_ok());
+        // Mid-turn a load, whose history would lack the turn, is refused; a
+        // resume attaches, and the prompt goes on until cancelled.
+        assert!(driven.model(&id, "test/wait").await);
+        let prompt = tokio::spawn(driven.send(&id, "Wait."));
+        let running = |seen: &Seen| {
+            seen.events.iter().any(|event| {
+                matches!(event, Event::Update(of, acp::SessionUpdate::ToolCallUpdate(update))
+                if *of == id && update.fields.status == Some(acp::ToolCallStatus::InProgress))
+            })
+        };
+        assert!(driven.until(running).await);
+        let load = acp::LoadSessionRequest::new(id.clone(), &driven.project);
+        let refused = driven.reopen(&id, load).await;
+        assert!(
+            refused
+                .as_ref()
+                .is_err_and(|error| error.message.contains("busy")),
+            "{refused:?}"
+        );
+        let resume = acp::ResumeSessionRequest::new(id.clone(), &driven.project);
+        assert!(driven.reopen(&id, resume).await.is_ok());
+        driven
+            .cx
+            .send_notification(acp::CancelNotification::new(id.clone()))
+            .ok();
+        let answer = prompt.await.ok().and_then(Result::ok);
+        assert_eq!(answer, Some(acp::StopReason::Cancelled));
+        // Other MCP servers, or another directory, are refused.
+        let load = acp::LoadSessionRequest::new(id.clone(), &driven.project)
+            .mcp_servers(vec![stub_with("files", Vec::new())]);
+        let refused = driven.reopen(&id, load).await;
+        assert!(
+            refused
+                .as_ref()
+                .is_err_and(|error| error.message.contains("other MCP servers")),
+            "{refused:?}"
+        );
+        let load = acp::LoadSessionRequest::new(id.clone(), &place.root);
+        let refused = driven.reopen(&id, load).await;
+        assert!(
+            refused
+                .as_ref()
+                .is_err_and(|error| error.message.contains("runs in")),
+            "{refused:?}"
+        );
+        assert!(driven.prompt(&id, "Still here.").await.is_ok());
+    });
+    assert!(router.is_some());
+}
+
 #[test]
 fn a_client_mcp_server_serves_the_model_and_a_failing_one_is_told_after_the_session_opens() {
     let place = Place::new("mcp");

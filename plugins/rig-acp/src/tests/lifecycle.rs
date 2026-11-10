@@ -176,8 +176,9 @@ fn a_loaded_session_shows_each_call_under_its_live_id() {
                 .mcp_servers(vec![slow.clone()]);
             match driven.cx.send_request(load).block_task().await {
                 Ok(_) => loaded = true,
-                // Until the router cleaned up after the killed process.
-                Err(error) if error.message.contains("already open") => {
+                // Until the router cleaned up after the killed process, the
+                // load goes to it, which ended.
+                Err(error) if error.message.contains("ended before it answered") => {
                     tokio::time::sleep(Duration::from_millis(50)).await;
                     continue;
                 }

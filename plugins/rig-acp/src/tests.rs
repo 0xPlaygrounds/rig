@@ -552,7 +552,8 @@ struct Seen {
 #[derive(Clone, Debug)]
 enum Event {
     Update(acp::SessionId, acp::SessionUpdate),
-    /// The answer to `session/new`, where it came among the updates.
+    /// The answer to a request that opens the session, where it came among
+    /// the updates.
     Opened(acp::SessionId),
     /// The answer to a prompt of the session, where it came among them.
     Answered(acp::SessionId),
@@ -632,6 +633,33 @@ impl Driven {
             });
         ordered.ok()?;
         answer.await.ok()?.ok()
+    }
+
+    /// Sends `request`, which opens `session` again; the answer, once it
+    /// comes, noted where it came among the updates.
+    async fn reopen<Request>(
+        &self,
+        session: &acp::SessionId,
+        request: Request,
+    ) -> Result<Request::Response, agent_client_protocol::Error>
+    where
+        Request: agent_client_protocol::JsonRpcRequest,
+    {
+        let (answered, answer) = tokio::sync::oneshot::channel();
+        let (seen, id) = (self.seen.clone(), session.clone());
+        self.cx
+            .prepare_request(request)
+            .on_receiving_result(async move |result| {
+                let mut seen = seen
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                seen.events.push(Event::Opened(id));
+                answered.send(result).ok();
+                Ok(())
+            })?;
+        answer
+            .await
+            .map_err(|_| agent_client_protocol::Error::internal_error())?
     }
 
     /// Picks the model `model` for `session`.
