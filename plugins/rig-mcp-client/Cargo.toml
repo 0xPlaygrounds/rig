@@ -32,7 +32,11 @@ serde_json = { workspace = true, features = ["preserve_order"] }
 tokio = { workspace = true, features = ["rt", "process", "time"] }
 
 [dev-dependencies]
+# The streamable HTTP server the loopback test serves.
+axum = { workspace = true }
 # The headless run its tests drive.
 rig-basics = { path = "../rig-basics", default-features = false }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support", default-features = false }
+rmcp = { workspace = true, features = ["server", "transport-streamable-http-server"] }
+tokio = { workspace = true, features = ["net", "rt-multi-thread"] }
