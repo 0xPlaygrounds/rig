@@ -364,6 +364,99 @@ fn strict_tools_opt_in_marks_and_sanitizes_rig_tools_only() {
     assert!(provider_tool.get("strict").is_none());
 }
 
+/// The `input_schema` the encoder sends for a non-strict tool taking
+/// `parameters`.
+fn sent_input_schema(parameters: Value) -> Value {
+    let mut tool = generic_tool("act");
+    tool.parameters = parameters;
+    let body = request_body(Params {
+        model: CLAUDE_SONNET_4_6,
+        request: completion_request_with_tools(vec![tool], None),
+        prompt_caching: false,
+        cache: None,
+        static_prefix_cache_ttl: None,
+    })
+    .expect("the request encodes");
+    body["tools"][0]["input_schema"].clone()
+}
+
+/// Anthropic answers 400 for a tool whose `input_schema` root has no
+/// `type: "object"` or has an `anyOf`, `oneOf` or `allOf` ("input_schema
+/// does not support oneOf, allOf, or anyOf at the top level"). The root's
+/// combinators and `not` go under `not: {not: ...}`, which accepts the same
+/// inputs, and the rest of the root stays as written. A unit test because
+/// the rejection is the request shape, and every recorded body pins it.
+#[test]
+fn root_combinators_of_a_tool_schema_go_under_a_double_not() {
+    #[derive(serde::Deserialize, schemars::JsonSchema)]
+    #[allow(dead_code)]
+    enum Shape {
+        Circle { radius: f64 },
+        Square { side: f64 },
+    }
+    #[derive(serde::Deserialize, schemars::JsonSchema)]
+    #[allow(dead_code)]
+    struct Edit {
+        path: String,
+        #[serde(flatten)]
+        operation: Operation,
+    }
+    #[derive(serde::Deserialize, schemars::JsonSchema)]
+    #[serde(tag = "op", rename_all = "snake_case")]
+    #[allow(dead_code)]
+    enum Operation {
+        Read { limit: usize },
+        Write { text: String },
+    }
+
+    let shape = crate::tool::args_schema::<Shape>();
+    let one_of = shape["oneOf"].clone();
+    assert!(one_of.is_array() && shape.get("type").is_none());
+    assert_eq!(
+        sent_input_schema(shape),
+        json!({"type": "object", "not": {"not": {"oneOf": one_of}}})
+    );
+
+    let mut edit = crate::tool::args_schema::<Edit>();
+    let one_of = remove_preserving_order(edit.as_object_mut().expect("an object schema"), "oneOf")
+        .expect("a flattened enum gives a root oneOf");
+    let mut expected = edit.clone();
+    expected["not"] = json!({"not": {"oneOf": one_of}});
+    edit["oneOf"] = expected["not"]["not"]["oneOf"].clone();
+    assert_eq!(sent_input_schema(edit), expected);
+
+    let base = json!({"properties": {"code": {"type": "string"}}, "required": ["code"]});
+    let tenant = json!({"properties": {"tenant": {"type": "string"}}, "required": ["tenant"]});
+    let forbidden = json!({"required": ["force"]});
+    assert_eq!(
+        sent_input_schema(json!({
+            "type": "object",
+            "allOf": [base, tenant],
+            "anyOf": [base, tenant],
+            "not": forbidden,
+        })),
+        json!({
+            "type": "object",
+            "not": {"not": {"anyOf": [base, tenant], "allOf": [base, tenant], "not": forbidden}},
+        })
+    );
+}
+
+/// A tool schema with no root combinator is sent as written, combinators
+/// below the root included.
+#[test]
+fn tool_schema_without_a_root_combinator_is_sent_as_written() {
+    for schema in [
+        json!({"type": "object", "properties": {"q": {"type": "string"}}, "required": ["q"]}),
+        json!({
+            "type": "object",
+            "properties": {"id": {"anyOf": [{"type": "string"}, {"type": "integer"}]}},
+        }),
+    ] {
+        assert_eq!(sent_input_schema(schema.clone()), schema);
+    }
+}
+
 fn system_has_cache_control(value: &serde_json::Value) -> bool {
     value["system"]
         .as_array()
