@@ -74,6 +74,9 @@ other transport. OAuth sign-in for remote servers is not supported; a server
 that takes a token in a header works. The files are JSON: one with comments
 is refused.
 
+Rig offers MCP protocol version `2025-11-25`, the newest released one, and
+speaks an older one when a server asks for it.
+
 [INTEROP.md](INTEROP.md) lists the servers rig was run against, with their
 versions and the date.
 
