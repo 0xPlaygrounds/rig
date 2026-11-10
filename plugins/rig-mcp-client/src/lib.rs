@@ -50,7 +50,9 @@ use rig_harness::host::pipes::{Limited, TooLarge};
 use rig_harness::prelude::*;
 use rig_harness::rig_tools::process::{self, Process};
 use rig_rmcp::{McpConnection, McpTool};
-use rmcp::model::{ClientCapabilities, ClientConfig, Implementation, Tool as McpDefinition};
+use rmcp::model::{
+    ClientCapabilities, ClientConfig, Implementation, ProtocolVersion, Tool as McpDefinition,
+};
 use rmcp::service::{NotificationContext, RoleClient};
 use rmcp::transport::StreamableHttpClientTransport;
 use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
@@ -866,9 +868,12 @@ async fn list(
 struct Listener(Sender<()>);
 
 impl ClientHandler for Listener {
+    /// Offers the newest released protocol version, not rmcp's draft
+    /// `LATEST`: some servers accept a draft offer and then refuse the session.
     fn get_info(&self) -> ClientConfig {
         let rig = Implementation::new("rig", env!("CARGO_PKG_VERSION"));
         ClientConfig::new(ClientCapabilities::default(), rig)
+            .with_protocol_version(ProtocolVersion::LATEST_WITH_INITIALIZE)
     }
 
     async fn on_tool_list_changed(&self, _: NotificationContext<RoleClient>) {

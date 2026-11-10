@@ -51,6 +51,11 @@ const HANGS: &str = "RIG_MCP_HANGS";
 /// list of tools describes `add` at length.
 const LONG: &str = "RIG_MCP_LONG";
 
+/// When set, the stub refuses an `initialize` that offers any protocol
+/// version but the latest released one, as a server that knows only that
+/// one does.
+const RELEASED: &str = "RIG_MCP_RELEASED";
+
 /// The model a headless run chooses.
 const MODEL: &str = "test/model";
 
@@ -172,7 +177,18 @@ fn stub() {
             }
             _ => json!({}),
         };
+        let offered = params.get("protocolVersion").and_then(Value::as_str);
         let answer = match (request.get("method"), std::env::var_os(NO_TOOLS)) {
+            (Some(method), _)
+                if method == "initialize"
+                    && std::env::var_os(RELEASED).is_some()
+                    && offered != Some("2025-11-25") =>
+            {
+                json!({
+                    "jsonrpc": "2.0", "id": id,
+                    "error": { "code": -32602, "message": format!("Unsupported protocol version {offered:?}") },
+                })
+            }
             (Some(method), Some(_)) if method == "tools/list" => json!({
                 "jsonrpc": "2.0", "id": id,
                 "error": { "code": -32601, "message": "Method not found" },
@@ -1005,6 +1021,24 @@ fn a_server_that_offers_no_tools_connects_with_none() {
     let told = notices(app.world());
     assert!(
         told.contains(&"MCP server `docs` connected: 0 tools.".to_owned()),
+        "{told:?}"
+    );
+    std::fs::remove_dir_all(project).ok();
+}
+
+#[test]
+fn a_server_that_knows_only_the_released_protocol_connects() {
+    let project = project("released");
+    let server = stub_server(json!({ RELEASED: "1" }));
+    write_servers(&project.join("home/mcp.json"), json!({ "gh": server }));
+    let (mut app, wakes) = app_in(&project, "[mcp]\nfirst_retry_secs = 3600", None);
+    app.finish();
+    run_until(&mut app, &wakes, |world| {
+        notices(world).iter().any(|notice| notice.contains("`gh`"))
+    });
+    let told = notices(app.world());
+    assert!(
+        told.contains(&"MCP server `gh` connected: 2 tools.".to_owned()),
         "{told:?}"
     );
     std::fs::remove_dir_all(project).ok();
