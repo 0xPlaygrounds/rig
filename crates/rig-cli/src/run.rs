@@ -185,7 +185,7 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
 /// `plugins.toml` without `[plugins]`, `defaults.json` without `[model]`.
 /// The files are never changed. A `settings.toml` rig cannot read refuses
 /// the start before this.
-fn legacy_files(home: &Home) -> Vec<String> {
+fn legacy_warnings(home: &Home) -> Vec<String> {
     let settings = home.settings();
     let Ok(file) = SettingsFile::read(&settings) else {
         return Vec::new();
@@ -194,21 +194,23 @@ fn legacy_files(home: &Home) -> Vec<String> {
         (
             "plugins.toml",
             "plugins",
-            "its plugin list: `enable` and `disable` for rig's plugins, and \
-             [[plugins.extra]] for other crates; `rig plugin list` shows them",
+            "plugin list goes",
+            "`enable` and `disable` for rig's plugins, [[plugins.extra]] for other crates; \
+             `rig plugin list` shows what is on",
         ),
         (
             "defaults.json",
             "model",
-            "its model and effort: `default` and `effort`",
+            "model and effort go",
+            "`default` and `effort`",
         ),
     ]
     .into_iter()
-    .filter(|(old, table, _)| home.root().join(old).exists() && !file.document.contains_key(table))
-    .map(|(old, table, what)| {
+    .filter(|(old, table, ..)| home.root().join(old).exists() && !file.document.contains_key(table))
+    .map(|(old, table, what, keys)| {
         format!(
-            "{} is from rig 0.46 or earlier and is no longer read. Put {what} in [{table}] of {}. \
-             rig leaves the file as it is.",
+            "{} is from rig 0.46 or earlier and rig no longer reads it: its {what} in \
+             [{table}] of {} now ({keys}). rig leaves the file as it is.",
             home.root().join(old).display(),
             settings.display(),
         )
@@ -298,7 +300,7 @@ fn launch(
         ..invocation.clone()
     };
     let mut invocation: &Invocation = invocation;
-    let mut legacy = legacy_files(home);
+    let mut legacy = legacy_warnings(home);
     loop {
         let left = switched_from.take();
         let session = claimed.id.clone();
