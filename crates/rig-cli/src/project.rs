@@ -254,8 +254,9 @@ pub fn rig_version(source: &RigSource) -> String {
 /// the launcher can tell without cargo: the agent project generated from
 /// the settings and source of now is the one on disk, and `binary` is
 /// newer than its files and than every source file the last agent build
-/// read ([`dep_info`]), a checkout's and a path plugin's included. False
-/// when that cannot be read.
+/// read ([`dep_info`]), a checkout's and a path plugin's included, each
+/// listed by its canonical path. False when that cannot be read, or the
+/// dep-info file lists no source.
 pub fn is_current(home: &Home, binary: &Path) -> bool {
     let current = || -> Result<bool> {
         let plugins = config::chosen(home)?;
@@ -273,8 +274,11 @@ pub fn is_current(home: &Home, binary: &Path) -> bool {
                 && fs::read_to_string(&path).is_ok_and(|written| written == text)
                 && not_newer(&path)?;
         }
-        for path in sources(&fs::read_to_string(dep_info(home))?) {
-            same = same && not_newer(&path)?;
+        let listed = sources(&fs::read_to_string(dep_info(home))?)
+            .ok_or("the agent's dep-info file lists no source")?;
+        // A path through a link may read another tree now, with older files.
+        for path in listed {
+            same = same && fs::canonicalize(&path)? == path && not_newer(&path)?;
         }
         Ok(same)
     };
@@ -288,15 +292,9 @@ pub fn dep_info(home: &Home) -> PathBuf {
 }
 
 /// The paths a dep-info file lists after its target's `: `; a space in a
-/// path is written `\ `.
-fn sources(dep_info: &str) -> Vec<PathBuf> {
-    let Some((_, listed)) = dep_info
-        .lines()
-        .next()
-        .and_then(|line| line.split_once(": "))
-    else {
-        return Vec::new();
-    };
+/// path is written `\ `. `None` when it lists none.
+fn sources(dep_info: &str) -> Option<Vec<PathBuf>> {
+    let (_, listed) = dep_info.lines().next()?.split_once(": ")?;
     let mut paths = Vec::new();
     let mut path = String::new();
     let mut chars = listed.chars();
@@ -311,7 +309,7 @@ fn sources(dep_info: &str) -> Vec<PathBuf> {
     if !path.is_empty() {
         paths.push(PathBuf::from(path));
     }
-    paths
+    (!paths.is_empty()).then_some(paths)
 }
 
 /// Writes the agent project with the plugins on of `plugins`.

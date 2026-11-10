@@ -214,9 +214,10 @@ fn an_unknown_command_builds_once_and_is_refused_from_the_report_after() {
             &format!(
                 "echo \"$1\" >> {calls}\n\
                  [ \"$1\" = build ] || exit 0\n\
-                 out=\"$RIG_HOME/target/debug\"\n\
+                 home=$(cd \"$RIG_HOME\" && pwd -P)\n\
+                 out=\"$home/target/debug\"\n\
                  mkdir -p \"$out\" && cp {agent} \"$out/rig-harness-agent\"\n\
-                 printf '%s: %s\\n' \"$out/rig-harness-agent\" \"$RIG_HOME/project/src/main.rs\" \
+                 printf '%s: %s\\n' \"$out/rig-harness-agent\" \"$home/project/src/main.rs\" \
                  > \"$out/rig-harness-agent.d\"",
                 calls = calls.display(),
                 agent = tools.join("agent").display(),

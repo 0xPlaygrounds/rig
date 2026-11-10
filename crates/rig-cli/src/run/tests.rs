@@ -795,7 +795,9 @@ fn an_unknown_command_is_refused_before_the_build_only_while_that_build_is_curre
             project::generate(&home, &plugins, &source).map_err(|why| why.to_string())
         });
     // What cargo lists as read by the build.
+    // By its canonical path, as cargo lists sources.
     let main = home.project().join("src/main.rs");
+    let main = fs::canonicalize(&main).unwrap_or(main);
     fs::create_dir_all(home.target().join("debug")).ok();
     let listed = format!("{}: {}\n", home.staged().display(), main.display());
     fs::write(project::dep_info(&home), listed).ok();

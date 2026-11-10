@@ -1,3 +1,5 @@
+use std::time::{Duration, SystemTime};
+
 use crate::LONG_VERSION;
 use rig_harness_protocol::config::SettingsFile;
 
@@ -277,58 +279,117 @@ fn the_version_names_the_commit_of_the_checkout_it_was_built_in() {
     assert_eq!(LONG_VERSION, expected);
 }
 
-/// A build stays current until a source file it read changes: here a path
-/// plugin's, as when one `rig plugin new` made gains a command.
-#[test]
-fn a_build_is_not_current_once_a_source_it_read_changes() {
-    use std::time::{Duration, SystemTime};
-
-    let root = std::env::temp_dir().join(format!("rig-current-{}", std::process::id()));
-    fs::remove_dir_all(&root).ok();
+/// A home whose settings turn on a path plugin at `plugin` (a directory,
+/// or a link to one) and whose good build read its `src/lib.rs`: the
+/// project generated, the dep-info file written, then the build, later
+/// than every file. Returns the home and the build.
+fn built_with_plugin(root: &Path, plugin: &Path) -> (Home, PathBuf) {
     let home = Home::at(root.join("home"));
-    let plugin = root.join("my foo");
-    let lib = plugin.join("src/lib.rs");
-    fs::create_dir_all(plugin.join("src")).ok();
     fs::create_dir_all(home.bin()).ok();
-    fs::write(plugin.join("Cargo.toml"), "[package]\nname = \"foo\"\n").ok();
-    fs::write(&lib, "").ok();
     let settings = format!(
         "[[plugins.extra]]\ncrate = \"foo\"\npath = {}\nplugin = \"foo::FooPlugin\"\n",
-        quoted_path(&plugin)
+        quoted_path(plugin)
     );
     fs::write(home.settings(), settings).ok();
-    let generated = config::chosen(&home)
-        .map_err(|why| why.to_string())
-        .and_then(|plugins| {
-            let source = RigSource::detect().map_err(|why| why.to_string())?;
-            generate(&home, &plugins, &source).map_err(|why| why.to_string())
-        });
+    if let (Ok(plugins), Ok(source)) = (config::chosen(&home), RigSource::detect()) {
+        generate(&home, &plugins, &source).ok();
+    }
     let escaped = |path: &Path| path.display().to_string().replace(' ', "\\ ");
     let binary = home.good();
     let listed = format!(
         "{}: {} {}\n",
         escaped(&binary),
         escaped(&home.project().join("src/main.rs")),
-        escaped(&lib)
+        escaped(&plugin.join("src/lib.rs"))
     );
     if let Some(parent) = dep_info(&home).parent() {
         fs::create_dir_all(parent).ok();
     }
     fs::write(dep_info(&home), listed).ok();
-    let built = SystemTime::now() + Duration::from_secs(5);
-    let touch = |path: &Path, when: SystemTime| {
-        fs::File::options()
-            .write(true)
-            .open(path)
-            .and_then(|file| file.set_modified(when))
-            .ok();
-    };
     fs::write(&binary, "").ok();
-    touch(&binary, built);
+    touch(&binary, SystemTime::now() + Duration::from_secs(5));
+    (home, binary)
+}
+
+/// A crate `foo` with an empty `src/lib.rs` in `directory`.
+fn plugin_crate(directory: &Path) {
+    fs::create_dir_all(directory.join("src")).ok();
+    fs::write(directory.join("Cargo.toml"), "[package]\nname = \"foo\"\n").ok();
+    fs::write(directory.join("src/lib.rs"), "").ok();
+}
+
+/// The temporary directory by its canonical path, as cargo lists sources:
+/// it may be reached through a link.
+fn canonical_temp_dir() -> PathBuf {
+    let temp = std::env::temp_dir();
+    fs::canonicalize(&temp).unwrap_or(temp)
+}
+
+fn touch(path: &Path, when: SystemTime) {
+    fs::File::options()
+        .write(true)
+        .open(path)
+        .and_then(|file| file.set_modified(when))
+        .ok();
+}
+
+/// A build stays current until a source file it read changes: here a path
+/// plugin's, as when one `rig plugin new` made gains a command.
+#[test]
+fn a_build_is_not_current_once_a_source_it_read_changes() {
+    let root = canonical_temp_dir().join(format!("rig-current-{}", std::process::id()));
+    fs::remove_dir_all(&root).ok();
+    let plugin = root.join("my foo");
+    plugin_crate(&plugin);
+    let (home, binary) = built_with_plugin(&root, &plugin);
     let before = is_current(&home, &binary);
-    touch(&lib, built + Duration::from_secs(5));
+    touch(
+        &plugin.join("src/lib.rs"),
+        SystemTime::now() + Duration::from_secs(20),
+    );
     let after = is_current(&home, &binary);
     fs::remove_dir_all(&root).ok();
-    assert_eq!(generated, Ok(()));
     assert!(before && !after, "before {before}, after the edit {after}");
+}
+
+/// A dep-info file that lists no source, empty or cut short, proves
+/// nothing: the build does not count as current.
+#[test]
+fn a_build_whose_dep_info_lists_nothing_is_not_current() {
+    let root = canonical_temp_dir().join(format!("rig-depinfo-{}", std::process::id()));
+    fs::remove_dir_all(&root).ok();
+    let plugin = root.join("foo");
+    plugin_crate(&plugin);
+    let (home, binary) = built_with_plugin(&root, &plugin);
+    let mut current = Vec::new();
+    for text in [
+        "",
+        "\n",
+        "/home/rig/target/debug/rig-harness-agent:",
+        "target: \n",
+    ] {
+        fs::write(dep_info(&home), text).ok();
+        current.push((text, is_current(&home, &binary)));
+    }
+    fs::remove_dir_all(&root).ok();
+    assert!(current.iter().all(|(_, current)| !current), "{current:?}");
+}
+
+/// A path plugin reached through a link that now points at another crate
+/// is not what the build read, though that crate's files are older.
+#[cfg(unix)]
+#[test]
+fn a_build_whose_plugin_link_points_elsewhere_now_is_not_current() {
+    let root = canonical_temp_dir().join(format!("rig-relinked-{}", std::process::id()));
+    fs::remove_dir_all(&root).ok();
+    let (first, second, link) = (root.join("first"), root.join("second"), root.join("foo"));
+    plugin_crate(&first);
+    plugin_crate(&second);
+    std::os::unix::fs::symlink(&first, &link).ok();
+    let (home, binary) = built_with_plugin(&root, &link);
+    fs::remove_file(&link).ok();
+    std::os::unix::fs::symlink(&second, &link).ok();
+    let after = is_current(&home, &binary);
+    fs::remove_dir_all(&root).ok();
+    assert!(!after, "the build counts as current through the moved link");
 }
