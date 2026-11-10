@@ -77,9 +77,10 @@ pub mod env {
     pub const VERSION: &str = "RIG_VERSION";
     /// A line the agent shows at startup, such as a rollback.
     pub const NOTICE: &str = "RIG_NOTICE";
-    /// A line the agent warns of at startup, which a run nobody sits at
-    /// shows too: what the launcher changed of what was asked, such as a
-    /// resumed session's directory that is gone.
+    /// Lines the agent warns of at startup, a warning each, which a run
+    /// nobody sits at shows too: what the launcher changed of what was
+    /// asked, such as a resumed session's directory that is gone, and the
+    /// files of a rig 0.46 home it no longer reads.
     pub const WARNING: &str = "RIG_WARNING";
     /// Why the build before this start failed, so an older build runs:
     /// the reason and the first compiler errors. The whole output is in
