@@ -1694,11 +1694,16 @@ fn a_server_that_refuses_its_client_says_why_in_plain_words() {
         "barekeyed": { "type": "http", "url": format!("http://{address}/bare"), "headers": token },
         "garbled": { "type": "http", "url": format!("http://{address}/garbled") },
         "gone": { "type": "http", "url": format!("http://{closed}/mcp") },
+        "readonly": {
+            "type": "http",
+            "url": format!("http://{address}/mcp"),
+            "headers": { "X-MCP-Readonly": "true" },
+        },
     });
     write_servers(&project.join("home/mcp.json"), servers);
     let (mut app, wakes) = app_in(&project, "[mcp]\nfirst_retry_secs = 3600", None);
     app.finish();
-    run_until(&mut app, &wakes, |world| notices(world).len() == 7);
+    run_until(&mut app, &wakes, |world| notices(world).len() == 8);
     let (gone, mut told): (Vec<_>, Vec<_>) = notices(app.world())
         .into_iter()
         .partition(|notice| notice.starts_with("MCP server `gone`"));
@@ -1727,6 +1732,9 @@ fn a_server_that_refuses_its_client_says_why_in_plain_words() {
              value at line 1 column 1: <html>oops</html>).",
             "MCP server `keyed` could not connect: it refused the token in its `headers` \
                  (HTTP 401).",
+            "MCP server `readonly` could not connect: it asks for a sign-in (OAuth), which rig \
+             does not support. A server that takes a token in a header works: see \"Servers: \
+             `mcp.json`\" in the rig-mcp-client README.",
             "MCP server `scoped` could not connect: the token in its `headers` lacks a \
                  permission it needs (HTTP 403, insufficient scope).",
         ],

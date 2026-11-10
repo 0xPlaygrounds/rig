@@ -833,10 +833,9 @@ impl Start {
                 let config = StreamableHttpClientTransportConfig::with_uri(url.as_str())
                     .custom_headers(sent);
                 let transport = StreamableHttpClientTransport::from_config(config);
-                let service = client
-                    .serve(transport)
-                    .await
-                    .map_err(|error| unreached(error, !headers.is_empty()))?;
+                let service = client.serve(transport).await.map_err(|error| {
+                    unreached(error, headers.keys().any(|name| credential(name)))
+                })?;
                 (service, None)
             }
         };
@@ -865,17 +864,25 @@ async fn list(
         .map_err(|error| error.to_string())
 }
 
+/// Whether a configured header carries a credential: `Authorization`,
+/// `Proxy-Authorization`, or a name with `token`, `key`, `auth` or `secret` in it.
+fn credential(name: &str) -> bool {
+    let name = name.to_ascii_lowercase();
+    ["token", "key", "auth", "secret"]
+        .iter()
+        .any(|part| name.contains(part))
+}
+
 /// Why the MCP handshake with a server failed, in words without rmcp's
-/// transport type names. `headers` is whether rig sent the server's
-/// configured headers, where a token for it goes: a refusal then means that
-/// token, not a missing OAuth sign-in.
-fn unreached(error: ClientInitializeError, headers: bool) -> String {
+/// transport type names. `credential` is whether rig sent a [`credential`]
+/// header: a refusal then means that token, not a missing OAuth sign-in.
+fn unreached(error: ClientInitializeError, credential: bool) -> String {
     const HEADER_TOKEN: &str = "A server that takes a token in a header works: see \
                                 \"Servers: `mcp.json`\" in the rig-mcp-client README";
     const CLOSED: &str = "it closed the connection before it answered";
     let refused = || "it refused the token in its `headers` (HTTP 401)".to_owned();
     if error.is_authorization_required() {
-        return if headers {
+        return if credential {
             refused()
         } else {
             format!("it asks for a sign-in (OAuth), which rig does not support. {HEADER_TOKEN}")
@@ -886,7 +893,7 @@ fn unreached(error: ClientInitializeError, headers: bool) -> String {
             let error: &(dyn std::error::Error + 'static) = error.error.as_ref();
             let chain = || std::iter::successors(Some(error), |error| error.source());
             let scoped = chain().any(|error| error.is::<InsufficientScopeError>());
-            if headers && scoped {
+            if credential && scoped {
                 return "the token in its `headers` lacks a permission it needs \
                         (HTTP 403, insufficient scope)"
                     .to_owned();
@@ -904,7 +911,7 @@ fn unreached(error: ClientInitializeError, headers: bool) -> String {
             // JSON-RPC, only as this text.
             let said = why.strip_prefix("unexpected server response: ");
             if said.is_some_and(|said| said.starts_with("HTTP 401 ")) {
-                return if headers {
+                return if credential {
                     refused()
                 } else {
                     format!("it needs a token (HTTP 401). {HEADER_TOKEN}")
