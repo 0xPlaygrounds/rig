@@ -162,6 +162,37 @@ fn rejects_labels_that_decode_to_a_different_variant() {
     ));
 }
 
+/// A label `Choice::new` accepts decodes back into its value, string newtypes included.
+#[test]
+fn accepted_labels_decode_into_their_values() -> anyhow::Result<()> {
+    #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+    struct Team(String);
+    fn decodes<T: serde::de::DeserializeOwned + Serialize + Ord + Clone>(
+        first: T,
+        second: T,
+    ) -> anyhow::Result<()> {
+        let choice = Choice::new("Choose", [(first.clone(), "One"), (second.clone(), "Two")])?;
+        let [Value::String(a), Value::String(b)] = [
+            serde_json::to_value(&first)?,
+            serde_json::to_value(&second)?,
+        ] else {
+            anyhow::bail!("labels serialize to strings");
+        };
+        let answer = choice.decode(serde_json::from_value(json!({
+            "type": "choice",
+            "choice": a,
+            "probabilities": BTreeMap::from([(a.clone(), 0.75), (b, 0.25)]),
+            "confidence": 0.5
+        }))?)?;
+        ensure!(answer.choice == first);
+        ensure!(answer.probabilities.get(&second) == Some(&0.25));
+        Ok(())
+    }
+    decodes(Team("billing".into()), Team("other".into()))?;
+    decodes("billing".to_owned(), "other".to_owned())?;
+    decodes(Route::Billing, Route::Other)
+}
+
 /// Replays structured criteria accepted by Jev, including an undescribed choice.
 #[tokio::test]
 async fn recorded_structured_batch_into_named_answers() -> anyhow::Result<()> {
