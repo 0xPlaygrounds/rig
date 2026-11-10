@@ -121,6 +121,19 @@ async fn exited(process: &mut Process) {
     }
 }
 
+/// Refuses session `id`, which runs in `directory`, for a client in `cwd`.
+fn runs_in(id: &SessionId, directory: &Path, cwd: &Path) -> Result<(), Error> {
+    let directory = canonical(directory);
+    match directory == cwd {
+        true => Ok(()),
+        false => Err(invalid(format!(
+            "session {id} runs in {}, not {}",
+            directory.display(),
+            cwd.display()
+        ))),
+    }
+}
+
 /// An error the client gets for one of the router's own failures.
 fn internal(why: impl ToString) -> Error {
     crate::error(Error::internal_error(), why)
@@ -304,6 +317,7 @@ impl Router {
     }
 
     /// The saved session `id`, locked for this router, if it runs in `cwd`.
+    /// One another rig has open is refused: that process owns its log.
     fn saved(&self, id: &acp::SessionId, cwd: &Path) -> Result<(SessionId, File), Error> {
         let id = SessionId::from_str(&id.0).map_err(invalid)?;
         if locked(&self.sessions).contains_key(id.as_str()) {
@@ -316,21 +330,28 @@ impl Router {
         let lock = dir.hold().map_err(internal)?;
         let lock = lock.ok_or_else(|| invalid(format!("session {id} is open in another rig")))?;
         match dir.working_directory() {
-            Some(directory) => {
-                let directory = canonical(&directory);
-                if directory != cwd {
-                    return Err(invalid(format!(
-                        "session {id} runs in {}, not {}",
-                        directory.display(),
-                        cwd.display()
-                    )));
-                }
-            }
-            None => {
-                dir.set_working_directory(cwd).map_err(internal)?;
-            }
+            Some(directory) => runs_in(&id, &directory, cwd)?,
+            None => dir.set_working_directory(cwd).map_err(internal)?,
         }
         Ok((id, lock))
+    }
+
+    /// Whether this router runs `id`, opened: not being opened by a load or
+    /// resume, which refuses another.
+    fn is_open(&self, id: &acp::SessionId) -> bool {
+        let opening = locked(&self.opening).contains_key(id.0.as_ref());
+        !opening && locked(&self.sessions).contains_key(id.0.as_ref())
+    }
+
+    /// The process of `id` when this router runs it and `cwd`, the client's
+    /// directory, is the session's.
+    fn reattached(&self, id: &acp::SessionId, cwd: &Path) -> Result<Arc<Child>, Error> {
+        let child = self.child(id)?;
+        let id = SessionId::from_str(&id.0).map_err(invalid)?;
+        if let Some(directory) = self.home.session(&id).working_directory() {
+            runs_in(&id, &directory, cwd)?;
+        }
+        Ok(child)
     }
 
     /// The saved sessions, newest first, of `cwd` when given.
@@ -566,6 +587,10 @@ async fn serve(router: Arc<Router>, stopped: oneshot::Receiver<()>) -> Result<()
         .on_receive_request(
             async move |request: acp::LoadSessionRequest, responder, cx| {
                 let at = (request.cwd.clone(), request.additional_directories.clone());
+                if load.is_open(&request.session_id) {
+                    let id = request.session_id.clone();
+                    return reattach(&load, &id, request, responder, at);
+                }
                 let id = request.session_id.clone();
                 let found = move |router: &Router, cwd: &Path| router.saved(&id, cwd);
                 let key = Some(request.session_id.clone());
@@ -576,6 +601,10 @@ async fn serve(router: Arc<Router>, stopped: oneshot::Receiver<()>) -> Result<()
         .on_receive_request(
             async move |request: acp::ResumeSessionRequest, responder, cx| {
                 let at = (request.cwd.clone(), request.additional_directories.clone());
+                if resume.is_open(&request.session_id) {
+                    let id = request.session_id.clone();
+                    return reattach(&resume, &id, request, responder, at);
+                }
                 let id = request.session_id.clone();
                 let found = move |router: &Router, cwd: &Path| router.saved(&id, cwd);
                 let key = Some(request.session_id.clone());
@@ -744,6 +773,28 @@ where
         }
         Ok(())
     })
+}
+
+/// Answers a load or resume of `child`'s session, which the client has open
+/// already, in the client's directory `at`: the session's process answers
+/// it as it answered its opening.
+fn reattach<Request>(
+    router: &Router,
+    id: &acp::SessionId,
+    request: Request,
+    responder: Responder<Request::Response>,
+    (cwd, others): (PathBuf, Vec<PathBuf>),
+) -> Result<(), Error>
+where
+    Request: agent_client_protocol::JsonRpcRequest + Send + 'static,
+{
+    let checked = refuse_directories(&others)
+        .and_then(|()| Router::cwd(&cwd))
+        .and_then(|cwd| router.reattached(id, &cwd));
+    match checked {
+        Ok(child) => forward_request(&child, request, responder),
+        Err(error) => responder.respond_with_error(error),
+    }
 }
 
 /// Refuses directories besides the session's, which rig does not take.

@@ -37,9 +37,11 @@ to use a new one.
   fallback ACP defines.
 - **Sessions:** new, load (the conversation is shown again, from rig's own
   session, without the commands' output and notices), resume, list, close, cancel. Sessions are rig's: `rig -r <id>`
-  opens one in the terminal, and an ACP session is not open in two places at
-  once. A session belongs to its directory: loading it from another one is
-  refused.
+  opens one in the terminal, and a session another rig has open is refused.
+  Loading or resuming a session the editor has open already re-attaches to
+  it, with the same MCP servers; a load waits for no prompt, so it is
+  refused while one runs. A session belongs to its directory: loading it
+  from another one is refused.
 - **Prompts:** text, links to resources, embedded text resources, images
   (for models that take them; rig tells you when one does not), and embedded
   images.

@@ -123,8 +123,10 @@ pub(crate) struct Session {
     id: acp::SessionId,
     cx: ConnectionTo<Client>,
     client: acp::ClientCapabilities,
-    /// The request that opened it, until answered.
+    /// The request that opened it, or opens it again, until answered.
     opening: Option<Opening>,
+    /// The client's MCP servers it opened with.
+    servers: Vec<acp::McpServer>,
     /// Whether the main agent was given a model once, before the answer.
     chose: bool,
     /// The options the client was last told of.
@@ -293,6 +295,7 @@ pub(crate) fn install(app: &mut App) {
         })
         .collect();
     let servers: Vec<AddMcpServer> = declared.into_iter().map(|(_, server)| server).collect();
+    let named = opening.servers().to_vec();
     // The editor sets the model of every session, so none typed here is
     // the user's default.
     app.insert_resource(TypedChoices(ChoiceKind::ForThisRun));
@@ -301,6 +304,7 @@ pub(crate) fn install(app: &mut App) {
         cx,
         client: *client,
         opening: Some(opening),
+        servers: named,
         chose: false,
         advertised: Vec::new(),
         held: Vec::new(),
@@ -598,7 +602,8 @@ fn requests_in(
                 questions::answer_with(&mut requested.commands, ask, answer);
             }
             Request::Ended => requested.commands.trigger(Exit(ExitReason::Quit)),
-            Request::Init(..) | Request::Open(_) => {}
+            Request::Open(opening) => requested.reopen(opening),
+            Request::Init(..) => {}
         }
     }
 }
@@ -650,6 +655,37 @@ impl Requested<'_, '_> {
             ended: None,
             cancelled: false,
         });
+    }
+
+    /// Opens the session again for a client that has it open, which [`open`]
+    /// answers as it answered the first opening: a load with the history
+    /// first. A load waits for no prompt, as its history would lack the
+    /// running turn's part, and other MCP servers would need another start.
+    fn reopen(&mut self, opening: Opening) {
+        let session = &*self.session;
+        let refused = if session.opening.is_some() {
+            Some("the session is still opening".to_owned())
+        } else if !session.closing.is_empty() {
+            Some("the session is closing".to_owned())
+        } else if session.prompt.is_some() && matches!(opening, Opening::Load(..)) {
+            Some(
+                "the session is busy: load it once its prompt is answered, or resume it".to_owned(),
+            )
+        } else if opening.servers() != session.servers.as_slice() {
+            Some(format!(
+                "session {} is open with other MCP servers: close it, then load it with these",
+                session.id
+            ))
+        } else {
+            None
+        };
+        match refused {
+            Some(why) => opening.refuse(why),
+            None => {
+                self.session.replay = None;
+                self.session.opening = Some(opening);
+            }
+        }
     }
 
     /// Marks the prompt cancelled, which stops its work ([`stop_cancelled`]),
