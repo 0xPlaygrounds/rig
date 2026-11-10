@@ -1631,3 +1631,51 @@ fn a_streamable_http_server_connects_lists_answers_and_changes_its_tools() {
     runtime.shutdown_background();
     std::fs::remove_dir_all(project).ok();
 }
+
+#[test]
+fn a_server_that_wants_a_sign_in_says_so_in_plain_words() {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(1)
+        .enable_all()
+        .build();
+    assert!(runtime.is_ok(), "{runtime:?}");
+    let Ok(runtime) = runtime else { return };
+    // Every request is answered as by a server that wants an OAuth sign-in.
+    let router = axum::Router::new().fallback(|| async {
+        let challenge =
+            "Bearer resource_metadata=\"http://127.0.0.1/.well-known/oauth-protected-resource\"";
+        (
+            http::StatusCode::UNAUTHORIZED,
+            [(http::header::WWW_AUTHENTICATE, challenge)],
+        )
+    });
+    let listener = runtime.block_on(tokio::net::TcpListener::bind("127.0.0.1:0"));
+    let bound = listener.and_then(|listener| Ok((listener.local_addr()?, listener)));
+    assert!(bound.is_ok(), "{bound:?}");
+    let Ok((address, listener)) = bound else {
+        return;
+    };
+    runtime.spawn(async move { axum::serve(listener, router).await });
+
+    let project = project("sign-in");
+    let server = json!({ "type": "http", "url": format!("http://{address}/mcp") });
+    write_servers(&project.join("home/mcp.json"), json!({ "conf": server }));
+    let (mut app, wakes) = app_in(&project, "[mcp]\nfirst_retry_secs = 3600", None);
+    app.finish();
+    run_until(&mut app, &wakes, |world| {
+        notices(world)
+            .iter()
+            .any(|notice| notice.contains("`conf`"))
+    });
+    assert_eq!(
+        notices(app.world()),
+        [
+            "MCP server `conf` could not connect: it asks for a sign-in (OAuth), which rig does \
+             not support. A server that takes a token in a header works: see \"Servers: \
+             `mcp.json`\" in the rig-mcp-client README."
+        ],
+    );
+    drop(app);
+    runtime.shutdown_background();
+    std::fs::remove_dir_all(project).ok();
+}

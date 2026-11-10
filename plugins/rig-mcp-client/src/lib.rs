@@ -53,7 +53,7 @@ use rig_rmcp::{McpConnection, McpTool};
 use rmcp::model::{
     ClientCapabilities, ClientConfig, Implementation, ProtocolVersion, Tool as McpDefinition,
 };
-use rmcp::service::{NotificationContext, RoleClient};
+use rmcp::service::{ClientInitializeError, NotificationContext, RoleClient};
 use rmcp::transport::StreamableHttpClientTransport;
 use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
 use rmcp::{ClientHandler, ServiceExt};
@@ -813,10 +813,7 @@ impl Start {
                     pipes.map_err(|error| format!("`{command}`'s pipes: {error}"))?;
                 // rmcp frames the lines; only a line past the limit ends them.
                 let stdout = Limited::new(stdout, self.line_limit, refused.clone());
-                let service = client
-                    .serve((stdout, stdin))
-                    .await
-                    .map_err(|error| error.to_string())?;
+                let service = client.serve((stdout, stdin)).await.map_err(unreached)?;
                 (service, Some(child))
             }
             ServerSpec::Http { url, headers } => {
@@ -831,10 +828,7 @@ impl Start {
                 let config = StreamableHttpClientTransportConfig::with_uri(url.as_str())
                     .custom_headers(sent);
                 let transport = StreamableHttpClientTransport::from_config(config);
-                let service = client
-                    .serve(transport)
-                    .await
-                    .map_err(|error| error.to_string())?;
+                let service = client.serve(transport).await.map_err(unreached)?;
                 (service, None)
             }
         };
@@ -861,6 +855,29 @@ async fn list(
         .list_all_tools()
         .await
         .map_err(|error| error.to_string())
+}
+
+/// Why the MCP handshake with a server failed, in words without rmcp's
+/// transport type names. A server that wants an OAuth sign-in is told as such.
+fn unreached(error: ClientInitializeError) -> String {
+    if error.is_authorization_required() {
+        return "it asks for a sign-in (OAuth), which rig does not support. A server that \
+                takes a token in a header works: see \"Servers: `mcp.json`\" in the \
+                rig-mcp-client README"
+            .to_owned();
+    }
+    match error {
+        ClientInitializeError::TransportError { error, context } => {
+            // An HTTP transport's error already names what it was doing.
+            let why = error.error.to_string();
+            if why.contains(context.as_ref()) {
+                why
+            } else {
+                format!("{why}, when {context}")
+            }
+        }
+        error => error.to_string(),
+    }
 }
 
 /// The MCP client of one connection: tells its task when the server says
