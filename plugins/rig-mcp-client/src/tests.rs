@@ -1641,7 +1641,8 @@ fn a_server_that_refuses_its_client_says_why_in_plain_words() {
     assert!(runtime.is_ok(), "{runtime:?}");
     let Ok(runtime) = runtime else { return };
     // Answers as a server that takes OAuth does: 401 to every request, and
-    // 403 on `/scoped`, each with a bearer challenge.
+    // 403 on `/scoped`, each with a bearer challenge. `/bare` answers 401
+    // with no challenge, and `/garbled` a JSON type with HTML in it.
     let router = axum::Router::new()
         .route(
             "/scoped",
@@ -1651,6 +1652,17 @@ fn a_server_that_refuses_its_client_says_why_in_plain_words() {
                     http::StatusCode::FORBIDDEN,
                     [(http::header::WWW_AUTHENTICATE, challenge)],
                 )
+            }),
+        )
+        .route(
+            "/bare",
+            axum::routing::any(|| async { http::StatusCode::UNAUTHORIZED }),
+        )
+        .route(
+            "/garbled",
+            axum::routing::any(|| async {
+                let json = [(http::header::CONTENT_TYPE, "application/json")];
+                (json, "<html>oops</html>")
             }),
         )
         .fallback(|| async {
@@ -1678,12 +1690,15 @@ fn a_server_that_refuses_its_client_says_why_in_plain_words() {
         "conf": { "type": "http", "url": format!("http://{address}/mcp") },
         "keyed": { "type": "http", "url": format!("http://{address}/mcp"), "headers": token },
         "scoped": { "type": "http", "url": format!("http://{address}/scoped"), "headers": token },
+        "bare": { "type": "http", "url": format!("http://{address}/bare") },
+        "barekeyed": { "type": "http", "url": format!("http://{address}/bare"), "headers": token },
+        "garbled": { "type": "http", "url": format!("http://{address}/garbled") },
         "gone": { "type": "http", "url": format!("http://{closed}/mcp") },
     });
     write_servers(&project.join("home/mcp.json"), servers);
     let (mut app, wakes) = app_in(&project, "[mcp]\nfirst_retry_secs = 3600", None);
     app.finish();
-    run_until(&mut app, &wakes, |world| notices(world).len() == 4);
+    run_until(&mut app, &wakes, |world| notices(world).len() == 7);
     let (gone, mut told): (Vec<_>, Vec<_>) = notices(app.world())
         .into_iter()
         .partition(|notice| notice.starts_with("MCP server `gone`"));
@@ -1700,9 +1715,16 @@ fn a_server_that_refuses_its_client_says_why_in_plain_words() {
     assert_eq!(
         told,
         [
+            "MCP server `bare` could not connect: it needs a token (HTTP 401). A server that \
+             takes a token in a header works: see \"Servers: `mcp.json`\" in the rig-mcp-client \
+             README.",
+            "MCP server `barekeyed` could not connect: it refused the token in its `headers` \
+             (HTTP 401).",
             "MCP server `conf` could not connect: it asks for a sign-in (OAuth), which rig \
                  does not support. A server that takes a token in a header works: see \"Servers: \
                  `mcp.json`\" in the rig-mcp-client README.",
+            "MCP server `garbled` could not connect: its answer was not MCP JSON (expected \
+             value at line 1 column 1: <html>oops</html>).",
             "MCP server `keyed` could not connect: it refused the token in its `headers` \
                  (HTTP 401).",
             "MCP server `scoped` could not connect: the token in its `headers` lacks a \
@@ -1711,5 +1733,23 @@ fn a_server_that_refuses_its_client_says_why_in_plain_words() {
     );
     drop(app);
     runtime.shutdown_background();
+    std::fs::remove_dir_all(project).ok();
+}
+
+#[cfg(unix)]
+#[test]
+fn a_server_that_exits_at_once_says_so() {
+    let project = project("exits");
+    write_servers(
+        &project.join("home/mcp.json"),
+        json!({ "quits": { "command": "true" } }),
+    );
+    let (mut app, wakes) = app_in(&project, "[mcp]\nfirst_retry_secs = 3600", None);
+    app.finish();
+    run_until(&mut app, &wakes, |world| !notices(world).is_empty());
+    assert_eq!(
+        notices(app.world()),
+        ["MCP server `quits` could not connect: it closed the connection before it answered."],
+    );
     std::fs::remove_dir_all(project).ok();
 }

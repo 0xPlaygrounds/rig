@@ -870,34 +870,60 @@ async fn list(
 /// configured headers, where a token for it goes: a refusal then means that
 /// token, not a missing OAuth sign-in.
 fn unreached(error: ClientInitializeError, headers: bool) -> String {
+    const HEADER_TOKEN: &str = "A server that takes a token in a header works: see \
+                                \"Servers: `mcp.json`\" in the rig-mcp-client README";
+    const CLOSED: &str = "it closed the connection before it answered";
+    let refused = || "it refused the token in its `headers` (HTTP 401)".to_owned();
     if error.is_authorization_required() {
         return if headers {
-            "it refused the token in its `headers` (HTTP 401)".to_owned()
+            refused()
         } else {
-            "it asks for a sign-in (OAuth), which rig does not support. A server that takes \
-             a token in a header works: see \"Servers: `mcp.json`\" in the rig-mcp-client \
-             README"
-                .to_owned()
+            format!("it asks for a sign-in (OAuth), which rig does not support. {HEADER_TOKEN}")
         };
     }
     match error {
         ClientInitializeError::TransportError { error, context } => {
             let error: &(dyn std::error::Error + 'static) = error.error.as_ref();
-            let scoped = std::iter::successors(Some(error), |error| error.source())
-                .any(|error| error.is::<InsufficientScopeError>());
+            let chain = || std::iter::successors(Some(error), |error| error.source());
+            let scoped = chain().any(|error| error.is::<InsufficientScopeError>());
             if headers && scoped {
                 return "the token in its `headers` lacks a permission it needs \
                         (HTTP 403, insufficient scope)"
                     .to_owned();
             }
-            // An HTTP transport's error already names what it was doing.
+            let gone = chain().any(|error| {
+                error
+                    .downcast_ref::<io::Error>()
+                    .is_some_and(|error| error.kind() == io::ErrorKind::BrokenPipe)
+            });
+            if gone {
+                return CLOSED.to_owned();
+            }
             let why = error.to_string();
+            // rmcp gives a 401 without a challenge, and an answer that is not
+            // JSON-RPC, only as this text.
+            let said = why.strip_prefix("unexpected server response: ");
+            if said.is_some_and(|said| said.starts_with("HTTP 401 ")) {
+                return if headers {
+                    refused()
+                } else {
+                    format!("it needs a token (HTTP 401). {HEADER_TOKEN}")
+                };
+            }
+            let parsed = said.and_then(|said| {
+                said.strip_prefix("could not parse JSON response as ServerJsonRpcMessage: ")
+            });
+            if let Some(parsed) = parsed {
+                return format!("its answer was not MCP JSON ({parsed})");
+            }
+            // An HTTP transport's error already names what it was doing.
             if why.contains(context.as_ref()) {
                 why
             } else {
                 format!("{why}, when {context}")
             }
         }
+        ClientInitializeError::ConnectionClosed(_) => CLOSED.to_owned(),
         error => error.to_string(),
     }
 }
