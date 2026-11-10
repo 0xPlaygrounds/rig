@@ -36,6 +36,11 @@
 //!   unresolvable `$ref`, or one that loops back without reaching a value,
 //!   **accepts** the value there.
 //!
+//! A `minItems`, `maxItems`, `minLength` or `maxLength` is a count, `2` or
+//! `2.0`; one that is not (`2.5`, `-1`) is ignored, as an unknown keyword
+//! is: the schema is the tool's to fix, and refusing every call over it
+//! would ask the model for arguments it cannot give.
+//!
 //! A `null` for a declared property the object does not require counts as
 //! absent, as serde reads an `Option` field:
 //! [`args_schema`](crate::tool::args_schema) declares an `Option` optional,
@@ -49,7 +54,10 @@ use std::{cmp::Ordering, fmt};
 
 use serde_json::{Map, Number, Value};
 
-use crate::{json_utils::compare_numbers, tool::decode::whole};
+use crate::{
+    json_utils::compare_numbers,
+    tool::decode::{Whole, whole},
+};
 
 /// Where a value does not fit a schema, and how.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -319,7 +327,8 @@ fn closest(
 }
 
 /// The problems of a length, in `unit`s, against `schema`'s `min` and
-/// `max` keywords.
+/// `max` keywords. A limit is a count: `2` or `2.0`; any other value
+/// (`2.5`, `-1`, `"2"`) is no limit.
 fn count(
     schema: &Map<String, Value>,
     min: &str,
@@ -328,7 +337,10 @@ fn count(
     length: usize,
     at: &str,
 ) -> Vec<Problem> {
-    let limit = |key| schema.get(key).and_then(Value::as_u64);
+    let limit = |key| match schema.get(key).and_then(Value::as_number).and_then(whole) {
+        Some(Whole::Unsigned(limit)) => Some(limit),
+        _ => None,
+    };
     let plural = |n: u64| {
         if n == 1 {
             format!("{n} {unit}")
