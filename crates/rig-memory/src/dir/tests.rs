@@ -219,6 +219,43 @@ fn a_part_file_is_never_listed_or_named() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// A folder whose name ends as a part file's is a folder like any other:
+/// its files are listed, so a rewrite reaches them, at any depth. Only
+/// part files themselves are hidden.
+#[test]
+fn files_in_a_folder_named_like_a_part_file_are_listed_and_rewritten() {
+    let dir = scratch("part-folders");
+    let store = DirStore::open(&dir).expect("opened");
+    let kept = [
+        "cache/state.txt",
+        "cache.rig-part/state.txt",
+        "notes.rig-part/deep.rig-part/a.md",
+    ];
+    for name in kept {
+        store.write_file(name, b"original").expect("written");
+    }
+    // A write that crashed before its rename, inside such a folder.
+    fs::write(dir.join("files/cache.rig-part/0.rig-part"), b"half").expect("a part");
+    let mut listed = store.files().expect("files");
+    listed.sort();
+    let mut expected = kept.map(str::to_owned);
+    expected.sort();
+    assert_eq!(listed, expected);
+
+    let update = crate::Strings(|text: &mut String| {
+        let updated = text.replace("original", "updated");
+        let changed = updated != *text;
+        *text = updated;
+        changed
+    });
+    let by = rig_core::conversation::Author::plugin("test");
+    crate::rewrite(&store, by, &update).expect("rewritten");
+    for name in kept {
+        assert_eq!(store.read_file(name).expect("read"), b"updated", "{name}");
+    }
+    let _ = fs::remove_dir_all(&dir);
+}
+
 /// Two stores open on one directory, as two processes are: each sees what
 /// the other wrote, a replace included.
 #[test]
