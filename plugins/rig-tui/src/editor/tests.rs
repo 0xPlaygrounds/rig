@@ -114,6 +114,33 @@ fn the_cursor_never_lands_inside_a_grapheme() {
     assert_eq!(editor.cursor(), 1);
     editor.delete();
     assert_eq!(editor.text(), " x");
+    // Deleting between two pieces that join into one grapheme leaves the
+    // cursor after it.
+    let joins: [(&str, usize, fn(&mut Editor)); 6] = [
+        ("e\n\u{301}", 2, Editor::backspace),
+        ("e\n\u{301}", 1, Editor::delete),
+        ("🇺x🇸", "🇺x".len(), Editor::backspace),
+        ("🇺x🇸", "🇺".len(), Editor::delete),
+        ("👩\u{200d}x💻", "👩\u{200d}x".len(), Editor::backspace),
+        ("e\nab\u{301}", 2, Editor::delete_word_after),
+    ];
+    for (text, at, edit) in joins {
+        editor.set(text);
+        editor.set_cursor(at);
+        edit(&mut editor);
+        let edited = editor.text();
+        let ends = edited
+            .grapheme_indices(true)
+            .map(|(at, grapheme)| at + grapheme.len());
+        let boundaries: Vec<usize> = std::iter::once(0).chain(ends).collect();
+        assert!(
+            boundaries.contains(&editor.cursor()),
+            "{text:?} -> {edited:?} at {}",
+            editor.cursor()
+        );
+    }
+    editor.set("a\r\nb\rc");
+    assert_eq!(editor.text(), "a\nb\nc");
     editor.set("\u{301}");
     editor.home();
     editor.insert("e");

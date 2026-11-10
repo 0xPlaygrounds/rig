@@ -113,12 +113,13 @@ impl Editor {
         self.text.is_empty()
     }
 
-    /// Replaces the text, with the cursor at its end. The text replaced is
-    /// not kept, as a plugin edits with it too: one that discards the
-    /// person's text calls [`clear`](Self::clear) first. Another text ends
-    /// browsing the history, keeping the draft behind it there.
+    /// Replaces the text, with the cursor at its end and each `\r\n` or `\r`
+    /// as a newline. The text replaced is not kept, as a plugin edits with
+    /// it too: one that discards the person's text calls
+    /// [`clear`](Self::clear) first. Another text ends browsing the history,
+    /// keeping the draft behind it there.
     pub fn set(&mut self, text: impl Into<String>) {
-        let text = text.into();
+        let text = newlines(text.into());
         if text != self.text {
             self.stop_browsing();
         }
@@ -136,7 +137,8 @@ impl Editor {
     }
 
     /// Moves the cursor to the end of the grapheme it is in, if any, as
-    /// text typed before a combining mark joins it.
+    /// text typed before a combining mark, or deleted between two that
+    /// join, makes one.
     fn settle(&mut self) {
         let ends = self
             .text
@@ -151,7 +153,7 @@ impl Editor {
     /// Shows `text`, with the cursor at its end, keeping the history's
     /// place.
     fn show(&mut self, text: String) {
-        self.text = text;
+        self.text = newlines(text);
         self.cursor = self.text.len();
     }
 
@@ -265,7 +267,7 @@ impl Editor {
 
     /// Types `text` at the cursor, which ends up after it.
     pub fn insert(&mut self, text: &str) {
-        let text = text.replace("\r\n", "\n").replace('\r', "\n");
+        let text = newlines(text.to_owned());
         self.text.insert_str(self.cursor, &text);
         self.cursor += text.len();
         self.settle();
@@ -400,28 +402,22 @@ impl Editor {
 
     /// Deletes the grapheme before the cursor.
     pub fn backspace(&mut self) {
-        let start = self.previous_boundary(self.cursor);
-        self.text.replace_range(start..self.cursor, "");
-        self.cursor = start;
+        self.remove(self.previous_boundary(self.cursor)..self.cursor);
     }
 
     /// Deletes the grapheme after the cursor.
     pub fn delete(&mut self) {
-        let end = self.next_boundary(self.cursor);
-        self.text.replace_range(self.cursor..end, "");
+        self.remove(self.cursor..self.next_boundary(self.cursor));
     }
 
     /// Deletes the word before the cursor.
     pub fn delete_word_before(&mut self) {
-        let start = self.word_start();
-        self.text.replace_range(start..self.cursor, "");
-        self.cursor = start;
+        self.remove(self.word_start()..self.cursor);
     }
 
     /// Deletes the word after the cursor.
     pub fn delete_word_after(&mut self) {
-        let end = self.word_end();
-        self.text.replace_range(self.cursor..end, "");
+        self.remove(self.cursor..self.word_end());
     }
 
     /// Deletes to the start of the line, or the newline before it when the
@@ -431,8 +427,7 @@ impl Editor {
             start if start == self.cursor => self.previous_boundary(start),
             start => start,
         };
-        self.text.replace_range(start..self.cursor, "");
-        self.cursor = start;
+        self.remove(start..self.cursor);
     }
 
     /// Deletes to the end of the line, or the newline after it when the
@@ -442,7 +437,15 @@ impl Editor {
             end if end == self.cursor => self.next_boundary(end),
             end => end,
         };
-        self.text.replace_range(self.cursor..end, "");
+        self.remove(self.cursor..end);
+    }
+
+    /// Deletes the bytes `range`, the cursor at their place, or past the
+    /// grapheme the text on each side joins into there.
+    fn remove(&mut self, range: std::ops::Range<usize>) {
+        self.cursor = range.start;
+        self.text.replace_range(range, "");
+        self.settle();
     }
 
     /// The cursor's column on its line, in graphemes.
@@ -637,6 +640,14 @@ impl Editor {
             cursor_row: cursor.0,
             cursor_column: cursor.1 + 2,
         }
+    }
+}
+
+/// `text` with each `\r\n` or lone `\r` as a `\n`.
+fn newlines(text: String) -> String {
+    match text.contains('\r') {
+        true => text.replace("\r\n", "\n").replace('\r', "\n"),
+        false => text,
     }
 }
 
