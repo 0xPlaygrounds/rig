@@ -13,8 +13,7 @@
 //!
 //! The command line is read once the agent is built, against what its
 //! plugins add ([`AgentDescription::invocation`]), and the agent gets it in its
-//! canonical form ([`Invocation`]). A command the last build lacks is refused
-//! before building, so a typo never waits for a build. A plugin's command runs in a new
+//! canonical form ([`Invocation`]). A plugin's command runs in a new
 //! session, or with `--resume` in that one, unless its front keeps no
 //! session, which the agent refuses. A headless run (`--print`, stdin piped
 //! in, which the agent answers as `--print` does, or a plugin's command
@@ -37,13 +36,12 @@ use std::process::{Command, ExitCode, ExitStatus, Stdio};
 use std::time::Duration;
 
 use rig_harness_protocol::{
-    AgentDescription, DescribedCommand, DescribedSecret, Home, Invocation, REFUSED_EXIT_CODE,
-    RELOAD_EXIT_CODE, RunDir, SIGNAL_EXIT_CODE, SessionDir, SessionId, StartReason, env,
-    secret_variable,
+    AgentDescription, DescribedSecret, Home, Invocation, REFUSED_EXIT_CODE, RELOAD_EXIT_CODE,
+    RunDir, SIGNAL_EXIT_CODE, SessionDir, SessionId, StartReason, env, secret_variable,
 };
 
 use super::build::{self, BuildFailure, BuildOutput, FailedAt, Staging, child};
-use super::{LONG_VERSION, Result, locks, project};
+use super::{LONG_VERSION, Result, locks};
 
 mod stop;
 
@@ -73,14 +71,6 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
     // cannot read, such as one with an option it does not report, is read
     // as the agent reads its own, which takes any option, so the previous
     // build never answers a `-p` the new build failed on.
-    if let Some((command, last)) = unknown_command(home, args) {
-        eprintln!(
-            "rig: unknown command `{command}`; the last build's commands: {}; if a plugin you \
-             just turned on or a newer rig adds it, run `rig build` first",
-            last.command_names().join(", ")
-        );
-        return Ok(ExitCode::from(REFUSED_EXIT_CODE));
-    }
     let last = last_report(home).unwrap_or_default();
     let print = (last.invocation(args))
         .or_else(|_| Invocation::parse(args))
@@ -142,11 +132,6 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
     let invocation = match report.invocation(args) {
         Ok(invocation) => invocation,
         Err(why) => {
-            // The build this run made is staged for every launcher, as by
-            // `rig build`, so the next start reads its report before
-            // building again.
-            let _lock = locks::hold_build_lock(home, output)?;
-            absent(fs::rename(home.staged_for(&claimed.id), home.staged()))?;
             claimed.discard_if_unsaved(home);
             eprintln!("rig: {why}");
             return Ok(ExitCode::from(REFUSED_EXIT_CODE));
@@ -194,30 +179,6 @@ fn start_of(home: &Home, resume: Option<&str>) -> std::result::Result<Start, Str
     resume.map_or(Ok(Start::New), |session| {
         home.find(session).map(Start::Resume)
     })
-}
-
-/// The command of `args` that the report of the build a new session
-/// starts with refuses as unknown, with that report, when the command
-/// alone is what it refuses and that build is what building now would
-/// make ([`project::is_current`]). `None` otherwise: the new build reads
-/// the line, and may add an option or command.
-fn unknown_command(home: &Home, args: &[String]) -> Option<(String, AgentDescription)> {
-    let binary = [home.staged(), home.good()]
-        .into_iter()
-        .find(|binary| binary.exists())?;
-    let last = build::good_report(home, &binary)?;
-    last.invocation(args).err()?;
-    let name = Invocation::parse(args).ok()?.command?;
-    let mut with = last.clone();
-    with.commands.push(DescribedCommand {
-        name: name.clone(),
-        usage: String::new(),
-        terminal: false,
-        sessionless: false,
-        help: String::new(),
-    });
-    with.invocation(args).ok()?;
-    project::is_current(home, &binary).then_some((name, last))
 }
 
 /// Says why the command line is refused, and returns its exit code.

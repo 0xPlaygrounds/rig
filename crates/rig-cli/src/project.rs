@@ -12,7 +12,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use rig_harness_protocol::config::toml_edit::{DocumentMut, Item};
-use rig_harness_protocol::config::{self, BUILT_IN, Extra, Plugins, Source, built_in};
+use rig_harness_protocol::config::{BUILT_IN, Extra, Plugins, Source, built_in};
 use rig_harness_protocol::{Home, env};
 
 use super::{Result, VERSION};
@@ -248,68 +248,6 @@ pub fn rig_version(source: &RigSource) -> String {
         workspace.get("version")?.as_str().map(str::to_owned)
     });
     version.unwrap_or_else(|| VERSION.to_owned())
-}
-
-/// Whether the build `binary` is what building now would make, as far as
-/// the launcher can tell without cargo: the agent project generated from
-/// the settings and source of now is the one on disk, and `binary` is
-/// newer than its files and than every source file the last agent build
-/// read ([`dep_info`]), a checkout's and a path plugin's included, each
-/// listed by its canonical path. False when that cannot be read, or the
-/// dep-info file lists no source.
-pub fn is_current(home: &Home, binary: &Path) -> bool {
-    let current = || -> Result<bool> {
-        let plugins = config::chosen(home)?;
-        let source = RigSource::detect()?;
-        let built = fs::metadata(binary)?.modified()?;
-        let not_newer =
-            |path: &Path| -> Result<bool> { Ok(fs::metadata(path)?.modified()? <= built) };
-        let mut same = true;
-        for (file, text) in [
-            ("Cargo.toml", manifest(home, &plugins, &source)?),
-            ("src/main.rs", main_rs(home, &plugins, &source)),
-        ] {
-            let path = home.project().join(file);
-            same = same
-                && fs::read_to_string(&path).is_ok_and(|written| written == text)
-                && not_newer(&path)?;
-        }
-        let listed = sources(&fs::read_to_string(dep_info(home))?)
-            .ok_or("the agent's dep-info file lists no source")?;
-        // A path through a link may read another tree now, with older files.
-        for path in listed {
-            same = same && fs::canonicalize(&path)? == path && not_newer(&path)?;
-        }
-        Ok(same)
-    };
-    current().unwrap_or(false)
-}
-
-/// cargo's dep-info file of the agent binary: every source file outside
-/// the registry that its last build read.
-pub fn dep_info(home: &Home) -> PathBuf {
-    home.target().join("debug").join(format!("{PACKAGE}.d"))
-}
-
-/// The paths a dep-info file lists after its target's `: `; a space in a
-/// path is written `\ `. `None` when it lists none.
-fn sources(dep_info: &str) -> Option<Vec<PathBuf>> {
-    let (_, listed) = dep_info.lines().next()?.split_once(": ")?;
-    let mut paths = Vec::new();
-    let mut path = String::new();
-    let mut chars = listed.chars();
-    while let Some(c) = chars.next() {
-        match c {
-            '\\' => path.extend(chars.next()),
-            ' ' if !path.is_empty() => paths.push(PathBuf::from(std::mem::take(&mut path))),
-            ' ' => {}
-            c => path.push(c),
-        }
-    }
-    if !path.is_empty() {
-        paths.push(PathBuf::from(path));
-    }
-    (!paths.is_empty()).then_some(paths)
 }
 
 /// Writes the agent project with the plugins on of `plugins`.

@@ -9,8 +9,7 @@
 //! Its own first words (`build`, `plugin`, `help`, `help-agents`,
 //! `--version`) are read before the build; the rest of the command line,
 //! `--resume` included, once the agent is built, against the commands and
-//! options its plugins add (`rig help` lists them). A command the last
-//! build does not have is refused before building.
+//! options its plugins add (`rig help` lists them).
 
 mod build;
 mod locks;
