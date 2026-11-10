@@ -169,7 +169,7 @@ pub enum Media<'a> {
     /// Video in a user message.
     Video(&'a crate::message::Video),
     /// A document in a user message.
-    Document(&'a crate::message::Document),
+    Document(&'a crate::message::DocumentContent),
 }
 
 /// The model a request is sent to, as replay sees it. Every completion wire

@@ -504,7 +504,7 @@ fn completion_response_incomplete_reports_the_truncation_reason() {
 #[test]
 fn file_id_document_serializes_as_input_item_content() {
     let message = completion::Message::User {
-        content: vec![message::UserContent::Document(message::Document {
+        content: vec![message::UserContent::Document(message::DocumentContent {
             data: DocumentSourceKind::FileId("file_abc".to_string()).into(),
             media_type: None,
             additional_params: None,
@@ -641,7 +641,7 @@ fn url_pdf_via_input_item_path_omits_filename() {
 #[test]
 fn base64_pdf_via_input_item_path_keeps_filename() {
     let input = message::Message::User {
-        content: vec![message::UserContent::Document(message::Document {
+        content: vec![message::UserContent::Document(message::DocumentContent {
             data: DocumentSourceKind::base64("dGVzdA==").into(),
             media_type: Some(message::DocumentMediaType::PDF),
             additional_params: None,
@@ -839,7 +839,7 @@ fn base64_pdf_is_data_and_document_text_is_text() -> anyhow::Result<()> {
         let request = completion::CompletionRequest::new(message::Message::User {
             content: vec![
                 message::UserContent::text("Summarize the file."),
-                message::UserContent::Document(message::Document {
+                message::UserContent::Document(message::DocumentContent {
                     data,
                     media_type: Some(message::DocumentMediaType::PDF),
                     additional_params: None,
@@ -879,7 +879,7 @@ fn an_unprepared_part_with_no_responses_form_is_refused() {
         .map(|body| body.to_string())
         .map_err(|error| error.to_string())
     };
-    let document = refused(message::UserContent::Document(message::Document {
+    let document = refused(message::UserContent::Document(message::DocumentContent {
         data: DocumentSourceKind::base64("aGVsbG8=").into(),
         media_type: Some(message::DocumentMediaType::TXT),
         additional_params: None,

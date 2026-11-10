@@ -388,14 +388,14 @@ async fn an_in_band_envelope_with_a_status_code_is_classified_by_it() -> anyhow:
 /// for a document carrying only one; every other dialect sends the id.
 #[test]
 fn openrouter_gets_a_placeholder_for_a_file_id_document() {
-    use crate::message::{Document, DocumentSourceKind, Message, UserContent};
+    use crate::message::{DocumentContent, DocumentSourceKind, Message, UserContent};
     use crate::providers::openai::wire::OPENROUTER;
 
     let body = |chat: Chat| {
         let mut request = prompt("read this");
         request.chat_history = vec![
             Message::User {
-                content: vec![UserContent::Document(Document {
+                content: vec![UserContent::Document(DocumentContent {
                     data: DocumentSourceKind::FileId("file-abc".to_owned()).into(),
                     media_type: None,
                     additional_params: None,
@@ -950,9 +950,9 @@ fn a_whole_reply_without_a_choice_or_its_message_fails() {
 /// document file that is not a PDF, or audio a URL names.
 #[test]
 fn a_part_chat_cannot_carry_is_refused() {
-    use crate::message::{Audio, Document};
+    use crate::message::{Audio, DocumentContent};
     let parts = [
-        UserContent::Document(Document {
+        UserContent::Document(DocumentContent {
             data: Source::base64("YSxiCjEsMgo=").into(),
             media_type: Some(DocumentMediaType::CSV),
             additional_params: None,

@@ -1,7 +1,8 @@
 //! Cassette-backed Anthropic coverage for provider file IDs in generic document messages.
 
 use rig::message::{
-    Document, DocumentMediaType, DocumentSourceKind, Message, Text, UserContent as RigUserContent,
+    DocumentContent, DocumentMediaType, DocumentSourceKind, Message, Text,
+    UserContent as RigUserContent,
 };
 use rig::providers::anthropic;
 use serde_json::Value;
@@ -11,8 +12,8 @@ const PAGE_TWO_VERIFIER: &str = "rig-file-id-page-two-verifier-8c27";
 const PAGE_THREE_VERIFIER: &str = "rig-file-id-page-three-verifier-f54e";
 const PAGE_VERIFIERS: [&str; 3] = [PAGE_ONE_VERIFIER, PAGE_TWO_VERIFIER, PAGE_THREE_VERIFIER];
 
-fn file_id_document(file_id: &str) -> Document {
-    Document {
+fn file_id_document(file_id: &str) -> DocumentContent {
+    DocumentContent {
         data: DocumentSourceKind::file_id(file_id).into(),
         media_type: Some(DocumentMediaType::PDF),
         additional_params: None,
@@ -22,7 +23,7 @@ fn file_id_document(file_id: &str) -> Document {
 /// A document carrying only the provider's file id, no generic media type:
 /// the shape a file reference ingested from Anthropic's own wire has.
 fn provider_file_content_as_generic_document(file_id: &str) -> RigUserContent {
-    RigUserContent::Document(Document {
+    RigUserContent::Document(DocumentContent {
         data: DocumentSourceKind::file_id(file_id).into(),
         media_type: None,
         additional_params: None,
@@ -55,7 +56,7 @@ fn message_contains_file_id(message: &Message, expected_file_id: &str) -> bool {
     content.iter().any(|content| {
         matches!(
             content,
-            RigUserContent::Document(Document {
+            RigUserContent::Document(DocumentContent {
                 data: rig::message::DocumentData::File(DocumentSourceKind::FileId(file_id)),
                 ..
             }) if file_id == expected_file_id

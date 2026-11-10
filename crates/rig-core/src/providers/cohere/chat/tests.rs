@@ -525,12 +525,12 @@ fn the_native_target_states_what_it_carries() {
     assert!(!wire.encodes(MODEL, Media::Image(&untyped, Place::User)));
     assert!(!wire.encodes(MODEL, Media::Image(&raw, Place::User)));
     assert!(!wire.encodes(MODEL, Media::Image(&url, Place::ToolResult)));
-    let text = crate::message::Document {
+    let text = crate::message::DocumentContent {
         data: crate::message::DocumentData::Text("notes".to_owned()),
         media_type: Some(DocumentMediaType::TXT),
         additional_params: None,
     };
-    let pdf = crate::message::Document {
+    let pdf = crate::message::DocumentContent {
         data: Source::base64("JVBERi0=").into(),
         media_type: Some(DocumentMediaType::PDF),
         additional_params: None,
