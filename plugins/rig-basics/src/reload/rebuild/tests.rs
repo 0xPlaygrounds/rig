@@ -271,8 +271,9 @@ struct Ends {
 }
 
 /// How a `-p` run that reloads (`rebuild`) ends, its launcher replaced by
-/// the build when `replace`.
-fn headless_reload(name: &str, rebuild: Rebuild, replace: bool) -> Ends {
+/// the build when `replace`; with `--json` when `json`. It writes to this
+/// process's stdout and stderr, as any run does.
+fn headless_reload(name: &str, rebuild: Rebuild, replace: bool, json: bool) -> Ends {
     use rig_harness::host::exit::ExitPlugin;
     use rig_harness::host::launcher::Invoked;
     use rig_harness_test_support::{MemoryStore, app_on, run_until, scripted_models};
@@ -300,6 +301,10 @@ fn headless_reload(name: &str, rebuild: Rebuild, replace: bool) -> Ends {
     app.insert_resource(Invoked {
         args: harness_protocol::Invocation {
             print: Some("/help".to_owned()),
+            flags: json
+                .then(|| (crate::print::JSON.to_owned(), None))
+                .into_iter()
+                .collect(),
             ..Default::default()
         },
         terminal: false,
@@ -341,7 +346,10 @@ fn headless_reload(name: &str, rebuild: Rebuild, replace: bool) -> Ends {
     }
     let exited = |world: &World| !world.resource::<Ends>().exits.is_empty();
     run_until(&mut app, &wakes, exited);
-    app.update();
+    // The exit's frames, on which the run writes its last lines.
+    for _ in 0..3 {
+        app.update();
+    }
     std::fs::remove_dir_all(&dir).ok();
     std::mem::take(app.world_mut().resource_mut::<Ends>().as_mut())
 }
@@ -364,7 +372,7 @@ fn a_headless_run_whose_launcher_was_replaced_ends_instead_of_reloading() {
                 .iter()
                 .any(|(level, text)| (*level, text.as_str()) == notice)
     };
-    let updated = headless_reload("headless-update", Rebuild::Update, true);
+    let updated = headless_reload("headless-update", Rebuild::Update, true, false);
     let said = "rig updated; the next run starts the new version.";
     assert!(
         ended(&updated, (NoticeLevel::Info, said)),
@@ -373,7 +381,7 @@ fn a_headless_run_whose_launcher_was_replaced_ends_instead_of_reloading() {
         updated.runs,
         updated.notices
     );
-    let replaced = headless_reload("headless-replaced", Rebuild::Build, true);
+    let replaced = headless_reload("headless-replaced", Rebuild::Build, true, false);
     let said = "rig was replaced since this run started, so it does not reload; the next run \
                 starts the new version.";
     assert!(
@@ -383,6 +391,64 @@ fn a_headless_run_whose_launcher_was_replaced_ends_instead_of_reloading() {
         replaced.runs,
         replaced.notices
     );
-    let reloaded = headless_reload("headless-reload", Rebuild::Build, false);
+    let reloaded = headless_reload("headless-reload", Rebuild::Build, false, false);
     assert_eq!(reloaded.exits, [ExitReason::Reload]);
+}
+
+/// Which output the run of the test below writes, in a copy of this test
+/// binary: `json` or `plain`.
+const OUTPUT_PROBE: &str = "RIG_REPLACED_OUTPUT_PROBE";
+
+/// A `-p` run whose launcher was replaced from outside says so in what it
+/// writes: with `--json`, a `warn` notice line, then its `exit` line with
+/// code 0; without, the explanation on stderr. Each runs in a copy of this
+/// test binary, whose stdout and stderr are the run's own.
+#[test]
+fn a_headless_run_whose_launcher_was_replaced_says_so_in_its_output() {
+    const SAID: &str = "rig was replaced since this run started, so it does not reload; the \
+                        next run starts the new version.";
+    if let Some(output) = std::env::var_os(OUTPUT_PROBE) {
+        headless_reload(
+            &format!("output-{}", output.to_string_lossy()),
+            Rebuild::Build,
+            true,
+            output == "json",
+        );
+        return;
+    }
+    let name =
+        "reload::rebuild::tests::a_headless_run_whose_launcher_was_replaced_says_so_in_its_output";
+    let run = |output: &str| {
+        std::env::current_exe()
+            .and_then(|test| {
+                Command::new(test)
+                    .args(["--exact", name, "--nocapture", "--test-threads", "1"])
+                    .env(OUTPUT_PROBE, output)
+                    .output()
+            })
+            .ok()
+            .filter(|run| run.status.success())
+    };
+    let json = run("json").map(|run| String::from_utf8_lossy(&run.stdout).into_owned());
+    let lines: Vec<serde_json::Value> = (json.iter())
+        .flat_map(|stdout| stdout.lines())
+        .filter_map(|line| serde_json::from_str(line).ok())
+        .collect();
+    let field = |line: &serde_json::Value, key: &str| line.get(key).cloned().unwrap_or_default();
+    let notice = lines.iter().any(|line| {
+        field(line, "type") == "notice"
+            && field(line, "level") == "warn"
+            && field(line, "text") == SAID
+    });
+    assert!(notice, "{json:?}");
+    let last = lines.last();
+    assert!(
+        last.is_some_and(|line| field(line, "type") == "exit" && field(line, "code") == 0),
+        "{json:?}"
+    );
+    let plain = run("plain").map(|run| String::from_utf8_lossy(&run.stderr).into_owned());
+    assert!(
+        plain.as_deref().is_some_and(|stderr| stderr.contains(SAID)),
+        "{plain:?}"
+    );
 }
