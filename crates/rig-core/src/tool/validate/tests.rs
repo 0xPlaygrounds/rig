@@ -274,3 +274,52 @@ fn combinators_and_local_refs_are_checked_and_a_remote_ref_accepts() {
         assert_eq!(validate(&schema, &json!(42)), Ok(()), "{schema}");
     }
 }
+
+#[test]
+fn a_length_or_item_limit_written_as_a_whole_float_is_enforced_like_an_integer() {
+    for limit in [json!(2), json!(2.0)] {
+        let cases = [
+            (
+                "minLength",
+                json!("a"),
+                "expected at least 2 characters, got 1",
+            ),
+            (
+                "maxLength",
+                json!("abc"),
+                "expected at most 2 characters, got 3",
+            ),
+            ("minItems", json!([1]), "expected at least 2 items, got 1"),
+            (
+                "maxItems",
+                json!([1, 2, 3]),
+                "expected at most 2 items, got 3",
+            ),
+        ];
+        for (keyword, value, problem) in cases {
+            let schema = json!({ keyword: limit });
+            assert_eq!(problems(&schema, &value), [problem], "{schema}");
+        }
+    }
+    // A tool's property, as a model's call reaches it.
+    let schema = json!({
+        "type": "object",
+        "properties": {"code": {"type": "string", "maxLength": 3.0}},
+    });
+    assert_eq!(
+        problems(&schema, &json!({"code": "abcde"})),
+        ["/code: expected at most 3 characters, got 5"],
+    );
+}
+
+#[test]
+fn a_length_or_item_limit_that_is_not_a_count_is_ignored() {
+    for limit in [json!(2.5), json!(-1.0), json!(-1), json!("2")] {
+        for keyword in ["minLength", "maxLength", "minItems", "maxItems"] {
+            let schema = json!({ keyword: limit });
+            for value in [json!(""), json!("abcdef"), json!([]), json!([1, 2, 3])] {
+                assert_eq!(validate(&schema, &value), Ok(()), "{schema} {value}");
+            }
+        }
+    }
+}
