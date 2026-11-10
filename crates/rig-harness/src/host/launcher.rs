@@ -402,10 +402,12 @@ fn launcher_notice(
     {
         notices.write(Notice::info(None, notice));
     }
-    if let Ok(warning) = std::env::var(env::WARNING)
-        && !warning.is_empty()
-    {
-        notices.write(Notice::warn(None, warning));
+    if let Ok(warning) = std::env::var(env::WARNING) {
+        notices.write_batch(
+            warning
+                .lines()
+                .map(|line| Notice::warn(None, line.to_owned())),
+        );
     }
     // A run refused for them said them already.
     let settings = settings.filter(|_| refused.is_none());

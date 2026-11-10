@@ -35,6 +35,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, ExitStatus, Stdio};
 use std::time::Duration;
 
+use rig_harness_protocol::config::SettingsFile;
 use rig_harness_protocol::{
     AgentDescription, DescribedSecret, Home, Invocation, REFUSED_EXIT_CODE, RELOAD_EXIT_CODE,
     RunDir, SIGNAL_EXIT_CODE, SessionDir, SessionId, Stamp, StartReason, env, secret_variable,
@@ -179,6 +180,42 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
     }
 }
 
+/// A warning for each file rig 0.46 kept in `home` that rig no longer
+/// reads, when its `settings.toml` has no table for what the file held:
+/// `plugins.toml` without `[plugins]`, `defaults.json` without `[model]`.
+/// The files are never changed. A `settings.toml` rig cannot read refuses
+/// the start before this.
+fn legacy_files(home: &Home) -> Vec<String> {
+    let settings = home.settings();
+    let Ok(file) = SettingsFile::read(&settings) else {
+        return Vec::new();
+    };
+    [
+        (
+            "plugins.toml",
+            "plugins",
+            "its plugin list: `enable` and `disable` for rig's plugins, and \
+             [[plugins.extra]] for other crates; `rig plugin list` shows them",
+        ),
+        (
+            "defaults.json",
+            "model",
+            "its model and effort: `default` and `effort`",
+        ),
+    ]
+    .into_iter()
+    .filter(|(old, table, _)| home.root().join(old).exists() && !file.document.contains_key(table))
+    .map(|(old, table, what)| {
+        format!(
+            "{} is from rig 0.46 or earlier and is no longer read. Put {what} in [{table}] of {}. \
+             rig leaves the file as it is.",
+            home.root().join(old).display(),
+            settings.display(),
+        )
+    })
+    .collect()
+}
+
 /// The session `--resume` names, by id or name ([`Home::find`]), or a new
 /// one without it.
 fn start_of(home: &Home, resume: Option<&str>) -> std::result::Result<Start, String> {
@@ -261,6 +298,7 @@ fn launch(
         ..invocation.clone()
     };
     let mut invocation: &Invocation = invocation;
+    let mut legacy = legacy_files(home);
     loop {
         let left = switched_from.take();
         let session = claimed.id.clone();
@@ -304,9 +342,13 @@ fn launch(
         if let Some(notice) = notice.take() {
             command.env(env::NOTICE, notice);
         }
-        // Only the first start runs elsewhere than it was.
-        if let Some(moved) = claimed.moved.take() {
-            command.env(env::WARNING, moved);
+        // Only the first start of a claim runs elsewhere than it was, and
+        // only the run's first start warns of a 0.46 home.
+        let warnings: Vec<String> = (claimed.moved.take().into_iter())
+            .chain(legacy.drain(..))
+            .collect();
+        if !warnings.is_empty() {
+            command.env(env::WARNING, warnings.join("\n"));
         }
         // Only the first start follows the failed build.
         if let Some(failure) = build_failure.take() {
