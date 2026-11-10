@@ -660,7 +660,8 @@ const ROOT_KEPT: [&str; 9] = [
 /// `object`, the root Anthropic takes. A subschema under `not` reports no
 /// evaluated properties or items, so with a root `unevaluatedProperties` or
 /// `unevaluatedItems` every root keyword but [`ROOT_KEPT`] moves. Local
-/// pointer references into a moved keyword follow it. A schema with no
+/// `#/...` pointer references into a moved keyword follow it; a percent
+/// encoded pointer, or one through the root's `$id`, is left as written. A schema with no
 /// root combinator is left as written.
 fn nest_root_combinators(schema: &mut Value) {
     let Value::Object(root) = schema else {
@@ -694,8 +695,33 @@ fn nest_root_combinators(schema: &mut Value) {
     root.insert("not".to_owned(), json!({ "not": nested }));
 }
 
-/// The keywords whose values are data, not subschemas.
-const DATA_KEYWORDS: [&str; 4] = ["const", "enum", "default", "examples"];
+/// The keywords whose value is a subschema or an array of them.
+const SUBSCHEMA_KEYWORDS: [&str; 15] = [
+    "allOf",
+    "anyOf",
+    "oneOf",
+    "not",
+    "if",
+    "then",
+    "else",
+    "items",
+    "prefixItems",
+    "additionalItems",
+    "contains",
+    "additionalProperties",
+    "unevaluatedProperties",
+    "unevaluatedItems",
+    "propertyNames",
+];
+
+/// The keywords whose value maps names to subschemas.
+const SUBSCHEMA_MAP_KEYWORDS: [&str; 5] = [
+    "properties",
+    "patternProperties",
+    "dependentSchemas",
+    "$defs",
+    "definitions",
+];
 
 /// Point each `#/<key>/...` reference in `schema`, the root or a subschema
 /// of it, whose `key` is in `moved` at `#/not/not/<key>/...`, where the key
@@ -713,18 +739,24 @@ fn repoint_moved_references(schema: &mut Map<String, Value>, moved: &[String]) {
             *reference = format!("#/not/not/{pointer}");
         }
     }
-    let mut pending: Vec<&mut Value> = schema
-        .iter_mut()
-        .filter(|(key, _)| !DATA_KEYWORDS.contains(&key.as_str()))
-        .map(|(_, value)| value)
-        .collect();
-    while let Some(value) = pending.pop() {
-        match value {
-            Value::Object(object) if !object.contains_key("$id") => {
-                repoint_moved_references(object, moved);
+    let mut pending: Vec<&mut Value> = Vec::new();
+    for (key, value) in schema.iter_mut() {
+        if SUBSCHEMA_KEYWORDS.contains(&key.as_str()) {
+            match value {
+                Value::Array(items) => pending.extend(items.iter_mut()),
+                value => pending.push(value),
             }
-            Value::Array(items) => pending.extend(items.iter_mut()),
-            _ => {}
+        } else if SUBSCHEMA_MAP_KEYWORDS.contains(&key.as_str())
+            && let Value::Object(subschemas) = value
+        {
+            pending.extend(subschemas.values_mut());
+        }
+    }
+    for value in pending {
+        if let Value::Object(subschema) = value
+            && !subschema.contains_key("$id")
+        {
+            repoint_moved_references(subschema, moved);
         }
     }
 }
