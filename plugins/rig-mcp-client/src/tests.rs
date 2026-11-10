@@ -1463,9 +1463,9 @@ async fn token_only(
     axum::response::IntoResponse::into_response(http::StatusCode::UNAUTHORIZED)
 }
 
-/// rmcp's HTTP client follows `HTTP_PROXY` and `ALL_PROXY`, and the plugin
-/// cannot change that: with a proxy set, `NO_PROXY` must name 127.0.0.1 for
-/// this test to reach its server.
+/// The plugin uses rmcp's default reqwest client, which reads `HTTP_PROXY`,
+/// `ALL_PROXY` and `NO_PROXY` (and their lowercase forms): on a machine with
+/// a proxy and no `NO_PROXY` for 127.0.0.1, this test goes through the proxy.
 #[test]
 fn a_streamable_http_server_connects_lists_answers_and_changes_its_tools() {
     let runtime = tokio::runtime::Builder::new_multi_thread()
