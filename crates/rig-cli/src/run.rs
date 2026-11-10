@@ -291,6 +291,7 @@ fn launch(
             .env(env::SESSION, session.as_str())
             .env(env::LAUNCHER, launcher)
             .env(env::VERSION, LONG_VERSION)
+            .env(env::LAUNCHER_STAMP, installed.text())
             .env(env::RUN, run.path())
             .env(env::START, reason.as_str())
             .env_remove(env::NOTICE)
@@ -336,8 +337,9 @@ fn launch(
         let restart = !headless || (answers_prompt && !directory.switch().exists());
         // A view's reload after the launcher's file was replaced restarts on
         // the new launcher, never the new agent under this one. A headless
-        // run carries on: its restart without its prompt is a reload's, and
-        // `/update` ends it instead.
+        // agent does not reload once its launcher was replaced, as told by
+        // the stamp passed on, since only this launcher restarts it without
+        // its prompt.
         let replaced = reload && restart && !headless && installed.replaced(&Stamp::of(launcher));
         screen |= run.screen().exists();
         // A reload that restarts leaves the jobs running, listed for the

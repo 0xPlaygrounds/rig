@@ -55,7 +55,9 @@ impl Plugin for ReloadPlugin {
         if let Some(launcher) = harness_protocol::launcher()
             && !app.world().contains_resource::<LauncherFile>()
         {
-            app.insert_resource(LauncherFile::at(launcher.into()));
+            let started = std::env::var(harness_protocol::env::LAUNCHER_STAMP).unwrap_or_default();
+            let started = harness_protocol::Stamp::parse(&started);
+            app.insert_resource(LauncherFile::new(launcher.into(), started));
         }
         hold::add(app);
         rebuild::add(app);
@@ -136,9 +138,9 @@ impl ReloadStatus {
     }
 }
 
-/// The launcher file this agent started with, to tell when it was
-/// replaced, as `rig update` does. Inserted from the launcher's path
-/// unless the app inserted one before.
+/// The launcher file as its launcher started, to tell when it was
+/// replaced, as `rig update` does. Inserted from the launcher's path and
+/// the stamp it passes on unless the app inserted one before.
 #[derive(Resource, Debug)]
 pub(crate) struct LauncherFile {
     path: std::path::PathBuf,
@@ -146,9 +148,8 @@ pub(crate) struct LauncherFile {
 }
 
 impl LauncherFile {
-    /// The file at `path`, as it is now.
-    pub(crate) fn at(path: std::path::PathBuf) -> Self {
-        let started = harness_protocol::Stamp::of(&path);
+    /// The file at `path`, which was `started` as the launcher started.
+    pub(crate) fn new(path: std::path::PathBuf, started: harness_protocol::Stamp) -> Self {
         Self { path, started }
     }
 

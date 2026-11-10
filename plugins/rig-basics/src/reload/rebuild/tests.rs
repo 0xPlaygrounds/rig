@@ -262,11 +262,12 @@ fn a_failed_update_shows_what_rig_update_said() {
     assert_eq!(model.request_count(), 0);
 }
 
-/// The exits asked for, and how the headless runs ended.
+/// The exits asked for, how the headless runs ended, and the notices.
 #[derive(Resource, Default)]
 struct Ends {
     exits: Vec<ExitReason>,
     runs: Vec<crate::print::HeadlessEnded>,
+    notices: Vec<(NoticeLevel, String)>,
 }
 
 /// How a `-p` run that reloads (`rebuild`) ends, its launcher replaced by
@@ -303,7 +304,10 @@ fn headless_reload(name: &str, rebuild: Rebuild, replace: bool) -> Ends {
         },
         terminal: false,
     })
-    .insert_resource(LauncherFile::at(installed))
+    .insert_resource(LauncherFile::new(
+        installed.clone(),
+        harness_protocol::Stamp::of(&installed),
+    ))
     .insert_resource(scripted_models([]))
     .add_plugins((
         AgentPlugin,
@@ -314,6 +318,15 @@ fn headless_reload(name: &str, rebuild: Rebuild, replace: bool) -> Ends {
         crate::BasicCommandsPlugin,
     ))
     .init_resource::<Ends>()
+    .add_systems(
+        Last,
+        |mut notices: MessageReader<Notice>, mut ends: ResMut<Ends>| {
+            let notices = notices
+                .read()
+                .map(|notice| (notice.level, notice.text.clone()));
+            ends.notices.extend(notices);
+        },
+    )
     .add_observer(|exit: On<Exit>, mut ends: ResMut<Ends>| {
         ends.exits.push(exit.0.clone());
     })
@@ -328,23 +341,48 @@ fn headless_reload(name: &str, rebuild: Rebuild, replace: bool) -> Ends {
     }
     let exited = |world: &World| !world.resource::<Ends>().exits.is_empty();
     run_until(&mut app, &wakes, exited);
+    app.update();
     std::fs::remove_dir_all(&dir).ok();
     std::mem::take(app.world_mut().resource_mut::<Ends>().as_mut())
 }
 
 /// A `-p` run whose launcher was replaced, by its `/update` or from
-/// outside, does not reload: it ends as any run does, with 0, its last
-/// line written, and the next run starts the new launcher. One whose
+/// outside, does not reload: it says so, as a notice a `--json` run writes
+/// as a line and a warning a `-p` run writes to stderr whatever its
+/// prompt, and ends as any run does, with 0: [`HeadlessEnded`] is what its
+/// `exit` line says. The next run starts the new launcher. One whose
 /// launcher is the same reloads.
+///
+/// [`HeadlessEnded`]: crate::print::HeadlessEnded
 #[test]
 fn a_headless_run_whose_launcher_was_replaced_ends_instead_of_reloading() {
-    let ended = |ends: &Ends| {
-        ends.exits == [ExitReason::Quit] && ends.runs.iter().map(|run| run.code).eq([0])
+    let ended = |ends: &Ends, notice: (NoticeLevel, &str)| {
+        ends.exits == [ExitReason::Quit]
+            && ends.runs.iter().map(|run| run.code).eq([0])
+            && ends
+                .notices
+                .iter()
+                .any(|(level, text)| (*level, text.as_str()) == notice)
     };
     let updated = headless_reload("headless-update", Rebuild::Update, true);
-    assert!(ended(&updated), "{:?} {:?}", updated.exits, updated.runs);
+    let said = "rig updated; the next run starts the new version.";
+    assert!(
+        ended(&updated, (NoticeLevel::Info, said)),
+        "{:?} {:?} {:?}",
+        updated.exits,
+        updated.runs,
+        updated.notices
+    );
     let replaced = headless_reload("headless-replaced", Rebuild::Build, true);
-    assert!(ended(&replaced), "{:?} {:?}", replaced.exits, replaced.runs);
+    let said = "rig was replaced since this run started, so it does not reload; the next run \
+                starts the new version.";
+    assert!(
+        ended(&replaced, (NoticeLevel::Warn, said)),
+        "{:?} {:?} {:?}",
+        replaced.exits,
+        replaced.runs,
+        replaced.notices
+    );
     let reloaded = headless_reload("headless-reload", Rebuild::Build, false);
     assert_eq!(reloaded.exits, [ExitReason::Reload]);
 }

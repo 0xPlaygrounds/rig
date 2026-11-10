@@ -637,4 +637,8 @@ fn a_stamp_tells_a_replaced_file_from_the_same_one_or_none() {
     assert!(started.replaced(&replaced));
     assert!(!started.replaced(&gone));
     assert!(!gone.replaced(&replaced));
+    // As the launcher passes it on to its agent.
+    assert_eq!(Stamp::parse(&started.text()), started);
+    assert_eq!(Stamp::parse(&gone.text()), gone);
+    assert_eq!(Stamp::parse("12:x"), gone);
 }

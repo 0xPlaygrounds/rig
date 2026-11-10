@@ -237,14 +237,17 @@ fn drain_reload(
         let headless = invoked.is_some_and(|invoked| !invoked.interactive());
         if headless && launcher.is_some_and(|launcher| launcher.replaced()) {
             *status = ReloadStatus::Idle;
-            let said = match build.rebuild {
-                Rebuild::Build => {
-                    "rig was replaced since this run started, so it does not reload; the \
-                     next run starts the new version."
+            // A warning reaches a `-p` run's stderr whatever its prompt.
+            notices.write(match build.rebuild {
+                Rebuild::Build => Notice::warn(
+                    None,
+                    "rig was replaced since this run started, so it does not reload; the next \
+                     run starts the new version.",
+                ),
+                Rebuild::Update => {
+                    Notice::info(None, "rig updated; the next run starts the new version.")
                 }
-                Rebuild::Update => "rig updated; the next run starts the new version.",
-            };
-            notices.write(Notice::info(None, said));
+            });
             return;
         }
         *status = ReloadStatus::Ready;
