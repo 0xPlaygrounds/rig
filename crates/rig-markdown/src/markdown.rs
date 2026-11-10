@@ -56,9 +56,11 @@ pub trait Highlight {
     /// colors are found.
     type Mark;
 
-    /// The lines of `code` in `language`, each after `prefix`, or `None`
-    /// when it has no colors for `language`, so the block is drawn plain
-    /// and unlabelled. `language` is never empty.
+    /// The lines of `code` in `language`, each after `prefix`, with their
+    /// marks, or `None` when it has no colors for `language`, so the block
+    /// is drawn plain and unlabelled. A colored block is drawn under the
+    /// language's name, which takes the first line's list marker. A block
+    /// that names no language is never colored.
     fn block(
         &self,
         code: &str,
@@ -84,16 +86,25 @@ impl Highlight for Plain {
     }
 }
 
+/// What a line [`render`] draws is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Kind<M> {
+    /// Text, to wrap to a width.
+    Text,
+    /// A line of a code block, kept whole, with its mark when the
+    /// [`Highlight`] colored it.
+    Code(Option<M>),
+}
+
 /// `text` as markdown on `palette`, in lines not yet wrapped, its tables
 /// fit to `width` (at their widest cells with `None`), its fenced code
-/// colored by `highlight`. Each line has its mark from `highlight`, if
-/// any.
+/// colored by `highlight`. Each line says whether it is code.
 pub fn render<H: Highlight>(
     text: &str,
     palette: &Palette,
     width: Option<usize>,
     highlight: &H,
-) -> Vec<(Line<'static>, Option<H::Mark>)> {
+) -> Vec<(Line<'static>, Kind<H::Mark>)> {
     let mut writer = Writer {
         lines: Vec::new(),
         code_lines: Vec::new(),
@@ -130,9 +141,9 @@ struct List {
 
 struct Writer<'h, H: Highlight> {
     lines: Vec<Line<'static>>,
-    /// The marks of the lines of `lines` that are colored code, by their
-    /// place.
-    code_lines: Vec<(usize, H::Mark)>,
+    /// The lines of `lines` that are code, by their place, with their
+    /// marks.
+    code_lines: Vec<(usize, Option<H::Mark>)>,
     /// The line being written.
     line: Vec<Span<'static>>,
     /// Inline styles open, innermost last.
@@ -241,6 +252,7 @@ impl<H: Highlight> Writer<'_, H> {
             for (line, mut spans) in code.split('\n').zip(prefixes) {
                 spans.push(Span::from("  "));
                 spans.push(Span::from(line.replace('\t', "    ")));
+                self.code_lines.push((self.lines.len(), None));
                 self.lines.push(Line::from(spans).bg(tint));
             }
             return;
@@ -249,9 +261,7 @@ impl<H: Highlight> Writer<'_, H> {
         spans.push(Span::from(format!("  {language}")).dim().italic());
         self.lines.push(Line::from(spans).bg(tint));
         for (line, mark) in colored {
-            if let Some(mark) = mark {
-                self.code_lines.push((self.lines.len(), mark));
-            }
+            self.code_lines.push((self.lines.len(), mark));
             self.lines.push(line.bg(tint));
         }
     }
@@ -485,12 +495,15 @@ impl<H: Highlight> Writer<'_, H> {
         }
     }
 
-    fn finish(mut self) -> Vec<(Line<'static>, Option<H::Mark>)> {
+    fn finish(mut self) -> Vec<(Line<'static>, Kind<H::Mark>)> {
         self.flush();
         let mut code = self.code_lines.into_iter().peekable();
         let lines = self.lines.into_iter().enumerate().map(|(at, line)| {
-            let code = code.next_if(|(line, _)| *line == at).map(|(_, code)| code);
-            (line, code)
+            let kind = match code.next_if(|(line, _)| *line == at) {
+                Some((_, mark)) => Kind::Code(mark),
+                None => Kind::Text,
+            };
+            (line, kind)
         });
         lines.collect()
     }
@@ -504,3 +517,6 @@ fn is_break(html: &str) -> bool {
         .collect();
     tag.eq_ignore_ascii_case("<br>")
 }
+
+#[cfg(test)]
+mod tests;

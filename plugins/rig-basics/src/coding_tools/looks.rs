@@ -142,7 +142,7 @@ pub(super) fn shell(view: &ToolCallView<'_>) -> Vec<LookLine> {
         lines.push(if index == 0 {
             view.header_code("$", &code, index)
         } else {
-            code.line(index, vec![Span::from("    ")])
+            code.line(index, vec![Span::from(super::COMMAND_INDENT)])
         });
     }
     if lines.is_empty() {

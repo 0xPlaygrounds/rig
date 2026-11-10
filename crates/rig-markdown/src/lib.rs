@@ -15,5 +15,6 @@
 //! assert_eq!(rows.len(), 1);
 //! ```
 
+pub mod code;
 pub mod markdown;
 pub mod wrap;

@@ -25,10 +25,10 @@ use std::sync::{Arc, LazyLock, Mutex, MutexGuard, PoisonError};
 
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
+use rig_markdown::code::shown;
 use syntect::easy::HighlightLines;
 use syntect::highlighting::{FontStyle, HighlightState};
 use syntect::parsing::{ParseState, SyntaxReference, SyntaxSet};
-use syntect::util::LinesWithEndings;
 
 use crate::{LookLine, OUTPUT_INDENT, text_rows};
 
@@ -147,7 +147,7 @@ impl Code {
     fn made(text: &str, syntax: Option<&'static SyntaxReference>) -> Self {
         let mut lines = Vec::new();
         let mut start = 0;
-        for line in LinesWithEndings::from(text) {
+        for line in rig_markdown::code::lines(text) {
             lines.push(start..start + line.len());
             start += line.len();
         }
@@ -180,7 +180,7 @@ impl Code {
     pub fn line(&self, index: usize, prefix: Vec<Span<'static>>) -> LookLine {
         let at = prefix.iter().map(|span| span.content.len()).sum();
         let mut spans = prefix;
-        let text = self.raw(index).map(|line| plain(line, 0..line.len()));
+        let text = self.raw(index).map(|line| shown(line, 0..line.len()));
         spans.extend(text.filter(|text| !text.is_empty()).map(Span::raw));
         LookLine {
             line: Line::from(spans),
@@ -364,23 +364,15 @@ fn same_syntax(one: Option<&SyntaxReference>, other: Option<&SyntaxReference>) -
     }
 }
 
-/// The bytes `range` of `line` as drawn: without the line's end, tabs as
-/// four spaces.
-fn plain(line: &str, range: Range<usize>) -> String {
-    let end = line.trim_end_matches(['\n', '\r']).len();
-    let text = line.get(range.start.min(end)..range.end.min(end));
-    text.unwrap_or_default().replace('\t', "    ")
-}
-
 /// `line`'s spans, the parser carried on past it, cut from the pieces the
-/// grammar marks so their texts join to the line as [`plain`] draws it.
+/// grammar marks so their texts join to the line as [`shown`] draws it.
 fn spans(parser: &mut HighlightLines<'_>, line: &str) -> Option<Vec<Span<'static>>> {
     let pieces = parser.highlight_line(line, &SYNTAXES).ok()?;
     let mut start = 0;
     let spans = pieces.into_iter().filter_map(|(style, piece)| {
         let range = start..start + piece.len();
         start = range.end;
-        let text = plain(line, range);
+        let text = shown(line, range);
         (!text.is_empty()).then(|| Span::styled(text, style_of(style)))
     });
     Some(spans.collect())

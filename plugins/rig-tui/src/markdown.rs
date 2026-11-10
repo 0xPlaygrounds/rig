@@ -3,7 +3,7 @@
 //! language's grammar, when it has one.
 
 use ratatui::text::{Line, Span};
-use rig_markdown::markdown::{Highlight, Palette};
+use rig_markdown::markdown::{Highlight, Kind, Palette};
 
 use crate::LookLine;
 use crate::Theme;
@@ -25,7 +25,13 @@ pub fn render(text: &str, theme: &Theme, width: Option<usize>) -> Vec<LookLine> 
     let lines = rig_markdown::markdown::render(text, &palette, width, &Grammars);
     lines
         .into_iter()
-        .map(|(line, code)| LookLine { line, code })
+        .map(|(line, kind)| {
+            let code = match kind {
+                Kind::Code(mark) => mark,
+                Kind::Text => None,
+            };
+            LookLine { line, code }
+        })
         .collect()
 }
 

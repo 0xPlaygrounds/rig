@@ -48,6 +48,7 @@ use std::sync::mpsc::RecvTimeoutError;
 use async_channel::Receiver;
 use bevy_ecs::message::{MessageCursor, Messages};
 use bevy_ecs::system::SystemParam;
+use ratatui_core::style::Style;
 use rig_core::json_utils::remove_preserving_order;
 use rig_ecs::{StartupSystems, StopTurnsOnExit, WriteLogs};
 use rig_harness::harness_protocol::REFUSED_EXIT_CODE;
@@ -59,6 +60,7 @@ use rig_harness::run::{RunExitSystems, RunPlugin, RunStartSystems};
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
+use self::terminal::Terminal;
 use crate::models::FirstPick;
 use crate::telemetry::usage::{SessionUsage, Spent, StoppedUsage, TurnUsage, UnknownSpend};
 
@@ -208,7 +210,16 @@ impl Plugin for PrintPlugin {
             let command = prompt.as_deref().unwrap_or_default().trim_start();
             if !app.world().contains_resource::<Printed>() {
                 let writer = front_writer(app.world());
-                app.insert_resource(Printed::by(writer));
+                let out = Terminal::of(&std::io::stdout());
+                let err = Terminal::of(&std::io::stderr());
+                app.insert_resource(Printed::by(writer, out, err));
+            }
+            if (app.world().get_resource::<Printed>()).is_some_and(|printed| printed.err.is_some())
+            {
+                app.init_resource::<Narrated>()
+                    .add_systems(PostUpdate, read_narration)
+                    .add_observer(print_call)
+                    .add_observer(end_narration);
             }
             app.add_systems(
                 Update,
@@ -1014,35 +1025,46 @@ fn exit_when_backlogged(
     }
 }
 
-/// Whether the run wrote anything to stdout yet, and the writer of its
-/// answer and notices.
+/// Whether the run wrote anything to stdout yet, the writer of its
+/// answer and notices, and the terminals stdout and stderr are.
 #[derive(Resource)]
 struct Printed {
-    out: bool,
+    wrote: bool,
     writer: Writer,
+    /// The terminal stdout is: the answer is drawn for it. Otherwise its
+    /// bytes are the answer's own.
+    out: Option<Terminal>,
+    /// The terminal stderr is: the narration and each tool call show there.
+    err: Option<Terminal>,
 }
 
 impl Printed {
-    /// The answer and notices written by `writer`.
-    fn by(writer: Writer) -> Self {
-        Self { out: false, writer }
+    /// The answer and notices written by `writer`, to the terminals `out`
+    /// and `err` are.
+    fn by(writer: Writer, out: Option<Terminal>, err: Option<Terminal>) -> Self {
+        Self {
+            wrote: false,
+            writer,
+            out,
+            err,
+        }
     }
 
     /// The answer written in place to stdout, the notices to `err`, which
     /// never blocks, such as a test's buffer.
     #[cfg(test)]
     fn to(err: impl std::io::Write + Send + 'static) -> Self {
-        Self::by(Writer::inline(std::io::stdout(), err))
+        Self::by(Writer::inline(std::io::stdout(), err), None, None)
     }
 
     /// Writes `block` to stdout, after an empty line when something came
     /// before it.
     fn print(&mut self, block: Option<String>) {
         if let Some(block) = block {
-            let gap = if self.out { "\n" } else { "" };
+            let gap = if self.wrote { "\n" } else { "" };
             let line = format!("{gap}{block}\n");
             self.writer.write(Stream::Out, line.into_bytes());
-            self.out = true;
+            self.wrote = true;
         }
     }
 
@@ -1060,7 +1082,8 @@ impl Printed {
 
 /// Writes each answer to stdout as it comes.
 fn print_answer(ended: On<HeadlessTurnEnded>, mut printed: ResMut<Printed>) {
-    printed.print(output(ended.answer.as_deref(), []));
+    let block = output(ended.answer.as_deref(), [], printed.out.as_ref());
+    printed.print(block);
 }
 
 /// Once the run ends, writes the [`PrintSection`]s to stdout, and why it
@@ -1074,30 +1097,41 @@ fn print_ended(
     if let Some(why) = ended.why.as_ref().filter(|_| !run.told) {
         printed.error(why);
     }
-    printed.print(output(None, sections));
+    let block = output(None, sections, printed.out.as_ref());
+    printed.print(block);
 }
 
 /// What the run prints: the answer, then each [`PrintSection`] by tag,
-/// each after an empty line; `None` when there is nothing.
+/// each after an empty line; `None` when there is nothing. For a
+/// `terminal` the answer is drawn from its markdown and each section
+/// wrapped; otherwise each is its own text.
 fn output<'a>(
     answer: Option<&str>,
     sections: impl IntoIterator<Item = &'a PrintSection>,
+    terminal: Option<&Terminal>,
 ) -> Option<String> {
     let mut sections: Vec<&PrintSection> = sections
         .into_iter()
         .filter(|section| !section.text.is_empty())
         .collect();
     sections.sort_by(|a, b| a.tag.cmp(&b.tag));
-    let parts: Vec<&str> = answer
-        .into_iter()
-        .chain(sections.iter().map(|section| section.text.as_str()))
-        .map(str::trim_end)
-        .collect();
+    let answer = answer.map(str::trim_end).map(|answer| match terminal {
+        Some(terminal) => terminal.markdown(answer),
+        None => answer.to_owned(),
+    });
+    let sections = sections.iter().map(|section| {
+        let text = section.text.trim_end();
+        match terminal {
+            Some(terminal) => terminal.text(text, Style::new()),
+            None => text.to_owned(),
+        }
+    });
+    let parts: Vec<String> = answer.into_iter().chain(sections).collect();
     (!parts.is_empty()).then(|| parts.join("\n\n"))
 }
 
 /// Writes each new line of a running call's [`ToolProgress`] to stderr,
-/// after the tool's name.
+/// after the tool's name. Progress is not an error, so it has no `rig: `.
 fn print_progress(
     progress: Query<(&ToolProgress, Option<&ToolRequest>), Changed<ToolProgress>>,
     mut printed: ResMut<Printed>,
@@ -1108,8 +1142,8 @@ fn print_progress(
             continue;
         }
         match tool {
-            Some(tool) => printed.error(&format!("{}: {line}", tool.call.function.name)),
-            None => printed.error(line),
+            Some(tool) => printed.note(&format!("{}: {line}", tool.call.function.name)),
+            None => printed.note(line),
         }
     }
 }
@@ -1161,6 +1195,91 @@ fn excerpt(text: &str) -> String {
     match left.trim_end().len() {
         0 => text.trim_end().to_owned(),
         _ => format!("{}\n… ({} more bytes)", shown.trim_end(), left.len()),
+    }
+}
+
+/// The text the main agent's model calls streamed since its last tool
+/// call or turn end, how far it has read them, and the model call the
+/// last piece came from.
+#[derive(Resource, Default)]
+struct Narrated {
+    read: MessageCursor<StreamDelta>,
+    text: String,
+    call: Option<Entity>,
+}
+
+/// The main agent's narration: what its replies say beside their tool
+/// calls.
+#[derive(SystemParam)]
+struct Narration<'w, 's> {
+    narrated: ResMut<'w, Narrated>,
+    deltas: Res<'w, Messages<StreamDelta>>,
+    turn_calls: Query<'w, 's, (), With<TurnCall>>,
+    primary: MainAgentQuery<'w, 's>,
+}
+
+impl Narration<'_, '_> {
+    /// Keeps the text streamed since the last read, each reply's on lines
+    /// of its own.
+    fn read(&mut self) {
+        let main = main_agent(&self.primary);
+        let Narrated { read, text, call } = &mut *self.narrated;
+        for delta in read.read(&self.deltas) {
+            if let StreamEvent::Text { text: streamed, .. } = &delta.event
+                && delta.agent.is_some_and(|agent| Some(agent) == main)
+                && self.turn_calls.contains(delta.effect)
+            {
+                if *call != Some(delta.effect) && !text.is_empty() {
+                    text.push('\n');
+                }
+                *call = Some(delta.effect);
+                text.push_str(streamed);
+            }
+        }
+    }
+
+    /// The text kept, read up to now, taken.
+    fn take(&mut self) -> String {
+        self.read();
+        std::mem::take(&mut self.narrated.text)
+    }
+}
+
+/// Keeps the narration each frame, before its messages are dropped.
+fn read_narration(mut narration: Narration) {
+    narration.read();
+}
+
+/// On a terminal's stderr: writes the main agent's narration before a
+/// call, dim, then a dim line for each call that starts, with what its
+/// look summarizes of it.
+fn print_call(
+    start: On<Add<Started>>,
+    calls: Query<(&ToolRequest, &ForAgent)>,
+    mut narration: Narration,
+    mut printed: ResMut<Printed>,
+) {
+    let Ok((request, &ForAgent(agent))) = calls.get(start.entity) else {
+        return;
+    };
+    let Some(terminal) = printed.err else {
+        return;
+    };
+    if Some(agent) == main_agent(&narration.primary) {
+        let said = narration.take();
+        let said = said.trim();
+        if !said.is_empty() {
+            printed.note(&terminal.text(said, Style::new().dim()));
+        }
+    }
+    printed.note(&terminal.call(&request.call));
+}
+
+/// Drops the narration of a turn of the main agent that ended: its last
+/// text is the answer.
+fn end_narration(ended: On<HeadlessTurnEnded>, mut narration: Narration) {
+    if Some(ended.agent) == main_agent(&narration.primary) {
+        narration.take();
     }
 }
 
@@ -1843,6 +1962,8 @@ fn carry_out(requested: &mut Requested, request: Request) -> Result<Option<Value
     }
     Ok(None)
 }
+
+mod terminal;
 
 #[cfg(test)]
 mod tests;

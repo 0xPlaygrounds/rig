@@ -905,6 +905,48 @@ fn questions_are_answered_from_answer_or_refused() {
     assert_eq!(none, (0, vec![Some(None)]));
 }
 
+/// What a print run of a model answering `answer` writes to stdout, when
+/// stdout is `terminal`.
+fn stdout_of(answer: &str, terminal: Option<Terminal>) -> Vec<u8> {
+    let out = Lines::default();
+    let model = answering(&[answer]);
+    let invoked = Invocation {
+        print: Some("hi".to_owned()),
+        ..Invocation::default()
+    };
+    let (mut app, _) = noting(&MemoryStore::default(), invoked);
+    let writer = Writer::inline(out.clone(), std::io::sink());
+    app.insert_resource(scripted_models([(MODEL, &model)]))
+        .insert_resource(Printed::by(writer, terminal, None))
+        .add_plugins((ExitPlugin, PrintPlugin));
+    app.finish();
+    app.cleanup();
+    run_until(&mut app, |_| false);
+    out.0.lock().map(|out| out.clone()).unwrap_or_default()
+}
+
+#[test]
+fn a_pipe_gets_the_answers_own_bytes_and_a_terminal_gets_it_drawn() {
+    let code = format!("fn main() {{ {} }}", "step();".repeat(30));
+    let answer = format!(
+        "# Plan\n\n{} `cargo test` **now**.\n\n- one\n- two\n\n```rust\n{code}\n```\n\n",
+        "a long sentence of words ".repeat(16).trim_end(),
+    );
+    // Not a terminal: the answer as the model wrote it, as before.
+    let piped = stdout_of(&answer, None);
+    assert_eq!(piped, format!("{}\n", answer.trim_end()).into_bytes());
+    let terminal = Terminal {
+        width: Some(80),
+        color: false,
+    };
+    let drawn = String::from_utf8(stdout_of(&answer, Some(terminal))).unwrap_or_default();
+    assert!(!drawn.contains("```") && !drawn.contains("**"), "{drawn}");
+    assert!(
+        drawn.lines().any(|line| line.trim_start() == code),
+        "{drawn}"
+    );
+}
+
 #[test]
 fn sections_follow_the_answer_by_tag() {
     let sections = [
@@ -912,12 +954,12 @@ fn sections_follow_the_answer_by_tag() {
         PrintSection::new("cost", "$0.02"),
         PrintSection::new("empty", ""),
     ];
-    let printed = output(Some("Fixed.\n"), &sections);
+    let printed = output(Some("Fixed.\n"), &sections, None);
     assert_eq!(
         printed.as_deref(),
         Some("Fixed.\n\n$0.02\n\ntodo 1/2\n[x] read\n[ ] fix")
     );
-    assert_eq!(output(None, &[]), None);
+    assert_eq!(output(None, &[], None), None);
 }
 
 /// A prompt takes what is piped in after it, however late it comes: the
