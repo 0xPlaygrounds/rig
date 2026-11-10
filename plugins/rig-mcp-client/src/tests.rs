@@ -1633,22 +1633,33 @@ fn a_streamable_http_server_connects_lists_answers_and_changes_its_tools() {
 }
 
 #[test]
-fn a_server_that_wants_a_sign_in_says_so_in_plain_words() {
+fn a_server_that_refuses_its_client_says_why_in_plain_words() {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(1)
         .enable_all()
         .build();
     assert!(runtime.is_ok(), "{runtime:?}");
     let Ok(runtime) = runtime else { return };
-    // Every request is answered as by a server that wants an OAuth sign-in.
-    let router = axum::Router::new().fallback(|| async {
-        let challenge =
-            "Bearer resource_metadata=\"http://127.0.0.1/.well-known/oauth-protected-resource\"";
-        (
-            http::StatusCode::UNAUTHORIZED,
-            [(http::header::WWW_AUTHENTICATE, challenge)],
+    // Answers as a server that takes OAuth does: 401 to every request, and
+    // 403 on `/scoped`, each with a bearer challenge.
+    let router = axum::Router::new()
+        .route(
+            "/scoped",
+            axum::routing::any(|| async {
+                let challenge = "Bearer error=\"insufficient_scope\", scope=\"repo\"";
+                (
+                    http::StatusCode::FORBIDDEN,
+                    [(http::header::WWW_AUTHENTICATE, challenge)],
+                )
+            }),
         )
-    });
+        .fallback(|| async {
+            let challenge = "Bearer resource_metadata=\"http://127.0.0.1/.well-known/oauth-protected-resource\"";
+            (
+                http::StatusCode::UNAUTHORIZED,
+                [(http::header::WWW_AUTHENTICATE, challenge)],
+            )
+        });
     let listener = runtime.block_on(tokio::net::TcpListener::bind("127.0.0.1:0"));
     let bound = listener.and_then(|listener| Ok((listener.local_addr()?, listener)));
     assert!(bound.is_ok(), "{bound:?}");
@@ -1656,23 +1667,46 @@ fn a_server_that_wants_a_sign_in_says_so_in_plain_words() {
         return;
     };
     runtime.spawn(async move { axum::serve(listener, router).await });
+    // A port nothing listens on once its listener is dropped.
+    let closed = std::net::TcpListener::bind("127.0.0.1:0").and_then(|free| free.local_addr());
+    assert!(closed.is_ok(), "{closed:?}");
+    let Ok(closed) = closed else { return };
 
-    let project = project("sign-in");
-    let server = json!({ "type": "http", "url": format!("http://{address}/mcp") });
-    write_servers(&project.join("home/mcp.json"), json!({ "conf": server }));
+    let project = project("refused");
+    let token = json!({ "Authorization": "Bearer expired" });
+    let servers = json!({
+        "conf": { "type": "http", "url": format!("http://{address}/mcp") },
+        "keyed": { "type": "http", "url": format!("http://{address}/mcp"), "headers": token },
+        "scoped": { "type": "http", "url": format!("http://{address}/scoped"), "headers": token },
+        "gone": { "type": "http", "url": format!("http://{closed}/mcp") },
+    });
+    write_servers(&project.join("home/mcp.json"), servers);
     let (mut app, wakes) = app_in(&project, "[mcp]\nfirst_retry_secs = 3600", None);
     app.finish();
-    run_until(&mut app, &wakes, |world| {
-        notices(world)
-            .iter()
-            .any(|notice| notice.contains("`conf`"))
-    });
+    run_until(&mut app, &wakes, |world| notices(world).len() == 4);
+    let (gone, mut told): (Vec<_>, Vec<_>) = notices(app.world())
+        .into_iter()
+        .partition(|notice| notice.starts_with("MCP server `gone`"));
+    told.sort();
+    let gone = gone.concat();
+    assert!(
+        gone.starts_with("MCP server `gone` could not connect: ")
+            && gone.contains(&format!(
+                "error sending request for url (http://{closed}/mcp)"
+            ))
+            && !gone.contains("rmcp::"),
+        "{gone}"
+    );
     assert_eq!(
-        notices(app.world()),
+        told,
         [
-            "MCP server `conf` could not connect: it asks for a sign-in (OAuth), which rig does \
-             not support. A server that takes a token in a header works: see \"Servers: \
-             `mcp.json`\" in the rig-mcp-client README."
+            "MCP server `conf` could not connect: it asks for a sign-in (OAuth), which rig \
+                 does not support. A server that takes a token in a header works: see \"Servers: \
+                 `mcp.json`\" in the rig-mcp-client README.",
+            "MCP server `keyed` could not connect: it refused the token in its `headers` \
+                 (HTTP 401).",
+            "MCP server `scoped` could not connect: the token in its `headers` lacks a \
+                 permission it needs (HTTP 403, insufficient scope).",
         ],
     );
     drop(app);

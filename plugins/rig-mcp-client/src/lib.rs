@@ -55,7 +55,9 @@ use rmcp::model::{
 };
 use rmcp::service::{ClientInitializeError, NotificationContext, RoleClient};
 use rmcp::transport::StreamableHttpClientTransport;
-use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
+use rmcp::transport::streamable_http_client::{
+    InsufficientScopeError, StreamableHttpClientTransportConfig,
+};
 use rmcp::{ClientHandler, ServiceExt};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -813,7 +815,10 @@ impl Start {
                     pipes.map_err(|error| format!("`{command}`'s pipes: {error}"))?;
                 // rmcp frames the lines; only a line past the limit ends them.
                 let stdout = Limited::new(stdout, self.line_limit, refused.clone());
-                let service = client.serve((stdout, stdin)).await.map_err(unreached)?;
+                let service = client
+                    .serve((stdout, stdin))
+                    .await
+                    .map_err(|error| unreached(error, false))?;
                 (service, Some(child))
             }
             ServerSpec::Http { url, headers } => {
@@ -828,7 +833,10 @@ impl Start {
                 let config = StreamableHttpClientTransportConfig::with_uri(url.as_str())
                     .custom_headers(sent);
                 let transport = StreamableHttpClientTransport::from_config(config);
-                let service = client.serve(transport).await.map_err(unreached)?;
+                let service = client
+                    .serve(transport)
+                    .await
+                    .map_err(|error| unreached(error, !headers.is_empty()))?;
                 (service, None)
             }
         };
@@ -858,18 +866,32 @@ async fn list(
 }
 
 /// Why the MCP handshake with a server failed, in words without rmcp's
-/// transport type names. A server that wants an OAuth sign-in is told as such.
-fn unreached(error: ClientInitializeError) -> String {
+/// transport type names. `headers` is whether rig sent the server's
+/// configured headers, where a token for it goes: a refusal then means that
+/// token, not a missing OAuth sign-in.
+fn unreached(error: ClientInitializeError, headers: bool) -> String {
     if error.is_authorization_required() {
-        return "it asks for a sign-in (OAuth), which rig does not support. A server that \
-                takes a token in a header works: see \"Servers: `mcp.json`\" in the \
-                rig-mcp-client README"
-            .to_owned();
+        return if headers {
+            "it refused the token in its `headers` (HTTP 401)".to_owned()
+        } else {
+            "it asks for a sign-in (OAuth), which rig does not support. A server that takes \
+             a token in a header works: see \"Servers: `mcp.json`\" in the rig-mcp-client \
+             README"
+                .to_owned()
+        };
     }
     match error {
         ClientInitializeError::TransportError { error, context } => {
+            let error: &(dyn std::error::Error + 'static) = error.error.as_ref();
+            let scoped = std::iter::successors(Some(error), |error| error.source())
+                .any(|error| error.is::<InsufficientScopeError>());
+            if headers && scoped {
+                return "the token in its `headers` lacks a permission it needs \
+                        (HTTP 403, insufficient scope)"
+                    .to_owned();
+            }
             // An HTTP transport's error already names what it was doing.
-            let why = error.error.to_string();
+            let why = error.to_string();
             if why.contains(context.as_ref()) {
                 why
             } else {
