@@ -15,6 +15,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 use std::time::SystemTime;
 
+use rig_harness_protocol::{UPDATE_INSTALLED, UPDATE_SAYS};
+
 use super::Result;
 use super::project::RigSource;
 
@@ -38,7 +40,7 @@ pub fn update() -> ExitCode {
     match install {
         Ok((install, launcher)) => install_and_build(install, &launcher),
         Err(failure) => {
-            eprintln!("rig update: {failure}");
+            eprintln!("{UPDATE_SAYS}{failure}");
             ExitCode::FAILURE
         }
     }
@@ -54,7 +56,8 @@ fn install_root(launcher: &Path) -> Result<&Path> {
         .ok_or_else(|| {
             format!(
                 "it replaces a rig that `cargo install` put in a `bin` directory; this one \
-                 is {}, so it is left as it is",
+                 is {}, so it is left as it is. Install rig with `cargo install` to update \
+                 it this way, or rebuild it the way you built it",
                 launcher.display()
             )
             .into()
@@ -85,36 +88,45 @@ pub fn install_command(source: &RigSource, root: &Path) -> Command {
 /// `ExitCode::FAILURE` when either fails.
 fn install_and_build(mut install: Command, launcher: &Path) -> ExitCode {
     let shown = shell_words(&install);
-    eprintln!("rig update: running {shown}");
+    eprintln!("{UPDATE_SAYS}running {shown}");
     match install.status() {
         Ok(status) if status.success() => {}
         Ok(status) => {
-            eprintln!("rig update: `{shown}` failed ({status}); this rig is unchanged.");
+            eprintln!(
+                "{UPDATE_SAYS}`{shown}` failed ({status}); this rig is unchanged. Fix what \
+                 cargo says above and run `rig update` again."
+            );
             return ExitCode::FAILURE;
         }
         Err(failure) => {
-            eprintln!("rig update: could not run cargo: {failure}; this rig is unchanged.");
+            eprintln!(
+                "{UPDATE_SAYS}could not run cargo: {failure}; this rig is unchanged. Put \
+                 cargo on PATH and run `rig update` again."
+            );
             return ExitCode::FAILURE;
         }
     }
     eprintln!(
-        "rig update: installed. Building the agent with the new rig (`rig build`); \
-         after a change this takes 2-3 minutes."
+        "{UPDATE_INSTALLED} Building the agent with the new rig (`rig build`); after a \
+         change this takes 2-3 minutes."
     );
     match Command::new(launcher).arg("build").status() {
         Ok(status) if status.success() => {
-            eprintln!("rig update: done.");
+            eprintln!("{UPDATE_SAYS}done.");
             ExitCode::SUCCESS
         }
         Ok(status) => {
             eprintln!(
-                "rig update: rig is updated, but building the agent failed ({status}); \
-                 `rig build` tries again."
+                "{UPDATE_SAYS}rig is updated, but building the agent failed ({status}); \
+                 `rig build` tries again, and the next start or /reload runs the new rig."
             );
             ExitCode::FAILURE
         }
         Err(failure) => {
-            eprintln!("rig update: rig is updated, but could not run `rig build`: {failure}");
+            eprintln!(
+                "{UPDATE_SAYS}rig is updated, but could not run `rig build`: {failure}; the \
+                 next start or /reload runs the new rig."
+            );
             ExitCode::FAILURE
         }
     }
@@ -147,6 +159,12 @@ fn shell_words(command: &Command) -> String {
 pub struct Stamp(Option<(SystemTime, u64)>);
 
 impl Stamp {
+    /// Whether the file is another than at `now`. A file gone, or never
+    /// read, was not replaced: only a new file at the path is a new launcher.
+    pub fn replaced(&self, now: &Stamp) -> bool {
+        matches!((&self.0, &now.0), (Some(then), Some(now)) if then != now)
+    }
+
     /// The stamp of the file at `path` now.
     pub fn of(path: &Path) -> Self {
         Self(fs::metadata(path).ok().and_then(|metadata| {
@@ -168,9 +186,9 @@ pub struct Reexec {
 }
 
 impl Reexec {
-    /// The launcher at `launcher` resuming `session` with `args`, the
-    /// command line's own, which never start a new session; a session with
-    /// nothing saved, which cannot be resumed, starts a new one.
+    /// The launcher at `launcher` with `args`, the command line's own,
+    /// which never name a session: resuming `session`, or starting a new
+    /// one when it is `None`.
     pub fn new(launcher: &Path, session: Option<&str>, args: Vec<OsString>) -> Self {
         let resume = session.map(|session| ["--resume".into(), session.into()]);
         Self {

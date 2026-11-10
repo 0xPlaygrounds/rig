@@ -173,14 +173,18 @@ fn queue(
     if asked.is_ok() {
         hold::keep_run(&mut commands);
     }
-    let notice = match asked {
+    let notice = match (asked, rebuild) {
         // The build starts this frame, with its own notice.
-        Ok(()) if turns.is_empty() => return,
-        Ok(()) => {
+        (Ok(()), _) if turns.is_empty() => return,
+        (Ok(()), Rebuild::Build) => {
             "A turn is running: the agent rebuilds and restarts once no turn runs. \
              /reload cancel cancels it."
         }
-        Err(why) => why,
+        (Ok(()), Rebuild::Update) => {
+            "A turn is running: rig updates and restarts once no turn runs. \
+             /update cancel cancels it."
+        }
+        (Err(why), _) => why,
     };
     notices.write(Notice::info(None, notice));
 }
@@ -206,6 +210,7 @@ fn cancel_on_interrupt(
 fn on_cancel_reload(
     _: On<CancelReload>,
     mut status: ResMut<ReloadStatus>,
+    build: Option<Res<rebuild::ReloadBuild>>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -213,7 +218,7 @@ fn on_cancel_reload(
         ReloadStatus::Queued { .. } => "Queued reload cancelled.",
         ReloadStatus::Building { .. } => {
             rebuild::stop(&mut commands);
-            "Rebuild cancelled."
+            rebuild::cancelled(build.as_deref())
         }
         ReloadStatus::Idle | ReloadStatus::Ready | ReloadStatus::Failed => {
             notices.write(Notice::info(None, "No reload to cancel."));

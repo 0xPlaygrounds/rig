@@ -146,6 +146,7 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
         invocation.is_headless() || !terminal || command.is_some_and(|command| !command.terminal);
     let mut ended = launch(
         home,
+        &std::env::current_exe()?,
         run.dir(),
         &invocation,
         headless,
@@ -226,6 +227,7 @@ fn next_build(home: &Home, session: &SessionId) -> Option<PathBuf> {
 /// `build_failure` go to the first start.
 fn launch(
     home: &Home,
+    launcher: &Path,
     run: &RunDir,
     invocation: &Invocation,
     headless: bool,
@@ -233,8 +235,7 @@ fn launch(
     mut notice: Option<String>,
     mut build_failure: Option<String>,
 ) -> Result<Ended> {
-    let launcher = std::env::current_exe()?;
-    let installed = Stamp::of(&launcher);
+    let installed = Stamp::of(launcher);
     // The secrets asked for, for every restart: asked whenever someone is
     // at the terminal, whatever the front, so a command typed there can be
     // asked too; a piped run passes only what its environment has.
@@ -288,7 +289,7 @@ fn launch(
             .args(invocation.to_args())
             .env(env::HOME, home.root())
             .env(env::SESSION, session.as_str())
-            .env(env::LAUNCHER, &launcher)
+            .env(env::LAUNCHER, launcher)
             .env(env::VERSION, LONG_VERSION)
             .env(env::RUN, run.path())
             .env(env::START, reason.as_str())
@@ -333,9 +334,9 @@ fn launch(
         drop(watch);
         let reload = status.code() == Some(i32::from(RELOAD_EXIT_CODE)) && stop::heard().is_none();
         let restart = !headless || (answers_prompt && !directory.switch().exists());
-        // A view reloading after its launcher's file was replaced restarts
-        // on the new launcher, which takes over from here.
-        let replaced = reload && !headless && Stamp::of(&launcher) != installed;
+        // A reload after the launcher's file was replaced restarts on the
+        // new launcher, never the new agent under this one.
+        let replaced = reload && restart && installed.replaced(&Stamp::of(launcher));
         screen |= run.screen().exists();
         // A reload that restarts leaves the jobs running, listed for the
         // next build to take over. Best effort: a list that cannot be read
@@ -350,11 +351,27 @@ fn launch(
             fs::remove_file(&trial)?;
         }
         if replaced {
-            take_switch(&directory)?;
             let saved = home.session(&session).is_saved();
             claimed.discard_if_unsaved(home);
-            let resume = saved.then_some(session.as_str());
-            let reexec = Reexec::new(&launcher, resume, invocation.to_args());
+            // A headless run's restart carries on without its prompt only as
+            // a reload, which a new launcher's start is not: it ends here.
+            if headless {
+                let said = "rig was updated; the next run starts the new version.";
+                return Ok(Ended {
+                    said: Some(said.to_owned()),
+                    ..Ended::quiet(ExitCode::SUCCESS)
+                });
+            }
+            let target = match take_switch(&directory)? {
+                Some(Start::Resume(target)) => Some(target),
+                Some(Start::New) => None,
+                None => saved.then_some(session),
+            };
+            let reexec = Reexec::new(
+                launcher,
+                target.as_ref().map(SessionId::as_str),
+                invocation.to_args(),
+            );
             return Ok(Ended {
                 reexec: Some(reexec),
                 ..Ended::quiet(ExitCode::SUCCESS).restoring(screen)

@@ -82,8 +82,9 @@ Then:
   added to.
 - **It rebuilds itself.** `/reload` rebuilds the agent with your plugin
   crates and restarts it in the same session, and keeps the old build running
-  if the new one does not compile. `rig update`, or `/update` in the agent,
-  reinstalls rig with cargo and restarts on it.
+  if the new one does not compile. `rig update` reinstalls rig with cargo;
+  `/update` does it from the agent and restarts on it. Both arrive with the
+  next release: 0.46.0 updates by installing again.
 - **Scriptable.** `rig -p --json` and `rig --json` drive it over pipes;
   `rig help-agents` is the protocol.
 - **More when you want it.** Subagents are an optional plugin, and the tools

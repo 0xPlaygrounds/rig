@@ -1181,6 +1181,14 @@ pub fn is_name(name: &str) -> bool {
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
+/// How `rig update` starts each line that says what it does, such as the
+/// command it runs; `/update` shows each.
+pub const UPDATE_SAYS: &str = "rig update: ";
+
+/// The line `rig update` starts with once the new launcher is installed,
+/// before it builds the agent: a failure after it is the build's.
+pub const UPDATE_INSTALLED: &str = "rig update: installed.";
+
 /// The launcher's own first words, which no plugin's command may take.
 pub const RESERVED_COMMANDS: &[&str] = &["build", "update", "plugin", "help", "help-agents"];
 

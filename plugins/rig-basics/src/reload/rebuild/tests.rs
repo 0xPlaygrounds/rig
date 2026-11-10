@@ -179,50 +179,67 @@ fn a_failed_build_leaves_its_errors_as_a_note() {
     }
 }
 
-/// The notices said so far.
+/// The notices said so far, and the notes from the build plugin.
 #[derive(Resource, Default)]
-struct Said(Vec<String>);
+struct Said {
+    notices: Vec<String>,
+    notes: Vec<String>,
+}
 
 /// A failed `/update` runs `rig update`, shows the lines it starts with
-/// `rig update: `, such as the command it runs, and keeps this build.
+/// `rig update: `, such as the command it runs, and keeps this build. One
+/// that failed before it installed anything says so with cargo's error, not
+/// the build log of an older build.
 #[test]
 fn a_failed_update_shows_what_rig_update_said() {
-    use rig_harness_test_support::{MemoryStore, app_on, run_until};
+    use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
+    use rig_harness_test_support::{MemoryStore, app_on, first_agent, run_until, scripted_models};
 
     use crate::reload::ReloadPlugin;
 
-    let said = "rig update: `cargo install --force rig-cli` failed; this rig is unchanged.";
-    let launcher = failing_launcher("update", "Compiling rig-cli");
-    let script =
-        format!("#!/bin/sh\necho \"rig update: running $1\" >&2\necho '{said}' >&2\nexit 1\n");
+    let said = "rig update: `cargo install --force rig-cli` failed (exit status: 101); this rig \
+                is unchanged.";
+    let launcher = failing_launcher("update", "");
+    let script = format!(
+        "#!/bin/sh\necho \"rig update: running $1\" >&2\n\
+         echo 'error: could not find `rig-cli` in registry' >&2\necho '{said}' >&2\nexit 1\n"
+    );
     std::fs::write(&launcher, script).ok();
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
     let (mut app, wakes) = app_on(&MemoryStore::default());
-    app.add_plugins((AgentPlugin, SessionLogPlugin, ReloadPlugin))
+    app.insert_resource(scripted_models([("test/model", &model)]))
+        .add_plugins((AgentPlugin, SessionLogPlugin, ReloadPlugin))
         .init_resource::<Said>()
         .add_systems(
             Last,
-            |mut notices: MessageReader<Notice>, mut all: ResMut<Said>| {
-                all.0
-                    .extend(notices.read().map(|notice| notice.text.clone()));
+            |mut notices: MessageReader<Notice>, mut said: ResMut<Said>| {
+                let texts = notices.read().map(|notice| notice.text.clone());
+                said.notices.extend(texts);
+            },
+        )
+        .add_observer(
+            |sent: On<Add<Incoming>>, messages: Query<&Incoming>, mut said: ResMut<Said>| {
+                if let Ok(message) = messages.get(sent.entity)
+                    && message.author.kind == AuthorKind::Plugin(launcher::BUILD_ORIGIN.to_owned())
+                {
+                    said.notes.push(message.text().to_owned());
+                }
             },
         );
     app.finish();
     app.update();
+    let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
     let wake = app.world().resource::<Wake>().clone();
-    let build = ReloadBuild::start(
-        launcher.as_os_str(),
-        Rebuild::Update,
-        Entity::PLACEHOLDER,
-        wake,
-    );
-    if let Ok(build) = build {
+    if let Ok(build) = ReloadBuild::start(launcher.as_os_str(), Rebuild::Update, agent, wake) {
         app.insert_resource(build);
         *app.world_mut().resource_mut::<ReloadStatus>() = ReloadStatus::Building { latest: None };
     }
     let failed = |world: &World| *world.resource::<ReloadStatus>() == ReloadStatus::Failed;
     run_until(&mut app, &wakes, failed);
-    app.update();
-    let notices = app.world().resource::<Said>().0.clone();
+    for _ in 0..3 {
+        app.update();
+    }
+    let Said { notices, notes } = std::mem::take(app.world_mut().resource_mut::<Said>().as_mut());
     if let Some(dir) = launcher.parent() {
         std::fs::remove_dir_all(dir).ok();
     }
@@ -231,7 +248,16 @@ fn a_failed_update_shows_what_rig_update_said() {
         Some(vec![
             "rig update: running update".to_owned(),
             said.to_owned(),
-            "The update failed (exit status: 1); this rig keeps running.".to_owned(),
+            "The update failed (exit status: 1): error: could not find `rig-cli` in registry; \
+             this rig keeps running."
+                .to_owned(),
         ])
     );
+    assert_eq!(notes.len(), 1);
+    assert!(notes.iter().all(|note| {
+        note.starts_with("Updating rig (/update) failed before it was installed")
+            && note.contains("could not find `rig-cli`")
+            && !note.contains("build.log")
+    }));
+    assert_eq!(model.request_count(), 0);
 }

@@ -59,24 +59,31 @@ newer and runs on Linux and macOS. Windows is not supported.
 
 ## Update
 
-`rig update` reinstalls the launcher where it is installed, then builds the
-agent with the new one. It prints the command before running it:
+`rig update` reinstalls the launcher where it is installed (`--root` is the
+directory above the running `rig`'s `bin`), then builds the agent with the
+new one, which takes 2-3 minutes after a change. It prints the command
+before running it:
 
-- From crates.io: `cargo install --force rig-cli`. 0.46.0 is the latest
-  release, and `rig-cli` is not on crates.io until the next one, so until
-  then cargo cannot find it; `--force` replaces the `rig` that the `rig`
-  crate installed.
+- From crates.io: `cargo install --force rig-cli --root <root>`. `rig-cli` is
+  not on crates.io until the next release, so until then cargo cannot find
+  it. 0.46.0 has no `rig update`: reinstall it by hand as in
+  [Install and run](#install-and-run). `--force` replaces the `rig` that the
+  `rig` crate installed.
 - From a checkout: `cargo install --force --locked --path
-  <checkout>/crates/rig-cli`. It rebuilds the checkout as it is: `git pull`
-  first is yours.
+  <checkout>/crates/rig-cli --root <root>`. It rebuilds the checkout as it is:
+  `git pull` first is yours.
 
 A failed install, such as one offline, leaves the installed rig as it was and
 exits 1. In the agent, `/update` runs it, showing its lines and cargo's latest
-one, and then restarts as `/reload` does: the launcher, whose own file was
-replaced, starts the new one on the same session. Installing by hand works
-too: the next start, or `/reload`, runs the new launcher. The agent build
-takes several minutes, and `RIG_HOME/target` keeps the old version's build
-too.
+one, and then restarts: the launcher, whose own file was replaced, starts the
+new one on the same session. Unlike `/reload`, the restart ends the
+background jobs the agent started, and asks again for the keys you typed at
+the terminal. Installing by hand works too: the next start, or the next
+`/reload`, `/new` or `/resume`, runs the new launcher. A `-p` or `--json` run
+whose launcher was replaced ends at its next reload instead, saying so, and
+the next run starts the new version. `RIG_HOME/target` keeps the old
+version's build too.
+
 Sessions resume while their format is the same. A session in another format
 is refused, unchanged, with `this session was made by another version of rig;
 start a new session`.
