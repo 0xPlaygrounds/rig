@@ -340,6 +340,10 @@ pub struct AnthropicConfig {
     /// Where a request names its model and API version.
     #[serde(default, skip_serializing_if = "Addressing::is_body")]
     pub addressing: Addressing,
+    /// Instructions sent ahead of every request's system prompt, as its
+    /// first `system` block.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instructions: Option<String>,
 }
 
 /// Where a Messages request names its model and API version.
@@ -380,6 +384,7 @@ impl AnthropicConfig {
             betas: Vec::new(),
             dialect: *dialect,
             addressing: Addressing::Body,
+            instructions: None,
         }
     }
 
@@ -429,6 +434,12 @@ impl AnthropicConfig {
     /// Point the wire at another API root.
     pub fn with_base_url(mut self, base_url: impl AsRef<str>) -> Self {
         self.base_url = normalize_base_url(base_url.as_ref());
+        self
+    }
+
+    /// Send these instructions ahead of every request's system prompt.
+    pub fn with_instructions(mut self, instructions: impl Into<String>) -> Self {
+        self.instructions = Some(instructions.into());
         self
     }
 

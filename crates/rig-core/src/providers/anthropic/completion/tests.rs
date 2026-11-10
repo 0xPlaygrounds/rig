@@ -364,6 +364,31 @@ fn strict_tools_opt_in_marks_and_sanitizes_rig_tools_only() {
     assert!(provider_tool.get("strict").is_none());
 }
 
+/// A provider's instructions are the first system block of every request,
+/// ahead of the request's own system prompt, and the whole system prompt of
+/// a request without one.
+#[test]
+fn provider_instructions_lead_the_system_prompt() {
+    let wire = AnthropicConfig::new("test-key")
+        .with_instructions("Be brief.")
+        .completion(CLAUDE_SONNET_4_6);
+    let system = |preamble: Option<&str>| {
+        let request = completion_request_with_history(
+            vec![message::Message::from("Hello")],
+            preamble.map(str::to_owned),
+        );
+        let encoded = body(&wire, &request, Mode::Unary).expect("the request encodes");
+        encoded.get("system").cloned()
+    };
+    let instructions = json!({"type": "text", "text": "Be brief."});
+
+    assert_eq!(
+        system(Some("System prompt")),
+        Some(json!([instructions, {"type": "text", "text": "System prompt"}]))
+    );
+    assert_eq!(system(None), Some(json!([instructions])));
+}
+
 fn system_has_cache_control(value: &serde_json::Value) -> bool {
     value["system"]
         .as_array()
