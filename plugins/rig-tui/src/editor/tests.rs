@@ -6,6 +6,13 @@ fn texts(layout: &Layout) -> Vec<String> {
     rows.map(|row| row.chars().skip(2).collect()).collect()
 }
 
+/// `text` without its blanks.
+fn solid(text: &str) -> String {
+    text.chars()
+        .filter(|character| !character.is_whitespace())
+        .collect()
+}
+
 #[test]
 fn a_long_prompt_breaks_at_spaces_with_the_cursor_where_it_is_drawn() {
     let words = [
@@ -17,15 +24,18 @@ fn a_long_prompt_breaks_at_spaces_with_the_cursor_where_it_is_drawn() {
         "explain",
         "👩\u{200d}💻",
         "why",
+        "abcdefghij",
+        "e\u{301}",
     ];
     let mut editor = Editor::default();
     editor.set(format!("{} ", words.join(" ")).repeat(3));
+    let text = editor.text().to_owned();
+    let ends = text
+        .grapheme_indices(true)
+        .map(|(at, grapheme)| at + grapheme.len());
+    let cursors: Vec<usize> = std::iter::once(0).chain(ends).collect();
     for width in 12..40 {
-        let text = editor.text().to_owned();
-        let ends = text
-            .grapheme_indices(true)
-            .map(|(at, grapheme)| at + grapheme.len());
-        for cursor in std::iter::once(0).chain(ends) {
+        for &cursor in &cursors {
             editor.set_cursor(cursor);
             let layout = editor.layout(width);
             let rows = texts(&layout);
@@ -44,9 +54,12 @@ fn a_long_prompt_breaks_at_spaces_with_the_cursor_where_it_is_drawn() {
                     .any(|word| word.split('\t').any(|part| part == piece))),
                 "{rows:?}"
             );
-            // The cursor sits after the text before it: its row holds the
-            // end of that text, at its column.
-            let before = text.get(..cursor).unwrap_or_default().replace('\t', " ");
+            // The caret is inside the input, after exactly the text before
+            // the cursor: the rows above it, then its row up to its column.
+            assert!(
+                layout.cursor_column < usize::from(width),
+                "{cursor} at {width}: {rows:?}"
+            );
             let row = rows.get(layout.cursor_row).map_or("", String::as_str);
             let column = layout.cursor_column - 2;
             let drawn: String = row
@@ -58,11 +71,14 @@ fn a_long_prompt_breaks_at_spaces_with_the_cursor_where_it_is_drawn() {
                 .take_while(|(at, _)| *at <= column)
                 .map(|(_, grapheme)| grapheme)
                 .collect();
-            assert!(
-                before.trim_end().ends_with(drawn.trim()),
-                "{cursor} at {width}: {drawn:?} in {rows:?}"
+            let above = rows.get(..layout.cursor_row).unwrap_or_default().concat();
+            let before = text.get(..cursor).unwrap_or_default();
+            assert_eq!(
+                solid(&above) + &solid(&drawn),
+                solid(before),
+                "{cursor} at {width}: {rows:?}"
             );
-            // Past a row's end only in the spaces its break dropped.
+            // Past a row's text only in the spaces its break dropped.
             let after_row = drawn.width() == row.width() && before.ends_with(' ');
             assert!(
                 drawn.width() == column || after_row,
@@ -73,16 +89,76 @@ fn a_long_prompt_breaks_at_spaces_with_the_cursor_where_it_is_drawn() {
 }
 
 #[test]
-fn a_narrow_key_row_keeps_esc_and_says_it_dropped_some() {
-    let running = hint(true, false);
-    let all = fit_keys(running, 500);
-    assert!(!all.contains('…'), "{all}");
-    for width in 30..all.width() {
-        let row = fit_keys(running, width);
-        assert!(row.width() <= width, "{row}");
-        assert!(
-            row.contains("Esc stops") && row.trim_end().ends_with('…'),
-            "{row}"
-        );
+fn a_cursor_in_the_space_after_a_full_row_stays_inside_the_input() {
+    let mut editor = Editor::default();
+    editor.set("abcdefghij xyz");
+    editor.set_cursor(10);
+    let layout = editor.layout(12);
+    assert!(layout.cursor_column < 12, "{}", layout.cursor_column);
+    editor.set("abcdefghij\nxyz");
+    editor.set_cursor(10);
+    let layout = editor.layout(12);
+    assert!(layout.cursor_column < 12, "{}", layout.cursor_column);
+}
+
+#[test]
+fn the_cursor_never_lands_inside_a_grapheme() {
+    let mut editor = Editor::default();
+    editor.set("e\u{301} 👩\u{200d}💻x");
+    editor.home();
+    editor.word_right();
+    assert_eq!(editor.cursor(), "e\u{301}".len());
+    editor.backspace();
+    assert_eq!(editor.text(), " 👩\u{200d}💻x");
+    editor.set_cursor(" 👩".len());
+    assert_eq!(editor.cursor(), 1);
+    editor.delete();
+    assert_eq!(editor.text(), " x");
+    editor.set("\u{301}");
+    editor.home();
+    editor.insert("e");
+    assert_eq!(editor.cursor(), "e\u{301}".len());
+}
+
+#[test]
+fn a_narrow_key_row_keeps_what_matters_most_and_says_it_dropped_some() {
+    for keys in [hint(true, false), hint(false, false)] {
+        let all = fit_keys(keys, 500);
+        let names: Vec<&str> = keys.iter().map(|(name, _)| *name).collect();
+        assert_eq!(all, format!(" {} ", names.join(" · ")));
+        let most = keys.iter().map(|(_, keep)| *keep).max().unwrap_or_default();
+        let top = keys.iter().find(|(_, keep)| *keep == most);
+        let top = top.map_or("", |(name, _)| *name);
+        for width in format!(" {top} · … ").width()..all.width() {
+            let row = fit_keys(keys, width);
+            assert!(row.width() <= width, "{row}");
+            assert!(row.trim_end().ends_with('…'), "{row}");
+            // Nothing dropped matters more than something kept, and what is
+            // kept keeps its order.
+            let kept: Vec<&str> = row
+                .trim()
+                .split(" · ")
+                .filter(|item| *item != "…")
+                .collect();
+            let rank = |item: &&str| {
+                keys.iter()
+                    .find(|(name, _)| name == item)
+                    .map(|(_, keep)| *keep)
+            };
+            let lowest = kept.iter().filter_map(rank).min().unwrap_or_default();
+            for (name, keep) in keys {
+                assert!(
+                    *keep < lowest || kept.contains(name),
+                    "{name} at {width}: {row}"
+                );
+            }
+            let order: Vec<&str> = names
+                .iter()
+                .copied()
+                .filter(|name| kept.contains(name))
+                .collect();
+            assert_eq!(kept, order, "{width}");
+        }
     }
+    assert!(fit_keys(hint(true, false), 15).contains("Esc stops"));
 }

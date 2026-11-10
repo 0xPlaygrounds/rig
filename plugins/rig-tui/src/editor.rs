@@ -17,7 +17,7 @@ use super::panel::PanelCanvas;
 use super::pick::Choices;
 use super::status::{StatusLine, StatusSources};
 use super::theme::Theme;
-use super::wrap::wrap;
+use super::wrap::wrap_typed;
 
 /// The prompt before the first line of the input.
 const PROMPT: &str = "› ";
@@ -58,7 +58,7 @@ const MOST_LINES: usize = 10;
 #[require(Caret)]
 pub struct Editor {
     text: String,
-    /// A byte offset in `text`, on a character boundary.
+    /// A byte offset in `text`, on a grapheme boundary.
     cursor: usize,
     /// The history entry shown, while browsing it: its index, and its
     /// text, which finds it again when the entries move.
@@ -102,7 +102,7 @@ impl Editor {
         &self.text
     }
 
-    /// The cursor: a byte offset in [`Self::text`], on a character
+    /// The cursor: a byte offset in [`Self::text`], on a grapheme
     /// boundary.
     pub fn cursor(&self) -> usize {
         self.cursor
@@ -125,14 +125,27 @@ impl Editor {
         self.show(text);
     }
 
-    /// Puts the cursor at byte `offset`, or the nearest character boundary
+    /// Puts the cursor at byte `offset`, or the nearest grapheme boundary
     /// before it.
     pub fn set_cursor(&mut self, offset: usize) {
-        let mut offset = offset.min(self.text.len());
-        while !self.text.is_char_boundary(offset) {
-            offset -= 1;
+        let starts = self.text.grapheme_indices(true).map(|(at, _)| at);
+        self.cursor = starts.take_while(|at| *at <= offset).last().unwrap_or(0);
+        if offset >= self.text.len() {
+            self.cursor = self.text.len();
         }
-        self.cursor = offset;
+    }
+
+    /// Moves the cursor to the end of the grapheme it is in, if any, as
+    /// text typed before a combining mark joins it.
+    fn settle(&mut self) {
+        let ends = self
+            .text
+            .grapheme_indices(true)
+            .map(|(at, grapheme)| at + grapheme.len());
+        let mut ends = std::iter::once(0).chain(ends);
+        self.cursor = ends
+            .find(|end| *end >= self.cursor)
+            .unwrap_or(self.text.len());
     }
 
     /// Shows `text`, with the cursor at its end, keeping the history's
@@ -255,12 +268,14 @@ impl Editor {
         let text = text.replace("\r\n", "\n").replace('\r', "\n");
         self.text.insert_str(self.cursor, &text);
         self.cursor += text.len();
+        self.settle();
     }
 
     /// Types `character` at the cursor, which ends up after it.
     pub fn insert_char(&mut self, character: char) {
         self.text.insert(self.cursor, character);
         self.cursor += character.len_utf8();
+        self.settle();
     }
 
     /// Replaces the bytes `start..self.cursor()` with `text`.
@@ -268,6 +283,7 @@ impl Editor {
         if start <= self.cursor && self.text.is_char_boundary(start) {
             self.text.replace_range(start..self.cursor, text);
             self.cursor = start + text.len();
+            self.settle();
         }
     }
 
@@ -317,30 +333,33 @@ impl Editor {
     /// The start of the word before the cursor.
     fn word_start(&self) -> usize {
         let before = self.text.get(..self.cursor).unwrap_or_default();
-        let trimmed = before.trim_end_matches(|c: char| !c.is_alphanumeric() && c != '_');
-        trimmed
-            .rfind(|c: char| !c.is_alphanumeric() && c != '_')
-            .map_or(0, |index| {
-                index
-                    + trimmed
-                        .get(index..)
-                        .and_then(|rest| rest.chars().next())
-                        .map_or(1, char::len_utf8)
-            })
+        let mut start = self.cursor;
+        let mut in_word = false;
+        for (at, grapheme) in before.grapheme_indices(true).rev() {
+            match (word_grapheme(grapheme), in_word) {
+                (true, _) => in_word = true,
+                (false, true) => break,
+                (false, false) => {}
+            }
+            start = at;
+        }
+        start
     }
 
     /// The end of the word after the cursor.
     fn word_end(&self) -> usize {
         let after = self.text.get(self.cursor..).unwrap_or_default();
-        let skipped = after.len()
-            - after
-                .trim_start_matches(|c: char| !c.is_alphanumeric() && c != '_')
-                .len();
-        let rest = after.get(skipped..).unwrap_or_default();
-        let word = rest
-            .find(|c: char| !c.is_alphanumeric() && c != '_')
-            .unwrap_or(rest.len());
-        self.cursor + skipped + word
+        let mut end = self.cursor;
+        let mut in_word = false;
+        for (at, grapheme) in after.grapheme_indices(true) {
+            match (word_grapheme(grapheme), in_word) {
+                (true, _) => in_word = true,
+                (false, true) => break,
+                (false, false) => {}
+            }
+            end = self.cursor + at + grapheme.len();
+        }
+        end
     }
 
     /// The start of the word before the cursor.
@@ -552,11 +571,11 @@ impl Editor {
     }
 
     /// The text laid out in rows `width` columns wide, each line word
-    /// wrapped as the transcript is, the first row after the prompt and the
-    /// others indented under it. A tab or other control character shows as
-    /// a space per byte. A cursor at the end of the text on a full row goes
-    /// to a new one; one in the spaces a row break dropped stays after the
-    /// row.
+    /// wrapped as typed text, the first row after the prompt and the others
+    /// indented under it. A tab or other control character shows as a space
+    /// per byte. The cursor stays inside the rows: at the end of a line on a
+    /// full row it goes to a new row, and in the spaces a row break dropped
+    /// it stays after the row while there is room, else starts the next.
     pub(crate) fn layout(&self, width: u16) -> Layout {
         // The prompt is two columns wide.
         let width = usize::from(width).max(3) - 2;
@@ -576,19 +595,23 @@ impl Editor {
                 .checked_sub(start)
                 .filter(|at| *at <= line.len());
             let mut end = 0;
-            for (row, joint) in wrap(&Line::from(shown.as_str()), width) {
-                let (gap, indent) = joint.map_or((0, 0), |joint| (joint.gap.len(), joint.indent));
-                let text = shown.get(end + gap..).unwrap_or_default();
-                let bytes: usize = row.spans.iter().map(|span| span.content.len()).sum();
-                let text = text.get(..bytes.saturating_sub(indent)).unwrap_or(text);
+            for (row, joint) in wrap_typed(&Line::from(shown.as_str()), width) {
+                let (gap, indent) = joint
+                    .as_ref()
+                    .map_or(("", 0), |joint| (joint.gap.as_str(), joint.indent));
+                let from = end + gap.len();
                 if let Some(at) = at
-                    && (end..end + gap).contains(&at)
+                    && (end..from).contains(&at)
                 {
-                    let before = rows.last().map_or(0, Line::width);
-                    cursor = (rows.len().saturating_sub(1), (before + at - end).min(width));
+                    let dropped = gap.get(..at - end).map_or(0, UnicodeWidthStr::width);
+                    let column = rows.last().map_or(0, Line::width) + dropped;
+                    cursor = match column < width {
+                        true => (rows.len().saturating_sub(1), column),
+                        false => (rows.len(), indent),
+                    };
                 }
-                let from = end + gap;
-                end = from + text.len();
+                let bytes: usize = row.spans.iter().map(|span| span.content.len()).sum();
+                end = from + bytes.saturating_sub(indent);
                 if let Some(at) = at
                     && (from..=end).contains(&at)
                 {
@@ -597,11 +620,11 @@ impl Editor {
                 }
                 rows.push(row);
             }
+            if at == Some(line.len()) && cursor.1 >= width {
+                cursor = (rows.len(), 0);
+                rows.push(Line::default());
+            }
             start += line.len() + 1;
-        }
-        if self.cursor >= self.text.len() && cursor.1 >= width {
-            cursor = (rows.len(), 0);
-            rows.push(Line::default());
         }
         let rows = rows.into_iter().enumerate().map(|(index, row)| {
             let prefix = if index == 0 { PROMPT } else { "  " };
@@ -615,6 +638,15 @@ impl Editor {
             cursor_column: cursor.1 + 2,
         }
     }
+}
+
+/// Whether `grapheme` is part of a word: it starts with a letter, a digit
+/// or `_`.
+fn word_grapheme(grapheme: &str) -> bool {
+    grapheme
+        .chars()
+        .next()
+        .is_some_and(|first| first.is_alphanumeric() || first == '_')
 }
 
 /// Where the history entry `shown` is now: at its index while it is still
@@ -642,7 +674,7 @@ fn hint(turn_running: bool, panel_keys: bool) -> &'static [Key] {
         (false, true) => &[
             ("Enter steers", 9),
             ("Tab sends after the turn", 7),
-            ("Esc stops", 8),
+            ("Esc stops", 10),
             ("Shift+Enter or Ctrl+J new line", 5),
             ("Ctrl+V image", 1),
             ("/ commands", 4),

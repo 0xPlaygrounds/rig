@@ -1,9 +1,10 @@
+use std::ops::Range;
+
 use ratatui_core::style::Style;
 use ratatui_core::text::Line;
-
 use unicode_width::UnicodeWidthStr;
 
-use super::{join, words, wrap};
+use super::{RowWrap, join, words, wrap, wrap_typed};
 
 #[test]
 fn a_word_keeps_the_spaces_after_it() {
@@ -66,40 +67,70 @@ fn a_line_wraps_by_its_text_alone_however_its_spans_split_it() {
     }
 }
 
+/// The bytes of `line` each of its `rows` shows: past the gap the row's
+/// break dropped, its text after its indent.
+fn sources(line: &str, rows: &[(Line<'static>, Option<RowWrap>)]) -> Vec<Range<usize>> {
+    let mut end = 0;
+    let ranges = rows.iter().map(|(row, joint)| {
+        let (gap, indent) = joint
+            .as_ref()
+            .map_or((0, 0), |joint| (joint.gap.len(), joint.indent));
+        let bytes: usize = row.spans.iter().map(|span| span.content.len()).sum();
+        let start = (end + gap).min(line.len());
+        end = start + bytes.saturating_sub(indent);
+        start..end
+    });
+    ranges.collect()
+}
+
 #[test]
 fn no_word_that_fits_a_row_is_split() {
     let letters = ["a", "z", "é", "e\u{301}", "世", "👩\u{200d}💻", "✌\u{fe0f}"];
     let mut rng = fastrand::Rng::with_seed(39);
-    for _ in 0..500 {
-        let words: Vec<String> = (0..rng.usize(1..30))
-            .map(|_| {
-                let length = rng.usize(1..14);
-                (0..length)
-                    .filter_map(|_| letters.get(rng.usize(..letters.len())).copied())
-                    .collect()
-            })
-            .collect();
-        let line = words.join(" ");
-        // From 2, the widest grapheme.
-        let width = rng.usize(2..40);
+    for _ in 0..2000 {
+        // Some lines start with spaces, and some put a column after their
+        // first word, so the hanging indents are wrapped too.
+        let mut line = " ".repeat(rng.usize(..4) * usize::from(rng.bool()));
+        let mut words = Vec::new();
+        for index in 0..rng.usize(1..30) {
+            if index > 0 {
+                let column = index == 1 && rng.bool();
+                line.push_str(&" ".repeat(if column { rng.usize(2..5) } else { 1 }));
+            }
+            let word: String = (0..rng.usize(1..14))
+                .filter_map(|_| letters.get(rng.usize(..letters.len())).copied())
+                .collect();
+            words.push(line.len()..line.len() + word.len());
+            line.push_str(&word);
+        }
+        // From 4, so a row past an indent of at most half the width has
+        // room for the widest grapheme.
+        let width = rng.usize(4..40);
         let rows = wrap(&Line::from(line.as_str()), width);
-        let shown: Vec<String> = rows.iter().map(|(row, _)| row.to_string()).collect();
-        assert!(
-            shown.iter().all(|row| row.width() <= width),
-            "{line:?} at {width}"
-        );
+        let ranges = sources(&line, &rows);
+        let indent = rows.iter().filter_map(|(_, joint)| joint.as_ref());
+        let indent = indent.map(|joint| joint.indent).max().unwrap_or(0);
+        for ((row, joint), range) in rows.iter().zip(&ranges) {
+            let row = row.to_string();
+            let skip = joint.as_ref().map_or(0, |joint| joint.indent);
+            assert!(row.width() <= width, "{row:?} of {line:?} at {width}");
+            assert_eq!(
+                row.get(skip..),
+                line.get(range.clone()),
+                "{line:?} at {width}"
+            );
+        }
         assert_eq!(
-            shown.concat().split_whitespace().collect::<String>(),
-            words.concat(),
+            ranges.last().map(|range| range.end),
+            Some(line.len()),
             "{line:?} at {width}"
         );
-        let pieces = shown.iter().flat_map(|row| row.split_whitespace());
-        for piece in pieces {
-            let whole = words.iter().any(|word| word == piece);
-            let too_wide = words
+        for word in words {
+            let fits = line.get(word.clone()).unwrap_or_default().width() + indent <= width;
+            let whole = ranges
                 .iter()
-                .any(|word| word.width() > width && word.contains(piece));
-            assert!(whole || too_wide, "{piece:?} of {line:?} at {width}");
+                .any(|row| row.start <= word.start && word.end <= row.end);
+            assert!(!fits || whole, "{word:?} of {line:?} at {width}: {rows:?}");
         }
     }
 }
@@ -111,6 +142,16 @@ fn a_column_after_two_spaces_wraps_under_its_text() {
         .map(|(row, _)| row.to_string())
         .collect();
     assert_eq!(rows, ["     4  one two", "        three"]);
+    let typed: Vec<String> = wrap_typed(&Line::from("fix  the bug now"), 10)
+        .iter()
+        .map(|(row, _)| row.to_string())
+        .collect();
+    assert_eq!(typed, ["fix  the", "bug now"]);
+    // A first row, which has no indent, breaks once it is full, whatever
+    // the indent of the rows after it.
+    let first = wrap(&Line::from("e👩\u{200d}💻  x"), 2);
+    let first = first.first().map(|(row, _)| row.to_string());
+    assert_eq!(first.as_deref(), Some("e"));
     let rows: Vec<String> = wrap(&Line::from("/help List the commands"), 12)
         .iter()
         .map(|(row, _)| row.to_string())
