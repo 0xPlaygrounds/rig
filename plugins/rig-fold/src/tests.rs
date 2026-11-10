@@ -3,8 +3,8 @@ use rig_core::message::{ToolCall, ToolFunction, ToolName};
 use rig_core::tool::{ExitStatus, ToolContext};
 use rig_harness::main_agent::ShownAgent;
 use rig_tui::{
-    KeyFocus, RenderInput, RenderKey, RenderOutput, RenderRequest, ToolCallView, TranscriptPane,
-    TranscriptSource, TuiViewPlugin,
+    KeyFocus, PaneKeys, RenderInput, RenderKey, RenderOutput, RenderRequest, ToolCallView,
+    TranscriptPane, TranscriptSource, TuiViewPlugin,
 };
 use serde_json::json;
 
@@ -23,7 +23,7 @@ fn app_with(settings: &str, before: impl FnOnce(&mut App)) -> (App, Entity) {
         source,
         title: None,
     };
-    let pane = app.world_mut().spawn((MainPane, pane)).id();
+    let pane = app.world_mut().spawn((MainPane, pane, PaneKeys)).id();
     (app, pane)
 }
 
@@ -227,10 +227,21 @@ fn a_call_shown_whole_is_the_shown_agents_alone() {
     press(&mut app, item(0));
     assert_eq!(length(&mut app, first), 401);
     assert_eq!(length(&mut app, second), 14);
+    // Every call of the shown agent, such as a fork's, and none of another's.
+    app.world_mut().insert_resource(ShownAgent(Some(second)));
+    press(&mut app, None);
+    assert_eq!(length(&mut app, second), 401);
+    assert_eq!(length(&mut app, first), 401);
+    app.world_mut().insert_resource(ShownAgent(Some(first)));
+    press(&mut app, None);
+    assert_eq!(length(&mut app, first), 401);
+    press(&mut app, None);
+    assert_eq!(length(&mut app, first), 14);
+    assert_eq!(length(&mut app, second), 401);
 }
 
 #[test]
-fn a_failed_or_stopped_call_and_an_export_keep_every_line() {
+fn a_failed_or_stopped_call_an_export_and_a_preview_keep_every_line() {
     let (mut app, pane) = app("");
     for end in [End::Error, End::Exit(3), End::Stopped] {
         let drawn = drawn(&mut app, (Some(pane), None), &[shell(0, 400, end)]);
@@ -240,6 +251,15 @@ fn a_failed_or_stopped_call_and_an_export_keep_every_line() {
     }
     let export = drawn(&mut app, (None, None), &[shell(0, 400, End::Done)]);
     assert_eq!(export.first().map(Vec::len), Some(401));
+    // A pane without its own keys, such as a picker's preview, where the
+    // key can't show what is folded.
+    let preview = TranscriptPane {
+        source: TranscriptSource::Shown,
+        title: None,
+    };
+    let preview = app.world_mut().spawn(preview).id();
+    let drawn = drawn(&mut app, (Some(preview), None), &[shell(0, 400, End::Done)]);
+    assert_eq!(drawn.first().map(Vec::len), Some(401));
 }
 
 /// The key acts in the transcript pane that has the keys, such as a
@@ -253,7 +273,7 @@ fn the_key_acts_in_the_focused_pane() {
         source: TranscriptSource::Agent(helper),
         title: None,
     };
-    let side = world.spawn(side).id();
+    let side = world.spawn((side, PaneKeys)).id();
     world.insert_resource(KeyFocus(Some(side)));
     select(&mut app, main, item(0));
     select(&mut app, side, item(0));
@@ -281,8 +301,21 @@ fn without_its_key_nothing_folds() {
     let (mut first, pane) = app_with("", taken);
     let drawn_taken = drawn(&mut first, (Some(pane), None), &call);
     assert_eq!(drawn_taken.first().map(Vec::len), Some(401));
-    // Ctrl+E is the input's end of the line.
+    assert!(told(&mut first, "`ctrl+o`"), "a notice names the key");
+    // Ctrl+E is the input's end of the line, and the view says why
+    // nothing folds.
     let (mut app, pane) = app("[fold]\nkey = \"ctrl+e\"");
     let drawn_input = drawn(&mut app, (Some(pane), None), &call);
     assert_eq!(drawn_input.first().map(Vec::len), Some(401));
+    assert!(told(&mut app, "`ctrl+e`"), "a notice names the key");
+}
+
+/// Whether a warning the app says as it starts holds `text`.
+fn told(app: &mut App, text: &str) -> bool {
+    app.world_mut().run_schedule(Startup);
+    let notices = app.world().get_resource::<Messages<Notice>>();
+    let mut notices = notices
+        .into_iter()
+        .flat_map(Messages::iter_current_update_messages);
+    notices.any(|notice| notice.level == NoticeLevel::Warn && notice.text.contains(text))
 }

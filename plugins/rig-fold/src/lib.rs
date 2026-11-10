@@ -27,7 +27,7 @@ use rig_tui::ratatui::style::Style;
 use rig_tui::ratatui::text::Line;
 use rig_tui::{
     AppKeyBindingsExt, CallItem, CallState, KeyBinding, KeyFocus, KeyPress, KeyPressed, KeyScope,
-    Keys, LookLine, MainPane, OUTPUT_INDENT, RenderBatch, RenderRevision, RenderSystems,
+    Keys, LookLine, MainPane, OUTPUT_INDENT, PaneKeys, RenderBatch, RenderRevision, RenderSystems,
     ToolRender, TranscriptItem, TranscriptPane, TranscriptRender, TranscriptSource, TranscriptView,
 };
 use serde::{Deserialize, Deserializer};
@@ -72,39 +72,41 @@ fn keys<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Keys, D::Error> {
     text.parse().map_err(serde::de::Error::custom)
 }
 
-/// A call of a transcript: the pane, the agent it shows (none for a
-/// conversation no agent holds) and the call's place there. Message ids
-/// rise from 0 in each conversation, so the place alone names calls of
-/// several agents. An entity's generation keeps one that is gone from
-/// naming a later one.
-type Shown = (Entity, Option<Entity>, CallItem);
+/// A transcript: the pane and the agent it shows, none for a conversation
+/// no agent holds. Message ids rise from 0 in each conversation, so a
+/// call's place names a call only within one. An entity's generation keeps
+/// one that is gone from naming a later one.
+type Shown = (Entity, Option<Entity>);
 
-/// Which calls are drawn whole: every call when `all` is set, but those in
-/// `flipped`, and only those in `flipped` when it is not.
+/// Which calls are drawn whole: in a transcript of `all`, every call but
+/// those `flipped`; in any other, only those.
 #[derive(Resource, Default, Debug)]
 struct Unfolded {
-    /// Whether the key showed every call.
-    all: bool,
+    /// The transcripts whose every call the key showed.
+    all: HashSet<Shown>,
     /// The calls the key flipped from what `all` says.
-    flipped: HashSet<Shown>,
+    flipped: HashSet<(Shown, CallItem)>,
 }
 
 impl Unfolded {
-    /// Whether the call `call` is drawn whole.
-    fn shows(&self, call: Option<Shown>) -> bool {
-        self.all != call.is_some_and(|call| self.flipped.contains(&call))
+    /// Whether the call `item` of `shown` is drawn whole.
+    fn shows(&self, shown: Shown, item: Option<CallItem>) -> bool {
+        let flipped = item.is_some_and(|item| self.flipped.contains(&(shown, item)));
+        self.all.contains(&shown) != flipped
     }
 
-    /// Flips `call`, or every call with none.
-    fn flip(&mut self, call: Option<Shown>) {
-        match call {
-            Some(call) if !self.flipped.remove(&call) => {
-                self.flipped.insert(call);
+    /// Flips the call `item` of `shown`, or every call of it with none.
+    fn flip(&mut self, shown: Shown, item: Option<CallItem>) {
+        match item {
+            Some(item) if !self.flipped.remove(&(shown, item)) => {
+                self.flipped.insert((shown, item));
             }
             Some(_) => {}
             None => {
-                self.all = !self.all;
-                self.flipped.clear();
+                if !self.all.remove(&shown) {
+                    self.all.insert(shown);
+                }
+                self.flipped.retain(|(of, _)| *of != shown);
             }
         }
     }
@@ -118,6 +120,7 @@ struct FoldKey;
 impl Plugin for FoldPlugin {
     fn build(&self, app: &mut App) {
         app.add_setting::<FoldSettings>("fold")
+            .add_message::<Notice>()
             .init_resource::<Unfolded>()
             .add_systems(TranscriptRender, fold.in_set(RenderSystems::Edit));
         let key = app.world().resource::<FoldSettings>().key.clone();
@@ -130,19 +133,35 @@ impl Plugin for FoldPlugin {
                 && (bound_keys.starts_with(keys) || keys.starts_with(bound_keys))
         });
         if let Some(bound) = input {
-            warn!(
+            let why = format!(
                 "[fold] key `{key}` is the input's `{}` ({}): nothing is folded",
                 bound.keys, bound.label
             );
+            warn!("{why}");
+            tell(app, why);
             return;
         }
         // Global, so no other binding of the key shadows it unseen: one
         // bound first refuses it, with a warning, instead.
-        let binding = KeyBinding::new(key, LABEL).in_scope(KeyScope::Global);
-        if let Some(bound) = app.add_key_binding(binding, flip) {
-            app.world_mut().entity_mut(bound).insert(FoldKey);
+        let binding = KeyBinding::new(key.clone(), LABEL).in_scope(KeyScope::Global);
+        match app.add_key_binding(binding, flip) {
+            Some(bound) => {
+                app.world_mut().entity_mut(bound).insert(FoldKey);
+            }
+            // rig-tui's own warning names the binding in the way.
+            None => tell(
+                app,
+                format!("[fold] key `{key}` is bound already: nothing is folded"),
+            ),
         }
     }
+}
+
+/// Says `why` in the views once the app starts.
+fn tell(app: &mut App, why: String) {
+    app.add_systems(Startup, move |mut notices: MessageWriter<Notice>| {
+        notices.write(Notice::warn(None, why.clone()));
+    });
 }
 
 /// The call the main transcript has selected, if a call or one of its
@@ -160,7 +179,7 @@ fn selected_call(view: &TranscriptView) -> Option<CallItem> {
 fn flip(
     pressed: On<KeyPressed>,
     (focus, shown): (Option<Res<KeyFocus>>, Option<Res<ShownAgent>>),
-    panes: Query<(Entity, &TranscriptPane, &TranscriptView, Has<MainPane>)>,
+    panes: Query<(Entity, &TranscriptPane, &TranscriptView, Has<MainPane>), With<PaneKeys>>,
     mut unfolded: ResMut<Unfolded>,
     mut revision: ResMut<RenderRevision>,
 ) {
@@ -168,37 +187,39 @@ fn flip(
         return;
     }
     let focused = focus.and_then(|focus| panes.get(focus.0?).ok());
-    let pane = focused.or_else(|| panes.iter().find(|(.., main)| *main));
-    let selected = pane.and_then(|(pane, transcript, view, _)| {
-        let agent = match &transcript.source {
-            TranscriptSource::Shown => shown.as_ref().and_then(|shown| shown.0),
-            TranscriptSource::Agent(agent) => Some(*agent),
-            TranscriptSource::Value(_) => None,
-        };
-        Some((pane, agent, selected_call(view)?))
-    });
-    unfolded.flip(selected);
+    let Some((pane, transcript, view, _)) =
+        focused.or_else(|| panes.iter().find(|(.., main)| *main))
+    else {
+        return;
+    };
+    let agent = match &transcript.source {
+        TranscriptSource::Shown => shown.as_ref().and_then(|shown| shown.0),
+        TranscriptSource::Agent(agent) => Some(*agent),
+        TranscriptSource::Value(_) => None,
+    };
+    unfolded.flip((pane, agent), selected_call(view));
     revision.0 = revision.0.wrapping_add(1);
 }
 
-/// Folds every finished call of a pane's batch that is not drawn whole,
-/// while the fold key is bound.
+/// Folds every finished call that is not drawn whole, in the batch of a
+/// pane with its own keys ([`PaneKeys`]) while the fold key is bound: where
+/// the key can show what is folded.
 fn fold(
     mut batch: ResMut<RenderBatch>,
     settings: Res<FoldSettings>,
     unfolded: Res<Unfolded>,
-    key: Query<(), With<FoldKey>>,
+    (key, keyed): (Query<(), With<FoldKey>>, Query<(), With<PaneKeys>>),
 ) {
-    // An export has no pane, and keeps every line.
+    // An export has no pane, and keeps every line, as does a picker's
+    // preview, whose pane has no keys.
     let (Some(pane), agent) = (batch.pane, batch.agent) else {
         return;
     };
-    if key.is_empty() {
+    if key.is_empty() || !keyed.contains(pane) {
         return;
     }
     for (call, output) in batch.calls_mut() {
-        let shown = call.item.map(|item| (pane, agent, item));
-        if !folds(call) || unfolded.shows(shown) {
+        if !folds(call) || unfolded.shows((pane, agent), call.item) {
             continue;
         }
         if let Some(lines) = folded(&output.lines, &settings) {
