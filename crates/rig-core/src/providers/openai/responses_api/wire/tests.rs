@@ -374,15 +374,15 @@ async fn an_error_envelope_on_a_success_fails_the_xai_call() {
 fn each_dialect_encodes_what_its_endpoint_reads() {
     use crate::completion::{Media, Place, ReplayTarget};
     use crate::message::{
-        Audio, AudioMediaType, Document, DocumentMediaType, DocumentSourceKind as Source, Image,
-        ImageMediaType, Video, VideoMediaType,
+        Audio, AudioMediaType, DocumentContent, DocumentMediaType, DocumentSourceKind as Source,
+        Image, ImageMediaType, Video, VideoMediaType,
     };
     let image = |data: Source, media_type: Option<ImageMediaType>| Image {
         data,
         media_type,
         ..Image::default()
     };
-    let document = |data: Source, media_type: Option<DocumentMediaType>| Document {
+    let document = |data: Source, media_type: Option<DocumentMediaType>| DocumentContent {
         data: data.into(),
         media_type,
         additional_params: None,
@@ -393,7 +393,7 @@ fn each_dialect_encodes_what_its_endpoint_reads() {
     let image_file = image(Source::file_id("file-image"), None);
     let pdf = document(Source::base64("JVBERi0="), Some(DocumentMediaType::PDF));
     let pdf_url = document(Source::url("https://example.com/a.pdf"), None);
-    let text = Document {
+    let text = DocumentContent {
         data: crate::message::DocumentData::Text("plain".into()),
         media_type: Some(DocumentMediaType::TXT),
         additional_params: None,

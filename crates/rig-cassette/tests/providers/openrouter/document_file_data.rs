@@ -7,7 +7,7 @@
 use base64::{Engine, prelude::BASE64_STANDARD};
 use rig::completion::CompletionRequest;
 use rig::message::{
-    Document, DocumentMediaType, DocumentSourceKind, Message as RigMessage, Text,
+    DocumentContent, DocumentMediaType, DocumentSourceKind, Message as RigMessage, Text,
     UserContent as RigUserContent,
 };
 use rig::providers::openai::wire::Chat;
@@ -25,10 +25,10 @@ const PAGE_TWO_VERIFIER: &str = "rig-file-id-page-two-verifier-8c27";
 const PAGE_THREE_VERIFIER: &str = "rig-file-id-page-three-verifier-f54e";
 const PAGE_VERIFIERS: [&str; 3] = [PAGE_ONE_VERIFIER, PAGE_TWO_VERIFIER, PAGE_THREE_VERIFIER];
 
-fn verifier_document() -> Document {
+fn verifier_document() -> DocumentContent {
     let bytes =
         std::fs::read(VERIFIER_FIXTURE_PATH).expect("verifier fixture PDF should be readable");
-    Document {
+    DocumentContent {
         data: DocumentSourceKind::base64(BASE64_STANDARD.encode(bytes)).into(),
         media_type: Some(DocumentMediaType::PDF),
         additional_params: None,

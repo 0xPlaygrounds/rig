@@ -421,7 +421,7 @@ fn a_message_is_redacted_unless_a_gate_took_it() {
         label: "secret.txt".to_owned(),
         content: UserContent::text(format!("PASSWORD={key}")),
     }));
-    let document = message::Document {
+    let document = message::DocumentContent {
         data: message::DocumentData::Text(format!("token {key}")),
         media_type: None,
         additional_params: None,

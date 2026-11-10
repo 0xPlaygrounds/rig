@@ -12,8 +12,8 @@ use ratatui::style::{Style, Stylize};
 use ratatui::text::{Line, Span};
 use rig_core::completion::AssistantContent;
 use rig_core::message::{
-    Audio, Document, Image, ToolCall, ToolFunction, ToolResult, ToolResultContent, UserContent,
-    Video,
+    Audio, DocumentContent, Image, ToolCall, ToolFunction, ToolResult, ToolResultContent,
+    UserContent, Video,
 };
 use rig_core::tool::{ExitStatus, KeptEnd, OutputCut, ToolResultContext};
 use rig_ecs::prelude::{Aside, AsideId, Author, AuthorKind, MessageId};
@@ -351,7 +351,7 @@ pub enum ContentBlock<'a> {
     /// A video.
     Video(&'a Video),
     /// A document.
-    Document(&'a Document),
+    Document(&'a DocumentContent),
 }
 
 impl<'a> ContentBlock<'a> {
@@ -763,7 +763,7 @@ pub enum RenderContent {
     /// Video.
     Video(Video),
     /// A document.
-    Document(Document),
+    Document(DocumentContent),
 }
 
 impl RenderContent {

@@ -9,7 +9,7 @@
 use rig::completion::CompletionRequest;
 use rig::error::ProviderError;
 use rig::message::{
-    Document, DocumentMediaType, DocumentSourceKind, Message, UserContent as RigUserContent,
+    DocumentContent, DocumentMediaType, DocumentSourceKind, Message, UserContent as RigUserContent,
 };
 use rig::providers::openai::wire::Chat;
 use rig::providers::openai::wire::{OPENROUTER, OpenAIConfig};
@@ -44,7 +44,7 @@ fn sole_body(encoded: Encoded) -> Value {
 #[test]
 fn generic_document_file_id_reaches_openrouter_as_a_placeholder() {
     let message = Message::User {
-        content: vec![RigUserContent::Document(Document {
+        content: vec![RigUserContent::Document(DocumentContent {
             data: DocumentSourceKind::file_id("file_abc").into(),
             media_type: None,
             additional_params: None,
@@ -65,7 +65,7 @@ fn generic_document_file_id_reaches_openrouter_as_a_placeholder() {
 #[test]
 fn file_data_document_encodes_as_an_openrouter_file_part() {
     let message = Message::User {
-        content: vec![RigUserContent::Document(Document {
+        content: vec![RigUserContent::Document(DocumentContent {
             data: DocumentSourceKind::Base64("AAAA".to_string()).into(),
             media_type: Some(DocumentMediaType::PDF),
             additional_params: None,

@@ -5,7 +5,8 @@
 
 use futures::FutureExt;
 use rig::message::{
-    Document, DocumentMediaType, DocumentSourceKind, Message, Text, UserContent as RigUserContent,
+    DocumentContent, DocumentMediaType, DocumentSourceKind, Message, Text,
+    UserContent as RigUserContent,
 };
 use rig::providers::openai;
 use rig::providers::openai::wire::Route;
@@ -105,8 +106,8 @@ where
     }
 }
 
-fn file_id_document(file_id: &str) -> Document {
-    Document {
+fn file_id_document(file_id: &str) -> DocumentContent {
+    DocumentContent {
         data: DocumentSourceKind::file_id(file_id).into(),
         media_type: Some(DocumentMediaType::PDF),
         additional_params: None,
@@ -114,7 +115,7 @@ fn file_id_document(file_id: &str) -> Document {
 }
 
 fn provider_file_content_as_generic_document(file_id: &str) -> RigUserContent {
-    let content = RigUserContent::Document(Document {
+    let content = RigUserContent::Document(DocumentContent {
         data: DocumentSourceKind::file_id(file_id).into(),
         media_type: None,
         additional_params: None,
@@ -142,7 +143,7 @@ fn direct_file_id_document_question(file_id: &str, page_number: u8) -> Message {
 }
 
 fn assert_file_id_user_content(content: &RigUserContent, expected_file_id: &str) {
-    let RigUserContent::Document(Document { data, .. }) = content else {
+    let RigUserContent::Document(DocumentContent { data, .. }) = content else {
         panic!("expected generic document content, got {content:?}");
     };
 
@@ -161,7 +162,7 @@ fn assert_history_contains_file_id(history: &[Message], expected_file_id: &str) 
         content.iter().any(|content| {
             matches!(
                 content,
-                RigUserContent::Document(Document {
+                RigUserContent::Document(DocumentContent {
                     data: rig::message::DocumentData::File(DocumentSourceKind::FileId(file_id)),
                     ..
                 }) if file_id == expected_file_id

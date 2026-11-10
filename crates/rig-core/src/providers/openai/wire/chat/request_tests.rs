@@ -117,7 +117,7 @@ fn a_result_is_a_string_or_its_parts() {
 #[test]
 fn user_parts_take_their_wire_shapes() {
     let document = |data: DocumentSourceKind, media_type| {
-        UserContent::Document(crate::message::Document {
+        UserContent::Document(crate::message::DocumentContent {
             data: data.into(),
             media_type,
             additional_params: None,
@@ -357,7 +357,7 @@ fn base64_pdf_is_data_and_document_text_is_text() -> anyhow::Result<()> {
         let request = CompletionRequest::new(Message::User {
             content: vec![
                 UserContent::text("Summarize the file."),
-                UserContent::Document(crate::message::Document {
+                UserContent::Document(crate::message::DocumentContent {
                     data,
                     media_type: Some(DocumentMediaType::PDF),
                     additional_params: None,
