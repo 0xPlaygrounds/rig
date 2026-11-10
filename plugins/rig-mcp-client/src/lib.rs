@@ -53,9 +53,11 @@ use rig_rmcp::{McpConnection, McpTool};
 use rmcp::model::{
     ClientCapabilities, ClientConfig, Implementation, ProtocolVersion, Tool as McpDefinition,
 };
-use rmcp::service::{NotificationContext, RoleClient};
+use rmcp::service::{ClientInitializeError, NotificationContext, RoleClient};
 use rmcp::transport::StreamableHttpClientTransport;
-use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
+use rmcp::transport::streamable_http_client::{
+    InsufficientScopeError, StreamableHttpClientTransportConfig,
+};
 use rmcp::{ClientHandler, ServiceExt};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -816,7 +818,7 @@ impl Start {
                 let service = client
                     .serve((stdout, stdin))
                     .await
-                    .map_err(|error| error.to_string())?;
+                    .map_err(|error| unreached(error, false))?;
                 (service, Some(child))
             }
             ServerSpec::Http { url, headers } => {
@@ -831,10 +833,9 @@ impl Start {
                 let config = StreamableHttpClientTransportConfig::with_uri(url.as_str())
                     .custom_headers(sent);
                 let transport = StreamableHttpClientTransport::from_config(config);
-                let service = client
-                    .serve(transport)
-                    .await
-                    .map_err(|error| error.to_string())?;
+                let service = client.serve(transport).await.map_err(|error| {
+                    unreached(error, headers.keys().any(|name| credential(name)))
+                })?;
                 (service, None)
             }
         };
@@ -861,6 +862,77 @@ async fn list(
         .list_all_tools()
         .await
         .map_err(|error| error.to_string())
+}
+
+/// Whether a configured header carries a credential: `Authorization`,
+/// `Proxy-Authorization`, or a name with `token`, `key`, `auth` or `secret` in it.
+fn credential(name: &str) -> bool {
+    let name = name.to_ascii_lowercase();
+    ["token", "key", "auth", "secret"]
+        .iter()
+        .any(|part| name.contains(part))
+}
+
+/// Why the MCP handshake with a server failed, in words without rmcp's
+/// transport type names. `credential` is whether rig sent a [`credential`]
+/// header: a refusal then means that token, not a missing OAuth sign-in.
+fn unreached(error: ClientInitializeError, credential: bool) -> String {
+    const HEADER_TOKEN: &str = "A server that takes a token in a header works: see \
+                                \"Servers: `mcp.json`\" in the rig-mcp-client README";
+    const CLOSED: &str = "it closed the connection before it answered";
+    let refused = || "it refused the token in its `headers` (HTTP 401)".to_owned();
+    if error.is_authorization_required() {
+        return if credential {
+            refused()
+        } else {
+            format!("it asks for a sign-in (OAuth), which rig does not support. {HEADER_TOKEN}")
+        };
+    }
+    match error {
+        ClientInitializeError::TransportError { error, context } => {
+            let error: &(dyn std::error::Error + 'static) = error.error.as_ref();
+            let chain = || std::iter::successors(Some(error), |error| error.source());
+            let scoped = chain().any(|error| error.is::<InsufficientScopeError>());
+            if credential && scoped {
+                return "the token in its `headers` lacks a permission it needs \
+                        (HTTP 403, insufficient scope)"
+                    .to_owned();
+            }
+            let gone = chain().any(|error| {
+                error
+                    .downcast_ref::<io::Error>()
+                    .is_some_and(|error| error.kind() == io::ErrorKind::BrokenPipe)
+            });
+            if gone {
+                return CLOSED.to_owned();
+            }
+            let why = error.to_string();
+            // rmcp gives a 401 without a challenge, and an answer that is not
+            // JSON-RPC, only as this text.
+            let said = why.strip_prefix("unexpected server response: ");
+            if said.is_some_and(|said| said.starts_with("HTTP 401 ")) {
+                return if credential {
+                    refused()
+                } else {
+                    format!("it needs a token (HTTP 401). {HEADER_TOKEN}")
+                };
+            }
+            let parsed = said.and_then(|said| {
+                said.strip_prefix("could not parse JSON response as ServerJsonRpcMessage: ")
+            });
+            if let Some(parsed) = parsed {
+                return format!("its answer was not MCP JSON ({parsed})");
+            }
+            // An HTTP transport's error already names what it was doing.
+            if why.contains(context.as_ref()) {
+                why
+            } else {
+                format!("{why}, when {context}")
+            }
+        }
+        ClientInitializeError::ConnectionClosed(_) => CLOSED.to_owned(),
+        error => error.to_string(),
+    }
 }
 
 /// The MCP client of one connection: tells its task when the server says
