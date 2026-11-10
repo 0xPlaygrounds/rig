@@ -606,9 +606,10 @@ fn tool_choice(choice: message::ToolChoice) -> Result<Value, EncodeError> {
     })
 }
 
-/// The request's tools: Rig's, strict when `strict` and asking for their
-/// input as it is written when `eager`, then `extra`, the tools
-/// `additional_params` names, verbatim.
+/// The request's tools: Rig's, strict when `strict` (otherwise with their
+/// root combinators nested) and asking for their input as it is written
+/// when `eager`, then `extra`, the tools `additional_params` names,
+/// verbatim.
 fn tools(
     tools: &[Arc<completion::ToolDefinition>],
     extra: Vec<Value>,
@@ -619,6 +620,8 @@ fn tools(
         let mut schema = tool.parameters.clone();
         if strict {
             sanitize_strict_tool_schema(&mut schema);
+        } else {
+            nest_root_combinators(&mut schema);
         }
         Value::Object(set_fields([
             ("name", Some(Value::from(tool.name.as_str()))),
@@ -629,6 +632,29 @@ fn tools(
         ]))
     });
     rig.chain(extra).collect()
+}
+
+/// The keywords Anthropic refuses at the root of a tool's input schema.
+const ROOT_COMBINATORS: [&str; 3] = ["allOf", "anyOf", "oneOf"];
+
+/// Move a root `allOf`, `anyOf` or `oneOf`, with any root `not`, under
+/// `not: {not: ...}`, which accepts the same inputs, and type the root
+/// `object`, the root Anthropic takes. A schema with no root combinator is
+/// left as written.
+fn nest_root_combinators(schema: &mut Value) {
+    let Value::Object(root) = schema else {
+        return;
+    };
+    if !ROOT_COMBINATORS.iter().any(|key| root.contains_key(*key)) {
+        return;
+    }
+    let nested: Map<String, Value> = ROOT_COMBINATORS
+        .into_iter()
+        .chain(["not"])
+        .filter_map(|key| Some((key.to_owned(), remove_preserving_order(root, key)?)))
+        .collect();
+    root.entry("type").or_insert_with(|| json!("object"));
+    root.insert("not".to_owned(), json!({ "not": nested }));
 }
 
 /// Split `history` into the top-level `system` blocks and the messages.
