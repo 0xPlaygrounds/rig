@@ -1,0 +1,370 @@
+#!/usr/bin/env bash
+
+# Switch one used rig home between two versions of the coding agent and back,
+# and check what a user who switches keeps. The release PR runs it with the
+# previous release as OLD and the release candidate as NEW. Not part of CI: it
+# runs `rig build` six times, five of which build the agent on a cold home (a
+# few minutes each), and it needs crates.io.
+#
+# Usage: scripts/version-switch.sh OLD NEW --work DIR [--expected FILE]
+#                                  [--lock FILE] [--seed-target DIR]
+#                                  [--port N] [--timeout SECONDS]
+#   OLD, NEW         a git ref of this repository, built into a launcher
+#                    under DIR, or the path of an installed `rig` launcher
+#   --work DIR       everything goes here: worktrees, launcher builds, the
+#                    disposable home, logs and summary.txt (new or empty)
+#   --expected FILE  check ids known to fail for this pair, one per line
+#                    (`#` starts a comment); they report XFAIL, and one that
+#                    passes reports XPASS and fails the run so the list stays
+#                    current. See scripts/version-switch-expected.txt.
+#   --lock FILE      run each agent build under `flock FILE`, for a machine
+#                    that allows one build at a time
+#   --seed-target DIR  start RIG_HOME/target as a copy of DIR (a reflink
+#                    where the filesystem has them), such as an earlier
+#                    run's home/.rig/target; builds then show a warm target,
+#                    not what a user's first switch costs
+#   --port N         the fake model's port (default 11434: v0.46.0 talks to
+#                    Ollama on localhost:11434 only)
+#   --timeout S      limit for one rig command, build included (default 1800)
+#
+# The model is scripts/version-switch-model.py, a fake Ollama that answers
+# with the user turns it was sent and can hold a turn open. Every rig command
+# runs with `env -i` and a fresh HOME, XDG_*, RIG_HOME, CLAUDE_CONFIG_DIR,
+# CODEX_HOME and GIT_CONFIG_GLOBAL, so no login, key or setting of the caller
+# leaks in; proxy and CA-certificate variables pass through. TMPDIR is under
+# DIR for every command, launcher builds included. Each turn's agent build runs first as `rig build`, so a turn held
+# open never holds the lock. Builds use CARGO_BUILD_JOBS (default 4). Linux,
+# bash 5+, python3, and flock with --lock.
+#
+# Exits 0 when every check passes or fails as expected, 1 otherwise, 2 on
+# bad arguments.
+
+set -euo pipefail
+
+usage() {
+    sed -n '/^# Usage:/,/^# Exits/p' "$0" | sed 's/^# \{0,1\}//' >&2
+    exit 2
+}
+
+# die MESSAGE: stops the run, writing the summary of the checks so far.
+die() {
+    echo "version-switch: $*" >&2
+    [[ -z "${logs:-}" || ! -d "$logs" ]] || summary "stopped: $*" >/dev/null
+    exit 1
+}
+
+((BASH_VERSINFO[0] >= 5)) || die "bash 5 or newer is required (EPOCHREALTIME)"
+
+results=() switches=() failed=0 old_version="" new_version=""
+declare -A expected=() reported=()
+
+old_arg="" new_arg="" work="" expected_file="" lock="" seed="" port=11434 timeout_s=1800
+while (($#)); do
+    case "$1" in
+        --work) work="${2:?}"; shift 2 ;;
+        --expected) expected_file="${2:?}"; shift 2 ;;
+        --lock) lock="${2:?}"; shift 2 ;;
+        --seed-target) seed="${2:?}"; shift 2 ;;
+        --port) port="${2:?}"; shift 2 ;;
+        --timeout) timeout_s="${2:?}"; shift 2 ;;
+        -h | --help) usage ;;
+        -*) usage ;;
+        *)
+            if [[ -z "$old_arg" ]]; then old_arg="$1"
+            elif [[ -z "$new_arg" ]]; then new_arg="$1"
+            else usage; fi
+            shift ;;
+    esac
+done
+[[ -n "$old_arg" && -n "$new_arg" && -n "$work" ]] || usage
+for tool in git cargo python3 timeout du stat ${lock:+flock}; do
+    command -v "$tool" >/dev/null || die "$tool is required"
+done
+if (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null; then
+    die "port $port is taken (a running Ollama?); stop it or pass --port"
+fi
+
+repo="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
+model_script="$repo/scripts/version-switch-model.py"
+mkdir -p "$work"
+work="$(cd "$work" && pwd)"
+[[ -z "$(ls -A "$work")" ]] || die "$work is not empty; pass a new directory"
+
+if [[ -n "$expected_file" ]]; then
+    while read -r id _ || [[ -n "$id" ]]; do
+        [[ -z "$id" || "$id" == \#* ]] || expected[$id]=1
+    done <"$expected_file"
+fi
+
+# The plugins each version turns off with its own `rig plugin disable`; the
+# other version must show them off too. Two, so the downgrade cannot pass on
+# a file the old version wrote before the upgrade.
+plugin_by_old="rig_basics::skills::SkillsPlugin"
+plugin_by_new="rig_basics::agents_md::AgentsMdPlugin"
+marker="# Written by hand before any switch; every version must keep this line."
+
+logs="$work/logs" home="$work/home" project="$work/project"
+rig_home="$home/.rig" hold="$work/hold" model_log="$work/logs/model.log"
+mkdir -p "$logs" "$project" "$work/tmp" "$home"/{.config,.local/share,.local/state,.cache,.claude,.codex,tmp,run}
+chmod 700 "$home/run"
+printf '[user]\n\tname = version switch\n\temail = switch@example.invalid\n' >"$home/.gitconfig"
+printf 'alpha\nbeta\n' >"$project/notes.txt"
+if [[ -n "$seed" ]]; then
+    mkdir -p "$rig_home"
+    cp -a --reflink=auto "$seed" "$rig_home/target"
+fi
+caller_path="$PATH"
+cargo_home="${CARGO_HOME:-$HOME/.cargo}"
+rustup_home="${RUSTUP_HOME:-$HOME/.rustup}"
+jobs="${CARGO_BUILD_JOBS:-4}"
+passed=()
+for variable in HTTP_PROXY HTTPS_PROXY NO_PROXY ALL_PROXY http_proxy https_proxy no_proxy \
+    all_proxy SSL_CERT_FILE SSL_CERT_DIR CARGO_HTTP_CAINFO; do
+    [[ -z "${!variable:-}" ]] || passed+=("$variable=${!variable}")
+done
+
+model_pid="" held_pid="" worktrees=()
+# shellcheck disable=SC2329 # run by the EXIT trap
+cleanup() {
+    touch "$hold" 2>/dev/null || true
+    [[ -n "$held_pid" ]] && kill "$held_pid" 2>/dev/null || true
+    [[ -n "$model_pid" ]] && kill "$model_pid" 2>/dev/null || true
+    for tree in "${worktrees[@]}"; do
+        git -C "$repo" worktree remove --force "$tree" 2>/dev/null || true
+    done
+}
+trap cleanup EXIT
+
+# launcher_for LABEL ARG: the launcher path for ARG, building a git ref.
+declare -A launcher=()
+launcher_for() {
+    local label="$1" arg="$2" commit tree package
+    if [[ -f "$arg" && -x "$arg" ]]; then
+        launcher[$label]="$(cd "$(dirname "$arg")" && pwd)/$(basename "$arg")"
+        return
+    fi
+    commit="$(git -C "$repo" rev-parse --verify --quiet "$arg^{commit}")" ||
+        die "$arg is neither a launcher file nor a git ref"
+    tree="$work/src/$label"
+    git -C "$repo" worktree add --quiet --detach "$tree" "$commit"
+    worktrees+=("$tree")
+    package=rig
+    [[ -f "$tree/crates/rig-cli/Cargo.toml" ]] && package=rig-cli
+    echo "building the $label launcher from $arg ($commit) …"
+    (cd "$tree" && TMPDIR="$work/tmp" CARGO_TARGET_DIR="$work/build/$label" CARGO_BUILD_JOBS="$jobs" \
+        cargo build --release --locked -p "$package" --bin rig) >"$logs/build-$label.log" 2>&1 ||
+        die "the $label launcher did not build; see $logs/build-$label.log"
+    launcher[$label]="$work/build/$label/release/rig"
+}
+
+# rig LABEL NAME ARGS…: runs launcher LABEL in the project directory with the
+# disposable home; output in logs/NAME.{out,err}, exit code in $rc, wall
+# seconds in $wall. A non-empty $wrap prefixes the launcher.
+rc=0 wall=0 wrap=()
+rig() {
+    local label="$1" name="$2" start
+    shift 2
+    start=$EPOCHREALTIME
+    rc=0
+    (cd "$project" && env -i "${passed[@]}" \
+        HOME="$home" PATH="$caller_path" LANG=C.UTF-8 TERM=dumb \
+        XDG_CONFIG_HOME="$home/.config" XDG_DATA_HOME="$home/.local/share" \
+        XDG_STATE_HOME="$home/.local/state" XDG_CACHE_HOME="$home/.cache" \
+        XDG_RUNTIME_DIR="$home/run" CLAUDE_CONFIG_DIR="$home/.claude" \
+        CODEX_HOME="$home/.codex" GIT_CONFIG_GLOBAL="$home/.gitconfig" \
+        RIG_HOME="$rig_home" TMPDIR="$home/tmp" CARGO_HOME="$cargo_home" \
+        RUSTUP_HOME="$rustup_home" CARGO_BUILD_JOBS="$jobs" \
+        OLLAMA_API_BASE_URL="http://127.0.0.1:$port" \
+        "${wrap[@]}" timeout "$timeout_s" "${launcher[$label]}" "$@") \
+        </dev/null >"$logs/$name.out" 2>"$logs/$name.err" || rc=$?
+    wall=$(awk -v a="$start" -v b="$EPOCHREALTIME" 'BEGIN { printf "%.0f", b - a }')
+}
+
+# check ID OK DETAIL: records one check (OK is 0 for a pass).
+check() {
+    local id="$1" ok="$2" detail="$3" state
+    reported[$id]=1
+    if ((ok == 0)); then
+        state=PASS
+        [[ -n "${expected[$id]:-}" ]] && state=XPASS && failed=1
+    else
+        state=FAIL
+        if [[ -n "${expected[$id]:-}" ]]; then state=XFAIL; else failed=1; fi
+    fi
+    results+=("$(printf '%-6s %-26s %s' "$state" "$id" "$detail")")
+    echo "  $state $id: $detail"
+}
+
+# status CMD…: 0 when CMD succeeds, 1 otherwise, without tripping set -e.
+status() { if "$@"; then echo 0; else echo 1; fi; }
+answered() { grep -q "FAKE-MODEL turns:.*$2" "$logs/$1.out"; }
+first_error() { grep -m1 -v '^\s*$' "$logs/$1.err" | cut -c1-160 || true; }
+target_bytes() { du -sb "$rig_home/target" 2>/dev/null | cut -f1 || echo 0; }
+gb() { awk -v b="$1" 'BEGIN { printf "%.1f GB", b / 1e9 }'; }
+
+# build_since NAME: when RIG_HOME/build.log changed after logs/.stamp, keeps
+# it as logs/NAME.build.log and prints how many crates cargo compiled and
+# how many locked versions it changed; prints nothing otherwise.
+build_since() {
+    local kept="$logs/$1.build.log" compiled changed
+    [[ "$rig_home/build.log" -nt "$logs/.stamp" ]] || return 0
+    cp "$rig_home/build.log" "$kept"
+    compiled=$(grep -c -E '^ +Compiling ' "$kept" || true)
+    changed=$(grep -c -E '^ +(Updating|Downgrading|Upgrading|Adding|Removing) [^ ]+ v[0-9]' "$kept" || true)
+    echo "$compiled crates compiled, $changed locked versions changed"
+}
+
+# none_compiled SUMMARY: true when a build_since summary compiled nothing.
+none_compiled() { [[ -z "$1" || "$1" == "0 crates"* ]]; }
+# untouched SUMMARY: true when it compiled nothing and changed no locked version.
+untouched() { [[ -z "$1" || "$1" == "0 crates compiled, 0 locked versions changed" ]]; }
+
+built="" again="" turn_rc=0
+# prebuild LABEL NAME: `rig build` with launcher LABEL, under --lock when
+# given; records its time, what it compiled (in $built) and the disk
+# RIG_HOME/target uses.
+prebuild() {
+    local label="$1" name="$2" before
+    before=$(target_bytes)
+    touch "$logs/.stamp"
+    sleep 1
+    [[ -z "$lock" ]] || wrap=(flock "$lock")
+    rig "$label" "$name.build" build
+    wrap=()
+    built=$(build_since "$name")
+    ((rc == 0)) || built="rig build exit $rc: $(first_error "$name.build"); $built"
+    switches+=("$(printf '%-16s %-4s %5ss  target %s -> %s  %s' "$name" "$label" "$wall" \
+        "$(gb "$before")" "$(gb "$(target_bytes)")" "${built:-no build}")")
+    echo "  $name: rig build ${wall}s, ${built:-no build}"
+}
+
+# turn LABEL NAME ARGS…: prebuild, then the turn, which should compile
+# nothing (anything it does compile is in $again and the turn table).
+turn() {
+    local label="$1" name="$2"
+    prebuild "$label" "$name"
+    touch "$logs/.stamp"
+    sleep 1
+    rig "$@"
+    turn_rc=$rc
+    again=$(build_since "$name.turn")
+    none_compiled "$again" || switches+=("$(printf '%-16s %-4s turn compiled again: %s' "$name" "$label" "$again")")
+    echo "  $name: exit $rc, turn ${wall}s"
+}
+
+# plugin_off LABEL NAME PLUGIN ID: checks that launcher LABEL lists PLUGIN off,
+# or refuses the settings with a message naming them; a refusal counts only
+# when the turn before it failed too, so no start ran without the setting.
+plugin_off() {
+    local label="$1" name="$2" plugin="$3" id="$4"
+    rig "$label" "$name" plugin list
+    if ((rc != 0)); then
+        local clear=1
+        ((turn_rc != 0)) && grep -q -i 'settings\|plugins.toml' "$logs/$name.err" && clear=0
+        check "$id" "$clear" "refused (exit $rc, the turn before exit $turn_rc): $(first_error "$name")"
+    elif grep -E -q "^off +$plugin\b" "$logs/$name.out"; then
+        check "$id" 0 "$plugin is still off"
+    else
+        check "$id" 1 "$plugin is on again, silently"
+    fi
+}
+
+hand_line_kept() {
+    check "$1" "$(status grep -q -F -x "$marker" "$rig_home/settings.toml")" \
+        "the hand-written line in settings.toml"
+}
+
+# summary [NOTE]: prints the checks and builds so far, and writes them to
+# summary.txt.
+summary() {
+    local id
+    {
+        echo "version switch: old $old_arg ($old_version) -> new $new_arg ($new_version)"
+        [[ -z "$seed" ]] || echo "RIG_HOME/target seeded from $seed"
+        [[ -z "${1:-}" ]] || echo "$1"
+        echo
+        echo "checks:"
+        printf '  %s\n' "${results[@]}"
+        for id in "${!expected[@]}"; do
+            [[ -n "${reported[$id]:-}" ]] || echo "  warning: $expected_file names \`$id\`, which no check reported"
+        done
+        echo
+        echo "agent builds (\`rig build\` before each turn; target is RIG_HOME/target${lock:+; the time includes waiting for $lock}):"
+        printf '  %s\n' "${switches[@]}"
+        echo
+        echo "logs: $logs"
+    } | tee "$work/summary.txt"
+}
+
+launcher_for old "$old_arg"
+launcher_for new "$new_arg"
+rig old version --version && old_version="$(cat "$logs/version.out")"
+rig new version --version && new_version="$(cat "$logs/version.out")"
+echo "old: $old_arg (${launcher[old]}, $old_version)"
+echo "new: $new_arg (${launcher[new]}, $new_version)"
+
+python3 -I "$model_script" "$port" "$model_log" "$hold" >"$logs/model.err" 2>&1 &
+model_pid=$!
+model_up=""
+for _ in $(seq 50); do
+    (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null && model_up=yes && break
+    sleep 0.1
+done
+[[ -n "$model_up" ]] || die "the fake model did not start; see $logs/model.err"
+model=(-m ollama/qwen3)
+
+echo "== old version: a session and settings"
+turn old old-first-turn "${model[@]}" -p "turn one on old"
+answered old-first-turn "turn one on old" || die "the old version did not answer: $(first_error old-first-turn) (logs in $logs)"
+session="$(ls "$rig_home/sessions" 2>/dev/null || true)"
+[[ "$session" =~ ^[^[:space:]]+$ ]] || die "expected one session in $rig_home/sessions, found: $session"
+rig old disable-old plugin disable "$plugin_by_old"
+((rc == 0)) || die "rig plugin disable failed on the old version: $(first_error disable-old)"
+printf '%s\n' "$marker" >>"$rig_home/settings.toml"
+
+echo "== upgrade: new resumes the old session"
+turn new upgrade "${model[@]}" -r "$session" -p "turn two on new"
+check resume-upgrade "$(status answered upgrade "turn one on old | turn two on new")" \
+    "exit $rc; the new version sees the old turn"
+plugin_off new list-upgrade "$plugin_by_old" settings-upgrade
+hand_line_kept settings-file-upgrade
+
+echo "== new again: same version, no rebuild"
+turn new restart "${model[@]}" -r "$session" -p "turn three on new"
+quiet=1
+untouched "$built" && untouched "$again" && quiet=0
+check no-rebuild-same-version "$quiet" \
+    "${built:-no build} on a second start of the same version"
+rig new disable-new plugin disable "$plugin_by_new"
+((rc == 0)) || die "rig plugin disable failed on the new version: $(first_error disable-new)"
+
+echo "== downgrade: old resumes the session new wrote to"
+turn old downgrade "${model[@]}" -r "$session" -p "turn four on old"
+check resume-downgrade "$(status answered downgrade "turn one on old | turn two on new | turn three on new | turn four on old")" \
+    "exit $rc; the old version sees every turn"
+plugin_off old list-downgrade "$plugin_by_new" settings-downgrade
+hand_line_kept settings-file-downgrade
+
+echo "== one home, both versions at once: new holds a turn while old runs"
+rm -f "$hold"
+prebuild new shared-new
+start=$EPOCHREALTIME
+(rig new shared-new "${model[@]}" -p "[hold] new keeps running"; echo "$rc $wall" >"$logs/shared-new.rc") &
+held_pid=$!
+until grep -q '"held": true' "$model_log" 2>/dev/null || ! kill -0 "$held_pid" 2>/dev/null; do
+    sleep 1
+done
+wall=$(awk -v a="$start" -v b="$EPOCHREALTIME" 'BEGIN { printf "%.0f", b - a }')
+echo "  shared-new: its turn reached the model after ${wall}s and is held"
+turn old shared-old "${model[@]}" -p "old turn while new runs"
+check shared-home-old-turn "$(status answered shared-old "old turn while new runs")" \
+    "exit $rc while a new agent ran on the same home"
+touch "$hold"
+wait "$held_pid" || true
+held_pid=""
+read -r rc wall <"$logs/shared-new.rc" || rc=1
+check shared-home-running-new "$(status answered shared-new "new keeps running")" \
+    "exit $rc; the running new agent finished its turn after old rebuilt"
+
+summary
+exit "$failed"
