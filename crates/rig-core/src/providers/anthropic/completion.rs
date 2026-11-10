@@ -606,9 +606,10 @@ fn tool_choice(choice: message::ToolChoice) -> Result<Value, EncodeError> {
     })
 }
 
-/// The request's tools: Rig's, strict when `strict` and asking for their
-/// input as it is written when `eager`, then `extra`, the tools
-/// `additional_params` names, verbatim.
+/// The request's tools: Rig's, strict when `strict` (otherwise with their
+/// root combinators nested) and asking for their input as it is written
+/// when `eager`, then `extra`, the tools `additional_params` names,
+/// verbatim.
 fn tools(
     tools: &[Arc<completion::ToolDefinition>],
     extra: Vec<Value>,
@@ -619,6 +620,8 @@ fn tools(
         let mut schema = tool.parameters.clone();
         if strict {
             sanitize_strict_tool_schema(&mut schema);
+        } else {
+            nest_root_combinators(&mut schema);
         }
         Value::Object(set_fields([
             ("name", Some(Value::from(tool.name.as_str()))),
@@ -629,6 +632,133 @@ fn tools(
         ]))
     });
     rig.chain(extra).collect()
+}
+
+/// The keywords Anthropic refuses at the root of a tool's input schema.
+const ROOT_COMBINATORS: [&str; 3] = ["allOf", "anyOf", "oneOf"];
+
+/// The root keywords that read what the root's other keywords evaluate.
+const ROOT_UNEVALUATED: [&str; 2] = ["unevaluatedProperties", "unevaluatedItems"];
+
+/// The root keywords that stay at the root when every keyword that
+/// validates moves: its type, what names it or holds its definitions, and
+/// its annotations.
+const ROOT_KEPT: [&str; 9] = [
+    "type",
+    "$schema",
+    "$id",
+    "$anchor",
+    "$dynamicAnchor",
+    "$defs",
+    "definitions",
+    "title",
+    "description",
+];
+
+/// Move a root `allOf`, `anyOf` or `oneOf`, with any root `not`, under
+/// `not: {not: ...}`, which accepts the same inputs, and type the root
+/// `object`, the root Anthropic takes. A subschema under `not` reports no
+/// evaluated properties or items, so with a root `unevaluatedProperties` or
+/// `unevaluatedItems` every root keyword but [`ROOT_KEPT`] moves. Local
+/// `#/...` pointer references into a moved keyword follow it; a percent
+/// encoded pointer, or one through the root's `$id`, is left as written. A schema with no
+/// root combinator is left as written.
+fn nest_root_combinators(schema: &mut Value) {
+    let Value::Object(root) = schema else {
+        return;
+    };
+    if !ROOT_COMBINATORS.iter().any(|key| root.contains_key(*key)) {
+        return;
+    }
+    let unevaluated = ROOT_UNEVALUATED.iter().any(|key| root.contains_key(*key));
+    let moved: Vec<String> = root
+        .keys()
+        .filter(|key| {
+            let key = key.as_str();
+            if unevaluated {
+                !ROOT_KEPT.contains(&key)
+            } else {
+                ROOT_COMBINATORS.contains(&key) || key == "not"
+            }
+        })
+        .cloned()
+        .collect();
+    repoint_moved_references(root, &moved);
+    let nested: Map<String, Value> = moved
+        .into_iter()
+        .filter_map(|key| {
+            let value = remove_preserving_order(root, &key)?;
+            Some((key, value))
+        })
+        .collect();
+    root.entry("type").or_insert_with(|| json!("object"));
+    root.insert("not".to_owned(), json!({ "not": nested }));
+}
+
+/// The keywords whose value is a subschema or an array of them.
+const SUBSCHEMA_KEYWORDS: [&str; 15] = [
+    "allOf",
+    "anyOf",
+    "oneOf",
+    "not",
+    "if",
+    "then",
+    "else",
+    "items",
+    "prefixItems",
+    "additionalItems",
+    "contains",
+    "additionalProperties",
+    "unevaluatedProperties",
+    "unevaluatedItems",
+    "propertyNames",
+];
+
+/// The keywords whose value maps names to subschemas.
+const SUBSCHEMA_MAP_KEYWORDS: [&str; 5] = [
+    "properties",
+    "patternProperties",
+    "dependentSchemas",
+    "$defs",
+    "definitions",
+];
+
+/// Point each `#/<key>/...` reference in `schema`, the root or a subschema
+/// of it, whose `key` is in `moved` at `#/not/not/<key>/...`, where the key
+/// moves. A subschema with its own `$id` is a resource of its own, which
+/// its pointers resolve against, so it is left as written.
+fn repoint_moved_references(schema: &mut Map<String, Value>, moved: &[String]) {
+    for keyword in ["$ref", "$dynamicRef"] {
+        if let Some(Value::String(reference)) = schema.get_mut(keyword)
+            && let Some(pointer) = reference.strip_prefix("#/")
+            && moved.iter().any(|key| {
+                let token = key.replace('~', "~0").replace('/', "~1");
+                pointer.split('/').next() == Some(token.as_str())
+            })
+        {
+            *reference = format!("#/not/not/{pointer}");
+        }
+    }
+    let mut pending: Vec<&mut Value> = Vec::new();
+    for (key, value) in schema.iter_mut() {
+        if SUBSCHEMA_KEYWORDS.contains(&key.as_str()) {
+            match value {
+                Value::Array(items) => pending.extend(items.iter_mut()),
+                value => pending.push(value),
+            }
+        } else if SUBSCHEMA_MAP_KEYWORDS.contains(&key.as_str())
+            && let Value::Object(subschemas) = value
+        {
+            pending.extend(subschemas.values_mut());
+        }
+    }
+    for value in pending {
+        if let Value::Object(subschema) = value
+            && !subschema.contains_key("$id")
+        {
+            repoint_moved_references(subschema, moved);
+        }
+    }
 }
 
 /// Split `history` into the top-level `system` blocks and the messages.
