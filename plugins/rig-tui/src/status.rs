@@ -39,7 +39,8 @@ use ratatui::widgets::Widget;
 use rig_ecs::agent::{ActiveTurn, Agent, TurnOf};
 use rig_harness::main_agent::ShownAgent;
 use serde::{Deserialize, Serialize};
-use unicode_width::UnicodeWidthChar;
+use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthStr;
 
 use super::editor::Editor;
 use super::panel::{PanelCanvas, Placement, TuiPanel};
@@ -324,13 +325,13 @@ impl Piece {
         'runs: for span in &self.line.spans {
             let mut text = String::new();
             cut = span.style;
-            for character in span.content.chars() {
-                let next = width + character.width().unwrap_or(0);
+            for grapheme in span.content.graphemes(true) {
+                let next = width + grapheme.width();
                 if next + 1 > target {
                     spans.push(Span::styled(text, span.style));
                     break 'runs;
                 }
-                text.push(character);
+                text.push_str(grapheme);
                 width = next;
             }
             spans.push(Span::styled(text, span.style));

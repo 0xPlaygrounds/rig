@@ -60,7 +60,7 @@ fn retry_is_an_unknown_command() {
 }
 
 #[test]
-fn every_help_starts_at_one_column_after_the_widest_name() {
+fn every_help_starts_two_columns_after_the_widest_name() {
     let mut app = App::new();
     app.add_plugins((AgentPlugin, BasicCommandsPlugin))
         .add_command("claude-cloak", "Cloak", |_: In<CommandArgs>| {})
@@ -87,7 +87,7 @@ fn every_help_starts_at_one_column_after_the_widest_name() {
     assert!(
         columns
             .iter()
-            .all(|column| *column == Some("/skill:diagnose-crash ".len())),
+            .all(|column| *column == Some("/skill:diagnose-crash  ".len())),
         "{text:?}"
     );
 }

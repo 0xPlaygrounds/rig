@@ -32,7 +32,8 @@ pub struct RowWrap {
 /// `line` wrapped at word boundaries into rows at most `width` columns
 /// wide, each with how it continues the row before it (`None` for the
 /// first). A word wider than a row is broken. Continuation rows are
-/// indented like the text after the line's leading spaces and list marker.
+/// indented like the text after the line's leading spaces and list marker,
+/// or after its first word when two or more spaces follow that.
 /// Every row keeps the line's style, so a background fills each. Where it
 /// breaks depends on its text alone, not on its styles, so a line of code
 /// wraps the same plain as colored.
@@ -141,7 +142,9 @@ fn words<'a, 'b>(cells: &'b [(&'a str, Style)]) -> impl Iterator<Item = &'b [(&'
     cells.chunk_by(move |(before, _), (after, _)| !space(before) || space(after))
 }
 
-/// The width of the leading spaces, plus a list marker and its space.
+/// The width of the leading spaces, plus a list marker and its space, or
+/// else a first word and the two or more spaces after it that start a
+/// column, such as a line number's or a command's.
 fn hanging_indent(cells: &[(&str, Style)]) -> usize {
     let spaces = cells
         .iter()
@@ -150,9 +153,32 @@ fn hanging_indent(cells: &[(&str, Style)]) -> usize {
     let rest = cells.get(spaces..).unwrap_or_default();
     let marker: usize = match rest {
         [(first, _), (" ", _), ..] if HANGING_MARKERS.contains(first) => first.width() + 1,
-        _ => numbered_marker(rest),
+        _ => match numbered_marker(rest) {
+            0 => column(rest),
+            marker => marker,
+        },
     };
     spaces + marker
+}
+
+/// The width of a first word and the two or more spaces after it, when
+/// text follows them, else 0.
+fn column(cells: &[(&str, Style)]) -> usize {
+    let word = cells
+        .iter()
+        .take_while(|(symbol, _)| *symbol != " ")
+        .count();
+    let rest = cells.get(word..).unwrap_or_default();
+    let gap = rest.iter().take_while(|(symbol, _)| *symbol == " ").count();
+    match word > 0 && gap >= 2 && rest.len() > gap {
+        true => cells
+            .get(..word + gap)
+            .unwrap_or_default()
+            .iter()
+            .map(|(symbol, _)| symbol.width())
+            .sum(),
+        false => 0,
+    }
 }
 
 /// The width of a leading `12. ` or `3) `, else 0.

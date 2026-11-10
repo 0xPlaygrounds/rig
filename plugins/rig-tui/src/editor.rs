@@ -8,7 +8,8 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Padding, Paragraph};
 use rig_ecs::agent::ActiveTurn;
 use rig_harness::main_agent::ShownAgent;
-use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthStr;
 
 use super::input::InputContext;
 use super::keys::KeyFocus;
@@ -16,6 +17,7 @@ use super::panel::PanelCanvas;
 use super::pick::Choices;
 use super::status::{StatusLine, StatusSources};
 use super::theme::Theme;
+use super::wrap::wrap;
 
 /// The prompt before the first line of the input.
 const PROMPT: &str = "› ";
@@ -285,26 +287,29 @@ impl Editor {
         false
     }
 
+    /// Where the grapheme before `from` starts, so an emoji or an accented
+    /// letter moves and deletes as one.
     fn previous_boundary(&self, from: usize) -> usize {
         self.text
             .get(..from)
-            .and_then(|before| before.char_indices().next_back())
+            .and_then(|before| before.grapheme_indices(true).next_back())
             .map_or(0, |(index, _)| index)
     }
 
+    /// Where the grapheme at `from` ends.
     fn next_boundary(&self, from: usize) -> usize {
         self.text
             .get(from..)
-            .and_then(|after| after.chars().next())
-            .map_or(self.text.len(), |character| from + character.len_utf8())
+            .and_then(|after| after.graphemes(true).next())
+            .map_or(self.text.len(), |grapheme| from + grapheme.len())
     }
 
-    /// A character back.
+    /// A grapheme back.
     pub fn left(&mut self) {
         self.cursor = self.previous_boundary(self.cursor);
     }
 
-    /// A character forward.
+    /// A grapheme forward.
     pub fn right(&mut self) {
         self.cursor = self.next_boundary(self.cursor);
     }
@@ -374,14 +379,14 @@ impl Editor {
         self.cursor = self.line_end();
     }
 
-    /// Deletes the character before the cursor.
+    /// Deletes the grapheme before the cursor.
     pub fn backspace(&mut self) {
         let start = self.previous_boundary(self.cursor);
         self.text.replace_range(start..self.cursor, "");
         self.cursor = start;
     }
 
-    /// Deletes the character after the cursor.
+    /// Deletes the grapheme after the cursor.
     pub fn delete(&mut self) {
         let end = self.next_boundary(self.cursor);
         self.text.replace_range(self.cursor..end, "");
@@ -421,11 +426,11 @@ impl Editor {
         self.text.replace_range(self.cursor..end, "");
     }
 
-    /// The cursor's column on its line, in characters.
+    /// The cursor's column on its line, in graphemes.
     fn column(&self) -> usize {
         self.text
             .get(self.line_start()..self.cursor)
-            .map_or(0, |line| line.chars().count())
+            .map_or(0, |line| line.graphemes(true).count())
     }
 
     /// Moves to `column` of the line starting at `start`, or its end.
@@ -434,7 +439,7 @@ impl Editor {
         let line = line.split('\n').next().unwrap_or_default();
         self.cursor = start
             + line
-                .char_indices()
+                .grapheme_indices(true)
                 .nth(column)
                 .map_or(line.len(), |(index, _)| index);
     }
@@ -546,60 +551,68 @@ impl Editor {
         u16::try_from(lines.clamp(1, MOST_LINES) + 2).unwrap_or(u16::MAX)
     }
 
-    /// The text laid out in rows `width` columns wide, broken anywhere, the
-    /// first row after the prompt and the others indented under it.
+    /// The text laid out in rows `width` columns wide, each line word
+    /// wrapped as the transcript is, the first row after the prompt and the
+    /// others indented under it. A tab or other control character shows as
+    /// a space per byte. A cursor at the end of the text on a full row goes
+    /// to a new one; one in the spaces a row break dropped stays after the
+    /// row.
     pub(crate) fn layout(&self, width: u16) -> Layout {
         // The prompt is two columns wide.
-        let width = usize::from(width).max(3);
+        let width = usize::from(width).max(3) - 2;
         let mut rows = Vec::new();
-        let mut row = String::new();
-        let mut row_width = 2;
-        let mut cursor_row = 0;
-        let mut cursor_column = 2;
-        let mut first = true;
-        let finish = |row: &mut String, first: &mut bool, rows: &mut Vec<Line<'static>>| {
-            let prefix = if *first { PROMPT } else { "  " };
-            *first = false;
-            rows.push(Line::from(vec![
-                Span::from(prefix).dim(),
-                Span::from(std::mem::take(row)),
-            ]));
-        };
-        for (index, character) in self.text.char_indices() {
-            if index == self.cursor {
-                cursor_row = rows.len();
-                cursor_column = row_width;
-            }
-            if character == '\n' {
-                finish(&mut row, &mut first, &mut rows);
-                row_width = 2;
-                continue;
-            }
-            let cell = character.width().unwrap_or(0);
-            if row_width + cell > width {
-                finish(&mut row, &mut first, &mut rows);
-                row_width = 2;
-                if index == self.cursor {
-                    cursor_row = rows.len();
-                    cursor_column = row_width;
+        let mut cursor = (0, 0);
+        let mut start = 0;
+        for line in self.text.split('\n') {
+            let shown: String = line
+                .chars()
+                .map(|character| match character.is_control() {
+                    true => " ".repeat(character.len_utf8()),
+                    false => character.to_string(),
+                })
+                .collect();
+            let at = self
+                .cursor
+                .checked_sub(start)
+                .filter(|at| *at <= line.len());
+            let mut end = 0;
+            for (row, joint) in wrap(&Line::from(shown.as_str()), width) {
+                let (gap, indent) = joint.map_or((0, 0), |joint| (joint.gap.len(), joint.indent));
+                let text = shown.get(end + gap..).unwrap_or_default();
+                let bytes: usize = row.spans.iter().map(|span| span.content.len()).sum();
+                let text = text.get(..bytes.saturating_sub(indent)).unwrap_or(text);
+                if let Some(at) = at
+                    && (end..end + gap).contains(&at)
+                {
+                    let before = rows.last().map_or(0, Line::width);
+                    cursor = (rows.len().saturating_sub(1), (before + at - end).min(width));
                 }
+                let from = end + gap;
+                end = from + text.len();
+                if let Some(at) = at
+                    && (from..=end).contains(&at)
+                {
+                    let before = shown.get(from..at).map_or(0, UnicodeWidthStr::width);
+                    cursor = (rows.len(), indent + before);
+                }
+                rows.push(row);
             }
-            row.push(if character == '\t' { ' ' } else { character });
-            row_width += cell;
+            start += line.len() + 1;
         }
-        if self.cursor >= self.text.len() {
-            if row_width >= width {
-                finish(&mut row, &mut first, &mut rows);
-                row_width = 2;
-            }
-            cursor_row = rows.len();
-            cursor_column = row_width;
+        if self.cursor >= self.text.len() && cursor.1 >= width {
+            cursor = (rows.len(), 0);
+            rows.push(Line::default());
         }
-        finish(&mut row, &mut first, &mut rows);
+        let rows = rows.into_iter().enumerate().map(|(index, row)| {
+            let prefix = if index == 0 { PROMPT } else { "  " };
+            let mut spans = vec![Span::from(prefix).dim()];
+            spans.extend(row.spans);
+            Line::from(spans)
+        });
         Layout {
-            rows,
-            cursor_row,
-            cursor_column,
+            rows: rows.collect(),
+            cursor_row: cursor.0,
+            cursor_column: cursor.1 + 2,
         }
     }
 }
@@ -616,36 +629,67 @@ fn place((index, text): &(usize, String), history: &[String]) -> usize {
         .unwrap_or(history.len())
 }
 
+/// A key hint, with how much it matters: a row too narrow for every hint
+/// drops those that matter least first.
+type Key = (&'static str, u8);
+
 /// The keys of an empty editor that has them, over where its text goes:
 /// a message's, with Enter steering and Tab and Esc for the turn while one
 /// runs.
-fn hint(turn_running: bool, panel_keys: bool) -> &'static str {
+fn hint(turn_running: bool, panel_keys: bool) -> &'static [Key] {
     match (panel_keys, turn_running) {
-        (true, _) => " A panel has the keys · Esc gives them back ",
-        (false, true) => {
-            " Enter steers · Tab sends after the turn · Esc stops · Shift+Enter or Ctrl+J new line · Ctrl+V image · / commands · @ files · Ctrl+D quits "
-        }
-        (false, false) => {
-            " Enter sends · Shift+Enter or Ctrl+J new line · Ctrl+V image · / commands · @ files · Ctrl+D quits "
-        }
+        (true, _) => &[("A panel has the keys", 1), ("Esc gives them back", 2)],
+        (false, true) => &[
+            ("Enter steers", 9),
+            ("Tab sends after the turn", 7),
+            ("Esc stops", 8),
+            ("Shift+Enter or Ctrl+J new line", 5),
+            ("Ctrl+V image", 1),
+            ("/ commands", 4),
+            ("@ files", 2),
+            ("Ctrl+D quits", 3),
+        ],
+        (false, false) => &[
+            ("Enter sends", 9),
+            ("Shift+Enter or Ctrl+J new line", 7),
+            ("Ctrl+V image", 4),
+            ("/ commands", 8),
+            ("@ files", 5),
+            ("Ctrl+D quits", 6),
+        ],
     }
 }
 
-/// `keys`, items split by ` · `, in `width` columns: the first items that
-/// fit, whole.
-fn fit_keys(keys: &str, width: usize) -> String {
-    let mut fitted = String::new();
-    for item in keys.split(" · ").map(str::trim) {
-        let next = match fitted.is_empty() {
-            true => format!(" {item} "),
-            false => format!("{} · {item} ", fitted.trim_end()),
-        };
-        if next.width() > width {
-            break;
+/// `keys` in `width` columns, joined by ` · `: all of them, or else the
+/// most that fit after dropping the least important, in their order and
+/// ending in `…`.
+fn fit_keys(keys: &[Key], width: usize) -> String {
+    let mut kept = keys.to_vec();
+    loop {
+        let mut items: Vec<&str> = kept.iter().map(|(item, _)| *item).collect();
+        if kept.len() < keys.len() {
+            items.push("…");
         }
-        fitted = next;
+        if items.is_empty() {
+            return String::new();
+        }
+        let row = format!(" {} ", items.join(" · "));
+        if row.width() <= width {
+            return row;
+        }
+        // The least important; of equals, the last.
+        let least = kept
+            .iter()
+            .enumerate()
+            .min_by_key(|(at, (_, keep))| (*keep, std::cmp::Reverse(*at)))
+            .map(|(at, _)| at);
+        match least {
+            Some(at) => {
+                kept.remove(at);
+            }
+            None => return String::new(),
+        }
     }
-    fitted
 }
 
 /// Draws each editor with room into its canvas, on the input's band with a
@@ -679,24 +723,28 @@ pub(crate) fn draw_editors(
         }
         let layout = editor.layout(area.width - 2);
         let top = (layout.cursor_row + 1).saturating_sub(usize::from(area.height - 2));
-        let (mut title, mut keys) = (Line::default(), "");
+        let (mut title, mut keys): (_, &[Key]) = (Line::default(), &[]);
         if state.editor() == Some(entity) {
             let elsewhere = focus.0.is_some_and(|focused| focused != entity);
             keys = match &answering {
                 Some(ask) => {
                     title = Line::from(format!(" {} ", ask.title)).bold();
-                    " Enter answers · Shift+Enter or Ctrl+J new line · Esc refuses "
+                    &[
+                        ("Enter answers", 3),
+                        ("Shift+Enter or Ctrl+J new line", 1),
+                        ("Esc refuses", 2),
+                    ]
                 }
                 None => hint(busy, elsewhere),
             };
             let keyed = !elsewhere && state.picking().is_none();
             if editor.recalled() && answering.is_none() && keyed {
                 keys = match editor.draft.trim().is_empty() {
-                    true => " An earlier prompt · Down back to an empty input ",
-                    false => " An earlier prompt · Down back to your draft ",
+                    true => &[("An earlier prompt", 1), ("Down back to an empty input", 2)],
+                    false => &[("An earlier prompt", 1), ("Down back to your draft", 2)],
                 };
             } else if !editor.is_empty() {
-                keys = "";
+                keys = &[];
             }
             if keyed {
                 let column = u16::try_from(layout.cursor_column).unwrap_or(u16::MAX);
@@ -732,3 +780,6 @@ pub(crate) fn draw_editors(
         canvas.render(Paragraph::new(layout.rows).scroll((top, 0)).block(block));
     }
 }
+
+#[cfg(test)]
+mod tests;
