@@ -336,22 +336,23 @@ impl Router {
         Ok((id, lock))
     }
 
-    /// Whether this router runs `id`, opened: not being opened by a load or
-    /// resume, which refuses another.
-    fn is_open(&self, id: &acp::SessionId) -> bool {
-        let opening = locked(&self.opening).contains_key(id.0.as_ref());
-        !opening && locked(&self.sessions).contains_key(id.0.as_ref())
+    /// The process of `id` when this router runs it, opened: not being
+    /// opened by a load or resume, which refuses another.
+    fn open_child(&self, id: &acp::SessionId) -> Option<Arc<Child>> {
+        if locked(&self.opening).contains_key(id.0.as_ref()) {
+            return None;
+        }
+        locked(&self.sessions).get(id.0.as_ref()).cloned()
     }
 
-    /// The process of `id` when this router runs it and `cwd`, the client's
-    /// directory, is the session's.
-    fn reattached(&self, id: &acp::SessionId, cwd: &Path) -> Result<Arc<Child>, Error> {
-        let child = self.child(id)?;
+    /// Refuses the open session `id` for a client whose directory `cwd` is
+    /// not the session's.
+    fn in_directory(&self, id: &acp::SessionId, cwd: &Path) -> Result<(), Error> {
         let id = SessionId::from_str(&id.0).map_err(invalid)?;
-        if let Some(directory) = self.home.session(&id).working_directory() {
-            runs_in(&id, &directory, cwd)?;
+        match self.home.session(&id).working_directory() {
+            Some(directory) => runs_in(&id, &directory, cwd),
+            None => Ok(()),
         }
-        Ok(child)
     }
 
     /// The saved sessions, newest first, of `cwd` when given.
@@ -587,9 +588,9 @@ async fn serve(router: Arc<Router>, stopped: oneshot::Receiver<()>) -> Result<()
         .on_receive_request(
             async move |request: acp::LoadSessionRequest, responder, cx| {
                 let at = (request.cwd.clone(), request.additional_directories.clone());
-                if load.is_open(&request.session_id) {
+                if let Some(child) = load.open_child(&request.session_id) {
                     let id = request.session_id.clone();
-                    return reattach(&load, &id, request, responder, at);
+                    return reattach(&load, &child, &id, request, responder, at);
                 }
                 let id = request.session_id.clone();
                 let found = move |router: &Router, cwd: &Path| router.saved(&id, cwd);
@@ -601,9 +602,9 @@ async fn serve(router: Arc<Router>, stopped: oneshot::Receiver<()>) -> Result<()
         .on_receive_request(
             async move |request: acp::ResumeSessionRequest, responder, cx| {
                 let at = (request.cwd.clone(), request.additional_directories.clone());
-                if resume.is_open(&request.session_id) {
+                if let Some(child) = resume.open_child(&request.session_id) {
                     let id = request.session_id.clone();
-                    return reattach(&resume, &id, request, responder, at);
+                    return reattach(&resume, &child, &id, request, responder, at);
                 }
                 let id = request.session_id.clone();
                 let found = move |router: &Router, cwd: &Path| router.saved(&id, cwd);
@@ -780,6 +781,7 @@ where
 /// it as it answered its opening.
 fn reattach<Request>(
     router: &Router,
+    child: &Child,
     id: &acp::SessionId,
     request: Request,
     responder: Responder<Request::Response>,
@@ -790,9 +792,9 @@ where
 {
     let checked = refuse_directories(&others)
         .and_then(|()| Router::cwd(&cwd))
-        .and_then(|cwd| router.reattached(id, &cwd));
+        .and_then(|cwd| router.in_directory(id, &cwd));
     match checked {
-        Ok(child) => forward_request(&child, request, responder),
+        Ok(()) => forward_request(child, request, responder),
         Err(error) => responder.respond_with_error(error),
     }
 }

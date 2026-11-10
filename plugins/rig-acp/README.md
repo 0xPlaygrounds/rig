@@ -39,8 +39,8 @@ to use a new one.
   session, without the commands' output and notices), resume, list, close, cancel. Sessions are rig's: `rig -r <id>`
   opens one in the terminal, and a session another rig has open is refused.
   Loading or resuming a session the editor has open already re-attaches to
-  it, with the same MCP servers; a load waits for no prompt, so it is
-  refused while one runs. A session belongs to its directory: loading it
+  it, with the same MCP servers; a load during a running prompt is refused.
+  A permission request sent before a re-attach is not sent again. A session belongs to its directory: loading it
   from another one is refused.
 - **Prompts:** text, links to resources, embedded text resources, images
   (for models that take them; rig tells you when one does not), and embedded
