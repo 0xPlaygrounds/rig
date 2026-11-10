@@ -20,18 +20,23 @@
 
 use std::collections::HashSet;
 
+use bevy_log::warn;
+use rig_harness::main_agent::ShownAgent;
 use rig_harness::prelude::*;
 use rig_tui::ratatui::style::Style;
 use rig_tui::ratatui::text::Line;
 use rig_tui::{
     AppKeyBindingsExt, CallItem, CallState, KeyBinding, KeyPress, KeyPressed, KeyScope, Keys,
     LookLine, MainPane, OUTPUT_INDENT, RenderBatch, RenderRevision, RenderSystems, ToolRender,
-    TranscriptItem, TranscriptRender, TranscriptView,
+    TranscriptItem, TranscriptPane, TranscriptRender, TranscriptSource, TranscriptView,
 };
 use serde::{Deserialize, Deserializer};
 
 #[cfg(test)]
 mod tests;
+
+/// The fold key's label, which key listings show.
+const LABEL: &str = "Show the selected tool call whole, or every call";
 
 /// Folds finished tool calls in the terminal view and binds the key that
 /// shows them whole ([`FoldSettings`]).
@@ -67,6 +72,13 @@ fn keys<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Keys, D::Error> {
     text.parse().map_err(serde::de::Error::custom)
 }
 
+/// A call of a transcript: the pane, the agent it shows (none for a
+/// conversation no agent holds) and the call's place there. Message ids
+/// rise from 0 in each conversation, so the place alone names calls of
+/// several agents. An entity's generation keeps one that is gone from
+/// naming a later one.
+type Shown = (Entity, Option<Entity>, CallItem);
+
 /// Which calls are drawn whole: every call when `all` is set, but those in
 /// `flipped`, and only those in `flipped` when it is not.
 #[derive(Resource, Default, Debug)]
@@ -74,20 +86,20 @@ struct Unfolded {
     /// Whether the key showed every call.
     all: bool,
     /// The calls the key flipped from what `all` says.
-    flipped: HashSet<CallItem>,
+    flipped: HashSet<Shown>,
 }
 
 impl Unfolded {
-    /// Whether the call `item` is drawn whole.
-    fn shows(&self, item: Option<CallItem>) -> bool {
-        self.all != item.is_some_and(|item| self.flipped.contains(&item))
+    /// Whether the call `call` is drawn whole.
+    fn shows(&self, call: Option<Shown>) -> bool {
+        self.all != call.is_some_and(|call| self.flipped.contains(&call))
     }
 
-    /// Flips `item`, or every call with none.
-    fn flip(&mut self, item: Option<CallItem>) {
-        match item {
-            Some(item) if !self.flipped.remove(&item) => {
-                self.flipped.insert(item);
+    /// Flips `call`, or every call with none.
+    fn flip(&mut self, call: Option<Shown>) {
+        match call {
+            Some(call) if !self.flipped.remove(&call) => {
+                self.flipped.insert(call);
             }
             Some(_) => {}
             None => {
@@ -98,14 +110,26 @@ impl Unfolded {
     }
 }
 
+/// On the fold key's binding. Folding needs it there and not disabled, so
+/// folded lines always have a key that shows them.
+#[derive(Component)]
+struct FoldKey;
+
 impl Plugin for FoldPlugin {
     fn build(&self, app: &mut App) {
         app.add_setting::<FoldSettings>("fold")
             .init_resource::<Unfolded>()
             .add_systems(TranscriptRender, fold.in_set(RenderSystems::Edit));
         let key = app.world().resource::<FoldSettings>().key.clone();
-        let binding = KeyBinding::new(key, "Show the selected tool call whole, or every call");
-        app.add_key_binding(binding.in_scope(KeyScope::Input), flip);
+        // Global, so no other binding of the key shadows it unseen: one
+        // bound first refuses it instead.
+        let binding = KeyBinding::new(key.clone(), LABEL).in_scope(KeyScope::Global);
+        match app.add_key_binding(binding, flip) {
+            Some(bound) => {
+                app.world_mut().entity_mut(bound).insert(FoldKey);
+            }
+            None => warn!("[fold] key `{key}` is taken by another binding: nothing is folded"),
+        }
     }
 }
 
@@ -118,29 +142,48 @@ fn selected_call(view: &TranscriptView) -> Option<CallItem> {
     }
 }
 
-/// Flips the selected call, or every call, and draws the transcript again.
+/// Flips the call selected in the main pane, or every call, and draws the
+/// transcript again.
 fn flip(
     pressed: On<KeyPressed>,
-    panes: Query<&TranscriptView, With<MainPane>>,
+    panes: Query<(Entity, &TranscriptPane, &TranscriptView), With<MainPane>>,
+    shown: Option<Res<ShownAgent>>,
     mut unfolded: ResMut<Unfolded>,
     mut revision: ResMut<RenderRevision>,
 ) {
     if pressed.released {
         return;
     }
-    let selected = panes.single().ok().and_then(selected_call);
+    let selected = panes.single().ok().and_then(|(pane, transcript, view)| {
+        let agent = match &transcript.source {
+            TranscriptSource::Shown => shown.as_ref().and_then(|shown| shown.0),
+            TranscriptSource::Agent(agent) => Some(*agent),
+            TranscriptSource::Value(_) => None,
+        };
+        Some((pane, agent, selected_call(view)?))
+    });
     unfolded.flip(selected);
     revision.0 = revision.0.wrapping_add(1);
 }
 
-/// Folds every finished call of a pane's batch that is not drawn whole.
-fn fold(mut batch: ResMut<RenderBatch>, settings: Res<FoldSettings>, unfolded: Res<Unfolded>) {
+/// Folds every finished call of a pane's batch that is not drawn whole,
+/// while the fold key is bound.
+fn fold(
+    mut batch: ResMut<RenderBatch>,
+    settings: Res<FoldSettings>,
+    unfolded: Res<Unfolded>,
+    key: Query<(), With<FoldKey>>,
+) {
     // An export has no pane, and keeps every line.
-    if batch.pane.is_none() {
+    let (Some(pane), agent) = (batch.pane, batch.agent) else {
+        return;
+    };
+    if key.is_empty() {
         return;
     }
     for (call, output) in batch.calls_mut() {
-        if !folds(call) || unfolded.shows(call.item) {
+        let shown = call.item.map(|item| (pane, agent, item));
+        if !folds(call) || unfolded.shows(shown) {
             continue;
         }
         if let Some(lines) = folded(&output.lines, &settings) {
@@ -160,7 +203,8 @@ fn folds(call: &ToolRender) -> bool {
 /// leaves out fewer than two lines.
 fn folded(lines: &[LookLine], settings: &FoldSettings) -> Option<Vec<LookLine>> {
     let (header, body) = lines.split_first()?;
-    let hidden = body.len().checked_sub(settings.head + settings.tail)?;
+    let kept = settings.head.saturating_add(settings.tail);
+    let hidden = body.len().checked_sub(kept)?;
     if hidden < 2 {
         return None;
     }
@@ -168,10 +212,10 @@ fn folded(lines: &[LookLine], settings: &FoldSettings) -> Option<Vec<LookLine>> 
     let tail = rest.get(hidden..)?;
     let marker = format!("{OUTPUT_INDENT}… {hidden} lines · {} shows", settings.key);
     let marker = Line::styled(marker, Style::new().dim().italic());
-    let mut kept = Vec::with_capacity(settings.head + settings.tail + 2);
-    kept.push(header.clone());
-    kept.extend_from_slice(head);
-    kept.push(marker.into());
-    kept.extend_from_slice(tail);
-    Some(kept)
+    let mut lines = Vec::with_capacity(kept.saturating_add(2));
+    lines.push(header.clone());
+    lines.extend_from_slice(head);
+    lines.push(marker.into());
+    lines.extend_from_slice(tail);
+    Some(lines)
 }

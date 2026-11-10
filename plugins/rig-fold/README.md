@@ -35,7 +35,10 @@ an MCP server's included. A call that failed or was stopped, and one still
 running, is drawn whole, and so is a result too short to save two rows.
 
 The key shows the call selected with Alt+Up whole, and folds it again. With
-no call selected it shows every call whole, and folds them all again.
+no call selected it shows every call whole, and folds them all again. The
+state is per pane and per agent, so a helper's or a fork's calls fold on their
+own. Calls of an archived entry can't be selected, so only the every-call
+toggle shows them whole.
 
 Only the terminal view's rows change. The model, the session log, `--json`,
 ACP and exports get every line, as without the plugin.
@@ -49,5 +52,9 @@ tail = 8        # last lines kept
 key = "ctrl+o"  # written as rig-tui's key bindings are, such as "alt+o"
 ```
 
-A key another binding takes is refused at startup with a warning, as for
-any plugin's key binding.
+The key is bound in every scope, so it works while typing, with a call
+selected and in a panel. If a binding added earlier holds the key, the fold key
+is refused with a warning and nothing is folded, so folded lines always have a
+key that shows them. The same holds when a `keys.toml` entry with
+`override = true` disables the fold key. A binding of the same key that is only
+for the input is shadowed by the fold key.

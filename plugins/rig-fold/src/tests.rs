@@ -1,16 +1,34 @@
 use rig_core::conversation::pairing::CallRef;
 use rig_core::message::{ToolCall, ToolFunction, ToolName};
-use rig_tui::{RenderInput, RenderKey, RenderOutput, RenderRequest, ToolCallView, TuiViewPlugin};
+use rig_core::tool::{ExitStatus, ToolContext};
+use rig_harness::main_agent::ShownAgent;
+use rig_tui::{
+    RenderInput, RenderKey, RenderOutput, RenderRequest, ToolCallView, TranscriptPane,
+    TranscriptSource, TuiViewPlugin,
+};
 use serde_json::json;
 
 use super::*;
 
-/// The app the terminal view runs in, with the plugin and `settings`.
-fn app(settings: &str) -> App {
+/// The app the terminal view runs in, with `settings`, the plugin added
+/// after `before`, and its main pane, which shows the shown agent.
+fn app_with(settings: &str, before: impl FnOnce(&mut App)) -> (App, Entity) {
     let mut app = App::new();
     app.insert_resource(Settings::from_toml(settings))
-        .add_plugins((TuiViewPlugin, FoldPlugin));
-    app
+        .add_plugins(TuiViewPlugin);
+    before(&mut app);
+    app.add_plugins(FoldPlugin);
+    let source = TranscriptSource::Shown;
+    let pane = TranscriptPane {
+        source,
+        title: None,
+    };
+    let pane = app.world_mut().spawn((MainPane, pane)).id();
+    (app, pane)
+}
+
+fn app(settings: &str) -> (App, Entity) {
+    app_with(settings, |_| {})
 }
 
 /// The call `index` of the reply `m1`.
@@ -19,9 +37,22 @@ fn item(index: u32) -> Option<CallItem> {
     Some(CallItem::Reply(CallRef { reply, index }))
 }
 
-/// A finished `shell` call, the call `index`, whose result is the numbers
-/// from 1 to `count`, an error when `failed`.
-fn shell(index: u32, count: usize, failed: bool) -> Option<RenderRequest> {
+/// How a test call ended.
+#[derive(Clone, Copy)]
+enum End {
+    /// It answered.
+    Done,
+    /// The tool answered with an error.
+    Error,
+    /// Its command exited with this code, the answer no error.
+    Exit(i32),
+    /// A stop answered it.
+    Stopped,
+}
+
+/// A `shell` call, the call `index`, whose result is the numbers from 1 to
+/// `count`, ended as `end` says.
+fn shell(index: u32, count: usize, end: End) -> Option<RenderRequest> {
     let name = ToolName::new("shell").ok()?;
     let call = ToolCall::from_wire(
         format!("c{index}"),
@@ -31,14 +62,25 @@ fn shell(index: u32, count: usize, failed: bool) -> Option<RenderRequest> {
     let mut result = call.answer(&rig_core::tool::ToolResult::success(
         numbers.join("\n").into(),
     ));
-    result.is_error = failed;
-    let lines = ToolCallView::new(&call, Some(&result), CallState::Done).default_lines();
+    result.is_error = matches!(end, End::Error | End::Stopped);
+    let state = match end {
+        End::Stopped => CallState::Stopped,
+        _ => CallState::Done,
+    };
+    let mut context = ToolContext::default();
+    if let End::Exit(code) = end {
+        context.insert_result(ExitStatus::Exited(code)).ok()?;
+    }
+    let facts = context.result_context();
+    let mut view = ToolCallView::new(&call, Some(&result), state.clone());
+    view.facts = Some(&facts);
+    let lines = view.default_lines();
     let input = ToolRender {
         call: call.clone(),
         result: Some(result),
-        state: CallState::Done,
+        state,
         theme: Default::default(),
-        facts: None,
+        facts: Some(facts),
         took: None,
         output: None,
         children: Vec::new(),
@@ -54,12 +96,16 @@ fn shell(index: u32, count: usize, failed: bool) -> Option<RenderRequest> {
     })
 }
 
-/// The rows of each request, by its key, after the render systems ran
-/// over them in a pane's batch.
-fn drawn(app: &mut App, requests: &[Option<RenderRequest>]) -> Vec<Vec<String>> {
-    let pane = app.world_mut().spawn_empty().id();
+/// The rows of each request after the render systems ran over them in the
+/// batch of `pane` showing `agent`; none for an export's, with no pane.
+fn drawn(
+    app: &mut App,
+    (pane, agent): (Option<Entity>, Option<Entity>),
+    requests: &[Option<RenderRequest>],
+) -> Vec<Vec<String>> {
     let mut batch = RenderBatch {
-        pane: Some(pane),
+        pane,
+        agent,
         ..Default::default()
     };
     for (index, request) in (0..).zip(requests.iter().flatten()) {
@@ -83,16 +129,14 @@ fn drawn(app: &mut App, requests: &[Option<RenderRequest>]) -> Vec<Vec<String>> 
 /// Presses the plugin's key, with `selected` selected in the main pane.
 fn press(app: &mut App, selected: Option<CallItem>) {
     let world = app.world_mut();
-    let mut panes = world.query_filtered::<Entity, With<MainPane>>();
-    let pane = panes.iter(world).next();
-    let pane = pane.unwrap_or_else(|| world.spawn((MainPane, TranscriptView::default())).id());
-    if let Some(mut view) = world.get_mut::<TranscriptView>(pane) {
+    let mut panes = world.query_filtered::<&mut TranscriptView, With<MainPane>>();
+    for mut view in panes.iter_mut(world) {
         view.selected = selected.map(TranscriptItem::Call);
     }
     let mut bindings = world.query::<(Entity, &KeyBinding)>();
     let binding = bindings
         .iter(world)
-        .find(|(_, binding)| binding.label.starts_with("Show the selected tool call"));
+        .find(|(_, binding)| binding.label == LABEL);
     if let Some((entity, _)) = binding {
         world.trigger(KeyPressed {
             entity,
@@ -104,8 +148,9 @@ fn press(app: &mut App, selected: Option<CallItem>) {
 
 #[test]
 fn a_long_result_folds_to_its_head_a_marker_and_its_tail() {
-    let mut app = app("");
-    let drawn = drawn(&mut app, &[shell(0, 400, false), shell(1, 13, false)]);
+    let (mut app, pane) = app("");
+    let calls = [shell(0, 400, End::Done), shell(1, 13, End::Done)];
+    let drawn = drawn(&mut app, (Some(pane), None), &calls);
     let (long, short) = (drawn.first(), drawn.get(1));
     let (long, short) = (
         long.cloned().unwrap_or_default(),
@@ -127,11 +172,13 @@ fn a_long_result_folds_to_its_head_a_marker_and_its_tail() {
 
 #[test]
 fn the_key_shows_every_call_or_the_selected_one_whole() {
-    let mut app = app("[fold]\nhead = 1\ntail = 2\nkey = \"alt+o\"");
-    let calls = [shell(0, 50, false), shell(1, 50, false)];
-    let lengths =
-        |app: &mut App| -> Vec<usize> { drawn(app, &calls).iter().map(Vec::len).collect() };
-    let folded = drawn(&mut app, &calls);
+    let (mut app, pane) = app("[fold]\nhead = 1\ntail = 2\nkey = \"alt+o\"");
+    let calls = [shell(0, 50, End::Done), shell(1, 50, End::Done)];
+    let lengths = |app: &mut App| -> Vec<usize> {
+        let drawn = drawn(app, (Some(pane), None), &calls);
+        drawn.iter().map(Vec::len).collect()
+    };
+    let folded = drawn(&mut app, (Some(pane), None), &calls);
     let marker = folded.first().and_then(|lines| lines.get(2));
     assert_eq!(
         marker.map(String::as_str),
@@ -151,21 +198,46 @@ fn the_key_shows_every_call_or_the_selected_one_whole() {
     assert_eq!(lengths(&mut app), [51, 5]);
 }
 
+/// Message ids rise from 0 in each conversation, so two agents' calls can
+/// have the same place: showing one whole leaves the other folded.
 #[test]
-fn a_failed_call_and_an_export_keep_every_line() {
-    let mut app = app("");
-    let failed = drawn(&mut app, &[shell(0, 400, true)]);
-    let failed = failed.first().map(Vec::as_slice).unwrap_or_default();
-    assert_eq!(failed.len(), 401);
-    assert_eq!(failed.last().map(String::as_str), Some("   400"));
-    // An export's batch has no pane.
-    let mut batch = RenderBatch::default();
-    if let Some(request) = shell(0, 400, false) {
-        batch.requests.insert(RenderKey::Tool(1, 0), request);
+fn a_call_shown_whole_is_the_shown_agents_alone() {
+    let (mut app, pane) = app("");
+    let world = app.world_mut();
+    let (first, second) = (world.spawn_empty().id(), world.spawn_empty().id());
+    world.insert_resource(ShownAgent(Some(first)));
+    let call = [shell(0, 400, End::Done)];
+    let length = |app: &mut App, agent| {
+        let drawn = drawn(app, (Some(pane), Some(agent)), &call);
+        drawn.first().map_or(0, Vec::len)
+    };
+    press(&mut app, item(0));
+    assert_eq!(length(&mut app, first), 401);
+    assert_eq!(length(&mut app, second), 14);
+}
+
+#[test]
+fn a_failed_or_stopped_call_and_an_export_keep_every_line() {
+    let (mut app, pane) = app("");
+    for end in [End::Error, End::Exit(3), End::Stopped] {
+        let drawn = drawn(&mut app, (Some(pane), None), &[shell(0, 400, end)]);
+        let drawn = drawn.first().map(Vec::as_slice).unwrap_or_default();
+        assert_eq!(drawn.len(), 401, "{:?}", drawn.first());
+        assert_eq!(drawn.last().map(String::as_str), Some("   400"));
     }
-    app.insert_resource(batch);
-    app.world_mut().run_schedule(TranscriptRender);
-    let batch = app.world_mut().remove_resource::<RenderBatch>();
-    let request = batch.and_then(|mut batch| batch.requests.remove(&RenderKey::Tool(1, 0)));
-    assert_eq!(request.map(|request| request.output.lines.len()), Some(401));
+    let export = drawn(&mut app, (None, None), &[shell(0, 400, End::Done)]);
+    assert_eq!(export.first().map(Vec::len), Some(401));
+}
+
+/// With its key taken by another binding the plugin folds nothing, as the
+/// lines would have no way back.
+#[test]
+fn without_its_key_nothing_folds() {
+    let taken = |app: &mut App| {
+        let binding = KeyBinding::new(KeyPress::ctrl('o'), "Go on");
+        app.add_key_binding(binding, |_: On<KeyPressed>| {});
+    };
+    let (mut app, pane) = app_with("", taken);
+    let drawn = drawn(&mut app, (Some(pane), None), &[shell(0, 400, End::Done)]);
+    assert_eq!(drawn.first().map(Vec::len), Some(401));
 }
