@@ -155,13 +155,30 @@ impl Plugin for FoldPlugin {
             ),
         }
     }
+
+    /// Says why the key was refused, as a notice, when the terminal view
+    /// is the run's front; another front, such as `--print`, `--json` or
+    /// ACP, sees the same with the plugin as without it.
+    fn finish(&self, app: &mut App) {
+        let Some(Refused(why)) = app.world_mut().remove_resource::<Refused>() else {
+            return;
+        };
+        if app.runs_front(rig_tui::FRONT) {
+            app.add_systems(Startup, move |mut notices: MessageWriter<Notice>| {
+                notices.write(Notice::warn(None, why.clone()));
+            });
+        }
+    }
 }
 
-/// Says `why` in the views once the app starts.
+/// Why the fold key was refused, which the terminal view says as it starts.
+#[derive(Resource)]
+struct Refused(String);
+
+/// Keeps `why` the fold key was refused for the terminal view
+/// ([`FoldPlugin::finish`]).
 fn tell(app: &mut App, why: String) {
-    app.add_systems(Startup, move |mut notices: MessageWriter<Notice>| {
-        notices.write(Notice::warn(None, why.clone()));
-    });
+    app.insert_resource(Refused(why));
 }
 
 /// The call the main transcript has selected, if a call or one of its

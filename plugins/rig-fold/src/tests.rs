@@ -14,7 +14,13 @@ use super::*;
 /// after `before`, and its main pane, which shows the shown agent.
 fn app_with(settings: &str, before: impl FnOnce(&mut App)) -> (App, Entity) {
     let mut app = App::new();
+    // Run at a terminal, so the terminal view is the run's front.
+    let invoked = Invoked {
+        terminal: true,
+        ..Invoked::default()
+    };
     app.insert_resource(Settings::from_toml(settings))
+        .insert_resource(invoked)
         .add_plugins(TuiViewPlugin);
     before(&mut app);
     app.add_plugins(FoldPlugin);
@@ -308,11 +314,24 @@ fn without_its_key_nothing_folds() {
     let drawn_input = drawn(&mut app, (Some(pane), None), &call);
     assert_eq!(drawn_input.first().map(Vec::len), Some(401));
     assert!(told(&mut app, "`ctrl+e`"), "a notice names the key");
+    // A run another front takes, such as `--print` or ACP, is not told:
+    // what it sees is the same with the plugin as without it.
+    let not_at_terminal = |app: &mut App| {
+        app.insert_resource(Invoked::default());
+    };
+    let (mut printed, _) = app_with("[fold]\nkey = \"ctrl+e\"", not_at_terminal);
+    assert!(
+        !told(&mut printed, "`ctrl+e`"),
+        "no notice off the terminal"
+    );
 }
 
-/// Whether a warning the app says as it starts holds `text`.
+/// Whether a warning the app says as it starts holds `text`. Only the
+/// plugin's `finish` runs: the terminal view's would open the terminal.
 fn told(app: &mut App, text: &str) -> bool {
-    app.world_mut().run_schedule(Startup);
+    FoldPlugin.finish(app);
+    // An app nothing adds a startup system to has no `Startup` to run.
+    app.world_mut().try_run_schedule(Startup).ok();
     let notices = app.world().get_resource::<Messages<Notice>>();
     let mut notices = notices
         .into_iter()
