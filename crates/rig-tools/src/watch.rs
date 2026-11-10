@@ -19,6 +19,7 @@ use futures::Stream;
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender, unbounded};
 use ignore::Match;
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
+use notify::event::ModifyKind;
 use notify::{EventKind, RecursiveMode, Watcher as _};
 use rig_core::tool::{ContentHash, content_hash};
 
@@ -161,7 +162,11 @@ pub(crate) fn notified(root: &Path, recursive: bool, listing: Listing) -> io::Re
         if matches!(event.kind, EventKind::Access(_)) {
             return;
         }
-        let created = matches!(event.kind, EventKind::Create(_));
+        // A directory renamed into place brings files that get no events of their own.
+        let created = matches!(
+            event.kind,
+            EventKind::Create(_) | EventKind::Modify(ModifyKind::Name(_))
+        );
         for path in event.paths {
             events.send(Raw { path, created }).ok();
         }
@@ -188,7 +193,8 @@ pub(crate) fn notified(root: &Path, recursive: bool, listing: Listing) -> io::Re
     Ok(Watch::new(batches, watcher))
 }
 
-/// A path the system's watcher named, and whether it was created.
+/// A path the system's watcher named, and whether it was created or
+/// renamed into place.
 pub(crate) struct Raw {
     pub(crate) path: PathBuf,
     pub(crate) created: bool,
@@ -212,9 +218,9 @@ fn files_in(dir: &Path, files: &mut Vec<PathBuf>) {
 
 /// Gathers the paths `raw` names into batches, each sent once no event came
 /// for [`QUIET`] or it waited [`LONGEST`], until the watcher or the
-/// [`Watch`] is gone. A directory created under a recursive watch is
-/// watched only after the watcher has told of it, so the files already in
-/// it when its batch ends, by then watched, join the batch.
+/// [`Watch`] is gone. A directory created or moved in under a recursive
+/// watch is watched only after the watcher has told of it, so the files
+/// already in it when its batch ends, by then watched, join the batch.
 fn send_batches(raw: &Receiver<Raw>, sender: &UnboundedSender<Vec<PathBuf>>, mut filter: Filter) {
     while let Ok(first) = raw.recv() {
         let mut paths = BTreeSet::new();
