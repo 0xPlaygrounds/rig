@@ -24,14 +24,16 @@ Date 2026-11-09, rig commit `b1321662b`, rmcp 3.9.0, Node 26.13.0.
 | `@modelcontextprotocol/server-everything` | 2.2.1 | stdio | works | `get-sum`, `get-structured-content`, `get-tiny-image` (image content), `trigger-long-running-operation` (progress), `trigger-list-changed`, `get-header-params`, `echo`. |
 | `@modelcontextprotocol/server-everything` | 2.2.1 | streamable HTTP | works | The same seven calls, with a custom header in `headers`. |
 | `@playwright/mcp` with Chromium 156 | 0.0.85 | stdio, `--headless --isolated` | works | 25 tools; `browser_navigate` to a local page, `browser_snapshot`, `browser_close`. |
-| GitHub MCP, `https://api.githubcopilot.com/mcp/` | `github-mcp-server/remote-b104ac9bf784` | streamable HTTP, `Authorization` and `X-MCP-Readonly` headers | works | Since rig offers `2025-11-25`; see below. |
+| GitHub MCP, `https://api.githubcopilot.com/mcp/` | `github-mcp-server/remote-b104ac9bf784` | streamable HTTP, `Authorization` and `X-MCP-Readonly` headers | works | Run with #3227, not `b1321662b`; see below. |
 
 `get-header-params` answered `"regionHeader": null`. rmcp 3.9 copies a tool
 argument marked `x-mcp-header` into an `Mcp-Param-*` header only on a session
-that negotiated `2026-07-28`; the conformance suite's `http-custom-headers`
-passed 18/18 on such a session (below). This session did not carry it.
+that negotiated `2026-07-28`, and this session did not carry it. At
+`b1321662b` the conformance suite's `http-custom-headers` passed 18/18 on
+such a session (below); since #3227 rig offers `2025-11-25` and never
+negotiates `2026-07-28`, so that no longer applies.
 
-GitHub MCP connects at rig commit `5b4500a7f` (2026-11-09): `rig -p --json`
+GitHub MCP connects with #3227 (2026-11-09): `rig -p --json`
 said `MCP server gh connected: 29 tools.` and the scripted model's call to
 `gh__get_me` answered. At `b1321662b` it did not connect (`Transport channel
 closed, when send initialized notification.`): rig offered the draft

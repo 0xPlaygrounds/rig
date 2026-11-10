@@ -56,6 +56,10 @@ const LONG: &str = "RIG_MCP_LONG";
 /// one does.
 const RELEASED: &str = "RIG_MCP_RELEASED";
 
+/// When set, the stub answers `initialize` with the older protocol version
+/// `2025-06-18`, whatever was offered.
+const OLDER: &str = "RIG_MCP_OLDER";
+
 /// The model a headless run chooses.
 const MODEL: &str = "test/model";
 
@@ -103,7 +107,10 @@ fn stub() {
         let params = request.get("params").cloned().unwrap_or_default();
         let result = match request.get("method").and_then(Value::as_str) {
             Some("initialize") => json!({
-                "protocolVersion": params.get("protocolVersion").cloned().unwrap_or_default(),
+                "protocolVersion": match std::env::var_os(OLDER) {
+                    Some(_) => json!("2025-06-18"),
+                    None => params.get("protocolVersion").cloned().unwrap_or_default(),
+                },
                 "capabilities": match std::env::var_os(NO_TOOLS) {
                     Some(_) => json!({ "resources": {} }),
                     None => json!({ "tools": { "listChanged": true } }),
@@ -1041,6 +1048,32 @@ fn a_server_that_knows_only_the_released_protocol_connects() {
         told.contains(&"MCP server `gh` connected: 2 tools.".to_owned()),
         "{told:?}"
     );
+    std::fs::remove_dir_all(project).ok();
+}
+
+#[test]
+fn a_server_that_answers_an_older_protocol_is_spoken_to_in_it() {
+    let project = project("older");
+    let server = stub_server(json!({ OLDER: "1" }));
+    write_servers(&project.join("home/mcp.json"), json!({ "old": server }));
+    let (mut app, wakes) = app_in(&project, "[mcp]\nfirst_retry_secs = 3600", None);
+    app.finish();
+    run_until(&mut app, &wakes, |world| {
+        notices(world).iter().any(|notice| notice.contains("`old`"))
+    });
+    let told = notices(app.world());
+    assert!(
+        told.contains(&"MCP server `old` connected: 2 tools.".to_owned()),
+        "{told:?}"
+    );
+    let world = app.world_mut();
+    let versions: Vec<_> = world
+        .query::<&McpLink>()
+        .iter(world)
+        .filter_map(|link| link.0.peer().peer_info())
+        .map(|info| info.protocol_version.to_string())
+        .collect();
+    assert_eq!(versions, ["2025-06-18"]);
     std::fs::remove_dir_all(project).ok();
 }
 
