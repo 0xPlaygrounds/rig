@@ -696,7 +696,7 @@ fn nest_root_combinators(schema: &mut Value) {
 }
 
 /// The keywords whose value is a subschema or an array of them.
-const SUBSCHEMA_KEYWORDS: [&str; 15] = [
+const SUBSCHEMA_KEYWORDS: [&str; 16] = [
     "allOf",
     "anyOf",
     "oneOf",
@@ -712,13 +712,16 @@ const SUBSCHEMA_KEYWORDS: [&str; 15] = [
     "unevaluatedProperties",
     "unevaluatedItems",
     "propertyNames",
+    "contentSchema",
 ];
 
-/// The keywords whose value maps names to subschemas.
-const SUBSCHEMA_MAP_KEYWORDS: [&str; 5] = [
+/// The keywords whose value maps names to subschemas; draft-07
+/// `dependencies` may map a name to a list of names instead.
+const SUBSCHEMA_MAP_KEYWORDS: [&str; 6] = [
     "properties",
     "patternProperties",
     "dependentSchemas",
+    "dependencies",
     "$defs",
     "definitions",
 ];
