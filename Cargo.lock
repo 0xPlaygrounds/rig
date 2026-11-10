@@ -14202,6 +14202,7 @@ dependencies = [
  "rig-claude-cloak",
  "rig-core",
  "rig-ecs",
+ "rig-fold",
  "rig-harness",
  "rig-harness-test-support",
  "rig-inspect",
@@ -14263,6 +14264,19 @@ dependencies = [
  "rig-core",
  "serde",
  "tokio",
+]
+
+[[package]]
+name = "rig-fold"
+version = "0.46.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_log",
+ "rig-core",
+ "rig-harness",
+ "rig-tui",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

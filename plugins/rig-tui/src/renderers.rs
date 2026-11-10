@@ -20,8 +20,8 @@ use rig_ecs::prelude::{Aside, AsideId, Author, AuthorKind, MessageId};
 use rig_harness::rig_core::conversation::Note;
 
 use super::{diff, markdown};
-use crate::Theme;
 use crate::highlight::Code;
+use crate::{CallItem, Theme};
 
 /// A tool call and its result, if it has one yet, as a render system sees
 /// them through [`ToolRender::view`].
@@ -707,6 +707,9 @@ pub struct ToolRender {
     pub output: Option<String>,
     /// Descendant calls.
     pub children: Vec<ChildCall>,
+    /// The call as [`TranscriptView::selected`](crate::TranscriptView::selected)
+    /// names it; `None` for a call of an archived entry, which has no items.
+    pub item: Option<CallItem>,
 }
 
 impl ToolRender {
@@ -1107,7 +1110,12 @@ impl Renderers {
         }
     }
 
-    pub(crate) fn call_decorated(&self, view: &ToolCallView<'_>) -> (Vec<LookLine>, Decorated) {
+    /// The lines of `view`, the call `item`, and its decorations.
+    pub(crate) fn call_decorated(
+        &self,
+        view: &ToolCallView<'_>,
+        item: Option<CallItem>,
+    ) -> (Vec<LookLine>, Decorated) {
         let input = ToolRender {
             call: view.call.clone(),
             result: view.result.cloned(),
@@ -1117,6 +1125,7 @@ impl Renderers {
             took: view.took,
             output: view.output.map(str::to_owned),
             children: view.children.to_vec(),
+            item,
         };
         let key = match self.place.get() {
             Place::Message { index, block } => RenderKey::Tool(index, block),

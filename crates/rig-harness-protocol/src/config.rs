@@ -137,6 +137,10 @@ interactive terminal.";
                 Some("the terminal view, leaving only -p and piped prompts"),
                 "The terminal view, the front of a run on an interactive terminal. Without it the \
 agent answers -p or what is piped in, and says so when started on a terminal.";
+            off rig_fold::FoldPlugin, "rig-fold", [], None,
+                "Folded tool output in the terminal view: a finished call shows its first and last \
+lines, and Ctrl+O ([fold] key) shows the selected call, or every call, whole. Off, \
+every call is drawn whole.";
             off rig_basics::helpers::HelpersPlugin, "rig-basics", [], None,
                 "The helper tool: hands tasks to other rig agents, each a `rig -p --json` child \
 process with this session's plugins, one, several side by side or a chain, and \

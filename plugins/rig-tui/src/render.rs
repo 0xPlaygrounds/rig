@@ -789,9 +789,9 @@ pub(crate) fn lay_out_transcript(
                 let mut view = ToolCallView::new(&call, None, CallState::Streaming);
                 view.theme = *sources.theme;
                 let start = extra.len();
-                let (drawn, decorated) = sources.renderers.call_decorated(&view);
-                extra.extend(on_band(drawn, sources.theme.tool));
                 let item = CallItem::Streaming(at);
+                let (drawn, decorated) = sources.renderers.call_decorated(&view, Some(item));
+                extra.extend(on_band(drawn, sources.theme.tool));
                 marks.push((TranscriptItem::Call(item), start..extra.len()));
                 for (name, rows) in decorated {
                     let decoration = TranscriptItem::Decoration(item, name);
