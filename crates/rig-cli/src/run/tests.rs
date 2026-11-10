@@ -896,8 +896,10 @@ exit 75"
         );
         fs::remove_file(home.staged())?;
         fs::write(home.good(), format!("#!/bin/sh\n{agent}\n"))?;
-        let (claimed, _) = claim(&home, Start::Resume(current.clone()), None)
-            .or_else(|_| claim(&home, Start::New, None))?;
+        // The directory the session runs in, which a new one runs in too.
+        let here = Some(home.root());
+        let (claimed, _) = claim(&home, Start::Resume(current.clone()), here)
+            .or_else(|_| claim(&home, Start::New, here))?;
         let current = claimed.id.clone();
         let ended = launch(
             &home,
@@ -928,11 +930,15 @@ fn a_reload_after_the_launcher_was_replaced_restarts_on_the_new_one() {
         ..Reload::default()
     };
     let reexec = |launcher: &Path, session: Option<&SessionId>| {
+        let here = launcher
+            .parent()
+            .and_then(Path::parent)
+            .map(Path::to_path_buf);
         Some(Reexec::new(
             launcher,
             session.map(SessionId::as_str),
             Vec::new(),
-            None,
+            here,
         ))
     };
     let plain = reloaded("plain", Reload::default());

@@ -76,13 +76,14 @@ before running it:
 A failed install, such as one offline, leaves the installed rig as it was and
 exits 1. In the agent, `/update` runs it, showing its lines and cargo's latest
 one, and then restarts: the launcher, whose own file was replaced, starts the
-new one on the same session. Unlike `/reload`, the restart ends the
-background jobs the agent started, and asks again for the keys you typed at
-the terminal. Installing by hand works too: the next start, or the next
-`/reload`, `/new` or `/resume`, runs the new launcher. A `-p` or `--json` run
-whose launcher was replaced ends at its next reload instead, saying so, and
-the next run starts the new version. `RIG_HOME/target` keeps the old
-version's build too.
+new one on the same session. Unlike `/reload`, the restart ends the background
+jobs the agent started, and asks again for the keys you typed at the terminal.
+Installing by hand works too: the next start, or the next `/reload`, `/new` or
+`/resume`, runs the new launcher. A `-p` or `--json` run whose launcher was
+replaced, by its `/update` or from outside, does not reload: it says so and
+goes on with its build, a `-p` run ending as usual with its exit line, and the
+next run starts the new version. `RIG_HOME/target` keeps the old version's
+build too.
 
 Sessions resume while their format is the same. A session in another format
 is refused, unchanged, with `this session was made by another version of rig;

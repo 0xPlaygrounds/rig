@@ -12,7 +12,7 @@ use rig_harness::host::launcher::Invoked;
 use rig_harness::prelude::*;
 use rig_tools::process::{Process, STOP_GRACE};
 
-use crate::reload::{Rebuild, ReloadStatus};
+use crate::reload::{LauncherFile, Rebuild, ReloadStatus};
 
 /// Lines of a failed build in the note to the model, from its first error.
 const MESSAGE_LINES: usize = 40;
@@ -178,7 +178,7 @@ fn start_queued_reload(
 /// build ready.
 fn drain_reload(
     build: Option<ResMut<ReloadBuild>>,
-    invoked: Option<Res<Invoked>>,
+    (invoked, launcher): (Option<Res<Invoked>>, Option<Res<LauncherFile>>),
     mut status: ResMut<ReloadStatus>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -230,16 +230,26 @@ fn drain_reload(
     };
     commands.remove_resource::<ReloadBuild>();
     if exit.success() {
-        *status = ReloadStatus::Ready;
-        // A run nobody sits at ends as any run does, its last line written,
-        // rather than restart on the new launcher without its prompt.
+        // Only this launcher restarts a run nobody sits at without its
+        // prompt, and only with its own build: once the launcher was
+        // replaced, the run does not reload and goes on, or ends, as any
+        // run does, its last line written.
         let headless = invoked.is_some_and(|invoked| !invoked.interactive());
+        if headless && launcher.is_some_and(|launcher| launcher.replaced()) {
+            *status = ReloadStatus::Idle;
+            let said = match build.rebuild {
+                Rebuild::Build => {
+                    "rig was replaced since this run started, so it does not reload; the \
+                     next run starts the new version."
+                }
+                Rebuild::Update => "rig updated; the next run starts the new version.",
+            };
+            notices.write(Notice::info(None, said));
+            return;
+        }
+        *status = ReloadStatus::Ready;
         let ready = match build.rebuild {
             Rebuild::Build => "Build ready; restarting.",
-            Rebuild::Update if headless => {
-                commands.insert_resource(EndAfterUpdate);
-                "rig updated; the next run starts the new version."
-            }
             Rebuild::Update => "rig updated; restarting on the new rig.",
         };
         notices.write(Notice::info(None, ready));
@@ -290,26 +300,16 @@ fn drain_reload(
     launcher::inform_build_failure(&mut commands, build.agent, text);
 }
 
-/// An update of a headless run succeeded: it quits instead of reloading.
-#[derive(Resource)]
-struct EndAfterUpdate;
-
 /// Exits to reload once the build is ready and no turn runs, at most once.
 fn finish_reload(
     status: Res<ReloadStatus>,
-    end: Option<Res<EndAfterUpdate>>,
     turns: Query<(), With<TurnOf>>,
     mut exiting: Local<bool>,
     mut commands: Commands,
 ) {
     if !*exiting && *status == ReloadStatus::Ready && turns.is_empty() {
         *exiting = true;
-        let reason = if end.is_some() {
-            ExitReason::Quit
-        } else {
-            ExitReason::Reload
-        };
-        commands.trigger(Exit(reason));
+        commands.trigger(Exit(ExitReason::Reload));
     }
 }
 

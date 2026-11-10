@@ -37,11 +37,11 @@ use std::time::Duration;
 
 use rig_harness_protocol::{
     AgentDescription, DescribedSecret, Home, Invocation, REFUSED_EXIT_CODE, RELOAD_EXIT_CODE,
-    RunDir, SIGNAL_EXIT_CODE, SessionDir, SessionId, StartReason, env, secret_variable,
+    RunDir, SIGNAL_EXIT_CODE, SessionDir, SessionId, Stamp, StartReason, env, secret_variable,
 };
 
 use super::build::{self, BuildFailure, BuildOutput, FailedAt, Staging, child};
-use super::update::{Reexec, Stamp};
+use super::update::Reexec;
 use super::{LONG_VERSION, Result, locks};
 
 mod stop;

@@ -52,6 +52,11 @@ impl Plugin for ReloadPlugin {
         .init_resource::<ReloadStatus>()
         .add_observer(on_cancel_reload)
         .add_observer(cancel_on_interrupt);
+        if let Some(launcher) = harness_protocol::launcher()
+            && !app.world().contains_resource::<LauncherFile>()
+        {
+            app.insert_resource(LauncherFile::at(launcher.into()));
+        }
         hold::add(app);
         rebuild::add(app);
         #[cfg(feature = "tui")]
@@ -128,6 +133,29 @@ impl ReloadStatus {
                 Err("A rebuild is already running; Esc cancels it.")
             }
         }
+    }
+}
+
+/// The launcher file this agent started with, to tell when it was
+/// replaced, as `rig update` does. Inserted from the launcher's path
+/// unless the app inserted one before.
+#[derive(Resource, Debug)]
+pub(crate) struct LauncherFile {
+    path: std::path::PathBuf,
+    started: harness_protocol::Stamp,
+}
+
+impl LauncherFile {
+    /// The file at `path`, as it is now.
+    pub(crate) fn at(path: std::path::PathBuf) -> Self {
+        let started = harness_protocol::Stamp::of(&path);
+        Self { path, started }
+    }
+
+    /// Whether another file is at its path now.
+    pub(crate) fn replaced(&self) -> bool {
+        self.started
+            .replaced(&harness_protocol::Stamp::of(&self.path))
     }
 }
 

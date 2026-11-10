@@ -89,25 +89,6 @@ fn a_failed_install_fails_and_leaves_the_launcher() {
     assert_eq!(new_build.as_deref(), Some("new\n"));
 }
 
-/// The stamp tells a launcher replaced by a rename apart from the same
-/// file read again, as at a plain `/reload`.
-#[test]
-fn the_stamp_changes_only_when_the_launcher_is_replaced() {
-    let dir = scratch("stamp");
-    let launcher = dir.join("rig");
-    script(&launcher, "exit 0");
-    let installed = Stamp::of(&launcher);
-    let reloaded = Stamp::of(&launcher);
-    let new = dir.join(".rig");
-    script(&new, "exit 0");
-    fs::rename(&new, &launcher).ok();
-    let replaced = Stamp::of(&launcher);
-    fs::remove_dir_all(&dir).ok();
-    assert!(installed.0.is_some());
-    assert_eq!(installed, reloaded);
-    assert_ne!(installed, replaced);
-}
-
 #[test]
 fn a_reexec_resumes_a_saved_session_with_the_same_arguments() {
     let args = vec![OsString::from("--model"), OsString::from("ollama/qwen3")];

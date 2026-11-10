@@ -6,14 +6,12 @@
 //!
 //! A launcher whose own file was replaced while its agent ran, by `rig
 //! update` or by hand, starts the new file on the agent's next reload, so
-//! the session goes on with a new launcher and agent ([`Stamp`],
-//! [`Reexec`]). `/update` in the agent runs `rig update`, then reloads.
+//! the session goes on with a new launcher and agent ([`Reexec`]). `/update` in the agent runs `rig update`, then reloads.
 
 use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
-use std::time::SystemTime;
 
 use rig_harness_protocol::{UPDATE_INSTALLED, UPDATE_SAYS};
 
@@ -150,31 +148,6 @@ fn shell_words(command: &Command) -> String {
         })
         .collect::<Vec<_>>()
         .join(" ")
-}
-
-/// Which file a path names, to tell when it was replaced: a file renamed
-/// over it, as `cargo install` does, has another inode and modification
-/// time. A file that cannot be read has none.
-#[derive(Debug, PartialEq, Eq)]
-pub struct Stamp(Option<(SystemTime, u64)>);
-
-impl Stamp {
-    /// Whether the file is another than at `now`. A file gone, or never
-    /// read, was not replaced: only a new file at the path is a new launcher.
-    pub fn replaced(&self, now: &Stamp) -> bool {
-        matches!((&self.0, &now.0), (Some(then), Some(now)) if then != now)
-    }
-
-    /// The stamp of the file at `path` now.
-    pub fn of(path: &Path) -> Self {
-        Self(fs::metadata(path).ok().and_then(|metadata| {
-            #[cfg(unix)]
-            let identity = std::os::unix::fs::MetadataExt::ino(&metadata);
-            #[cfg(not(unix))]
-            let identity = metadata.len();
-            Some((metadata.modified().ok()?, identity))
-        }))
-    }
 }
 
 /// The launcher to start in place of this one once its session is let go:

@@ -262,52 +262,89 @@ fn a_failed_update_shows_what_rig_update_said() {
     assert_eq!(model.request_count(), 0);
 }
 
-/// The exits asked for.
+/// The exits asked for, and how the headless runs ended.
 #[derive(Resource, Default)]
-struct Exits(Vec<ExitReason>);
+struct Ends {
+    exits: Vec<ExitReason>,
+    runs: Vec<crate::print::HeadlessEnded>,
+}
 
-/// A `/update` that succeeds in a run nobody sits at quits, as any run
-/// ends, rather than reload: the new launcher starts with the next run.
-#[test]
-fn a_headless_update_quits_instead_of_reloading() {
+/// How a `-p` run that reloads (`rebuild`) ends, its launcher replaced by
+/// the build when `replace`.
+fn headless_reload(name: &str, rebuild: Rebuild, replace: bool) -> Ends {
+    use rig_harness::host::exit::ExitPlugin;
     use rig_harness::host::launcher::Invoked;
-    use rig_harness_test_support::{MemoryStore, app_on, run_until};
+    use rig_harness_test_support::{MemoryStore, app_on, run_until, scripted_models};
 
-    use crate::reload::ReloadPlugin;
+    use crate::print::{HeadlessEnded, PrintPlugin};
+    use crate::reload::{LauncherFile, ReloadPlugin};
 
-    let launcher = failing_launcher("headless-update", "");
-    let script = "#!/bin/sh\necho 'rig update: installed. Building the agent' >&2\nexit 0\n";
-    std::fs::write(&launcher, script).ok();
+    let build = failing_launcher(name, "");
+    let dir = build
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_default();
+    let installed = dir.join("rig-installed");
+    std::fs::write(&installed, "old").ok();
+    let replacing = if replace {
+        format!(
+            "echo new > '{0}.new'; mv '{0}.new' '{0}'",
+            installed.display()
+        )
+    } else {
+        String::new()
+    };
+    std::fs::write(&build, format!("#!/bin/sh\n{replacing}\nexit 0\n")).ok();
     let (mut app, wakes) = app_on(&MemoryStore::default());
     app.insert_resource(Invoked {
         args: harness_protocol::Invocation {
-            print: Some("/update".to_owned()),
+            print: Some("/help".to_owned()),
             ..Default::default()
         },
         terminal: false,
     })
-    .add_plugins((AgentPlugin, SessionLogPlugin, ReloadPlugin))
-    .init_resource::<Exits>()
-    .add_observer(|exit: On<Exit>, mut exits: ResMut<Exits>| {
-        exits.0.push(exit.0.clone());
+    .insert_resource(LauncherFile::at(installed))
+    .insert_resource(scripted_models([]))
+    .add_plugins((
+        AgentPlugin,
+        SessionLogPlugin,
+        ExitPlugin,
+        PrintPlugin,
+        ReloadPlugin,
+        crate::BasicCommandsPlugin,
+    ))
+    .init_resource::<Ends>()
+    .add_observer(|exit: On<Exit>, mut ends: ResMut<Ends>| {
+        ends.exits.push(exit.0.clone());
+    })
+    .add_observer(|ended: On<HeadlessEnded>, mut ends: ResMut<Ends>| {
+        ends.runs.push(ended.event().clone());
     });
     app.finish();
-    app.update();
     let wake = app.world().resource::<Wake>().clone();
-    let build = ReloadBuild::start(
-        launcher.as_os_str(),
-        Rebuild::Update,
-        Entity::PLACEHOLDER,
-        wake,
-    );
-    if let Ok(build) = build {
+    if let Ok(build) = ReloadBuild::start(build.as_os_str(), rebuild, Entity::PLACEHOLDER, wake) {
         app.insert_resource(build);
         *app.world_mut().resource_mut::<ReloadStatus>() = ReloadStatus::Building { latest: None };
     }
-    let exited = |world: &World| !world.resource::<Exits>().0.is_empty();
+    let exited = |world: &World| !world.resource::<Ends>().exits.is_empty();
     run_until(&mut app, &wakes, exited);
-    if let Some(dir) = launcher.parent() {
-        std::fs::remove_dir_all(dir).ok();
-    }
-    assert_eq!(app.world().resource::<Exits>().0, [ExitReason::Quit]);
+    std::fs::remove_dir_all(&dir).ok();
+    std::mem::take(app.world_mut().resource_mut::<Ends>().as_mut())
+}
+
+/// A `-p` run whose launcher was replaced, by its `/update` or from
+/// outside, does not reload: it ends as any run does, with 0, its last
+/// line written, and the next run starts the new launcher. One whose
+/// launcher is the same reloads.
+#[test]
+fn a_headless_run_whose_launcher_was_replaced_ends_instead_of_reloading() {
+    let ended = |ends: &Ends| {
+        ends.exits == [ExitReason::Quit] && ends.runs.iter().map(|run| run.code).eq([0])
+    };
+    let updated = headless_reload("headless-update", Rebuild::Update, true);
+    assert!(ended(&updated), "{:?} {:?}", updated.exits, updated.runs);
+    let replaced = headless_reload("headless-replaced", Rebuild::Build, true);
+    assert!(ended(&replaced), "{:?} {:?}", replaced.exits, replaced.runs);
+    let reloaded = headless_reload("headless-reload", Rebuild::Build, false);
+    assert_eq!(reloaded.exits, [ExitReason::Reload]);
 }

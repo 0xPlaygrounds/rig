@@ -133,6 +133,32 @@ pub fn long_version() -> String {
         .unwrap_or_else(|| VERSION.to_owned())
 }
 
+/// Which file a path names, to tell when it was replaced, such as the
+/// launcher's own by `rig update`: a file renamed
+/// over it, as `cargo install` does, has another inode and modification
+/// time. A file that cannot be read has none.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Stamp(Option<(SystemTime, u64)>);
+
+impl Stamp {
+    /// Whether the file is another than at `now`. A file gone, or never
+    /// read, was not replaced: only a new file at the path is a new launcher.
+    pub fn replaced(&self, now: &Stamp) -> bool {
+        matches!((&self.0, &now.0), (Some(then), Some(now)) if then != now)
+    }
+
+    /// The stamp of the file at `path` now.
+    pub fn of(path: &Path) -> Self {
+        Self(std::fs::metadata(path).ok().and_then(|metadata| {
+            #[cfg(unix)]
+            let identity = std::os::unix::fs::MetadataExt::ino(&metadata);
+            #[cfg(not(unix))]
+            let identity = metadata.len();
+            Some((metadata.modified().ok()?, identity))
+        }))
+    }
+}
+
 /// The variable that carries the secret `name`: [`env::SECRET_PREFIX`]
 /// and the name in upper case, `-` as `_` (`crypt` is `RIG_SECRET_CRYPT`).
 pub fn secret_variable(name: &str) -> String {
