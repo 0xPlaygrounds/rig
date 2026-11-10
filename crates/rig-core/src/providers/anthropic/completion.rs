@@ -638,9 +638,10 @@ fn tools(
 const ROOT_COMBINATORS: [&str; 3] = ["allOf", "anyOf", "oneOf"];
 
 /// Move a root `allOf`, `anyOf` or `oneOf`, with any root `not`, under
-/// `not: {not: ...}`, which accepts the same inputs, and type the root
-/// `object`, the root Anthropic takes. A schema with no root combinator is
-/// left as written.
+/// `not: {not: ...}`, and type the root `object`, the root Anthropic takes.
+/// That accepts the same inputs, except that a root `unevaluatedProperties`
+/// no longer sees the properties the moved branches declare. A schema with
+/// no root combinator is left as written.
 fn nest_root_combinators(schema: &mut Value) {
     let Value::Object(root) = schema else {
         return;
