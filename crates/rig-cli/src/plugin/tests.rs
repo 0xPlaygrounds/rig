@@ -236,3 +236,41 @@ fn a_plugin_whose_manifest_cannot_be_read_is_refused_with_why() {
         );
     }
 }
+
+#[test]
+fn the_list_puts_rigs_plugins_with_their_default_before_the_users_with_their_path() {
+    let home = old_home("list");
+    let result = (|| -> Result<_> {
+        fs::create_dir_all(home.root())?;
+        let without = listing(&home)?;
+        run(&home, &["new", "hello"])?;
+        Ok((without, listing(&home)?))
+    })();
+    fs::remove_dir_all(home.root()).ok();
+    assert!(result.is_ok(), "{result:?}");
+    let (without, with) = result.unwrap_or_default();
+    assert!(
+        without.ends_with("\nyour plugins (extras): none; `rig plugin new <name>` makes one.\n"),
+        "{without}"
+    );
+    let lines: Vec<&str> = with.lines().collect();
+    let at = |what: &str| lines.iter().position(|line| line.contains(what));
+    let (rigs, yours) = (at("rig's plugins:"), at("your plugins (extras):"));
+    let (skills, hello) = (at(SKILLS), at("hello::HelloPlugin"));
+    let order = [rigs, skills, yours, hello];
+    assert!(
+        order.iter().all(Option::is_some) && order.is_sorted(),
+        "{with}"
+    );
+    let skills = skills.and_then(|at| lines.get(at)).unwrap_or(&"");
+    assert!(
+        skills.starts_with("on ") && skills.ends_with("(default on)"),
+        "{skills}"
+    );
+    let hello = hello.and_then(|at| lines.get(at)).unwrap_or(&"");
+    let path = home.plugins().join("hello");
+    assert!(
+        hello.starts_with("on ") && hello.ends_with(&format!("path {}", path.display())),
+        "{hello}"
+    );
+}

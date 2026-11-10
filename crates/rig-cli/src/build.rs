@@ -195,6 +195,9 @@ fn compile_logged(
     if !status.success() {
         return Err(format!("cargo could not build the agent ({status})").into());
     }
+    if let Some(warning) = super::plugin::skill::refresh(home, source) {
+        log.say(&warning);
+    }
     stage(home, staged, staging)
 }
 
