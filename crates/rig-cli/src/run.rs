@@ -345,9 +345,9 @@ fn launch(
             command.env(env::NOTICE, notice);
         }
         // Only the first start of a claim runs elsewhere than it was, and
-        // only the run's first start warns of a 0.46 home.
+        // only the run's starts until one is ready warn of a 0.46 home.
         let warnings: Vec<String> = (claimed.moved.take().into_iter())
-            .chain(legacy.drain(..))
+            .chain(legacy.iter().cloned())
             .collect();
         if !warnings.is_empty() {
             command.env(env::WARNING, warnings.join("\n"));
@@ -367,6 +367,7 @@ fn launch(
             let status = child.try_wait()?;
             if !started && ready.exists() {
                 started = true;
+                legacy.clear();
                 if let Binary::Trial(trial) = &binary {
                     promoted = fs::rename(trial, home.good()).map_err(Into::into);
                 }
