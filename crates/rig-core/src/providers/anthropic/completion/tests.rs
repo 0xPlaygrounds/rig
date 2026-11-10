@@ -364,6 +364,40 @@ fn strict_tools_opt_in_marks_and_sanitizes_rig_tools_only() {
     assert!(provider_tool.get("strict").is_none());
 }
 
+/// Anthropic refuses `anyOf`, `oneOf` and `allOf` at the top of a tool's
+/// input schema, so they go under a double `not` with the root's own `not`,
+/// which accepts the same inputs, and the rest of the root stays put.
+#[test]
+fn root_combinators_of_a_tool_schema_go_under_a_double_not() {
+    let mut tool = generic_tool("edit");
+    let read = json!({"properties": {"op": {"const": "read"}}, "required": ["op"]});
+    tool.parameters = json!({
+        "type": "object",
+        "properties": {"path": {"type": "string"}},
+        "required": ["path"],
+        "oneOf": [read],
+        "not": {"required": ["force"]},
+    });
+    let body = request_body(Params {
+        model: CLAUDE_SONNET_4_6,
+        request: completion_request_with_tools(vec![tool], None),
+        prompt_caching: false,
+        cache: None,
+        static_prefix_cache_ttl: None,
+    })
+    .expect("the request encodes");
+
+    assert_eq!(
+        body["tools"][0]["input_schema"],
+        json!({
+            "type": "object",
+            "properties": {"path": {"type": "string"}},
+            "required": ["path"],
+            "not": {"not": {"oneOf": [read], "not": {"required": ["force"]}}},
+        })
+    );
+}
+
 fn system_has_cache_control(value: &serde_json::Value) -> bool {
     value["system"]
         .as_array()
