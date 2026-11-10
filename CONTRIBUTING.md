@@ -2,7 +2,7 @@
 
 Thank you for considering contributing to Rig! Here are some guidelines to help you get started.
 
-General guidelines and requested contributions can be found in the [How to Contribute](https://docs.rig.rs/docs/how_to_contribute) section of the documentation. Repository layout, architecture, and engineering rules are in `AGENTS.md`; verification and publication workflow in [DEVELOPING.md](DEVELOPING.md); test commands in `tests/README.md`.
+General guidelines and requested contributions can be found in the [How to Contribute](https://rig.rs/docs/how_to_contribute) section of the documentation. Repository layout, architecture, and engineering rules are in `AGENTS.md`; verification and publication workflow in [DEVELOPING.md](DEVELOPING.md); test commands in `tests/README.md`.
 
 ## Issues
 Before reporting an issue, please check existing or similar issues that are currently tracked.
