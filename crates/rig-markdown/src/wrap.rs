@@ -32,11 +32,28 @@ pub struct RowWrap {
 /// `line` wrapped at word boundaries into rows at most `width` columns
 /// wide, each with how it continues the row before it (`None` for the
 /// first). A word wider than a row is broken. Continuation rows are
-/// indented like the text after the line's leading spaces and list marker.
+/// indented like the text after the line's leading spaces and list marker,
+/// or after its first word when two or more spaces follow that, by at most
+/// half the width.
 /// Every row keeps the line's style, so a background fills each. Where it
 /// breaks depends on its text alone, not on its styles, so a line of code
 /// wraps the same plain as colored.
 pub fn wrap(line: &Line<'_>, width: usize) -> Vec<(Line<'static>, Option<RowWrap>)> {
+    wrap_hanging(line, width, true)
+}
+
+/// [`wrap`] for text a person types: a first word's column does not set
+/// the indent, as two spaces after it are more likely a slip than a column.
+pub fn wrap_typed(line: &Line<'_>, width: usize) -> Vec<(Line<'static>, Option<RowWrap>)> {
+    wrap_hanging(line, width, false)
+}
+
+/// [`wrap`], with or without a first word's `columns` setting the indent.
+fn wrap_hanging(
+    line: &Line<'_>,
+    width: usize,
+    columns: bool,
+) -> Vec<(Line<'static>, Option<RowWrap>)> {
     let width = width.max(1);
     let text: String = line.spans.iter().map(|span| &*span.content).collect();
     let cells = cells(line, &text);
@@ -44,7 +61,7 @@ pub fn wrap(line: &Line<'_>, width: usize) -> Vec<(Line<'static>, Option<RowWrap
     if total <= width {
         return vec![(join(&cells).style(line.style), None)];
     }
-    let indent = hanging_indent(&cells).min(width / 2);
+    let indent = hanging_indent(&cells, columns).min(width / 2);
     let mut rows = Vec::new();
     let mut row: Vec<(&str, Style)> = Vec::new();
     let mut row_width = 0;
@@ -83,7 +100,10 @@ pub fn wrap(line: &Line<'_>, width: usize) -> Vec<(Line<'static>, Option<RowWrap
         }
         for &(symbol, style) in word {
             let cell = symbol.width();
-            if row_width + cell > width && row_width > indent {
+            // A row breaks inside a word once it holds more than its indent,
+            // which the first row does not have.
+            let start = if joint.is_some() { indent } else { 0 };
+            if row_width + cell > width && row_width > start {
                 rows.push((join(&row), joint.take()));
                 row.clear();
                 row.extend(std::iter::repeat_n((" ", Style::default()), indent));
@@ -141,8 +161,10 @@ fn words<'a, 'b>(cells: &'b [(&'a str, Style)]) -> impl Iterator<Item = &'b [(&'
     cells.chunk_by(move |(before, _), (after, _)| !space(before) || space(after))
 }
 
-/// The width of the leading spaces, plus a list marker and its space.
-fn hanging_indent(cells: &[(&str, Style)]) -> usize {
+/// The width of the leading spaces, plus a list marker and its space, or
+/// else, with `columns`, a first word and the two or more spaces after it
+/// that start a column, such as a line number's or a command's.
+fn hanging_indent(cells: &[(&str, Style)], columns: bool) -> usize {
     let spaces = cells
         .iter()
         .take_while(|(symbol, _)| *symbol == " ")
@@ -150,9 +172,32 @@ fn hanging_indent(cells: &[(&str, Style)]) -> usize {
     let rest = cells.get(spaces..).unwrap_or_default();
     let marker: usize = match rest {
         [(first, _), (" ", _), ..] if HANGING_MARKERS.contains(first) => first.width() + 1,
-        _ => numbered_marker(rest),
+        _ => match numbered_marker(rest) {
+            0 if columns => column(rest),
+            marker => marker,
+        },
     };
     spaces + marker
+}
+
+/// The width of a first word and the two or more spaces after it, when
+/// text follows them, else 0.
+fn column(cells: &[(&str, Style)]) -> usize {
+    let word = cells
+        .iter()
+        .take_while(|(symbol, _)| *symbol != " ")
+        .count();
+    let rest = cells.get(word..).unwrap_or_default();
+    let gap = rest.iter().take_while(|(symbol, _)| *symbol == " ").count();
+    match word > 0 && gap >= 2 && rest.len() > gap {
+        true => cells
+            .get(..word + gap)
+            .unwrap_or_default()
+            .iter()
+            .map(|(symbol, _)| symbol.width())
+            .sum(),
+        false => 0,
+    }
 }
 
 /// The width of a leading `12. ` or `3) `, else 0.

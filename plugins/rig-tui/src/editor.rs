@@ -8,7 +8,8 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Padding, Paragraph};
 use rig_ecs::agent::ActiveTurn;
 use rig_harness::main_agent::ShownAgent;
-use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthStr;
 
 use super::input::InputContext;
 use super::keys::KeyFocus;
@@ -16,6 +17,7 @@ use super::panel::PanelCanvas;
 use super::pick::Choices;
 use super::status::{StatusLine, StatusSources};
 use super::theme::Theme;
+use super::wrap::wrap_typed;
 
 /// The prompt before the first line of the input.
 const PROMPT: &str = "› ";
@@ -56,7 +58,7 @@ const MOST_LINES: usize = 10;
 #[require(Caret)]
 pub struct Editor {
     text: String,
-    /// A byte offset in `text`, on a character boundary.
+    /// A byte offset in `text`, on a grapheme boundary.
     cursor: usize,
     /// The history entry shown, while browsing it: its index, and its
     /// text, which finds it again when the entries move.
@@ -100,7 +102,7 @@ impl Editor {
         &self.text
     }
 
-    /// The cursor: a byte offset in [`Self::text`], on a character
+    /// The cursor: a byte offset in [`Self::text`], on a grapheme
     /// boundary.
     pub fn cursor(&self) -> usize {
         self.cursor
@@ -111,26 +113,41 @@ impl Editor {
         self.text.is_empty()
     }
 
-    /// Replaces the text, with the cursor at its end. The text replaced is
-    /// not kept, as a plugin edits with it too: one that discards the
-    /// person's text calls [`clear`](Self::clear) first. Another text ends
-    /// browsing the history, keeping the draft behind it there.
+    /// Replaces the text, with the cursor at its end and each `\r\n` or `\r`
+    /// as a newline. The text replaced is not kept, as a plugin edits with
+    /// it too: one that discards the person's text calls
+    /// [`clear`](Self::clear) first. Another text ends browsing the history,
+    /// keeping the draft behind it there.
     pub fn set(&mut self, text: impl Into<String>) {
-        let text = text.into();
+        let text = newlines(text.into());
         if text != self.text {
             self.stop_browsing();
         }
         self.show(text);
     }
 
-    /// Puts the cursor at byte `offset`, or the nearest character boundary
+    /// Puts the cursor at byte `offset`, or the nearest grapheme boundary
     /// before it.
     pub fn set_cursor(&mut self, offset: usize) {
-        let mut offset = offset.min(self.text.len());
-        while !self.text.is_char_boundary(offset) {
-            offset -= 1;
+        let starts = self.text.grapheme_indices(true).map(|(at, _)| at);
+        self.cursor = starts.take_while(|at| *at <= offset).last().unwrap_or(0);
+        if offset >= self.text.len() {
+            self.cursor = self.text.len();
         }
-        self.cursor = offset;
+    }
+
+    /// Moves the cursor to the end of the grapheme it is in, if any, as
+    /// text typed before a combining mark, or deleted between two that
+    /// join, makes one.
+    fn settle(&mut self) {
+        let ends = self
+            .text
+            .grapheme_indices(true)
+            .map(|(at, grapheme)| at + grapheme.len());
+        let mut ends = std::iter::once(0).chain(ends);
+        self.cursor = ends
+            .find(|end| *end >= self.cursor)
+            .unwrap_or(self.text.len());
     }
 
     /// Shows `text`, with the cursor at its end, keeping the history's
@@ -250,15 +267,17 @@ impl Editor {
 
     /// Types `text` at the cursor, which ends up after it.
     pub fn insert(&mut self, text: &str) {
-        let text = text.replace("\r\n", "\n").replace('\r', "\n");
+        let text = newlines(text.to_owned());
         self.text.insert_str(self.cursor, &text);
         self.cursor += text.len();
+        self.settle();
     }
 
     /// Types `character` at the cursor, which ends up after it.
     pub fn insert_char(&mut self, character: char) {
         self.text.insert(self.cursor, character);
         self.cursor += character.len_utf8();
+        self.settle();
     }
 
     /// Replaces the bytes `start..self.cursor()` with `text`.
@@ -266,6 +285,7 @@ impl Editor {
         if start <= self.cursor && self.text.is_char_boundary(start) {
             self.text.replace_range(start..self.cursor, text);
             self.cursor = start + text.len();
+            self.settle();
         }
     }
 
@@ -285,26 +305,29 @@ impl Editor {
         false
     }
 
+    /// Where the grapheme before `from` starts, so an emoji or an accented
+    /// letter moves and deletes as one.
     fn previous_boundary(&self, from: usize) -> usize {
         self.text
             .get(..from)
-            .and_then(|before| before.char_indices().next_back())
+            .and_then(|before| before.grapheme_indices(true).next_back())
             .map_or(0, |(index, _)| index)
     }
 
+    /// Where the grapheme at `from` ends.
     fn next_boundary(&self, from: usize) -> usize {
         self.text
             .get(from..)
-            .and_then(|after| after.chars().next())
-            .map_or(self.text.len(), |character| from + character.len_utf8())
+            .and_then(|after| after.graphemes(true).next())
+            .map_or(self.text.len(), |grapheme| from + grapheme.len())
     }
 
-    /// A character back.
+    /// A grapheme back.
     pub fn left(&mut self) {
         self.cursor = self.previous_boundary(self.cursor);
     }
 
-    /// A character forward.
+    /// A grapheme forward.
     pub fn right(&mut self) {
         self.cursor = self.next_boundary(self.cursor);
     }
@@ -312,30 +335,33 @@ impl Editor {
     /// The start of the word before the cursor.
     fn word_start(&self) -> usize {
         let before = self.text.get(..self.cursor).unwrap_or_default();
-        let trimmed = before.trim_end_matches(|c: char| !c.is_alphanumeric() && c != '_');
-        trimmed
-            .rfind(|c: char| !c.is_alphanumeric() && c != '_')
-            .map_or(0, |index| {
-                index
-                    + trimmed
-                        .get(index..)
-                        .and_then(|rest| rest.chars().next())
-                        .map_or(1, char::len_utf8)
-            })
+        let mut start = self.cursor;
+        let mut in_word = false;
+        for (at, grapheme) in before.grapheme_indices(true).rev() {
+            match (word_grapheme(grapheme), in_word) {
+                (true, _) => in_word = true,
+                (false, true) => break,
+                (false, false) => {}
+            }
+            start = at;
+        }
+        start
     }
 
     /// The end of the word after the cursor.
     fn word_end(&self) -> usize {
         let after = self.text.get(self.cursor..).unwrap_or_default();
-        let skipped = after.len()
-            - after
-                .trim_start_matches(|c: char| !c.is_alphanumeric() && c != '_')
-                .len();
-        let rest = after.get(skipped..).unwrap_or_default();
-        let word = rest
-            .find(|c: char| !c.is_alphanumeric() && c != '_')
-            .unwrap_or(rest.len());
-        self.cursor + skipped + word
+        let mut end = self.cursor;
+        let mut in_word = false;
+        for (at, grapheme) in after.grapheme_indices(true) {
+            match (word_grapheme(grapheme), in_word) {
+                (true, _) => in_word = true,
+                (false, true) => break,
+                (false, false) => {}
+            }
+            end = self.cursor + at + grapheme.len();
+        }
+        end
     }
 
     /// The start of the word before the cursor.
@@ -374,30 +400,24 @@ impl Editor {
         self.cursor = self.line_end();
     }
 
-    /// Deletes the character before the cursor.
+    /// Deletes the grapheme before the cursor.
     pub fn backspace(&mut self) {
-        let start = self.previous_boundary(self.cursor);
-        self.text.replace_range(start..self.cursor, "");
-        self.cursor = start;
+        self.remove(self.previous_boundary(self.cursor)..self.cursor);
     }
 
-    /// Deletes the character after the cursor.
+    /// Deletes the grapheme after the cursor.
     pub fn delete(&mut self) {
-        let end = self.next_boundary(self.cursor);
-        self.text.replace_range(self.cursor..end, "");
+        self.remove(self.cursor..self.next_boundary(self.cursor));
     }
 
     /// Deletes the word before the cursor.
     pub fn delete_word_before(&mut self) {
-        let start = self.word_start();
-        self.text.replace_range(start..self.cursor, "");
-        self.cursor = start;
+        self.remove(self.word_start()..self.cursor);
     }
 
     /// Deletes the word after the cursor.
     pub fn delete_word_after(&mut self) {
-        let end = self.word_end();
-        self.text.replace_range(self.cursor..end, "");
+        self.remove(self.cursor..self.word_end());
     }
 
     /// Deletes to the start of the line, or the newline before it when the
@@ -407,8 +427,7 @@ impl Editor {
             start if start == self.cursor => self.previous_boundary(start),
             start => start,
         };
-        self.text.replace_range(start..self.cursor, "");
-        self.cursor = start;
+        self.remove(start..self.cursor);
     }
 
     /// Deletes to the end of the line, or the newline after it when the
@@ -418,14 +437,22 @@ impl Editor {
             end if end == self.cursor => self.next_boundary(end),
             end => end,
         };
-        self.text.replace_range(self.cursor..end, "");
+        self.remove(self.cursor..end);
     }
 
-    /// The cursor's column on its line, in characters.
+    /// Deletes the bytes `range`, the cursor at their place, or past the
+    /// grapheme the text on each side joins into there.
+    fn remove(&mut self, range: std::ops::Range<usize>) {
+        self.cursor = range.start;
+        self.text.replace_range(range, "");
+        self.settle();
+    }
+
+    /// The cursor's column on its line, in graphemes.
     fn column(&self) -> usize {
         self.text
             .get(self.line_start()..self.cursor)
-            .map_or(0, |line| line.chars().count())
+            .map_or(0, |line| line.graphemes(true).count())
     }
 
     /// Moves to `column` of the line starting at `start`, or its end.
@@ -434,7 +461,7 @@ impl Editor {
         let line = line.split('\n').next().unwrap_or_default();
         self.cursor = start
             + line
-                .char_indices()
+                .grapheme_indices(true)
                 .nth(column)
                 .map_or(line.len(), |(index, _)| index);
     }
@@ -546,62 +573,91 @@ impl Editor {
         u16::try_from(lines.clamp(1, MOST_LINES) + 2).unwrap_or(u16::MAX)
     }
 
-    /// The text laid out in rows `width` columns wide, broken anywhere, the
-    /// first row after the prompt and the others indented under it.
+    /// The text laid out in rows `width` columns wide, each line word
+    /// wrapped as typed text, the first row after the prompt and the others
+    /// indented under it. A tab or other control character shows as a space
+    /// per byte. The cursor stays inside the rows: at the end of a line on a
+    /// full row it goes to a new row, and in the spaces a row break dropped
+    /// it stays after the row while there is room, else starts the next.
     pub(crate) fn layout(&self, width: u16) -> Layout {
         // The prompt is two columns wide.
-        let width = usize::from(width).max(3);
+        let width = usize::from(width).max(3) - 2;
         let mut rows = Vec::new();
-        let mut row = String::new();
-        let mut row_width = 2;
-        let mut cursor_row = 0;
-        let mut cursor_column = 2;
-        let mut first = true;
-        let finish = |row: &mut String, first: &mut bool, rows: &mut Vec<Line<'static>>| {
-            let prefix = if *first { PROMPT } else { "  " };
-            *first = false;
-            rows.push(Line::from(vec![
-                Span::from(prefix).dim(),
-                Span::from(std::mem::take(row)),
-            ]));
-        };
-        for (index, character) in self.text.char_indices() {
-            if index == self.cursor {
-                cursor_row = rows.len();
-                cursor_column = row_width;
-            }
-            if character == '\n' {
-                finish(&mut row, &mut first, &mut rows);
-                row_width = 2;
-                continue;
-            }
-            let cell = character.width().unwrap_or(0);
-            if row_width + cell > width {
-                finish(&mut row, &mut first, &mut rows);
-                row_width = 2;
-                if index == self.cursor {
-                    cursor_row = rows.len();
-                    cursor_column = row_width;
+        let mut cursor = (0, 0);
+        let mut start = 0;
+        for line in self.text.split('\n') {
+            let shown: String = line
+                .chars()
+                .map(|character| match character.is_control() {
+                    true => " ".repeat(character.len_utf8()),
+                    false => character.to_string(),
+                })
+                .collect();
+            let at = self
+                .cursor
+                .checked_sub(start)
+                .filter(|at| *at <= line.len());
+            let mut end = 0;
+            for (row, joint) in wrap_typed(&Line::from(shown.as_str()), width) {
+                let (gap, indent) = joint
+                    .as_ref()
+                    .map_or(("", 0), |joint| (joint.gap.as_str(), joint.indent));
+                let from = end + gap.len();
+                if let Some(at) = at
+                    && (end..from).contains(&at)
+                {
+                    let dropped = gap.get(..at - end).map_or(0, UnicodeWidthStr::width);
+                    let column = rows.last().map_or(0, Line::width) + dropped;
+                    cursor = match column < width {
+                        true => (rows.len().saturating_sub(1), column),
+                        false => (rows.len(), indent),
+                    };
                 }
+                let bytes: usize = row.spans.iter().map(|span| span.content.len()).sum();
+                end = from + bytes.saturating_sub(indent);
+                if let Some(at) = at
+                    && (from..=end).contains(&at)
+                {
+                    let before = shown.get(from..at).map_or(0, UnicodeWidthStr::width);
+                    cursor = (rows.len(), indent + before);
+                }
+                rows.push(row);
             }
-            row.push(if character == '\t' { ' ' } else { character });
-            row_width += cell;
-        }
-        if self.cursor >= self.text.len() {
-            if row_width >= width {
-                finish(&mut row, &mut first, &mut rows);
-                row_width = 2;
+            if at == Some(line.len()) && cursor.1 >= width {
+                cursor = (rows.len(), 0);
+                rows.push(Line::default());
             }
-            cursor_row = rows.len();
-            cursor_column = row_width;
+            start += line.len() + 1;
         }
-        finish(&mut row, &mut first, &mut rows);
+        let rows = rows.into_iter().enumerate().map(|(index, row)| {
+            let prefix = if index == 0 { PROMPT } else { "  " };
+            let mut spans = vec![Span::from(prefix).dim()];
+            spans.extend(row.spans);
+            Line::from(spans)
+        });
         Layout {
-            rows,
-            cursor_row,
-            cursor_column,
+            rows: rows.collect(),
+            cursor_row: cursor.0,
+            cursor_column: cursor.1 + 2,
         }
     }
+}
+
+/// `text` with each `\r\n` or lone `\r` as a `\n`.
+fn newlines(text: String) -> String {
+    match text.contains('\r') {
+        true => text.replace("\r\n", "\n").replace('\r', "\n"),
+        false => text,
+    }
+}
+
+/// Whether `grapheme` is part of a word: it starts with a letter, a digit
+/// or `_`.
+fn word_grapheme(grapheme: &str) -> bool {
+    grapheme
+        .chars()
+        .next()
+        .is_some_and(|first| first.is_alphanumeric() || first == '_')
 }
 
 /// Where the history entry `shown` is now: at its index while it is still
@@ -616,36 +672,67 @@ fn place((index, text): &(usize, String), history: &[String]) -> usize {
         .unwrap_or(history.len())
 }
 
+/// A key hint, with how much it matters: a row too narrow for every hint
+/// drops those that matter least first.
+type Key = (&'static str, u8);
+
 /// The keys of an empty editor that has them, over where its text goes:
 /// a message's, with Enter steering and Tab and Esc for the turn while one
 /// runs.
-fn hint(turn_running: bool, panel_keys: bool) -> &'static str {
+fn hint(turn_running: bool, panel_keys: bool) -> &'static [Key] {
     match (panel_keys, turn_running) {
-        (true, _) => " A panel has the keys · Esc gives them back ",
-        (false, true) => {
-            " Enter steers · Tab sends after the turn · Esc stops · Shift+Enter or Ctrl+J new line · Ctrl+V image · / commands · @ files · Ctrl+D quits "
-        }
-        (false, false) => {
-            " Enter sends · Shift+Enter or Ctrl+J new line · Ctrl+V image · / commands · @ files · Ctrl+D quits "
-        }
+        (true, _) => &[("A panel has the keys", 1), ("Esc gives them back", 2)],
+        (false, true) => &[
+            ("Enter steers", 9),
+            ("Tab sends after the turn", 7),
+            ("Esc stops", 10),
+            ("Shift+Enter or Ctrl+J new line", 5),
+            ("Ctrl+V image", 1),
+            ("/ commands", 4),
+            ("@ files", 2),
+            ("Ctrl+D quits", 3),
+        ],
+        (false, false) => &[
+            ("Enter sends", 9),
+            ("Shift+Enter or Ctrl+J new line", 7),
+            ("Ctrl+V image", 4),
+            ("/ commands", 8),
+            ("@ files", 5),
+            ("Ctrl+D quits", 6),
+        ],
     }
 }
 
-/// `keys`, items split by ` · `, in `width` columns: the first items that
-/// fit, whole.
-fn fit_keys(keys: &str, width: usize) -> String {
-    let mut fitted = String::new();
-    for item in keys.split(" · ").map(str::trim) {
-        let next = match fitted.is_empty() {
-            true => format!(" {item} "),
-            false => format!("{} · {item} ", fitted.trim_end()),
-        };
-        if next.width() > width {
-            break;
+/// `keys` in `width` columns, joined by ` · `: all of them, or else the
+/// most that fit after dropping the least important, in their order and
+/// ending in `…`.
+fn fit_keys(keys: &[Key], width: usize) -> String {
+    let mut kept = keys.to_vec();
+    loop {
+        let mut items: Vec<&str> = kept.iter().map(|(item, _)| *item).collect();
+        if kept.len() < keys.len() {
+            items.push("…");
         }
-        fitted = next;
+        if items.is_empty() {
+            return String::new();
+        }
+        let row = format!(" {} ", items.join(" · "));
+        if row.width() <= width {
+            return row;
+        }
+        // The least important; of equals, the last.
+        let least = kept
+            .iter()
+            .enumerate()
+            .min_by_key(|(at, (_, keep))| (*keep, std::cmp::Reverse(*at)))
+            .map(|(at, _)| at);
+        match least {
+            Some(at) => {
+                kept.remove(at);
+            }
+            None => return String::new(),
+        }
     }
-    fitted
 }
 
 /// Draws each editor with room into its canvas, on the input's band with a
@@ -679,24 +766,28 @@ pub(crate) fn draw_editors(
         }
         let layout = editor.layout(area.width - 2);
         let top = (layout.cursor_row + 1).saturating_sub(usize::from(area.height - 2));
-        let (mut title, mut keys) = (Line::default(), "");
+        let (mut title, mut keys): (_, &[Key]) = (Line::default(), &[]);
         if state.editor() == Some(entity) {
             let elsewhere = focus.0.is_some_and(|focused| focused != entity);
             keys = match &answering {
                 Some(ask) => {
                     title = Line::from(format!(" {} ", ask.title)).bold();
-                    " Enter answers · Shift+Enter or Ctrl+J new line · Esc refuses "
+                    &[
+                        ("Enter answers", 3),
+                        ("Shift+Enter or Ctrl+J new line", 1),
+                        ("Esc refuses", 2),
+                    ]
                 }
                 None => hint(busy, elsewhere),
             };
             let keyed = !elsewhere && state.picking().is_none();
             if editor.recalled() && answering.is_none() && keyed {
                 keys = match editor.draft.trim().is_empty() {
-                    true => " An earlier prompt · Down back to an empty input ",
-                    false => " An earlier prompt · Down back to your draft ",
+                    true => &[("An earlier prompt", 1), ("Down back to an empty input", 2)],
+                    false => &[("An earlier prompt", 1), ("Down back to your draft", 2)],
                 };
             } else if !editor.is_empty() {
-                keys = "";
+                keys = &[];
             }
             if keyed {
                 let column = u16::try_from(layout.cursor_column).unwrap_or(u16::MAX);
@@ -732,3 +823,6 @@ pub(crate) fn draw_editors(
         canvas.render(Paragraph::new(layout.rows).scroll((top, 0)).block(block));
     }
 }
+
+#[cfg(test)]
+mod tests;

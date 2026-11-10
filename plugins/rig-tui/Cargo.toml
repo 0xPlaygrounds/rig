@@ -23,6 +23,8 @@ crossbeam-channel = { workspace = true }
 crossterm = { workspace = true }
 # The width of text.
 unicode-width = { workspace = true }
+# Graphemes, which the cursor moves over and text is cut at.
+unicode-segmentation = { workspace = true }
 ratatui = { workspace = true }
 rig-core = { workspace = true }
 rig-ecs = { path = "../../crates/rig-ecs", version = "0.46.0" }

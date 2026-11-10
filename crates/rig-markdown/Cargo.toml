@@ -17,3 +17,7 @@ pulldown-cmark = { workspace = true }
 ratatui-core = { workspace = true }
 unicode-segmentation = { workspace = true }
 unicode-width = { workspace = true }
+
+[dev-dependencies]
+# Generated words for the wrapping property test, from a fixed seed.
+fastrand = { workspace = true }

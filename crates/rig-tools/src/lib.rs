@@ -42,7 +42,8 @@
 
 use std::ops::Range;
 
-use unicode_width::{UnicodeWidthChar as _, UnicodeWidthStr as _};
+use unicode_segmentation::UnicodeSegmentation as _;
+use unicode_width::UnicodeWidthStr as _;
 
 pub mod attach;
 mod blocking;
@@ -291,8 +292,9 @@ pub(crate) fn shell_path(path: &str) -> Option<String> {
     path.starts_with('/').then(|| quote(path))
 }
 
-/// `text` cut to fit in `width` terminal columns, ending in `…` when cut:
-/// a wide character, such as most CJK ones, takes two columns.
+/// `text` cut to fit in `width` terminal columns, ending in `…` when cut,
+/// never inside a grapheme such as an emoji or an accented letter: a wide
+/// character, such as most CJK ones, takes two columns.
 ///
 /// ```
 /// use rig_tools::shorten;
@@ -300,6 +302,7 @@ pub(crate) fn shell_path(path: &str) -> Option<String> {
 /// assert_eq!(shorten("a short label", 20), "a short label");
 /// assert_eq!(shorten("a longer label", 9), "a longer…");
 /// assert_eq!(shorten("日本語のラベル", 7), "日本語…");
+/// assert_eq!(shorten("👩\u{200d}💻 codes", 3), "👩\u{200d}💻…");
 /// ```
 pub fn shorten(text: &str, width: usize) -> String {
     if text.width() <= width {
@@ -308,9 +311,9 @@ pub fn shorten(text: &str, width: usize) -> String {
     let room = width.saturating_sub(1);
     let mut used = 0;
     let end = text
-        .char_indices()
-        .find(|(_, character)| {
-            used += character.width().unwrap_or(0);
+        .grapheme_indices(true)
+        .find(|(_, grapheme)| {
+            used += grapheme.width();
             used > room
         })
         .map_or(text.len(), |(at, _)| at);

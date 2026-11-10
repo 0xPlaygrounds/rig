@@ -49,8 +49,8 @@ impl Plugin for BasicCommandsPlugin {
     }
 }
 
-/// `/help`: every command with its help, the helps in one column after the
-/// widest name.
+/// `/help`: every command with its help, the helps in one column two
+/// spaces after the widest name, which a wrapped help keeps.
 fn help(
     In(args): In<NoArgs>,
     commands: Query<(&Name, &SlashCommand)>,
@@ -65,7 +65,7 @@ fn help(
         .iter()
         .map(|(name, command)| {
             let pad = column.saturating_sub(name.as_str().width());
-            format!("{}{:pad$} {}", name.as_str(), "", command.help)
+            format!("{}{:pad$}  {}", name.as_str(), "", command.help)
         })
         .collect();
     lines.sort();

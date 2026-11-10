@@ -14431,6 +14431,7 @@ dependencies = [
 name = "rig-markdown"
 version = "0.46.0"
 dependencies = [
+ "fastrand",
  "pulldown-cmark",
  "ratatui-core",
  "unicode-segmentation",
@@ -14745,6 +14746,7 @@ dependencies = [
  "serde",
  "serde_json",
  "similar 3.2.1",
+ "unicode-segmentation",
  "unicode-width 0.2.2",
 ]
 
@@ -14791,6 +14793,7 @@ dependencies = [
  "syntect",
  "terminal-colorsaurus",
  "two-face",
+ "unicode-segmentation",
  "unicode-width 0.2.2",
 ]
 
