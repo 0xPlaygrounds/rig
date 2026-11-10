@@ -714,11 +714,13 @@ const SUBSCHEMA_KEYWORDS: [&str; 15] = [
     "propertyNames",
 ];
 
-/// The keywords whose value maps names to subschemas.
-const SUBSCHEMA_MAP_KEYWORDS: [&str; 5] = [
+/// The keywords whose value maps names to subschemas; draft-07
+/// `dependencies` may map a name to a list of names instead.
+const SUBSCHEMA_MAP_KEYWORDS: [&str; 6] = [
     "properties",
     "patternProperties",
     "dependentSchemas",
+    "dependencies",
     "$defs",
     "definitions",
 ];
