@@ -1087,3 +1087,42 @@ fn a_0_46_home_is_warned_of_once_per_run_and_left_as_it_is() {
     fs::remove_dir_all(fresh.root()).ok();
     assert_eq!(starts, Ok(vec![String::new(), String::new()]));
 }
+
+/// A run whose new build stops before it is ready still warns of a 0.46
+/// home: the previous build it rolls back to gets the warning.
+#[cfg(unix)]
+#[test]
+fn a_rolled_back_first_start_still_warns_of_a_0_46_home() {
+    let home = builds(
+        "legacy-rollback",
+        "exit 1",
+        "printf %s \"$RIG_WARNING\" > \"$RIG_HOME/warned\"; touch \"$RIG_RUN/ready\"",
+    );
+    let warned = fs::write(home.root().join("plugins.toml"), "[[plugin]]\n")
+        .map_err(Into::into)
+        .and_then(|()| {
+            let run = locks::hold_run(&home)?;
+            let (claimed, _) = claim(&home, Start::New, None)?;
+            launch(
+                &home,
+                Path::new(NO_LAUNCHER),
+                run.dir(),
+                &Invocation::default(),
+                false,
+                claimed,
+                None,
+                None,
+            )?;
+            Ok(fs::read_to_string(home.root().join("warned"))?)
+        });
+    let ran = fs::read_to_string(home.root().join("ran")).unwrap_or_default();
+    fs::remove_dir_all(home.root()).ok();
+    assert_eq!(ran, "trial\ngood\n", "no rollback");
+    let warned = warned.map_err(|failure: Box<dyn std::error::Error>| failure.to_string());
+    assert!(
+        warned
+            .as_ref()
+            .is_ok_and(|warned| warned.contains("plugins.toml")),
+        "{warned:?}"
+    );
+}
