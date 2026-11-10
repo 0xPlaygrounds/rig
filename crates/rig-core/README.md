@@ -101,7 +101,7 @@ suites under `tests/providers`. Many provider-specific examples are ignored
 live integration tests in those suites. Run them with provider-specific targets
 such as `cargo test -p rig-cassette --features http,agent --test integration openai:: -- --ignored --test-threads=1`
 to avoid rate-limiting. More detailed walkthroughs are regularly published on
-our Dev.to blog and added to Rig's official documentation at `docs.rig.rs`.
+our Dev.to blog and added to Rig's official documentation at [rig.rs/docs](https://rig.rs/docs).
 
 ## Integrations
 Rig supports the following LLM providers out of the box:
