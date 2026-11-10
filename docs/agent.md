@@ -13,6 +13,8 @@ as Bevy entities, one recorded effect path, session logs) is the
 [`rig-ecs`](../crates/rig-ecs) crate, for building your own harness.
 
 - [Install and run](#install-and-run)
+- [Update](#update)
+- [What is per home and what is per project](#what-is-per-home-and-what-is-per-project)
 - [Models and sign-in](#models-and-sign-in)
 - [The terminal view](#the-terminal-view)
 - [Sessions](#sessions)
@@ -27,16 +29,87 @@ as Bevy entities, one recorded effect path, session logs) is the
 
 ## Install and run
 
+`rig-cli` is not on crates.io yet. Until the next release, `cargo install rig`
+installs the last release, 0.46.0, whose `rig` crate carries the launcher.
+This guide describes `main`; [0.46.0's guide](https://github.com/0xPlaygrounds/rig/blob/v0.46.0/docs/agent.md)
+is on its tag. To install `main`, build the launcher from a checkout
+(`--force` replaces a `rig` installed by another crate):
+
 ```bash
-cargo install rig-cli
-export OPENAI_API_KEY=...   # or any other provider key in the model catalog
-rig                         # builds the agent (later starts rebuild what changed), then opens it
+git clone https://github.com/0xPlaygrounds/rig && cd rig
+cargo install --locked --force --path crates/rig-cli
 ```
 
+Then:
+
+1. `rig` builds the agent, which takes several minutes the first time, and
+   opens it. Later starts rebuild only what changed.
+2. `/login` signs in with a ChatGPT plan or saves a provider's API key
+   ([Models and sign-in](#models-and-sign-in)). Or export a key, such as
+   `OPENAI_API_KEY`, before starting `rig`.
+3. `/model` picks a model.
+4. Type a prompt and press Enter. `/help` lists the commands.
+5. `rig -p "fix the failing test"` answers one prompt without the terminal
+   view ([Without the terminal view](#without-the-terminal-view)).
+
 The agent builds from rig's crates on crates.io, at the launcher's version,
-or from a rig checkout ([Running from a checkout](#running-from-a-checkout)).
-It needs Rust 1.97.1 or newer and runs on Linux and macOS; Windows is not
-supported yet.
+or from the rig checkout the launcher was installed from
+([Running from a checkout](#running-from-a-checkout)). It needs Rust 1.97.1 or
+newer and runs on Linux and macOS. Windows is not supported.
+
+## Update
+
+rig has no update command. Install the new launcher, and the next start
+rebuilds the agent at its version:
+
+- From crates.io: 0.46.0 is the latest release. Once `rig-cli` is released,
+  `cargo install --force rig-cli` installs it; `--force` replaces the `rig`
+  that the `rig` crate installed.
+- From a checkout: `git pull`, then `cargo install --locked --force --path
+  crates/rig-cli` again.
+
+A running agent keeps its build until you restart it. The rebuild takes
+several minutes, and `RIG_HOME/target` keeps the old version's build too.
+Sessions resume while their format is the same. A session in another format
+is refused, unchanged, with `this session was made by another version of rig;
+start a new session`.
+
+Coming from 0.46.0: it kept the plugin list in `RIG_HOME/plugins.toml` and the
+saved model in `RIG_HOME/defaults.json`. `main` reads neither. Turn your
+plugins off again with `rig plugin disable <type>`, add the plugin crates it
+listed as `[[plugins.extra]]` tables of `settings.toml` ([Plugins](#plugins)),
+and pick the model again with `/model`.
+
+## What is per home and what is per project
+
+`RIG_HOME` (default `~/.rig`) is the home. The project is the directory found
+as [Context, compaction and retries](#context-compaction-and-retries)
+describes.
+
+| What | Home | Project |
+| --- | --- | --- |
+| Plugins (`[plugins]`) | `RIG_HOME/settings.toml` | no |
+| Model and reasoning (`[model]`) and other settings | `RIG_HOME/settings.toml` | no: a project has no settings |
+| Instructions | `RIG_HOME/AGENTS.md` | `AGENTS.md` from the working directory up to the project root |
+| Skills | `RIG_HOME/skills`, `~/.agents/skills` | `.rig/skills` and `.agents/skills` from the working directory up to the project root |
+| MCP servers, with the optional `rig-mcp-client` plugin | `RIG_HOME/mcp.json` | `.rig/mcp.json` |
+| Sign-in, sessions, builds | `auth/`, `sessions/`, `target/` | no |
+
+Plugins are compiled into one agent per home, so a repository you clone
+cannot name crates for rig to build. To use other plugins for a project, give
+it its own home. A second home has its own sign-in, sessions and build (a few
+gigabytes). With [direnv](https://direnv.net), an `.envrc` in the project sets
+it whenever you enter the directory:
+
+```bash
+# .envrc
+export RIG_HOME="$HOME/.rig-homes/myproject"
+```
+
+Keep the home outside the repository, so the build is not in your working
+tree. Run `direnv allow` once, then `rig plugin enable <type>` there changes
+only that home. An exported provider key works in every home; a `/login` is
+per home.
 
 ## Models and sign-in
 
@@ -223,9 +296,9 @@ lines and a command's exit status, so a resumed session draws its calls as
 they were drawn), settings, usage and compactions, appended to as it runs and
 rewritten only through rig-memory (a plugin's redaction, say, keeps each
 record's place and time). Images are stored once in `files/blobs/`, and
-`files/meta.json` caches what `/resume` lists. An older session format is
-resumed and written on in its own; one from before `rig-session/2` is refused,
-unchanged.
+`files/meta.json` caches what `/resume` lists. A session in another format,
+written by another version of rig, is refused, unchanged
+([Update](#update)).
 
 Quitting mid-turn (Ctrl+D, `/quit`, closing the terminal, or a signal to a
 headless run) stops the turn as Esc does: the reply so far is kept, each
@@ -375,8 +448,7 @@ an answer, 1 when it failed or a plugin such as the budget stopped its work
 `RIG_HOME/settings.toml` cannot be read, is not TOML or has a `[plugins]`
 table that does not read (stderr says why), 2 for a refused slash command, a
 plugin's settings table that does not read, or piped input that is over
-64 MiB, fails to read or is not UTF-8. Piped input is read until stdin closes; give `</dev/null` (`<NUL` on
-Windows) for none. A
+64 MiB, fails to read or is not UTF-8. Piped input is read until stdin closes; give `</dev/null` for none. A
 command that would open a list to pick from, such as `/model`, `/effort`,
 `/resume`, `/login` or `/fork at`, is refused there with the commands to
 type instead (`/model chatgpt/gpt-6.1-sol`), as is text after a command
