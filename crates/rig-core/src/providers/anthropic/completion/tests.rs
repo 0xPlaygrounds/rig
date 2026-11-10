@@ -530,6 +530,20 @@ fn pointer_references_into_moved_keywords_follow_them() {
         sent_input_schema(json!({"type": "object", "$ref": "#/oneOf/0", "oneOf": [branch]})),
         json!({"type": "object", "$ref": "#/not/not/oneOf/0", "not": {"not": {"oneOf": [branch]}}})
     );
+
+    // Draft-07 `dependencies` maps a name to a subschema or to a list of names.
+    assert_eq!(
+        sent_input_schema(json!({
+            "type": "object",
+            "dependencies": {"x": {"$ref": "#/anyOf/0"}, "y": ["x"]},
+            "anyOf": [branch],
+        })),
+        json!({
+            "type": "object",
+            "dependencies": {"x": {"$ref": "#/not/not/anyOf/0"}, "y": ["x"]},
+            "not": {"not": {"anyOf": [branch]}},
+        })
+    );
 }
 
 /// A tool schema with no root combinator is sent as written, combinators
