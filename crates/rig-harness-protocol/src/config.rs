@@ -733,22 +733,23 @@ pub fn set_text(table: &mut dyn TableLike, key: &str, value: &str) -> bool {
 /// changed anything, keeping every comment and line it does not touch. One
 /// edit at a time, under a lock beside the file; the file is read again
 /// under it and replaced whole, so a reader never sees half of it. A
-/// symlinked file is written where it points. Nothing is written when
-/// `change` fails or changes nothing. Returns whether it wrote.
+/// symlinked file is written where its links lead, made there when missing,
+/// and the links stay. Nothing is written when `change` fails or changes
+/// nothing. Returns whether it wrote.
 ///
 /// # Errors
 ///
-/// When the file does not read as TOML, `change` fails, or it cannot be
-/// written, naming the file.
+/// When the file does not read as TOML, `change` fails, its links loop, or
+/// it cannot be written (a link into a missing folder), naming the file.
 pub fn edit<T, E: From<Error>>(
     path: &Path,
     change: impl FnOnce(&mut SettingsFile) -> Result<(bool, T), E>,
 ) -> Result<(bool, T), E> {
+    let target = linked(path)?;
     let named = |failure: std::io::Error| Error::Io {
-        path: path.to_path_buf(),
+        path: target.clone(),
         message: failure.to_string(),
     };
-    let target = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
     let (directory, name) = match (target.parent(), target.file_name()) {
         (Some(directory), Some(name)) => (directory, name.to_string_lossy()),
         _ => {
@@ -759,7 +760,10 @@ pub fn edit<T, E: From<Error>>(
             .into());
         }
     };
-    std::fs::create_dir_all(directory).map_err(named)?;
+    // Only the home's own folder is made; a link's folder is the user's.
+    if target == path {
+        std::fs::create_dir_all(directory).map_err(named)?;
+    }
     let lock = crate::lock_file(&directory.join(format!(".{name}.lock")), true).map_err(named)?;
     lock.lock().map_err(named)?;
     let mut file = SettingsFile::read(&target)?;
@@ -793,6 +797,34 @@ pub fn edit<T, E: From<Error>>(
         })?;
     }
     Ok((changed, value))
+}
+
+/// The file that writing `path` lands in: `path`, or where its chain of
+/// symlinks ends, each relative link read against its own folder. The target
+/// need not exist.
+///
+/// # Errors
+///
+/// When a link cannot be read, or the chain is longer than the kernel
+/// follows, naming `path`.
+fn linked(path: &Path) -> Result<PathBuf, Error> {
+    // Linux's own limit on links followed in one lookup.
+    const LINKS: usize = 40;
+    let named = |message: String| Error::Io {
+        path: path.to_path_buf(),
+        message,
+    };
+    let mut at = path.to_path_buf();
+    for _ in 0..=LINKS {
+        if !std::fs::symlink_metadata(&at).is_ok_and(|meta| meta.file_type().is_symlink()) {
+            return Ok(at);
+        }
+        let next = std::fs::read_link(&at).map_err(|failure| named(failure.to_string()))?;
+        at = at.parent().unwrap_or(Path::new("")).join(next);
+    }
+    Err(named(format!(
+        "more than {LINKS} links in a row, or a loop"
+    )))
 }
 
 #[cfg(test)]

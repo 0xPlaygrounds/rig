@@ -299,3 +299,86 @@ fn a_private_settings_file_is_never_staged_readable() {
     assert_eq!(mode(&fresh).ok(), mode(&outside).ok());
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// A link whose target does not exist yet is written through, absolute,
+/// relative or chained: the target is made and the link stays.
+#[cfg(unix)]
+#[test]
+fn an_edit_makes_a_dangling_link_target_and_keeps_the_link() {
+    use std::os::unix::fs::symlink;
+
+    let root = std::env::temp_dir().join(format!("rig-config-dangling-{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    let home = root.join("home");
+    let dotfiles = root.join("dotfiles");
+    assert!(std::fs::create_dir_all(&home).is_ok() && std::fs::create_dir_all(&dotfiles).is_ok());
+    let path = home.join("settings.toml");
+    let cases: [(&str, &dyn Fn(&Path) -> std::io::Result<()>); 3] = [
+        ("absolute", &|target| symlink(target, &path)),
+        ("relative", &|target| {
+            symlink(
+                Path::new("../dotfiles").join(target.file_name().unwrap_or_default()),
+                &path,
+            )
+        }),
+        ("chained", &|target| {
+            std::fs::remove_file(home.join("intermediate")).ok();
+            symlink(target, home.join("intermediate"))?;
+            symlink("intermediate", &path)
+        }),
+    ];
+    for (kind, link) in cases {
+        let target = dotfiles.join(format!("{kind}.toml"));
+        std::fs::remove_file(&path).ok();
+        assert!(link(&target).is_ok(), "{kind}");
+        let edited = edit(&path, |file| {
+            Ok::<_, Error>((set_on(&mut file.document, BUDGET, true, false), ()))
+        });
+        assert_eq!(edited, Ok((true, ())), "{kind}");
+        assert!(std::fs::read_link(&path).is_ok(), "{kind}: still a link");
+        let written = std::fs::read_to_string(&target).unwrap_or_default();
+        assert!(written.contains(BUDGET), "{kind}: {written}");
+    }
+    std::fs::remove_dir_all(&root).ok();
+}
+
+/// A link into a missing folder, or a loop of links, is refused naming
+/// where it fails, and the link stays.
+#[cfg(unix)]
+#[test]
+fn an_edit_refuses_a_link_it_cannot_write_through() {
+    use std::os::unix::fs::symlink;
+
+    let root = std::env::temp_dir().join(format!("rig-config-unwritable-{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    assert!(std::fs::create_dir_all(&root).is_ok());
+    let path = root.join("settings.toml");
+    let missing = root.join("no-folder").join("settings.toml");
+    let other = root.join("other.toml");
+    assert!(symlink(&missing, &path).is_ok());
+    let set = || {
+        edit(&path, |file| {
+            Ok::<_, Error>((set_on(&mut file.document, BUDGET, true, false), ()))
+        })
+        .err()
+        .map(|why| why.to_string())
+        .unwrap_or_default()
+    };
+    let refused = set();
+    assert!(
+        refused.starts_with(&format!("{}: ", missing.display())),
+        "{refused}"
+    );
+    assert!(!root.join("no-folder").exists(), "no folder made");
+    assert!(std::fs::read_link(&path).is_ok(), "still a link");
+
+    assert!(std::fs::remove_file(&path).is_ok());
+    assert!(symlink(&other, &path).is_ok() && symlink(&path, &other).is_ok());
+    let refused = set();
+    assert!(
+        refused.starts_with(&format!("{}: ", path.display())) && refused.contains("links"),
+        "{refused}"
+    );
+    assert!(std::fs::read_link(&path).is_ok(), "still a link");
+    std::fs::remove_dir_all(&root).ok();
+}
