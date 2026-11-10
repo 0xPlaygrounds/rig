@@ -1037,8 +1037,8 @@ exit 0";
 /// A home rig 0.46 left, with `plugins.toml` and `defaults.json` that
 /// `settings.toml` has no `[plugins]` or `[model]` for, is warned of once
 /// per run, a line per file naming the table its settings move to and
-/// MIGRATING.md, and its files are left as they are. A home whose settings cover them, and a
-/// fresh home, are not warned of.
+/// MIGRATING.md, and its files are left as they are. A home whose settings
+/// cover them, even with empty tables, and a fresh home, are not warned of.
 #[cfg(unix)]
 #[test]
 fn a_0_46_home_is_warned_of_once_per_run_and_left_as_it_is() {
@@ -1082,6 +1082,15 @@ fn a_0_46_home_is_warned_of_once_per_run_and_left_as_it_is() {
         .and_then(|()| fs::write(covered.settings(), settings));
     let starts = wrote.map_err(Into::into).and_then(|()| warned(&covered));
     fs::remove_dir_all(covered.root()).ok();
+    let starts = starts.map_err(|failure| failure.to_string());
+    assert_eq!(starts, Ok(vec![String::new(), String::new()]));
+
+    let empty = builds("legacy-empty", "", "");
+    let wrote = fs::write(empty.root().join("plugins.toml"), plugins)
+        .and_then(|()| fs::write(empty.root().join("defaults.json"), defaults))
+        .and_then(|()| fs::write(empty.settings(), "[plugins]\n\n[model]\n"));
+    let starts = wrote.map_err(Into::into).and_then(|()| warned(&empty));
+    fs::remove_dir_all(empty.root()).ok();
     let starts = starts.map_err(|failure| failure.to_string());
     assert_eq!(starts, Ok(vec![String::new(), String::new()]));
 
