@@ -529,3 +529,29 @@ fn the_chatgpt_body_sends_the_model_requested_model_reads() {
         assert_eq!(body["model"], json!(named), "{body}");
     }
 }
+
+/// A wire's `store` goes on every request, with the reasoning ciphertext a
+/// stateless request replays by, and a request's own `store` replaces it.
+#[test]
+fn a_wire_store_is_sent_unless_the_request_sets_its_own() {
+    use serde_json::json;
+    let wire = openai().with_store(false);
+    let body = encoded_body_of(&wire, prompt(), Mode::Unary);
+    assert_eq!(body["store"], json!(false), "{body}");
+    assert_eq!(
+        body["include"],
+        json!(["reasoning.encrypted_content"]),
+        "{body}"
+    );
+
+    let body = encoded_body_of(
+        &wire,
+        prompt().additional_params(json!({"store": true})),
+        Mode::Unary,
+    );
+    assert_eq!(body["store"], json!(true), "{body}");
+    assert!(body.get("include").is_none(), "{body}");
+
+    let body = encoded_body_of(&openai(), prompt(), Mode::Unary);
+    assert!(body.get("store").is_none(), "{body}");
+}
