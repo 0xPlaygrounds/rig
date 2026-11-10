@@ -246,6 +246,9 @@ fn base(
         &request.chat_history,
         takes_mid_conversation_system(&wire.facts, model),
     );
+    if let Some(instructions) = &wire.provider.instructions {
+        system.insert(0, text(instructions));
+    }
     let ids = WireIds::for_target(&history, wire, model);
     let mut messages: Vec<Value> = Vec::new();
     // How many wire messages the first `n` turns became, at `n`. System

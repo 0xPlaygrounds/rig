@@ -233,3 +233,35 @@ fn a_dialect_base_url_is_normalized() {
     assert_eq!(config.base_url, "https://gateway.example/anthropic");
     assert_eq!(messages_path(config), "/anthropic/v1/messages");
 }
+
+/// A config's instructions are the first `system` block of every request,
+/// ahead of the request's own system prompt, and the whole system prompt of
+/// a request without one. A config without them serializes without them.
+#[test]
+fn config_instructions_lead_every_system_prompt() {
+    use serde_json::json;
+    let wire = AnthropicConfig::new("sk-test")
+        .with_instructions("Be brief.")
+        .completion("claude-haiku-4-5");
+    let system = |request: CompletionRequest| {
+        let encoded = wire
+            .encode(request.max_tokens(64), Mode::Unary)
+            .expect("the request encodes");
+        crate::test_utils::json_body(&encoded.request)["system"].clone()
+    };
+    let instructions = json!({"type": "text", "text": "Be brief."});
+    assert_eq!(
+        system(CompletionRequest::new("hello").preamble("System prompt")),
+        json!([instructions, {"type": "text", "text": "System prompt"}])
+    );
+    assert_eq!(
+        system(CompletionRequest::new("hello")),
+        json!([instructions])
+    );
+
+    let saved =
+        serde_json::to_value(AnthropicConfig::new("sk-test")).expect("the config serializes");
+    assert!(saved.get("instructions").is_none(), "{saved}");
+    let read: AnthropicConfig = serde_json::from_value(saved).expect("the config reads");
+    assert_eq!(read.instructions, None);
+}
