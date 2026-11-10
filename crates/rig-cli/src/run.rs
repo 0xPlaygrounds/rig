@@ -334,9 +334,11 @@ fn launch(
         drop(watch);
         let reload = status.code() == Some(i32::from(RELOAD_EXIT_CODE)) && stop::heard().is_none();
         let restart = !headless || (answers_prompt && !directory.switch().exists());
-        // A reload after the launcher's file was replaced restarts on the
-        // new launcher, never the new agent under this one.
-        let replaced = reload && restart && installed.replaced(&Stamp::of(launcher));
+        // A view's reload after the launcher's file was replaced restarts on
+        // the new launcher, never the new agent under this one. A headless
+        // run carries on: its restart without its prompt is a reload's, and
+        // `/update` ends it instead.
+        let replaced = reload && restart && !headless && installed.replaced(&Stamp::of(launcher));
         screen |= run.screen().exists();
         // A reload that restarts leaves the jobs running, listed for the
         // next build to take over. Best effort: a list that cannot be read
@@ -351,28 +353,22 @@ fn launch(
             fs::remove_file(&trial)?;
         }
         if replaced {
-            let saved = home.session(&session).is_saved();
-            claimed.discard_if_unsaved(home);
-            // A headless run's restart carries on without its prompt only as
-            // a reload, which a new launcher's start is not: it ends here.
-            if headless {
-                let said = "rig was updated; the next run starts the new version.";
-                return Ok(Ended {
-                    said: Some(said.to_owned()),
-                    ..Ended::quiet(ExitCode::SUCCESS)
-                });
+            // The session the agent switched to, claimed as a switch claims
+            // it: one that cannot run leaves this one on, told why.
+            let mut said = None;
+            if let Some(target) = take_switch(&directory)? {
+                (claimed, said) = switch(home, claimed, target)?;
             }
-            let target = match take_switch(&directory)? {
-                Some(Start::Resume(target)) => Some(target),
-                Some(Start::New) => None,
-                None => saved.then_some(session),
-            };
-            let reexec = Reexec::new(
-                launcher,
-                target.as_ref().map(SessionId::as_str),
-                invocation.to_args(),
-            );
+            let resume = home
+                .session(&claimed.id)
+                .is_saved()
+                .then(|| claimed.id.clone());
+            let here = claimed.directory.clone();
+            claimed.discard_if_unsaved(home);
+            let resume = resume.as_ref().map(SessionId::as_str);
+            let reexec = Reexec::new(launcher, resume, invocation.to_args(), here);
             return Ok(Ended {
+                said,
                 reexec: Some(reexec),
                 ..Ended::quiet(ExitCode::SUCCESS).restoring(screen)
             });

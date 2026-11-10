@@ -248,8 +248,8 @@ fn a_failed_update_shows_what_rig_update_said() {
         Some(vec![
             "rig update: running update".to_owned(),
             said.to_owned(),
-            "The update failed (exit status: 1): error: could not find `rig-cli` in registry; \
-             this rig keeps running."
+            "The update failed: error: could not find `rig-cli` in registry; this rig keeps \
+             running."
                 .to_owned(),
         ])
     );
@@ -260,4 +260,54 @@ fn a_failed_update_shows_what_rig_update_said() {
             && !note.contains("build.log")
     }));
     assert_eq!(model.request_count(), 0);
+}
+
+/// The exits asked for.
+#[derive(Resource, Default)]
+struct Exits(Vec<ExitReason>);
+
+/// A `/update` that succeeds in a run nobody sits at quits, as any run
+/// ends, rather than reload: the new launcher starts with the next run.
+#[test]
+fn a_headless_update_quits_instead_of_reloading() {
+    use rig_harness::host::launcher::Invoked;
+    use rig_harness_test_support::{MemoryStore, app_on, run_until};
+
+    use crate::reload::ReloadPlugin;
+
+    let launcher = failing_launcher("headless-update", "");
+    let script = "#!/bin/sh\necho 'rig update: installed. Building the agent' >&2\nexit 0\n";
+    std::fs::write(&launcher, script).ok();
+    let (mut app, wakes) = app_on(&MemoryStore::default());
+    app.insert_resource(Invoked {
+        args: harness_protocol::Invocation {
+            print: Some("/update".to_owned()),
+            ..Default::default()
+        },
+        terminal: false,
+    })
+    .add_plugins((AgentPlugin, SessionLogPlugin, ReloadPlugin))
+    .init_resource::<Exits>()
+    .add_observer(|exit: On<Exit>, mut exits: ResMut<Exits>| {
+        exits.0.push(exit.0.clone());
+    });
+    app.finish();
+    app.update();
+    let wake = app.world().resource::<Wake>().clone();
+    let build = ReloadBuild::start(
+        launcher.as_os_str(),
+        Rebuild::Update,
+        Entity::PLACEHOLDER,
+        wake,
+    );
+    if let Ok(build) = build {
+        app.insert_resource(build);
+        *app.world_mut().resource_mut::<ReloadStatus>() = ReloadStatus::Building { latest: None };
+    }
+    let exited = |world: &World| !world.resource::<Exits>().0.is_empty();
+    run_until(&mut app, &wakes, exited);
+    if let Some(dir) = launcher.parent() {
+        std::fs::remove_dir_all(dir).ok();
+    }
+    assert_eq!(app.world().resource::<Exits>().0, [ExitReason::Quit]);
 }

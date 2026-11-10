@@ -8,6 +8,7 @@ use std::sync::{Mutex, PoisonError};
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 use rig_harness::harness_protocol;
 use rig_harness::harness_protocol::{UPDATE_INSTALLED, UPDATE_SAYS, first_errors, without_secrets};
+use rig_harness::host::launcher::Invoked;
 use rig_harness::prelude::*;
 use rig_tools::process::{Process, STOP_GRACE};
 
@@ -177,6 +178,7 @@ fn start_queued_reload(
 /// build ready.
 fn drain_reload(
     build: Option<ResMut<ReloadBuild>>,
+    invoked: Option<Res<Invoked>>,
     mut status: ResMut<ReloadStatus>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -229,8 +231,15 @@ fn drain_reload(
     commands.remove_resource::<ReloadBuild>();
     if exit.success() {
         *status = ReloadStatus::Ready;
+        // A run nobody sits at ends as any run does, its last line written,
+        // rather than restart on the new launcher without its prompt.
+        let headless = invoked.is_some_and(|invoked| !invoked.interactive());
         let ready = match build.rebuild {
             Rebuild::Build => "Build ready; restarting.",
+            Rebuild::Update if headless => {
+                commands.insert_resource(EndAfterUpdate);
+                "rig updated; the next run starts the new version."
+            }
             Rebuild::Update => "rig updated; restarting on the new rig.",
         };
         notices.write(Notice::info(None, ready));
@@ -242,11 +251,14 @@ fn drain_reload(
         .map(|line| format!(": {}", line.trim()))
         .unwrap_or_default();
     if build.rebuild == Rebuild::Update && !build.installed() {
-        // Before any build: cargo's error, not the build log, says why.
-        notices.write(Notice::error(
-            None,
-            format!("The update failed ({exit}){first}; this rig keeps running."),
-        ));
+        // Before any build: cargo's error, not the build log, says why;
+        // without one, `rig update`'s own line said it already.
+        if !first.is_empty() {
+            notices.write(Notice::error(
+                None,
+                format!("The update failed{first}; this rig keeps running."),
+            ));
+        }
         let text = format!(
             "Updating rig (/update) failed before it was installed; this rig keeps \
              running.\n\n`rig update` exited with {exit}. Its output from the first error:\n{}",
@@ -278,16 +290,26 @@ fn drain_reload(
     launcher::inform_build_failure(&mut commands, build.agent, text);
 }
 
+/// An update of a headless run succeeded: it quits instead of reloading.
+#[derive(Resource)]
+struct EndAfterUpdate;
+
 /// Exits to reload once the build is ready and no turn runs, at most once.
 fn finish_reload(
     status: Res<ReloadStatus>,
+    end: Option<Res<EndAfterUpdate>>,
     turns: Query<(), With<TurnOf>>,
     mut exiting: Local<bool>,
     mut commands: Commands,
 ) {
     if !*exiting && *status == ReloadStatus::Ready && turns.is_empty() {
         *exiting = true;
-        commands.trigger(Exit(ExitReason::Reload));
+        let reason = if end.is_some() {
+            ExitReason::Quit
+        } else {
+            ExitReason::Reload
+        };
+        commands.trigger(Exit(reason));
     }
 }
 

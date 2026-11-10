@@ -112,7 +112,7 @@ fn the_stamp_changes_only_when_the_launcher_is_replaced() {
 fn a_reexec_resumes_a_saved_session_with_the_same_arguments() {
     let args = vec![OsString::from("--model"), OsString::from("ollama/qwen3")];
     let launcher = Path::new("/opt/rig/bin/rig");
-    let saved = Reexec::new(launcher, Some("1-2"), args.clone());
+    let saved = Reexec::new(launcher, Some("1-2"), args.clone(), None);
     assert_eq!(saved.args, ["--resume", "1-2", "--model", "ollama/qwen3"]);
-    assert_eq!(Reexec::new(launcher, None, args.clone()).args, args);
+    assert_eq!(Reexec::new(launcher, None, args.clone(), None).args, args);
 }

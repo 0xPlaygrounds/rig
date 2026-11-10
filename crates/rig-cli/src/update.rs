@@ -183,17 +183,24 @@ impl Stamp {
 pub struct Reexec {
     launcher: PathBuf,
     args: Vec<OsString>,
+    directory: Option<PathBuf>,
 }
 
 impl Reexec {
     /// The launcher at `launcher` with `args`, the command line's own,
     /// which never name a session: resuming `session`, or starting a new
-    /// one when it is `None`.
-    pub fn new(launcher: &Path, session: Option<&str>, args: Vec<OsString>) -> Self {
+    /// one when it is `None`, in `directory` when given.
+    pub fn new(
+        launcher: &Path,
+        session: Option<&str>,
+        args: Vec<OsString>,
+        directory: Option<PathBuf>,
+    ) -> Self {
         let resume = session.map(|session| ["--resume".into(), session.into()]);
         Self {
             launcher: launcher.to_path_buf(),
             args: resume.into_iter().flatten().chain(args).collect(),
+            directory,
         }
     }
 
@@ -204,6 +211,9 @@ impl Reexec {
         eprintln!("rig was updated; restarting on the new launcher.");
         let mut command = Command::new(&self.launcher);
         command.args(&self.args);
+        if let Some(directory) = &self.directory {
+            command.current_dir(directory);
+        }
         #[cfg(unix)]
         {
             let failure = std::os::unix::process::CommandExt::exec(&mut command);
