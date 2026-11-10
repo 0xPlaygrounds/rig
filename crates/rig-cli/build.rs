@@ -1,6 +1,7 @@
-//! Sets `RIG_LONG_VERSION`: the package version, and the short commit when
-//! the launcher is built in a rig checkout, as `0.46.0 (b1321662b)`. A
-//! crates.io package has no checkout, so it gets the version alone.
+//! Sets `RIG_COMMIT`, the short commit when the launcher is built in a rig
+//! checkout (else empty), and `RIG_LONG_VERSION`: the package version with
+//! that commit, as `0.46.0 (b1321662b)`. A crates.io package has no
+//! checkout, so it gets the version alone.
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -20,10 +21,11 @@ fn main() {
         let text = String::from_utf8(output.stdout).ok()?;
         output.status.success().then(|| text.trim().to_owned())
     };
-    // Only a repository rooted at the checkout counts, not one the package
-    // was unpacked inside, such as a home directory under git.
+    // Only a rig checkout's own repository counts, not one the package was
+    // unpacked inside, such as a home directory under git.
     let root = git(&["rev-parse", "--show-toplevel"]).map(PathBuf::from);
-    let own = root.is_some_and(|root| root.canonicalize().ok() == checkout.canonicalize().ok());
+    let own = checkout.join("crates/rig-harness/Cargo.toml").is_file()
+        && root.is_some_and(|root| root.canonicalize().ok() == checkout.canonicalize().ok());
     let commit = own
         .then(|| git(&["rev-parse", "--short=9", "HEAD"]))
         .flatten();
@@ -52,9 +54,10 @@ fn main() {
             println!("cargo::rerun-if-changed={}", path.display());
         }
     }
-    let long = match commit {
+    let long = match &commit {
         Some(commit) => format!("{version} ({commit})"),
         None => version,
     };
+    println!("cargo::rustc-env=RIG_COMMIT={}", commit.unwrap_or_default());
     println!("cargo::rustc-env=RIG_LONG_VERSION={long}");
 }

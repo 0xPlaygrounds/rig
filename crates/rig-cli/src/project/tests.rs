@@ -208,7 +208,8 @@ fn a_crate_of_another_rig_checkout_by_path_is_refused() {
 
 /// The project's `Cargo.lock` starts from the checkout's, and again
 /// whenever the checkout's changes, such as after a pull or a switch to
-/// another checkout; between those it keeps what cargo resolved.
+/// another checkout, or a start from crates.io came between; otherwise it
+/// keeps what cargo resolved.
 #[test]
 fn the_lock_is_seeded_again_when_the_checkouts_changes() {
     let root = std::env::temp_dir().join(format!("rig-lock-{}", std::process::id()));
@@ -228,26 +229,29 @@ fn the_lock_is_seeded_again_when_the_checkouts_changes() {
     fs::write(&lock, "first, resolved").ok();
     let kept = generated("first");
     let pulled = generated("pulled");
+    // A start from crates.io in between resolves the lock to its graph.
+    let registry = generate(&home, &only(&[]), &RigSource::Registry).map_err(|why| why.to_string());
+    fs::write(&lock, "crates.io's").ok();
+    let back = generated("pulled");
     fs::remove_dir_all(&root).ok();
     assert_eq!(first.as_deref(), Ok("first"));
     assert_eq!(kept.as_deref(), Ok("first, resolved"));
     assert_eq!(pulled.as_deref(), Ok("pulled"));
+    assert_eq!(registry, Ok(()));
+    assert_eq!(back.as_deref(), Ok("pulled"));
 }
 
 /// A launcher built from a commit of a checkout that is gone builds no
 /// agent from crates.io, whose release is other code; it says what to do.
 #[test]
 fn a_launcher_from_a_commit_does_not_build_from_crates_io() {
-    let commit = format!("{VERSION} (b1321662b)");
-    assert!(RigSource::Registry.check(VERSION).is_ok());
-    assert!(RigSource::Local(checkout()).check(&commit).is_ok());
-    let refused = RigSource::Registry
-        .check(&commit)
-        .err()
-        .map(|why| why.to_string());
-    let refused = refused.unwrap_or_default();
+    // No commit: a crates.io package, whatever its version.
+    assert!(RigSource::Registry.check("").is_ok());
+    assert!(RigSource::Local(checkout()).check("b1321662b").is_ok());
+    let refused = RigSource::Registry.check("b1321662b").err();
+    let refused = refused.map(|why| why.to_string()).unwrap_or_default();
     assert!(
-        refused.contains(&commit) && refused.contains("cargo install --path"),
+        refused.contains(LONG_VERSION) && refused.contains("cargo install --path"),
         "{refused}"
     );
     assert_eq!(refused.lines().count(), 1, "{refused}");

@@ -30,6 +30,10 @@ pub use rig_harness_protocol::{BEVY_VERSION, VERSION};
 /// gets it as [`env::VERSION`](rig_harness_protocol::env::VERSION).
 pub const LONG_VERSION: &str = env!("RIG_LONG_VERSION");
 
+/// The commit the launcher was built from, when built in a rig checkout;
+/// else empty (`build.rs`).
+pub const COMMIT: &str = env!("RIG_COMMIT");
+
 /// Every launcher failure is reported to the user as its message.
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
