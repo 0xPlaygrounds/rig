@@ -475,7 +475,8 @@ fn root_unevaluated_keywords_go_under_the_double_not_with_what_they_read() {
 /// A local JSON Pointer reference into a keyword that moves under the
 /// double `not` follows it there. One into a keyword that stays, or inside
 /// a subschema with its own `$id`, which pointers resolve against, and a
-/// `$ref` key in data such as a `const` are left as written.
+/// `$ref` key in data such as a `const` are left as written; a property
+/// named `const` is a schema.
 #[test]
 fn pointer_references_into_moved_keywords_follow_them() {
     let branch = json!({"properties": {"a": {"type": "string"}}, "required": ["a"]});
@@ -489,6 +490,7 @@ fn pointer_references_into_moved_keywords_follow_them() {
                 "a": {"$ref": "#/anyOf/0/properties/a"},
                 "id": {"$ref": "#/$defs/Id"},
                 "literal": literal,
+                "const": {"$ref": "#/anyOf/0/properties/a"},
             },
             "anyOf": [branch, {"required": ["b"]}],
         })),
@@ -499,6 +501,7 @@ fn pointer_references_into_moved_keywords_follow_them() {
                 "a": {"$ref": "#/not/not/anyOf/0/properties/a"},
                 "id": {"$ref": "#/$defs/Id"},
                 "literal": literal,
+                "const": {"$ref": "#/not/not/anyOf/0/properties/a"},
             },
             "not": {"not": {"anyOf": [branch, {"required": ["b"]}]}},
         })
