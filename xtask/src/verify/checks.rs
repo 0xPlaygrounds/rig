@@ -35,7 +35,7 @@ fn cargo(args: &[&str]) -> Step {
 /// The rig agent's packages, none of them a default member: the kernel,
 /// the core and its libraries, the launcher, every plugin crate of
 /// `plugins/`, and their test support.
-pub(crate) const HARNESS_PACKAGES: [&str; 16] = [
+pub(crate) const HARNESS_PACKAGES: &[&str] = &[
     "rig-ecs",
     "rig-tools",
     "rig-markdown",
@@ -65,7 +65,7 @@ pub(crate) const CORPUS_PACKAGES: &str = "corpus-*";
 /// [`CORPUS_PACKAGES`], then `tail`.
 fn harness(head: &[&str], tail: &[&str]) -> Step {
     let mut args = head.to_vec();
-    for package in HARNESS_PACKAGES.into_iter().chain([CORPUS_PACKAGES]) {
+    for package in HARNESS_PACKAGES.iter().copied().chain([CORPUS_PACKAGES]) {
         args.extend(["-p", package]);
     }
     args.extend(tail);
