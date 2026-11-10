@@ -1036,8 +1036,8 @@ exit 0";
 
 /// A home rig 0.46 left, with `plugins.toml` and `defaults.json` that
 /// `settings.toml` has no `[plugins]` or `[model]` for, is warned of once
-/// per run, a line per file naming where its settings go now, and its
-/// files are left as they are. A home whose settings cover them, and a
+/// per run, a line per file naming the table its settings move to and
+/// MIGRATING.md, and its files are left as they are. A home whose settings cover them, and a
 /// fresh home, are not warned of.
 #[cfg(unix)]
 #[test]
@@ -1064,8 +1064,11 @@ fn a_0_46_home_is_warned_of_once_per_run_and_left_as_it_is() {
         assert!(
             lines
                 .iter()
-                .any(|line| line.contains(file) && line.contains(table)),
-            "no warning names {file} and {table}: {lines:?}"
+                .any(|line| line.starts_with("rig no longer reads ")
+                    && line.contains(file)
+                    && line.contains(table)
+                    && line.contains("MIGRATING.md")),
+            "no warning names {file}, {table} and MIGRATING.md: {lines:?}"
         );
     }
     let again = starts.as_ref().ok().and_then(|starts| starts.get(1));

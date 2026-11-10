@@ -191,26 +191,15 @@ fn legacy_warnings(home: &Home) -> Vec<String> {
         return Vec::new();
     };
     [
-        (
-            "plugins.toml",
-            "plugins",
-            "plugin list goes",
-            "`enable` and `disable` for rig's plugins, [[plugins.extra]] for other crates; \
-             `rig plugin list` shows what is on",
-        ),
-        (
-            "defaults.json",
-            "model",
-            "model and effort go",
-            "`default` and `effort`",
-        ),
+        ("plugins.toml", "plugin list", "plugins"),
+        ("defaults.json", "model and effort", "model"),
     ]
     .into_iter()
-    .filter(|(old, table, ..)| home.root().join(old).exists() && !file.document.contains_key(table))
-    .map(|(old, table, what, keys)| {
+    .filter(|(old, _, table)| home.root().join(old).exists() && !file.document.contains_key(table))
+    .map(|(old, what, table)| {
         format!(
-            "{} is from rig 0.46 or earlier and rig no longer reads it: its {what} in \
-             [{table}] of {} now ({keys}). rig leaves the file as it is.",
+            "rig no longer reads {}. Move its {what} to [{table}] in {} (see MIGRATING.md). \
+             The file was not changed.",
             home.root().join(old).display(),
             settings.display(),
         )
