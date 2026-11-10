@@ -92,11 +92,24 @@ pub mod env {
     /// Why the launcher started the agent: a
     /// [`StartReason`](super::StartReason), as text.
     pub const START: &str = "RIG_START";
+    /// The [`Stamp`](super::Stamp) of the launcher's own file when it
+    /// started, as [`Stamp::text`](super::Stamp::text) writes it: the
+    /// agent tells from it whether the launcher was replaced since.
+    pub const LAUNCHER_STAMP: &str = "RIG_LAUNCHER_STAMP";
     /// What the launcher tells the agent it runs, and only that agent: a
     /// command the agent runs, such as a nested agent while working on
     /// rig-harness itself, must not act as this agent. Without [`SESSION`]
     /// a nested agent ignores the [`LAUNCHER`] it inherits.
-    pub const AGENT_ONLY: &[&str] = &[SESSION, VERSION, NOTICE, WARNING, BUILD_FAILURE, RUN, START];
+    pub const AGENT_ONLY: &[&str] = &[
+        SESSION,
+        VERSION,
+        NOTICE,
+        WARNING,
+        BUILD_FAILURE,
+        RUN,
+        START,
+        LAUNCHER_STAMP,
+    ];
     /// On every process the agent starts for its tools: the path of the
     /// launcher's [`RunDir::groups`](super::RunDir::groups), which the
     /// launcher finds on a listed group's leader before it kills the
@@ -131,6 +144,58 @@ pub fn long_version() -> String {
         .ok()
         .filter(|version| !version.is_empty())
         .unwrap_or_else(|| VERSION.to_owned())
+}
+
+/// Which file a path names, to tell when it was replaced, such as the
+/// launcher's own by `rig update`: a file renamed
+/// over it, as `cargo install` does, has another inode and modification
+/// time. A file that cannot be read has none.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Stamp(Option<(SystemTime, u64)>);
+
+impl Stamp {
+    /// Whether the file is another than at `now`. A file gone, or never
+    /// read, was not replaced: only a new file at the path is a new launcher.
+    pub fn replaced(&self, now: &Stamp) -> bool {
+        matches!((&self.0, &now.0), (Some(then), Some(now)) if then != now)
+    }
+
+    /// The stamp as text, `<seconds>.<nanoseconds>:<identity>` of its
+    /// modification time since the Unix epoch; empty for none.
+    pub fn text(&self) -> String {
+        self.0
+            .and_then(|(modified, identity)| {
+                let since = modified.duration_since(UNIX_EPOCH).ok()?;
+                Some(format!(
+                    "{}.{}:{identity}",
+                    since.as_secs(),
+                    since.subsec_nanos()
+                ))
+            })
+            .unwrap_or_default()
+    }
+
+    /// The stamp [`Self::text`] wrote; none for text it did not write.
+    pub fn parse(text: &str) -> Self {
+        let read = || {
+            let (time, identity) = text.split_once(':')?;
+            let (seconds, nanos) = time.split_once('.')?;
+            let since = Duration::new(seconds.parse().ok()?, nanos.parse().ok()?);
+            Some((UNIX_EPOCH.checked_add(since)?, identity.parse().ok()?))
+        };
+        Self(read())
+    }
+
+    /// The stamp of the file at `path` now.
+    pub fn of(path: &Path) -> Self {
+        Self(std::fs::metadata(path).ok().and_then(|metadata| {
+            #[cfg(unix)]
+            let identity = std::os::unix::fs::MetadataExt::ino(&metadata);
+            #[cfg(not(unix))]
+            let identity = metadata.len();
+            Some((metadata.modified().ok()?, identity))
+        }))
+    }
 }
 
 /// The variable that carries the secret `name`: [`env::SECRET_PREFIX`]
@@ -1181,8 +1246,16 @@ pub fn is_name(name: &str) -> bool {
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
+/// How `rig update` starts each line that says what it does, such as the
+/// command it runs; `/update` shows each.
+pub const UPDATE_SAYS: &str = "rig update: ";
+
+/// The line `rig update` starts with once the new launcher is installed,
+/// before it builds the agent: a failure after it is the build's.
+pub const UPDATE_INSTALLED: &str = "rig update: installed.";
+
 /// The launcher's own first words, which no plugin's command may take.
-pub const RESERVED_COMMANDS: &[&str] = &["build", "plugin", "help", "help-agents"];
+pub const RESERVED_COMMANDS: &[&str] = &["build", "update", "plugin", "help", "help-agents"];
 
 /// The first line of a [`AgentDescription`] report.
 const DESCRIBED_HEADER: &str = "rig-describe 1";

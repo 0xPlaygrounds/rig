@@ -6,7 +6,7 @@
 //! worked. It uses std, and libc on unix (ctrlc elsewhere) to stop its build
 //! and to pass a signal on to its agent and wait for it, when told to end.
 //!
-//! Its own first words (`build`, `plugin`, `help`, `help-agents`,
+//! Its own first words (`build`, `update`, `plugin`, `help`, `help-agents`,
 //! `--version`) are read before the build; the rest of the command line,
 //! `--resume` included, once the agent is built, against the commands and
 //! options its plugins add (`rig help` lists them).
@@ -16,6 +16,7 @@ mod locks;
 mod plugin;
 mod project;
 mod run;
+mod update;
 
 use std::process::ExitCode;
 
@@ -39,7 +40,7 @@ pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 const USAGE: &str = "\
 Usage: rig [-r <id|name>] [options] [-p prompt…] | rig [options] <command> [args…]
-       | rig build | rig plugin <command> | rig help [command]
+       | rig build | rig update | rig plugin <command> | rig help [command]
 
 Headless, for scripts and agents: `rig -p \"task\"` answers and exits,
 `rig -p --json \"task\"` writes JSON lines, `rig --json` takes requests on
@@ -53,6 +54,10 @@ stdin; `rig help-agents` says how.
                          on, so turning one on or off rebuilds it: only the
                          generated crate compiles again, and a plugin's own
                          crate the first time it is on.
+  rig update             Reinstall rig with `cargo install --force`, from
+                         crates.io, or from the checkout it was installed
+                         from as it is now, then build the agent with it.
+                         It says the command first. In the agent, /update.
   rig help [command]     This text, or what a command does.
   rig help-agents        How a script or another agent drives rig headless,
                          over its stdin and stdout (-p, --json).
@@ -97,6 +102,7 @@ fn main() -> ExitCode {
         .as_slice()
     {
         ["build"] => build::build(&home).map(|()| ExitCode::SUCCESS),
+        ["update"] => Ok(update::update()),
         ["plugin", command @ ..] => plugin::run(&home, command),
         ["help" | "--help" | "-h"] => {
             print!(
@@ -134,7 +140,7 @@ fn plugin_usage(home: &Home) -> String {
 /// command the last build has not.
 fn help(home: &Home, command: &str) -> ExitCode {
     match command {
-        "build" | "help" => print!("{USAGE}"),
+        "build" | "help" | "update" => print!("{USAGE}"),
         "help-agents" => print!("{AGENTS}"),
         "plugin" => print!("{PLUGIN_USAGE}"),
         command => {

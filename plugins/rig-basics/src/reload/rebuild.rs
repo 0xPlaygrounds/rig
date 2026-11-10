@@ -7,11 +7,12 @@ use std::sync::{Mutex, PoisonError};
 
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 use rig_harness::harness_protocol;
-use rig_harness::harness_protocol::{first_errors, without_secrets};
+use rig_harness::harness_protocol::{UPDATE_INSTALLED, UPDATE_SAYS, first_errors, without_secrets};
+use rig_harness::host::launcher::Invoked;
 use rig_harness::prelude::*;
 use rig_tools::process::{Process, STOP_GRACE};
 
-use crate::reload::ReloadStatus;
+use crate::reload::{LauncherFile, Rebuild, ReloadStatus};
 
 /// Lines of a failed build in the note to the model, from its first error.
 const MESSAGE_LINES: usize = 40;
@@ -30,14 +31,28 @@ pub(crate) fn stop(commands: &mut Commands) {
     commands.remove_resource::<ReloadBuild>();
 }
 
+/// What a cancel of `build` says: an update cancelled once the new rig is
+/// installed leaves it there, for the next start or reload.
+pub(crate) fn cancelled(build: Option<&ReloadBuild>) -> &'static str {
+    match build {
+        Some(build) if build.installed() => {
+            "Update cancelled during the agent build: the new rig is installed, and the \
+             next start or /reload runs it."
+        }
+        Some(build) if build.rebuild == Rebuild::Update => "Update cancelled.",
+        _ => "Rebuild cancelled.",
+    }
+}
+
 /// The rebuild's process. Dropping it while the build runs stops the
 /// build, as the app's runner does when it drops the app on exit.
 #[derive(Resource)]
-struct ReloadBuild {
+pub(crate) struct ReloadBuild {
     /// In a mutex only to be `Sync`, as a resource is.
     process: Mutex<Process>,
     /// The agent that asked, whose model is told when the build fails.
     agent: Entity,
+    rebuild: Rebuild,
     lines: Receiver<String>,
     /// This build's output so far. Not read back from the build log, which
     /// a build queued behind this one, or an older one when this one fails
@@ -46,10 +61,15 @@ struct ReloadBuild {
 }
 
 impl ReloadBuild {
-    fn start(launcher: &std::ffi::OsStr, agent: Entity, wake: Wake) -> std::io::Result<Self> {
+    fn start(
+        launcher: &std::ffi::OsStr,
+        rebuild: Rebuild,
+        agent: Entity,
+        wake: Wake,
+    ) -> std::io::Result<Self> {
         let mut command = Command::new(launcher);
         command
-            .arg("build")
+            .arg(rebuild.command())
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::piped());
@@ -67,9 +87,18 @@ impl ReloadBuild {
         Ok(Self {
             process: Mutex::new(process),
             agent,
+            rebuild,
             lines,
             output: Vec::new(),
         })
+    }
+
+    /// Whether `rig update` installed the new launcher, and so a failure
+    /// is its agent build's.
+    fn installed(&self) -> bool {
+        self.output
+            .iter()
+            .any(|line| line.starts_with(UPDATE_INSTALLED))
     }
 
     /// At most `count` lines of the output from the first error on, or its
@@ -119,7 +148,7 @@ fn start_queued_reload(
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let ReloadStatus::Queued { agent } = *status else {
+    let ReloadStatus::Queued { agent, rebuild } = *status else {
         return;
     };
     if !turns.is_empty() {
@@ -129,11 +158,16 @@ fn start_queued_reload(
     let Some(launcher) = harness_protocol::launcher() else {
         return;
     };
-    let notice = match ReloadBuild::start(&launcher, agent, wake.clone()) {
+    let notice = match ReloadBuild::start(&launcher, rebuild, agent, wake.clone()) {
         Ok(build) => {
             commands.insert_resource(build);
             *status = ReloadStatus::Building { latest: None };
-            "Rebuilding the agent…".to_owned()
+            match rebuild {
+                Rebuild::Build => "Rebuilding the agent…".to_owned(),
+                Rebuild::Update => "Updating rig with `rig update`, then building the agent \
+                                    with it; after a change this takes 2-3 minutes…"
+                    .to_owned(),
+            }
         }
         Err(failure) => format!("Could not start the rebuild: {failure}"),
     };
@@ -144,6 +178,7 @@ fn start_queued_reload(
 /// build ready.
 fn drain_reload(
     build: Option<ResMut<ReloadBuild>>,
+    (invoked, launcher): (Option<Res<Invoked>>, Option<Res<LauncherFile>>),
     mut status: ResMut<ReloadStatus>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -157,6 +192,10 @@ fn drain_reload(
     let ended = loop {
         match build.lines.try_recv() {
             Ok(line) if line.trim().is_empty() => {}
+            Ok(line) if line.starts_with(UPDATE_SAYS) => {
+                notices.write(Notice::info(None, line.trim_end()));
+                build.output.push(line);
+            }
             Ok(line) => {
                 // Without the source path cargo appends, so it fits the
                 // status line: `Compiling serde v1.0.228`.
@@ -191,17 +230,62 @@ fn drain_reload(
     };
     commands.remove_resource::<ReloadBuild>();
     if exit.success() {
+        // Only this launcher restarts a run nobody sits at without its
+        // prompt, and only with its own build: once the launcher was
+        // replaced, the run does not reload and goes on, or ends, as any
+        // run does, its last line written.
+        let headless = invoked.is_some_and(|invoked| !invoked.interactive());
+        if headless && launcher.is_some_and(|launcher| launcher.replaced()) {
+            *status = ReloadStatus::Idle;
+            // A warning reaches a `-p` run's stderr whatever its prompt.
+            notices.write(match build.rebuild {
+                Rebuild::Build => Notice::warn(
+                    None,
+                    "rig was replaced since this run started, so it does not reload; the next \
+                     run starts the new version.",
+                ),
+                Rebuild::Update => {
+                    Notice::info(None, "rig updated; the next run starts the new version.")
+                }
+            });
+            return;
+        }
         *status = ReloadStatus::Ready;
-        notices.write(Notice::info(None, "Build ready; restarting."));
+        let ready = match build.rebuild {
+            Rebuild::Build => "Build ready; restarting.",
+            Rebuild::Update => "rig updated; restarting on the new rig.",
+        };
+        notices.write(Notice::info(None, ready));
         return;
     }
     *status = ReloadStatus::Failed;
-    // The notice is the one log line: the whole output is in the build log
-    // it names.
     let first = first_errors(build.output.iter().map(String::as_str), 1)
         .first()
         .map(|line| format!(": {}", line.trim()))
         .unwrap_or_default();
+    if build.rebuild == Rebuild::Update && !build.installed() {
+        // Before any build: cargo's error, not the build log, says why;
+        // without one, `rig update`'s own line said it already.
+        if !first.is_empty() {
+            notices.write(Notice::error(
+                None,
+                format!("The update failed{first}; this rig keeps running."),
+            ));
+        }
+        let text = format!(
+            "Updating rig (/update) failed before it was installed; this rig keeps \
+             running.\n\n`rig update` exited with {exit}. Its output from the first error:\n{}",
+            build.errors(MESSAGE_LINES)
+        );
+        launcher::inform_build_failure(&mut commands, build.agent, text);
+        return;
+    }
+    let (what, command) = match build.rebuild {
+        Rebuild::Build => ("/reload", "rig build"),
+        Rebuild::Update => ("/update", "rig update"),
+    };
+    // The notice is the one log line: the whole output is in the build log
+    // it names.
     notices.write(Notice::error(
         None,
         format!(
@@ -210,9 +294,9 @@ fn drain_reload(
         ),
     ));
     let text = launcher::build_failure_message(
-        "/reload",
+        what,
         &format!(
-            "`rig build` exited with {exit}. Its output from the first error:\n{}",
+            "`{command}` exited with {exit}. Its output from the first error:\n{}",
             build.errors(MESSAGE_LINES)
         ),
     );

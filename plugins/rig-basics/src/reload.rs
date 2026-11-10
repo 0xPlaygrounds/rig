@@ -14,6 +14,11 @@
 //! in `RIG_HOME/build.log`. The launcher rolls back a new build that fails to
 //! start. A run nobody sits at (`--print`) waits for a reload too.
 //!
+//! `/update` reinstalls rig through the launcher's `rig update`, which says
+//! the command it runs and builds the agent with the new launcher, then
+//! restarts the same way; the launcher, whose own file was replaced, starts
+//! the new one on the same session.
+//!
 //! [`PluginsPlugin`](plugins::PluginsPlugin) adds `/plugins`, which turns plugins on and
 //! off in `settings.toml` and reloads.
 
@@ -26,7 +31,7 @@ mod rebuild;
 #[cfg(feature = "tui")]
 mod status;
 
-/// `/reload`, the rebuild in flight and the restart.
+/// `/reload` and `/update`, the rebuild in flight and the restart.
 #[derive(Default)]
 pub struct ReloadPlugin;
 
@@ -38,9 +43,22 @@ impl Plugin for ReloadPlugin {
              turn runs; `/reload cancel` cancels",
             reload,
         )
+        .add_command(
+            "update",
+            "Reinstall rig with cargo (from crates.io, or the checkout it was installed from), \
+             build the agent with it and restart once no turn runs; `/update cancel` cancels",
+            update,
+        )
         .init_resource::<ReloadStatus>()
         .add_observer(on_cancel_reload)
         .add_observer(cancel_on_interrupt);
+        if let Some(launcher) = harness_protocol::launcher()
+            && !app.world().contains_resource::<LauncherFile>()
+        {
+            let started = std::env::var(harness_protocol::env::LAUNCHER_STAMP).unwrap_or_default();
+            let started = harness_protocol::Stamp::parse(&started);
+            app.insert_resource(LauncherFile::new(launcher.into(), started));
+        }
         hold::add(app);
         rebuild::add(app);
         #[cfg(feature = "tui")]
@@ -55,12 +73,14 @@ pub enum ReloadStatus {
     /// No reload was asked for.
     #[default]
     Idle,
-    /// Asked for by `/reload` or a plugin, for `agent`, whose model is
-    /// told when the build fails: the build starts once no turn runs.
-    /// `/reload cancel` or [`CancelReload`] drops it.
+    /// Asked for by `/reload`, `/update` or a plugin, for `agent`, whose
+    /// model is told when the build fails: the build starts once no turn
+    /// runs. `/reload cancel` or [`CancelReload`] drops it.
     Queued {
         /// The agent that asked.
         agent: Entity,
+        /// What runs before the restart.
+        rebuild: Rebuild,
     },
     /// The build runs.
     Building {
@@ -75,13 +95,34 @@ pub enum ReloadStatus {
     Failed,
 }
 
+/// What a reload runs through the launcher before it restarts.
+#[derive(Reflect, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[reflect(Clone, Debug, Default, PartialEq)]
+pub enum Rebuild {
+    /// `rig build`: the agent with the plugins `settings.toml` turns on.
+    #[default]
+    Build,
+    /// `rig update`: rig reinstalled, then the agent built with it.
+    Update,
+}
+
+impl Rebuild {
+    /// The launcher's command for it.
+    fn command(self) -> &'static str {
+        match self {
+            Rebuild::Build => "build",
+            Rebuild::Update => "update",
+        }
+    }
+}
+
 impl ReloadStatus {
-    /// Queues a reload for `agent`: its build starts once no turn runs.
+    /// Queues a reload for `agent` that runs `rebuild` once no turn runs.
     /// Refused without the launcher, or with a reload queued or running.
-    pub fn ask(&mut self, agent: Entity) -> Result<(), &'static str> {
+    pub fn ask(&mut self, agent: Entity, rebuild: Rebuild) -> Result<(), &'static str> {
         match self {
             ReloadStatus::Idle | ReloadStatus::Failed if harness_protocol::launcher().is_some() => {
-                *self = ReloadStatus::Queued { agent };
+                *self = ReloadStatus::Queued { agent, rebuild };
                 Ok(())
             }
             ReloadStatus::Idle | ReloadStatus::Failed => {
@@ -97,6 +138,28 @@ impl ReloadStatus {
     }
 }
 
+/// The launcher file as its launcher started, to tell when it was
+/// replaced, as `rig update` does. Inserted from the launcher's path and
+/// the stamp it passes on unless the app inserted one before.
+#[derive(Resource, Debug)]
+pub(crate) struct LauncherFile {
+    path: std::path::PathBuf,
+    started: harness_protocol::Stamp,
+}
+
+impl LauncherFile {
+    /// The file at `path`, which was `started` as the launcher started.
+    pub(crate) fn new(path: std::path::PathBuf, started: harness_protocol::Stamp) -> Self {
+        Self { path, started }
+    }
+
+    /// Whether another file is at its path now.
+    pub(crate) fn replaced(&self) -> bool {
+        self.started
+            .replaced(&harness_protocol::Stamp::of(&self.path))
+    }
+}
+
 /// Stops the running rebuild, or drops the queued one, if any.
 #[derive(Event, Reflect, Clone, Copy, Debug, Default)]
 #[reflect(Event, Clone, Debug, Default)]
@@ -104,6 +167,28 @@ pub struct CancelReload;
 
 fn reload(
     In(args): In<CommandArgs>,
+    turns: Query<(), With<TurnOf>>,
+    status: ResMut<ReloadStatus>,
+    commands: Commands,
+    notices: MessageWriter<Notice>,
+) {
+    queue(args, Rebuild::Build, turns, status, commands, notices);
+}
+
+fn update(
+    In(args): In<CommandArgs>,
+    turns: Query<(), With<TurnOf>>,
+    status: ResMut<ReloadStatus>,
+    commands: Commands,
+    notices: MessageWriter<Notice>,
+) {
+    queue(args, Rebuild::Update, turns, status, commands, notices);
+}
+
+/// Queues `rebuild` for `/reload` or `/update`, or cancels on `cancel`.
+fn queue(
+    args: CommandArgs,
+    rebuild: Rebuild,
     turns: Query<(), With<TurnOf>>,
     mut status: ResMut<ReloadStatus>,
     mut commands: Commands,
@@ -113,18 +198,22 @@ fn reload(
         commands.trigger(CancelReload);
         return;
     }
-    let asked = status.ask(args.agent);
+    let asked = status.ask(args.agent, rebuild);
     if asked.is_ok() {
         hold::keep_run(&mut commands);
     }
-    let notice = match asked {
+    let notice = match (asked, rebuild) {
         // The build starts this frame, with its own notice.
-        Ok(()) if turns.is_empty() => return,
-        Ok(()) => {
+        (Ok(()), _) if turns.is_empty() => return,
+        (Ok(()), Rebuild::Build) => {
             "A turn is running: the agent rebuilds and restarts once no turn runs. \
              /reload cancel cancels it."
         }
-        Err(why) => why,
+        (Ok(()), Rebuild::Update) => {
+            "A turn is running: rig updates and restarts once no turn runs. \
+             /update cancel cancels it."
+        }
+        (Err(why), _) => why,
     };
     notices.write(Notice::info(None, notice));
 }
@@ -150,6 +239,7 @@ fn cancel_on_interrupt(
 fn on_cancel_reload(
     _: On<CancelReload>,
     mut status: ResMut<ReloadStatus>,
+    build: Option<Res<rebuild::ReloadBuild>>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -157,7 +247,7 @@ fn on_cancel_reload(
         ReloadStatus::Queued { .. } => "Queued reload cancelled.",
         ReloadStatus::Building { .. } => {
             rebuild::stop(&mut commands);
-            "Rebuild cancelled."
+            rebuild::cancelled(build.as_deref())
         }
         ReloadStatus::Idle | ReloadStatus::Ready | ReloadStatus::Failed => {
             notices.write(Notice::info(None, "No reload to cancel."));

@@ -16,7 +16,7 @@ use rig_harness::pick::{Picked, Picker};
 use rig_harness::prelude::*;
 use rig_tools::process::{Process, Spawn};
 
-use crate::reload::ReloadStatus;
+use crate::reload::{Rebuild, ReloadStatus};
 
 /// `/plugins`.
 #[derive(Default)]
@@ -137,7 +137,7 @@ fn apply(
         return;
     }
     let reload = match status {
-        Some(mut status) => status.ask(picker.agent).err(),
+        Some(mut status) => status.ask(picker.agent, Rebuild::Build).err(),
         None => Some("Without rig_basics::reload::ReloadPlugin, it applies when rig starts again."),
     };
     let mut text = format!("settings.toml: {}.", changed.join(", "));

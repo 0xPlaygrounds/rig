@@ -1,5 +1,8 @@
 use super::*;
 
+/// The launcher path the tests' runs pass on: no file, so never replaced.
+const NO_LAUNCHER: &str = "/nonexistent/rig";
+
 #[cfg(unix)]
 #[test]
 fn only_a_failure_says_the_agent_stopped_and_only_a_saved_session_is_offered_to_resume() {
@@ -113,6 +116,7 @@ fn interactive(test: &str, agent: &str, headless: bool) -> Option<(Ended, Sessio
         let (claimed, _) = claim(&home, Start::New, None)?;
         let ended = launch(
             &home,
+            Path::new(NO_LAUNCHER),
             run.dir(),
             &Invocation::default(),
             headless,
@@ -323,7 +327,16 @@ fn one_shot(home: &Home) -> (Option<ExitCode>, String, String) {
     let code = locks::hold_run(home)
         .and_then(|run| {
             let (claimed, _) = claim(home, Start::New, None)?;
-            launch(home, run.dir(), &print, true, claimed, None, None)
+            launch(
+                home,
+                Path::new(NO_LAUNCHER),
+                run.dir(),
+                &print,
+                true,
+                claimed,
+                None,
+                None,
+            )
         })
         .map(|ended| ended.code)
         .ok();
@@ -415,7 +428,7 @@ printf 'rig-describe 1\\ncommand\\tstats\\t-\\theadless\\tsession\\tCount\\n' > 
     assert_eq!(old, AgentDescription::default());
     let unknown = first.invocation(&["statz"]).err().unwrap_or_default();
     assert!(
-        unknown.ends_with("commands: build, plugin, help, help-agents, stats"),
+        unknown.ends_with("commands: build, update, plugin, help, help-agents, stats"),
         "{unknown}"
     );
 }
@@ -437,7 +450,17 @@ exit 2";
     let left = locks::hold_run(&home).and_then(|run| {
         let (claimed, _) = claim(&home, Start::New, None)?;
         let session = home.session(&claimed.id);
-        let code = launch(&home, run.dir(), &print, true, claimed, None, None)?.code;
+        let code = launch(
+            &home,
+            Path::new(NO_LAUNCHER),
+            run.dir(),
+            &print,
+            true,
+            claimed,
+            None,
+            None,
+        )?
+        .code;
         let log = fs::read_to_string(run.dir().log()).ok();
         Ok((code, session.path().exists(), log))
     });
@@ -524,6 +547,7 @@ exit 75"
         let (claimed, _) = claim(&home, Start::Resume(left.clone()), None)?;
         let code = launch(
             &home,
+            Path::new(NO_LAUNCHER),
             run.dir(),
             &Invocation::default(),
             false,
@@ -575,6 +599,7 @@ exit 75"
         let (claimed, _) = claim(&home, Start::Resume(left.clone()), None)?;
         let ended = launch(
             &home,
+            Path::new(NO_LAUNCHER),
             run.dir(),
             &Invocation::default(),
             false,
@@ -620,6 +645,7 @@ touch \"$RIG_RUN/ready\"",
         let (claimed, _) = claim(&home, Start::New, None)?;
         let code = launch(
             &home,
+            Path::new(NO_LAUNCHER),
             run.dir(),
             &Invocation::default(),
             false,
@@ -667,7 +693,17 @@ touch \"$RIG_RUN/ready\"",
             ..Invocation::default()
         };
         let (claimed, _) = claim(&home, Start::New, None)?;
-        let code = launch(&home, run.dir(), &print, true, claimed, None, None)?.code;
+        let code = launch(
+            &home,
+            Path::new(NO_LAUNCHER),
+            run.dir(),
+            &print,
+            true,
+            claimed,
+            None,
+            None,
+        )?
+        .code;
         Ok((code, fs::read_to_string(home.root().join("starts"))?))
     });
     fs::remove_dir_all(home.root()).ok();
@@ -722,7 +758,16 @@ fn a_trial_stopped_by_a_heard_ctrl_c_is_not_rejected() {
     };
     let ended = locks::hold_run(&home).and_then(|run| {
         let (claimed, _) = claim(&home, Start::New, None)?;
-        launch(&home, run.dir(), &print, true, claimed, None, None)
+        launch(
+            &home,
+            Path::new(NO_LAUNCHER),
+            run.dir(),
+            &print,
+            true,
+            claimed,
+            None,
+            None,
+        )
     });
     let rejected = home.rejected().exists();
     fs::remove_dir_all(home.root()).ok();
@@ -790,4 +835,170 @@ fn the_agent_gets_the_launchers_version() {
     fs::remove_file(&seen).ok();
     assert_eq!(version, crate::LONG_VERSION);
     assert!(version.starts_with(crate::VERSION), "{version}");
+}
+
+/// A run whose agent reloads once, first asking to switch to `switch`
+/// (`Some("")` for a new session, else the second session) and, when
+/// `replace`, renaming a new file over its launcher.
+#[cfg(unix)]
+#[derive(Clone, Copy, Default)]
+struct Reload<'a> {
+    replace: bool,
+    switch: Option<&'a str>,
+    headless: bool,
+    /// Whether the session it runs is saved.
+    unsaved: bool,
+    /// Whether another rig holds the second session.
+    busy: bool,
+}
+
+/// How a run as `reload` says ends, with its launcher, its session, the
+/// second saved session, and whether its session is still there.
+#[cfg(unix)]
+fn reloaded(test: &str, reload: Reload) -> Option<(Ended, PathBuf, SessionId, SessionId, bool)> {
+    let home = builds(&format!("replaced-{test}"), "", "");
+    let ran = locks::hold_run(&home).and_then(|run| {
+        let session = |saved: bool| -> Result<SessionId> {
+            let (id, session) = home.new_session()?;
+            if saved {
+                session.mark_saved()?;
+            }
+            Ok(id)
+        };
+        let (current, other) = (session(!reload.unsaved)?, session(true)?);
+        let _busy = if reload.busy {
+            home.session(&other).hold()?
+        } else {
+            None
+        };
+        let launcher = home.root().join("launcher").join("rig");
+        fs::create_dir_all(home.root().join("launcher"))?;
+        fs::write(&launcher, "old")?;
+        let switch = reload.switch.map_or_else(String::new, |target| {
+            let target = if target.is_empty() {
+                String::new()
+            } else {
+                other.to_string()
+            };
+            format!("printf '{target}' > \"$RIG_HOME/sessions/$RIG_SESSION/switch\"")
+        });
+        let replace = if reload.replace {
+            "echo new > \"$RIG_LAUNCHER.new\"; mv \"$RIG_LAUNCHER.new\" \"$RIG_LAUNCHER\""
+        } else {
+            ""
+        };
+        let agent = format!(
+            "[ -e \"$RIG_HOME/reloaded\" ] && exit 0
+touch \"$RIG_HOME/reloaded\"
+{switch}
+{replace}
+exit 75"
+        );
+        fs::remove_file(home.staged())?;
+        fs::write(home.good(), format!("#!/bin/sh\n{agent}\n"))?;
+        // The directory the session runs in, which a new one runs in too.
+        let here = Some(home.root());
+        let (claimed, _) = claim(&home, Start::Resume(current.clone()), here)
+            .or_else(|_| claim(&home, Start::New, here))?;
+        let current = claimed.id.clone();
+        let ended = launch(
+            &home,
+            &launcher,
+            run.dir(),
+            &Invocation::default(),
+            reload.headless,
+            claimed,
+            None,
+            None,
+        )?;
+        let kept = home.session(&current).path().exists();
+        Ok((ended, launcher, current, other, kept))
+    });
+    fs::remove_dir_all(home.root()).ok();
+    ran.ok()
+}
+
+/// A view's reload after the launcher's file was replaced ends this
+/// launcher's runs for the new launcher: on the session the agent switched
+/// to, when it can run, or its own. A plain reload, and a headless run's,
+/// restart the agent as before.
+#[cfg(unix)]
+#[test]
+fn a_reload_after_the_launcher_was_replaced_restarts_on_the_new_one() {
+    let replace = Reload {
+        replace: true,
+        ..Reload::default()
+    };
+    let reexec = |launcher: &Path, session: Option<&SessionId>| {
+        let here = launcher
+            .parent()
+            .and_then(Path::parent)
+            .map(Path::to_path_buf);
+        Some(Reexec::new(
+            launcher,
+            session.map(SessionId::as_str),
+            Vec::new(),
+            here,
+        ))
+    };
+    let plain = reloaded("plain", Reload::default());
+    assert!(
+        plain.is_some_and(|(ended, ..)| ended.reexec.is_none() && ended.code == ExitCode::SUCCESS),
+        "a plain reload restarts the agent"
+    );
+    let own = reloaded("own", replace);
+    assert!(own.is_some_and(|(ended, launcher, current, ..)| {
+        ended.reexec == reexec(&launcher, Some(&current)) && ended.said.is_none()
+    }));
+    let other = Reload {
+        switch: Some("other"),
+        ..replace
+    };
+    let switched = reloaded("switch", other);
+    assert!(switched.is_some_and(|(ended, launcher, _, other, _)| {
+        ended.reexec == reexec(&launcher, Some(&other))
+    }));
+    // The switch file outlives the unsaved session it is in.
+    let unsaved = reloaded(
+        "unsaved",
+        Reload {
+            unsaved: true,
+            ..other
+        },
+    );
+    assert!(unsaved.is_some_and(|(ended, launcher, _, other, kept)| {
+        ended.reexec == reexec(&launcher, Some(&other)) && !kept
+    }));
+    let busy = reloaded(
+        "busy",
+        Reload {
+            busy: true,
+            ..other
+        },
+    );
+    assert!(busy.is_some_and(|(ended, launcher, current, other, _)| {
+        ended.reexec == reexec(&launcher, Some(&current))
+            && ended.said
+                == Some(format!(
+                    "Could not switch sessions: session {other} is open in another rig."
+                ))
+    }));
+    let new = reloaded(
+        "new",
+        Reload {
+            switch: Some(""),
+            ..replace
+        },
+    );
+    assert!(new.is_some_and(|(ended, launcher, ..)| ended.reexec == reexec(&launcher, None)));
+    let headless = reloaded(
+        "headless",
+        Reload {
+            headless: true,
+            ..replace
+        },
+    );
+    assert!(headless.is_some_and(|(ended, _, _, _, kept)| {
+        ended.reexec.is_none() && ended.code == ExitCode::SUCCESS && kept
+    }));
 }

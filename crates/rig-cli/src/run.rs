@@ -37,10 +37,11 @@ use std::time::Duration;
 
 use rig_harness_protocol::{
     AgentDescription, DescribedSecret, Home, Invocation, REFUSED_EXIT_CODE, RELOAD_EXIT_CODE,
-    RunDir, SIGNAL_EXIT_CODE, SessionDir, SessionId, StartReason, env, secret_variable,
+    RunDir, SIGNAL_EXIT_CODE, SessionDir, SessionId, Stamp, StartReason, env, secret_variable,
 };
 
 use super::build::{self, BuildFailure, BuildOutput, FailedAt, Staging, child};
+use super::update::Reexec;
 use super::{LONG_VERSION, Result, locks};
 
 mod stop;
@@ -143,8 +144,9 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
         .and_then(|command| report.command(command));
     let headless =
         invocation.is_headless() || !terminal || command.is_some_and(|command| !command.terminal);
-    let ended = launch(
+    let mut ended = launch(
         home,
+        &std::env::current_exe()?,
         run.dir(),
         &invocation,
         headless,
@@ -153,6 +155,7 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
         build_failure,
     )?;
     let code = ended.code;
+    let reexec = ended.reexec.take();
     let close = move || {
         if ended.restore {
             restore_terminal();
@@ -170,7 +173,10 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
     // The run's own cleanup, before the signal ends the launcher.
     drop(run);
     stop::end_as_heard();
-    Ok(code)
+    match reexec {
+        Some(reexec) => reexec.run(),
+        None => Ok(code),
+    }
 }
 
 /// The session `--resume` names, by id or name ([`Home::find`]), or a new
@@ -221,6 +227,7 @@ fn next_build(home: &Home, session: &SessionId) -> Option<PathBuf> {
 /// `build_failure` go to the first start.
 fn launch(
     home: &Home,
+    launcher: &Path,
     run: &RunDir,
     invocation: &Invocation,
     headless: bool,
@@ -228,7 +235,7 @@ fn launch(
     mut notice: Option<String>,
     mut build_failure: Option<String>,
 ) -> Result<Ended> {
-    let launcher = std::env::current_exe()?;
+    let installed = Stamp::of(launcher);
     // The secrets asked for, for every restart: asked whenever someone is
     // at the terminal, whatever the front, so a command typed there can be
     // asked too; a piped run passes only what its environment has.
@@ -282,8 +289,9 @@ fn launch(
             .args(invocation.to_args())
             .env(env::HOME, home.root())
             .env(env::SESSION, session.as_str())
-            .env(env::LAUNCHER, &launcher)
+            .env(env::LAUNCHER, launcher)
             .env(env::VERSION, LONG_VERSION)
+            .env(env::LAUNCHER_STAMP, installed.text())
             .env(env::RUN, run.path())
             .env(env::START, reason.as_str())
             .env_remove(env::NOTICE)
@@ -327,11 +335,17 @@ fn launch(
         drop(watch);
         let reload = status.code() == Some(i32::from(RELOAD_EXIT_CODE)) && stop::heard().is_none();
         let restart = !headless || (answers_prompt && !directory.switch().exists());
+        // A view's reload after the launcher's file was replaced restarts on
+        // the new launcher, never the new agent under this one. A headless
+        // agent does not reload once its launcher was replaced, as told by
+        // the stamp passed on, since only this launcher restarts it without
+        // its prompt.
+        let replaced = reload && restart && !headless && installed.replaced(&Stamp::of(launcher));
         screen |= run.screen().exists();
         // A reload that restarts leaves the jobs running, listed for the
         // next build to take over. Best effort: a list that cannot be read
         // must not keep the terminal from being put back below.
-        if !(reload && restart) {
+        if !(reload && restart) || replaced {
             run.kill_left_groups().ok();
         }
         promoted?;
@@ -339,6 +353,27 @@ fn launch(
         if rejected {
             build::reject(home, &trial)?;
             fs::remove_file(&trial)?;
+        }
+        if replaced {
+            // The session the agent switched to, claimed as a switch claims
+            // it: one that cannot run leaves this one on, told why.
+            let mut said = None;
+            if let Some(target) = take_switch(&directory)? {
+                (claimed, said) = switch(home, claimed, target)?;
+            }
+            let resume = home
+                .session(&claimed.id)
+                .is_saved()
+                .then(|| claimed.id.clone());
+            let here = claimed.directory.clone();
+            claimed.discard_if_unsaved(home);
+            let resume = resume.as_ref().map(SessionId::as_str);
+            let reexec = Reexec::new(launcher, resume, invocation.to_args(), here);
+            return Ok(Ended {
+                said,
+                reexec: Some(reexec),
+                ..Ended::quiet(ExitCode::SUCCESS).restoring(screen)
+            });
         }
         if reload && restart {
             if headless {
@@ -447,6 +482,8 @@ struct Ended {
     code: ExitCode,
     said: Option<String>,
     restore: bool,
+    /// The new launcher to start once the session is let go.
+    reexec: Option<Reexec>,
 }
 
 impl Ended {
@@ -456,6 +493,7 @@ impl Ended {
             code: exit_code(status),
             said,
             restore: false,
+            reexec: None,
         }
     }
 
@@ -465,6 +503,7 @@ impl Ended {
             code,
             said: None,
             restore: false,
+            reexec: None,
         }
     }
 

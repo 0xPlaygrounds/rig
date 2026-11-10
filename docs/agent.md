@@ -59,17 +59,32 @@ newer and runs on Linux and macOS. Windows is not supported.
 
 ## Update
 
-rig has no update command. Install the new launcher, and the next start
-rebuilds the agent at its version:
+`rig update` reinstalls the launcher where it is installed (`--root` is the
+directory above the running `rig`'s `bin`), then builds the agent with the
+new one, which takes 2-3 minutes after a change. It prints the command
+before running it:
 
-- From crates.io: 0.46.0 is the latest release. Once `rig-cli` is released,
-  `cargo install --force rig-cli` installs it; `--force` replaces the `rig`
-  that the `rig` crate installed.
-- From a checkout: `git pull`, then `cargo install --locked --force --path
-  crates/rig-cli` again.
+- From crates.io: `cargo install --force rig-cli --root <root>`. `rig-cli` is
+  not on crates.io until the next release, so until then cargo cannot find
+  it. 0.46.0 has no `rig update`: reinstall it by hand as in
+  [Install and run](#install-and-run). `--force` replaces the `rig` that the
+  `rig` crate installed.
+- From a checkout: `cargo install --force --locked --path
+  <checkout>/crates/rig-cli --root <root>`. It rebuilds the checkout as it is:
+  `git pull` first is yours.
 
-A running agent keeps its build until you restart it. The rebuild takes
-several minutes, and `RIG_HOME/target` keeps the old version's build too.
+A failed install, such as one offline, leaves the installed rig as it was and
+exits 1. In the agent, `/update` runs it, showing its lines and cargo's latest
+one, and then restarts: the launcher, whose own file was replaced, starts the
+new one on the same session. Unlike `/reload`, the restart ends the background
+jobs the agent started, and asks again for the keys you typed at the terminal.
+Installing by hand works too: the next start, or the next `/reload`, `/new` or
+`/resume`, runs the new launcher. A `-p` or `--json` run whose launcher was
+replaced, by its `/update` or from outside, does not reload: it says so and
+goes on with its build, a `-p` run ending as usual with its exit line, and the
+next run starts the new version. `RIG_HOME/target` keeps the old version's
+build too.
+
 Sessions resume while their format is the same. A session in another format
 is refused, unchanged, with `this session was made by another version of rig;
 start a new session`.
