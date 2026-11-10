@@ -1,3 +1,4 @@
+use crate::LONG_VERSION;
 use rig_harness_protocol::config::SettingsFile;
 
 use super::*;
@@ -203,4 +204,79 @@ fn a_crate_of_another_rig_checkout_by_path_is_refused() {
         checkout.join("plugins/claude-cloak"),
     );
     assert_eq!(foreign_rig_crate(&gone, &RigSource::Registry), None);
+}
+
+/// The project's `Cargo.lock` starts from the checkout's, and again
+/// whenever the checkout's changes, such as after a pull or a switch to
+/// another checkout, or a start from crates.io came between; otherwise it
+/// keeps what cargo resolved.
+#[test]
+fn the_lock_is_seeded_again_when_the_checkouts_changes() {
+    let root = std::env::temp_dir().join(format!("rig-lock-{}", std::process::id()));
+    fs::remove_dir_all(&root).ok();
+    let checkout = root.join("checkout");
+    fs::create_dir_all(checkout.join("crates/rig-harness")).ok();
+    fs::write(checkout.join("crates/rig-harness/Cargo.toml"), "").ok();
+    let home = Home::at(root.join("home"));
+    let source = RigSource::Local(checkout.clone());
+    let lock = home.project().join("Cargo.lock");
+    let generated = |checkouts: &str| {
+        fs::write(checkout.join("Cargo.lock"), checkouts).ok();
+        generate(&home, &only(&[]), &source).map_err(|why| why.to_string())?;
+        Ok::<_, String>(fs::read_to_string(&lock).unwrap_or_default())
+    };
+    let first = generated("first");
+    fs::write(&lock, "first, resolved").ok();
+    let kept = generated("first");
+    let pulled = generated("pulled");
+    // A start from crates.io in between resolves the lock to its graph.
+    let registry = generate(&home, &only(&[]), &RigSource::Registry).map_err(|why| why.to_string());
+    fs::write(&lock, "crates.io's").ok();
+    let back = generated("pulled");
+    fs::remove_dir_all(&root).ok();
+    assert_eq!(first.as_deref(), Ok("first"));
+    assert_eq!(kept.as_deref(), Ok("first, resolved"));
+    assert_eq!(pulled.as_deref(), Ok("pulled"));
+    assert_eq!(registry, Ok(()));
+    assert_eq!(back.as_deref(), Ok("pulled"));
+}
+
+/// A launcher built from a commit of a checkout that is gone builds no
+/// agent from crates.io, whose release is other code; it says what to do.
+#[test]
+fn a_launcher_from_a_commit_does_not_build_from_crates_io() {
+    // No commit: a crates.io package, whatever its version.
+    assert!(RigSource::Registry.check("").is_ok());
+    assert!(RigSource::Local(checkout()).check("b1321662b").is_ok());
+    let refused = RigSource::Registry.check("b1321662b").err();
+    let refused = refused.map(|why| why.to_string()).unwrap_or_default();
+    assert!(
+        refused.contains(LONG_VERSION) && refused.contains("cargo install --path"),
+        "{refused}"
+    );
+    assert_eq!(refused.lines().count(), 1, "{refused}");
+}
+
+/// Built in a rig checkout, the launcher's version names the checkout's
+/// commit, the one checked out now; built elsewhere, it is the version.
+#[test]
+fn the_version_names_the_commit_of_the_checkout_it_was_built_in() {
+    let git = |args: &[&str]| {
+        let output = std::process::Command::new("git")
+            .arg("-C")
+            .arg(checkout())
+            .args(args)
+            .output()
+            .ok()
+            .filter(|output| output.status.success())?;
+        Some(String::from_utf8_lossy(&output.stdout).trim().to_owned())
+    };
+    let root = git(&["rev-parse", "--show-toplevel"]).map(PathBuf::from);
+    let in_checkout =
+        root.and_then(|root| root.canonicalize().ok()) == checkout().canonicalize().ok();
+    let expected = match git(&["rev-parse", "--short=9", "HEAD"]) {
+        Some(head) if in_checkout => format!("{VERSION} ({head})"),
+        _ => VERSION.to_owned(),
+    };
+    assert_eq!(LONG_VERSION, expected);
 }

@@ -773,3 +773,21 @@ fn a_session_with_a_logged_conversation_outlives_the_leave_and_the_sweep() {
         "(kept by the leave, kept by the sweep)"
     );
 }
+
+/// The agent gets the version `rig --version` prints, so its screens show
+/// the same.
+#[cfg(unix)]
+#[test]
+fn the_agent_gets_the_launchers_version() {
+    let home = builds(
+        "version",
+        "printf %s \"$RIG_VERSION\" > \"$RIG_HOME-seen\"",
+        "exit 0",
+    );
+    let seen = PathBuf::from(format!("{}-seen", home.root().display()));
+    one_shot(&home);
+    let version = fs::read_to_string(&seen).unwrap_or_default();
+    fs::remove_file(&seen).ok();
+    assert_eq!(version, crate::LONG_VERSION);
+    assert!(version.starts_with(crate::VERSION), "{version}");
+}

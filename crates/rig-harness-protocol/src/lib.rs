@@ -70,6 +70,11 @@ pub mod env {
     /// `"$RIG_LAUNCHER" plugin check --build`; an agent counts as started by
     /// a launcher only with [`SESSION`] set too.
     pub const LAUNCHER: &str = "RIG_LAUNCHER";
+    /// What `rig --version` prints after `rig`, which the launcher passes
+    /// on: [`VERSION`](super::VERSION), with the commit when the launcher
+    /// was built in a rig checkout. Read it with
+    /// [`long_version`](super::long_version).
+    pub const VERSION: &str = "RIG_VERSION";
     /// A line the agent shows at startup, such as a rollback.
     pub const NOTICE: &str = "RIG_NOTICE";
     /// A line the agent warns of at startup, which a run nobody sits at
@@ -91,7 +96,7 @@ pub mod env {
     /// command the agent runs, such as a nested agent while working on
     /// rig-harness itself, must not act as this agent. Without [`SESSION`]
     /// a nested agent ignores the [`LAUNCHER`] it inherits.
-    pub const AGENT_ONLY: &[&str] = &[SESSION, NOTICE, WARNING, BUILD_FAILURE, RUN, START];
+    pub const AGENT_ONLY: &[&str] = &[SESSION, VERSION, NOTICE, WARNING, BUILD_FAILURE, RUN, START];
     /// On every process the agent starts for its tools: the path of the
     /// launcher's [`RunDir::groups`](super::RunDir::groups), which the
     /// launcher finds on a listed group's leader before it kills the
@@ -116,6 +121,16 @@ pub mod env {
 pub fn launcher() -> Option<OsString> {
     std::env::var_os(env::SESSION).filter(|session| !session.is_empty())?;
     std::env::var_os(env::LAUNCHER).filter(|launcher| !launcher.is_empty())
+}
+
+/// The version of rig to show, such as `0.46.0 (b1321662b)`: what the
+/// launcher that started this agent says ([`env::VERSION`]), else
+/// [`VERSION`].
+pub fn long_version() -> String {
+    std::env::var(env::VERSION)
+        .ok()
+        .filter(|version| !version.is_empty())
+        .unwrap_or_else(|| VERSION.to_owned())
 }
 
 /// The variable that carries the secret `name`: [`env::SECRET_PREFIX`]

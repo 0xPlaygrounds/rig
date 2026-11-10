@@ -15,7 +15,7 @@ use rig_harness_protocol::config::toml_edit::{DocumentMut, Item};
 use rig_harness_protocol::config::{BUILT_IN, Extra, Plugins, Source, built_in};
 use rig_harness_protocol::{Home, env};
 
-use super::{Result, VERSION};
+use super::{LONG_VERSION, Result, VERSION};
 
 /// The terminal view, whose plugin alone needs rig-basics' `tui` feature.
 const TUI: &str = "rig_tui::TuiPlugin";
@@ -71,6 +71,22 @@ impl RigSource {
         } else {
             Self::Registry
         })
+    }
+
+    /// Fails when this is crates.io and the launcher was built from
+    /// `commit` (empty for none, a crates.io package): its generated agent
+    /// needs that commit's crates, which crates.io's release may not be.
+    pub fn check(&self, commit: &str) -> Result<()> {
+        if matches!(self, Self::Local(_)) || commit.is_empty() {
+            return Ok(());
+        }
+        Err(format!(
+            "rig {LONG_VERSION} was built from a rig checkout that is gone or in cargo's cache \
+             (`cargo install --git`), so its agent cannot build from crates.io's rig {VERSION}: \
+             run `cargo install --path crates/rig-cli` in a checkout you keep, or set \
+             RIG_SOURCE to one"
+        )
+        .into())
     }
 }
 
@@ -246,12 +262,24 @@ pub fn generate(home: &Home, plugins: &Plugins, source: &RigSource) -> Result<()
         &main_rs(home, plugins, source),
     )?;
     write_if_changed(&project.join(".cargo/config.toml"), &cargo_config(home))?;
-    // A checkout's lock seeds the versions CI tested.
+    // A checkout's lock seeds the versions CI tested, again whenever it
+    // changes, so a version switch builds offline with that version's lock.
     let lock = project.join("Cargo.lock");
-    if let RigSource::Local(checkout) = source
-        && !lock.exists()
-    {
-        fs::copy(checkout.join("Cargo.lock"), lock)?;
+    // The seed records the checkout lock the project's lock started from;
+    // a build from crates.io resolves the lock anew, so it drops the seed.
+    let seed = project.join("Cargo.lock.seed");
+    match source {
+        RigSource::Local(checkout) => {
+            let checkouts = fs::read(checkout.join("Cargo.lock"))?;
+            if !lock.exists() || fs::read(&seed).ok().as_deref() != Some(checkouts.as_slice()) {
+                fs::write(&lock, &checkouts)?;
+                fs::write(&seed, checkouts)?;
+            }
+        }
+        RigSource::Registry => match fs::remove_file(&seed) {
+            Err(error) if error.kind() != std::io::ErrorKind::NotFound => return Err(error.into()),
+            _ => {}
+        },
     }
     Ok(())
 }

@@ -25,6 +25,15 @@ use run::last_report;
 
 pub use rig_harness_protocol::{BEVY_VERSION, VERSION};
 
+/// What `rig --version` prints after `rig`: [`VERSION`], with the commit
+/// when the launcher is built in a rig checkout (`build.rs`). The agent
+/// gets it as [`env::VERSION`](rig_harness_protocol::env::VERSION).
+pub const LONG_VERSION: &str = env!("RIG_LONG_VERSION");
+
+/// The commit the launcher was built from, when built in a rig checkout;
+/// else empty (`build.rs`).
+pub const COMMIT: &str = env!("RIG_COMMIT");
+
 /// Every launcher failure is reported to the user as its message.
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -47,7 +56,8 @@ stdin; `rig help-agents` says how.
   rig help [command]     This text, or what a command does.
   rig help-agents        How a script or another agent drives rig headless,
                          over its stdin and stdout (-p, --json).
-  rig --version          The launcher's version.
+  rig --version          The launcher's version, with the commit when it was
+                         built in a rig checkout.
 ";
 
 const SESSION: &str = "
@@ -100,7 +110,7 @@ fn main() -> ExitCode {
             Ok(ExitCode::SUCCESS)
         }
         ["--version" | "-V"] => {
-            println!("rig {}", VERSION);
+            println!("rig {LONG_VERSION}");
             Ok(ExitCode::SUCCESS)
         }
         ["help", command] => Ok(help(&home, command)),

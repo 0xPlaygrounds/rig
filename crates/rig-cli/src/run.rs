@@ -41,7 +41,7 @@ use rig_harness_protocol::{
 };
 
 use super::build::{self, BuildFailure, BuildOutput, FailedAt, Staging, child};
-use super::{Result, locks};
+use super::{LONG_VERSION, Result, locks};
 
 mod stop;
 
@@ -283,6 +283,7 @@ fn launch(
             .env(env::HOME, home.root())
             .env(env::SESSION, session.as_str())
             .env(env::LAUNCHER, &launcher)
+            .env(env::VERSION, LONG_VERSION)
             .env(env::RUN, run.path())
             .env(env::START, reason.as_str())
             .env_remove(env::NOTICE)
