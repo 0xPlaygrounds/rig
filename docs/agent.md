@@ -240,9 +240,15 @@ puts them all back in the input. Ctrl+V pastes the clipboard's image
 image file becomes one too.
 
 Answers are drawn as markdown, edits as diffs, and each built-in tool's call
-in its own way, always whole: every call's arguments and result, every diff
-and every note, nothing cut or folded. A diff is drawn from what the session
-keeps of it, so with redaction on (below) a secret in it shows as a
+in its own way. By default every call is drawn whole: its arguments and
+result, every diff and every note, nothing cut or folded. The optional
+[`rig_fold::FoldPlugin`](../plugins/rig-fold) (off by default, `rig plugin
+enable rig_fold::FoldPlugin`) instead folds each finished call to its header,
+its first and last lines, and a line counting those left out. Ctrl+O (`[fold]
+key`) shows the call selected with Alt+Up whole, or every call when none is
+selected, and folds them again. A failed, stopped or running call stays whole,
+and the model, the session log, `rig -p` and exports still get every line.
+A diff is drawn from what the session keeps of it, so with redaction on (below) a secret in it shows as a
 placeholder and an edit whose diff holds a private key block shows its reply
 instead, as one whose diff passes 256 KiB always does. A call's row is
 tinted by where it stands (waiting, running, done, failed). Code is
@@ -455,6 +461,12 @@ type instead (`/model chatgpt/gpt-6.1-sol`), as is text after a command
 that takes none (`/new hello`). Text piped in follows the prompt (`git diff
 | rig -p "review this"`), and piped in without `-p` it is the prompt: `rig`
 runs the terminal view only on an interactive terminal.
+
+On a terminal, `rig -p` draws the answer's markdown, word-wrapped to the
+terminal's width (`COLUMNS`, else the terminal's size) with code lines kept
+whole, and shows on stderr a dim line for each tool call, after the narration
+before it. `NO_COLOR` leaves out its colors. Piped or redirected, stdout
+gets the answer's raw markdown, unchanged.
 
 `-r <id or name>` resumes a given session instead of starting a new one; it
 goes wherever an option goes, but not among a command's words or after `--`,

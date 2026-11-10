@@ -151,6 +151,8 @@ The coding agent's crates are not facade features. Depend on them directly.
 | [`rig-tools`](crates/rig-tools) | Coding tools any rig agent can use: read, write, edit, search, shell |
 | [`rig-ecs`](crates/rig-ecs), [`rig-harness`](crates/rig-harness) | The agent kernel on Bevy's ECS, and the harness the coding agent's plugins build on |
 | [`rig-tui`](plugins/rig-tui), [`rig-basics`](plugins/rig-basics) | The terminal view, and the coding agent's default plugins |
+| [`rig-markdown`](crates/rig-markdown) | Markdown drawn as styled lines and word-wrapped to a width, shared by the terminal view and `rig -p` |
+| [`rig-fold`](plugins/rig-fold) | Off by default: folds finished tool calls in the terminal view, with a key that shows them whole |
 | [`rig-traffic`](plugins/rig-traffic) | Opt-in provider HTTP recording in the session store, using the cassette engine |
 | [`rig-mcp-client`](plugins/rig-mcp-client) | The coding agent's MCP client, off by default: MCP servers' tools, with an opt-in plugin that asks before a project's server starts |
 | [`rig-acp`](plugins/rig-acp) | `rig acp`, off by default: the coding agent for ACP clients (editors such as Zed) |
