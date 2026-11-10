@@ -472,6 +472,58 @@ fn root_unevaluated_keywords_go_under_the_double_not_with_what_they_read() {
     }
 }
 
+/// A local JSON Pointer reference into a keyword that moves under the
+/// double `not` follows it there. One into a keyword that stays, or inside
+/// a subschema with its own `$id`, which pointers resolve against, and a
+/// `$ref` key in data such as a `const` are left as written.
+#[test]
+fn pointer_references_into_moved_keywords_follow_them() {
+    let branch = json!({"properties": {"a": {"type": "string"}}, "required": ["a"]});
+    let resource = json!({"$id": "item.json", "$ref": "#/anyOf/0"});
+    let literal = json!({"const": {"$ref": "#/anyOf/0"}});
+    assert_eq!(
+        sent_input_schema(json!({
+            "type": "object",
+            "$defs": {"Id": {"type": "integer"}, "Item": resource},
+            "properties": {
+                "a": {"$ref": "#/anyOf/0/properties/a"},
+                "id": {"$ref": "#/$defs/Id"},
+                "literal": literal,
+            },
+            "anyOf": [branch, {"required": ["b"]}],
+        })),
+        json!({
+            "type": "object",
+            "$defs": {"Id": {"type": "integer"}, "Item": resource},
+            "properties": {
+                "a": {"$ref": "#/not/not/anyOf/0/properties/a"},
+                "id": {"$ref": "#/$defs/Id"},
+                "literal": literal,
+            },
+            "not": {"not": {"anyOf": [branch, {"required": ["b"]}]}},
+        })
+    );
+
+    let properties = json!({"b": {"$ref": "#/properties/a"}, "a": {"type": "integer"}});
+    let moved = json!({"b": {"$ref": "#/not/not/properties/a"}, "a": {"type": "integer"}});
+    assert_eq!(
+        sent_input_schema(json!({
+            "type": "object",
+            "properties": properties,
+            "allOf": [{"$dynamicRef": "#/properties/b"}],
+            "unevaluatedProperties": false,
+        })),
+        json!({
+            "type": "object",
+            "not": {"not": {
+                "properties": moved,
+                "allOf": [{"$dynamicRef": "#/not/not/properties/b"}],
+                "unevaluatedProperties": false,
+            }},
+        })
+    );
+}
+
 /// A tool schema with no root combinator is sent as written, combinators
 /// below the root included.
 #[test]
