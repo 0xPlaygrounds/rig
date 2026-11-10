@@ -53,8 +53,9 @@ key = "ctrl+o"  # written as rig-tui's key bindings are, such as "alt+o"
 ```
 
 The key is bound in every scope, so it works while typing, with a call
-selected and in a panel. If a binding added earlier holds the key, the fold key
+selected and in a panel. In a transcript pane that has the keys, such as a
+helper's, it acts on that pane's selection. If a binding added earlier holds
+the key, or the input already uses it (such as Enter or Ctrl+E), the fold key
 is refused with a warning and nothing is folded, so folded lines always have a
-key that shows them. The same holds when a `keys.toml` entry with
-`override = true` disables the fold key. A binding of the same key that is only
-for the input is shadowed by the fold key.
+key that shows them. An input binding of the same key added later is shadowed
+by the fold key.

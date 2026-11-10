@@ -3,7 +3,7 @@ use rig_core::message::{ToolCall, ToolFunction, ToolName};
 use rig_core::tool::{ExitStatus, ToolContext};
 use rig_harness::main_agent::ShownAgent;
 use rig_tui::{
-    RenderInput, RenderKey, RenderOutput, RenderRequest, ToolCallView, TranscriptPane,
+    KeyFocus, RenderInput, RenderKey, RenderOutput, RenderRequest, ToolCallView, TranscriptPane,
     TranscriptSource, TuiViewPlugin,
 };
 use serde_json::json;
@@ -126,6 +126,13 @@ fn drawn(
         .collect()
 }
 
+/// Selects `selected` in `pane`.
+fn select(app: &mut App, pane: Entity, selected: Option<CallItem>) {
+    if let Some(mut view) = app.world_mut().get_mut::<TranscriptView>(pane) {
+        view.selected = selected.map(TranscriptItem::Call);
+    }
+}
+
 /// Presses the plugin's key, with `selected` selected in the main pane.
 fn press(app: &mut App, selected: Option<CallItem>) {
     let world = app.world_mut();
@@ -133,6 +140,12 @@ fn press(app: &mut App, selected: Option<CallItem>) {
     for mut view in panes.iter_mut(world) {
         view.selected = selected.map(TranscriptItem::Call);
     }
+    press_key(app);
+}
+
+/// Presses the plugin's key.
+fn press_key(app: &mut App) {
+    let world = app.world_mut();
     let mut bindings = world.query::<(Entity, &KeyBinding)>();
     let binding = bindings
         .iter(world)
@@ -229,15 +242,47 @@ fn a_failed_or_stopped_call_and_an_export_keep_every_line() {
     assert_eq!(export.first().map(Vec::len), Some(401));
 }
 
+/// The key acts in the transcript pane that has the keys, such as a
+/// helper's beside the main one, and falls back to the main pane.
+#[test]
+fn the_key_acts_in_the_focused_pane() {
+    let (mut app, main) = app("");
+    let world = app.world_mut();
+    let helper = world.spawn_empty().id();
+    let side = TranscriptPane {
+        source: TranscriptSource::Agent(helper),
+        title: None,
+    };
+    let side = world.spawn(side).id();
+    world.insert_resource(KeyFocus(Some(side)));
+    select(&mut app, main, item(0));
+    select(&mut app, side, item(0));
+    press_key(&mut app);
+    let call = [shell(0, 400, End::Done)];
+    let length = |app: &mut App, shown| drawn(app, shown, &call).first().map_or(0, Vec::len);
+    assert_eq!(length(&mut app, (Some(side), Some(helper))), 401);
+    assert_eq!(length(&mut app, (Some(main), None)), 14);
+    // With no pane focused, the main pane's selection flips.
+    app.world_mut().insert_resource(KeyFocus(None));
+    press_key(&mut app);
+    assert_eq!(length(&mut app, (Some(main), None)), 401);
+}
+
 /// With its key taken by another binding the plugin folds nothing, as the
-/// lines would have no way back.
+/// lines would have no way back: a binding of any scope bound first, or an
+/// input key, which the fold key would take from the input unseen.
 #[test]
 fn without_its_key_nothing_folds() {
     let taken = |app: &mut App| {
         let binding = KeyBinding::new(KeyPress::ctrl('o'), "Go on");
         app.add_key_binding(binding, |_: On<KeyPressed>| {});
     };
-    let (mut app, pane) = app_with("", taken);
-    let drawn = drawn(&mut app, (Some(pane), None), &[shell(0, 400, End::Done)]);
-    assert_eq!(drawn.first().map(Vec::len), Some(401));
+    let call = [shell(0, 400, End::Done)];
+    let (mut first, pane) = app_with("", taken);
+    let drawn_taken = drawn(&mut first, (Some(pane), None), &call);
+    assert_eq!(drawn_taken.first().map(Vec::len), Some(401));
+    // Ctrl+E is the input's end of the line.
+    let (mut app, pane) = app("[fold]\nkey = \"ctrl+e\"");
+    let drawn_input = drawn(&mut app, (Some(pane), None), &call);
+    assert_eq!(drawn_input.first().map(Vec::len), Some(401));
 }

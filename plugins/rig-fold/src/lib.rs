@@ -26,9 +26,9 @@ use rig_harness::prelude::*;
 use rig_tui::ratatui::style::Style;
 use rig_tui::ratatui::text::Line;
 use rig_tui::{
-    AppKeyBindingsExt, CallItem, CallState, KeyBinding, KeyPress, KeyPressed, KeyScope, Keys,
-    LookLine, MainPane, OUTPUT_INDENT, RenderBatch, RenderRevision, RenderSystems, ToolRender,
-    TranscriptItem, TranscriptPane, TranscriptRender, TranscriptSource, TranscriptView,
+    AppKeyBindingsExt, CallItem, CallState, KeyBinding, KeyFocus, KeyPress, KeyPressed, KeyScope,
+    Keys, LookLine, MainPane, OUTPUT_INDENT, RenderBatch, RenderRevision, RenderSystems,
+    ToolRender, TranscriptItem, TranscriptPane, TranscriptRender, TranscriptSource, TranscriptView,
 };
 use serde::{Deserialize, Deserializer};
 
@@ -121,14 +121,26 @@ impl Plugin for FoldPlugin {
             .init_resource::<Unfolded>()
             .add_systems(TranscriptRender, fold.in_set(RenderSystems::Edit));
         let key = app.world().resource::<FoldSettings>().key.clone();
+        // An input key a global binding would take unseen, such as Enter.
+        let world = app.world_mut();
+        let mut bindings = world.query::<&KeyBinding>();
+        let input = bindings.iter(world).find(|bound| {
+            let (bound_keys, keys) = (bound.keys.presses(), key.presses());
+            bound.scope == KeyScope::Input
+                && (bound_keys.starts_with(keys) || keys.starts_with(bound_keys))
+        });
+        if let Some(bound) = input {
+            warn!(
+                "[fold] key `{key}` is the input's `{}` ({}): nothing is folded",
+                bound.keys, bound.label
+            );
+            return;
+        }
         // Global, so no other binding of the key shadows it unseen: one
-        // bound first refuses it instead.
-        let binding = KeyBinding::new(key.clone(), LABEL).in_scope(KeyScope::Global);
-        match app.add_key_binding(binding, flip) {
-            Some(bound) => {
-                app.world_mut().entity_mut(bound).insert(FoldKey);
-            }
-            None => warn!("[fold] key `{key}` is taken by another binding: nothing is folded"),
+        // bound first refuses it, with a warning, instead.
+        let binding = KeyBinding::new(key, LABEL).in_scope(KeyScope::Global);
+        if let Some(bound) = app.add_key_binding(binding, flip) {
+            app.world_mut().entity_mut(bound).insert(FoldKey);
         }
     }
 }
@@ -142,19 +154,22 @@ fn selected_call(view: &TranscriptView) -> Option<CallItem> {
     }
 }
 
-/// Flips the call selected in the main pane, or every call, and draws the
+/// Flips the call selected in the transcript pane that has the keys, else
+/// in the main pane, or every call with none selected, and draws the
 /// transcript again.
 fn flip(
     pressed: On<KeyPressed>,
-    panes: Query<(Entity, &TranscriptPane, &TranscriptView), With<MainPane>>,
-    shown: Option<Res<ShownAgent>>,
+    (focus, shown): (Option<Res<KeyFocus>>, Option<Res<ShownAgent>>),
+    panes: Query<(Entity, &TranscriptPane, &TranscriptView, Has<MainPane>)>,
     mut unfolded: ResMut<Unfolded>,
     mut revision: ResMut<RenderRevision>,
 ) {
     if pressed.released {
         return;
     }
-    let selected = panes.single().ok().and_then(|(pane, transcript, view)| {
+    let focused = focus.and_then(|focus| panes.get(focus.0?).ok());
+    let pane = focused.or_else(|| panes.iter().find(|(.., main)| *main));
+    let selected = pane.and_then(|(pane, transcript, view, _)| {
         let agent = match &transcript.source {
             TranscriptSource::Shown => shown.as_ref().and_then(|shown| shown.0),
             TranscriptSource::Agent(agent) => Some(*agent),
