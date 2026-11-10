@@ -659,8 +659,9 @@ const ROOT_KEPT: [&str; 9] = [
 /// `not: {not: ...}`, which accepts the same inputs, and type the root
 /// `object`, the root Anthropic takes. A subschema under `not` reports no
 /// evaluated properties or items, so with a root `unevaluatedProperties` or
-/// `unevaluatedItems` every root keyword but [`ROOT_KEPT`] moves. A schema
-/// with no root combinator is left as written.
+/// `unevaluatedItems` every root keyword but [`ROOT_KEPT`] moves. Local
+/// pointer references into a moved keyword follow it. A schema with no
+/// root combinator is left as written.
 fn nest_root_combinators(schema: &mut Value) {
     let Value::Object(root) = schema else {
         return;
@@ -681,6 +682,7 @@ fn nest_root_combinators(schema: &mut Value) {
         })
         .cloned()
         .collect();
+    repoint_moved_references(root, &moved);
     let nested: Map<String, Value> = moved
         .into_iter()
         .filter_map(|key| {
@@ -690,6 +692,41 @@ fn nest_root_combinators(schema: &mut Value) {
         .collect();
     root.entry("type").or_insert_with(|| json!("object"));
     root.insert("not".to_owned(), json!({ "not": nested }));
+}
+
+/// The keywords whose values are data, not subschemas.
+const DATA_KEYWORDS: [&str; 4] = ["const", "enum", "default", "examples"];
+
+/// Point each `#/<key>/...` reference in `schema`, the root or a subschema
+/// of it, whose `key` is in `moved` at `#/not/not/<key>/...`, where the key
+/// moves. A subschema with its own `$id` is a resource of its own, which
+/// its pointers resolve against, so it is left as written.
+fn repoint_moved_references(schema: &mut Map<String, Value>, moved: &[String]) {
+    for keyword in ["$ref", "$dynamicRef"] {
+        if let Some(Value::String(reference)) = schema.get_mut(keyword)
+            && let Some(pointer) = reference.strip_prefix("#/")
+            && moved.iter().any(|key| {
+                let token = key.replace('~', "~0").replace('/', "~1");
+                pointer.split('/').next() == Some(token.as_str())
+            })
+        {
+            *reference = format!("#/not/not/{pointer}");
+        }
+    }
+    let mut pending: Vec<&mut Value> = schema
+        .iter_mut()
+        .filter(|(key, _)| !DATA_KEYWORDS.contains(&key.as_str()))
+        .map(|(_, value)| value)
+        .collect();
+    while let Some(value) = pending.pop() {
+        match value {
+            Value::Object(object) if !object.contains_key("$id") => {
+                repoint_moved_references(object, moved);
+            }
+            Value::Array(items) => pending.extend(items.iter_mut()),
+            _ => {}
+        }
+    }
 }
 
 /// Split `history` into the top-level `system` blocks and the messages.

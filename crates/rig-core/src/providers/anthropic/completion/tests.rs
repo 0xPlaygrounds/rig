@@ -522,6 +522,11 @@ fn pointer_references_into_moved_keywords_follow_them() {
             }},
         })
     );
+
+    assert_eq!(
+        sent_input_schema(json!({"type": "object", "$ref": "#/oneOf/0", "oneOf": [branch]})),
+        json!({"type": "object", "$ref": "#/not/not/oneOf/0", "not": {"not": {"oneOf": [branch]}}})
+    );
 }
 
 /// A tool schema with no root combinator is sent as written, combinators
