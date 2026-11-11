@@ -219,7 +219,7 @@ none_compiled() { [[ -z "$1" || "$1" == "0 crates"* ]]; }
 # untouched SUMMARY: true when it compiled nothing and changed no locked version.
 untouched() { [[ -z "$1" || "$1" == "0 crates compiled, 0 locked versions changed" ]]; }
 
-built="" again="" turn_rc=0
+built="" again="" turn_rc=0 turn_name=""
 # prebuild LABEL NAME: `rig build` with launcher LABEL, under --lock when
 # given; records its time, what it compiled (in $built) and the disk
 # RIG_HOME/target uses.
@@ -246,7 +246,7 @@ turn() {
     touch "$logs/.stamp"
     sleep 1
     rig "$@"
-    turn_rc=$rc
+    turn_rc=$rc turn_name=$name
     again=$(build_since "$name.turn")
     none_compiled "$again" || switches+=("$(printf '%-16s %-4s turn compiled again: %s' "$name" "$label" "$again")")
     echo "  $name: exit $rc, turn ${wall}s"
@@ -255,6 +255,7 @@ turn() {
 # plugin_off LABEL NAME PLUGIN ID: checks that launcher LABEL lists PLUGIN off,
 # or refuses the settings with a message naming them; a refusal counts only
 # when the turn before it failed too, so no start ran without the setting.
+# A plugin on again says whether that turn warned of plugins.toml.
 plugin_off() {
     local label="$1" name="$2" plugin="$3" id="$4"
     rig "$label" "$name" plugin list
@@ -264,6 +265,8 @@ plugin_off() {
         check "$id" "$clear" "refused (exit $rc, the turn before exit $turn_rc): $(first_error "$name")"
     elif grep -E -q "^off +$plugin\b" "$logs/$name.out"; then
         check "$id" 0 "$plugin is still off"
+    elif grep -q -F plugins.toml "$logs/$turn_name.err"; then
+        check "$id" 1 "$plugin is on again; the turn before warned of plugins.toml"
     else
         check "$id" 1 "$plugin is on again, silently"
     fi

@@ -1,5 +1,5 @@
 # Checks of scripts/version-switch.sh known to fail between v0.46.0 and main.
 # Pass this file with --expected on the release PR; delete a line when its
 # check passes (the run reports it as XPASS and fails until then).
-settings-upgrade    # main ignores v0.46.0's plugins.toml: a plugin turned off comes back on, silently
+settings-upgrade    # main ignores v0.46.0's plugins.toml (its start warns so): a plugin turned off comes back on
 settings-downgrade  # v0.46.0 ignores main's settings.toml [plugins] and writes a fresh plugins.toml
