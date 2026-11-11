@@ -368,3 +368,32 @@ fn an_edited_ignore_file_reports_the_files_it_hides_or_shows() {
         ]
     );
 }
+
+/// Rules read for an edited ignore file below an ignored directory are
+/// dropped with that directory when it is moved away: its replacement is
+/// filtered by its own rules once the parent's rule goes.
+#[test]
+fn rules_read_for_an_edit_go_with_their_moved_directory() {
+    let base = std::env::temp_dir().join(format!("rig-tools-watch-closure-{}", std::process::id()));
+    std::fs::remove_dir_all(&base).ok();
+    std::fs::create_dir_all(base.join("top/.git")).ok();
+    std::fs::create_dir_all(base.join("top/a/b")).ok();
+    std::fs::create_dir_all(base.join("new/b")).ok();
+    std::fs::write(base.join("top/.gitignore"), "a/\n").ok();
+    std::fs::write(base.join("top/a/b/.gitignore"), "").ok();
+    std::fs::write(base.join("new/b/new.rs"), "x").ok();
+    let base = std::fs::canonicalize(&base).unwrap_or(base);
+    let top = base.join("top");
+    let watch = Arc::new(Local).watch(&top, true, Listing::Visible);
+    assert!(watch.is_ok(), "{watch:?}");
+    let Ok(watch) = watch else { return };
+    let events = batches(watch);
+    std::fs::write(top.join("a/b/.gitignore"), "*.rs\n").ok();
+    seen(&events, Duration::from_secs(1));
+    std::fs::rename(top.join("a"), base.join("parked")).ok();
+    std::fs::rename(base.join("new"), top.join("a")).ok();
+    std::fs::write(top.join(".gitignore"), "").ok();
+    let reported = seen(&events, Duration::from_secs(1));
+    std::fs::remove_dir_all(&base).ok();
+    assert!(reported.contains(&top.join("a/b/new.rs")), "{reported:?}");
+}

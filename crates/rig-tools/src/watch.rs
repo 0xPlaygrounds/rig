@@ -366,7 +366,7 @@ impl Filter {
         let mut found = Vec::new();
         let mut pending = vec![directory.to_path_buf()];
         while let Some(dir) = pending.pop() {
-            self.ignores.rules(&dir);
+            self.ignores.read_down_to(&dir);
             let Ok(entries) = fs::read_dir(&dir) else {
                 continue;
             };
@@ -461,6 +461,19 @@ impl Ignores {
                 self.directories.retain(|dir, _| !dir.starts_with(path));
             }
             _ => {}
+        }
+    }
+
+    /// Reads the rules of `dir` and of every directory between the root and
+    /// it, keeping the cache closed under parents as [`Self::heard`] needs.
+    fn read_down_to(&mut self, dir: &Path) {
+        let mut chain: Vec<PathBuf> = dir
+            .ancestors()
+            .take_while(|above| above.starts_with(&self.root))
+            .map(Path::to_path_buf)
+            .collect();
+        while let Some(above) = chain.pop() {
+            self.rules(&above);
         }
     }
 
