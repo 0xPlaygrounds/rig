@@ -229,3 +229,54 @@ fn a_local_watch_follows_edited_rules_and_waits_for_a_missing_root() {
     std::fs::remove_dir_all(&top).ok();
     assert_eq!(reported, [later.join("made.rs")]);
 }
+
+/// A directory moved out takes its ignore rules with it, its
+/// subdirectories' too, even after its own ignore file was edited: a
+/// replacement moved in at the same path is filtered by its own rules, with
+/// or without ignore files of its own.
+#[test]
+fn a_directory_moved_in_where_another_was_follows_its_own_rules() {
+    let base =
+        std::env::temp_dir().join(format!("rig-tools-watch-replaced-{}", std::process::id()));
+    std::fs::remove_dir_all(&base).ok();
+    std::fs::create_dir_all(base.join("top/.git")).ok();
+    let base = std::fs::canonicalize(&base).unwrap_or(base);
+    let top = base.join("top");
+    let watch = Arc::new(Local).watch(&top, true, Listing::Visible);
+    assert!(watch.is_ok(), "{watch:?}");
+    let Ok(watch) = watch else { return };
+    let events = batches(watch);
+    let reused = top.join("reused");
+    let (mut edited, mut replaced) = (Vec::new(), Vec::new());
+    for (name, ignore) in [("bare", None), ("own", Some(""))] {
+        let old = base.join(format!("{name}-old"));
+        std::fs::create_dir_all(old.join("inner")).ok();
+        std::fs::write(old.join(".gitignore"), "*.log\n").ok();
+        std::fs::write(old.join("inner/.gitignore"), "*.rs\n").ok();
+        std::fs::write(old.join("inner/visible.txt"), "x").ok();
+        std::fs::rename(&old, &reused).ok();
+        seen(&events, Duration::from_secs(1));
+        // An edit inside reads the moved-in directories' rules.
+        std::fs::write(reused.join("inner/visible.txt"), "edited").ok();
+        edited.push(seen(&events, Duration::from_secs(1)));
+        std::fs::write(reused.join(".gitignore"), "*.log\n*.tmp\n").ok();
+        seen(&events, Duration::from_secs(1));
+        std::fs::rename(&reused, base.join(format!("{name}-parked"))).ok();
+        seen(&events, Duration::from_secs(1));
+        let new = base.join(name);
+        std::fs::create_dir_all(new.join("inner")).ok();
+        std::fs::write(new.join("inner/new.rs"), "x").ok();
+        if let Some(rules) = ignore {
+            std::fs::write(new.join("inner/.gitignore"), rules).ok();
+        }
+        std::fs::rename(&new, &reused).ok();
+        replaced.push(seen(&events, Duration::from_secs(1)));
+        std::fs::rename(&reused, base.join(format!("{name}-out"))).ok();
+        seen(&events, Duration::from_secs(1));
+    }
+    std::fs::remove_dir_all(&base).ok();
+    let visible = vec![reused.join("inner/visible.txt")];
+    assert_eq!(edited, [visible.clone(), visible]);
+    let new = vec![reused.join("inner/new.rs")];
+    assert_eq!(replaced, [new.clone(), new]);
+}
