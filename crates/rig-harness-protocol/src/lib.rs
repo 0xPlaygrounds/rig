@@ -77,10 +77,12 @@ pub mod env {
     pub const VERSION: &str = "RIG_VERSION";
     /// A line the agent shows at startup, such as a rollback.
     pub const NOTICE: &str = "RIG_NOTICE";
-    /// Lines the agent warns of at startup, a warning each, which a run
-    /// nobody sits at shows too: what the launcher changed of what was
-    /// asked, such as a resumed session's directory that is gone, and the
-    /// files of a rig 0.46 home it no longer reads.
+    /// What the agent warns of at startup, which a run nobody sits at
+    /// shows too: what the launcher changed of what was asked, such as a
+    /// resumed session's directory that is gone, and the files of a rig
+    /// 0.46 home it no longer reads. Written by
+    /// [`warning_text`](super::warning_text), read by
+    /// [`warnings`](super::warnings).
     pub const WARNING: &str = "RIG_WARNING";
     /// Why the build before this start failed, so an older build runs:
     /// the reason and the first compiler errors. The whole output is in
@@ -197,6 +199,35 @@ impl Stamp {
             Some((metadata.modified().ok()?, identity))
         }))
     }
+}
+
+/// The text of [`env::WARNING`] for `warnings`: a TOML array of strings,
+/// so a line break in a warning, such as one in a path it names, stays in
+/// that warning.
+pub fn warning_text<'a>(warnings: impl IntoIterator<Item = &'a str>) -> String {
+    warnings
+        .into_iter()
+        .collect::<toml_edit::Array>()
+        .to_string()
+}
+
+/// The warnings [`warning_text`] wrote in `text`, in order; none for
+/// blank text. Other text that is not an array of strings is one warning,
+/// as it is.
+pub fn warnings(text: &str) -> Vec<String> {
+    if text.trim().is_empty() {
+        return Vec::new();
+    }
+    let parsed = text.parse::<toml_edit::Value>().ok();
+    let array = parsed.as_ref().and_then(toml_edit::Value::as_array);
+    array
+        .and_then(|array| {
+            array
+                .iter()
+                .map(|warning| warning.as_str().map(str::to_owned))
+                .collect()
+        })
+        .unwrap_or_else(|| vec![text.to_owned()])
 }
 
 /// The variable that carries the secret `name`: [`env::SECRET_PREFIX`]

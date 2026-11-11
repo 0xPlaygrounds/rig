@@ -404,9 +404,9 @@ fn launcher_notice(
     }
     if let Ok(warning) = std::env::var(env::WARNING) {
         notices.write_batch(
-            warning
-                .lines()
-                .map(|line| Notice::warn(None, line.to_owned())),
+            rig_harness_protocol::warnings(&warning)
+                .into_iter()
+                .map(|warning| Notice::warn(None, warning)),
         );
     }
     // A run refused for them said them already.
