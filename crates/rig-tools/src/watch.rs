@@ -228,6 +228,7 @@ fn send_batches(raw: &Receiver<Raw>, sender: &UnboundedSender<Vec<PathBuf>>, mut
         let deadline = Instant::now() + LONGEST;
         let mut next = Ok(first);
         while let Ok(Raw { path, created }) = next {
+            filter.ignores.heard(&path);
             if created && filter.recursive && filter.file.is_none() && path.is_dir() {
                 directories.push(path);
             } else if filter.keeps(&path) {
@@ -278,12 +279,6 @@ impl Filter {
         let Ok(below) = path.strip_prefix(&self.root) else {
             return false;
         };
-        if path
-            .file_name()
-            .is_some_and(|name| name == ".gitignore" || name == ".ignore")
-        {
-            self.ignores.forget(path.parent());
-        }
         if below.as_os_str().is_empty()
             || (!self.recursive && below.components().count() > 1)
             || fs::metadata(path).is_ok_and(|meta| meta.is_dir())
@@ -331,10 +326,20 @@ impl Ignores {
         }
     }
 
-    /// Reads `directory`'s rules again when next needed.
-    fn forget(&mut self, directory: Option<&Path>) {
-        if let Some(directory) = directory {
-            self.directories.remove(directory);
+    /// Reads again, when next needed, the rules an event at `path` may have
+    /// changed: its directory's, when it is an ignore file, and those of
+    /// every directory at or below it, when it is no file (a directory
+    /// created, moved or removed there).
+    fn heard(&mut self, path: &Path) {
+        let ignore_file = path
+            .file_name()
+            .is_some_and(|name| name == ".gitignore" || name == ".ignore");
+        match path.parent() {
+            Some(directory) if ignore_file => {
+                self.directories.remove(directory);
+            }
+            _ if !path.is_file() => self.directories.retain(|dir, _| !dir.starts_with(path)),
+            _ => {}
         }
     }
 

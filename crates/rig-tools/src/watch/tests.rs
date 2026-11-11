@@ -229,3 +229,48 @@ fn a_local_watch_follows_edited_rules_and_waits_for_a_missing_root() {
     std::fs::remove_dir_all(&top).ok();
     assert_eq!(reported, [later.join("made.rs")]);
 }
+
+/// A directory moved out takes its ignore rules with it: a replacement
+/// moved in at the same path is filtered by its own rules, with or without
+/// an ignore file of its own.
+#[test]
+fn a_directory_moved_in_where_another_was_follows_its_own_rules() {
+    let base =
+        std::env::temp_dir().join(format!("rig-tools-watch-replaced-{}", std::process::id()));
+    std::fs::remove_dir_all(&base).ok();
+    std::fs::create_dir_all(base.join("top/.git")).ok();
+    std::fs::create_dir_all(base.join("old")).ok();
+    std::fs::write(base.join("old/.gitignore"), "*.rs\n").ok();
+    std::fs::write(base.join("old/visible.txt"), "x").ok();
+    let base = std::fs::canonicalize(&base).unwrap_or(base);
+    let top = base.join("top");
+    let watch = Arc::new(Local).watch(&top, true, Listing::Visible);
+    assert!(watch.is_ok(), "{watch:?}");
+    let Ok(watch) = watch else { return };
+    let events = batches(watch);
+    let reused = top.join("reused");
+    std::fs::rename(base.join("old"), &reused).ok();
+    seen(&events, Duration::from_secs(1));
+    // An edit inside reads the moved-in directory's rules.
+    std::fs::write(reused.join("visible.txt"), "edited").ok();
+    let edited = seen(&events, Duration::from_secs(1));
+    std::fs::rename(&reused, base.join("parked")).ok();
+    seen(&events, Duration::from_secs(1));
+    let mut replaced = Vec::new();
+    for (name, ignore) in [("bare", None), ("own", Some(""))] {
+        let new = base.join(name);
+        std::fs::create_dir_all(&new).ok();
+        std::fs::write(new.join("new.rs"), "x").ok();
+        if let Some(rules) = ignore {
+            std::fs::write(new.join(".gitignore"), rules).ok();
+        }
+        std::fs::rename(&new, &reused).ok();
+        replaced.push(seen(&events, Duration::from_secs(1)));
+        std::fs::rename(&reused, base.join(format!("{name}-out"))).ok();
+        seen(&events, Duration::from_secs(1));
+    }
+    std::fs::remove_dir_all(&base).ok();
+    assert_eq!(edited, [reused.join("visible.txt")]);
+    let new = reused.join("new.rs");
+    assert_eq!(replaced, [vec![new.clone()], vec![new]]);
+}
