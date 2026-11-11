@@ -218,31 +218,33 @@ fn files_in(dir: &Path, files: &mut Vec<PathBuf>) {
 
 /// Gathers the paths `raw` names into batches, each sent once no event came
 /// for [`QUIET`] or it waited [`LONGEST`], until the watcher or the
-/// [`Watch`] is gone. A directory created or moved in under a recursive
-/// watch is watched only after the watcher has told of it, so the files
-/// already in it when its batch ends, by then watched, join the batch.
+/// [`Watch`] is gone. The ignore rules the batch's events may have changed
+/// are dropped before any of its paths is filtered. A directory created or
+/// moved in under a recursive watch is watched only after the watcher has
+/// told of it, so the files already in it when its batch ends, by then
+/// watched, join the batch.
 fn send_batches(raw: &Receiver<Raw>, sender: &UnboundedSender<Vec<PathBuf>>, mut filter: Filter) {
     while let Ok(first) = raw.recv() {
-        let mut paths = BTreeSet::new();
-        let mut directories = Vec::new();
+        let mut heard = Vec::new();
         let deadline = Instant::now() + LONGEST;
         let mut next = Ok(first);
-        while let Ok(Raw { path, created }) = next {
-            filter.ignores.heard(&path);
-            if created && filter.recursive && filter.file.is_none() && path.is_dir() {
-                directories.push(path);
-            } else if filter.keeps(&path) {
-                paths.insert(path);
-            }
+        while let Ok(event) = next {
+            filter.ignores.heard(&event.path);
+            heard.push(event);
             let left = deadline.saturating_duration_since(Instant::now());
             next = match left.is_zero() {
                 true => Err(RecvTimeoutError::Timeout),
                 false => raw.recv_timeout(QUIET.min(left)),
             };
         }
+        let mut paths = BTreeSet::new();
         let mut found = Vec::new();
-        for directory in &directories {
-            files_in(directory, &mut found);
+        for Raw { path, created } in heard {
+            if created && filter.recursive && filter.file.is_none() && path.is_dir() {
+                files_in(&path, &mut found);
+            } else if filter.keeps(&path) {
+                paths.insert(path);
+            }
         }
         paths.extend(found.into_iter().filter(|path| filter.keeps(path)));
         if !paths.is_empty() && sender.unbounded_send(paths.into_iter().collect()).is_err() {
@@ -327,9 +329,11 @@ impl Ignores {
     }
 
     /// Reads again, when next needed, the rules an event at `path` may have
-    /// changed: its directory's, when it is an ignore file, and those of
-    /// every directory at or below it, when it is no file (a directory
-    /// created, moved or removed there).
+    /// changed: its directory's, when it is an ignore file, and when it is
+    /// a directory whose rules were read (created, moved or removed there),
+    /// those of every directory at or below it. Rules are read for every
+    /// directory from the root down to a file decided, so a directory with
+    /// none read has none read below it either.
     fn heard(&mut self, path: &Path) {
         let ignore_file = path
             .file_name()
@@ -338,7 +342,9 @@ impl Ignores {
             Some(directory) if ignore_file => {
                 self.directories.remove(directory);
             }
-            _ if !path.is_file() => self.directories.retain(|dir, _| !dir.starts_with(path)),
+            _ if self.directories.contains_key(path) => {
+                self.directories.retain(|dir, _| !dir.starts_with(path));
+            }
             _ => {}
         }
     }
