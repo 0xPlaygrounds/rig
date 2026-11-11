@@ -1,104 +1,52 @@
-//! The `writing-rig-plugins` skill, which each build of the agent writes to
-//! `RIG_HOME/skills`, where rig-basics' skills plugin lists it. It points
-//! at the plugin guide and the plugin corpus of the rig crates this build
-//! uses, which only the launcher knows, so it is rewritten whenever they
-//! change and a stale copy never points at another version's guide.
+//! The `writing-rig-plugins` skill, which rig writes to `RIG_HOME/skills`
+//! once, when it sets up a new home: with the agent project that its first
+//! build writes. After that the file is the user's, and rig never writes
+//! it again, so an edited or deleted skill stays as the user left it.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::io::{ErrorKind, Write};
+use std::path::PathBuf;
 
 use rig_harness_protocol::Home;
 
-use super::super::project::{RigSource, rig_version};
-use super::super::{Result, VERSION};
+use super::super::Result;
 
-/// The skill's text, with `__VERSION__`, `__GUIDE__` and `__CORPUS__` for
-/// the rig version, the guide and the corpus.
+/// The skill's text.
 const SKILL: &str = include_str!("skill/SKILL.md");
 
-/// Writes the skill as [`write`] does, and returns a warning naming the
-/// file and why when it could not: the skill is a help, so failing to
-/// write it never fails the build it comes with.
-pub fn refresh(home: &Home, source: &RigSource) -> Option<String> {
-    let failure = write(home, source).err()?;
+/// Writes the agent project with `generate` and, when that made a new
+/// home's first one, the skill unless a file is there. A skill that could
+/// not be written is the warning returned, naming the file and why: the
+/// skill is a help, so it never fails the build it comes with.
+pub fn set_up(home: &Home, generate: impl FnOnce() -> Result<()>) -> Result<Option<String>> {
+    let new = !home.project().exists();
+    let generated = generate();
+    let warning = (new && home.project().exists())
+        .then(|| write(home))
+        .flatten();
+    generated.map(|()| warning)
+}
+
+/// Writes the skill unless a file is there, or the warning saying why it
+/// could not.
+fn write(home: &Home) -> Option<String> {
+    let file = file(home);
+    let written = (file.parent())
+        .map_or(Ok(()), fs::create_dir_all)
+        .and_then(|()| match fs::File::create_new(&file) {
+            Err(there) if there.kind() == ErrorKind::AlreadyExists => Ok(()),
+            new => new.and_then(|mut new| new.write_all(SKILL.as_bytes())),
+        });
+    let failure = written.err()?;
     Some(format!(
         "warning: could not write {}: {failure}",
-        file(home).display()
+        file.display()
     ))
 }
 
 /// Where the skill is written.
 fn file(home: &Home) -> PathBuf {
     home.root().join("skills/writing-rig-plugins/SKILL.md")
-}
-
-/// Writes the skill to `RIG_HOME/skills/writing-rig-plugins/SKILL.md` for
-/// the rig crates of `source`, unless it holds that text already.
-fn write(home: &Home, source: &RigSource) -> Result<()> {
-    let file = file(home);
-    let text = text(source, cargo_home().as_deref());
-    if fs::read_to_string(&file).is_ok_and(|old| old == text) {
-        return Ok(());
-    }
-    if let Some(directory) = file.parent() {
-        fs::create_dir_all(directory)?;
-    }
-    fs::write(&file, text)?;
-    Ok(())
-}
-
-/// The skill for the rig crates of `source`. A checkout's guide and corpus
-/// are its own files. A crates.io build's guide is rig-harness's
-/// `PLUGINS.md` in cargo's registry sources under `cargo_home`, or on
-/// docs.rs before cargo has fetched it; its corpus, which is not
-/// published, is the release's on GitHub.
-fn text(source: &RigSource, cargo_home: Option<&Path>) -> String {
-    let (guide, corpus) = match source {
-        RigSource::Local(checkout) => (
-            shown(&checkout.join("crates/rig-harness/PLUGINS.md")),
-            shown(&checkout.join("corpus")),
-        ),
-        RigSource::Registry => (
-            cargo_home.and_then(registry_guide).map_or_else(
-                || format!("https://docs.rs/rig-harness/{VERSION}/rig_harness/plugin_guide/"),
-                |guide| shown(&guide),
-            ),
-            format!("https://github.com/0xPlaygrounds/rig/tree/v{VERSION}/corpus"),
-        ),
-    };
-    SKILL
-        .replace("__VERSION__", &rig_version(source))
-        .replace("__GUIDE__", &guide)
-        .replace("__CORPUS__", &corpus)
-}
-
-/// `path` without its `..` parts when it exists.
-fn shown(path: &Path) -> String {
-    let path = fs::canonicalize(path).unwrap_or_else(|_| path.to_owned());
-    path.display().to_string()
-}
-
-/// Cargo's home, where it keeps the crates it downloads: `CARGO_HOME`, else
-/// `~/.cargo`.
-fn cargo_home() -> Option<PathBuf> {
-    std::env::var_os("CARGO_HOME")
-        .filter(|path| !path.is_empty())
-        .map(PathBuf::from)
-        .or_else(|| std::env::home_dir().map(|home| home.join(".cargo")))
-}
-
-/// rig-harness's `PLUGINS.md` at this launcher's version in the registry
-/// sources under `cargo_home`, when cargo has fetched it.
-fn registry_guide(cargo_home: &Path) -> Option<PathBuf> {
-    fs::read_dir(cargo_home.join("registry/src"))
-        .ok()?
-        .flatten()
-        .map(|index| {
-            index
-                .path()
-                .join(format!("rig-harness-{VERSION}/PLUGINS.md"))
-        })
-        .find(|guide| guide.is_file())
 }
 
 #[cfg(test)]
