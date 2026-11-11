@@ -193,20 +193,21 @@ fn pty(columns: u16) -> Option<(std::fs::File, std::fs::File)> {
     use std::os::fd::FromRawFd;
 
     let (mut leader, mut follower) = (-1, -1);
-    let size = libc::winsize {
+    let mut size = libc::winsize {
         ws_row: 24,
         ws_col: columns,
         ws_xpixel: 0,
         ws_ypixel: 0,
     };
     // SAFETY: openpty writes two descriptors it opened, and reads the size.
+    // The pointers are `*mut` because macOS and the BSDs declare them so.
     let opened = unsafe {
         libc::openpty(
             &mut leader,
             &mut follower,
             std::ptr::null_mut(),
-            std::ptr::null(),
-            &size,
+            std::ptr::null_mut(),
+            &raw mut size,
         )
     } == 0;
     // SAFETY: each descriptor is open and owned by nothing else.

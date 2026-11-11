@@ -482,10 +482,10 @@ When stdout is a terminal, `rig -p` draws the answer's markdown,
 word-wrapped to that terminal's width (`COLUMNS`, else its size) with code
 lines kept whole. Piped or redirected, stdout gets the answer's raw
 markdown, unchanged. When stderr is a terminal, whatever stdout is, each tool
-call shows there dim, after the narration before it, wrapped to the width of
+call shows there dim, after the narration before it, fit to the width of
 the terminal stderr is: a shell call's command one line per command line,
-`read`, `write` and `edit` their path, any other tool its name. `NO_COLOR`
-leaves out the colors.
+wrapped, `read`, `write` and `edit` their path, any other tool its name, each
+on one row. `NO_COLOR` leaves out the colors.
 
 `-r <id or name>` resumes a given session instead of starting a new one; it
 goes wherever an option goes, but not among a command's words or after `--`,
