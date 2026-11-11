@@ -30,8 +30,6 @@ bevy_reflect = { workspace = true }
 bevy_tasks = { workspace = true }
 # A rebuild's output and a sign-in's result, forwarded to the app.
 crossbeam-channel = { workspace = true }
-# The terminal's width for `-p`'s answer.
-crossterm = { workspace = true }
 # Styled lines of `-p`'s answer on a terminal.
 ratatui-core = { workspace = true }
 # The effect log, as JSON lines.
@@ -65,6 +63,11 @@ unicode-width = { workspace = true }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
 rig-core = { workspace = true, features = ["test-utils"] }
 
-[target.'cfg(unix)'.dev-dependencies]
-# The pseudo-terminals the `-p` width tests write to.
+[target.'cfg(unix)'.dependencies]
+# The width of the terminal each of `-p`'s streams is, and the
+# pseudo-terminals its tests write to.
 libc = { workspace = true }
+
+[target.'cfg(not(unix))'.dependencies]
+# The terminal's width for `-p`'s answer.
+crossterm = { workspace = true }
