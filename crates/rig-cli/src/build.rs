@@ -25,7 +25,7 @@ use rig_harness_protocol::{
 };
 
 use super::project::{self, PACKAGE, RigSource};
-use super::{BEVY_VERSION, COMMIT, Result, locks};
+use super::{BEVY_VERSION, COMMIT, Result, locks, update};
 
 /// Whether a build that is already known gets staged again.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -252,10 +252,12 @@ fn artifact(home: &Home) -> PathBuf {
 
 /// A process the launcher starts that is not the agent, such as cargo or
 /// `stty`: without any secret ([`without_secrets`]), which a user who
-/// exported one for a headless run gave the agent alone.
+/// exported one for a headless run gave the agent alone, nor
+/// [`update::LEFT`], which only the next launcher reads.
 pub fn child(program: impl AsRef<OsStr>) -> Command {
     let mut command = Command::new(program);
     without_secrets(&mut command);
+    command.env_remove(update::LEFT);
     command
 }
 

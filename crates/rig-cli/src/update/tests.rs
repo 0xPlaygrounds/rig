@@ -100,3 +100,31 @@ fn a_reexec_resumes_a_saved_session_with_the_same_arguments() {
         args
     );
 }
+
+/// The new launcher reads the session left from the re-exec's
+/// environment; one with no switch drops a value an earlier re-exec left,
+/// and no other process the launcher starts gets it.
+#[test]
+fn a_reexec_tells_the_new_launcher_the_session_it_left() {
+    let left: Option<SessionId> = "1-2".parse().ok();
+    let passed = |reexec: Reexec| {
+        let command = reexec.command();
+        let value = command
+            .get_envs()
+            .find(|(name, _)| *name == LEFT)
+            .map(|(_, value)| value.map(OsStr::to_os_string));
+        value.map(|value| parse_left(value.as_deref()).map_err(|failure| failure.to_string()))
+    };
+    let launcher = Path::new("/opt/rig/bin/rig");
+    let switched = Reexec::new(launcher, Some("3-4"), Vec::new(), None, left.clone());
+    assert_eq!(passed(switched), Some(Ok(left)));
+    let plain = Reexec::new(launcher, Some("3-4"), Vec::new(), None, None);
+    assert_eq!(passed(plain), Some(Ok(None)), "removed, not inherited");
+    let cargo = super::super::build::child("cargo");
+    assert!(
+        cargo
+            .get_envs()
+            .any(|(name, value)| name == LEFT && value.is_none())
+    );
+    assert!(parse_left(Some(OsStr::new("not an id"))).is_err());
+}

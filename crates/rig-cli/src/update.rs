@@ -11,7 +11,7 @@
 //! left, as it does without a new launcher ([`LEFT`]). `/update` in the
 //! agent runs `rig update`, then reloads.
 
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
@@ -30,7 +30,12 @@ pub const LEFT: &str = "RIG_SWITCHED_FROM";
 /// to when its agent refuses the session; `None` when it is unset. A value
 /// that is not a session id is an error naming it.
 pub fn left() -> Result<Option<SessionId>> {
-    let Some(left) = std::env::var_os(LEFT) else {
+    parse_left(std::env::var_os(LEFT).as_deref())
+}
+
+/// The session a [`LEFT`] value names.
+fn parse_left(value: Option<&OsStr>) -> Result<Option<SessionId>> {
+    let Some(left) = value else {
         return Ok(None);
     };
     let left = left.to_string_lossy();
@@ -200,11 +205,9 @@ impl Reexec {
         }
     }
 
-    /// Runs the new launcher in this process's place, or on other systems
-    /// as a child whose exit code it returns. Returns only on failure on
-    /// unix.
-    pub fn run(self) -> Result<ExitCode> {
-        eprintln!("rig was updated; restarting on the new launcher.");
+    /// The new launcher's command, told the session left, or not told
+    /// one the environment holds from an earlier re-exec.
+    fn command(&self) -> Command {
         let mut command = Command::new(&self.launcher);
         command.args(&self.args);
         match &self.left {
@@ -214,6 +217,15 @@ impl Reexec {
         if let Some(directory) = &self.directory {
             command.current_dir(directory);
         }
+        command
+    }
+
+    /// Runs the new launcher in this process's place, or on other systems
+    /// as a child whose exit code it returns. Returns only on failure on
+    /// unix.
+    pub fn run(self) -> Result<ExitCode> {
+        eprintln!("rig was updated; restarting on the new launcher.");
+        let mut command = self.command();
         #[cfg(unix)]
         {
             let failure = std::os::unix::process::CommandExt::exec(&mut command);
