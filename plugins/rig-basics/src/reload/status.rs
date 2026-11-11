@@ -3,7 +3,7 @@
 use rig_harness::prelude::*;
 use rig_tui::{AppStatus, Side, StatusItem, StatusSystems, Tone};
 
-use crate::reload::ReloadStatus;
+use crate::reload::{Rebuild, ReloadStatus};
 
 /// Where the rebuild is: last on the left.
 const RELOAD: StatusItem = StatusItem::new("reload", Side::Left, 90, 16);
@@ -18,7 +18,12 @@ pub(crate) fn add(app: &mut App) {
 }
 
 fn show_reload(reload: Res<ReloadStatus>, mut status: ResMut<AppStatus>) {
-    let text = match &*reload {
+    status.0.show(RELOAD.says(text(&reload), Tone::Cyan));
+}
+
+/// The status line's text for `reload`; empty when there is nothing to show.
+fn text(reload: &ReloadStatus) -> String {
+    match reload {
         ReloadStatus::Idle | ReloadStatus::Failed => String::new(),
         ReloadStatus::Queued { .. } => {
             "Reload queued: once no turn runs (/reload cancel)".to_owned()
@@ -29,6 +34,8 @@ fn show_reload(reload: Res<ReloadStatus>, mut status: ResMut<AppStatus>) {
             "Reloading: {} (Esc cancels)",
             latest.as_deref().unwrap_or("Resolving dependencies…")
         ),
-    };
-    status.0.show(RELOAD.says(text, Tone::Cyan));
+    }
 }
+
+#[cfg(test)]
+mod tests;
