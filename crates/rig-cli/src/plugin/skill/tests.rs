@@ -1,103 +1,22 @@
 use super::*;
 
-/// The path or URL in backticks on the skill's line about `what`.
-fn named(text: &str, what: &str) -> String {
-    let line = text
-        .lines()
-        .find(|line| line.contains(what))
-        .unwrap_or_default();
-    line.split('`').nth(1).unwrap_or_default().to_owned()
-}
-
 #[test]
-fn the_skill_names_this_checkouts_guide_and_corpus() {
-    let checkout = std::path::absolute(super::super::super::project::CHECKOUT).unwrap_or_default();
-    let text = text(&RigSource::Local(checkout), None);
-    let guide = PathBuf::from(named(&text, "plugin guide"));
-    assert!(
-        guide.ends_with("crates/rig-harness/PLUGINS.md") && guide.is_file(),
-        "{text}"
-    );
-    assert!(
-        PathBuf::from(named(&text, "working plugins"))
-            .join("base")
-            .is_dir(),
-        "{text}"
-    );
-    assert!(text.starts_with("---\nname: writing-rig-plugins\n") && !text.contains("__"));
-}
-
-#[test]
-fn a_crates_io_build_names_the_guide_cargo_fetched() {
-    let cargo = std::env::temp_dir().join(format!("rig-skill-cargo-{}", std::process::id()));
-    let fetched = cargo.join(format!(
-        "registry/src/index.example-1/rig-harness-{VERSION}/PLUGINS.md"
-    ));
-    let before = text(&RigSource::Registry, Some(&cargo));
-    let after = (|| -> Result<_> {
-        fs::create_dir_all(fetched.parent().ok_or("no parent")?)?;
-        fs::write(&fetched, "# Plugins\n")?;
-        Ok(text(&RigSource::Registry, Some(&cargo)))
-    })();
-    let fetched = fs::canonicalize(&fetched).unwrap_or_default();
-    fs::remove_dir_all(&cargo).ok();
-    assert_eq!(
-        named(&before, "plugin guide"),
-        format!("https://docs.rs/rig-harness/{VERSION}/rig_harness/plugin_guide/")
-    );
-    let after = after.unwrap_or_default();
-    assert_eq!(
-        PathBuf::from(named(&after, "plugin guide")),
-        fetched,
-        "{after}"
-    );
-}
-
-fn home(test: &str) -> Home {
-    Home::at(std::env::temp_dir().join(format!("rig-skill-{test}-{}", std::process::id())))
-}
-
-#[test]
-fn the_skill_is_rewritten_only_when_its_text_changes() {
-    let home = home("write");
-    let checkout = RigSource::Local(
-        std::path::absolute(super::super::super::project::CHECKOUT).unwrap_or_default(),
-    );
+fn a_new_home_gets_the_skill_once_and_a_deleted_one_stays_deleted() {
+    let home = Home::at(std::env::temp_dir().join(format!("rig-skill-{}", std::process::id())));
     let file = file(&home);
-    let old = std::time::SystemTime::UNIX_EPOCH;
-    let result = (|| -> Result<_> {
-        write(&home, &checkout)?;
-        fs::File::options()
-            .write(true)
-            .open(&file)?
-            .set_modified(old)?;
-        write(&home, &checkout)?;
-        let unchanged = fs::metadata(&file)?.modified()?;
-        fs::write(&file, "edited")?;
-        write(&home, &checkout)?;
-        Ok((unchanged, fs::read_to_string(&file)?))
+    let result = (|| -> std::io::Result<_> {
+        let new = set_up(&home);
+        let written = fs::read_to_string(&file)?;
+        // The home's first build.
+        fs::create_dir_all(home.bin())?;
+        fs::write(home.good(), "")?;
+        fs::remove_file(&file)?;
+        let again = set_up(&home);
+        Ok((new, written, again, file.exists()))
     })();
     fs::remove_dir_all(home.root()).ok();
     assert!(result.is_ok(), "{result:?}");
-    let (unchanged, text) = result.unwrap_or((old, String::new()));
-    assert_eq!(unchanged, old);
-    assert_eq!(text, super::text(&checkout, None));
-}
-
-#[test]
-fn a_skill_that_cannot_be_written_is_a_warning() {
-    let home = home("blocked");
-    // A file where the skill's directory goes.
-    let blocked = (|| -> Result<_> {
-        fs::create_dir_all(home.root().join("skills"))?;
-        fs::write(home.root().join("skills/writing-rig-plugins"), "")?;
-        Ok(refresh(&home, &RigSource::Registry))
-    })();
-    fs::remove_dir_all(home.root()).ok();
-    let warning = blocked.ok().flatten().unwrap_or_default();
-    assert!(
-        warning.starts_with("warning: could not write ")
-            && warning.contains("skills/writing-rig-plugins/SKILL.md"),
-        "{warning}"
-    );
+    let (new, written, again, back) = result.unwrap_or_default();
+    assert_eq!((new, again, back), (None, None, false));
+    assert!(written.starts_with("---\nname: writing-rig-plugins\n"), "{written}");
 }
