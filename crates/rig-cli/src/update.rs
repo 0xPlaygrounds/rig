@@ -6,17 +6,41 @@
 //!
 //! A launcher whose own file was replaced while its agent ran, by `rig
 //! update` or by hand, starts the new file on the agent's next reload, so
-//! the session goes on with a new launcher and agent ([`Reexec`]). `/update` in the agent runs `rig update`, then reloads.
+//! the session goes on with a new launcher and agent ([`Reexec`]). A
+//! switch to a session the new agent refuses goes back to the session it
+//! left, as it does without a new launcher ([`LEFT`]). `/update` in the
+//! agent runs `rig update`, then reloads.
 
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
-use rig_harness_protocol::{UPDATE_INSTALLED, UPDATE_SAYS};
+use rig_harness_protocol::{SessionId, UPDATE_INSTALLED, UPDATE_SAYS};
 
 use super::Result;
 use super::project::RigSource;
+
+/// Set by a launcher on the new launcher it starts in its place
+/// ([`Reexec`]), and only on it: the session its agent switched away from
+/// to the one the new launcher resumes.
+pub const LEFT: &str = "RIG_SWITCHED_FROM";
+
+/// The session [`LEFT`] names, which this launcher's first start goes back
+/// to when its agent refuses the session; `None` when it is unset. A value
+/// that is not a session id is an error naming it.
+pub fn left() -> Result<Option<SessionId>> {
+    parse_left(std::env::var_os(LEFT).as_deref())
+}
+
+/// The session a [`LEFT`] value names.
+fn parse_left(value: Option<&OsStr>) -> Result<Option<SessionId>> {
+    let Some(left) = value else {
+        return Ok(None);
+    };
+    let left = left.to_string_lossy();
+    Ok(Some(left.parse().map_err(|why| format!("{LEFT}: {why}"))?))
+}
 
 /// The crate `cargo install` installs the launcher from.
 const PACKAGE: &str = "rig-cli";
@@ -157,24 +181,43 @@ pub struct Reexec {
     launcher: PathBuf,
     args: Vec<OsString>,
     directory: Option<PathBuf>,
+    left: Option<SessionId>,
 }
 
 impl Reexec {
     /// The launcher at `launcher` with `args`, the command line's own,
     /// which never name a session: resuming `session`, or starting a new
-    /// one when it is `None`, in `directory` when given.
+    /// one when it is `None`, in `directory` when given. `left` is the
+    /// session the agent switched away from to `session` ([`LEFT`]).
     pub fn new(
         launcher: &Path,
         session: Option<&str>,
         args: Vec<OsString>,
         directory: Option<PathBuf>,
+        left: Option<SessionId>,
     ) -> Self {
         let resume = session.map(|session| ["--resume".into(), session.into()]);
         Self {
             launcher: launcher.to_path_buf(),
             args: resume.into_iter().flatten().chain(args).collect(),
             directory,
+            left,
         }
+    }
+
+    /// The new launcher's command, told the session left, or not told
+    /// one the environment holds from an earlier re-exec.
+    fn command(&self) -> Command {
+        let mut command = Command::new(&self.launcher);
+        command.args(&self.args);
+        match &self.left {
+            Some(left) => command.env(LEFT, left.as_str()),
+            None => command.env_remove(LEFT),
+        };
+        if let Some(directory) = &self.directory {
+            command.current_dir(directory);
+        }
+        command
     }
 
     /// Runs the new launcher in this process's place, or on other systems
@@ -182,11 +225,7 @@ impl Reexec {
     /// unix.
     pub fn run(self) -> Result<ExitCode> {
         eprintln!("rig was updated; restarting on the new launcher.");
-        let mut command = Command::new(&self.launcher);
-        command.args(&self.args);
-        if let Some(directory) = &self.directory {
-            command.current_dir(directory);
-        }
+        let mut command = self.command();
         #[cfg(unix)]
         {
             let failure = std::os::unix::process::CommandExt::exec(&mut command);

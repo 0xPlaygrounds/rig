@@ -929,7 +929,7 @@ fn a_reload_after_the_launcher_was_replaced_restarts_on_the_new_one() {
         replace: true,
         ..Reload::default()
     };
-    let reexec = |launcher: &Path, session: Option<&SessionId>| {
+    let reexec = |launcher: &Path, session: Option<&SessionId>, left: Option<SessionId>| {
         let here = launcher
             .parent()
             .and_then(Path::parent)
@@ -939,6 +939,7 @@ fn a_reload_after_the_launcher_was_replaced_restarts_on_the_new_one() {
             session.map(SessionId::as_str),
             Vec::new(),
             here,
+            left,
         ))
     };
     let plain = reloaded("plain", Reload::default());
@@ -948,16 +949,18 @@ fn a_reload_after_the_launcher_was_replaced_restarts_on_the_new_one() {
     );
     let own = reloaded("own", replace);
     assert!(own.is_some_and(|(ended, launcher, current, ..)| {
-        ended.reexec == reexec(&launcher, Some(&current)) && ended.said.is_none()
+        ended.reexec == reexec(&launcher, Some(&current), None) && ended.said.is_none()
     }));
     let other = Reload {
         switch: Some("other"),
         ..replace
     };
     let switched = reloaded("switch", other);
-    assert!(switched.is_some_and(|(ended, launcher, _, other, _)| {
-        ended.reexec == reexec(&launcher, Some(&other))
-    }));
+    assert!(
+        switched.is_some_and(|(ended, launcher, current, other, _)| {
+            ended.reexec == reexec(&launcher, Some(&other), Some(current))
+        })
+    );
     // The switch file outlives the unsaved session it is in.
     let unsaved = reloaded(
         "unsaved",
@@ -966,9 +969,11 @@ fn a_reload_after_the_launcher_was_replaced_restarts_on_the_new_one() {
             ..other
         },
     );
-    assert!(unsaved.is_some_and(|(ended, launcher, _, other, kept)| {
-        ended.reexec == reexec(&launcher, Some(&other)) && !kept
-    }));
+    assert!(
+        unsaved.is_some_and(|(ended, launcher, current, other, kept)| {
+            ended.reexec == reexec(&launcher, Some(&other), Some(current)) && !kept
+        })
+    );
     let busy = reloaded(
         "busy",
         Reload {
@@ -977,7 +982,7 @@ fn a_reload_after_the_launcher_was_replaced_restarts_on_the_new_one() {
         },
     );
     assert!(busy.is_some_and(|(ended, launcher, current, other, _)| {
-        ended.reexec == reexec(&launcher, Some(&current))
+        ended.reexec == reexec(&launcher, Some(&current), None)
             && ended.said
                 == Some(format!(
                     "Could not switch sessions: session {other} is open in another rig."
@@ -990,7 +995,9 @@ fn a_reload_after_the_launcher_was_replaced_restarts_on_the_new_one() {
             ..replace
         },
     );
-    assert!(new.is_some_and(|(ended, launcher, ..)| ended.reexec == reexec(&launcher, None)));
+    assert!(new.is_some_and(|(ended, launcher, current, ..)| {
+        ended.reexec == reexec(&launcher, None, Some(current))
+    }));
     let headless = reloaded(
         "headless",
         Reload {
@@ -1001,6 +1008,80 @@ fn a_reload_after_the_launcher_was_replaced_restarts_on_the_new_one() {
     assert!(headless.is_some_and(|(ended, _, _, _, kept)| {
         ended.reexec.is_none() && ended.code == ExitCode::SUCCESS && kept
     }));
+}
+
+/// A `/resume` after the launcher's file was replaced, of a session the
+/// new launcher's agent refuses, such as one an older rig saved, goes back
+/// to the session it left, told why, as it does without a new launcher.
+#[cfg(unix)]
+#[test]
+fn a_refused_switch_on_the_new_launcher_goes_back_to_the_session_it_left() {
+    let home = builds("replaced-switch-back", "", "");
+    let back = locks::hold_run(&home).and_then(|run| {
+        let saved = || -> Result<SessionId> {
+            let (id, session) = home.new_session()?;
+            session.mark_saved()?;
+            Ok(id)
+        };
+        let (left, refused) = (saved()?, saved()?);
+        let launcher = home.root().join("launcher").join("rig");
+        fs::create_dir_all(home.root().join("launcher"))?;
+        fs::write(&launcher, "old")?;
+        let agent = format!(
+            "echo \"$RIG_SESSION $RIG_START $RIG_NOTICE\" >> \"$RIG_HOME/started\"
+touch \"$RIG_RUN/ready\"
+[ \"$RIG_SESSION\" = {refused} ] && echo 'rig: too old.' > \"$RIG_RUN/refusal\" && exit 2
+[ -e \"$RIG_HOME/switched\" ] && exit 0
+touch \"$RIG_HOME/switched\"
+echo {refused} > \"$RIG_HOME/sessions/$RIG_SESSION/switch\"
+echo new > \"$RIG_LAUNCHER.new\"; mv \"$RIG_LAUNCHER.new\" \"$RIG_LAUNCHER\"
+exit 75"
+        );
+        for build in [home.staged(), home.good()] {
+            fs::write(build, format!("#!/bin/sh\n{agent}\n"))?;
+        }
+        let here = Some(home.root());
+        let (claimed, _) = claim(&home, Start::Resume(left.clone()), here)?;
+        let start = |claimed, notice| {
+            launch(
+                &home,
+                &launcher,
+                run.dir(),
+                &Invocation::default(),
+                false,
+                claimed,
+                notice,
+                None,
+            )
+        };
+        let reexec = start(claimed, None)?.reexec;
+        let told = Reexec::new(
+            &launcher,
+            Some(refused.as_str()),
+            Vec::new(),
+            here.map(Path::to_path_buf),
+            Some(left.clone()),
+        );
+        // The new launcher, as `reexec` starts it: resuming the refused
+        // session, told the one it left.
+        let (mut claimed, notice) = claim(&home, Start::Resume(refused.clone()), here)?;
+        claimed.left = Some(left.clone());
+        let code = start(claimed, notice)?.code;
+        let started = fs::read_to_string(home.root().join("started"))?;
+        Ok((code, started, reexec == Some(told), left, refused))
+    });
+    fs::remove_dir_all(home.root()).ok();
+    let back = back.map_err(|failure| failure.to_string());
+    assert!(back.is_ok(), "{back:?}");
+    if let Ok((code, started, told, left, refused)) = back {
+        assert!(told, "the new launcher is told the session it left");
+        assert_eq!(code, ExitCode::SUCCESS);
+        let expected = format!(
+            "{left} resumed \n{refused} resumed Resumed the session.\n\
+             {left} resumed Could not switch sessions: too old.\n"
+        );
+        assert_eq!(started, expected);
+    }
 }
 
 /// The warnings each start of a run of `home` got, one start per item,
