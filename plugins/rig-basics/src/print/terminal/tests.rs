@@ -185,3 +185,51 @@ fn a_shell_call_shows_its_whole_command_wrapped_at_spaces() {
         );
     }
 }
+
+/// The two ends of a new pseudo-terminal `columns` wide: the one a program
+/// writes to, and the other end, which keeps it open.
+#[cfg(unix)]
+fn pty(columns: u16) -> Option<(std::fs::File, std::fs::File)> {
+    use std::os::fd::FromRawFd;
+
+    let (mut leader, mut follower) = (-1, -1);
+    let size = libc::winsize {
+        ws_row: 24,
+        ws_col: columns,
+        ws_xpixel: 0,
+        ws_ypixel: 0,
+    };
+    // SAFETY: openpty writes two descriptors it opened, and reads the size.
+    let opened = unsafe {
+        libc::openpty(
+            &mut leader,
+            &mut follower,
+            std::ptr::null_mut(),
+            std::ptr::null(),
+            &size,
+        )
+    } == 0;
+    // SAFETY: each descriptor is open and owned by nothing else.
+    opened.then(|| unsafe {
+        (
+            std::fs::File::from_raw_fd(follower),
+            std::fs::File::from_raw_fd(leader),
+        )
+    })
+}
+
+/// Each stream is as wide as its own terminal, not the one the process
+/// was started from: with stdout and stderr on terminals of different
+/// widths, each wraps at its own. `COLUMNS`, when set, still wins.
+#[cfg(unix)]
+#[test]
+fn each_terminal_is_as_wide_as_itself() {
+    let columns = std::env::var("COLUMNS").ok();
+    let columns = columns.and_then(|columns| columns.trim().parse::<usize>().ok());
+    let columns = columns.filter(|columns| *columns > 0);
+    let widths = [pty(80), pty(20)].map(|pty| {
+        pty.and_then(|(stream, _other_end)| Terminal::of(&stream))
+            .and_then(|terminal| terminal.width)
+    });
+    assert_eq!(widths, [columns.or(Some(80)), columns.or(Some(20))]);
+}
