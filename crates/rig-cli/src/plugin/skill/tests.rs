@@ -18,5 +18,8 @@ fn a_new_home_gets_the_skill_once_and_a_deleted_one_stays_deleted() {
     assert!(result.is_ok(), "{result:?}");
     let (new, written, again, back) = result.unwrap_or_default();
     assert_eq!((new, again, back), (None, None, false));
-    assert!(written.starts_with("---\nname: writing-rig-plugins\n"), "{written}");
+    assert!(
+        written.starts_with("---\nname: writing-rig-plugins\n"),
+        "{written}"
+    );
 }

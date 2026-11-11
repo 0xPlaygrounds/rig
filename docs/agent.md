@@ -604,11 +604,11 @@ plugin guide, with a copy-ready example of each kind, its names from
 `rig_harness::prelude` and the plugin crates, and the `src/lib.rs` that `rig
 plugin new` writes is a working, commented slash command.
 
-Each build of the agent writes the `writing-rig-plugins` skill to
-`$RIG_HOME/skills/writing-rig-plugins/SKILL.md`, so the agent finds it
-(`/skill:writing-rig-plugins`). It names `rig plugin new`, the plugin guide and
-the plugin examples of the rig crates that build uses, and is rewritten at each
-build.
+When rig sets up a new home (its first build), it writes the
+`writing-rig-plugins` skill to `$RIG_HOME/skills/writing-rig-plugins/SKILL.md`
+unless a file is there, so the agent finds it (`/skill:writing-rig-plugins`).
+It names `rig plugin new`, the plugin guide and the plugin examples. Rig never
+writes it again: an edited or deleted skill stays that way.
 
 The default [`rig-traffic`](../plugins/rig-traffic) plugin optionally records
 provider HTTP exchanges in the session's `traffic.jsonl`. Its README covers

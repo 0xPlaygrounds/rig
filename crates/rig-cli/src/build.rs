@@ -138,6 +138,9 @@ pub fn compile(
     output: BuildOutput,
 ) -> std::result::Result<(), BuildFailure> {
     let mut log = BuildLog::create(home, output, Box::new(std::io::stderr()));
+    if let Some(warning) = super::plugin::skill::set_up(home) {
+        log.say(&warning);
+    }
     let wanted = (|| -> Result<_> {
         let plugins = config::chosen(home)?;
         local_crates(home, &plugins)?;
@@ -197,9 +200,6 @@ fn compile_logged(
     }
     if !status.success() {
         return Err(format!("cargo could not build the agent ({status})").into());
-    }
-    if let Some(warning) = super::plugin::skill::refresh(home, source) {
-        log.say(&warning);
     }
     stage(home, staged, staging)
 }
