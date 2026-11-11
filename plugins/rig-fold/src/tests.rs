@@ -190,6 +190,17 @@ fn a_long_result_folds_to_its_head_a_marker_and_its_tail() {
 }
 
 #[test]
+fn a_result_folds_only_when_that_saves_two_rows() {
+    let (mut app, pane) = app("");
+    // Under the header 14 lines would fold to 13, saving one row, so they
+    // stay whole; 15 fold to 13.
+    let calls = [shell(0, 14, End::Done), shell(1, 15, End::Done)];
+    let drawn = drawn(&mut app, (Some(pane), None), &calls);
+    let lengths: Vec<usize> = drawn.iter().map(Vec::len).collect();
+    assert_eq!(lengths, [15, 14], "{drawn:?}");
+}
+
+#[test]
 fn the_key_shows_every_call_or_the_selected_one_whole() {
     let (mut app, pane) = app("[fold]\nhead = 1\ntail = 2\nkey = \"alt+o\"");
     let calls = [shell(0, 50, End::Done), shell(1, 50, End::Done)];
