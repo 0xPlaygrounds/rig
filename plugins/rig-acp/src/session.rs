@@ -125,8 +125,9 @@ pub(crate) struct Session {
     client: acp::ClientCapabilities,
     /// The request that opened it, or opens it again, until answered.
     opening: Option<Opening>,
-    /// The client's MCP servers it opened with.
-    servers: Vec<acp::McpServer>,
+    /// The client's MCP servers it opened with, as rig runs them
+    /// ([`running`]).
+    servers: Running,
     /// Whether the main agent was given a model once, before the answer.
     chose: bool,
     /// The options the client was last told of.
@@ -295,7 +296,7 @@ pub(crate) fn install(app: &mut App) {
         })
         .collect();
     let servers: Vec<AddMcpServer> = declared.into_iter().map(|(_, server)| server).collect();
-    let named = opening.servers().to_vec();
+    let named = running(opening.servers());
     // The editor sets the model of every session, so none typed here is
     // the user's default.
     app.insert_resource(TypedChoices(ChoiceKind::ForThisRun));
@@ -368,6 +369,22 @@ pub(crate) fn install(app: &mut App) {
     app.world_mut().spawn(Answerer::default());
 }
 
+/// The client's MCP servers as rig runs them: each name rig gives one, with
+/// how it is reached.
+type Running = BTreeMap<String, Result<ServerSpec, String>>;
+
+/// The servers rig runs for the client's list `servers`: by name, the first
+/// of a name, as rig-mcp-client keeps it. The list's order and the order of
+/// a server's variables or headers start the same servers, so they are not
+/// part of it; a server's arguments keep their order.
+fn running(servers: &[acp::McpServer]) -> Running {
+    let mut running = Running::new();
+    for (_, server) in servers.iter().filter_map(mcp_server) {
+        running.entry(server.name).or_insert(server.spec);
+    }
+    running
+}
+
 /// One of the client's MCP servers as rig-mcp-client takes it, with the
 /// name the client gave it; `None` for one of a kind ACP may add later.
 fn mcp_server(server: &acp::McpServer) -> Option<(String, AddMcpServer)> {
@@ -384,13 +401,15 @@ fn mcp_server(server: &acp::McpServer) -> Option<(String, AddMcpServer)> {
             (stdio.name.clone(), Ok(spec))
         }
         acp::McpServer::Http(http) => {
-            let headers = http
-                .headers
-                .iter()
-                .map(|header| (&header.name, &header.value));
+            // Header names are alike in any case, and go out lowercase: a
+            // later header of a name replaces an earlier one.
+            let headers = http.headers.iter().map(|header| {
+                let name = header.name.to_ascii_lowercase();
+                (name, header.value.clone())
+            });
             let spec = ServerSpec::Http {
                 url: http.url.clone(),
-                headers: last_of(headers, true),
+                headers: headers.collect(),
             };
             (http.name.clone(), Ok(spec))
         }
@@ -671,7 +690,7 @@ impl Requested<'_, '_> {
             Some(
                 "the session is busy: load it once its prompt is answered, or resume it".to_owned(),
             )
-        } else if opening.servers() != session.servers.as_slice() {
+        } else if running(opening.servers()) != session.servers {
             Some(format!(
                 "session {} is open with other MCP servers: close it, then load it with these",
                 session.id

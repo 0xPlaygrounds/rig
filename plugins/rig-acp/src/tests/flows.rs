@@ -669,6 +669,45 @@ fn a_session_the_client_has_open_loads_with_its_history_first_and_resumes_withou
 }
 
 #[test]
+fn a_session_re_attaches_with_its_mcp_servers_in_any_order() {
+    let place = Place::new("reattach-order");
+    let env = |pairs: &[(&str, &str)]| {
+        let vars = pairs
+            .iter()
+            .map(|(name, value)| acp::EnvVariable::new(*name, *value));
+        vars.collect::<Vec<_>>()
+    };
+    let files = stub_with("files", env(&[("X", "1"), ("Y", "2")]));
+    let notes = stub_with("notes", Vec::new());
+    let router = drive(&place, acp::ClientCapabilities::new(), async |driven| {
+        let new = driven.new_session(vec![files, notes.clone()]).await;
+        assert!(new.is_some(), "no session");
+        let Some(new) = new else { return };
+        let id = new.session_id;
+        let resume = |servers: Vec<acp::McpServer>| {
+            acp::ResumeSessionRequest::new(id.clone(), &driven.project).mcp_servers(servers)
+        };
+        // The same servers, listed the other way round, with one's
+        // variables the other way round too.
+        let turned = stub_with("files", env(&[("Y", "2"), ("X", "1")]));
+        let attached = driven
+            .reopen(&id, resume(vec![notes.clone(), turned]))
+            .await;
+        assert!(attached.is_ok(), "{attached:?}");
+        // A variable with another value is another server.
+        let other = stub_with("files", env(&[("X", "1"), ("Y", "3")]));
+        let refused = driven.reopen(&id, resume(vec![notes.clone(), other])).await;
+        assert!(
+            refused
+                .as_ref()
+                .is_err_and(|error| error.message.contains("other MCP servers")),
+            "{refused:?}"
+        );
+    });
+    assert!(router.is_some());
+}
+
+#[test]
 fn a_client_mcp_server_serves_the_model_and_a_failing_one_is_told_after_the_session_opens() {
     let place = Place::new("mcp");
     let broken = acp::McpServer::Stdio(acp::McpServerStdio::new("broken", "/no/such/mcp-server"));
