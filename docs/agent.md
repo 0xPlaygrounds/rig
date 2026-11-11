@@ -604,7 +604,7 @@ plugin guide, with a copy-ready example of each kind, its names from
 `rig_harness::prelude` and the plugin crates, and the `src/lib.rs` that `rig
 plugin new` writes is a working, commented slash command.
 
-When rig sets up a new home (its first build), it writes the
+When rig sets up a new home, at its first build, it writes the
 `writing-rig-plugins` skill to `$RIG_HOME/skills/writing-rig-plugins/SKILL.md`
 unless a file is there, so the agent finds it (`/skill:writing-rig-plugins`).
 It names `rig plugin new`, the plugin guide and the plugin examples. Rig never

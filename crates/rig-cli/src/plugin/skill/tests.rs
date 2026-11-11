@@ -8,8 +8,7 @@ fn a_new_home_gets_the_skill_once_and_a_deleted_one_stays_deleted() {
         let new = set_up(&home);
         let written = fs::read_to_string(&file)?;
         // The home's first build.
-        fs::create_dir_all(home.bin())?;
-        fs::write(home.good(), "")?;
+        fs::create_dir_all(home.project())?;
         fs::remove_file(&file)?;
         let again = set_up(&home);
         Ok((new, written, again, file.exists()))
