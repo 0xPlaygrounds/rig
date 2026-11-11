@@ -176,6 +176,7 @@ fn the_batching_thread_ends_with_its_watch() {
         .send(super::Raw {
             path: file.clone(),
             created: false,
+            made: false,
         })
         .ok();
     let filter = super::Filter {
@@ -279,4 +280,120 @@ fn a_directory_moved_in_where_another_was_follows_its_own_rules() {
     assert_eq!(edited, [visible.clone(), visible]);
     let new = vec![reused.join("inner/new.rs")];
     assert_eq!(replaced, [new.clone(), new]);
+}
+
+/// Editing only an ignore file reports the files whose listing it changed,
+/// as a look that lists them again would: those it now leaves out and
+/// those it lets back in, in the root and in a directory below it, and
+/// not the files it leaves alone. Edits in one batch count together: a file
+/// one hides and another shows again is not reported, a file created just
+/// before its rule goes is, and so is one removed, or removed and made
+/// again, or in a directory removed and made again, just before a rule
+/// hides it.
+#[test]
+fn an_edited_ignore_file_reports_the_files_it_hides_or_shows() {
+    let top = std::env::temp_dir().join(format!("rig-tools-watch-edited-{}", std::process::id()));
+    std::fs::remove_dir_all(&top).ok();
+    std::fs::create_dir_all(top.join(".git")).ok();
+    std::fs::create_dir_all(top.join("nested")).ok();
+    std::fs::write(top.join(".gitignore"), "").ok();
+    std::fs::write(top.join("existing.rs"), "x").ok();
+    std::fs::write(top.join("notes.txt"), "x").ok();
+    std::fs::write(top.join("nested/.gitignore"), "").ok();
+    std::fs::write(top.join("nested/deep.rs"), "x").ok();
+    let top = std::fs::canonicalize(&top).unwrap_or(top);
+    let watch = Arc::new(Local).watch(&top, true, Listing::Visible);
+    assert!(watch.is_ok(), "{watch:?}");
+    let Ok(watch) = watch else { return };
+    let events = batches(watch);
+    let mut reported = Vec::new();
+    // A file with no text is removed; a directory is removed and made again.
+    let steps: [&[(&str, Option<&str>)]; 11] = [
+        &[(".gitignore", Some("*.rs\n"))],
+        &[(".gitignore", Some(""))],
+        &[("nested/.gitignore", Some("*.rs\n"))],
+        &[("nested/.gitignore", Some(""))],
+        &[
+            (".gitignore", Some("*.rs\n")),
+            ("nested/.gitignore", Some("!deep.rs\n")),
+        ],
+        &[("fresh.rs", Some("x")), (".gitignore", Some(""))],
+        &[("fresh.rs", None), (".gitignore", Some("*.rs\n"))],
+        &[(".gitignore", Some(""))],
+        &[
+            ("existing.rs", None),
+            ("existing.rs", Some("x")),
+            (".gitignore", Some("*.rs\n")),
+        ],
+        &[(".gitignore", Some(""))],
+        &[
+            ("nested", None),
+            ("nested/new.txt", Some("x")),
+            (".gitignore", Some("nested/*.rs\n")),
+        ],
+    ];
+    for writes in steps {
+        for (file, text) in writes {
+            let path = top.join(file);
+            match text {
+                Some(text) => std::fs::write(path, text).ok(),
+                None if path.is_dir() => std::fs::remove_dir_all(&path)
+                    .and_then(|()| std::fs::create_dir(&path))
+                    .ok(),
+                None => std::fs::remove_file(path).ok(),
+            };
+        }
+        let mut seen = seen(&events, Duration::from_secs(1));
+        seen.sort();
+        reported.push(seen);
+    }
+    std::fs::remove_dir_all(&top).ok();
+    let [existing, deep, fresh] =
+        ["existing.rs", "nested/deep.rs", "fresh.rs"].map(|f| top.join(f));
+    let both = vec![existing.clone(), deep.clone()];
+    assert_eq!(
+        reported,
+        [
+            both.clone(),
+            both,
+            vec![deep.clone()],
+            vec![deep.clone()],
+            vec![existing.clone()],
+            vec![existing.clone(), fresh.clone()],
+            vec![existing.clone(), fresh],
+            vec![existing.clone()],
+            vec![existing.clone()],
+            vec![existing],
+            vec![deep, top.join("nested/new.txt")],
+        ]
+    );
+}
+
+/// Rules read for an edited ignore file below an ignored directory are
+/// dropped with that directory when it is moved away: its replacement is
+/// filtered by its own rules once the parent's rule goes.
+#[test]
+fn rules_read_for_an_edit_go_with_their_moved_directory() {
+    let base = std::env::temp_dir().join(format!("rig-tools-watch-closure-{}", std::process::id()));
+    std::fs::remove_dir_all(&base).ok();
+    std::fs::create_dir_all(base.join("top/.git")).ok();
+    std::fs::create_dir_all(base.join("top/a/b")).ok();
+    std::fs::create_dir_all(base.join("new/b")).ok();
+    std::fs::write(base.join("top/.gitignore"), "a/\n").ok();
+    std::fs::write(base.join("top/a/b/.gitignore"), "").ok();
+    std::fs::write(base.join("new/b/new.rs"), "x").ok();
+    let base = std::fs::canonicalize(&base).unwrap_or(base);
+    let top = base.join("top");
+    let watch = Arc::new(Local).watch(&top, true, Listing::Visible);
+    assert!(watch.is_ok(), "{watch:?}");
+    let Ok(watch) = watch else { return };
+    let events = batches(watch);
+    std::fs::write(top.join("a/b/.gitignore"), "*.rs\n").ok();
+    seen(&events, Duration::from_secs(1));
+    std::fs::rename(top.join("a"), base.join("parked")).ok();
+    std::fs::rename(base.join("new"), top.join("a")).ok();
+    std::fs::write(top.join(".gitignore"), "").ok();
+    let reported = seen(&events, Duration::from_secs(1));
+    std::fs::remove_dir_all(&base).ok();
+    assert!(reported.contains(&top.join("a/b/new.rs")), "{reported:?}");
 }
