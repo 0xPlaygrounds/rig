@@ -590,7 +590,9 @@ list).
 `rig plugin check` checks the list. With `--build` it also builds the agent
 with its plugins in `$RIG_HOME/target` without staging it, and names the
 plugins whose systems in one agent-loop stage use the same data with no order
-between them; a debug build of the agent warns of those at start.
+between them; a debug build of the agent warns of those at start. It fails on
+a settings table the built plugins would refuse at start, such as a key no
+plugin reads any more, and says which key to delete.
 
 A plugin crate depends on `rig-harness`, and on another plugin crate whose
 types it uses (such as `rig-tui` for a terminal panel), and registers tools,

@@ -120,6 +120,11 @@ pub mod env {
     /// writes what its plugins add there ([`AgentDescription`](super::AgentDescription))
     /// and exits without running a frame.
     pub const DESCRIBE: &str = "RIG_DESCRIBE";
+    /// Set with [`DESCRIBE`] by `rig plugin check --build` to the user's
+    /// settings file: the describing build reads its settings from there,
+    /// not from its scratch home, and fails, as a start would refuse, when
+    /// a table does not read.
+    pub const DESCRIBE_SETTINGS: &str = "RIG_DESCRIBE_SETTINGS";
     /// The start of a secret's variable, such as `RIG_SECRET_CRYPT`
     /// ([`secret_variable`](super::secret_variable)): the launcher sets it
     /// on the agent's process alone, and every process rig starts drops it

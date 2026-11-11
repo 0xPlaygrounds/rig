@@ -236,11 +236,16 @@ pub fn build(home: &Home) -> Result<()> {
 }
 
 /// `rig plugin check --build`, holding the root's build lock: builds the
-/// agent like [`build`] but stages nothing, and returns its report.
+/// agent like [`build`] but stages nothing, and returns its report. Fails,
+/// as a start would refuse, when a table of the home's settings does not
+/// read as the plugin that reads it expects.
 pub fn check(home: &Home) -> Result<AgentDescription> {
     let _lock = locks::hold_build_lock(home, BuildOutput::Live)?;
     compile(home, &home.staged(), Staging::Never, BuildOutput::Live)?;
-    described(home, &artifact(home))
+    let binary = artifact(home);
+    let report = described(home, &binary)?;
+    describe(home, &binary, Some(&home.settings()))?;
+    Ok(report)
 }
 
 /// The binary cargo builds the agent into.
@@ -597,7 +602,7 @@ pub fn described(home: &Home, binary: &Path) -> Result<AgentDescription> {
         return Ok(report);
     }
     let kept = home.described(&stamp(binary)?);
-    let text = describe(home, binary)?;
+    let text = describe(home, binary, None)?;
     let parent = kept.parent().ok_or("no directory for build reports")?;
     fs::create_dir_all(parent)?;
     // Written whole, then renamed: another launcher may read it meanwhile.
@@ -618,7 +623,9 @@ pub fn good_report(home: &Home, binary: &Path) -> Option<AgentDescription> {
 /// `RIG_HOME` of its own that is its working directory, without the
 /// session, run or secrets, so a build that ignores the request cannot
 /// reach the user's sessions; it is killed after [`DESCRIBE_TIMEOUT`].
-fn describe(home: &Home, binary: &Path) -> Result<String> {
+/// With `settings` ([`env::DESCRIBE_SETTINGS`]) it reads that settings
+/// file, and fails when a start would refuse it.
+fn describe(home: &Home, binary: &Path, settings: Option<&Path>) -> Result<String> {
     let run = home.run(std::process::id());
     let scratch = run.path().join("describe");
     fs::remove_dir_all(&scratch).ok();
@@ -636,6 +643,10 @@ fn describe(home: &Home, binary: &Path) -> Result<String> {
     for name in env::AGENT_ONLY.iter().chain(&[env::LAUNCHER]) {
         command.env_remove(name);
     }
+    match settings {
+        Some(settings) => command.env(env::DESCRIBE_SETTINGS, settings),
+        None => command.env_remove(env::DESCRIBE_SETTINGS),
+    };
     let result = wait_described(command.spawn()?, &report, DESCRIBE_TIMEOUT);
     fs::remove_dir_all(&scratch).ok();
     // A launcher with no run of its own, `rig build`, leaves none.
