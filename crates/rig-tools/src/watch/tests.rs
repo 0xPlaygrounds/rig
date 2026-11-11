@@ -166,3 +166,48 @@ fn a_local_watch_follows_edited_rules_and_waits_for_a_missing_root() {
     std::fs::remove_dir_all(&top).ok();
     assert_eq!(reported, [later.join("made.rs")]);
 }
+
+/// A relative root is resolved internally so that the absolute paths the OS
+/// watcher delivers in its events still match. Without the canonicalization
+/// in `notified`, a relative root silently drops every event.
+#[test]
+fn a_relative_root_still_delivers_events() {
+    let abs_root = std::env::temp_dir().join(format!("rig-tools-watch-rel-{}", std::process::id()));
+    std::fs::remove_dir_all(&abs_root).ok();
+    std::fs::create_dir_all(&abs_root).ok();
+
+    let parent = match abs_root.parent() {
+        Some(p) => p.to_path_buf(),
+        None => return,
+    };
+    let dir_name = match abs_root.file_name() {
+        Some(n) => Path::new(n).to_path_buf(),
+        None => return,
+    };
+
+    let original_dir = std::env::current_dir().ok();
+    if std::env::set_current_dir(&parent).is_err() {
+        return;
+    }
+
+    // Pass the bare directory name — a relative path.
+    let watch = Arc::new(Local).watch(&dir_name, true, Listing::Visible);
+
+    // Restore the working directory before any assertions.
+    if let Some(dir) = &original_dir {
+        std::env::set_current_dir(dir).ok();
+    }
+
+    let Ok(watch) = watch else {
+        std::fs::remove_dir_all(&abs_root).ok();
+        return;
+    };
+    let batches = batches(watch);
+    std::fs::write(abs_root.join("new.rs"), "x").ok();
+    let seen = seen(&batches, Duration::from_secs(2));
+    std::fs::remove_dir_all(&abs_root).ok();
+    assert!(
+        !seen.is_empty(),
+        "relative root should still deliver events"
+    );
+}
