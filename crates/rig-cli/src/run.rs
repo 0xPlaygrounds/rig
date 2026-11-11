@@ -39,6 +39,7 @@ use rig_harness_protocol::config::SettingsFile;
 use rig_harness_protocol::{
     AgentDescription, DescribedSecret, Home, Invocation, REFUSED_EXIT_CODE, RELOAD_EXIT_CODE,
     RunDir, SIGNAL_EXIT_CODE, SessionDir, SessionId, Stamp, StartReason, env, secret_variable,
+    warning_text,
 };
 
 use super::build::{self, BuildFailure, BuildOutput, FailedAt, Staging, child};
@@ -337,11 +338,10 @@ fn launch(
         }
         // Only the first start of a claim runs elsewhere than it was, and
         // only the run's starts until one is ready warn of a 0.46 home.
-        let warnings: Vec<String> = (claimed.moved.take().into_iter())
-            .chain(legacy.iter().cloned())
-            .collect();
+        let moved = claimed.moved.take();
+        let warnings: Vec<&str> = (moved.iter().chain(&legacy)).map(String::as_str).collect();
         if !warnings.is_empty() {
-            command.env(env::WARNING, warnings.join("\n"));
+            command.env(env::WARNING, warning_text(warnings));
         }
         // Only the first start follows the failed build.
         if let Some(failure) = build_failure.take() {

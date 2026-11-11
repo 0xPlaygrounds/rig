@@ -1087,7 +1087,7 @@ exit 75"
 /// The warnings each start of a run of `home` got, one start per item,
 /// from an agent that reloads once and then exits.
 #[cfg(unix)]
-fn warned(home: &Home) -> Result<Vec<String>> {
+fn warned(home: &Home) -> Result<Vec<Vec<String>>> {
     let agent = "#!/bin/sh
 printf '%s\\n---\\n' \"$RIG_WARNING\" >> \"$RIG_HOME/warned\"
 touch \"$RIG_RUN/ready\"
@@ -1111,50 +1111,52 @@ exit 0";
     let warned = fs::read_to_string(home.root().join("warned"))?;
     Ok(warned
         .split_terminator("---\n")
-        .map(|start| start.trim_end().to_owned())
+        .map(|start| rig_harness_protocol::warnings(start.trim_end()))
         .collect())
 }
 
 /// A home rig 0.46 left, with `plugins.toml` and `defaults.json` that
 /// `settings.toml` has no `[plugins]` or `[model]` for, is warned of once
-/// per run, a line per file naming the table its settings move to and
-/// MIGRATING.md, and its files are left as they are. A home whose settings
-/// cover them, even with empty tables, and a fresh home, are not warned of.
+/// per run, a warning per file naming the file, the table its settings
+/// move to and MIGRATING.md, even when the home's path holds a line break,
+/// and its files are left as they are. A home whose settings cover them,
+/// even with empty tables, and a fresh home, are not warned of.
 #[cfg(unix)]
 #[test]
 fn a_0_46_home_is_warned_of_once_per_run_and_left_as_it_is() {
     let plugins = "[[plugin]]\ncrate = \"rig-basics\"\nplugin = \"rig_basics::prompt::DefaultPromptPlugin\"\n";
     let defaults = "{\n  \"model\": \"ollama/qwen3\",\n  \"effort\": null\n}";
-    let old = builds("legacy-old", "", "");
-    let wrote = fs::write(old.root().join("plugins.toml"), plugins)
-        .and_then(|()| fs::write(old.root().join("defaults.json"), defaults));
-    let starts = wrote.map_err(Into::into).and_then(|()| warned(&old));
-    let left = (
-        fs::read_to_string(old.root().join("plugins.toml")).ok(),
-        fs::read_to_string(old.root().join("defaults.json")).ok(),
-    );
-    fs::remove_dir_all(old.root()).ok();
-    let starts = starts.map_err(|failure| failure.to_string());
-    assert_eq!(starts.as_ref().map(Vec::len), Ok(2), "{starts:?}");
-    let first = starts.as_ref().ok().and_then(|starts| starts.first());
-    let lines: Vec<&str> = first
-        .map(|first| first.lines().collect())
-        .unwrap_or_default();
-    assert_eq!(lines.len(), 2, "{first:?}");
-    for (file, table) in [("plugins.toml", "[plugins]"), ("defaults.json", "[model]")] {
-        assert!(
-            lines
-                .iter()
-                .any(|line| line.starts_with("rig no longer reads ")
-                    && line.contains(file)
-                    && line.contains(table)
-                    && line.contains("MIGRATING.md")),
-            "no warning names {file}, {table} and MIGRATING.md: {lines:?}"
+    for name in ["legacy-old", "legacy-old\nline"] {
+        let old = builds(name, "", "");
+        let wrote = fs::write(old.root().join("plugins.toml"), plugins)
+            .and_then(|()| fs::write(old.root().join("defaults.json"), defaults));
+        let starts = wrote.map_err(Into::into).and_then(|()| warned(&old));
+        let left = (
+            fs::read_to_string(old.root().join("plugins.toml")).ok(),
+            fs::read_to_string(old.root().join("defaults.json")).ok(),
         );
+        fs::remove_dir_all(old.root()).ok();
+        let starts = starts.map_err(|failure| failure.to_string());
+        assert_eq!(starts.as_ref().map(Vec::len), Ok(2), "{starts:?}");
+        let first = starts.as_ref().ok().and_then(|starts| starts.first());
+        let warnings = first.cloned().unwrap_or_default();
+        assert_eq!(warnings.len(), 2, "{first:?}");
+        for (file, table) in [("plugins.toml", "[plugins]"), ("defaults.json", "[model]")] {
+            let path = old.root().join(file).display().to_string();
+            assert!(
+                warnings.iter().any(|warning| {
+                    warning.starts_with("rig no longer reads ")
+                        && warning.contains(&path)
+                        && warning.contains(table)
+                        && warning.contains("MIGRATING.md")
+                }),
+                "no warning names {path}, {table} and MIGRATING.md: {warnings:?}"
+            );
+        }
+        let again = starts.as_ref().ok().and_then(|starts| starts.get(1));
+        assert_eq!(again, Some(&Vec::new()), "a reload warned again");
+        assert_eq!(left, (Some(plugins.to_owned()), Some(defaults.to_owned())));
     }
-    let again = starts.as_ref().ok().and_then(|starts| starts.get(1));
-    assert_eq!(again.map(String::as_str), Some(""), "a reload warned again");
-    assert_eq!(left, (Some(plugins.to_owned()), Some(defaults.to_owned())));
 
     let covered = builds("legacy-covered", "", "");
     let settings = "[plugins]\ndisable = []\n\n[model]\ndefault = \"ollama/qwen3\"\n";
@@ -1164,7 +1166,7 @@ fn a_0_46_home_is_warned_of_once_per_run_and_left_as_it_is() {
     let starts = wrote.map_err(Into::into).and_then(|()| warned(&covered));
     fs::remove_dir_all(covered.root()).ok();
     let starts = starts.map_err(|failure| failure.to_string());
-    assert_eq!(starts, Ok(vec![String::new(), String::new()]));
+    assert_eq!(starts, Ok(vec![Vec::new(), Vec::new()]));
 
     let empty = builds("legacy-empty", "", "");
     let wrote = fs::write(empty.root().join("plugins.toml"), plugins)
@@ -1173,12 +1175,12 @@ fn a_0_46_home_is_warned_of_once_per_run_and_left_as_it_is() {
     let starts = wrote.map_err(Into::into).and_then(|()| warned(&empty));
     fs::remove_dir_all(empty.root()).ok();
     let starts = starts.map_err(|failure| failure.to_string());
-    assert_eq!(starts, Ok(vec![String::new(), String::new()]));
+    assert_eq!(starts, Ok(vec![Vec::new(), Vec::new()]));
 
     let fresh = builds("legacy-fresh", "", "");
     let starts = warned(&fresh).map_err(|failure| failure.to_string());
     fs::remove_dir_all(fresh.root()).ok();
-    assert_eq!(starts, Ok(vec![String::new(), String::new()]));
+    assert_eq!(starts, Ok(vec![Vec::new(), Vec::new()]));
 }
 
 /// A run whose new build stops before it is ready still warns of a 0.46
