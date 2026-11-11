@@ -4,11 +4,11 @@
 //! output is the progress; quitting during the build kills it.
 //!
 //! `/reload` typed while a turn runs is queued: the build starts once no
-//! turn runs, and `/reload cancel` drops it. A plugin queues one with
-//! [`ReloadStatus::ask`], and views read progress from that resource. A turn
-//! started while the build runs delays the restart until it ends. A stop that
-//! reaches an idle agent no agent spawned (Esc in the terminal view) cancels
-//! a running build. A build that fails leaves this build running, and its
+//! turn runs, and `/reload cancel` or `/update cancel` drops it. A plugin
+//! queues one with [`ReloadStatus::ask`], and views read progress from that
+//! resource. A turn started while the build runs delays the restart until it
+//! ends. A stop that reaches an idle agent no agent spawned (Esc in the
+//! terminal view) cancels a running build. A build that fails leaves this build running, and its
 //! first errors go to the agent that asked as a note for its model
 //! ([`launcher::build_failure_message`]); `rig build` keeps the whole output
 //! in `RIG_HOME/build.log`. The launcher rolls back a new build that fails to
@@ -75,7 +75,8 @@ pub enum ReloadStatus {
     Idle,
     /// Asked for by `/reload`, `/update` or a plugin, for `agent`, whose
     /// model is told when the build fails: the build starts once no turn
-    /// runs. `/reload cancel` or [`CancelReload`] drops it.
+    /// runs. `/reload cancel`, `/update cancel` or [`CancelReload`] drops
+    /// it.
     Queued {
         /// The agent that asked.
         agent: Entity,
@@ -125,11 +126,21 @@ impl ReloadStatus {
                 *self = ReloadStatus::Queued { agent, rebuild };
                 Ok(())
             }
-            ReloadStatus::Idle | ReloadStatus::Failed => {
-                Err("/reload needs the rig launcher: start the agent with `rig`.")
-            }
-            ReloadStatus::Queued { .. } => {
+            ReloadStatus::Idle | ReloadStatus::Failed => Err(match rebuild {
+                Rebuild::Build => "/reload needs the rig launcher: start the agent with `rig`.",
+                Rebuild::Update => "/update needs the rig launcher: start the agent with `rig`.",
+            }),
+            ReloadStatus::Queued {
+                rebuild: Rebuild::Build,
+                ..
+            } => {
                 Err("A reload is already queued for when no turn runs; /reload cancel cancels it.")
+            }
+            ReloadStatus::Queued {
+                rebuild: Rebuild::Update,
+                ..
+            } => {
+                Err("An update is already queued for when no turn runs; /update cancel cancels it.")
             }
             ReloadStatus::Building { .. } | ReloadStatus::Ready => {
                 Err("A rebuild is already running; Esc cancels it.")
@@ -244,13 +255,20 @@ fn on_cancel_reload(
     mut notices: MessageWriter<Notice>,
 ) {
     let notice = match *status {
-        ReloadStatus::Queued { .. } => "Queued reload cancelled.",
+        ReloadStatus::Queued {
+            rebuild: Rebuild::Build,
+            ..
+        } => "Queued reload cancelled.",
+        ReloadStatus::Queued {
+            rebuild: Rebuild::Update,
+            ..
+        } => "Queued update cancelled.",
         ReloadStatus::Building { .. } => {
             rebuild::stop(&mut commands);
             rebuild::cancelled(build.as_deref())
         }
         ReloadStatus::Idle | ReloadStatus::Ready | ReloadStatus::Failed => {
-            notices.write(Notice::info(None, "No reload to cancel."));
+            notices.write(Notice::info(None, "No reload or update to cancel."));
             return;
         }
     };

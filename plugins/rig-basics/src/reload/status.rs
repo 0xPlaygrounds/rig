@@ -25,9 +25,14 @@ fn show_reload(reload: Res<ReloadStatus>, mut status: ResMut<AppStatus>) {
 fn text(reload: &ReloadStatus) -> String {
     match reload {
         ReloadStatus::Idle | ReloadStatus::Failed => String::new(),
-        ReloadStatus::Queued { .. } => {
-            "Reload queued: once no turn runs (/reload cancel)".to_owned()
-        }
+        ReloadStatus::Queued {
+            rebuild: Rebuild::Build,
+            ..
+        } => "Reload queued: once no turn runs (/reload cancel)".to_owned(),
+        ReloadStatus::Queued {
+            rebuild: Rebuild::Update,
+            ..
+        } => "Update queued: once no turn runs (/update cancel)".to_owned(),
         ReloadStatus::Ready => "Reloading: restarting…".to_owned(),
         // The launcher's phase, then cargo's latest line.
         ReloadStatus::Building { latest } => format!(
