@@ -42,7 +42,7 @@ use rig_harness_protocol::{
 };
 
 use super::build::{self, BuildFailure, BuildOutput, FailedAt, Staging, child};
-use super::update::Reexec;
+use super::update::{self, Reexec};
 use super::{LONG_VERSION, Result, locks};
 
 mod stop;
@@ -87,6 +87,9 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
         Ok(start) => start,
         Err(why) => return Ok(refused(&why)),
     };
+    // The session a replaced launcher left for this run's, which a
+    // refused start goes back to, as its own switch would.
+    let left = update::left()?;
     let (run, mut claimed, mut claim_notice, build_notice, build_failure, report) = {
         let _typing = (terminal && !print).then(TypeAhead::hold).flatten();
         let _lock = locks::hold_build_lock(home, output)?;
@@ -129,6 +132,7 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
         claimed.discard_if_unsaved(home);
         (claimed, claim_notice) = (next, notice);
     }
+    claimed.left = left;
     let notice: Vec<String> = claim_notice.into_iter().chain(build_notice).collect();
     let notice = (!notice.is_empty()).then(|| notice.join("\n"));
     let invocation = match report.invocation(args) {
@@ -277,9 +281,6 @@ fn launch(
     // launcher last put it back: a view keeps it across a restart, so a
     // later start that never takes it may still need it put back.
     let mut screen = false;
-    // The session the agent switched away from to start this one, which a
-    // refused start goes back to.
-    let mut switched_from: Option<SessionId> = None;
     let mut reason = claimed.reason;
     // A headless run that answers a prompt, restarted on a reload: without
     // the prompt, which it answered already.
@@ -291,7 +292,7 @@ fn launch(
     let mut invocation: &Invocation = invocation;
     let mut legacy = legacy_warnings(home);
     loop {
-        let left = switched_from.take();
+        let left = claimed.left.take();
         let session = claimed.id.clone();
         let trial = home.trial_for(&session);
         let directory = home.session(&session);
@@ -326,6 +327,7 @@ fn launch(
             .env_remove(env::NOTICE)
             .env_remove(env::WARNING)
             .env_remove(env::BUILD_FAILURE)
+            .env_remove(update::LEFT)
             .envs(&answers);
         if let Some(working) = &claimed.directory {
             command.current_dir(working);
@@ -401,8 +403,9 @@ fn launch(
                 .then(|| claimed.id.clone());
             let here = claimed.directory.clone();
             claimed.discard_if_unsaved(home);
+            let left = (claimed.id != session).then_some(session);
             let resume = resume.as_ref().map(SessionId::as_str);
-            let reexec = Reexec::new(launcher, resume, invocation.to_args(), here);
+            let reexec = Reexec::new(launcher, resume, invocation.to_args(), here, left);
             return Ok(Ended {
                 said,
                 reexec: Some(reexec),
@@ -421,7 +424,7 @@ fn launch(
             } else {
                 claimed.reason
             };
-            switched_from = (claimed.id != session).then_some(session);
+            claimed.left = (claimed.id != session).then_some(session);
             kept_screen = !headless;
             continue;
         }
@@ -670,6 +673,9 @@ struct Claimed {
     directory: Option<PathBuf>,
     /// Why it runs elsewhere than the directory it saved, which is gone.
     moved: Option<String>,
+    /// The session the agent switched away from to start this one, which
+    /// its first start, when refused, goes back to.
+    left: Option<SessionId>,
     _lock: File,
 }
 
@@ -762,6 +768,7 @@ fn claim(home: &Home, start: Start, here: Option<&Path>) -> Result<(Claimed, Opt
             reason,
             directory,
             moved,
+            left: None,
             _lock: lock,
         },
         notice,

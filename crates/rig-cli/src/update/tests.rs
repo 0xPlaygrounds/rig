@@ -93,7 +93,10 @@ fn a_failed_install_fails_and_leaves_the_launcher() {
 fn a_reexec_resumes_a_saved_session_with_the_same_arguments() {
     let args = vec![OsString::from("--model"), OsString::from("ollama/qwen3")];
     let launcher = Path::new("/opt/rig/bin/rig");
-    let saved = Reexec::new(launcher, Some("1-2"), args.clone(), None);
+    let saved = Reexec::new(launcher, Some("1-2"), args.clone(), None, None);
     assert_eq!(saved.args, ["--resume", "1-2", "--model", "ollama/qwen3"]);
-    assert_eq!(Reexec::new(launcher, None, args.clone(), None).args, args);
+    assert_eq!(
+        Reexec::new(launcher, None, args.clone(), None, None).args,
+        args
+    );
 }
