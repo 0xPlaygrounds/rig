@@ -328,19 +328,23 @@ impl Ignores {
         }
     }
 
-    /// Reads again, when next needed, the rules an event at `path` may have
-    /// changed: its directory's, when it is an ignore file, and when it is
-    /// a directory whose rules were read (created, moved or removed there),
-    /// those of every directory at or below it. Rules are read for every
-    /// directory from the root down to a file decided, so a directory with
-    /// none read has none read below it either.
+    /// Updates the rules an event at `path` may have changed: its
+    /// directory's are read again now, when it is an ignore file, and when
+    /// it is a directory whose rules were read (created, moved or removed
+    /// there), those of every directory at or below it are dropped. Rules
+    /// are read for every directory from the root down to a file decided
+    /// and never dropped alone, so a directory with none read has none read
+    /// below it either.
     fn heard(&mut self, path: &Path) {
         let ignore_file = path
             .file_name()
             .is_some_and(|name| name == ".gitignore" || name == ".ignore");
         match path.parent() {
             Some(directory) if ignore_file => {
-                self.directories.remove(directory);
+                let git = self.git;
+                if let Some(rules) = self.directories.get_mut(directory) {
+                    *rules = read_rules(directory, git);
+                }
             }
             _ if self.directories.contains_key(path) => {
                 self.directories.retain(|dir, _| !dir.starts_with(path));
@@ -400,16 +404,19 @@ impl Ignores {
         let git = self.git;
         self.directories
             .entry(dir.to_path_buf())
-            .or_insert_with(|| {
-                // The later file wins where both match: `.ignore` over `.gitignore`.
-                let mut builder = GitignoreBuilder::new(dir);
-                if git {
-                    builder.add(dir.join(".gitignore"));
-                }
-                builder.add(dir.join(".ignore"));
-                builder.build().unwrap_or_else(|_| Gitignore::empty())
-            })
+            .or_insert_with(|| read_rules(dir, git))
     }
+}
+
+/// `dir`'s own rules: its `.ignore`, and in a git work tree its `.gitignore`.
+fn read_rules(dir: &Path, git: bool) -> Gitignore {
+    // The later file wins where both match: `.ignore` over `.gitignore`.
+    let mut builder = GitignoreBuilder::new(dir);
+    if git {
+        builder.add(dir.join(".gitignore"));
+    }
+    builder.add(dir.join(".ignore"));
+    builder.build().unwrap_or_else(|_| Gitignore::empty())
 }
 
 #[cfg(test)]
