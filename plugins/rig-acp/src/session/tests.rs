@@ -65,15 +65,19 @@ fn lists_that_start_the_same_servers_run_alike() {
         let http = acp::McpServerHttp::new("web", "https://example.com/mcp");
         acp::McpServer::Http(http.headers(headers.collect()))
     };
-    let (key, auth) = (("X-Key", "1"), ("Authorization", "Bearer t"));
+    let (key, auth, lower) = (
+        ("X-Key", "1"),
+        ("Authorization", "Bearer t"),
+        ("authorization", "Bearer t"),
+    );
     let first = running(&[
         stdio(&["a", "b"], &[("X", "1"), ("Y", "2")]),
-        http(&[key, auth]),
+        http(&[key, auth, lower]),
     ]);
     // Another order of servers, variables and headers, a header's name in
     // another case, and one given twice: the same servers.
     let turned = [
-        http(&[("authorization", "Bearer t"), auth, ("x-key", "1")]),
+        http(&[lower, auth, ("x-key", "1")]),
         stdio(&["a", "b"], &[("Y", "2"), ("X", "1")]),
     ];
     assert_eq!(running(&turned), first);
