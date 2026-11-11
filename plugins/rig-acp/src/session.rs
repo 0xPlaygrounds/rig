@@ -401,13 +401,15 @@ fn mcp_server(server: &acp::McpServer) -> Option<(String, AddMcpServer)> {
             (stdio.name.clone(), Ok(spec))
         }
         acp::McpServer::Http(http) => {
-            let headers = http
-                .headers
-                .iter()
-                .map(|header| (&header.name, &header.value));
+            // Header names are alike in any case, and go out lowercase: a
+            // later header of a name replaces an earlier one.
+            let headers = http.headers.iter().map(|header| {
+                let name = header.name.to_ascii_lowercase();
+                (name, header.value.clone())
+            });
             let spec = ServerSpec::Http {
                 url: http.url.clone(),
-                headers: last_of(headers, true),
+                headers: headers.collect(),
             };
             (http.name.clone(), Ok(spec))
         }

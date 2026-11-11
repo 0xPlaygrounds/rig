@@ -36,7 +36,8 @@ fn a_clients_mcp_servers_go_to_rig_as_written_and_an_sse_one_holds_its_name_refu
     };
     let expected_http = ServerSpec::Http {
         url: "https://example.com/mcp?k=${KEY}".to_owned(),
-        headers: BTreeMap::from([("Authorization".to_owned(), "Bearer ${TOKEN}".to_owned())]),
+        // Lowercase, as it goes out.
+        headers: BTreeMap::from([("authorization".to_owned(), "Bearer ${TOKEN}".to_owned())]),
     };
     assert_eq!(specs.first(), Some(&Ok(expected_stdio)));
     assert_eq!(specs.get(1), Some(&Ok(expected_http)));
@@ -45,6 +46,48 @@ fn a_clients_mcp_servers_go_to_rig_as_written_and_an_sse_one_holds_its_name_refu
             .get(2)
             .is_some_and(|spec| spec.as_ref().is_err_and(|why| why.contains("SSE")))
     );
+}
+
+#[test]
+fn lists_that_start_the_same_servers_run_alike() {
+    let stdio = |args: &[&str], env: &[(&str, &str)]| {
+        let args = args.iter().map(|arg| (*arg).to_owned()).collect();
+        let env = env
+            .iter()
+            .map(|(name, value)| acp::EnvVariable::new(*name, *value));
+        let stdio = acp::McpServerStdio::new("files", "/bin/files-mcp").args(args);
+        acp::McpServer::Stdio(stdio.env(env.collect()))
+    };
+    let http = |headers: &[(&str, &str)]| {
+        let headers = headers
+            .iter()
+            .map(|(name, value)| acp::HttpHeader::new(*name, *value));
+        let http = acp::McpServerHttp::new("web", "https://example.com/mcp");
+        acp::McpServer::Http(http.headers(headers.collect()))
+    };
+    let (key, auth) = (("X-Key", "1"), ("Authorization", "Bearer t"));
+    let first = running(&[
+        stdio(&["a", "b"], &[("X", "1"), ("Y", "2")]),
+        http(&[key, auth]),
+    ]);
+    // Another order of servers, variables and headers, a header's name in
+    // another case, and one given twice: the same servers.
+    let turned = [
+        http(&[("authorization", "Bearer t"), auth, ("x-key", "1")]),
+        stdio(&["a", "b"], &[("Y", "2"), ("X", "1")]),
+    ];
+    assert_eq!(running(&turned), first);
+    // Arguments in another order, or another value, are other servers.
+    let swapped = [
+        stdio(&["b", "a"], &[("X", "1"), ("Y", "2")]),
+        http(&[key, auth]),
+    ];
+    assert_ne!(running(&swapped), first);
+    let changed = [
+        stdio(&["a", "b"], &[("X", "1"), ("Y", "3")]),
+        http(&[key, auth]),
+    ];
+    assert_ne!(running(&changed), first);
 }
 
 #[test]
