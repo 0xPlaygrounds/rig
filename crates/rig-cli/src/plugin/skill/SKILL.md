@@ -11,7 +11,7 @@ change it or delete it as you like.
 1. Read the plugin guide first: `PLUGINS.md` of the `rig-harness` crate the
    agent is built from, which `RIG_HOME/project/Cargo.toml` names. For
    `rig-harness = { path = "<dir>" }` it is `<dir>/PLUGINS.md`; for a version
-   from crates.io it is
+   from crates.io (`version = "=<version>"`) it is
    `https://docs.rs/rig-harness/<version>/rig_harness/plugin_guide/`. It has
    the rules every plugin follows and an example of each extension point.
 2. `rig plugin new <name>` makes a plugin crate in `RIG_HOME/plugins/<name>`,

@@ -167,10 +167,10 @@ fn compile_logged(
     // A build that cannot be made, not a settings mistake: the previous
     // build still starts where a failed build lets it.
     source.check(COMMIT)?;
-    if let Some(warning) = super::plugin::skill::set_up(home) {
+    let generate = || project::generate(home, plugins, source);
+    if let Some(warning) = super::plugin::skill::set_up(home, generate)? {
         log.say(&warning);
     }
-    project::generate(home, plugins, source)?;
     // `/reload` shows the latest of these lines and of cargo's.
     log.say("Compiling the agent…");
     let mut command = cargo(home);
