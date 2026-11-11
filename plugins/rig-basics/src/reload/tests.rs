@@ -89,7 +89,16 @@ fn a_queued_update_is_refused_and_cancelled_as_an_update() {
                 .iter()
                 .all(|text| text.contains("update") && !text.contains("reload"))
     };
+    // `/reload cancel` drops a queued update too, and says it was one.
+    app.world_mut().insert_resource(queued);
+    app.world_mut()
+        .trigger(RunCommand::new(agent, "reload cancel"));
+    app.update();
+    let cancelled_by_reload = notices(app.world_mut());
+    assert_eq!(*app.world().resource::<ReloadStatus>(), ReloadStatus::Idle);
+
     assert!(about_the_update(&refused), "{refused:?}");
     assert!(refused.iter().all(|text| text.contains("/update cancel")));
     assert!(about_the_update(&cancelled), "{cancelled:?}");
+    assert_eq!(cancelled_by_reload, cancelled);
 }

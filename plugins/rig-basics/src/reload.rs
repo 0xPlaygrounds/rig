@@ -8,11 +8,12 @@
 //! queues one with [`ReloadStatus::ask`], and views read progress from that
 //! resource. A turn started while the build runs delays the restart until it
 //! ends. A stop that reaches an idle agent no agent spawned (Esc in the
-//! terminal view) cancels a running build. A build that fails leaves this build running, and its
-//! first errors go to the agent that asked as a note for its model
-//! ([`launcher::build_failure_message`]); `rig build` keeps the whole output
-//! in `RIG_HOME/build.log`. The launcher rolls back a new build that fails to
-//! start. A run nobody sits at (`--print`) waits for a reload too.
+//! terminal view) cancels a running build. A build that fails leaves this
+//! build running, and its first errors go to the agent that asked as a note
+//! for its model ([`launcher::build_failure_message`]); `rig build` keeps the
+//! whole output in `RIG_HOME/build.log`. The launcher rolls back a new build
+//! that fails to start. A run nobody sits at (`--print`) waits for a reload
+//! too.
 //!
 //! `/update` reinstalls rig through the launcher's `rig update`, which says
 //! the command it runs and builds the agent with the new launcher, then
