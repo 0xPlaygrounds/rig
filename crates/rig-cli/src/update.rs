@@ -16,7 +16,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
-use rig_harness_protocol::{Home, SessionId, UPDATE_INSTALLED, UPDATE_SAYS, env};
+use rig_harness_protocol::{Home, SessionId, UPDATE_INSTALLED, UPDATE_SAYS, env, shell_word};
 
 use super::Result;
 use super::project::RigSource;
@@ -154,22 +154,11 @@ fn install_and_build(mut install: Command, launcher: &Path) -> ExitCode {
     }
 }
 
-/// `command` as POSIX shell words, single-quoting those that need it.
+/// `command` as POSIX shell words ([`shell_word`]).
 fn shell_words(command: &Command) -> String {
     std::iter::once(command.get_program())
         .chain(command.get_args())
-        .map(|word| {
-            let word = word.to_string_lossy();
-            let plain = !word.is_empty()
-                && word
-                    .chars()
-                    .all(|c| c.is_ascii_alphanumeric() || "-_./=:@+".contains(c));
-            if plain {
-                word.into_owned()
-            } else {
-                format!("'{}'", word.replace('\'', r"'\''"))
-            }
-        })
+        .map(|word| shell_word(&word.to_string_lossy()))
         .collect::<Vec<_>>()
         .join(" ")
 }

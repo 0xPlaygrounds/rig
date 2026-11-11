@@ -1294,6 +1294,37 @@ pub const UPDATE_INSTALLED: &str = "rig update: installed.";
 /// The launcher's own first words, which no plugin's command may take.
 pub const RESERVED_COMMANDS: &[&str] = &["build", "update", "plugin", "help", "help-agents"];
 
+/// The command line that runs the launcher's own `command`, given where
+/// an agent's command goes, with `arguments` after it: `rig`, the command
+/// and the words it takes, as POSIX shell words. `plugin` takes every
+/// word, `help` one, the others none; options before it are dropped.
+fn launcher_command_line(command: &str, arguments: &[String]) -> String {
+    let takes = match command {
+        "plugin" => arguments.len(),
+        "help" => 1,
+        _ => 0,
+    };
+    ["rig", command]
+        .into_iter()
+        .chain(arguments.iter().take(takes).map(String::as_str))
+        .map(shell_word)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// `word` as one POSIX shell word: as it is when plain, else single-quoted.
+pub fn shell_word(word: &str) -> String {
+    let plain = !word.is_empty()
+        && word
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "-_./=:@+".contains(c));
+    if plain {
+        word.to_owned()
+    } else {
+        format!("'{}'", word.replace('\'', r"'\''"))
+    }
+}
+
 /// The first line of a [`AgentDescription`] report.
 const DESCRIBED_HEADER: &str = "rig-describe 1";
 
@@ -1481,7 +1512,10 @@ impl AgentDescription {
         .0;
         if let Some(command) = &invocation.command {
             if RESERVED_COMMANDS.contains(&command.as_str()) {
-                return Err(format!("`{command}` is the launcher's; put it first"));
+                let line = launcher_command_line(command, &invocation.arguments);
+                return Err(format!(
+                    "`{command}` is the launcher's own command; run it as `{line}`"
+                ));
             }
             if self.command(command).is_none() {
                 return Err(format!(
