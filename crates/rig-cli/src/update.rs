@@ -16,7 +16,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
-use rig_harness_protocol::{SessionId, UPDATE_INSTALLED, UPDATE_SAYS};
+use rig_harness_protocol::{Home, SessionId, UPDATE_INSTALLED, UPDATE_SAYS, env};
 
 use super::Result;
 use super::project::RigSource;
@@ -175,21 +175,23 @@ fn shell_words(command: &Command) -> String {
 }
 
 /// The launcher to start in place of this one once its session is let go:
-/// the new file at the same path, with the same arguments.
+/// the new file at the same path, with the same arguments and home.
 #[derive(Debug, PartialEq)]
 pub struct Reexec {
     launcher: PathBuf,
     args: Vec<OsString>,
     directory: Option<PathBuf>,
     left: Option<SessionId>,
+    home: PathBuf,
 }
 
 impl Reexec {
     /// The launcher at `launcher` with `args`, the command line's own,
     /// which never name a session: resuming `session`, or starting a new
-    /// one when it is `None`, in `directory` when given. `left` is the
-    /// session the agent switched away from to `session` ([`LEFT`]).
+    /// one when it is `None`, in `directory` when given, on `home`. `left`
+    /// is the session the agent switched away from to `session` ([`LEFT`]).
     pub fn new(
+        home: &Home,
         launcher: &Path,
         session: Option<&str>,
         args: Vec<OsString>,
@@ -202,14 +204,20 @@ impl Reexec {
             args: resume.into_iter().flatten().chain(args).collect(),
             directory,
             left,
+            home: home.root().to_path_buf(),
         }
     }
 
     /// The new launcher's command, told the session left, or not told
-    /// one the environment holds from an earlier re-exec.
-    fn command(&self) -> Command {
+    /// one the environment holds from an earlier re-exec. It may start in
+    /// another directory, so it gets the home and `RIG_SOURCE` as absolute
+    /// paths.
+    fn command(&self) -> Result<Command> {
         let mut command = Command::new(&self.launcher);
-        command.args(&self.args);
+        command.args(&self.args).env(env::HOME, &self.home);
+        if let Some(source) = RigSource::from_env()? {
+            command.env(env::SOURCE, source);
+        }
         match &self.left {
             Some(left) => command.env(LEFT, left.as_str()),
             None => command.env_remove(LEFT),
@@ -217,7 +225,7 @@ impl Reexec {
         if let Some(directory) = &self.directory {
             command.current_dir(directory);
         }
-        command
+        Ok(command)
     }
 
     /// Runs the new launcher in this process's place, or on other systems
@@ -225,7 +233,7 @@ impl Reexec {
     /// unix.
     pub fn run(self) -> Result<ExitCode> {
         eprintln!("rig was updated; restarting on the new launcher.");
-        let mut command = self.command();
+        let mut command = self.command()?;
         #[cfg(unix)]
         {
             let failure = std::os::unix::process::CommandExt::exec(&mut command);

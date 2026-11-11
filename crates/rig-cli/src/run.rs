@@ -43,6 +43,7 @@ use rig_harness_protocol::{
 };
 
 use super::build::{self, BuildFailure, BuildOutput, FailedAt, Staging, child};
+use super::project::RigSource;
 use super::update::{self, Reexec};
 use super::{LONG_VERSION, Result, locks};
 
@@ -292,6 +293,9 @@ fn launch(
     };
     let mut invocation: &Invocation = invocation;
     let mut legacy = legacy_warnings(home);
+    // The agent runs in its session's directory, and its `/reload` runs
+    // `rig build` there.
+    let source = RigSource::from_env()?;
     loop {
         let left = claimed.left.take();
         let session = claimed.id.clone();
@@ -330,6 +334,9 @@ fn launch(
             .env_remove(env::BUILD_FAILURE)
             .env_remove(update::LEFT)
             .envs(&answers);
+        if let Some(source) = &source {
+            command.env(env::SOURCE, source);
+        }
         if let Some(working) = &claimed.directory {
             command.current_dir(working);
         }
@@ -405,7 +412,7 @@ fn launch(
             claimed.discard_if_unsaved(home);
             let left = (claimed.id != session).then_some(session);
             let resume = resume.as_ref().map(SessionId::as_str);
-            let reexec = Reexec::new(launcher, resume, invocation.to_args(), here, left);
+            let reexec = Reexec::new(home, launcher, resume, invocation.to_args(), here, left);
             return Ok(Ended {
                 said,
                 reexec: Some(reexec),

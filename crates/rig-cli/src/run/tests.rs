@@ -934,7 +934,9 @@ fn a_reload_after_the_launcher_was_replaced_restarts_on_the_new_one() {
             .parent()
             .and_then(Path::parent)
             .map(Path::to_path_buf);
+        let home = Home::at(here.clone().unwrap_or_default());
         Some(Reexec::new(
+            &home,
             launcher,
             session.map(SessionId::as_str),
             Vec::new(),
@@ -1056,6 +1058,7 @@ exit 75"
         };
         let reexec = start(claimed, None)?.reexec;
         let told = Reexec::new(
+            &home,
             &launcher,
             Some(refused.as_str()),
             Vec::new(),
