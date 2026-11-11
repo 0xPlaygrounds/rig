@@ -180,7 +180,34 @@ fn the_command_line_is_read_against_the_report() {
         ))
     );
     let refused = |args: &[&str]| words(args).err().unwrap_or_default();
-    assert!(refused(&["--yes", "build"]).contains("put it first"));
+    // A launcher's word says the exact line that runs it: options before
+    // it dropped, and only the words it takes.
+    for (args, line) in [
+        (&["--yes", "build"][..], "rig build"),
+        (&["-m", "ollama/qwen3", "update"], "rig update"),
+        (&["update", "now"], "rig update"),
+        (&["-r", "fix", "--yes", "help-agents"], "rig help-agents"),
+        (
+            &["--remote=h:/p", "help", "stats", "more"],
+            "rig help stats",
+        ),
+        (
+            &["--yes", "plugin", "new", "my plugin", "--path", "it's"],
+            r"rig plugin new 'my plugin' --path 'it'\''s'",
+        ),
+        (
+            &["--yes", "plugin", "", "$HOME", "`x`", "a\\b", "a\nb"],
+            "rig plugin '' '$HOME' '`x`' 'a\\b' 'a\nb'",
+        ),
+    ] {
+        let why = refused(args);
+        let command = line.split(' ').nth(1).unwrap_or_default();
+        assert_eq!(
+            why,
+            format!("`{command}` is the launcher's own command; run it as `{line}`"),
+            "{args:?}"
+        );
+    }
     let unknown = refused(&["statz"]);
     assert!(
         unknown.contains(
