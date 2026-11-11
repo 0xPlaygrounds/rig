@@ -1294,8 +1294,8 @@ pub const UPDATE_INSTALLED: &str = "rig update: installed.";
 /// The launcher's own first words, which no plugin's command may take.
 pub const RESERVED_COMMANDS: &[&str] = &["build", "update", "plugin", "help", "help-agents"];
 
-/// The command line that runs the launcher's own `command`, given where
-/// an agent's command goes, with `arguments` after it: `rig`, the command
+/// The command line that runs the launcher's own `command`, given in
+/// place of an agent's command, with `arguments` after it: `rig`, the command
 /// and the words it takes, as POSIX shell words. `plugin` takes every
 /// word, `help` one, the others none; options before it are dropped.
 fn launcher_command_line(command: &str, arguments: &[String]) -> String {
@@ -1312,7 +1312,8 @@ fn launcher_command_line(command: &str, arguments: &[String]) -> String {
         .join(" ")
 }
 
-/// `word` as one POSIX shell word: as it is when plain, else single-quoted.
+/// `word` as one POSIX shell word, for a command line rig shows to be
+/// typed: as it is when plain, else single-quoted.
 pub fn shell_word(word: &str) -> String {
     let plain = !word.is_empty()
         && word

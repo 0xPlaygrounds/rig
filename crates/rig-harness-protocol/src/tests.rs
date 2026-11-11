@@ -195,6 +195,10 @@ fn the_command_line_is_read_against_the_report() {
             &["--yes", "plugin", "new", "my plugin", "--path", "it's"],
             r"rig plugin new 'my plugin' --path 'it'\''s'",
         ),
+        (
+            &["--yes", "plugin", "", "$HOME", "`x`", "a\\b", "a\nb"],
+            "rig plugin '' '$HOME' '`x`' 'a\\b' 'a\nb'",
+        ),
     ] {
         let why = refused(args);
         let command = line.split(' ').nth(1).unwrap_or_default();
