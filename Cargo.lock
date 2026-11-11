@@ -13985,6 +13985,7 @@ dependencies = [
  "bevy_tasks",
  "crossbeam-channel",
  "crossterm",
+ "libc",
  "ratatui-core",
  "rig-cassette",
  "rig-core",

@@ -1,6 +1,7 @@
 //! What plain `-p` writes to a terminal: the answer's markdown drawn as
-//! styled text and word-wrapped to the terminal's width, code lines kept
-//! whole, and dim lines on stderr for the narration and each tool call.
+//! styled text and word-wrapped to the width of the terminal stdout is, code
+//! lines kept whole, and dim lines on stderr, wrapped to its own terminal,
+//! for the narration and each tool call.
 //! Styles are SGR escapes: bold, dim, italic, underline and such always,
 //! foreground colors unless `NO_COLOR` is set, backgrounds never.
 
@@ -21,8 +22,8 @@ use crate::coding_tools::COMMAND_INDENT;
 /// A terminal that stdout or stderr is: how text written to it looks.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct Terminal {
-    /// Its width in columns, when known: `COLUMNS`, else the terminal's
-    /// size. Text is not wrapped without it.
+    /// Its width in columns, when known: `COLUMNS`, else the size of the
+    /// terminal the stream itself is. Text is not wrapped without it.
     pub(super) width: Option<usize>,
     /// Whether it shows colors: `NO_COLOR` is unset or empty.
     pub(super) color: bool,
@@ -30,9 +31,9 @@ pub(super) struct Terminal {
 
 impl Terminal {
     /// The terminal `stream` is, if it is one.
-    pub(super) fn of(stream: &impl IsTerminal) -> Option<Self> {
+    pub(super) fn of(stream: &impl Stream) -> Option<Self> {
         stream.is_terminal().then(|| Self {
-            width: width(),
+            width: width(stream),
             color: std::env::var_os("NO_COLOR").is_none_or(|value| value.is_empty()),
         })
     }
@@ -131,18 +132,48 @@ impl Terminal {
     }
 }
 
-/// The terminal's width: `COLUMNS` when it is a positive number of
-/// columns, else the terminal's own size.
-fn width() -> Option<usize> {
+/// A stream that may be a terminal, whose width can be asked.
+pub(super) trait Stream: IsTerminal {
+    /// The width in columns of the terminal this stream is, if known.
+    fn columns(&self) -> Option<usize>;
+}
+
+#[cfg(unix)]
+impl<S: IsTerminal + std::os::fd::AsFd> Stream for S {
+    fn columns(&self) -> Option<usize> {
+        use std::os::fd::AsRawFd;
+
+        let mut size = libc::winsize {
+            ws_row: 0,
+            ws_col: 0,
+            ws_xpixel: 0,
+            ws_ypixel: 0,
+        };
+        // SAFETY: TIOCGWINSZ writes one `winsize` to the pointer, which
+        // outlives the call, and the descriptor is open while `self` is.
+        let read =
+            unsafe { libc::ioctl(self.as_fd().as_raw_fd(), libc::TIOCGWINSZ, &raw mut size) };
+        (read == 0).then_some(usize::from(size.ws_col))
+    }
+}
+
+#[cfg(not(unix))]
+impl<S: IsTerminal> Stream for S {
+    fn columns(&self) -> Option<usize> {
+        let size = crossterm::terminal::size().ok();
+        size.map(|(width, _)| usize::from(width))
+    }
+}
+
+/// The width of the terminal `stream` is: `COLUMNS` when it is a positive
+/// number of columns, else the terminal's own size.
+fn width(stream: &impl Stream) -> Option<usize> {
     let columns = std::env::var("COLUMNS").ok();
     let columns = columns.and_then(|columns| columns.trim().parse().ok());
-    let size = || {
-        crossterm::terminal::size()
-            .ok()
-            .map(|(width, _)| usize::from(width))
-    };
     let positive = |width: &usize| *width > 0;
-    columns.filter(positive).or_else(|| size().filter(positive))
+    columns
+        .filter(positive)
+        .or_else(|| stream.columns().filter(positive))
 }
 
 /// The SGR parameters of `style`: its modifiers, and its foreground
