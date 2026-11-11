@@ -159,3 +159,43 @@ fn a_reexec_in_another_directory_keeps_the_home() {
     assert_eq!(passed, Ok(expected));
     assert!(home.root().is_absolute());
 }
+
+/// A relative `RIG_SOURCE` reaches the new launcher made absolute against
+/// this launcher's directory. It runs a copy of itself with one set.
+#[test]
+fn a_reexec_in_another_directory_keeps_a_relative_source() {
+    const SOURCE: &str = "relative/rig";
+    if std::env::var_os(env::SOURCE).as_deref() != Some(std::ffi::OsStr::new(SOURCE)) {
+        let name = "update::tests::a_reexec_in_another_directory_keeps_a_relative_source";
+        let output = std::env::current_exe().and_then(|test| {
+            Command::new(test)
+                .args(["--exact", name, "--test-threads", "1"])
+                .env(env::SOURCE, SOURCE)
+                .output()
+        });
+        let ran = output.is_ok_and(|output| {
+            output.status.success() && String::from_utf8_lossy(&output.stdout).contains("1 passed")
+        });
+        assert!(ran, "the run with a relative RIG_SOURCE failed");
+        return;
+    }
+    let reexec = Reexec::new(
+        &Home::at("/home/user/.rig"),
+        Path::new("/opt/rig/bin/rig"),
+        None,
+        Vec::new(),
+        Some(PathBuf::from("/elsewhere/project")),
+        None,
+    );
+    let command = reexec.command().map_err(|failure| failure.to_string());
+    let source = command.as_ref().ok().and_then(|command| {
+        command
+            .get_envs()
+            .find(|(name, _)| *name == env::SOURCE)
+            .and_then(|(_, value)| value.map(PathBuf::from))
+    });
+    assert_eq!(
+        source,
+        std::env::current_dir().ok().map(|here| here.join(SOURCE))
+    );
+}
