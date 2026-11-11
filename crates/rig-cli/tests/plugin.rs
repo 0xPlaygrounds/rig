@@ -190,3 +190,54 @@ fn disable_takes_out_an_unknown_plugin_the_start_refuses_over() {
     })();
     assert!(result.is_ok(), "{result:?}");
 }
+
+/// `rig plugin check --build` refuses settings a start would refuse: the
+/// built agent reads the home's settings file as it describes itself, and
+/// the check passes on what it says is wrong with them, failing, not
+/// saying to restart.
+#[cfg(unix)]
+#[test]
+fn check_build_refuses_settings_the_built_agent_would_refuse() {
+    let result = (|| -> anyhow::Result<()> {
+        let root = assert_fs::TempDir::new()?;
+        let home = root.path().join("home");
+        let tools = root.path().join("tools");
+        script(&tools.join("cargo"), "exit 0")?;
+        script(
+            &home.join("target/debug/rig-harness-agent"),
+            "if [ -n \"$RIG_DESCRIBE_SETTINGS\" ] && grep -q max_depth \"$RIG_DESCRIBE_SETTINGS\"; then\n\
+             echo \"rig: $RIG_DESCRIBE_SETTINGS [subagents]: unknown field \\`max_depth\\`\" >&2; exit 2\n\
+             fi\nprintf 'rig-describe 1\\n' > \"$RIG_DESCRIBE\"",
+        )?;
+        let path = std::env::join_paths(std::iter::once(tools).chain(std::env::split_paths(
+            &std::env::var_os("PATH").unwrap_or_default(),
+        )))?;
+        let check = || {
+            Command::new(env!("CARGO_BIN_EXE_rig"))
+                .env("RIG_HOME", &home)
+                .env("PATH", &path)
+                .env_remove("RIG_SOURCE")
+                .current_dir(root.path())
+                .args(["plugin", "check", "--build"])
+                .stdin(Stdio::null())
+                .output()
+        };
+        let settings = home.join("settings.toml");
+        fs::write(&settings, "[subagents]\nmodel = \"ollama/qwen3\"\n")?;
+        let good = check()?;
+        anyhow::ensure!(good.status.success(), "{good:?}");
+        fs::write(&settings, "[subagents]\nmax_depth = 3\n")?;
+        let refused = check()?;
+        let said = String::from_utf8(refused.stderr)?;
+        let printed = String::from_utf8(refused.stdout)?;
+        anyhow::ensure!(!refused.status.success(), "{printed}{said}");
+        anyhow::ensure!(
+            said.contains(&format!("{} [subagents]", settings.display()))
+                && said.contains("max_depth")
+                && !printed.contains("/reload"),
+            "{printed}{said}"
+        );
+        Ok(())
+    })();
+    assert!(result.is_ok(), "{result:?}");
+}

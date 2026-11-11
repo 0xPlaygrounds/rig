@@ -26,6 +26,7 @@ use crate::host::cli::{Front, command_refusal, declared, flags};
 use crate::host::runner::finish_plugins;
 use crate::load::{PluginSource, ProvidedBy};
 use crate::secrets::Secret;
+use crate::settings::Settings;
 
 /// The build describes itself: while this is a resource, no front takes
 /// the run.
@@ -35,6 +36,15 @@ pub(crate) struct Describing;
 /// The file [`env::DESCRIBE`] names, if the launcher asks for a report.
 pub(crate) fn describing() -> Option<PathBuf> {
     std::env::var_os(env::DESCRIBE)
+        .filter(|path| !path.is_empty())
+        .map(PathBuf::from)
+}
+
+/// The settings file [`env::DESCRIBE_SETTINGS`] names while the build
+/// describes itself, which it reads in place of its home's.
+pub(crate) fn described_settings() -> Option<PathBuf> {
+    describing()?;
+    std::env::var_os(env::DESCRIBE_SETTINGS)
         .filter(|path| !path.is_empty())
         .map(PathBuf::from)
 }
@@ -66,8 +76,8 @@ pub fn run(mut app: App) -> AppExit {
 
 /// What the plugins of the built app `world` add to the command line, and
 /// their [`stage_conflicts`](crate::stage_conflicts), or why the build
-/// cannot be run: two plugins adding one command, or a command the
-/// launcher cannot take, such as `build`.
+/// cannot be run: two plugins adding one command, a command the launcher
+/// cannot take, such as `build`, or settings a start would refuse.
 pub fn report(world: &mut World) -> Result<AgentDescription, String> {
     let commands: Vec<(Entity, Front)> = declared::<Front>(world)
         .into_iter()
@@ -116,6 +126,9 @@ pub fn report(world: &mut World) -> Result<AgentDescription, String> {
         })
         .collect();
     described.conflicts = crate::load::stage_conflicts(world);
+    if let Some(refusal) = world.get_resource::<Settings>().and_then(Settings::refusal) {
+        return Err(refusal);
+    }
     Ok(described)
 }
 

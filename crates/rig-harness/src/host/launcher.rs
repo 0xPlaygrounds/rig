@@ -33,7 +33,6 @@ use super::exit::{Exit, ExitReason, reason_from_exit};
 use super::session::leave_session;
 use crate::describe::{Describing, describing};
 use crate::secrets::Secrets;
-use crate::services::RigHome;
 use crate::settings::Settings;
 use rig_core::conversation::Author;
 use rig_ecs::StopTurnsOnExit;
@@ -140,11 +139,7 @@ impl Plugin for LauncherPlugin {
     fn finish(&self, app: &mut App) {
         // Read even when no plugin read a table, so the file's tables are
         // checked at startup all the same.
-        let world = app.world_mut();
-        if !world.contains_resource::<Settings>() {
-            let settings = Settings::read(&RigHome::of(world).settings());
-            world.insert_resource(settings);
-        }
+        Settings::init(app.world_mut());
         if let Some(refusal) = settings_refusal(app.world()) {
             refuse(app, refusal);
         }
@@ -182,11 +177,7 @@ fn settings_refusal(world: &World) -> Option<String> {
     if world.contains_resource::<Describing>() {
         return None;
     }
-    let problems = world.get_resource::<Settings>()?.problems();
-    let problems: Vec<String> = (problems.iter())
-        .map(|problem| problem.trim_end().replace('\n', " "))
-        .collect();
-    (!problems.is_empty()).then(|| format!("{}; fix the file and start again", problems.join("; ")))
+    world.get_resource::<Settings>()?.refusal()
 }
 
 /// Exits the app, as a signal to it does, once the launcher in

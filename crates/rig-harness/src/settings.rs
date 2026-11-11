@@ -40,6 +40,7 @@ use rig_ecs::agent::Notice;
 use rig_harness_protocol::config::SettingsFile;
 use serde::de::DeserializeOwned;
 
+use crate::describe::described_settings;
 use crate::run::closest;
 use crate::services::RigHome;
 
@@ -117,7 +118,8 @@ impl Settings {
     }
 
     /// The `[section]` table as a `T`: `T::default()` without one, and the
-    /// reason when it does not read as `T`.
+    /// reason when it does not read as `T`. A key `T` does not have, such
+    /// as one a later rig removed, says to delete it.
     pub fn get<T: DeserializeOwned + Default>(&self, section: &str) -> Result<T, String> {
         let Some(table) = self.tables.get(section) else {
             return Ok(T::default());
@@ -125,13 +127,44 @@ impl Settings {
         table
             .clone()
             .try_into()
-            .map_err(|failure| format!("{} [{section}]: {failure}", self.file))
+            .map_err(|failure: toml::de::Error| {
+                let failure = failure.to_string();
+                let unknown = (failure.trim().strip_prefix("unknown field `"))
+                    .and_then(|rest| rest.split_once('`'))
+                    .map(|(key, _)| format!("; delete `{key}` from [{section}]"));
+                format!(
+                    "{} [{section}]: {}{}",
+                    self.file,
+                    failure.trim_end(),
+                    unknown.unwrap_or_default()
+                )
+            })
     }
 
     /// What was wrong with the file or with a table a plugin read, to show
     /// the user; they refuse the run.
     pub fn problems(&self) -> &[String] {
         &self.problems
+    }
+
+    /// The [`problems`](Self::problems) on one line, as the run is refused
+    /// over them; none without problems.
+    pub(crate) fn refusal(&self) -> Option<String> {
+        let problems: Vec<String> = (self.problems.iter())
+            .map(|problem| problem.trim_end().replace('\n', " "))
+            .collect();
+        (!problems.is_empty())
+            .then(|| format!("{}; fix the file and start again", problems.join("; ")))
+    }
+
+    /// Inserts the settings of `world`'s home, unless it has some: those of
+    /// the file the launcher names while the build describes itself
+    /// ([`described_settings`]), else `RIG_HOME/settings.toml`.
+    pub(crate) fn init(world: &mut World) {
+        if !world.contains_resource::<Self>() {
+            let path = described_settings().unwrap_or_else(|| RigHome::of(world).settings());
+            world.insert_resource(Self::read(&path));
+        }
     }
 
     /// A notice for each table of the file no plugin read: an error naming
@@ -177,10 +210,7 @@ impl AppSettingsExt for App {
         section: &str,
     ) -> &mut Self {
         let world = self.world_mut();
-        if !world.contains_resource::<Settings>() {
-            let settings = Settings::read(&RigHome::of(world).settings());
-            world.insert_resource(settings);
-        }
+        Settings::init(world);
         let mut settings = world.resource_mut::<Settings>();
         settings.read.insert(section.to_owned());
         let value = settings.get::<T>(section).unwrap_or_else(|problem| {

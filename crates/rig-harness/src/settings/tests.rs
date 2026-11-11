@@ -112,6 +112,20 @@ fn a_bad_file_names_itself() {
 }
 
 #[test]
+fn a_key_the_table_does_not_have_says_to_delete_it() {
+    let settings = Settings::from_toml("[limits]\ncalls = 3\nmax_depth = 2\n");
+    let problem = settings.get::<Limits>("limits").err().unwrap_or_default();
+    assert!(
+        problem.contains("unknown field `max_depth`")
+            && problem.ends_with("; delete `max_depth` from [limits]"),
+        "{problem}"
+    );
+    let mistyped = Settings::from_toml("[limits]\ncalls = \"many\"\n");
+    let problem = mistyped.get::<Limits>("limits").err().unwrap_or_default();
+    assert!(!problem.contains("delete"), "{problem}");
+}
+
+#[test]
 fn a_table_no_plugin_reads_is_named_with_the_one_it_likely_misspells() {
     let mut app = App::new();
     let file = "[trafic]\nlog = true\n[tuii]\n[shel]\n[mcp]\n[quiet]\non = true\n";
