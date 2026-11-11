@@ -16,6 +16,7 @@ overwrites changes to it.
    `[[plugins.extra]]` in `RIG_HOME/settings.toml`.
 3. Copy from working plugins in `__CORPUS__`: one plugin per module,
    `src/<plugin>.rs`, with its tests in `src/<plugin>/tests.rs`.
-4. `rig plugin check --build` builds the agent with the plugin and names
-   systems that use the same data in no order. `/reload` in the agent, or
+4. `rig plugin check --build` builds the agent with the plugin, names
+   systems that use the same data in no order, and fails on settings a
+   start would refuse. `/reload` in the agent, or
    the next start, runs the new build. `rig plugin list` shows every plugin.
