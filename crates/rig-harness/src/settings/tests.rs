@@ -111,13 +111,26 @@ fn a_bad_file_names_itself() {
     );
 }
 
+#[derive(Resource, Deserialize, Default, Debug, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+struct Outer {
+    limits: Limits,
+}
+
 #[test]
-fn a_key_the_table_does_not_have_says_to_delete_it() {
+fn a_key_the_table_does_not_have_says_to_delete_it_from_its_table() {
     let settings = Settings::from_toml("[limits]\ncalls = 3\nmax_depth = 2\n");
     let problem = settings.get::<Limits>("limits").err().unwrap_or_default();
     assert!(
         problem.contains("unknown field `max_depth`")
-            && problem.ends_with("; delete `max_depth` from [limits]"),
+            && problem.contains("delete `max_depth` from [limits]"),
+        "{problem}"
+    );
+    // A key of a nested table names that table.
+    let nested = Settings::from_toml("[remote]\n[remote.limits]\ncalls = 3\nmax_depth = 2\n");
+    let problem = nested.get::<Outer>("remote").err().unwrap_or_default();
+    assert!(
+        problem.contains("delete `max_depth` from [remote.limits]"),
         "{problem}"
     );
     let mistyped = Settings::from_toml("[limits]\ncalls = \"many\"\n");

@@ -119,7 +119,8 @@ impl Settings {
 
     /// The `[section]` table as a `T`: `T::default()` without one, and the
     /// reason when it does not read as `T`. A key `T` does not have, such
-    /// as one a later rig removed, says to delete it.
+    /// as one a later rig removed, says to delete it from its table, which
+    /// may be nested (`[section.inner]`).
     pub fn get<T: DeserializeOwned + Default>(&self, section: &str) -> Result<T, String> {
         let Some(table) = self.tables.get(section) else {
             return Ok(T::default());
@@ -128,14 +129,23 @@ impl Settings {
             .clone()
             .try_into()
             .map_err(|failure: toml::de::Error| {
-                let failure = failure.to_string();
-                let unknown = (failure.trim().strip_prefix("unknown field `"))
+                let text = failure.to_string();
+                let unknown = (failure.message().strip_prefix("unknown field `"))
                     .and_then(|rest| rest.split_once('`'))
-                    .map(|(key, _)| format!("; delete `{key}` from [{section}]"));
+                    .map(|(key, _)| {
+                        // toml names the table within `section` only in its text.
+                        let within = (text.lines())
+                            .find_map(|line| line.strip_prefix("in `")?.strip_suffix('`'));
+                        let table = within.map_or_else(
+                            || section.to_owned(),
+                            |within| format!("{section}.{within}"),
+                        );
+                        format!("; delete `{key}` from [{table}]")
+                    });
                 format!(
                     "{} [{section}]: {}{}",
                     self.file,
-                    failure.trim_end(),
+                    text.trim_end(),
                     unknown.unwrap_or_default()
                 )
             })
