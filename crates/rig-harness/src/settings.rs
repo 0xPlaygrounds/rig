@@ -119,8 +119,8 @@ impl Settings {
 
     /// The `[section]` table as a `T`: `T::default()` without one, and the
     /// reason when it does not read as `T`. A key `T` does not have, such
-    /// as one a later rig removed, says to delete it from its table, which
-    /// may be nested (`[section.inner]`).
+    /// as one a later rig removed, says to delete it, and from which table
+    /// when the file has that table: a nested one is `[section.inner]`.
     pub fn get<T: DeserializeOwned + Default>(&self, section: &str) -> Result<T, String> {
         let Some(table) = self.tables.get(section) else {
             return Ok(T::default());
@@ -133,14 +133,17 @@ impl Settings {
                 let unknown = (failure.message().strip_prefix("unknown field `"))
                     .and_then(|rest| rest.split_once('`'))
                     .map(|(key, _)| {
-                        // toml names the table within `section` only in its text.
+                        // toml names the table within `section` only in its
+                        // text, its keys joined by dots and unquoted.
                         let within = (text.lines())
-                            .find_map(|line| line.strip_prefix("in `")?.strip_suffix('`'));
-                        let table = within.map_or_else(
-                            || section.to_owned(),
-                            |within| format!("{section}.{within}"),
-                        );
-                        format!("; delete `{key}` from [{table}]")
+                            .find_map(|line| line.strip_prefix("in `")?.strip_suffix('`'))
+                            .map_or_else(Vec::new, |within| within.split('.').collect());
+                        if holds_table(table, &within) {
+                            let table = [&[section][..], &within].concat().join(".");
+                            format!("; delete `{key}` from [{table}]")
+                        } else {
+                            format!("; delete `{key}`")
+                        }
                     });
                 format!(
                     "{} [{section}]: {}{}",
@@ -200,6 +203,19 @@ impl Settings {
                 ),
             })
             .collect()
+    }
+}
+
+/// Whether `path` leads from `value` to a table, through any entry of an
+/// array of tables.
+fn holds_table(value: &toml::Value, path: &[&str]) -> bool {
+    match (path.split_first(), value) {
+        (None, toml::Value::Table(_)) => true,
+        (Some((key, rest)), toml::Value::Table(table)) => table
+            .get(*key)
+            .is_some_and(|value| holds_table(value, rest)),
+        (_, toml::Value::Array(entries)) => entries.iter().any(|entry| holds_table(entry, path)),
+        _ => false,
     }
 }
 

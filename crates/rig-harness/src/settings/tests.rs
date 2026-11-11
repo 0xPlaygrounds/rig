@@ -117,6 +117,13 @@ struct Outer {
     limits: Limits,
 }
 
+#[derive(Resource, Deserialize, Default, Debug, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+struct Dotted {
+    #[serde(rename = "limits.x")]
+    limits: Limits,
+}
+
 #[test]
 fn a_key_the_table_does_not_have_says_to_delete_it_from_its_table() {
     let settings = Settings::from_toml("[limits]\ncalls = 3\nmax_depth = 2\n");
@@ -131,6 +138,13 @@ fn a_key_the_table_does_not_have_says_to_delete_it_from_its_table() {
     let problem = nested.get::<Outer>("remote").err().unwrap_or_default();
     assert!(
         problem.contains("delete `max_depth` from [remote.limits]"),
+        "{problem}"
+    );
+    // A table name toml cannot give back, a key with a dot in it, is left out.
+    let dotted = Settings::from_toml("[remote]\n[remote.\"limits.x\"]\nmax_depth = 2\n");
+    let problem = (dotted.get::<Dotted>("remote").err()).unwrap_or_default();
+    assert!(
+        problem.contains("delete `max_depth`") && !problem.contains("from ["),
         "{problem}"
     );
     let mistyped = Settings::from_toml("[limits]\ncalls = \"many\"\n");
