@@ -93,10 +93,11 @@ fn a_failed_install_fails_and_leaves_the_launcher() {
 fn a_reexec_resumes_a_saved_session_with_the_same_arguments() {
     let args = vec![OsString::from("--model"), OsString::from("ollama/qwen3")];
     let launcher = Path::new("/opt/rig/bin/rig");
-    let saved = Reexec::new(launcher, Some("1-2"), args.clone(), None, None);
+    let home = Home::at("/home/user/.rig");
+    let saved = Reexec::new(&home, launcher, Some("1-2"), args.clone(), None, None);
     assert_eq!(saved.args, ["--resume", "1-2", "--model", "ollama/qwen3"]);
     assert_eq!(
-        Reexec::new(launcher, None, args.clone(), None, None).args,
+        Reexec::new(&home, launcher, None, args.clone(), None, None).args,
         args
     );
 }
@@ -108,7 +109,9 @@ fn a_reexec_resumes_a_saved_session_with_the_same_arguments() {
 fn a_reexec_tells_the_new_launcher_the_session_it_left() {
     let left: Option<SessionId> = "1-2".parse().ok();
     let passed = |reexec: Reexec| {
-        let command = reexec.command();
+        let Ok(command) = reexec.command() else {
+            return Some(Err("no command".to_owned()));
+        };
         let value = command
             .get_envs()
             .find(|(name, _)| *name == LEFT)
@@ -116,9 +119,10 @@ fn a_reexec_tells_the_new_launcher_the_session_it_left() {
         value.map(|value| parse_left(value.as_deref()).map_err(|failure| failure.to_string()))
     };
     let launcher = Path::new("/opt/rig/bin/rig");
-    let switched = Reexec::new(launcher, Some("3-4"), Vec::new(), None, left.clone());
+    let home = Home::at("/home/user/.rig");
+    let switched = Reexec::new(&home, launcher, Some("3-4"), Vec::new(), None, left.clone());
     assert_eq!(passed(switched), Some(Ok(left)));
-    let plain = Reexec::new(launcher, Some("3-4"), Vec::new(), None, None);
+    let plain = Reexec::new(&home, launcher, Some("3-4"), Vec::new(), None, None);
     assert_eq!(passed(plain), Some(Ok(None)), "removed, not inherited");
     let cargo = super::super::build::child("cargo");
     assert!(
@@ -127,4 +131,71 @@ fn a_reexec_tells_the_new_launcher_the_session_it_left() {
             .any(|(name, value)| name == LEFT && value.is_none())
     );
     assert!(parse_left(Some(OsStr::new("not an id"))).is_err());
+}
+
+/// The new launcher starts in the session's directory, so a home given
+/// as a relative path reaches it as the same absolute one.
+#[test]
+fn a_reexec_in_another_directory_keeps_the_home() {
+    let home = Home::at("relative/.rig");
+    let elsewhere = PathBuf::from("/elsewhere/project");
+    let reexec = Reexec::new(
+        &home,
+        Path::new("/opt/rig/bin/rig"),
+        None,
+        Vec::new(),
+        Some(elsewhere.clone()),
+        None,
+    );
+    let command = reexec.command().map_err(|failure| failure.to_string());
+    let passed = command.as_ref().map(|command| {
+        let home = command
+            .get_envs()
+            .find(|(name, _)| *name == env::HOME)
+            .and_then(|(_, value)| value.map(PathBuf::from));
+        (home, command.get_current_dir().map(Path::to_path_buf))
+    });
+    let expected = (Some(home.root().to_path_buf()), Some(elsewhere));
+    assert_eq!(passed, Ok(expected));
+    assert!(home.root().is_absolute());
+}
+
+/// A relative `RIG_SOURCE` reaches the new launcher made absolute against
+/// this launcher's directory. It runs a copy of itself with one set.
+#[test]
+fn a_reexec_in_another_directory_keeps_a_relative_source() {
+    const SOURCE: &str = "relative/rig";
+    if std::env::var_os(env::SOURCE).as_deref() != Some(std::ffi::OsStr::new(SOURCE)) {
+        let name = "update::tests::a_reexec_in_another_directory_keeps_a_relative_source";
+        let output = std::env::current_exe().and_then(|test| {
+            Command::new(test)
+                .args(["--exact", name, "--test-threads", "1"])
+                .env(env::SOURCE, SOURCE)
+                .output()
+        });
+        let ran = output.is_ok_and(|output| {
+            output.status.success() && String::from_utf8_lossy(&output.stdout).contains("1 passed")
+        });
+        assert!(ran, "the run with a relative RIG_SOURCE failed");
+        return;
+    }
+    let reexec = Reexec::new(
+        &Home::at("/home/user/.rig"),
+        Path::new("/opt/rig/bin/rig"),
+        None,
+        Vec::new(),
+        Some(PathBuf::from("/elsewhere/project")),
+        None,
+    );
+    let command = reexec.command().map_err(|failure| failure.to_string());
+    let source = command.as_ref().ok().and_then(|command| {
+        command
+            .get_envs()
+            .find(|(name, _)| *name == env::SOURCE)
+            .and_then(|(_, value)| value.map(PathBuf::from))
+    });
+    assert_eq!(
+        source,
+        std::env::current_dir().ok().map(|here| here.join(SOURCE))
+    );
 }

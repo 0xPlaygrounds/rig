@@ -49,8 +49,7 @@ impl RigSource {
     /// crates.io. A checkout in cargo's own cache (`cargo install --git`)
     /// does not count: cargo may delete it at any time.
     pub fn detect() -> Result<Self> {
-        if let Some(checkout) = std::env::var_os(env::SOURCE).filter(|path| !path.is_empty()) {
-            let checkout = std::path::absolute(PathBuf::from(checkout))?;
+        if let Some(checkout) = Self::from_env()? {
             if !is_checkout(&checkout) {
                 return Err(format!(
                     "RIG_SOURCE={} is not a rig checkout: it has no crates/rig-harness/Cargo.toml",
@@ -71,6 +70,16 @@ impl RigSource {
         } else {
             Self::Registry
         })
+    }
+
+    /// `RIG_SOURCE` made absolute against this process's directory;
+    /// `None` when it is unset or empty. A process the launcher starts in
+    /// another directory gets it so, to read the same checkout.
+    pub fn from_env() -> std::io::Result<Option<PathBuf>> {
+        std::env::var_os(env::SOURCE)
+            .filter(|path| !path.is_empty())
+            .map(std::path::absolute)
+            .transpose()
     }
 
     /// Fails when this is crates.io and the launcher was built from
