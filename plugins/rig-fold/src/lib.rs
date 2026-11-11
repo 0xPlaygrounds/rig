@@ -253,12 +253,12 @@ fn folds(call: &ToolRender) -> bool {
 
 /// `lines`, a call's look, as its first line, the `head` lines after it, a
 /// line counting those left out, and the last `tail`; `None` when that
-/// leaves out fewer than two lines.
+/// saves fewer than two rows: the counting line takes the place of one.
 fn folded(lines: &[LookLine], settings: &FoldSettings) -> Option<Vec<LookLine>> {
     let (header, body) = lines.split_first()?;
     let kept = settings.head.saturating_add(settings.tail);
     let hidden = body.len().checked_sub(kept)?;
-    if hidden < 2 {
+    if hidden < 3 {
         return None;
     }
     let (head, rest) = body.split_at_checked(settings.head)?;
