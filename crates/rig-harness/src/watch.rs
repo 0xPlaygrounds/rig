@@ -24,6 +24,7 @@ use bevy_app::prelude::*;
 use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::prelude::*;
 use bevy_ecs::world::DeferredWorld;
+use bevy_log::warn;
 use bevy_tasks::futures_lite::{Stream, StreamExt as _, stream};
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_ecs::tasks::{Done, Running, Wake};
@@ -133,8 +134,8 @@ fn changed(
 enum WatchState {
     /// Not armed yet.
     Unarmed(Arc<dyn Workspace>, FileWatch),
-    /// Armed: the events to come.
-    Armed(Watch),
+    /// Armed: the events to come, of the path.
+    Armed(Watch, PathBuf),
     /// It could not start, which was told: it ends.
     Failed,
 }
@@ -145,15 +146,16 @@ fn watch_stream(workspace: Arc<dyn Workspace>, watch: FileWatch) -> impl Stream<
     stream::unfold(
         Some(WatchState::Unarmed(workspace, watch)),
         |state| async move {
-            let mut armed = match state? {
+            let (mut armed, path) = match state? {
                 WatchState::Unarmed(workspace, watch) => {
                     match workspace.watch(&watch.path, watch.recursive, watch.listing) {
-                        Ok(armed) => armed,
+                        Ok(armed) => (armed, watch.path),
                         Err(error) => {
                             let why = std::io::Error::new(
                                 error.kind(),
                                 format!("cannot watch {}: {error}", watch.path.display()),
                             );
+                            warn!("{why}");
                             return Some((
                                 Seen(WatchEvent::Unavailable(Arc::new(why))),
                                 Some(WatchState::Failed),
@@ -161,11 +163,14 @@ fn watch_stream(workspace: Arc<dyn Workspace>, watch: FileWatch) -> impl Stream<
                         }
                     }
                 }
-                WatchState::Armed(armed) => armed,
+                WatchState::Armed(armed, path) => (armed, path),
                 WatchState::Failed => return Some((Seen(WatchEvent::Closed), None)),
             };
             let event = armed.next().await?;
-            Some((Seen(event), Some(WatchState::Armed(armed))))
+            if let WatchEvent::Unavailable(error) = &event {
+                warn!("cannot list the files of {}: {error}", path.display());
+            }
+            Some((Seen(event), Some(WatchState::Armed(armed, path))))
         },
     )
 }

@@ -275,7 +275,7 @@ fn reload(
     root: Res<ProjectRoot>,
     mut library: ResMut<Library>,
 ) {
-    if changes.read().any(|change| watches.contains(change.watch)) {
+    if (changes.read()).any(|change| watches.contains(change.watch) && change.event.names_files()) {
         *library = read_library(&examples_dir(&root));
     }
 }

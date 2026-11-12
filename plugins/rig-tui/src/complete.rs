@@ -577,7 +577,8 @@ pub(crate) fn receive_paths(
         return;
     };
     let watch = index.watch;
-    let changed = changes.read().any(|change| Some(change.watch) == watch);
+    let changed =
+        (changes.read()).any(|change| Some(change.watch) == watch && change.event.names_files());
     if changed {
         index.fresh = false;
     }
