@@ -1,0 +1,218 @@
+use std::sync::Arc;
+
+use bevy_ecs::message::Messages;
+use bevy_ecs::prelude::*;
+use rig_core::completion::message::Origin;
+use rig_core::completion::{CompletionRequest, CompletionResponse, Message, Usage};
+use rig_core::effect::Answered;
+use rig_core::message::AssistantContent;
+use rig_core::streaming::{Part, PartKind, StreamEvent};
+
+use super::{Fed, ModelRequest, StreamDelta, feed, stream_partials, write_unstreamed};
+use crate::stage::{Outcome, SupersededBy};
+
+/// A world the kernel's delta writers run in.
+fn world() -> World {
+    let mut world = World::new();
+    world.init_resource::<Messages<StreamDelta>>();
+    world
+}
+
+/// A model call's request.
+fn call() -> ModelRequest {
+    ModelRequest::new(CompletionRequest::new(Message::user("hi")))
+}
+
+/// What a pass does with deltas: what streamed is read in Arrive, and
+/// what did not stream is written in Commit.
+fn pass(world: &mut World) {
+    assert!(world.run_system_cached(stream_partials).is_ok());
+    assert!(world.run_system_cached(write_unstreamed).is_ok());
+}
+
+/// A reply of `text`, as its outcome.
+fn replied(text: &str) -> Outcome {
+    let choice = vec![AssistantContent::text(text)];
+    let origin = Origin::new("test.api", "test", "model");
+    let reply = CompletionResponse::new(choice, Usage::default(), origin, serde_json::Value::Null);
+    Outcome(Ok(Answered::Completion(Arc::new(reply))))
+}
+
+/// Runs [`pass`] `passes` times; the text each call's deltas
+/// carried.
+fn texts(world: &mut World, passes: usize) -> Vec<(Entity, String)> {
+    for _ in 0..passes {
+        pass(world);
+    }
+    let deltas = world.resource::<Messages<StreamDelta>>();
+    let mut cursor = deltas.get_cursor();
+    let texts = cursor.read(deltas).filter_map(|delta| match &delta.event {
+        StreamEvent::Text { text, .. } => Some((delta.effect, text.clone())),
+        _ => None,
+    });
+    texts.collect()
+}
+
+fn text_event(text: &str) -> Fed {
+    let text = StreamEvent::Text {
+        part: Part::new(0),
+        text: text.to_owned(),
+    };
+    Fed::Item(web_time::SystemTime::now(), Some(text))
+}
+
+#[test]
+fn a_reply_that_did_not_stream_comes_as_deltas_once() {
+    let mut world = world();
+    let answered = world.spawn((call(), replied("in place"))).id();
+    // A stream that ended with no event.
+    let (sender, fed) = feed();
+    let ended = world.spawn((call(), fed, replied("ended"))).id();
+    assert!(
+        sender
+            .try_send(Fed::Item(web_time::SystemTime::now(), None))
+            .is_ok()
+    );
+    let mut texts = texts(&mut world, 3);
+    // Calls are read in no set order.
+    texts.sort_by(|left, right| left.1.cmp(&right.1));
+    assert_eq!(
+        texts,
+        [
+            (ended, "ended".to_owned()),
+            (answered, "in place".to_owned())
+        ]
+    );
+}
+
+#[test]
+fn a_reply_that_streamed_any_text_gets_no_copy() {
+    let mut world = world();
+    // Part of a reply came, then the call was answered otherwise.
+    let (sender, fed) = feed();
+    let call = world.spawn((call(), fed)).id();
+    assert!(sender.try_send(text_event("Hel")).is_ok());
+    pass(&mut world);
+    world.entity_mut(call).insert(replied("Hello"));
+    assert!(sender.try_send(text_event("lo")).is_ok());
+    let texts = texts(&mut world, 2);
+    assert_eq!(texts, [(call, "Hel".to_owned()), (call, "lo".to_owned())]);
+}
+
+#[test]
+fn a_superseded_reply_writes_no_deltas() {
+    let mut world = world();
+    let successor = world.spawn(call()).id();
+    world.spawn((call(), replied("replaced"), SupersededBy(successor)));
+    assert_eq!(texts(&mut world, 2), []);
+}
+
+#[test]
+fn each_part_of_a_reply_that_did_not_stream_starts_grows_and_ends() {
+    let mut world = world();
+    let choice = vec![
+        AssistantContent::reasoning("hm"),
+        AssistantContent::text(""),
+    ];
+    let origin = Origin::new("test.api", "test", "model");
+    let reply = CompletionResponse::new(choice, Usage::default(), origin, serde_json::Value::Null);
+    world.spawn((call(), Outcome(Ok(Answered::Completion(Arc::new(reply))))));
+    pass(&mut world);
+    let deltas = world.resource::<Messages<StreamDelta>>();
+    let events: Vec<StreamEvent> = deltas
+        .get_cursor()
+        .read(deltas)
+        .map(|delta| delta.event.clone())
+        .collect();
+    let (reasoning, text) = (Part::new(0), Part::new(1));
+    assert_eq!(
+        events,
+        [
+            StreamEvent::Start {
+                part: reasoning,
+                kind: PartKind::Reasoning,
+                name: None,
+            },
+            StreamEvent::Reasoning {
+                part: reasoning,
+                text: "hm".to_owned(),
+            },
+            StreamEvent::End {
+                part: reasoning,
+                content: AssistantContent::reasoning("hm"),
+            },
+            // An empty text part grows by nothing.
+            StreamEvent::Start {
+                part: text,
+                kind: PartKind::Text,
+                name: None,
+            },
+            StreamEvent::End {
+                part: text,
+                content: AssistantContent::text(""),
+            },
+        ]
+    );
+}
+
+#[test]
+fn a_reply_whose_stream_had_no_text_gets_its_text_after_what_streamed() {
+    let mut world = world();
+    let (sender, fed) = feed();
+    let call = world.spawn((call(), fed)).id();
+    let reasoning = Part::new(0);
+    let began = StreamEvent::Start {
+        part: reasoning,
+        kind: PartKind::Reasoning,
+        name: None,
+    };
+    let thought = StreamEvent::Reasoning {
+        part: reasoning,
+        text: "hm".to_owned(),
+    };
+    for event in [began.clone(), thought.clone()] {
+        let item = Fed::Item(web_time::SystemTime::now(), Some(event));
+        assert!(sender.try_send(item).is_ok());
+    }
+    pass(&mut world);
+    world.entity_mut(call).insert(replied("hello"));
+    pass(&mut world);
+    pass(&mut world);
+    let deltas = world.resource::<Messages<StreamDelta>>();
+    let events: Vec<StreamEvent> = deltas
+        .get_cursor()
+        .read(deltas)
+        .map(|delta| delta.event.clone())
+        .collect();
+    let text = Part::new(1);
+    assert_eq!(
+        events,
+        [
+            began,
+            thought,
+            StreamEvent::Start {
+                part: text,
+                kind: PartKind::Text,
+                name: None,
+            },
+            StreamEvent::Text {
+                part: text,
+                text: "hello".to_owned(),
+            },
+            StreamEvent::End {
+                part: text,
+                content: AssistantContent::text("hello"),
+            },
+        ]
+    );
+}
+
+#[test]
+fn what_a_superseded_call_streamed_before_it_was_read_is_still_written() {
+    let mut world = world();
+    let successor = world.spawn(call()).id();
+    let (sender, fed) = feed();
+    let call = world.spawn((call(), fed, SupersededBy(successor))).id();
+    assert!(sender.try_send(text_event("Hel")).is_ok());
+    assert_eq!(texts(&mut world, 1), [(call, "Hel".to_owned())]);
+}

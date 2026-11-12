@@ -79,7 +79,7 @@ use super::turn::{
     Adapted, DroppedOptions, ModelRequest, NO_MODEL, SentTo, StreamDelta, TurnCall, back_off,
     build_requests, carry_on_called, commit_replies, commit_turn_calls, end_turns, feed,
     judge_failures, keeps_settled, model_pool, route_calls, stop_calls, stream_partials,
-    stream_reply, wait_in_order,
+    stream_reply, wait_in_order, write_unstreamed,
 };
 
 /// One pass over the stages. Plugins add their systems to it in a
@@ -750,6 +750,7 @@ pub(crate) fn build(app: &mut App) {
                 (
                     stop_calls,
                     back_off.run_if(passed(Stage::Review)),
+                    write_unstreamed.run_if(passed(Stage::Review)),
                     settle,
                     commit_replies,
                     end_turns.run_if(passed(Stage::Review)),

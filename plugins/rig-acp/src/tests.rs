@@ -199,6 +199,16 @@ fn agent() {
     .add_systems(
         AgentPass,
         (guard.before(ApprovalSystems), twice, in_place).in_set(Stage::Gate),
+    )
+    .add_systems(
+        AgentPass,
+        (
+            stream_then_take_over
+                .in_set(PrepareSystems::Edit)
+                .before(PrepareSystems::Adapt),
+            take_over.in_set(Stage::Arrive),
+            give_text_in_review.in_set(ReviewSystems::Edit),
+        ),
     );
     let limit = std::env::var(LINE_LIMIT_BYTES).ok();
     if let Some(limit) = limit.and_then(|limit| limit.parse().ok()) {
@@ -384,6 +394,231 @@ fn in_place(mut calls: Query<(&ModelRequest, &mut Decision), (With<TurnCall>, Re
         if !asked {
             continue;
         }
+        let text = AssistantContent::Text(Text::new("hello in place".to_owned()));
+        let origin = Origin::new("test.api", "test", "model");
+        let reply = CompletionResponse::new(vec![text], Usage::default(), origin, Value::Null);
+        let answer = rig_harness::rig_core::effect::Answered::Completion(Arc::new(reply));
+        decision.decide(Decider::plugin("test"), Ok(answer));
+    }
+}
+
+/// Prompts whose model call streams only a text part's start, or only a
+/// reasoning part, then stalls until a plugin answers it in place.
+const OPEN_THEN_TAKEN: &str = "Open a part, then be taken over.";
+const THINK_THEN_TAKEN: &str = "Think, then be taken over.";
+
+/// A model that streams these events, then never finishes.
+struct Stalls(Vec<StreamEvent>);
+
+impl rig_harness::rig_core::serve::Serve for Stalls {
+    type Family = rig_harness::rig_core::effect::family::Dynamic;
+
+    fn descriptor(&self) -> rig_harness::rig_core::effect::HandlerDescriptor {
+        rig_harness::rig_core::effect::HandlerDescriptor {
+            key: rig_harness::rig_core::effect::HandlerKey::from("stalls"),
+            family: rig_harness::rig_core::effect::FamilyDescriptor::Custom {
+                kind: "test:stalls".into(),
+            },
+            layers: Vec::new(),
+        }
+    }
+
+    async fn serve(
+        &self,
+        _: rig_harness::rig_core::effect::EffectKind,
+        _: rig_harness::rig_core::serve::Dispatch,
+    ) -> rig_harness::rig_core::serve::Reply {
+        use futures::StreamExt;
+        use rig_harness::rig_core::streaming::{Item, Relayed};
+
+        let events = self.0.iter().cloned();
+        let events = events.map(|event| Ok(Relayed::Item(Item::Event(event))));
+        let stalls =
+            futures::stream::iter(events.collect::<Vec<_>>()).chain(futures::stream::pending());
+        rig_harness::rig_core::serve::Reply::Stream(Box::pin(stalls))
+    }
+}
+
+/// Prompts whose model call streams a reasoning part, then ends with a
+/// reply holding only it, or fails; a reviewer then gives it text.
+const THINK_THEN_REVIEWED: &str = "Think, then be given text in review.";
+const THINK_THEN_FAIL: &str = "Think, then fail and be taken over.";
+
+/// A model that streams these events, then ends with a reply holding only
+/// the reasoning "pondering", or fails.
+struct Ends(Vec<StreamEvent>, bool);
+
+impl rig_harness::rig_core::serve::Serve for Ends {
+    type Family = rig_harness::rig_core::effect::family::Dynamic;
+
+    fn descriptor(&self) -> rig_harness::rig_core::effect::HandlerDescriptor {
+        rig_harness::rig_core::effect::HandlerDescriptor {
+            key: rig_harness::rig_core::effect::HandlerKey::from("ends"),
+            family: rig_harness::rig_core::effect::FamilyDescriptor::Custom {
+                kind: "test:ends".into(),
+            },
+            layers: Vec::new(),
+        }
+    }
+
+    async fn serve(
+        &self,
+        _: rig_harness::rig_core::effect::EffectKind,
+        _: rig_harness::rig_core::serve::Dispatch,
+    ) -> rig_harness::rig_core::serve::Reply {
+        use rig_harness::rig_core::completion::message::{AssistantContent, Origin};
+        use rig_harness::rig_core::completion::{CompletionResponse, Usage};
+        use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
+        use rig_harness::rig_core::streaming::{Item, Relayed};
+
+        let events = self.0.iter().cloned();
+        let mut items: Vec<_> = events
+            .map(|event| Ok(Relayed::Item(Item::Event(event))))
+            .collect();
+        items.push(match self.1 {
+            true => {
+                let thought = vec![AssistantContent::reasoning("pondering")];
+                let origin = Origin::new("test.api", "test", "model");
+                let reply = CompletionResponse::new(thought, Usage::default(), origin, Value::Null);
+                Ok(Relayed::Done(Arc::new(reply)))
+            }
+            false => Err(ErrorReport::new(ErrorKind::Provider, "the stream broke")),
+        });
+        rig_harness::rig_core::serve::Reply::Stream(Box::pin(futures::stream::iter(items)))
+    }
+}
+
+/// On a model call a reviewer gives text.
+#[derive(Component)]
+struct GivenTextInReview;
+
+/// Gives each answered call [`stream_then_take_over`] marked the text
+/// "REVIEW-REPLY added in place" when it has none, in Review: added to an
+/// answer, or taking over a failure, as a reviewer does in place.
+fn give_text_in_review(mut calls: Query<&mut Outcome, (With<GivenTextInReview>, ReadyToSettle)>) {
+    use rig_harness::rig_core::completion::message::{AssistantContent, Origin};
+    use rig_harness::rig_core::completion::{CompletionResponse, Usage};
+    use rig_harness::rig_core::effect::Answered;
+
+    for mut outcome in &mut calls {
+        let mut choice = match &outcome.0 {
+            Ok(Answered::Completion(reply)) => reply.choice.clone(),
+            Err(_) => Vec::new(),
+            Ok(_) => continue,
+        };
+        if choice
+            .iter()
+            .any(|content| matches!(content, AssistantContent::Text(_)))
+        {
+            continue;
+        }
+        choice.push(AssistantContent::text("REVIEW-REPLY added in place"));
+        let origin = Origin::new("test.api", "test", "model");
+        let reply = CompletionResponse::new(choice, Usage::default(), origin, Value::Null);
+        outcome.0 = Ok(Answered::Completion(Arc::new(reply)));
+    }
+}
+
+/// On a model call a plugin takes over once its stream began.
+#[derive(Component)]
+struct TakenOver;
+
+/// Sends each model call of a prompt asked [`OPEN_THEN_TAKEN`] or
+/// [`THINK_THEN_TAKEN`] to a model that streams no text and stalls.
+fn stream_then_take_over(
+    mut calls: Query<(Entity, &mut ModelRequest, &ForAgent), (With<TurnCall>, Added<Admitted>)>,
+    agents: Query<&Connection>,
+    mut commands: Commands,
+) {
+    use rig_harness::rig_core::completion::message::{AssistantContent, Message, UserContent};
+    use rig_harness::rig_core::streaming::{Part, PartKind};
+
+    for (call, mut request, &ForAgent(agent)) in &mut calls {
+        let asked = |marker: &str| {
+            let mut history = request
+                .history
+                .iter()
+                .flat_map(|history| history.messages());
+            history.any(|message| {
+                matches!(&**message, Message::User { content } if content.iter().any(|part|
+                    matches!(part, UserContent::Text(text) if text.text.contains(marker))))
+            })
+        };
+        let part = Part::new(0);
+        let streamed = if asked(OPEN_THEN_TAKEN) {
+            vec![StreamEvent::Start {
+                part,
+                kind: PartKind::Text,
+                name: None,
+            }]
+        } else if asked(THINK_THEN_TAKEN) {
+            let reasoning = PartKind::Reasoning;
+            vec![
+                StreamEvent::Start {
+                    part,
+                    kind: reasoning,
+                    name: None,
+                },
+                StreamEvent::Reasoning {
+                    part,
+                    text: "pondering".to_owned(),
+                },
+                StreamEvent::End {
+                    part,
+                    content: AssistantContent::reasoning("pondering"),
+                },
+            ]
+        } else if asked(THINK_THEN_REVIEWED) || asked(THINK_THEN_FAIL) {
+            let Ok(connection) = agents.get(agent) else {
+                continue;
+            };
+            let thought = vec![
+                StreamEvent::Start {
+                    part,
+                    kind: PartKind::Reasoning,
+                    name: None,
+                },
+                StreamEvent::Reasoning {
+                    part,
+                    text: "pondering".to_owned(),
+                },
+                StreamEvent::End {
+                    part,
+                    content: AssistantContent::reasoning("pondering"),
+                },
+            ];
+            let ends = Ends(thought, asked(THINK_THEN_REVIEWED));
+            let handler = rig_harness::rig_core::serve::ErasedHandler::new(ends);
+            request.connection = Some(Connection {
+                spec: connection.spec.clone(),
+                handler: rig_harness::rig_ecs::effects::Handler(handler),
+            });
+            commands.entity(call).try_insert(GivenTextInReview);
+            continue;
+        } else {
+            continue;
+        };
+        let Ok(connection) = agents.get(agent) else {
+            continue;
+        };
+        let handler = rig_harness::rig_core::serve::ErasedHandler::new(Stalls(streamed));
+        request.connection = Some(Connection {
+            spec: connection.spec.clone(),
+            handler: rig_harness::rig_ecs::effects::Handler(handler),
+        });
+        commands.entity(call).try_insert(TakenOver);
+    }
+}
+
+/// Answers each call [`stream_then_take_over`] sent, once its stream began,
+/// with "hello in place", as a plugin taking a reply over does.
+fn take_over(
+    mut calls: Query<&mut Decision, (With<TakenOver>, With<StreamTiming>, Without<Outcome>)>,
+) {
+    use rig_harness::rig_core::completion::message::{AssistantContent, Origin, Text};
+    use rig_harness::rig_core::completion::{CompletionResponse, Usage};
+
+    for mut decision in &mut calls {
         let text = AssistantContent::Text(Text::new("hello in place".to_owned()));
         let origin = Origin::new("test.api", "test", "model");
         let reply = CompletionResponse::new(vec![text], Usage::default(), origin, Value::Null);
