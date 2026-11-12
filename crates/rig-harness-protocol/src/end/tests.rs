@@ -95,8 +95,7 @@ fn a_failure_code_is_never_one_the_launcher_reads_as_another_end() {
     assert_eq!(FailCode::new(2).map(FailCode::get), Some(2));
     assert_eq!(FailCode::or_failure(75), FailCode::FAILURE);
     assert_eq!(FailCode::FAILURE.get(), 1);
-    let refused: Result<AgentEnd, String> = "failed 75".parse();
-    assert!(refused.is_err());
+    assert_eq!(AgentEnd::parse("failed 75"), None);
 }
 
 /// The stand-in agent's steps say the same messages: what its script

@@ -78,7 +78,7 @@ impl AgentEnd {
     pub fn read(run: &RunDir, status: ExitStatus) -> Self {
         let recorded = std::fs::read_to_string(run.path().join(FILE))
             .ok()
-            .and_then(|text| text.parse::<Self>().ok());
+            .and_then(|text| Self::parse(&text));
         match recorded {
             Some(end) if status.code() == Some(i32::from(end.code())) => end,
             _ => Self::of_status(status),
@@ -115,26 +115,20 @@ impl fmt::Display for AgentEnd {
     }
 }
 
-impl std::str::FromStr for AgentEnd {
-    type Err = String;
-
-    fn from_str(text: &str) -> Result<Self, Self::Err> {
+impl AgentEnd {
+    /// The end a record's `text` says, or `None` when it says none.
+    fn parse(text: &str) -> Option<Self> {
         let (first, rest) = text.split_once('\n').unwrap_or((text, ""));
         let (word, value) = first.split_once(' ').unwrap_or((first, ""));
         match (word, value) {
-            ("quit", "") => Ok(Self::Quit),
-            ("reload", "") => Ok(Self::Reload),
-            ("switch", "") => Ok(Self::Switch(None)),
-            ("switch", session) => Ok(Self::Switch(Some(session.parse()?))),
-            ("refused", "") => Ok(Self::Refused(rest.to_owned())),
-            ("signal", "") => Ok(Self::Signal),
-            ("failed", code) => code
-                .parse()
-                .ok()
-                .and_then(FailCode::new)
-                .map(Self::Failed)
-                .ok_or_else(|| format!("`{code}` is not a failure's exit code")),
-            _ => Err(format!("`{first}` is not how an agent ends")),
+            ("quit", "") => Some(Self::Quit),
+            ("reload", "") => Some(Self::Reload),
+            ("switch", "") => Some(Self::Switch(None)),
+            ("switch", session) => Some(Self::Switch(Some(session.parse().ok()?))),
+            ("refused", "") => Some(Self::Refused(rest.to_owned())),
+            ("signal", "") => Some(Self::Signal),
+            ("failed", code) => code.parse().ok().and_then(FailCode::new).map(Self::Failed),
+            _ => None,
         }
     }
 }
