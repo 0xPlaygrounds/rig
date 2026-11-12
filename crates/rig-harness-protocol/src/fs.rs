@@ -19,7 +19,7 @@
     reason = "the one place that calls std::fs, to name the path in every error"
 )]
 
-use std::fs::{DirBuilder, File, Metadata, OpenOptions, Permissions, ReadDir};
+use std::fs::{DirBuilder, DirEntry, File, Metadata, OpenOptions, Permissions};
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -161,14 +161,15 @@ pub fn create_dir(builder: &DirBuilder, path: impl AsRef<Path>) -> io::Result<()
     builder.create(path).map_err(named("create", path))
 }
 
-/// [`std::fs::read_dir`].
+/// [`std::fs::read_dir`], whose entries' errors name the directory too.
 ///
 /// # Errors
 ///
 /// When the directory cannot be listed, naming it.
-pub fn read_dir(path: impl AsRef<Path>) -> io::Result<ReadDir> {
-    let path = path.as_ref();
-    std::fs::read_dir(path).map_err(named("list", path))
+pub fn read_dir(path: impl AsRef<Path>) -> io::Result<impl Iterator<Item = io::Result<DirEntry>>> {
+    let path = path.as_ref().to_path_buf();
+    let entries = std::fs::read_dir(&path).map_err(named("list", &path))?;
+    Ok(entries.map(move |entry| entry.map_err(named("list", &path))))
 }
 
 /// [`std::fs::metadata`].

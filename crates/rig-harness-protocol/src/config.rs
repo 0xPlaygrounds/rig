@@ -784,11 +784,11 @@ pub fn edit<T, E: From<Error>>(
         }
         let replaced = fs::open(&options, &staged)
             .and_then(|mut opened| {
-                let written = opened.write_all(file.document.to_string().as_bytes());
+                (opened.write_all(file.document.to_string().as_bytes()))
+                    .map_err(fs::named("write", &staged))?;
                 // A file the user made private stays so.
-                written
-                    .and_then(|()| was.map_or(Ok(()), |was| opened.set_permissions(was)))
-                    .map_err(fs::named("write", &staged))
+                was.map_or(Ok(()), |was| opened.set_permissions(was))
+                    .map_err(fs::named("set permissions of", &staged))
             })
             .and_then(|()| fs::rename(&staged, &target));
         replaced.map_err(|failure| {

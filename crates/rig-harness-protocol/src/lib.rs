@@ -221,7 +221,8 @@ impl Stamp {
         let identity = std::os::unix::fs::MetadataExt::ino(&metadata);
         #[cfg(not(unix))]
         let identity = metadata.len();
-        Ok(Self(Some((metadata.modified()?, identity))))
+        let modified = metadata.modified().map_err(fs::named("look at", path))?;
+        Ok(Self(Some((modified, identity))))
     }
 }
 
