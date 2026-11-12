@@ -2066,3 +2066,19 @@ fn each_end_decides_the_next_step() {
     assert!(!rejected(&trial, &heard(&unready(&failed))), "heard");
     assert!(!rejected(&view, &unready(&failed)), "a proven build");
 }
+
+/// A screen a view took stays taken across a restart whose agent never
+/// takes it, and is handed over once.
+#[test]
+fn a_screen_taken_before_a_restart_stays_taken_until_handed_over() {
+    let mut screen = Screen {
+        taken: false,
+        sane: None,
+    };
+    assert!(!screen.took(false));
+    assert!(screen.took(true));
+    assert!(screen.took(false));
+    assert!(screen.hand_over());
+    assert!(!screen.hand_over());
+    assert!(!screen.took(false));
+}
