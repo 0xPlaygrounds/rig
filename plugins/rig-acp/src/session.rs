@@ -24,7 +24,7 @@ use agent_client_protocol::{Agent, Client, ConnectionTo, Error};
 use async_channel::{Receiver, Sender};
 use bevy_ecs::system::SystemParam;
 use rig_basics::models::{FirstPick, TypedChoices};
-use rig_harness::harness_protocol::{REFUSED_EXIT_CODE, SessionId};
+use rig_harness::harness_protocol::SessionId;
 use rig_harness::host::pipes::Writer;
 use rig_harness::host::signals;
 use rig_harness::prelude::*;
@@ -757,11 +757,9 @@ struct Opened<'w, 's> {
 fn open(mut opened: Opened) {
     if let Some(why) = opened.start.take_refusal() {
         if let Some(opening) = opened.session.opening.take() {
-            opening.refuse(why);
+            opening.refuse(why.clone());
         }
-        opened
-            .commands
-            .trigger(Exit(ExitReason::Failed(REFUSED_EXIT_CODE)));
+        opened.commands.trigger(Exit(ExitReason::Refused(why)));
         return;
     }
     let restored = opened.restored.is_some() && opened.session.opening.is_some();

@@ -457,7 +457,7 @@ fn prune_command(
         Ok(prune) => prune,
         Err(why) => {
             eprintln!("rig sessions: {why}\nusage: rig sessions {USAGE}");
-            commands.trigger(Exit(ExitReason::Failed(2)));
+            commands.trigger(Exit(ExitReason::Failed(FailCode::or_failure(2))));
             return;
         }
     };
@@ -472,10 +472,10 @@ fn prune_command(
             report.deleted.len(),
             bytes_label(report.bytes_freed)
         );
-        ExitReason::Failed(2)
+        ExitReason::Failed(FailCode::or_failure(2))
     } else if !prune.yes && !confirmed(&report, &prune) {
         eprintln!("Nothing deleted.");
-        ExitReason::Failed(1)
+        ExitReason::Failed(FailCode::FAILURE)
     } else {
         for session in &report.deleted {
             if let Ok(id) = session.id.parse() {
@@ -520,7 +520,7 @@ fn report_deleted(
     let reason = if report.failed.is_empty() {
         ExitReason::Quit
     } else {
-        ExitReason::Failed(1)
+        ExitReason::Failed(FailCode::FAILURE)
     };
     commands.remove_resource::<Deleting>();
     commands.insert_resource(report);

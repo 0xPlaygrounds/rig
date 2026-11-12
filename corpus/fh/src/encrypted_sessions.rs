@@ -276,7 +276,7 @@ fn crypt_command(
         }
         Err(why) => {
             eprintln!("rig crypt: {why}");
-            ExitReason::Failed(1)
+            ExitReason::Failed(FailCode::FAILURE)
         }
     };
     commands.trigger(Exit(reason));

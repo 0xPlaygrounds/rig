@@ -7,7 +7,7 @@ use std::sync::{Mutex, PoisonError};
 
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 use rig_harness::harness_protocol;
-use rig_harness::harness_protocol::{UPDATE_INSTALLED, UPDATE_SAYS, first_errors, without_secrets};
+use rig_harness::harness_protocol::{UPDATE_SAYS, first_errors, without_secrets};
 use rig_harness::host::launcher::Invoked;
 use rig_harness::prelude::*;
 use rig_tools::process::{Process, STOP_GRACE};
@@ -26,22 +26,16 @@ pub(crate) fn add(app: &mut App) {
     );
 }
 
-/// Stops the running build.
-pub(crate) fn stop(commands: &mut Commands) {
-    commands.remove_resource::<ReloadBuild>();
-}
-
-/// What a cancel of `build` says: an update cancelled once the new rig is
-/// installed leaves it there, for the next start or reload.
-pub(crate) fn cancelled(build: Option<&ReloadBuild>) -> &'static str {
-    match build {
-        Some(build) if build.installed() => {
-            "Update cancelled during the agent build: the new rig is installed, and the \
-             next start or /reload runs it."
-        }
-        Some(build) if build.rebuild == Rebuild::Update => "Update cancelled.",
-        _ => "Rebuild cancelled.",
-    }
+/// Stops the running build, then says it was cancelled. What an update
+/// left is read once it stopped, so an install that landed as it stopped
+/// is told: the new rig stays installed, for the next start or reload.
+pub(crate) fn cancel(commands: &mut Commands) {
+    commands.queue(|world: &mut World| {
+        let notice = world
+            .remove_resource::<ReloadBuild>()
+            .map_or("Rebuild cancelled.", |mut build| build.cancel());
+        world.write_message(Notice::info(None, notice));
+    });
 }
 
 /// The rebuild's process. Dropping it while the build runs stops the
@@ -58,6 +52,9 @@ pub(crate) struct ReloadBuild {
     /// a build queued behind this one, or an older one when this one fails
     /// before it starts its log, may have written.
     output: Vec<String>,
+    /// The launcher's file as this build started, which `rig update`
+    /// replaces once it installed the new rig.
+    installed: LauncherFile,
 }
 
 impl ReloadBuild {
@@ -67,6 +64,8 @@ impl ReloadBuild {
         agent: Entity,
         wake: Wake,
     ) -> std::io::Result<Self> {
+        let path = std::path::PathBuf::from(launcher);
+        let installed = LauncherFile::new(path.clone(), harness_protocol::Stamp::of(&path));
         let mut command = Command::new(launcher);
         command
             .arg(rebuild.command())
@@ -90,15 +89,31 @@ impl ReloadBuild {
             rebuild,
             lines,
             output: Vec::new(),
+            installed,
         })
     }
 
-    /// Whether `rig update` installed the new launcher, and so a failure
-    /// is its agent build's.
+    /// Whether this is `rig update` and it replaced the launcher's file
+    /// since it started, so a failure is its agent build's.
     fn installed(&self) -> bool {
-        self.output
-            .iter()
-            .any(|line| line.starts_with(UPDATE_INSTALLED))
+        self.rebuild == Rebuild::Update && self.installed.replaced()
+    }
+
+    /// Stops the build; what its cancel says.
+    fn cancel(&mut self) -> &'static str {
+        let process = self.process.get_mut();
+        process
+            .unwrap_or_else(PoisonError::into_inner)
+            .stop(STOP_GRACE)
+            .ok();
+        match self.rebuild {
+            Rebuild::Update if self.installed.replaced() => {
+                "Update cancelled during the agent build: the new rig is installed, and the \
+                 next start or /reload runs it."
+            }
+            Rebuild::Update => "Update cancelled.",
+            Rebuild::Build => "Rebuild cancelled.",
+        }
     }
 
     /// At most `count` lines of the output from the first error on, or its

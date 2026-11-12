@@ -241,7 +241,7 @@ fn end(stdout: String, status: u8, commands: &mut Commands) {
     std::io::stdout().flush().ok();
     let reason = match status {
         0 => ExitReason::Quit,
-        status => ExitReason::Failed(status),
+        status => ExitReason::Failed(FailCode::or_failure(status)),
     };
     commands.insert_resource(AskRun { stdout, status });
     commands.trigger(Exit(reason));

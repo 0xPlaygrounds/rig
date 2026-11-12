@@ -32,3 +32,4 @@ ctrlc = { workspace = true }
 [dev-dependencies]
 anyhow = { workspace = true }
 assert_fs = { workspace = true }
+rig-harness-protocol = { path = "../rig-harness-protocol", features = ["test-utils"] }

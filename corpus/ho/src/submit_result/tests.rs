@@ -157,7 +157,7 @@ fn two_text_answers_get_one_reminder_then_fail_the_run() {
 
     assert_eq!(
         app.world().get_resource::<ExitReason>(),
-        Some(&ExitReason::Failed(NO_RESULT_EXIT))
+        Some(&ExitReason::Failed(FailCode::or_failure(NO_RESULT_EXIT)))
     );
     let requests = model.requests();
     assert_eq!(requests.len(), 2, "the reminder's request only");
@@ -188,7 +188,7 @@ fn three_refused_results_fail_the_run() {
     assert_eq!(model.request_count(), 3, "no request after the third");
     assert_eq!(
         app.world().get_resource::<ExitReason>(),
-        Some(&ExitReason::Failed(INVALID_EXIT))
+        Some(&ExitReason::Failed(FailCode::or_failure(INVALID_EXIT)))
     );
     std::fs::remove_dir_all(&dir).ok();
 }

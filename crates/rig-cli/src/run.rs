@@ -1,36 +1,37 @@
-//! Running the agent. [`RELOAD_EXIT_CODE`] restarts it on the staged build;
-//! a new build is this launcher's trial until it signals ready in the
-//! launcher's [`RunDir`]. Several launchers can share one `RIG_HOME`:
-//! building, staging and selecting a build take the root's lock, a
-//! `/reload` build is staged per session, and each launcher holds the
-//! builds it selected ([`BuildRef`]) and its ready file in its run
-//! directory. It starts the build it read the command line against, and
+//! Running the agent. An agent that ends asking to reload ([`AgentEnd`])
+//! restarts on the staged build; a new build is this launcher's trial until
+//! it signals ready in the launcher's [`RunDir`]. Several launchers can
+//! share one `RIG_HOME`: building, staging and selecting a build take the
+//! root's lock, a `/reload` build is staged per session, and each launcher
+//! holds the builds it selected ([`BuildRef`]) and its ready file in its
+//! run directory. It starts the build it read the command line against, and
 //! rolls back to the one its session ran before.
 //!
-//! `rig` starts a new session, and `rig --resume <id or name>` an earlier one,
-//! in the directory it ran in. The agent's `/new` and `/resume` leave a
-//! [`SessionDir::switch`] file and exit with the reload code; the launcher then
-//! runs that session instead, in its own directory. A session left without a
-//! message, by a clean quit or a switch, leaves no directory. Each start tells
-//! the agent why it started ([`StartReason`]).
+//! `rig` starts a new session, and `rig --resume <id or name>` an earlier
+//! one, in the directory it ran in. The agent's `/new` and `/resume` end it
+//! with [`AgentEnd::Switch`]; the launcher then runs that session instead,
+//! in its own directory. A session left without a message, by a clean quit
+//! or a switch, leaves no directory. Each start tells the agent why it
+//! started ([`StartReason`]).
 //!
 //! The command line is read once the agent is built, against what its
-//! plugins add ([`AgentDescription::invocation`]), and the agent gets it in its
-//! canonical form ([`Invocation`]). A plugin's command runs in a new
+//! plugins add ([`AgentDescription::invocation`]), and the agent gets it in
+//! its canonical form ([`Invocation`]). A plugin's command runs in a new
 //! session, or with `--resume` in that one, unless its front keeps no
 //! session, which the agent refuses. A headless run (`--print`, stdin piped
 //! in, which the agent answers as `--print` does, or a plugin's command
 //! that does not take the terminal) passes its exit code and output
-//! through. One that answers a prompt is restarted on the reload code, as
-//! when its model asked for a reload, without the prompt it already
-//! answered, and run again on the previous build when that reload's new
-//! build is rolled back; the restarted agent carries on with what the
-//! reload left, such as its report to the model. A plugin's command is not
-//! restarted, nor a run that asked to switch sessions. Before each start with stdin on
-//! a terminal, whatever the front, the launcher asks for each secret the
-//! build's plugins want that the environment does not hold
-//! ([`ask_secret`]); only the agent's process, and a launcher that
-//! replaces this one, get the answers.
+//! through, but a reload or switch it does not follow ends it with 0. One
+//! that answers a prompt is restarted when it reloads, as when its model
+//! asked for a reload, without the prompt it already answered, and run
+//! again on the previous build when that reload's new build is rolled back;
+//! the restarted agent carries on with what the reload left, such as its
+//! report to the model. A plugin's command is not restarted, nor a run that
+//! asked to switch sessions. Before each start with stdin on a terminal,
+//! whatever the front, the launcher asks for each secret the build's
+//! plugins want that the environment does not hold ([`ask_secret`]); only
+//! the agent's process, and a launcher that replaces this one, get the
+//! answers.
 
 use std::ffi::OsString;
 use std::fs::{self, File};
@@ -41,10 +42,11 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
 use rig_harness_protocol::config::SettingsFile;
+use rig_harness_protocol::end::AgentEnd;
 use rig_harness_protocol::launch::{AbsPath, Agent, Carry, Launch, Purpose};
 use rig_harness_protocol::{
-    AgentDescription, DescribedSecret, Home, Invocation, REFUSED_EXIT_CODE, RELOAD_EXIT_CODE,
-    RunDir, SIGNAL_EXIT_CODE, SessionDir, SessionId, Stamp, StartReason, secret_variable,
+    AgentDescription, DescribedSecret, Home, Invocation, REFUSED_EXIT_CODE, RunDir,
+    SIGNAL_EXIT_CODE, SessionId, Stamp, StartReason, secret_variable,
 };
 
 use super::build::{self, BuildFailure, BuildOutput, FailedAt, Staging};
@@ -66,9 +68,9 @@ pub enum Start {
 }
 
 /// Builds the agent, reads the command line `args` against it, runs it
-/// until it exits with anything but the reload code, and returns its exit
-/// code: 2 for a command line the build does not take, or a `--resume`
-/// that names no saved session.
+/// until it ends without asking to reload, and returns its exit code: 2
+/// for a command line the build does not take, or a `--resume` that names
+/// no saved session.
 pub fn run(mut launch: Launch, args: &[String]) -> Result<ExitCode> {
     let home = &launch.home();
     let terminal = launch.terminal;
@@ -260,7 +262,7 @@ pub fn last_report(home: &Home) -> Option<AgentDescription> {
 }
 
 /// Starts the agent of `claimed` with the build `running` holds, again on
-/// the reload code with the build [`select`] then holds, and returns how
+/// a reload or switch with the build [`select`] then holds, and returns how
 /// it ended. The notice and build failure of `launch`'s carry go to the
 /// first start.
 fn run_agent(
@@ -300,7 +302,6 @@ fn run_agent(
         let left = claimed.left.take();
         let session = claimed.id.clone();
         let directory = home.session(&session);
-        let ready = run.ready();
         if ask {
             for secret in &running.current.description.secrets {
                 let variable = OsString::from(secret_variable(&secret.name));
@@ -314,9 +315,7 @@ fn run_agent(
                 launch.secrets.insert(variable, answer.into());
             }
         }
-        absent(fs::remove_file(&ready))?;
-        absent(fs::remove_file(run.refusal()))?;
-        absent(fs::remove_file(run.screen()))?;
+        run.clear_messages()?;
         // Only the first start of a claim runs elsewhere than it was, and
         // only the run's starts until one is ready warn of a 0.46 home.
         let moved = claimed.moved.take();
@@ -357,7 +356,7 @@ fn run_agent(
                 watch.pass_on(&mut child);
                 exited = child.try_wait()?;
             }
-            if !started && ready.exists() {
+            if !started && run.heard_ready() {
                 started = true;
                 launch.carry.warned = true;
                 promoting = running.current.is_trial();
@@ -383,8 +382,10 @@ fn run_agent(
             std::thread::sleep(POLL);
         };
         drop(watch);
-        let reload = status.code() == Some(i32::from(RELOAD_EXIT_CODE)) && stop::heard().is_none();
-        let restart = !headless || (answers_prompt && !directory.switch().exists());
+        let end = AgentEnd::read(run, status);
+        let reload =
+            matches!(end, AgentEnd::Reload | AgentEnd::Switch(_)) && stop::heard().is_none();
+        let restart = !headless || (answers_prompt && end == AgentEnd::Reload);
         // A view's reload after the launcher's file was replaced restarts on
         // the new launcher, never the new agent under this one. A headless
         // agent does not reload once its launcher was replaced, as told by
@@ -392,7 +393,7 @@ fn run_agent(
         // its prompt.
         let replaced =
             reload && restart && !headless && installed.replaced(&Stamp::of(&launch.launcher));
-        screen |= run.screen().exists();
+        screen |= run.took_screen();
         // A reload that restarts leaves the jobs running, listed for the
         // next build to take over. Best effort: a list that cannot be read
         // must not keep the terminal from being put back below.
@@ -409,7 +410,8 @@ fn run_agent(
             // it: one that cannot run leaves this one on, told why. The new
             // launcher goes on as this one would: resuming it by its
             // command line, which names no session else, in its directory.
-            if let Some(target) = take_switch(&directory)? {
+            if let AgentEnd::Switch(target) = &end {
+                let target = target.clone().map_or(Start::New, Start::Resume);
                 (claimed, launch.carry.notice) = switch(home, claimed, target)?;
             }
             let resume = home
@@ -441,7 +443,8 @@ fn run_agent(
             if headless {
                 invocation = &restarted;
             }
-            if let Some(target) = take_switch(&directory)? {
+            if let AgentEnd::Switch(target) = &end {
+                let target = target.clone().map_or(Start::New, Start::Resume);
                 (claimed, launch.carry.notice) = switch(home, claimed, target)?;
             }
             let Running { current, previous } = running;
@@ -464,11 +467,15 @@ fn run_agent(
             kept_screen = !headless;
             continue;
         }
+        let refusal = match &end {
+            AgentEnd::Refused(why) => Some(why.as_str()),
+            _ => None,
+        };
         if !rejected
             && !headless
             && stop::heard().is_none()
             && let Some(left) = left
-            && let Some(refusal) = absent(fs::read_to_string(run.refusal()))?
+            && let Some(why) = refusal
         {
             let back = if home.session(&left).is_saved() {
                 Start::Resume(left)
@@ -481,7 +488,6 @@ fn run_agent(
             if claimed.id != session {
                 // Told in the session it went back to, so nothing is kept.
                 absent(fs::remove_file(run.log()))?;
-                let why = refusal.trim().trim_start_matches("rig: ");
                 launch.carry.notice = Some(format!("Could not switch sessions: {why}"));
                 continue;
             }
@@ -492,32 +498,30 @@ fn run_agent(
             && stop::heard().is_none();
         let ended = !rejected || !again || running.previous.is_none();
         let log = if ended {
-            claimed.leave(home, run, status.success())
+            claimed.leave(home, run, &end)
         } else {
             directory.log()
         };
-        let refusal = fs::read_to_string(run.refusal()).ok();
         if !rejected && headless {
-            return Ok(Ended::quiet(exit_code(status)));
+            return Ok(Ended::quiet(ExitCode::from(end.launcher_code())));
         }
         let resume = started
             .then(|| resume_command(home, &session, refusal.is_some()))
             .flatten();
-        if !rejected && status.success() {
+        if !rejected && end == AgentEnd::Quit {
             let said = resume.map(|resume| format!("To resume this session: {resume}"));
             // The agent left the terminal as it found it; the line needs
             // it out of the full screen in case it did not.
             let restore = said.is_some() && screen;
-            return Ok(Ended::new(status, said).restoring(restore));
+            return Ok(Ended::new(&end, said).restoring(restore));
         }
         let restore = std::mem::take(&mut screen);
         if !rejected {
             let log = Some(log.as_path()).filter(|log| log.exists());
-            let refusal = refusal.as_deref();
             // A refusal said while a view had the screen was not seen.
             let hidden = kept_screen || restore;
-            let said = stopped(status, resume.as_deref(), refusal, hidden, log);
-            return Ok(Ended::new(status, said).restoring(restore));
+            let said = stopped(&end, status, resume.as_deref(), hidden, log);
+            return Ok(Ended::new(&end, said).restoring(restore));
         }
         let Some(previous) = running.previous.take() else {
             let said = format!(
@@ -525,7 +529,7 @@ fn run_agent(
                  build to roll back to; the next `rig` tries it again. Log: {}",
                 log.display()
             );
-            return Ok(Ended::new(status, Some(said)).restoring(restore));
+            return Ok(Ended::new(&end, Some(said)).restoring(restore));
         };
         running.current = previous;
         let message = format!(
@@ -536,7 +540,7 @@ fn run_agent(
         // A one-shot run is not run twice, its output already out, unless
         // its agent reloaded: the restart tells the agent of the rollback.
         if !again {
-            return Ok(Ended::new(status, Some(message)).restoring(restore));
+            return Ok(Ended::new(&end, Some(message)).restoring(restore));
         }
         if restore {
             restore_terminal(launch);
@@ -562,10 +566,10 @@ struct Ended {
 }
 
 impl Ended {
-    /// The end of an agent that exited with `status`, followed by `said`.
-    fn new(status: ExitStatus, said: Option<String>) -> Self {
+    /// The end of an agent that ended as `end`, followed by `said`.
+    fn new(end: &AgentEnd, said: Option<String>) -> Self {
         Self {
-            code: exit_code(status),
+            code: ExitCode::from(end.launcher_code()),
             said,
             restore: false,
             reexec: None,
@@ -588,29 +592,24 @@ impl Ended {
     }
 }
 
-/// What the launcher says when the agent exited with `status`, not 0. A
-/// run a signal ended, which the agent was told of, gets the `resume`
-/// command as a quit does. A refused run said why itself: its `refusal`
+/// What the launcher says when the agent ended as `end`, not a quit, with
+/// `status`. A run a signal ended, which the agent was told of, gets the
+/// `resume` command as a quit does. A refused run said why itself: it
 /// comes again only when a view had the screen (`kept_screen`), which hid
 /// it, such as a restarted view, or one that took the screen before a
 /// `--tools` name was refused. Any other end is a failure: the agent
 /// stopped, where its log is when it kept one and, when the session can be
 /// resumed, the `resume` command.
 fn stopped(
+    end: &AgentEnd,
     status: ExitStatus,
     resume: Option<&str>,
-    refusal: Option<&str>,
     kept_screen: bool,
     log: Option<&Path>,
 ) -> Option<String> {
-    let code = status.code().and_then(|code| u8::try_from(code).ok());
-    match (code, refusal) {
-        (Some(SIGNAL_EXIT_CODE), _) => {
-            resume.map(|resume| format!("To resume this session: {resume}"))
-        }
-        (Some(REFUSED_EXIT_CODE), Some(refusal)) => {
-            kept_screen.then(|| refusal.trim_end().to_owned())
-        }
+    match end {
+        AgentEnd::Signal => resume.map(|resume| format!("To resume this session: {resume}")),
+        AgentEnd::Refused(why) => kept_screen.then(|| format!("rig: {why}")),
         _ => {
             let resume = resume.map_or_else(String::new, |resume| {
                 format!(" `{resume}` resumes the session where it stopped.")
@@ -665,24 +664,10 @@ fn is_format(c: char) -> bool {
     )
 }
 
-/// The session the agent asked to run next in `directory`'s switch file,
-/// which is removed: a session id, or a new session when the file is empty.
-fn take_switch(directory: &SessionDir) -> Result<Option<Start>> {
-    let path = directory.switch();
-    let Some(text) = absent(fs::read_to_string(&path))? else {
-        return Ok(None);
-    };
-    fs::remove_file(&path)?;
-    let text = text.trim();
-    if text.is_empty() {
-        return Ok(Some(Start::New));
-    }
-    Ok(Some(text.parse().map(Start::Resume)?))
-}
-
-/// Leaves the `current` session for `target`, which the agent asked for.
-/// A build `/reload` staged for it goes with the switch. When the target
-/// cannot be run, the current session carries on, told why.
+/// Leaves the `current` session for `target`, which the agent asked for:
+/// the session named, else a new one. A build `/reload` staged for it goes
+/// with the switch. When the target cannot be run, the current session
+/// carries on, told why.
 fn switch(home: &Home, current: Claimed, target: Start) -> Result<(Claimed, Option<String>)> {
     let _lock = locks::hold_build_lock(home, BuildOutput::Live)?;
     let here = current.directory.clone();
@@ -736,16 +721,16 @@ impl Claimed {
     /// a run that failed into `run`, which keeps it, and returns where the
     /// text log is. A sessionless run that failed, and a refused run, moved
     /// it there themselves.
-    fn leave(&self, home: &Home, run: &RunDir, succeeded: bool) -> PathBuf {
+    fn leave(&self, home: &Home, run: &RunDir, end: &AgentEnd) -> PathBuf {
         let session = home.session(&self.id);
         if session.is_saved() {
-            return if run.refusal().exists() {
+            return if matches!(end, AgentEnd::Refused(_)) {
                 run.log()
             } else {
                 session.log()
             };
         }
-        if !succeeded {
+        if *end != AgentEnd::Quit {
             fs::rename(session.log(), run.log()).ok();
         }
         self.discard_if_unsaved(home);
@@ -1084,16 +1069,6 @@ fn promote(home: &Home, build: &mut BuildRef) -> Result<bool> {
         fs::rename(&temporary, home.good())?;
     }
     Ok(true)
-}
-
-/// The agent's exit code; 1 when a signal ended it.
-fn exit_code(status: ExitStatus) -> ExitCode {
-    ExitCode::from(
-        status
-            .code()
-            .and_then(|code| u8::try_from(code).ok())
-            .unwrap_or(1),
-    )
 }
 
 #[cfg(test)]

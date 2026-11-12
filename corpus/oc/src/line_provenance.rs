@@ -630,7 +630,7 @@ fn command_line(invoked: Option<Res<Invoked>>, asking: Asking, mut commands: Com
     std::io::stdout().flush().ok();
     let reason = match run.status {
         0 => ExitReason::Quit,
-        status => ExitReason::Failed(status),
+        status => ExitReason::Failed(FailCode::or_failure(status)),
     };
     commands.insert_resource(run);
     commands.trigger(Exit(reason));

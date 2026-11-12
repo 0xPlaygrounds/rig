@@ -218,7 +218,7 @@ fn dataset_command(sources: Sources, mut commands: Commands) {
     std::io::stdout().flush().ok();
     let reason = match run.status {
         0 => ExitReason::Quit,
-        status => ExitReason::Failed(status),
+        status => ExitReason::Failed(FailCode::or_failure(status)),
     };
     commands.insert_resource(run);
     commands.trigger(Exit(reason));

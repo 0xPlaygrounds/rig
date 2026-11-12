@@ -37,7 +37,7 @@ use super::panel::{RequestRedraw, TerminalSize};
 use super::theme::Theme;
 use rig_ecs::tasks::Wake;
 use rig_harness::harness_protocol::without_secrets;
-use rig_harness::prelude::{Exit, ExitReason, Scratch};
+use rig_harness::prelude::{Exit, ExitReason, FailCode, Scratch};
 
 /// Runs a program with the terminal, such as `$EDITOR` on a draft: the
 /// view leaves the screen, stops reading keys and lets the program have
@@ -374,7 +374,7 @@ pub(crate) fn open_terminal(
         }
         Err(failure) => {
             error!("could not open the terminal: {failure}");
-            commands.trigger(Exit(ExitReason::Failed(1)));
+            commands.trigger(Exit(ExitReason::Failed(FailCode::FAILURE)));
         }
     }
 }

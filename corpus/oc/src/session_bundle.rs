@@ -993,14 +993,14 @@ fn open_command_line(
     let reason = match result {
         Err(why) => {
             eprintln!("rig bundle: {why}");
-            ExitReason::Failed(2)
+            ExitReason::Failed(FailCode::or_failure(2))
         }
         Ok((plan, None)) if plan.needs_choice() => {
             eprintln!(
                 "{}\nRun again with --apply (Apply bundled files), --keep (Keep local files) or --apply-file <path> for each file to write.",
                 plan.summary()
             );
-            ExitReason::Failed(2)
+            ExitReason::Failed(FailCode::or_failure(2))
         }
         Ok((plan, choice)) => match importer.import(&plan, &choice.unwrap_or(FileChoice::Apply)) {
             Ok(done) => {
@@ -1012,7 +1012,7 @@ fn open_command_line(
             }
             Err(why) => {
                 eprintln!("rig bundle: {why}");
-                ExitReason::Failed(1)
+                ExitReason::Failed(FailCode::FAILURE)
             }
         },
     };

@@ -511,7 +511,7 @@ fn audit_command(invoked: Option<Res<Invoked>>, log: Res<AuditLog>, mut commands
         }
         Err(text) => {
             eprintln!("{text}");
-            ExitReason::Failed(1)
+            ExitReason::Failed(FailCode::FAILURE)
         }
     };
     commands.trigger(Exit(reason));

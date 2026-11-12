@@ -457,13 +457,55 @@ fn exit_reason(record: &EffectRecord) -> Option<ExitReason> {
         "Reload" => Some(ExitReason::Reload),
         "Signal" => Some(ExitReason::Signal),
         _ if reason.starts_with("Switch(") => Some(ExitReason::Switch(None)),
+        _ if reason.starts_with("Refused(") => reason
+            .strip_prefix("Refused(\"")?
+            .strip_suffix("\")")
+            .and_then(unquote)
+            .map(ExitReason::Refused),
         _ => reason
-            .strip_prefix("Failed(")?
-            .strip_suffix(')')?
+            .strip_prefix("Failed(FailCode(")?
+            .strip_suffix("))")?
             .parse()
             .ok()
-            .map(ExitReason::Failed),
+            .map(|code| ExitReason::Failed(FailCode::or_failure(code))),
     }
+}
+
+/// The text inside a string's debug form, its escapes undone; `None` for
+/// an escape that form never writes.
+fn unquote(quoted: &str) -> Option<String> {
+    let mut text = String::with_capacity(quoted.len());
+    let mut chars = quoted.chars();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            text.push(c);
+            continue;
+        }
+        let escaped = match chars.next()? {
+            'n' => '\n',
+            'r' => '\r',
+            't' => '\t',
+            '0' => '\0',
+            plain @ ('\\' | '"' | '\'') => plain,
+            'u' => {
+                if chars.next()? != '{' {
+                    return None;
+                }
+                let mut hex = String::new();
+                loop {
+                    match chars.next()? {
+                        '}' => break,
+                        digit if digit.is_ascii_hexdigit() => hex.push(digit),
+                        _ => return None,
+                    }
+                }
+                char::from_u32(u32::from_str_radix(&hex, 16).ok()?)?
+            }
+            _ => return None,
+        };
+        text.push(escaped);
+    }
+    Some(text)
 }
 
 /// When `record` started, else when it finished.
@@ -659,7 +701,7 @@ impl Plugin for SessionReplayPlugin {
                 Err(failure) => {
                     eprintln!("rig --replay: cannot read the session: {failure}");
                     app.add_systems(Startup, |mut commands: Commands| {
-                        commands.trigger(Exit(ExitReason::Failed(1)));
+                        commands.trigger(Exit(ExitReason::Failed(FailCode::FAILURE)));
                     });
                     return;
                 }
@@ -730,7 +772,7 @@ fn report_and_exit(
     println!("Replay {how}: {models} model calls and {others} other effects replayed.");
     let exit = match replay.divergences().is_empty() {
         true => ExitReason::Quit,
-        false => ExitReason::Failed(1),
+        false => ExitReason::Failed(FailCode::FAILURE),
     };
     match exiting {
         Some(_) => commands.insert_resource(exit),

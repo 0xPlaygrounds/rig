@@ -158,14 +158,14 @@ fn restored(app: &mut App) -> String {
     text.unwrap_or_default()
 }
 
-/// Whether the run was refused: no store, and an exit with code 2, which
-/// ends it before anything is typed.
+/// Whether the run was refused: no store, and a refused exit (code 2),
+/// which ends it before anything is typed.
 fn refused(app: &App) -> bool {
     let world = app.world();
     !world.contains_resource::<SessionStore>()
         && matches!(
             world.get_resource::<ExitReason>(),
-            Some(ExitReason::Failed(2))
+            Some(ExitReason::Refused(_))
         )
 }
 

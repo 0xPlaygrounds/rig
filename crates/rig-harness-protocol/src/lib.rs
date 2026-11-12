@@ -1,13 +1,15 @@
 //! The protocol between the `rig` launcher (the `rig-cli` crate) and the
 //! rig-harness agent it builds and runs: the `RIG_HOME` layout, session ids,
-//! the environment the launcher passes to the agent ([`launch`]), the exit
-//! codes that say how the agent ended, and the settings both read
-//! ([`config`]). The
+//! the environment the launcher passes to the agent ([`launch`]), how the
+//! agent ended ([`end`]), and the settings both read ([`config`]). The
 //! launcher and `rig-harness` both use this crate, so the two sides cannot
 //! drift apart. It uses std and `toml_edit`, and it changes with
 //! rig-harness.
 
 pub mod config;
+pub mod end;
+#[cfg(any(test, feature = "test-utils"))]
+pub mod fake_agent;
 pub mod launch;
 
 use std::ffi::OsString;
@@ -19,8 +21,8 @@ use std::str::FromStr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-/// The exit code with which the agent asks its launcher to restart it on
-/// the staged build.
+/// The exit code of an agent that asks its launcher to restart it or run
+/// another session, which its [`end::AgentEnd`] record says.
 pub const RELOAD_EXIT_CODE: u8 = 75;
 
 /// The exit code of a run refused before it did any work, such as for a
@@ -616,9 +618,24 @@ impl Home {
     }
 }
 
+/// The file of [`RunDir::say_ready`].
+pub(crate) const READY_FILE: &str = "ready";
+
+/// The file of [`RunDir::say_screen`].
+pub(crate) const SCREEN_FILE: &str = "screen";
+
+/// Removes the file at `path`; one that is not there is no error.
+fn remove_if_present(path: &Path) -> std::io::Result<()> {
+    match std::fs::remove_file(path) {
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error),
+        _ => Ok(()),
+    }
+}
+
 /// A launcher's own directory, outside every session, which lives while
-/// the launcher runs: the file that tells it the agent started, and the
-/// log of a sessionless run that failed, which outlives the launcher.
+/// the launcher runs: what its agent says to it (that it started, that it
+/// took the screen, how it ended: [`end::AgentEnd`]), and the log of a
+/// sessionless run that failed, which outlives the launcher.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RunDir(PathBuf);
 
@@ -645,31 +662,66 @@ impl RunDir {
         &self.0
     }
 
-    /// Written by the agent once its build started, or exited on purpose
-    /// before that; the launcher then keeps the build.
-    pub fn ready(&self) -> PathBuf {
-        self.0.join("ready")
+    /// Says the agent's build started, or exited on purpose before that:
+    /// the launcher then keeps the build.
+    ///
+    /// # Errors
+    ///
+    /// When the file cannot be written.
+    pub fn say_ready(&self) -> std::io::Result<()> {
+        std::fs::write(self.0.join(READY_FILE), b"")
+    }
+
+    /// Whether the agent said its build started ([`Self::say_ready`]).
+    pub fn heard_ready(&self) -> bool {
+        self.0.join(READY_FILE).exists()
+    }
+
+    /// Says the agent's front took the terminal's screen, as the terminal
+    /// view does: only then does the launcher put the terminal back after
+    /// the agent. Doing so after a front that writes lines, such as
+    /// `--json` typed at a terminal, would overwrite them.
+    ///
+    /// # Errors
+    ///
+    /// When the file cannot be written.
+    pub fn say_screen(&self) -> std::io::Result<()> {
+        std::fs::write(self.0.join(SCREEN_FILE), b"")
+    }
+
+    /// Takes back [`Self::say_screen`], for a run refused before any front
+    /// took the screen.
+    ///
+    /// # Errors
+    ///
+    /// When the file exists but cannot be removed.
+    pub fn unsay_screen(&self) -> std::io::Result<()> {
+        remove_if_present(&self.0.join(SCREEN_FILE))
+    }
+
+    /// Whether the agent said its front took the screen
+    /// ([`Self::say_screen`]).
+    pub fn took_screen(&self) -> bool {
+        self.0.join(SCREEN_FILE).exists()
+    }
+
+    /// Removes what the last agent said, its end record included, before
+    /// the launcher starts the next one.
+    ///
+    /// # Errors
+    ///
+    /// When a file exists but cannot be removed.
+    pub fn clear_messages(&self) -> std::io::Result<()> {
+        for file in [READY_FILE, SCREEN_FILE, end::FILE] {
+            remove_if_present(&self.0.join(file))?;
+        }
+        Ok(())
     }
 
     /// The text log of a sessionless run that failed, moved here from its
     /// session's directory, which is removed.
     pub fn log(&self) -> PathBuf {
         self.0.join("agent.log")
-    }
-
-    /// Why the agent refused its run, as it said it on stderr: the
-    /// launcher says it again once it took the terminal back from a
-    /// full-screen view that a restart kept.
-    pub fn refusal(&self) -> PathBuf {
-        self.0.join("refusal")
-    }
-
-    /// Written by the agent once its front takes the terminal's screen,
-    /// as the terminal view does: only then does the launcher put the
-    /// terminal back after the agent. Doing so after a front that writes
-    /// lines, such as `--json` typed at a terminal, would overwrite them.
-    pub fn screen(&self) -> PathBuf {
-        self.0.join("screen")
     }
 
     /// Held by the launcher while it lives.
@@ -908,7 +960,7 @@ pub fn without_secrets(command: &mut std::process::Command) -> &mut std::process
 /// named here: the markers of a session an agent started in
 /// ([`Self::started`]), saved ([`Self::is_saved`]) and being deleted
 /// ([`Self::is_deleting`]), the text log, the lock of the launcher running
-/// it, its working directory, its name and the session to switch to.
+/// it, its working directory and its name.
 #[derive(Clone, Debug)]
 pub struct SessionDir(PathBuf);
 
@@ -1112,13 +1164,6 @@ impl SessionDir {
     /// The plain-text file of [`Self::name`].
     fn name_file(&self) -> PathBuf {
         self.0.join("name")
-    }
-
-    /// Written by the agent before it exits with [`RELOAD_EXIT_CODE`] to
-    /// run another session: the [`SessionId`] to resume, or nothing for a
-    /// new session. The launcher reads and removes it.
-    pub fn switch(&self) -> PathBuf {
-        self.0.join("switch")
     }
 
     /// The directory [`Self::directory`] names, whether or not it still
@@ -1335,10 +1380,6 @@ pub fn is_name(name: &str) -> bool {
 /// How `rig update` starts each line that says what it does, such as the
 /// command it runs; `/update` shows each.
 pub const UPDATE_SAYS: &str = "rig update: ";
-
-/// The line `rig update` starts with once the new launcher is installed,
-/// before it builds the agent: a failure after it is the build's.
-pub const UPDATE_INSTALLED: &str = "rig update: installed.";
 
 /// The launcher's own first words, which no plugin's command may take.
 pub const RESERVED_COMMANDS: &[&str] = &["build", "update", "plugin", "help", "help-agents"];

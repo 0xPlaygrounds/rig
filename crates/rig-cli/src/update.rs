@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
 use rig_harness_protocol::launch::{Launch, Purpose};
-use rig_harness_protocol::{UPDATE_INSTALLED, UPDATE_SAYS, shell_word};
+use rig_harness_protocol::{UPDATE_SAYS, shell_word};
 
 use super::Result;
 use super::project::RigSource;
@@ -124,7 +124,7 @@ fn install_and_build(launch: &Launch, mut install: Command) -> ExitCode {
         }
     }
     eprintln!(
-        "{UPDATE_INSTALLED} Building the agent with the new rig (`rig build`); after a \
+        "{UPDATE_SAYS}installed. Building the agent with the new rig (`rig build`); after a \
          change this takes 2-3 minutes."
     );
     match launch.build_child(Purpose::Rebuild).status() {
