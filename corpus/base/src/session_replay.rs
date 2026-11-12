@@ -457,6 +457,11 @@ fn exit_reason(record: &EffectRecord) -> Option<ExitReason> {
         "Reload" => Some(ExitReason::Reload),
         "Signal" => Some(ExitReason::Signal),
         _ if reason.starts_with("Switch(") => Some(ExitReason::Switch(None)),
+        _ if reason.starts_with("Refused(") => reason
+            .strip_prefix("Refused(\"")?
+            .strip_suffix("\")")
+            .and_then(unquote)
+            .map(ExitReason::Refused),
         _ => reason
             .strip_prefix("Failed(FailCode(")?
             .strip_suffix("))")?
@@ -464,6 +469,31 @@ fn exit_reason(record: &EffectRecord) -> Option<ExitReason> {
             .ok()
             .map(|code| ExitReason::Failed(FailCode::or_failure(code))),
     }
+}
+
+/// The text inside a string's debug form, its escapes undone.
+fn unquote(quoted: &str) -> Option<String> {
+    let mut text = String::with_capacity(quoted.len());
+    let mut chars = quoted.chars();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            text.push(c);
+            continue;
+        }
+        let escaped = match chars.next()? {
+            'n' => '\n',
+            'r' => '\r',
+            't' => '\t',
+            '0' => '\0',
+            'u' => {
+                let hex: String = chars.by_ref().skip(1).take_while(|&c| c != '}').collect();
+                char::from_u32(u32::from_str_radix(&hex, 16).ok()?)?
+            }
+            other => other,
+        };
+        text.push(escaped);
+    }
+    Some(text)
 }
 
 /// When `record` started, else when it finished.
