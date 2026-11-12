@@ -1509,7 +1509,9 @@ from `[section]`, else `T::default()`; a table that does not read as `T`,
 or a file that is not TOML, refuses the run (exit 2) with what is wrong,
 naming the file, the table and the key. Read it in `build` even when only
 one front uses it, so `rig plugin check --build` checks it as a start
-does: a table read once the run's front is chosen refuses the run. A
+does: any read outside `build` (in practice, any in `finish`, as the
+harness chooses the run's front as its own plugins finish) refuses the
+run. A
 project has no settings. A test
 inserts `Settings::from_toml(..)` before adding the plugin, so the user's
 file is never read. Here a

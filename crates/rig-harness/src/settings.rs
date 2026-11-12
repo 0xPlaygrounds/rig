@@ -7,7 +7,9 @@
 //! read ([`Settings::problems`]). A plugin reads its table in `build`,
 //! whatever front takes the run, so a build describing itself checks it
 //! as a start does: a table read once the run's front is chosen refuses
-//! the run. A table no plugin reads is said at
+//! the run. The harness chooses it as its own plugins finish, so in
+//! practice any table read in a `finish` refuses the run. A table no
+//! plugin reads is said at
 //! startup: an error when it is a likely misspelling of one a plugin reads
 //! (`[trafic]` for `[traffic]`), else a note, such as for a disabled
 //! plugin's table.
@@ -235,7 +237,8 @@ pub trait AppSettingsExt {
     /// inserted some, as a test does). A table that does not read as `T`
     /// inserts `T::default()` and is one of [`Settings::problems`], which
     /// refuse the run. Call it in the plugin's `build`: a table read once
-    /// the run's front is chosen refuses the run.
+    /// the run's front is chosen, which in practice is any read in a
+    /// `finish`, refuses the run.
     fn add_setting<T: Resource + DeserializeOwned + Default>(&mut self, section: &str)
     -> &mut Self;
 }
