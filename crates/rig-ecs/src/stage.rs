@@ -750,7 +750,7 @@ pub(crate) fn build(app: &mut App) {
                 (
                     stop_calls,
                     back_off.run_if(passed(Stage::Review)),
-                    write_unstreamed,
+                    write_unstreamed.run_if(passed(Stage::Review)),
                     settle,
                     commit_replies,
                     end_turns.run_if(passed(Stage::Review)),

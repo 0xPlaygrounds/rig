@@ -1432,7 +1432,8 @@ pub(crate) fn stream_partials(
 /// comes as a stream would have written it ([`reply_events`]); else only
 /// its text, in parts after the streamed ones ([`text_events`]). Text that
 /// streamed, even part of it, is never written again, and a superseded
-/// call gets nothing. The call's feed goes, so a cancelled handler's late
+/// call gets nothing. Not when a Review system failed, as nothing settles
+/// then. The call's feed goes, so a cancelled handler's late
 /// items never follow.
 pub(crate) fn write_unstreamed(
     mut calls: Query<
