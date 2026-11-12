@@ -110,10 +110,10 @@ struct Watching {
     on: bool,
     /// The entity with the watch, once armed.
     watch: Option<Entity>,
-    /// Whether the watch listed the files there when armed.
-    primed: bool,
     /// The files the watch reported, which may hold AI comments.
     files: BTreeSet<PathBuf>,
+    /// Whether the watch listed the project once.
+    listed: bool,
     /// The files saved since the last settled save.
     saved: BTreeSet<PathBuf>,
     /// The entity whose [`WakeAt`] ends the settling.
@@ -148,18 +148,7 @@ fn watch(
 ) {
     match args.args.as_str() {
         "on" => watching.on = true,
-        "off" => {
-            if let Some(watch) = watching.watch.take() {
-                commands.entity(watch).despawn();
-            }
-            if let Some(settling) = watching.settling.take() {
-                commands.entity(settling).despawn();
-            }
-            *watching = Watching {
-                written: std::mem::take(&mut watching.written),
-                ..Watching::default()
-            };
-        }
+        "off" => stop(&mut watching, &mut commands),
         "" => {}
         other => {
             let why = format!("Unknown /watch argument `{other}`: use /watch on or /watch off.");
@@ -176,7 +165,7 @@ fn watch(
 
 /// Arms the watch of the project once watching is on, on this machine,
 /// whose files the plugin reads on the main thread; it keeps a headless
-/// run going while it is armed.
+/// run going while it is armed, unless it never could list.
 fn arm(
     mut watching: ResMut<Watching>,
     workspace: Res<ProjectWorkspace>,
@@ -198,13 +187,29 @@ fn arm(
         .spawn((name, FileWatch::tree(&root.0), KeepRunning))
         .id();
     watching.watch = Some(watch);
-    watching.primed = false;
 }
 
-/// Notes the files saved under the watch and puts the settling off.
+/// Stops watching: the watch and the settling go, and what they saw.
+fn stop(watching: &mut Watching, commands: &mut Commands) {
+    if let Some(watch) = watching.watch.take() {
+        commands.entity(watch).despawn();
+    }
+    if let Some(settling) = watching.settling.take() {
+        commands.entity(settling).despawn();
+    }
+    *watching = Watching {
+        written: std::mem::take(&mut watching.written),
+        ..Watching::default()
+    };
+}
+
+/// Notes the files saved under the watch and puts the settling off; a
+/// watch that ended stops watching, and the user is told. A watch that
+/// could not list yet holds no headless run until it can.
 fn take_changes(
     mut changes: MessageReader<FileChanges>,
     mut watching: ResMut<Watching>,
+    mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
     let mut saved = false;
@@ -212,14 +217,32 @@ fn take_changes(
         if Some(change.watch) != watching.watch {
             continue;
         }
-        watching.files.extend(change.paths.iter().cloned());
-        // The first look lists what was there before watching.
-        if !watching.primed {
-            watching.primed = true;
-            continue;
+        match &change.event {
+            WatchEvent::Snapshot(paths) => {
+                watching.files = paths.iter().cloned().collect();
+                watching.listed = true;
+                commands.entity(change.watch).try_insert(KeepRunning);
+            }
+            WatchEvent::Changed(paths) => {
+                watching.files.extend(paths.iter().cloned());
+                watching.saved.extend(paths.iter().cloned());
+                saved = true;
+            }
+            WatchEvent::Unavailable(why) => {
+                if !watching.listed {
+                    commands.entity(change.watch).try_remove::<KeepRunning>();
+                }
+                notices.write(Notice::warn(
+                    None,
+                    format!("Watching for AI comments: {why}."),
+                ));
+            }
+            WatchEvent::Closed => {
+                stop(&mut watching, &mut commands);
+                notices.write(Notice::error(None, "Watching for AI comments stopped."));
+                return;
+            }
         }
-        watching.saved.extend(change.paths.iter().cloned());
-        saved = true;
     }
     if !saved {
         return;

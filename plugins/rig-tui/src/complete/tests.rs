@@ -150,6 +150,96 @@ fn a_file_made_while_at_is_typed_is_listed_without_waiting() {
     std::fs::remove_dir_all(&root).ok();
 }
 
+/// A listing of the project that fails for a while keeps the paths `@`
+/// lists: they are what the watch last saw, and a listing that works again
+/// with nothing changed tells nothing to walk again for.
+#[cfg(unix)]
+#[test]
+fn at_keeps_its_paths_through_a_failed_listing() {
+    use super::FileIndex;
+    use std::os::unix::fs::PermissionsExt as _;
+    use std::time::{Duration, Instant};
+
+    let root = scratch("complete-outage");
+    std::fs::write(root.join("a.rs"), "").ok();
+    let (mut app, _) = view_app();
+    app.add_plugins(rig_harness::watch::WatchPlugin)
+        .insert_resource(ProjectRoot(root.clone()));
+    let run_for = |app: &mut App, wait: Duration| {
+        let started = Instant::now();
+        while started.elapsed() < wait {
+            app.update();
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    };
+    let listed = |app: &App| {
+        let index = app.world().resource::<FileIndex>();
+        index.paths.iter().any(|path| path == "a.rs")
+    };
+    type_text(&mut app, "@a");
+    let started = Instant::now();
+    while !listed(&app) && started.elapsed() < Duration::from_secs(10) {
+        app.update();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    run_for(&mut app, Duration::from_millis(300));
+    let mode = |mode| std::fs::set_permissions(&root, std::fs::Permissions::from_mode(mode));
+    mode(0o000).ok();
+    // Whoever may read it anyway (root) sees no failure.
+    let locked = std::fs::read_dir(&root).is_err();
+    run_for(&mut app, Duration::from_millis(1500));
+    mode(0o755).ok();
+    run_for(&mut app, Duration::from_millis(1500));
+    let kept = listed(&app);
+    std::fs::remove_dir_all(&root).ok();
+    assert!(kept || !locked);
+}
+
+/// A walk of the project that fails, started by a change told just before
+/// the project could not be read, keeps the paths `@` lists.
+#[cfg(unix)]
+#[test]
+fn at_keeps_its_paths_through_a_failed_walk() {
+    use super::FileIndex;
+    use rig_harness::watch::{FileChanges, WatchEvent};
+    use std::os::unix::fs::PermissionsExt as _;
+    use std::time::{Duration, Instant};
+
+    let root = scratch("complete-failed-walk");
+    std::fs::write(root.join("a.rs"), "").ok();
+    let (mut app, _) = view_app();
+    app.add_plugins(rig_harness::watch::WatchPlugin)
+        .insert_resource(ProjectRoot(root.clone()));
+    let listed = |app: &App| {
+        let index = app.world().resource::<FileIndex>();
+        index.paths.iter().any(|path| path == "a.rs")
+    };
+    type_text(&mut app, "@a");
+    let started = Instant::now();
+    while !listed(&app) && started.elapsed() < Duration::from_secs(10) {
+        app.update();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let mode = |mode| std::fs::set_permissions(&root, std::fs::Permissions::from_mode(mode));
+    mode(0o000).ok();
+    // Whoever may read it anyway (root) sees no failure.
+    let locked = std::fs::read_dir(&root).is_err();
+    let watch = app.world().resource::<FileIndex>().watch;
+    if let Some(watch) = watch {
+        let event = WatchEvent::Changed(vec![root.join("a.rs")]);
+        app.world_mut().write_message(FileChanges { watch, event });
+    }
+    let started = Instant::now();
+    while started.elapsed() < Duration::from_millis(500) {
+        app.update();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let kept = listed(&app);
+    mode(0o755).ok();
+    std::fs::remove_dir_all(&root).ok();
+    assert!(kept || !locked);
+}
+
 /// A picked path that a space would cut is put in quoted, so it attaches
 /// that file, not one named by its first word; a directory stays open for
 /// the path below it, and Enter closes an open quote before it sends.

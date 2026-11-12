@@ -1,10 +1,12 @@
 //! Watching files. An entity with a [`FileWatch`] on a file or a
-//! directory gets a [`FileChanges`] message naming the files there when it
-//! was armed, then one for each batch of files created, changed or removed
-//! under it, as the system reports them, and the loop is woken for each;
-//! despawning it, or removing the `FileWatch`, stops the watch. A plugin
-//! that reloads templates or skills from a directory watches it, and reads
-//! them on its first `FileChanges`, so no file made in between is missed.
+//! directory gets a [`FileChanges`] message for each [`WatchEvent`] of its
+//! watch, and the loop is woken for each: a snapshot of the files there
+//! once armed, and again once a listing works after one failed, each batch
+//! of files created, changed or removed under it, a listing that failed,
+//! and the watch's end (also when it could not be made). Despawning it, or
+//! removing the `FileWatch`, stops the watch. A plugin that reloads
+//! templates or skills from a directory watches it, and reads them on each
+//! snapshot, so no file made in between is missed.
 //!
 //! The watch is a [`Running::stream`] on its entity, so put a `FileWatch`
 //! on an entity of its own. It watches through the project's workspace
@@ -27,6 +29,7 @@ use bevy_log::warn;
 use bevy_tasks::futures_lite::{Stream, StreamExt as _, stream};
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_ecs::tasks::{Done, Running, Wake};
+pub use rig_tools::workspace::WatchEvent;
 use rig_tools::workspace::{Listing, Watch, Workspace};
 
 use crate::workspace::ProjectWorkspace;
@@ -71,15 +74,14 @@ impl FileWatch {
     }
 }
 
-/// What changed under a [`FileWatch`]: first the files there when it was
-/// armed, then what changed since it last looked.
-#[derive(Message, Clone, Debug, PartialEq, Eq)]
+/// What a [`FileWatch`] told: the files there once armed, then what
+/// changed, a listing that failed, and its end.
+#[derive(Message, Clone, Debug)]
 pub struct FileChanges {
     /// The entity with the watch.
     pub watch: Entity,
-    /// The files there at first, then the files created, changed or
-    /// removed, in path order.
-    pub paths: Vec<PathBuf>,
+    /// What it told.
+    pub event: WatchEvent,
 }
 
 /// Passes on what the watches see.
@@ -91,8 +93,8 @@ impl Plugin for WatchPlugin {
     }
 }
 
-/// What a watch saw: the files there, then a batch of changes.
-struct Seen(Vec<PathBuf>);
+/// What a watch told.
+struct Seen(WatchEvent);
 
 /// Starts the watch through the project's workspace.
 fn arm(mut world: DeferredWorld, context: HookContext) {
@@ -121,10 +123,10 @@ fn changed(
     seen: Query<&Done<Seen>, With<FileWatch>>,
     mut changes: MessageWriter<FileChanges>,
 ) {
-    if let Ok(Done(Seen(paths))) = seen.get(inserted.entity) {
+    if let Ok(Done(Seen(event))) = seen.get(inserted.entity) {
         changes.write(FileChanges {
             watch: inserted.entity,
-            paths: paths.clone(),
+            event: event.clone(),
         });
     }
 }
@@ -133,52 +135,45 @@ fn changed(
 enum WatchState {
     /// Not armed yet.
     Unarmed(Arc<dyn Workspace>, FileWatch),
-    /// Armed: the batches to come.
-    Armed(Watch),
+    /// Armed: the events to come, of the path.
+    Armed(Watch, PathBuf),
+    /// It could not be made, which was told: it ends.
+    Failed,
 }
 
-/// The files `watch` covers at first, then each batch of changes the
-/// workspace reports.
+/// The events of `watch` through `workspace`; one that cannot be made tells
+/// why, then that it closed.
 fn watch_stream(workspace: Arc<dyn Workspace>, watch: FileWatch) -> impl Stream<Item = Seen> {
     stream::unfold(
         Some(WatchState::Unarmed(workspace, watch)),
         |state| async move {
-            match state? {
+            let (mut armed, path) = match state? {
                 WatchState::Unarmed(workspace, watch) => {
-                    // Armed before listing, so nothing made in between is missed.
-                    let armed =
-                        workspace
-                            .clone()
-                            .watch(&watch.path, watch.recursive, watch.listing);
-                    let files = files_now(&*workspace, &watch);
-                    let next = match armed {
-                        Ok(armed) => Some(WatchState::Armed(armed)),
+                    match workspace.watch(&watch.path, watch.recursive, watch.listing) {
+                        Ok(armed) => (armed, watch.path),
                         Err(error) => {
-                            warn!("cannot watch {}: {error}", watch.path.display());
-                            None
+                            let why = std::io::Error::new(
+                                error.kind(),
+                                format!("cannot watch {}: {error}", watch.path.display()),
+                            );
+                            warn!("{why}");
+                            return Some((
+                                Seen(WatchEvent::Unavailable(Arc::new(why))),
+                                Some(WatchState::Failed),
+                            ));
                         }
-                    };
-                    Some((Seen(files), next))
+                    }
                 }
-                WatchState::Armed(mut armed) => {
-                    let paths = armed.next().await?;
-                    Some((Seen(paths), Some(WatchState::Armed(armed))))
-                }
+                WatchState::Armed(armed, path) => (armed, path),
+                WatchState::Failed => return Some((Seen(WatchEvent::Closed), None)),
+            };
+            let event = armed.next().await?;
+            if let WatchEvent::Unavailable(error) = &event {
+                warn!("cannot list the files of {}: {error}", path.display());
             }
+            Some((Seen(event), Some(WatchState::Armed(armed, path))))
         },
     )
-}
-
-/// The files `watch` covers now, in path order.
-fn files_now(workspace: &dyn Workspace, watch: &FileWatch) -> Vec<PathBuf> {
-    let root = watch.path.as_path();
-    let mut files = workspace
-        .files(root, None, watch.listing)
-        .map(|listed| listed.files)
-        .unwrap_or_default();
-    files.retain(|path| watch.recursive || path == root || path.parent() == Some(root));
-    files.sort();
-    files
 }
 
 #[cfg(test)]

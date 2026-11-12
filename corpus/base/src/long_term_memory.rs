@@ -77,7 +77,7 @@ impl Plugin for LongTermMemoryPlugin {
                 memory,
             )
             .add_systems(Startup, open)
-            .add_systems(Update, (reload, edited).before(AgentLoop))
+            .add_systems(Update, (reload, edited).after(PollTasks).before(AgentLoop))
             .configure_sets(AgentPass, MemorySystems.in_set(PrepareSystems::Edit))
             .add_systems(AgentPass, recall.in_set(MemorySystems));
     }
@@ -355,7 +355,10 @@ fn reload(
     files: Query<(), With<MemoryFile>>,
     memories: Option<ResMut<Memories>>,
 ) {
-    let changed = changes.read().any(|change| files.contains(change.watch));
+    let changed = (changes.read())
+        .filter(|change| files.contains(change.watch) && change.event.names_files())
+        .count()
+        > 0;
     if let Some(mut memories) = memories.filter(|_| changed) {
         memories.read();
     }

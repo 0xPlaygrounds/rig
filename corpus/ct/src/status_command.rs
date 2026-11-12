@@ -204,11 +204,9 @@ struct Pace;
 #[derive(Component)]
 struct Run;
 
-/// The watch of `RIG_HOME`, and whether its first listing came.
+/// The watch of `RIG_HOME`.
 #[derive(Component)]
-struct SettingsWatch {
-    armed: bool,
-}
+struct SettingsWatch;
 
 /// How a run ended.
 enum Ran {
@@ -227,18 +225,14 @@ fn watch_settings(home: Option<Res<RigHome>>, mut commands: Commands) {
         return;
     };
     let watch = FileWatch::new(home.0.root()).listing(Listing::All);
-    commands.spawn((
-        Name::new("status command settings"),
-        SettingsWatch { armed: false },
-        watch,
-    ));
+    commands.spawn((Name::new("status command settings"), SettingsWatch, watch));
 }
 
-/// Reads the setting again when `settings.toml` changed, and runs the new
-/// command.
+/// Reads the setting again on each snapshot of the watch and when
+/// `settings.toml` changed, and runs the new command.
 fn reload_settings(
     mut changes: MessageReader<FileChanges>,
-    mut watches: Query<&mut SettingsWatch>,
+    watches: Query<(), With<SettingsWatch>>,
     home: Option<Res<RigHome>>,
     mut setting: ResMut<StatusCommand>,
     mut runs: ResMut<Runs>,
@@ -249,17 +243,15 @@ fn reload_settings(
     };
     let file = home.0.settings();
     for change in changes.read() {
-        let Ok(mut watch) = watches.get_mut(change.watch) else {
-            continue;
+        // A snapshot may hold an edit made while the watch could not list.
+        let edited = match &change.event {
+            WatchEvent::Snapshot(_) => true,
+            WatchEvent::Changed(paths) => {
+                (paths.iter()).any(|path| path.file_name() == file.file_name())
+            }
+            WatchEvent::Unavailable(_) | WatchEvent::Closed => false,
         };
-        if !std::mem::replace(&mut watch.armed, true) {
-            continue;
-        }
-        if !change
-            .paths
-            .iter()
-            .any(|path| path.file_name() == file.file_name())
-        {
+        if !edited || !watches.contains(change.watch) {
             continue;
         }
         match Settings::read(&file).get::<StatusCommand>(SECTION) {

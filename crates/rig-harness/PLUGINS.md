@@ -1800,9 +1800,12 @@ which a bare `std::process::Command` passes on; one that runs in the
 project goes through the workspace (`workspace.0.spawn(&launcher, ..)`).
 
 **Files and streams.** An entity with a `FileWatch` gets `FileChanges`
-messages: first the files under its path when armed (read them then, so
-none made in between is missed), then each batch created, changed or
-removed (another workspace may look every second), leaving out what the
+messages, each carrying a `WatchEvent`: a `Snapshot` of the files under its
+path once armed (read them then, so none made in between is missed), a
+`Changed` for each batch created, changed or removed (another workspace may
+look every second), `Unavailable` while listing fails (the next listing
+that works is a `Snapshot` again: read them all again then), and `Closed`
+when the watch ended or could not be made, leaving out what the
 workspace's listing does (ignored and hidden files, `target`) unless
 `.listing(..)` says otherwise: rig-tools' `Listing::Hidden` adds the
 hidden files the ignore rules keep, `All` every file, as for
@@ -1831,7 +1834,8 @@ fn reload(
     mut notices: MessageWriter<Notice>,
 ) {
     for change in changes.read().filter(|change| templates.contains(change.watch)) {
-        notices.write(Notice::info(None, format!("{} templates changed", change.paths.len())));
+        let changed = change.event.paths().len();
+        notices.write(Notice::info(None, format!("{changed} templates changed")));
     }
 }
 

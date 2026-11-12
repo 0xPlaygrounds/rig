@@ -186,3 +186,88 @@ fn a_style_is_in_each_request_once_stays_out_of_subagents_and_resumes() {
         .count();
     assert_eq!((style_of(&app, agent).as_deref(), gone), (Some(DEFAULT), 1));
 }
+
+/// A watch that could not list says nothing of the styles, so they stay
+/// as read; the next change it tells reads them again.
+#[test]
+fn a_failed_listing_keeps_the_styles() {
+    let home = scratch_home("sp-output-styles-unavailable");
+    let project = project(&home);
+    let models = Scripts {
+        main: MockCompletionModel::from_stream_turns(vec![reply("ok")]),
+        sub: MockCompletionModel::from_stream_turns(vec![reply("ok")]),
+    };
+    let (mut app, wakes) = start(&home, &SessionId::generate(), &project, &models);
+    let agent = main_agent(&mut app);
+    say(&mut app, &wakes, agent, "/style pirate");
+    // The watches' own events are left out: this test tells them.
+    let world = app.world_mut();
+    let watches: Vec<Entity> = (world.query_filtered::<Entity, With<StyleWatch>>())
+        .iter(world)
+        .collect();
+    for watch in &watches {
+        world.entity_mut(*watch).remove::<FileWatch>();
+    }
+    let pirate = project.join(".rig/styles/pirate.md");
+    fs::remove_file(&pirate).ok();
+    let mut tell = |event: WatchEvent| {
+        if let Some(&watch) = watches.first() {
+            app.world_mut().write_message(FileChanges { watch, event });
+        }
+        for _ in 0..3 {
+            app.update();
+            run_until(&mut app, &wakes, idle);
+        }
+        style_of(&app, agent)
+    };
+
+    let failure = std::io::Error::other("the listing failed");
+    let kept = tell(WatchEvent::Unavailable(std::sync::Arc::new(failure)));
+    let read_again = tell(WatchEvent::Changed(vec![pirate]));
+    fs::remove_dir_all(home.root()).ok();
+
+    assert_eq!(kept.as_deref(), Some("pirate"));
+    assert_eq!(read_again.as_deref(), Some(DEFAULT));
+}
+
+/// A style directory that cannot be read for a while, while the other
+/// changes, gets its styles back once it can: its watch tells the files
+/// there again, and the styles are read again.
+#[cfg(unix)]
+#[test]
+fn styles_come_back_once_their_directory_opens() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let home = scratch_home("sp-output-styles-outage");
+    let project = project(&home);
+    let home_styles = home.root().join("styles");
+    fs::create_dir_all(&home_styles).ok();
+    let models = Scripts {
+        main: MockCompletionModel::from_stream_turns(vec![reply("ok")]),
+        sub: MockCompletionModel::from_stream_turns(vec![reply("ok")]),
+    };
+    let (mut app, _wakes) = start(&home, &SessionId::generate(), &project, &models);
+    let run_for = |app: &mut App, wait: std::time::Duration| {
+        let started = std::time::Instant::now();
+        while started.elapsed() < wait {
+            app.update();
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+    };
+    let pirate = |app: &App| app.world().resource::<Styles>().get("pirate").is_some();
+    let second = std::time::Duration::from_millis(1500);
+    run_for(&mut app, second);
+    let styles = project.join(".rig/styles");
+    let mode = |mode| fs::set_permissions(&styles, fs::Permissions::from_mode(mode));
+    mode(0o000).ok();
+    // Whoever may read it anyway (root) never sees it fail.
+    let locked = fs::read_dir(&styles).is_err();
+    run_for(&mut app, second);
+    let terse = "---\ndescription: Be terse\n---\nTERSE\n";
+    fs::write(home_styles.join("terse.md"), terse).ok();
+    run_for(&mut app, second);
+    mode(0o755).ok();
+    run_for(&mut app, std::time::Duration::from_millis(2500));
+    let back = pirate(&app);
+    fs::remove_dir_all(home.root()).ok();
+    assert!(back || !locked);
+}

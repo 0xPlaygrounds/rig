@@ -144,4 +144,44 @@ fn a_failed_editor_says_why_and_the_files_are_read_again() {
     );
 }
 
+/// A watch that could not list says nothing of the files, so the
+/// memories stay as read; the next change it tells reads them again.
+#[test]
+fn a_failed_listing_keeps_the_memories() {
+    let home = scratch_home("corpus-long-term-memory-unavailable");
+    let project = home.root().join("project/.rig/memory.md");
+    fs::create_dir_all(home.root().join("project/.rig")).ok();
+    fs::write(&project, "- Read at the start\n").ok();
+    let (mut app, _wakes, _model) = session(&home, Vec::new());
+    // The watches' own events are left out: this test tells them.
+    let world = app.world_mut();
+    let files: Vec<Entity> = (world.query_filtered::<Entity, With<MemoryFile>>())
+        .iter(world)
+        .collect();
+    for file in &files {
+        world.entity_mut(*file).remove::<FileWatch>();
+    }
+    fs::write(&project, "- Written later\n").ok();
+    let listed = |app: &App| app.world().resource::<Memories>().list().join("\n");
+    let tell = |app: &mut App, event: WatchEvent| {
+        if let Some(&watch) = files.first() {
+            app.world_mut().write_message(FileChanges { watch, event });
+        }
+        app.update();
+    };
+
+    let failure = std::io::Error::other("the listing failed");
+    tell(
+        &mut app,
+        WatchEvent::Unavailable(std::sync::Arc::new(failure)),
+    );
+    let kept = listed(&app);
+    tell(&mut app, WatchEvent::Changed(vec![project.clone()]));
+    let read_again = listed(&app);
+    fs::remove_dir_all(home.root()).ok();
+
+    assert!(kept.contains("Read at the start"), "{kept}");
+    assert!(read_again.contains("Written later"), "{read_again}");
+}
+
 rig_defaults_test_support::stages_ordered_test!(LongTermMemoryPlugin);

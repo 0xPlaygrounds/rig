@@ -204,7 +204,10 @@ fn read_profiles(
     mut profiles: ResMut<Profiles>,
     mut notices: MessageWriter<Notice>,
 ) {
-    let changed = changes.read().any(|change| dirs.contains(change.watch));
+    let changed = (changes.read())
+        .filter(|change| dirs.contains(change.watch) && change.event.names_files())
+        .count()
+        > 0;
     if !changed && !dirs.iter().any(|(.., watch)| watch.is_added()) {
         return;
     }
