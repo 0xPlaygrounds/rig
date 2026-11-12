@@ -50,11 +50,17 @@ fn the_first_reason_stands_and_writes_the_launchers_exit_code() {
     );
 }
 
-/// A plain exit gets the reason its code stands for, but never a reload:
-/// the reload code written as a plain exit, such as a plugin passing on a
-/// child's code 75, is a failure.
+/// A plain exit gets the reason its code stands for, and that reason exits
+/// with the same code, but never a reload: the reload code written as a
+/// plain exit, such as a plugin passing on a child's code 75, is a failure.
 #[test]
 fn a_plain_exit_gets_the_reason_its_code_stands_for() {
+    let plain = |exit: AppExit| {
+        let mut app = app();
+        app.world_mut().write_message(exit);
+        app.update();
+        app.world().get_resource::<ExitReason>().cloned()
+    };
     for (exit, reason) in [
         (AppExit::Success, ExitReason::Quit),
         (AppExit::from_code(130), ExitReason::Signal),
@@ -62,16 +68,14 @@ fn a_plain_exit_gets_the_reason_its_code_stands_for() {
             AppExit::from_code(2),
             ExitReason::Failed(FailCode::or_failure(2)),
         ),
-        (
-            AppExit::from_code(RELOAD_EXIT_CODE),
-            ExitReason::Failed(FailCode::FAILURE),
-        ),
     ] {
-        let mut app = app();
-        app.world_mut().write_message(exit);
-        app.update();
-        assert_eq!(app.world().get_resource::<ExitReason>(), Some(&reason));
+        assert_eq!(reason.exit(), exit);
+        assert_eq!(plain(exit), Some(reason));
     }
+    assert_eq!(
+        plain(AppExit::from_code(RELOAD_EXIT_CODE)),
+        Some(ExitReason::Failed(FailCode::FAILURE))
+    );
     for reason in [ExitReason::Reload, ExitReason::Switch(None)] {
         assert_eq!(reason.exit(), AppExit::from_code(RELOAD_EXIT_CODE));
     }
