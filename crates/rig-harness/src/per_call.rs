@@ -23,9 +23,10 @@ use std::sync::Arc;
 use bevy_app::{App, Plugin};
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemParam;
+use rig_core::completion::ToolAnnotations;
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ToolAdapter;
-use rig_core::tool::{Touches, tool_definition};
+use rig_core::tool::{ToolContext, Touches, tool_definition};
 use rig_ecs::effects::Handler;
 use rig_ecs::prelude::{
     Admitted, AgentPass, CallHandler, Footprint, ForAgent, PrepareSystems, Tool, ToolCalls,
@@ -36,7 +37,7 @@ use rig_tools::{Delete, Edit, LineFilter, List, Live, Read, Search, Shell, Spill
 
 use crate::host::session::Scratch;
 use crate::progress::CallOutput;
-use crate::services::{ProjectRoot, WorkDir};
+use crate::services::{Processes, ProjectRoot, WorkDir};
 use crate::workspace::ProjectWorkspace;
 
 /// Where one call of a tool registered with
@@ -111,17 +112,101 @@ file_tools_per_call!(
     Delete {}
 );
 
-impl PerCallTool for Shell {
+/// [`Shell`] registered per call, starting each command as the app's
+/// [`Processes`] say when it starts: under their wrapper and without a
+/// secret. It starts in its [`CallPlace`]'s base when confined there or
+/// when the `Processes` name no directory. `shell`'s own `launcher` is not
+/// used.
+///
+/// ```
+/// use rig_harness::prelude::*;
+/// use rig_harness::rig_tools::Shell;
+///
+/// let mut app = App::new();
+/// let shell = PerCallShell::new(Shell::default(), app.world_mut());
+/// app.add_live_tool_per_call(shell, ToolOptions::default());
+/// ```
+///
+/// A bare `Shell` is no per-call tool, so it cannot skip the `Processes`:
+///
+/// ```compile_fail
+/// use rig_harness::prelude::*;
+/// use rig_harness::rig_tools::Shell;
+///
+/// let mut app = App::new();
+/// app.add_live_tool_per_call(Shell::default(), ToolOptions::default());
+/// ```
+#[derive(Clone)]
+pub struct PerCallShell {
+    /// The shell each call runs, but for its launcher.
+    pub shell: Shell,
+    processes: Processes,
+    dir: Option<PathBuf>,
+}
+
+impl PerCallShell {
+    /// `shell`, starting its commands as `world`'s [`Processes`] say,
+    /// which this inits if missing.
+    pub fn new(shell: Shell, world: &mut World) -> Self {
+        Self {
+            shell,
+            processes: world.get_resource_or_init::<Processes>().clone(),
+            dir: None,
+        }
+    }
+}
+
+impl PerCallTool for PerCallShell {
     fn at(&self, place: CallPlace) -> Self {
         Self {
-            launcher: self.launcher.clone().in_dir(&place.base),
-            workspace: place.workspace,
-            live: place.live,
-            filter: place.filter,
-            spill: place.spill,
-            confine: place.confine,
+            shell: Shell {
+                workspace: place.workspace,
+                live: place.live,
+                filter: place.filter,
+                confine: place.confine,
+                spill: place.spill,
+                ..self.shell.clone()
+            },
+            dir: Some(place.base),
             ..self.clone()
         }
+    }
+}
+
+impl Tool for PerCallShell {
+    const NAME: &'static str = Shell::NAME;
+    type Args = <Shell as Tool>::Args;
+    type Output = <Shell as Tool>::Output;
+    type Error = <Shell as Tool>::Error;
+
+    fn description(&self) -> String {
+        self.shell.description()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        self.shell.parameters()
+    }
+
+    fn annotations(&self) -> ToolAnnotations {
+        self.shell.annotations()
+    }
+
+    async fn call(
+        &self,
+        context: &mut ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
+        let mut launcher = self.processes.launcher();
+        if let Some(dir) = &self.dir
+            && (self.shell.confine || launcher.cwd.is_none())
+        {
+            launcher = launcher.in_dir(dir);
+        }
+        let shell = Shell {
+            launcher,
+            ..self.shell.clone()
+        };
+        shell.call(context, args).await
     }
 }
 

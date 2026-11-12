@@ -125,7 +125,7 @@ pub mod prelude {
         main_agent,
     };
     pub use crate::per_call::{
-        AppPerCallExt, CallPlace, PerCall, PerCallSystems, PerCallTool, PerCallTools,
+        AppPerCallExt, CallPlace, PerCall, PerCallShell, PerCallSystems, PerCallTool, PerCallTools,
     };
     pub use crate::pick::{
         Chosen, Highlighted, Pick, PickItem, PickPreview, Picked, Picker, ShowsPickers,

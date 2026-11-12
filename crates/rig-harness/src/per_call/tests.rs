@@ -186,3 +186,73 @@ fn a_system_replaces_the_built_handler() {
         .in_set(PrepareSystems::Compose);
     assert_eq!(answer_of(Where::NAME, replace).as_deref(), Some("replaced"));
 }
+
+/// The secret [`a_per_call_shell_starts_as_the_processes_say`] runs a copy
+/// of itself with.
+const PROBE: &str = "RIG_SECRET_PROBE";
+
+/// A plugin registers a shell per call; the app's [`Processes`] then set a
+/// wrapper. A call starts its command as they say: under the wrapper, and
+/// without the secret this process has.
+#[cfg(unix)]
+#[test]
+#[allow(
+    clippy::disallowed_methods,
+    reason = "runs this test again with a secret"
+)]
+fn a_per_call_shell_starts_as_the_processes_say() {
+    if std::env::var_os(PROBE).is_none() {
+        let name = "per_call::tests::a_per_call_shell_starts_as_the_processes_say";
+        let output = std::env::current_exe().and_then(|test| {
+            std::process::Command::new(test)
+                .args(["--exact", name, "--nocapture", "--test-threads", "1"])
+                .env(PROBE, "hunter2")
+                .output()
+        });
+        let (ran, said) = output.map_or_else(
+            |failure| (false, failure.to_string()),
+            |output| {
+                let passed = String::from_utf8_lossy(&output.stdout).contains("1 passed");
+                let said = String::from_utf8_lossy(&output.stderr).into_owned();
+                (output.status.success() && passed, said)
+            },
+        );
+        assert!(ran, "the run with a secret failed: {said}");
+        return;
+    }
+    let mut app = App::new();
+    app.add_plugins((TaskPoolPlugin::default(), AgentPlugin));
+    let shell = PerCallShell::new(rig_tools::Shell::default(), app.world_mut());
+    app.add_tool_per_call(shell, ToolOptions::default());
+    let processes = app.world().resource::<Processes>().clone();
+    processes.set(processes.launcher().wrapped(["env", "WRAPPED=yes"]));
+    app.finish();
+    app.update();
+    let world = app.world_mut();
+    let agent = spawn_root(world).id();
+    let command = "printf '%s %s' \"${RIG_SECRET_PROBE-none}\" \"${WRAPPED-no}\"";
+    let Ok(name) = ToolName::new("shell") else {
+        return;
+    };
+    let args = serde_json::json!({ "command": command });
+    let call = ToolCall::from_wire("s1", ToolFunction::new(name, args));
+    let parent = Effect::with_parent_id(Some(EffectId::from_raw(1)));
+    let call = world
+        .spawn((ToolRequest { call }, parent, ForAgent(agent)))
+        .id();
+    let started = Instant::now();
+    while app.world().get::<Outcome>(call).is_none() && started.elapsed() < Duration::from_secs(10)
+    {
+        app.update();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let seen = app
+        .world()
+        .get::<Outcome>(call)
+        .and_then(|outcome| match &outcome.0 {
+            Ok(Answered::ToolResult { result }) => Some(result.output().render()),
+            _ => None,
+        });
+    let seen = seen.unwrap_or_default();
+    assert!(seen.contains("none yes"), "{seen}");
+}

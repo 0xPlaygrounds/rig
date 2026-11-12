@@ -18,11 +18,11 @@ use super::{AttachPlugin, AttachSystems, ReadTool, SharedShell, ShellOutput, She
 
 /// The shell tool on `processes`, cutting as `output` says.
 fn shell(processes: &Processes, output: &ShellOutput) -> SharedShell {
+    let mut world = World::new();
+    world.insert_resource(processes.clone());
     SharedShell {
-        shell: Shell::default(),
-        processes: processes.clone(),
+        shell: PerCallShell::new(Shell::default(), &mut world),
         output: output.clone(),
-        dir: None,
     }
 }
 
