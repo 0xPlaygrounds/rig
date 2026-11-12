@@ -1406,3 +1406,56 @@ touch \"$RIG_RUN/ready\"",
     let good = good.map_err(|failure| failure.to_string());
     assert_eq!(good, Ok("#!/bin/sh\necho newer\n".to_owned()));
 }
+
+/// A launcher whose ready trial ended while another launcher holds the
+/// build lock ends on a signal heard as it waits to make the trial good.
+#[cfg(unix)]
+#[test]
+fn a_signal_ends_the_wait_to_promote_a_ready_trial() {
+    let home = builds("promote-wait", "", "exit 0");
+    let waited = locks::hold_run(&home).and_then(|run| {
+        script(
+            &home.staged(),
+            &format!(
+                "[ -n \"$RIG_DESCRIBE\" ] && exit 0
+touch \"$RIG_RUN/ready\"
+(sleep 1; kill -TERM {}) &",
+                std::process::id()
+            ),
+        )?;
+        let print = Invocation {
+            print: Some("hi".to_owned()),
+            ..Invocation::default()
+        };
+        let (claimed, _) = claim(&home, Start::New, None)?;
+        let running = select(&home, &claimed.id, run.dir(), None)?;
+        // Another launcher's build holds the lock for longer than the test.
+        let other = locks::try_build_lock(&home)?.ok_or("the build lock is held")?;
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_secs(10));
+            drop(other);
+        });
+        let started = std::time::Instant::now();
+        launch(
+            &home,
+            Path::new(NO_LAUNCHER),
+            run.dir(),
+            &print,
+            true,
+            claimed,
+            running,
+            None,
+            None,
+        )?;
+        Ok(started.elapsed())
+    });
+    fs::remove_dir_all(home.root()).ok();
+    let waited = waited.map_err(|failure| failure.to_string());
+    assert_eq!(stop::heard(), Some(libc::SIGTERM), "the launcher heard it");
+    assert!(
+        waited
+            .as_ref()
+            .is_ok_and(|waited| *waited < Duration::from_secs(5)),
+        "{waited:?}"
+    );
+}
