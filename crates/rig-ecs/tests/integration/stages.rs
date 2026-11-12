@@ -954,17 +954,56 @@ fn review_breaks(broken: Res<Broken>) -> bevy_ecs::error::Result {
     breaks(&broken, Stage::Review)
 }
 
+/// A reviewer that turns a model call's "draft" into "approved", unless
+/// Review is broken, when it fails before editing.
+fn approve(
+    broken: Res<Broken>,
+    mut calls: Query<&mut Outcome, (With<ModelRequest>, ReadyToSettle)>,
+) -> bevy_ecs::error::Result {
+    breaks(&broken, Stage::Review)?;
+    for mut outcome in &mut calls {
+        if outcome.completion().map(|reply| reply.text()).as_deref() == Some("draft") {
+            *outcome = replied_with("approved");
+        }
+    }
+    Ok(())
+}
+
+/// A model call's answer of `text`.
+fn replied_with(text: &str) -> Outcome {
+    let origin = rig_core::completion::message::Origin::new("test.api", "test", "model");
+    let reply = rig_core::completion::CompletionResponse::new(
+        vec![AssistantContent::text(text)],
+        rig_core::completion::Usage::default(),
+        origin,
+        serde_json::Value::Null,
+    );
+    Outcome(Ok(rig_core::effect::Answered::Completion(Arc::new(reply))))
+}
+
 #[test]
 fn a_failing_stage_system_closes_its_stage() {
     let mut app = app();
-    app.init_resource::<Broken>().add_systems(
-        AgentPass,
-        (
-            prepare_breaks.in_set(Stage::Prepare),
-            gate_breaks.in_set(Stage::Gate),
-            review_breaks.in_set(Stage::Review),
-        ),
-    );
+    app.init_resource::<Broken>()
+        .init_resource::<Streams>()
+        .add_systems(
+            AgentPass,
+            (
+                prepare_breaks.in_set(Stage::Prepare),
+                gate_breaks.in_set(Stage::Gate),
+                review_breaks.in_set(Stage::Review),
+                approve.in_set(ReviewSystems::Edit),
+            ),
+        )
+        .add_systems(
+            PostUpdate,
+            |mut deltas: MessageReader<StreamDelta>, mut seen: ResMut<Streams>| {
+                let read = deltas
+                    .read()
+                    .map(|delta| (delta.effect, delta.event.clone()));
+                seen.events.extend(read);
+            },
+        );
     let failed = |app: &App, stage: &str| {
         let notices = notices(app);
         notices
@@ -1011,6 +1050,22 @@ fn a_failing_stage_system_closes_its_stage() {
     app.world_mut().spawn(open("next"));
     app.update();
     assert!(has::<Settled>(&app, reviewed));
+
+    // A reply that did not stream is written as it settles, as the mended
+    // reviewer left it, not as the broken pass saw it.
+    app.world_mut().resource_mut::<Broken>().0 = Some(Stage::Review);
+    let request = rig_core::completion::CompletionRequest::new(Message::user("hi"));
+    let drafted = app
+        .world_mut()
+        .spawn((ModelRequest::new(request), replied_with("draft")))
+        .id();
+    app.update();
+    assert!(!has::<Settled>(&app, drafted));
+    app.world_mut().resource_mut::<Broken>().0 = None;
+    app.world_mut().spawn(open("next"));
+    app.update();
+    assert!(has::<Settled>(&app, drafted));
+    assert_eq!(texts_seen(&app), [(Part::new(0), "approved".to_owned())]);
 }
 
 #[test]
