@@ -48,10 +48,41 @@ fn the_install_command_follows_the_detected_source() {
     );
     assert_eq!(
         shell_words(&local),
-        "cargo install --force --locked --path '/src/my rig/crates/rig-cli' --root /opt/rig"
+        "cd '/src/my rig' && cargo install --force --locked --path '/src/my rig/crates/rig-cli' \
+         --root /opt/rig"
     );
-    assert_eq!(install_root(Path::new("/opt/rig/bin/rig")).ok(), Some(root));
+    assert_eq!(registry.get_current_dir(), Some(root));
+    assert_eq!(
+        install_root(Path::new("/opt/rig/bin/rig")).ok().as_deref(),
+        Some(root)
+    );
     assert!(install_root(Path::new("/src/rig/target/debug/rig")).is_err());
+}
+
+/// A launcher path relative to where rig started, as macOS may give it,
+/// still names its own install root once cargo starts somewhere else.
+#[test]
+fn a_relative_launcher_installs_into_its_own_root() {
+    let started_in = std::env::current_dir().unwrap_or_default();
+    assert!(started_in.is_absolute());
+    for (launcher, root) in [
+        (".cargo/bin/rig", started_in.join(".cargo")),
+        ("bin/rig", started_in.clone()),
+    ] {
+        let found = install_root(Path::new(launcher)).unwrap_or_default();
+        assert_eq!(found, root, "{launcher}");
+        let install = install_command(&RigSource::Registry, &found);
+        assert_eq!(
+            install.get_current_dir(),
+            Some(root.as_path()),
+            "{launcher}"
+        );
+        let given = words(&install)
+            .last()
+            .map(PathBuf::from)
+            .unwrap_or_default();
+        assert_eq!(given, root, "{launcher}: --root");
+    }
 }
 
 /// A failed install fails `rig update` and leaves the launcher as it was,
@@ -87,6 +118,48 @@ fn a_failed_install_fails_and_leaves_the_launcher() {
     assert!(!built_after_failure, "a failed install builds nothing");
     assert_eq!(updated, ExitCode::SUCCESS);
     assert_eq!(new_build.as_deref(), Some("new\n"));
+}
+
+/// A directory rig starts in may pin an older toolchain in its
+/// `rust-toolchain.toml`, which rustup applies to a cargo started there, so
+/// the install never runs where rig was started: a checkout's own install
+/// runs in the checkout, under its own pin, and crates.io's in the install
+/// root. The command shown says where it runs.
+#[test]
+fn the_install_runs_away_from_the_directory_rig_started_in() {
+    let dir = scratch("directory");
+    // As `pwd -P` says it, through any symlink in the temporary directory.
+    let dir = fs::canonicalize(&dir).unwrap_or(dir);
+    let bin = dir.join("bin");
+    let checkout = dir.join("my rig");
+    fs::create_dir_all(&bin).ok();
+    fs::create_dir_all(&checkout).ok();
+    let launcher = bin.join("rig");
+    script(&launcher, "true");
+    script(&dir.join("cargo"), "pwd -P > \"$0.ran-in\"");
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    let paths = std::iter::once(dir.clone()).chain(std::env::split_paths(&path));
+    let path = std::env::join_paths(paths).unwrap_or_default();
+    let ran_in = |source: &RigSource| {
+        let mut install = install_command(source, &dir);
+        install.env("PATH", &path);
+        let status = install_and_build(install, &launcher);
+        let ran_in = fs::read_to_string(dir.join("cargo.ran-in")).ok();
+        (status, ran_in.map(|line| PathBuf::from(line.trim_end())))
+    };
+    let registry = ran_in(&RigSource::Registry);
+    let local = ran_in(&RigSource::Local(checkout.clone()));
+    let shown = shell_words(&install_command(&RigSource::Local(checkout.clone()), &dir));
+    let started_in = std::env::current_dir().ok();
+    fs::remove_dir_all(&dir).ok();
+    assert_eq!(registry, (ExitCode::SUCCESS, Some(dir.clone())));
+    assert_eq!(local, (ExitCode::SUCCESS, Some(checkout.clone())));
+    assert_ne!(started_in, Some(dir.clone()));
+    let checkout = shell_word(&checkout.to_string_lossy());
+    assert!(
+        shown.starts_with(&format!("cd {checkout} && cargo install ")),
+        "{shown}"
+    );
 }
 
 #[test]
