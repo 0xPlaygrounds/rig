@@ -1766,8 +1766,10 @@ publishes no `FilesChanged`.
 **Child processes.** `Processes` is how every child process starts, a
 rig-tools `Launcher` (a wrapper command, a directory, environment): the
 shell tool reads it for each command, so a sandbox plugin that sets it
-(`processes.set(..)`) wraps every later process. A plugin builds its own
-with `processes.launcher().command(program)`, or `.spawn(program, args,
+(`processes.set(..)`) wraps every later process. A shell of a plugin's
+own, registered per call as `PerCallShell::new(shell, app.world_mut())`,
+does the same; a bare `Shell` is no `PerCallTool`. A plugin builds its own
+process with `processes.launcher().command(program)`, or `.spawn(program, args,
 Spawn { stdin, merge_stderr, grace })`, a `Process`; `grace` is how long a
 stop gives it to end before it is killed, for one that stops processes of
 its own, such as a `rig`. Every launcher it hands out

@@ -14,7 +14,7 @@
 //! makes a path written `HOST:PATH` another machine's, for every tool, by
 //! the transports `[remote.hosts]` names ([`remote::RemoteSettings`]).
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::{Arc, PoisonError, RwLock};
 
 use bevy_tasks::{IoTaskPool, TaskPool};
@@ -22,9 +22,9 @@ use rig_harness::prelude::{
     Added, Admitted, AgentPass, App, AppPerCallExt, Attachment, Author, AuthorKind, CallPlace,
     Commands, Component, Decider, Decision, Effect, Entity, EntityEvent, ForAgent, HoldOf,
     Incoming, Insert, IntoScheduleConfigs, MessagePart, MessageWriter, Name, Notice, On, Outcome,
-    PerCallTool, Plugin, PrepareSystems, Processes, ProjectRoot, ProjectWorkspace, Query, Recalled,
-    Remove, Res, Resource, Running, Started, StopReached, SystemSet, Tool, ToolOptions, Wake,
-    Without, WorkDir, blocking,
+    PerCallShell, PerCallTool, Plugin, PrepareSystems, ProjectRoot, ProjectWorkspace, Query,
+    Recalled, Remove, Res, Resource, Running, Started, StopReached, SystemSet, Tool, ToolOptions,
+    Wake, Without, WorkDir, blocking,
 };
 use rig_harness::rig_core::completion::ToolAnnotations;
 use rig_harness::rig_core::tool::{ToolContext, ToolExecutionError};
@@ -112,10 +112,11 @@ impl Plugin for WriteTool {
 }
 
 /// The `shell` tool. Each call starts its process through the app's
-/// [`Processes`], so a sandbox plugin's policy applies. It runs in its
-/// agent's [`WorkDir`], else the directory the `Processes` name, else the
-/// [`ProjectRoot`]. Output is cut as [`ShellOutput`] says, with the whole
-/// of it kept in the session's
+/// [`Processes`](rig_harness::prelude::Processes), so a sandbox plugin's
+/// policy applies ([`PerCallShell`]). It runs in its agent's [`WorkDir`],
+/// else the directory the `Processes` name, else the [`ProjectRoot`].
+/// Output is cut as [`ShellOutput`] says, with the whole of it kept in the
+/// session's
 /// [`spill`](rig_harness::prelude::Scratch::spill) directory. While the
 /// call runs, its output streams as its
 /// [`ToolProgress`](rig_harness::prelude::ToolProgress), and it is the
@@ -131,10 +132,8 @@ impl Plugin for ShellTool {
             .get_resource_or_init::<ShellOutput>()
             .clone();
         let shell = SharedShell {
-            shell: Shell::default(),
-            processes: app.world_mut().get_resource_or_init::<Processes>().clone(),
+            shell: PerCallShell::new(Shell::default(), app.world_mut()),
             output,
-            dir: None,
         };
         app.add_live_tool_per_call(shell, ToolOptions::default());
         #[cfg(feature = "tui")]
@@ -186,30 +185,19 @@ impl Default for ShellOutput {
     }
 }
 
-/// [`Shell`], starting each command as [`Processes`] say at the time: in
-/// `dir` when its shell is confined there or the `Processes` name no
-/// directory, and cutting its output as [`ShellOutput`] says.
+/// [`PerCallShell`], cutting its output as [`ShellOutput`] says when each
+/// call runs.
 #[derive(Clone)]
 struct SharedShell {
-    shell: Shell,
-    processes: Processes,
+    shell: PerCallShell,
     output: ShellOutput,
-    dir: Option<PathBuf>,
 }
 
 impl PerCallTool for SharedShell {
     fn at(&self, place: CallPlace) -> Self {
         Self {
-            shell: Shell {
-                workspace: place.workspace,
-                live: place.live,
-                filter: place.filter,
-                confine: place.confine,
-                spill: place.spill,
-                ..self.shell.clone()
-            },
-            dir: Some(place.base),
-            ..self.clone()
+            shell: self.shell.at(place),
+            output: self.output.clone(),
         }
     }
 }
@@ -237,17 +225,8 @@ impl Tool for SharedShell {
         context: &mut ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
-        let mut launcher = self.processes.launcher();
-        if let Some(dir) = &self.dir
-            && (self.shell.confine || launcher.cwd.is_none())
-        {
-            launcher = launcher.in_dir(dir);
-        }
-        let shell = Shell {
-            launcher,
-            cut: self.output.cut(),
-            ..self.shell.clone()
-        };
+        let mut shell = self.shell.clone();
+        shell.shell.cut = self.output.cut();
         shell.call(context, args).await
     }
 }
