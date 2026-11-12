@@ -26,7 +26,7 @@ use bevy_ecs::prelude::*;
 use bevy_ecs::query::QueryData;
 use bevy_ecs::system::{EntityCommands, SystemParam, SystemState};
 use rig_core::effect::EffectId;
-use rig_memory::{SESSION, check_log_name};
+use rig_memory::{check_new_log_name, same_log_name};
 
 use super::agent::{Agent, AgentId, EffectParent, NotYours, SpawnedBy, SystemPrompt, ToolAccess};
 use super::model::{Connection, ModelChoice, Models, ReasoningSetting};
@@ -70,11 +70,14 @@ pub struct AgentSpec {
 pub enum SpawnRefused {
     /// The origin is not an agent.
     NotAnAgent,
-    /// An agent has the id asked for, or a spawn not applied yet asked for
-    /// it first.
+    /// An agent has the id asked for, in any case, or a spawn not applied
+    /// yet asked for it first: on a disk that ignores case, the two would
+    /// share one log.
     IdTaken(AgentId),
-    /// The id asked for cannot name an agent's log: it is empty, holds a
-    /// `/` or `\`, is `.` or `..`, or is [`SESSION`], the session's own.
+    /// The id asked for cannot name a new agent log
+    /// ([`check_new_log_name`]): it is empty, holds a `/` or `\`, is `.` or
+    /// `..`, is longer than [`MAX_NEW_LOG_NAME`](rig_memory::MAX_NEW_LOG_NAME)
+    /// bytes, or is the session's own log's name in any case.
     NotALogName(AgentId),
     /// A tool asked for is not one its origin keeps.
     Tool(NotYours),
@@ -143,10 +146,11 @@ impl Spawner<'_, '_> {
         let from = from.map(|agent| self.origins.get(agent)).transpose();
         let from = from.map_err(|_| SpawnRefused::NotAnAgent)?;
         let id = spec.id.unwrap_or_default();
-        if id.0 == SESSION || check_log_name(&id.0).is_err() {
+        if check_new_log_name(&id.0).is_err() {
             return Err(SpawnRefused::NotALogName(id));
         }
-        if self.pending.0.contains(&id) || self.ids.iter().any(|taken| *taken == id) {
+        let taken = |other: &AgentId| same_log_name(&other.0, &id.0);
+        if self.pending.0.iter().any(taken) || self.ids.iter().any(taken) {
             return Err(SpawnRefused::IdTaken(id));
         }
         let model = from.as_ref().and_then(|from| from.model);

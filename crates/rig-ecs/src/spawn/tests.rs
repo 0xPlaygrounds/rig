@@ -96,15 +96,47 @@ fn an_id_is_taken_as_soon_as_it_is_asked_for() {
 fn an_id_that_names_no_agent_log_is_refused() {
     let mut app = app();
     let world = app.world_mut();
-    for id in ["session", "a/b", "..", ""] {
+    // The session's own log on a disk that ignores case, and a name too
+    // long for a file name with its extension.
+    let long = "x".repeat(300);
+    for id in [
+        "session",
+        "Session",
+        "SESSION",
+        "a/b",
+        "..",
+        "",
+        long.as_str(),
+    ] {
         let spec = AgentSpec {
             id: Some(AgentId(id.into())),
             ..AgentSpec::default()
         };
         let made = spawn(world, Origin::Root, spec);
         let refused = SpawnRefused::NotALogName(AgentId(id.into()));
-        assert_eq!(made, Err(refused));
+        assert_eq!(made, Err(refused), "{id:?}");
     }
+    let longest = "x".repeat(rig_memory::MAX_NEW_LOG_NAME);
+    let spec = AgentSpec {
+        id: Some(AgentId(longest)),
+        ..AgentSpec::default()
+    };
+    assert!(spawn(world, Origin::Root, spec).is_ok());
+}
+
+/// Two agents whose ids differ only in case would share one log on a disk
+/// that ignores case.
+#[test]
+fn an_id_is_taken_whatever_its_case() {
+    let mut app = app();
+    let world = app.world_mut();
+    let spec = |id: &str| AgentSpec {
+        id: Some(AgentId(id.into())),
+        ..AgentSpec::default()
+    };
+    assert!(spawn(world, Origin::Root, spec("helper")).is_ok());
+    let made = spawn(world, Origin::Root, spec("Helper"));
+    assert_eq!(made, Err(SpawnRefused::IdTaken(AgentId("Helper".into()))));
 }
 
 #[test]
