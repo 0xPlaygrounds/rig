@@ -89,26 +89,32 @@ impl Invoked {
 ///
 /// # Errors
 ///
-/// When the list cannot be read. It then keeps what it holds, since
-/// writing it anew would drop the groups it names, and the agent lists
-/// the groups it owns after that.
+/// When the list cannot be read. It is then moved aside, never written
+/// into or over, for the launcher to end its groups as it exits, and the
+/// agent starts the list anew; or, when it cannot be moved either, left as
+/// it is while the agent lists its groups only in memory.
 fn own_groups(run: &RunDir) -> Result<(), GroupsUnread> {
     let list = run.groups();
     let adopted = match run.live_groups() {
         Ok(adopted) => adopted,
         Err(error) => {
-            let list = list.display();
-            let what = match rig_tools::process::record_groups_after(run.groups()) {
-                Ok(()) => "rig keeps what it holds and lists the jobs it starts after that, and \
-                           cannot end the background jobs it names while it cannot be read"
-                    .to_owned(),
-                Err(kept) => format!(
-                    "it cannot be kept either ({kept}), so rig lists the jobs it starts in a \
-                     new list, and cannot end the background jobs the old one named"
+            let what = match run.set_groups_aside() {
+                Ok(aside) => {
+                    rig_tools::process::record_groups(&list, []);
+                    format!(
+                        "rig moved it to {} and ends the jobs it names as it exits, if it can \
+                         read it then",
+                        aside.display()
+                    )
+                }
+                Err(moved) => format!(
+                    "it cannot be moved aside either ({moved}), so rig leaves it as it is and \
+                     lists the jobs it starts nowhere: they and the jobs it names may outlive rig"
                 ),
             };
             return Err(GroupsUnread(format!(
-                "could not read the list of process groups {list}: {error}; {what}"
+                "could not read the list of process groups {}: {error}; {what}",
+                list.display()
             )));
         }
     };
