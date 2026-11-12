@@ -406,6 +406,29 @@ fn a_refused_session_replays_its_refusal() {
     replays_its_exit("refused", "7", refused);
 }
 
+/// A string's debug form reads back as the string; escapes it never
+/// writes read as nothing.
+#[test]
+fn a_debug_quoted_text_reads_back_whole() {
+    for text in [
+        "plain",
+        "a \"b\" \\ c",
+        "tab\tcr\rnul\0 nl\n",
+        "bell \u{7} é '",
+    ] {
+        let quoted = format!("{text:?}");
+        let inner = quoted.strip_prefix('"').and_then(|q| q.strip_suffix('"'));
+        assert_eq!(
+            inner.and_then(super::unquote).as_deref(),
+            Some(text),
+            "{quoted}"
+        );
+    }
+    for malformed in ["\\q", "\\uX41}", "\\u{41", "\\u{zz}", "end\\"] {
+        assert_eq!(super::unquote(malformed), None, "{malformed}");
+    }
+}
+
 /// Records a session that ends with `failed`, replays it, and expects the
 /// replay to ask for `failed` first.
 fn replays_its_exit(name: &str, number: &str, failed: ExitReason) {
