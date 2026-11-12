@@ -77,6 +77,11 @@ struct Router {
     writer: Writer,
     /// The most bytes of a line it reads ([`crate::LINE_LIMIT`]).
     limit: usize,
+    /// How the router was started, which each session's process starts
+    /// from, with no launcher, which the router stands for.
+    launch: Launch,
+    /// The launcher's warnings, until the first session takes them to show.
+    warnings: Mutex<Vec<String>>,
 }
 
 /// A session's process, as the router runs it.
@@ -164,13 +169,11 @@ impl Router {
         std::fs::create_dir_all(run.path()).map_err(internal)?;
         let run_lock = lock_file(&run.lock(), true).map_err(internal)?;
         run_lock.lock().map_err(internal)?;
-        // The router's own launch, telling the session only its session and
-        // why it starts, and no launcher, which the router stands for.
-        let mut launch = Launch::from_process().map_err(internal)?;
-        launch.home = AbsPath::new(self.home.root()).map_err(internal)?;
+        let mut launch = self.launch.clone();
         launch.carry = Carry {
             session: Some(id.clone()),
             reason: Some(reason),
+            warnings: std::mem::take(&mut *locked(&self.warnings)),
             ..Carry::default()
         };
         let mut args = self.command.args.clone();
@@ -855,6 +858,20 @@ pub(crate) fn install(app: &mut App) {
     };
     let home = home.0.clone();
     let (stores, runtime, wake) = (stores.clone(), runtime.0.clone(), wake.clone());
+    let launched = Launch::from_process()
+        .map_err(|why| why.to_string())
+        .and_then(|launch| {
+            let home = AbsPath::new(home.root()).map_err(|why| why.to_string())?;
+            Ok(Launch { home, ..launch })
+        });
+    let mut launch = match launched {
+        Ok(launch) => launch,
+        Err(why) => {
+            app.refuse_run(format!("rig acp could not read how it was started: {why}"));
+            return;
+        }
+    };
+    let warnings = std::mem::take(&mut launch.carry.warnings);
     let base = match runs(&home) {
         Ok(base) => base,
         Err(why) => {
@@ -899,6 +916,8 @@ pub(crate) fn install(app: &mut App) {
         stopping: AtomicBool::new(false),
         writer: writer.clone(),
         limit: crate::LineLimit::of(app.world()),
+        launch,
+        warnings: Mutex::new(warnings),
     });
     let (stop, stopped) = oneshot::channel();
     let (done, finished) = async_channel::bounded(1);
