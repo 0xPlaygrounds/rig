@@ -775,6 +775,91 @@ fn answer_in_place(mut calls: Query<&mut Decision, (ReadyToStart, ModelCalls, Wi
     }
 }
 
+/// `--json` writes a reply a plugin gives in place as `text`, once, as it
+/// writes one that streamed.
+#[test]
+fn a_json_run_writes_a_reply_given_in_place_as_text_once() {
+    let model = silent();
+    let (_, lines) = one_shot("hi", None, &model, true, |app| {
+        app.add_systems(AgentPass, answer_in_place.in_set(Stage::Gate));
+    });
+    let texts: Vec<Value> = lines
+        .of("text")
+        .iter()
+        .map(|line| at(line, "text").clone())
+        .collect();
+    assert_eq!(texts, [json!("hello")], "{:?}", lines.parsed());
+    assert_eq!(model.request_count(), 0);
+}
+
+/// Answers the first model call in place with text and a call of `noted`,
+/// and the next with "done": nothing streams.
+fn narrate_in_place(
+    mut calls: Query<&mut Decision, (ReadyToStart, ModelCalls, With<TurnCall>)>,
+    mut answered: Local<usize>,
+) {
+    for mut decision in &mut calls {
+        *answered += 1;
+        let mut choice = Vec::new();
+        if *answered == 1 {
+            choice.push(AssistantContent::text("Noting it first."));
+            if let Ok(name) = rig_core::message::ToolName::new("noted") {
+                let function = rig_core::message::ToolFunction::new(name, json!({}));
+                let id = rig_core::message::CallId::from_wire("c1");
+                let call = rig_core::message::ToolCall::new(id, function);
+                choice.push(AssistantContent::ToolCall(call));
+            }
+        } else {
+            choice.push(AssistantContent::text("done"));
+        }
+        let made = Made::new("plugin", "test", "answer");
+        let reply = CompletionResponse::new(choice, Usage::default(), made, Value::Null);
+        decision.decide(
+            Decider::plugin("test"),
+            Outcome(Ok(rig_core::effect::Answered::Completion(reply.into()))),
+        );
+    }
+}
+
+/// On a terminal, plain `-p` writes what a reply a plugin gives in place
+/// says before its tool call to stderr, once, as it does for one that
+/// streamed.
+#[test]
+fn a_terminal_run_narrates_a_reply_given_in_place() {
+    let (out, err) = (Lines::default(), Lines::default());
+    let model = silent();
+    let invoked = Invocation {
+        print: Some("hi".to_owned()),
+        ..Invocation::default()
+    };
+    let (mut app, _) = noting(&MemoryStore::default(), invoked);
+    let terminal = Terminal {
+        width: Some(80),
+        color: false,
+    };
+    let writer = Writer::inline(out.clone(), err.clone());
+    app.insert_resource(scripted_models([(MODEL, &model)]))
+        .insert_resource(Printed::by(writer, None, Some(terminal)))
+        .add_plugins((ExitPlugin, PrintPlugin))
+        .add_systems(AgentPass, narrate_in_place.in_set(Stage::Gate))
+        .add_open_tool(
+            "noted",
+            "Notes.",
+            ToolOptions::default(),
+            |called: On<ToolCalled<Value>>, mut commands: Commands| {
+                let result = rig_core::tool::ToolResult::success("Noted.".into());
+                commands.entity(called.call).insert(Outcome::from(result));
+            },
+        );
+    app.finish();
+    app.cleanup();
+    run_until(&mut app, |_| false);
+    let said = err.text().concat();
+    assert_eq!(said.matches("Noting it first.").count(), 1, "{said}");
+    assert_eq!(out.text().concat().trim(), "done");
+    assert_eq!(model.request_count(), 0);
+}
+
 /// The resumed turn a plugin carries on ends inside the run's first frame,
 /// before the run looked at its agent: its answer is the run's all the
 /// same.
