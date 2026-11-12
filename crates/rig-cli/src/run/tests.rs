@@ -1224,3 +1224,145 @@ fn a_rolled_back_first_start_still_warns_of_a_0_46_home() {
         "{warned:?}"
     );
 }
+
+/// Writes `body` as an executable shell script at `path`.
+#[cfg(unix)]
+fn script(path: &Path, body: &str) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    fs::write(path, format!("#!/bin/sh\n{body}\n"))?;
+    fs::set_permissions(path, fs::Permissions::from_mode(0o755))?;
+    Ok(())
+}
+
+/// Two launchers on one home, their steps called in order: launcher A runs
+/// the build whose description it read its command line and secrets
+/// against, when B claims the shared staged build in between, and when B
+/// makes another build the good one in between.
+#[cfg(unix)]
+#[test]
+fn a_launcher_runs_the_build_it_read_its_command_line_against() {
+    let home = builds("one-build", &describing("staged"), &describing("good"));
+    let (a, b) = (SessionId::generate(), SessionId::generate());
+    let ran = (|| -> Result<_> {
+        // B claims the staged build A read.
+        let read_staged = report(&home, &a);
+        pick(&home, &b, &home.trial_for(&b))?;
+        let a_binary = pick(&home, &a, &home.trial_for(&a))?;
+        let ran_staged = build::described(&home, a_binary.path())?;
+        // B's trial, which describes itself otherwise, becomes the good build.
+        let read_good = report(&home, &a);
+        let newer = home.bin().join("newer");
+        script(&newer, &describing("newer"))?;
+        fs::rename(&newer, home.good())?;
+        let a_binary = pick(&home, &a, &home.trial_for(&a))?;
+        let ran_good = build::described(&home, a_binary.path())?;
+        Ok([(read_staged, ran_staged), (read_good, ran_good)])
+    })();
+    fs::remove_dir_all(home.root()).ok();
+    let ran = ran.map_err(|failure| failure.to_string());
+    let names = ran.map(|pairs| {
+        pairs.map(|(read, ran)| {
+            let name = |report: &AgentDescription| {
+                ["staged", "good", "newer"]
+                    .into_iter()
+                    .find(|name| report.command(name).is_some())
+            };
+            (name(&read), name(&ran))
+        })
+    });
+    assert_eq!(
+        names,
+        Ok([
+            (Some("staged"), Some("staged")),
+            (Some("good"), Some("good"))
+        ])
+    );
+}
+
+/// A reload whose new build stops during startup rolls back to the build
+/// the session ran before it, though another session made a third build
+/// the good one meanwhile.
+#[cfg(unix)]
+#[test]
+fn a_rolled_back_reload_runs_the_sessions_own_previous_build() {
+    let home = builds("own-rollback", "", "");
+    let ran = locks::hold_run(&home).and_then(|run| {
+        fs::remove_file(home.staged())?;
+        let other = home.root().join("other");
+        script(&other, "echo other >> \"$RIG_HOME/ran\"")?;
+        let failing = home.root().join("failing");
+        script(&failing, "echo failing >> \"$RIG_HOME/ran\"; exit 1")?;
+        // The first start reloads onto a build that fails; meanwhile
+        // another session's build becomes the good one.
+        script(
+            &home.good(),
+            &format!(
+                "[ -n \"$RIG_DESCRIBE\" ] && exit 0
+echo own >> \"$RIG_HOME/ran\"
+[ \"$(wc -l < \"$RIG_HOME/ran\")\" -gt 1 ] && exit 0
+touch \"$RIG_RUN/ready\"
+cp {other} \"$RIG_HOME/bin/other\" && mv \"$RIG_HOME/bin/other\" \"$RIG_HOME/bin/good\"
+cp {failing} \"$RIG_HOME/bin/staged-$RIG_SESSION\"
+exit 75",
+                other = other.display(),
+                failing = failing.display(),
+            ),
+        )?;
+        let (claimed, _) = claim(&home, Start::New, None)?;
+        launch(
+            &home,
+            Path::new(NO_LAUNCHER),
+            run.dir(),
+            &Invocation::default(),
+            false,
+            claimed,
+            None,
+            None,
+        )?;
+        Ok(fs::read_to_string(home.root().join("ran"))?)
+    });
+    fs::remove_dir_all(home.root()).ok();
+    let ran = ran.map_err(|failure| failure.to_string());
+    assert_eq!(ran, Ok("own\nfailing\nown\n".to_owned()));
+}
+
+/// A trial that starts up after another session made a newer build the
+/// good one leaves that build good.
+#[cfg(unix)]
+#[test]
+fn a_trial_ready_after_a_newer_good_build_leaves_it_good() {
+    let home = builds("stale-trial", "", "");
+    let good = locks::hold_run(&home).and_then(|run| {
+        let newer = home.root().join("newer");
+        script(&newer, "echo newer")?;
+        script(
+            &home.staged(),
+            &format!(
+                "[ -n \"$RIG_DESCRIBE\" ] && exit 0
+cp {newer} \"$RIG_HOME/bin/newer\" && mv \"$RIG_HOME/bin/newer\" \"$RIG_HOME/bin/good\"
+touch \"$RIG_RUN/ready\"",
+                newer = newer.display(),
+            ),
+        )?;
+        let print = Invocation {
+            print: Some("hi".to_owned()),
+            ..Invocation::default()
+        };
+        let (claimed, _) = claim(&home, Start::New, None)?;
+        launch(
+            &home,
+            Path::new(NO_LAUNCHER),
+            run.dir(),
+            &print,
+            true,
+            claimed,
+            None,
+            None,
+        )?;
+        Ok(fs::read_to_string(home.good())?)
+    });
+    fs::remove_dir_all(home.root()).ok();
+    let good = good.map_err(|failure| failure.to_string());
+    assert_eq!(good, Ok("#!/bin/sh\necho newer\n".to_owned()));
+}
