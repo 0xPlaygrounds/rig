@@ -162,6 +162,49 @@ fn the_install_runs_away_from_the_directory_rig_started_in() {
     );
 }
 
+/// The secret this test runs a copy of itself with.
+const PROBE: &str = "RIG_SECRET_PROBE";
+
+/// A secret exported where `rig update` runs reaches neither its
+/// `cargo install` nor the new launcher's `rig build`.
+#[test]
+fn an_update_passes_no_secret_on() {
+    if std::env::var_os(PROBE).is_none() {
+        let name = "update::tests::an_update_passes_no_secret_on";
+        let output = std::env::current_exe().and_then(|test| {
+            Command::new(test)
+                .args(["--exact", name, "--test-threads", "1"])
+                .env(PROBE, "hunter2")
+                .output()
+        });
+        let stdout = output.map(|output| output.stdout).unwrap_or_default();
+        let stdout = String::from_utf8_lossy(&stdout);
+        assert!(
+            stdout.contains("1 passed"),
+            "the run with a secret failed: {stdout}"
+        );
+        return;
+    }
+    let dir = scratch("secret");
+    let bin = dir.join("bin");
+    fs::create_dir_all(&bin).ok();
+    let launcher = bin.join("rig");
+    let seen = format!("echo \"${{{PROBE}-unset}}\" > \"$0.seen\"");
+    script(&launcher, &seen);
+    script(&dir.join("cargo"), &seen);
+    let mut install = install_command(&RigSource::Registry, &dir);
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    let paths = std::iter::once(dir.clone()).chain(std::env::split_paths(&path));
+    install.env("PATH", std::env::join_paths(paths).unwrap_or_default());
+    let status = install_and_build(install, &launcher);
+    let cargo = fs::read_to_string(dir.join("cargo.seen")).ok();
+    let build = fs::read_to_string(bin.join("rig.seen")).ok();
+    fs::remove_dir_all(&dir).ok();
+    assert_eq!(status, ExitCode::SUCCESS);
+    assert_eq!(cargo.as_deref(), Some("unset\n"), "cargo install");
+    assert_eq!(build.as_deref(), Some("unset\n"), "rig build");
+}
+
 #[test]
 fn a_reexec_resumes_a_saved_session_with_the_same_arguments() {
     let args = vec![OsString::from("--model"), OsString::from("ollama/qwen3")];
