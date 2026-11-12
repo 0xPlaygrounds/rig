@@ -95,6 +95,41 @@ fn a_build_that_does_not_describe_itself_in_time_is_stopped() {
     assert!(started.elapsed() < Duration::from_secs(4));
 }
 
+/// A build that leaves a process holding its stderr still ends the wait
+/// within the timeout, and one that fails still says why.
+#[test]
+fn a_build_whose_child_holds_its_stderr_is_waited_for_within_the_timeout() {
+    let run = |name: &str, body: &str, timeout: Duration| {
+        let home = built(name, body);
+        let artifact = home.target().join("debug").join(PACKAGE);
+        let report = home.root().join("report");
+        let started = Instant::now();
+        let waited = child(&artifact)
+            .env(env::DESCRIBE, &report)
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(Into::into)
+            .and_then(|child| wait_described(child, &report, timeout))
+            .map_err(|why| why.to_string());
+        fs::remove_dir_all(home.root()).ok();
+        (waited, started.elapsed())
+    };
+    let (described, took) = run(
+        "held",
+        "sleep 20 & printf 'rig-describe 1\\n' > \"$RIG_DESCRIBE\"; exit 0",
+        Duration::from_secs(1),
+    );
+    assert_eq!(described.as_deref(), Ok("rig-describe 1\n"));
+    assert!(took < Duration::from_secs(3), "{took:?}");
+    let (failed, took) = run(
+        "held-failing",
+        "sleep 20 & echo 'rig: a plugin failed' >&2; exit 3",
+        Duration::from_secs(10),
+    );
+    assert_eq!(failed, Err("rig: a plugin failed".to_owned()));
+    assert!(took < Duration::from_secs(3), "{took:?}");
+}
+
 /// The secret this file's tests run a copy of themselves with.
 const PROBE: &str = "RIG_SECRET_PROBE";
 
