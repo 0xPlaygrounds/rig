@@ -317,11 +317,11 @@ fn a_settings_table_read_in_a_finish_refuses_the_run() {
 }
 
 /// An agent started by a reload that cannot read the list of the jobs
-/// the agent before it left running keeps the list as it is: the launcher
-/// still ends those jobs once rig exits.
+/// the agent before it left running keeps what the list holds, and still
+/// lists the jobs it starts itself.
 #[cfg(target_os = "linux")]
 #[test]
-fn a_list_a_reload_cannot_read_is_kept() {
+fn a_list_a_reload_cannot_read_is_kept_and_grows() {
     use std::os::unix::process::CommandExt;
 
     let root = std::env::temp_dir().join(format!("rig-harness-unread-{}", std::process::id()));
@@ -342,10 +342,20 @@ fn a_list_a_reload_cannot_read_is_kept() {
     listed.extend_from_slice(b"\xff\n");
     std::fs::write(run.groups(), &listed).ok();
     let owned = super::own_groups(&run);
+    let launcher = rig_tools::process::Launcher::default();
+    let started = launcher.spawn("sleep", ["30"], rig_tools::process::Spawn::default());
     let after = std::fs::read(run.groups()).unwrap_or_default();
+    let started = started.map(|started| started.id());
     kept.kill().ok();
     kept.wait().ok();
     std::fs::remove_dir_all(&root).ok();
     assert!(owned.is_err(), "reading the list should have failed");
-    assert_eq!(after, listed);
+    assert!(after.starts_with(&listed), "the list lost what it held");
+    let lines = String::from_utf8_lossy(&after);
+    assert!(
+        started
+            .as_ref()
+            .is_ok_and(|started| lines.lines().any(|line| line == started.to_string())),
+        "the job {started:?} is not listed: {lines:?}"
+    );
 }
