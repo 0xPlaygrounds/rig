@@ -392,7 +392,8 @@ fn a_session_quit_under_exit_notes_replays_its_summary_call() {
 }
 
 /// A session that failed with its own exit code replays to that exit: the
-/// replay ends as the recording did, with the same code.
+/// replay asks for the recorded exit, code and all, before its front ends
+/// the run with its own verdict.
 #[test]
 fn a_session_that_failed_replays_its_failed_exit() {
     let home = scratch_home("session-replay-failed");
@@ -433,16 +434,23 @@ fn a_session_that_failed_replays_its_failed_exit() {
         },
         terminal: false,
     })
-    .add_plugins((ExitPlugin, SessionReplayPlugin));
+    .add_plugins((ExitPlugin, SessionReplayPlugin))
+    .init_resource::<Exits>()
+    .add_observer(|exit: On<Exit>, mut exits: ResMut<Exits>| {
+        exits.0.push(exit.0.clone());
+    });
     with_agents(&mut app, connect(&model));
     let outcome = run_replay(&mut app, &wakes);
     assert_eq!(outcome, Some((ReplayStatus::Finished, Vec::new(), (1, 0))));
     run_until(&mut app, &wakes, |world| {
         world.contains_resource::<ExitReason>()
     });
-    let exit = app.world().get_resource::<ExitReason>().cloned();
-    assert_eq!(exit, Some(failed));
+    assert_eq!(app.world().resource::<Exits>().0.first(), Some(&failed));
 }
+
+/// The exits asked for, in order.
+#[derive(Resource, Default)]
+struct Exits(Vec<ExitReason>);
 
 /// Exit-notes' summary calls started.
 #[derive(Resource, Default)]
