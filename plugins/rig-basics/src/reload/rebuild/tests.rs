@@ -480,3 +480,75 @@ fn a_headless_run_whose_launcher_was_replaced_says_so_in_its_output() {
         "{plain:?}"
     );
 }
+
+/// What `/update cancel` said of an update whose `rig update` is the shell
+/// `script`, cancelled once it wrote `$0.started`.
+fn cancelled_update(name: &str, script: &str) -> Vec<String> {
+    use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
+    use rig_harness_test_support::{MemoryStore, app_on, first_agent, scripted_models};
+
+    use crate::reload::{CancelReload, ReloadPlugin};
+
+    let launcher = failing_launcher(name, "");
+    let dir = launcher
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_default();
+    std::fs::write(&launcher, format!("#!/bin/sh\n{script}\n")).ok();
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let (mut app, _wakes) = app_on(&MemoryStore::default());
+    app.insert_resource(scripted_models([("test/model", &model)]))
+        .add_plugins((AgentPlugin, SessionLogPlugin, ReloadPlugin))
+        .init_resource::<Said>()
+        .add_systems(
+            Last,
+            |mut notices: MessageReader<Notice>, mut said: ResMut<Said>| {
+                let texts = notices.read().map(|notice| notice.text.clone());
+                said.notices.extend(texts);
+            },
+        );
+    app.finish();
+    app.update();
+    let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
+    let wake = app.world().resource::<Wake>().clone();
+    if let Ok(build) = ReloadBuild::start(launcher.as_os_str(), Rebuild::Update, agent, wake) {
+        app.insert_resource(build);
+        *app.world_mut().resource_mut::<ReloadStatus>() = ReloadStatus::Building { latest: None };
+    }
+    let started = dir.join("rig.started");
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    while !started.exists() && std::time::Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    app.world_mut().trigger(CancelReload);
+    app.update();
+    app.update();
+    let said = std::mem::take(&mut app.world_mut().resource_mut::<Said>().notices);
+    std::fs::remove_dir_all(dir).ok();
+    said
+}
+
+/// A cancelled `/update` says whether the new rig is installed, read once
+/// `rig update` stopped: before it replaced the launcher, after, or as it
+/// stopped.
+#[test]
+fn a_cancelled_update_says_whether_the_new_rig_is_installed() {
+    let replace = "cp \"$0\" \"$0.new\"; echo \"# new\" >> \"$0.new\"; mv \"$0.new\" \"$0\"";
+    let wait = "sleep 60 & touch \"$0.started\"; wait";
+    let before = cancelled_update("cancel-before", wait);
+    let after = cancelled_update("cancel-after", &format!("{replace}\n{wait}"));
+    let stopping = cancelled_update(
+        "cancel-stopping",
+        &format!("trap '{replace}; exit 143' TERM\n{wait}"),
+    );
+    let installed = "Update cancelled during the agent build: the new rig is installed, and the \
+                     next start or /reload runs it.";
+    assert_eq!(
+        (before, after, stopping),
+        (
+            vec!["Update cancelled.".to_owned()],
+            vec![installed.to_owned()],
+            vec![installed.to_owned()],
+        )
+    );
+}
