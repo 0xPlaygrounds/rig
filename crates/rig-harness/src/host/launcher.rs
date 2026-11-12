@@ -143,8 +143,7 @@ impl Plugin for LauncherPlugin {
 
     /// Refuses a run whose `RIG_HOME/settings.toml` does not read, before
     /// any plugin's `finish` waits on anything, such as for what is piped
-    /// in: the tables plugins read as they were built. `cleanup` checks
-    /// again, for those read in a `finish`.
+    /// in: the tables plugins read as they were built.
     fn finish(&self, app: &mut App) {
         // Read even when no plugin read a table, so the file's tables are
         // checked at startup all the same.
@@ -154,10 +153,11 @@ impl Plugin for LauncherPlugin {
         }
     }
 
-    /// Refuses a run the build cannot take (see [`cli`]), or whose settings
-    /// table a plugin read in its own `finish` does not read. Else tells the
-    /// launcher when the run's front takes the terminal's screen
-    /// ([`RunDir::say_screen`]).
+    /// Refuses a run the build cannot take (see [`cli`]), or in which a
+    /// plugin read its settings table in its own `finish`, once the run's
+    /// front was chosen ([`crate::settings::AppSettingsExt::add_setting`]).
+    /// Else tells the launcher when the run's front takes the terminal's
+    /// screen ([`RunDir::say_screen`]).
     fn cleanup(&self, app: &mut App) {
         if let Some(refusal) = cli::refusal(app).or_else(|| settings_refusal(app.world())) {
             refuse(app, refusal);
