@@ -339,30 +339,44 @@ fn launch(
         let mut child = command.spawn()?;
         // A trial becomes the good build as soon as it is ready and the
         // build lock is free, so a launcher killed later (a closed
-        // terminal) keeps it; once the agent exited, it waits for the lock,
-        // unless a signal asks the launcher to end.
+        // terminal) keeps it. Once the agent exited, the launcher polls for
+        // the lock until a signal asks it to end; an unpromoted trial is
+        // staged again by the next start's build.
         let mut started = false;
         let mut promoting = false;
         let mut promoted: Result<()> = Ok(());
+        let mut exited = None;
+        // When the launcher began to wait for the lock, and whether it said so.
+        let mut waiting: Option<(std::time::Instant, bool)> = None;
         let status = loop {
-            watch.pass_on(&mut child);
-            let status = child.try_wait()?;
+            if exited.is_none() {
+                watch.pass_on(&mut child);
+                exited = child.try_wait()?;
+            }
             if !started && ready.exists() {
                 started = true;
                 legacy.clear();
                 promoting = running.current.is_trial();
             }
             if promoting {
-                let wait = status.is_some() && stop::heard().is_none();
-                match promote(home, &mut running.current, wait) {
+                match promote(home, &mut running.current) {
                     Ok(done) => promoting = !done,
                     Err(failure) => (promoting, promoted) = (false, Err(failure)),
                 }
             }
-            match status {
-                Some(status) => break status,
-                None => std::thread::sleep(POLL),
+            match exited {
+                Some(status) if !promoting || stop::heard().is_some() => break status,
+                Some(_) => {
+                    let (since, said) =
+                        waiting.get_or_insert_with(|| (std::time::Instant::now(), false));
+                    if !*said && since.elapsed() >= locks::QUIET_WAIT {
+                        *said = true;
+                        locks::say_waiting(home);
+                    }
+                }
+                None => {}
             }
+            std::thread::sleep(POLL);
         };
         drop(watch);
         let reload = status.code() == Some(i32::from(RELOAD_EXIT_CODE)) && stop::heard().is_none();
@@ -1031,17 +1045,11 @@ fn held(run: &RunDir) -> Result<PathBuf> {
 }
 
 /// Makes `build`, a trial that is ready, the good build as its
-/// [`Role::Trial`] says, holding the build lock: at once when it is free,
-/// or after waiting for it with `wait`. Returns whether it was done; once
-/// done, the build is [`Role::Proven`].
-fn promote(home: &Home, build: &mut BuildRef, wait: bool) -> Result<bool> {
-    let _lock = if wait {
-        locks::hold_build_lock(home, BuildOutput::LogOnly)?
-    } else {
-        match locks::try_build_lock(home)? {
-            Some(lock) => lock,
-            None => return Ok(false),
-        }
+/// [`Role::Trial`] says, when the build lock is free. Returns whether it
+/// was done; once done, the build is [`Role::Proven`].
+fn promote(home: &Home, build: &mut BuildRef) -> Result<bool> {
+    let Some(_lock) = locks::try_build_lock(home)? else {
+        return Ok(false);
     };
     let Role::Trial { good } = std::mem::replace(&mut build.role, Role::Proven) else {
         return Ok(true);

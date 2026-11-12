@@ -111,7 +111,7 @@ pub fn sweep(home: &Home) -> Result<()> {
 /// another rig's build with nothing to do holds it for a fraction of a
 /// second, so runs started together stay quiet, while a real build still
 /// says why the start waits.
-const QUIET_WAIT: Duration = Duration::from_secs(3);
+pub const QUIET_WAIT: Duration = Duration::from_secs(3);
 
 /// How often a quiet wait tries the lock.
 const LOCK_POLL: Duration = Duration::from_millis(50);
@@ -128,13 +128,16 @@ pub fn hold_build_lock(home: &Home, output: BuildOutput) -> Result<File> {
         BuildOutput::Live => Duration::ZERO,
         BuildOutput::LogOnly => QUIET_WAIT,
     };
-    take(&file, quiet, || {
-        eprintln!(
-            "Waiting for another rig on {} to finish building…",
-            home.root().display()
-        );
-    })?;
+    take(&file, quiet, || say_waiting(home))?;
     Ok(file)
+}
+
+/// Says on stderr that the launcher waits for another's build on `home`.
+pub fn say_waiting(home: &Home) {
+    eprintln!(
+        "Waiting for another rig on {} to finish building…",
+        home.root().display()
+    );
 }
 
 /// The lock [`hold_build_lock`] waits for, when no other launcher holds
