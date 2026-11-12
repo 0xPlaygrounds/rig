@@ -653,16 +653,14 @@ fn describe(home: &Home, binary: &Path, settings: Option<&Path>) -> Result<Strin
     result
 }
 
-/// Runs a describing build and waits for it, at most `timeout`, and
-/// returns its `report`, or what it said on stderr when it failed. On unix
-/// it leads a process group of its own (unless the launcher leads its
-/// session, see [`stop::spawn`]), which is killed once it exits or the time
-/// is up, so nothing it started outlives it or holds its stderr.
+/// Runs a describing build as a [`Build`] and waits for it, at most
+/// `timeout`, and returns its `report`, or what it said on stderr when it
+/// failed. Its group is killed once it exits or the time is up, so nothing
+/// it started outlives it or holds its stderr.
 fn wait_described(mut command: Command, report: &Path, timeout: Duration) -> Result<String> {
     command.stderr(Stdio::piped());
-    #[cfg(unix)]
-    let group = stop::lead_group(&mut command);
-    let mut child = command.spawn()?;
+    let mut build = Build::spawn(command)?;
+    let child = &mut build.0;
     let (send, said) = mpsc::channel();
     if let Some(mut errors) = child.stderr.take() {
         std::thread::spawn(move || {
@@ -686,9 +684,7 @@ fn wait_described(mut command: Command, report: &Path, timeout: Duration) -> Res
         std::thread::sleep(Duration::from_millis(20));
     };
     #[cfg(unix)]
-    if group {
-        stop::kill_group(&child);
-    }
+    stop::kill();
     child.wait().ok();
     let Some(status) = status else {
         return Err(format!(
@@ -701,7 +697,9 @@ fn wait_described(mut command: Command, report: &Path, timeout: Duration) -> Res
         return Ok(fs::read_to_string(report).unwrap_or_default());
     }
     let mut errors = Vec::new();
-    while let Ok(chunk) = said.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
+    while let Some(left) = deadline.checked_duration_since(Instant::now())
+        && let Ok(chunk) = said.recv_timeout(left)
+    {
         errors.extend(chunk);
     }
     let errors = String::from_utf8_lossy(&errors);
@@ -848,10 +846,11 @@ fn package(line: &str) -> Option<(&str, &str)> {
     Some((name, version))
 }
 
-/// cargo, running in a process group of its own (or the launcher's, when
-/// the launcher leads a session of its own), which is killed should the
-/// launcher be told to end (`SIGTERM`, `SIGINT`, `SIGHUP`) meanwhile, so no
-/// cargo or rustc outlives it. Elsewhere than unix, cargo alone.
+/// cargo or a describing build, running in a process group of its own (or
+/// the launcher's, when the launcher leads a session of its own), which is
+/// killed should the launcher be told to end (`SIGTERM`, `SIGINT`, `SIGHUP`)
+/// meanwhile, so nothing it started outlives it. Elsewhere than unix, the
+/// child alone.
 struct Build(Child);
 
 impl Build {
@@ -901,9 +900,11 @@ mod stop {
     /// group instead, which the agent kills as a whole. The signals wait
     /// while it starts, so one that comes meanwhile finds the group.
     pub(super) fn spawn(command: &mut Command) -> std::io::Result<Child> {
-        // SAFETY: a plain call without arguments that cannot fail.
-        let own = unsafe { libc::getpgrp() };
-        let leads = !lead_group(command);
+        // SAFETY: plain calls without arguments that can fail.
+        let (leads, own) = unsafe { (libc::getsid(0) == libc::getpid(), libc::getpgrp()) };
+        if !leads {
+            command.process_group(0);
+        }
         let mut replaced = Vec::new();
         // SAFETY: plain calls on zeroed signal sets and actions this
         // function owns; the closure runs in the forked child before `exec`
@@ -955,28 +956,6 @@ mod stop {
         spawned
     }
 
-    /// Makes `command` lead a new process group, unless the launcher leads
-    /// its session, and says whether it does.
-    pub(super) fn lead_group(command: &mut Command) -> bool {
-        // SAFETY: plain calls without arguments that can fail.
-        let leads = unsafe { libc::getsid(0) == libc::getpid() };
-        if !leads {
-            command.process_group(0);
-        }
-        !leads
-    }
-
-    /// Kills the process group `child` leads, as [`lead_group`] made it.
-    pub(super) fn kill_group(child: &Child) {
-        if let Ok(group) = i32::try_from(child.id()) {
-            // SAFETY: `kill` takes plain integers; a negative pid names a
-            // process group.
-            unsafe {
-                libc::kill(-group, libc::SIGKILL);
-            }
-        }
-    }
-
     /// The build ended: the ending signals act as they did before it.
     pub(super) fn forget() {
         GROUP.store(0, Ordering::SeqCst);
@@ -994,10 +973,10 @@ mod stop {
         }
     }
 
-    /// Kills the build's group, if one runs.
+    /// Kills the build's group, if one runs and is not the launcher's own.
     pub(super) fn kill() {
         let group = GROUP.load(Ordering::SeqCst);
-        if group > 0 {
+        if group > 0 && !OWN.load(Ordering::SeqCst) {
             // SAFETY: `kill` takes plain integers; a negative pid names the
             // build's process group.
             unsafe {
