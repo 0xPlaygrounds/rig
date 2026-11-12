@@ -77,7 +77,7 @@ impl Plugin for LongTermMemoryPlugin {
                 memory,
             )
             .add_systems(Startup, open)
-            .add_systems(Update, (reload, edited).before(AgentLoop))
+            .add_systems(Update, (reload, edited).after(PollTasks).before(AgentLoop))
             .configure_sets(AgentPass, MemorySystems.in_set(PrepareSystems::Edit))
             .add_systems(AgentPass, recall.in_set(MemorySystems));
     }
