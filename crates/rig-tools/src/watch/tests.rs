@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::mpsc::Receiver;
+use std::sync::{Arc, Weak};
 use std::time::Duration;
 
 use futures::StreamExt as _;
@@ -185,6 +185,19 @@ fn a_watch_of_an_ignored_directory_reports_what_files_lists_there() {
     assert_eq!((listed, seen), (vec![made.clone()], vec![made]));
 }
 
+/// [`super::send_batches`] of `tree`, with no system watcher to arm again.
+fn send_batches(
+    raw: &Receiver<super::Heard>,
+    sender: &futures::channel::mpsc::UnboundedSender<WatchEvent>,
+    tree: &super::Tree,
+) {
+    let target = tree.root.clone();
+    let armed = super::Armed::new(Weak::new(), target, notify::RecursiveMode::Recursive);
+    if let Ok(mut armed) = armed {
+        super::send_batches(raw, sender, tree, &mut armed);
+    }
+}
+
 /// The thread that gathers a watch's events into batches ends once the
 /// watch is gone, at its next batch, though the watcher still sends.
 #[test]
@@ -204,7 +217,7 @@ fn the_batching_thread_ends_with_its_watch() {
     };
     let (done, ended) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
-        super::send_batches(&raw, &sender, &tree);
+        send_batches(&raw, &sender, &tree);
         done.send(()).ok();
     });
     assert!(ended.recv_timeout(Duration::from_secs(10)).is_ok());
@@ -569,7 +582,7 @@ fn an_edit_made_while_a_listing_fails_is_reported_once_it_works() {
         recursive: true,
         listing: Listing::Visible,
     };
-    std::thread::spawn(move || super::send_batches(&raw, &sender, &tree));
+    std::thread::spawn(move || send_batches(&raw, &sender, &tree));
     let events = events(Watch::new(watch, ()));
     let wait = Duration::from_millis(1500);
     let started = told(&events, wait);
@@ -623,7 +636,7 @@ fn a_rescan_reports_a_file_edited_unheard() {
         recursive: true,
         listing: Listing::Visible,
     };
-    std::thread::spawn(move || super::send_batches(&raw, &sender, &tree));
+    std::thread::spawn(move || send_batches(&raw, &sender, &tree));
     let events = events(Watch::new(watch, ()));
     let started = told(&events, Duration::from_millis(1000));
     std::fs::write(&a, "two").ok();
@@ -669,8 +682,10 @@ fn a_directory_swapped_in_with_the_same_names_reports_its_files() {
 /// removed, and a later edit in the new one is told.
 #[test]
 fn a_replaced_root_is_watched_again() {
-    let base =
-        std::env::temp_dir().join(format!("rig-tools-watch-replaced-root-{}", std::process::id()));
+    let base = std::env::temp_dir().join(format!(
+        "rig-tools-watch-replaced-root-{}",
+        std::process::id()
+    ));
     std::fs::remove_dir_all(&base).ok();
     std::fs::create_dir_all(base.join("root")).ok();
     std::fs::write(base.join("root/old.txt"), "old").ok();

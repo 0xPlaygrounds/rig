@@ -14,15 +14,15 @@ use std::io::{self, ErrorKind};
 use std::ops::Bound;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
-use std::sync::Arc;
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
+use std::sync::{Arc, Mutex, PoisonError, Weak};
 use std::task::{Context, Poll};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime};
 
 use futures::Stream;
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender, unbounded};
-use notify::{EventKind, RecursiveMode, Watcher as _};
+use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher as _};
 use rig_core::tool::{ContentHash, content_hash};
 
 use crate::MAX_FILE_BYTES;
@@ -377,9 +377,11 @@ fn look<W: Workspace + ?Sized>(
 /// walk [`Workspace::files`] lists with, so it reports what the default
 /// watch would, at once. A `root` that is a file is watched through its
 /// directory, so a write that replaces it is seen; one that does not exist
-/// yet is looked at every second instead. A relative `root` that exists is
-/// resolved against the current directory once, so the paths told are
-/// absolute.
+/// yet is looked at every second instead. A directory put in place of the
+/// one watched, once that is moved or removed, is watched in its turn,
+/// looked for every second while none is there. A relative `root` that
+/// exists is resolved against the current directory once, so the paths
+/// told are absolute.
 ///
 /// # Errors
 ///
@@ -400,7 +402,7 @@ pub(crate) fn notified(root: &Path, recursive: bool, listing: Listing) -> io::Re
         listing,
     };
     let (heard, raw) = std::sync::mpsc::channel::<Heard>();
-    let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
+    let watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
         let heard_now = match event {
             Ok(event) if matches!(event.kind, EventKind::Access(_)) => return,
             Ok(event) if !event.need_rescan() => Heard::Paths(event.paths),
@@ -417,16 +419,115 @@ pub(crate) fn notified(root: &Path, recursive: bool, listing: Listing) -> io::Re
         true if tree.recursive => (tree.root.as_path(), RecursiveMode::Recursive),
         true => (tree.root.as_path(), RecursiveMode::NonRecursive),
     };
-    watcher.watch(target, mode).map_err(io::Error::other)?;
-    for rules in tree.rules_outside(&tree.wide_rules()) {
-        // Missing one leaves its rules' edits unheard, not the files.
-        watcher.watch(&rules, RecursiveMode::NonRecursive).ok();
+    let watcher = Arc::new(Mutex::new(watcher));
+    let mut armed = Armed::new(Arc::downgrade(&watcher), target.to_path_buf(), mode)?;
+    {
+        let mut watcher = watcher.lock().unwrap_or_else(PoisonError::into_inner);
+        watcher.watch(target, mode).map_err(io::Error::other)?;
+        for rules in tree.rules_outside(&tree.wide_rules()) {
+            // Missing one leaves its rules' edits unheard, not the files.
+            watcher.watch(&rules, RecursiveMode::NonRecursive).ok();
+        }
     }
     let (sender, events) = unbounded();
     thread::Builder::new()
         .name("rig-watch".to_owned())
-        .spawn(move || send_batches(&raw, &sender, &tree))?;
+        .spawn(move || send_batches(&raw, &sender, &tree, &mut armed))?;
     Ok(Watch::new(events, watcher))
+}
+
+/// Which directory a path is: where the system tells it, its device and
+/// inode, so one put in its place is another.
+#[cfg(unix)]
+type Identity = (u64, u64);
+#[cfg(not(unix))]
+type Identity = ();
+
+/// The [`Identity`] of what is at `path`; none when nothing is.
+fn identity(path: &Path) -> io::Result<Option<Identity>> {
+    match fs::metadata(path) {
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),
+        meta => Ok(Some(identity_of(&meta?))),
+    }
+}
+
+#[cfg(unix)]
+fn identity_of(meta: &fs::Metadata) -> Identity {
+    use std::os::unix::fs::MetadataExt as _;
+    (meta.dev(), meta.ino())
+}
+
+#[cfg(not(unix))]
+fn identity_of(_: &fs::Metadata) -> Identity {}
+
+/// The system's watch of a directory, which watches that directory and not
+/// its path: one moved or made in its place is unheard until armed again.
+pub(crate) struct Armed {
+    /// The watcher, kept by the [`Watch`]: gone once the watch is.
+    watcher: Weak<Mutex<RecommendedWatcher>>,
+    target: PathBuf,
+    mode: RecursiveMode,
+    /// The directory watched; none while nothing is at `target`.
+    at: Option<Identity>,
+}
+
+impl Armed {
+    /// The watch of `target` with `mode` by `watcher`, of what is at
+    /// `target` now, to be armed by the caller.
+    ///
+    /// # Errors
+    ///
+    /// When `target` cannot be looked at, other than for not being there.
+    pub(crate) fn new(
+        watcher: Weak<Mutex<RecommendedWatcher>>,
+        target: PathBuf,
+        mode: RecursiveMode,
+    ) -> io::Result<Self> {
+        let at = identity(&target)?;
+        Ok(Self {
+            watcher,
+            target,
+            mode,
+            at,
+        })
+    }
+
+    /// Whether a directory is watched; when not, it is looked for.
+    fn watching(&self) -> bool {
+        self.at.is_some()
+    }
+
+    /// Watches what is at the target now, if that is not what it watched:
+    /// true when it changed, so what was heard meanwhile may be missing.
+    ///
+    /// # Errors
+    ///
+    /// When the target cannot be looked at, other than for not being
+    /// there, or the new one cannot be watched.
+    fn follow(&mut self) -> io::Result<bool> {
+        let now = identity(&self.target)?;
+        if now == self.at {
+            return Ok(false);
+        }
+        let Some(watcher) = self.watcher.upgrade() else {
+            return Ok(false);
+        };
+        let mut watcher = watcher.lock().unwrap_or_else(PoisonError::into_inner);
+        // The old directory's watch is gone with it, or watches a path no
+        // longer the target's.
+        watcher.unwatch(&self.target).ok();
+        self.at = now;
+        if now.is_some()
+            && let Err(error) = watcher.watch(&self.target, self.mode)
+        {
+            // Removed again since: looked for again.
+            self.at = identity(&self.target)?;
+            if self.at.is_some() {
+                return Err(io::Error::other(error));
+            }
+        }
+        Ok(true)
+    }
 }
 
 /// What the system's watcher told: paths that changed, or that it may have
@@ -570,18 +671,31 @@ impl Tree {
 /// gone. The first listing, of everything, is made once the system's
 /// watch is armed, so nothing made in between is missed; the watch ends
 /// when it fails. After a later one that failed, everything is listed
-/// again, every second until one works.
+/// again, every second until one works. When another directory is at the
+/// target of `armed`, it is watched and everything listed again; while
+/// none is there, it is looked for every second. The watch ends when that
+/// cannot be done.
 pub(crate) fn send_batches(
     raw: &Receiver<Heard>,
     sender: &UnboundedSender<WatchEvent>,
     tree: &Tree,
+    armed: &mut Armed,
 ) {
     let wide = tree.wide_rules();
     let mut seen = Baseline::new();
     let mut heard = Vec::new();
     loop {
         let (mut scopes, mut touched) = (Scopes::default(), BTreeSet::new());
-        if !seen.known() {
+        let moved = match armed.follow() {
+            Ok(moved) => moved,
+            Err(error) => {
+                sender
+                    .unbounded_send(WatchEvent::Unavailable(Arc::new(error)))
+                    .ok();
+                return;
+            }
+        };
+        if moved || !seen.known() {
             scopes = Scopes::all(&tree.root);
         }
         for told in heard.drain(..) {
@@ -606,8 +720,9 @@ pub(crate) fn send_batches(
                 return;
             }
         }
-        // A listing that failed is tried again every second.
-        let first = match seen.known() {
+        // A listing that failed, or a target not there, is tried again
+        // every second.
+        let first = match seen.known() && armed.watching() {
             true => raw.recv().map_err(|_| RecvTimeoutError::Disconnected),
             false => raw.recv_timeout(EVERY),
         };
