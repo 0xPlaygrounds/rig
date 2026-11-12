@@ -1507,7 +1507,12 @@ A plugin's settings are its table of the user's `RIG_HOME/settings.toml`:
 `app.add_setting::<T>("section")` in `build` inserts the resource `T` read
 from `[section]`, else `T::default()`; a table that does not read as `T`,
 or a file that is not TOML, refuses the run (exit 2) with what is wrong,
-naming the file, the table and the key. A project has no settings. A test
+naming the file, the table and the key. Read it in `build` even when only
+one front uses it, so `rig plugin check --build` checks it as a start
+does: any read outside `build` (in practice, any in `finish`, as the
+harness chooses the run's front as its own plugins finish) refuses the
+run. A
+project has no settings. A test
 inserts `Settings::from_toml(..)` before adding the plugin, so the user's
 file is never read. Here a
 [command-line option](#fronts-options-and-commands) overrides the setting.

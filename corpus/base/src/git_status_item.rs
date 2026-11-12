@@ -19,7 +19,14 @@ use rig_harness::prelude::*;
 pub struct GitStatusItemPlugin;
 
 impl Plugin for GitStatusItemPlugin {
-    fn build(&self, _app: &mut App) {}
+    /// Reads the table whatever front takes the run, so a build describing
+    /// itself checks it.
+    fn build(&self, app: &mut App) {
+        #[cfg(feature = "tui")]
+        app.add_setting::<GitStatusSettings>("git_status");
+        #[cfg(not(feature = "tui"))]
+        let _ = app;
+    }
 
     /// Once every plugin offered its front, so the run's is known.
     fn finish(&self, app: &mut App) {

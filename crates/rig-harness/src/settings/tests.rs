@@ -4,6 +4,8 @@ use rig_harness_protocol::Home;
 use serde::Deserialize;
 
 use super::{AppSettingsExt, Settings};
+use crate::host::cli::{AppCliExt, Front};
+use crate::host::launcher::Invoked;
 use crate::services::RigHome;
 use rig_ecs::agent::NoticeLevel;
 
@@ -186,5 +188,42 @@ fn a_table_no_plugin_reads_is_named_with_the_one_it_likely_misspells() {
                 "settings.toml: no plugin reads [tuii]; did you mean [tui]?"
             ),
         ]
+    );
+}
+
+/// Reads `[limits]` only when the terminal front `tui` takes the run.
+struct ReadsInItsFront;
+
+impl Plugin for ReadsInItsFront {
+    fn build(&self, _app: &mut App) {}
+
+    fn finish(&self, app: &mut App) {
+        if app.runs_front("tui") {
+            app.add_setting::<Limits>("limits");
+        }
+    }
+}
+
+#[test]
+fn a_table_read_once_the_front_is_chosen_refuses_the_run() {
+    // A describing build chooses no front, so it would never read the
+    // table a terminal start reads and refuses.
+    let mut app = App::new();
+    app.insert_resource(Settings::from_toml("[limits]\ncalls = 3\n"))
+        .insert_resource(Invoked {
+            terminal: true,
+            ..Invoked::default()
+        })
+        .add_front(Front::new("tui").on_terminal())
+        .add_plugins(ReadsInItsFront);
+    app.finish();
+    app.cleanup();
+    assert!(app.runs_front("tui"));
+    let refusal = app.world().resource::<Settings>().refusal();
+    assert!(
+        refusal
+            .as_deref()
+            .is_some_and(|why| why.contains("[limits]") && why.contains("`build`")),
+        "{refusal:?}"
     );
 }

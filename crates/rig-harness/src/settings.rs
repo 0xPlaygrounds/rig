@@ -4,7 +4,12 @@
 //! that type as a resource, its `Default` where the user set nothing. A
 //! table that does not read as the type refuses the run, naming the file,
 //! the table and the key, as does a file that is not TOML or cannot be
-//! read ([`Settings::problems`]). A table no plugin reads is said at
+//! read ([`Settings::problems`]). A plugin reads its table in `build`,
+//! whatever front takes the run, so a build describing itself checks it
+//! as a start does: a table read once the run's front is chosen refuses
+//! the run. The harness chooses it as its own plugins finish, so in
+//! practice any table read in a `finish` refuses the run. A table no
+//! plugin reads is said at
 //! startup: an error when it is a likely misspelling of one a plugin reads
 //! (`[trafic]` for `[traffic]`), else a note, such as for a disabled
 //! plugin's table.
@@ -41,6 +46,7 @@ use rig_harness_protocol::config::SettingsFile;
 use serde::de::DeserializeOwned;
 
 use crate::describe::described_settings;
+use crate::host::cli::Cli;
 use crate::run::closest;
 use crate::services::RigHome;
 
@@ -53,6 +59,8 @@ pub struct Settings {
     problems: Vec<String>,
     /// The tables a plugin read.
     read: BTreeSet<String>,
+    /// Why a plugin read a table too late, once the run's front was chosen.
+    late: Vec<String>,
 }
 
 impl Default for Settings {
@@ -93,6 +101,7 @@ impl Settings {
             tables: toml::Table::new(),
             problems: Vec::new(),
             read: BTreeSet::new(),
+            late: Vec::new(),
         }
     }
 
@@ -160,14 +169,16 @@ impl Settings {
         &self.problems
     }
 
-    /// The [`problems`](Self::problems) on one line, as the run is refused
-    /// over them; none without problems.
+    /// The tables read too late and the [`problems`](Self::problems), on
+    /// one line, as the run is refused over them; none without either.
     pub(crate) fn refusal(&self) -> Option<String> {
         let problems: Vec<String> = (self.problems.iter())
             .map(|problem| problem.trim_end().replace('\n', " "))
             .collect();
-        (!problems.is_empty())
-            .then(|| format!("{}; fix the file and start again", problems.join("; ")))
+        let problems = (!problems.is_empty())
+            .then(|| format!("{}; fix the file and start again", problems.join("; ")));
+        let refusals: Vec<String> = self.late.iter().cloned().chain(problems).collect();
+        (!refusals.is_empty()).then(|| refusals.join("; "))
     }
 
     /// Inserts the settings of `world`'s home, unless it has some: those of
@@ -225,7 +236,9 @@ pub trait AppSettingsExt {
     /// from `RIG_HOME/settings.toml` the first time (unless the app
     /// inserted some, as a test does). A table that does not read as `T`
     /// inserts `T::default()` and is one of [`Settings::problems`], which
-    /// refuse the run.
+    /// refuse the run. Call it in the plugin's `build`: a table read once
+    /// the run's front is chosen, which in practice is any read in a
+    /// `finish`, refuses the run.
     fn add_setting<T: Resource + DeserializeOwned + Default>(&mut self, section: &str)
     -> &mut Self;
 }
@@ -237,7 +250,13 @@ impl AppSettingsExt for App {
     ) -> &mut Self {
         let world = self.world_mut();
         Settings::init(world);
+        let late = world.get_resource::<Cli>().is_some_and(Cli::decided);
         let mut settings = world.resource_mut::<Settings>();
+        if late {
+            settings.late.push(format!(
+                "a plugin read [{section}] once the run's front was chosen; it must read it in its `build`, so a build describing itself checks it"
+            ));
+        }
         settings.read.insert(section.to_owned());
         let value = settings.get::<T>(section).unwrap_or_else(|problem| {
             warn!("{problem}");
