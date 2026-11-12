@@ -270,9 +270,9 @@ bevy_remote = { version = "=0.20.1", default-features = false }
 bevy_tasks = { version = "=0.20.1", default-features = false, features = ["multi_threaded"] }
 bevy_time = { version = "=0.20.1", default-features = false, features = ["std", "bevy_reflect"] }
 bytes = "1"
-candle-core = "0.11"
-candle-nn = "0.11"
-candle-transformers = "0.11"
+candle-core = "0.11.1"
+candle-nn = "0.11.1"
+candle-transformers = "0.11.1"
 chrono = "0.4"
 convert_case = "0.11"
 crossbeam-channel = "0.5.15"
@@ -282,7 +282,7 @@ crossterm = "0.29"
 divan = "0.1.15"
 ctrlc = "3.4.4"
 dotenvy = "0.15"
-epub = "2"
+epub = "2.1.6"
 # 4.5: the `hf-hub-*` feature split rig-fastembed forwards.
 fastembed = { version = "4.5", default-features = false }
 fastrand = "2"
@@ -373,7 +373,7 @@ tokio-test = "0.4"
 tokio-tungstenite = { version = "0.29", default-features = false }
 toml = "1"
 toml_edit = "0.25"
-tokenizers = { version = "0.22", default-features = false }
+tokenizers = { version = "0.23", default-features = false }
 tonic = "0.14"
 tonic-build = "0.14"
 tonic-prost = "0.14"
