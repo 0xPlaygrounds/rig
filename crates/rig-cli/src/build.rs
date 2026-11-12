@@ -21,7 +21,7 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
 use rig_harness_protocol::{
-    AgentDescription, Home, SessionId, config, env, first_errors, without_secrets,
+    AgentDescription, Home, RunDir, SessionId, config, env, first_errors, without_secrets,
 };
 
 use super::project::{self, PACKAGE, RigSource};
@@ -249,7 +249,7 @@ pub fn check(home: &Home) -> Result<AgentDescription> {
 }
 
 /// The binary cargo builds the agent into.
-fn artifact(home: &Home) -> PathBuf {
+pub fn artifact(home: &Home) -> PathBuf {
     home.target()
         .join("debug")
         .join(format!("{PACKAGE}{}", std::env::consts::EXE_SUFFIX))
@@ -531,7 +531,7 @@ impl BuildLog {
 /// the copy carries its [`stamp`], once it described itself: a build that
 /// does not is rejected, and the build fails. A build `rig build` staged
 /// for any launcher that differs from this one is older, so it goes.
-fn stage(home: &Home, staged: &Path, staging: Staging) -> Result<()> {
+pub fn stage(home: &Home, staged: &Path, staging: Staging) -> Result<()> {
     let artifact = artifact(home);
     let built = stamp(&artifact)?;
     if let Err(why) = described(home, &artifact) {
@@ -556,22 +556,40 @@ fn stage(home: &Home, staged: &Path, staging: Staging) -> Result<()> {
     }
     let temporary = home.bin().join("staged.tmp");
     fs::create_dir_all(home.bin())?;
-    fs::copy(&artifact, &temporary)?;
-    File::options()
-        .write(true)
-        .open(&temporary)?
-        .set_modified(fs::metadata(&artifact)?.modified()?)?;
+    copy(&artifact, &temporary)?;
     fs::rename(&temporary, staged)?;
     prune_described(home);
     Ok(())
 }
 
-/// Removes the reports of builds no file in [`Home::bin`] is a copy of.
+/// Copies the build `from` to `to`, keeping its modification time so the
+/// copy carries its [`stamp`].
+fn copy(from: &Path, to: &Path) -> std::io::Result<()> {
+    fs::copy(from, to)?;
+    File::options()
+        .write(true)
+        .open(to)?
+        .set_modified(fs::metadata(from)?.modified()?)
+}
+
+/// Links the build `from` at `to`, a path with no file, else copies it
+/// ([`copy`]), such as on another file system. Either way `to` carries
+/// its [`stamp`] and stays when `from` is replaced.
+pub fn hold(from: &Path, to: &Path) -> std::io::Result<()> {
+    fs::hard_link(from, to).or_else(|_| copy(from, to))
+}
+
+/// Removes the reports of builds no file in [`Home::bin`], nor any build a
+/// launcher holds ([`locks::builds`]), is a copy of.
 fn prune_described(home: &Home) {
-    let stamps: BTreeSet<String> = fs::read_dir(home.bin())
+    let held = fs::read_dir(home.runs())
         .into_iter()
         .flatten()
         .flatten()
+        .map(|run| locks::builds(&RunDir::at(run.path())));
+    let stamps: BTreeSet<String> = std::iter::once(home.bin())
+        .chain(held)
+        .flat_map(|directory| fs::read_dir(directory).into_iter().flatten().flatten())
         .filter_map(|entry| stamp(&entry.path()).ok())
         .map(|stamp| home.described(&stamp))
         .filter_map(|report| Some(report.file_name()?.to_owned()))
@@ -731,7 +749,7 @@ pub fn passed_over(home: &Home, staged: &Path) -> bool {
 }
 
 /// What tells builds apart: the binary's modification time and size.
-fn stamp(binary: &Path) -> Result<String> {
+pub fn stamp(binary: &Path) -> Result<String> {
     let metadata = fs::metadata(binary)?;
     let modified = metadata
         .modified()?

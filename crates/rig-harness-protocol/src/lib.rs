@@ -482,18 +482,10 @@ impl Home {
         self.bin().join(format!("staged-{session}"))
     }
 
-    /// The build the launcher of `session` runs until it is ready.
-    pub fn trial_for(&self, session: &SessionId) -> PathBuf {
-        self.bin().join(format!("trial-{session}"))
-    }
-
     /// The session whose launcher owns a file of [`Home::bin`] named
-    /// `name`: a `staged-<session>` or `trial-<session>`.
+    /// `name`: a `staged-<session>`.
     pub fn owner_of(name: &str) -> Option<SessionId> {
-        name.strip_prefix("trial-")
-            .or_else(|| name.strip_prefix("staged-"))?
-            .parse()
-            .ok()
+        name.strip_prefix("staged-")?.parse().ok()
     }
 
     /// `data/`, where plugins keep files across sessions and projects.

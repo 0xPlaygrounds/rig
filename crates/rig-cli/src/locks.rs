@@ -2,6 +2,7 @@
 //! session's launcher lock, and each launcher's run directory.
 
 use std::fs::{self, File, TryLockError};
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use rig_harness_protocol::{Home, RunDir, SessionDir, is_free, lock_file};
@@ -11,7 +12,7 @@ use super::build::BuildOutput;
 
 /// This launcher's [`RunDir`], held locked while it lives. Dropping it
 /// kills the process groups an agent left listed there and removes the
-/// directory, unless it keeps the log of a run that failed.
+/// directory, but for the log of a run that failed.
 pub struct Run {
     dir: RunDir,
     _lock: File,
@@ -28,6 +29,7 @@ impl Drop for Run {
     fn drop(&mut self) {
         // Jobs a reload kept for a restart that did not come.
         self.dir.kill_left_groups().ok();
+        fs::remove_dir_all(builds(&self.dir)).ok();
         if !self.dir.log().exists() {
             fs::remove_dir_all(self.dir.path()).ok();
         }
@@ -45,9 +47,15 @@ pub fn hold_run(home: &Home) -> Result<Run> {
     Ok(Run { dir, _lock: lock })
 }
 
+/// The directory of the builds the launcher of `run` holds, each a file
+/// of its own that no other launcher claims or replaces.
+pub fn builds(run: &RunDir) -> PathBuf {
+    run.path().join("builds")
+}
+
 /// Removes what launchers that are gone, such as one killed with its
 /// terminal, left: the jobs an agent of theirs left listed, their staged
-/// and trial builds, their run directories but the logs of failed runs,
+/// and held builds, their run directories but the logs of failed runs,
 /// and the directories of their sessions that saved nothing. Call it holding [`lock`].
 pub fn sweep(home: &Home) -> Result<()> {
     if let Ok(entries) = fs::read_dir(home.bin()) {
@@ -71,6 +79,7 @@ pub fn sweep(home: &Home) -> Result<()> {
                 // Jobs a reload kept, when that launcher was killed before
                 // the restart.
                 run.kill_left_groups().ok();
+                fs::remove_dir_all(builds(&run)).ok();
                 if !run.log().exists() {
                     fs::remove_dir_all(run.path())?;
                 }
@@ -102,7 +111,7 @@ pub fn sweep(home: &Home) -> Result<()> {
 /// another rig's build with nothing to do holds it for a fraction of a
 /// second, so runs started together stay quiet, while a real build still
 /// says why the start waits.
-const QUIET_WAIT: Duration = Duration::from_secs(3);
+pub const QUIET_WAIT: Duration = Duration::from_secs(3);
 
 /// How often a quiet wait tries the lock.
 const LOCK_POLL: Duration = Duration::from_millis(50);
@@ -119,13 +128,27 @@ pub fn hold_build_lock(home: &Home, output: BuildOutput) -> Result<File> {
         BuildOutput::Live => Duration::ZERO,
         BuildOutput::LogOnly => QUIET_WAIT,
     };
-    take(&file, quiet, || {
-        eprintln!(
-            "Waiting for another rig on {} to finish building…",
-            home.root().display()
-        );
-    })?;
+    take(&file, quiet, || say_waiting(home))?;
     Ok(file)
+}
+
+/// Says on stderr that the launcher waits for another's build on `home`.
+pub fn say_waiting(home: &Home) {
+    eprintln!(
+        "Waiting for another rig on {} to finish building…",
+        home.root().display()
+    );
+}
+
+/// The lock [`hold_build_lock`] waits for, when no other launcher holds
+/// it now.
+pub fn try_build_lock(home: &Home) -> Result<Option<File>> {
+    let file = lock_file(&home.build_lock(), true)?;
+    match file.try_lock() {
+        Ok(()) => Ok(Some(file)),
+        Err(TryLockError::WouldBlock) => Ok(None),
+        Err(TryLockError::Error(failure)) => Err(failure.into()),
+    }
 }
 
 /// Takes `lock`, waiting as long as it takes; once the wait outlasted
