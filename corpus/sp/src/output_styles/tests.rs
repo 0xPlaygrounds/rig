@@ -186,3 +186,46 @@ fn a_style_is_in_each_request_once_stays_out_of_subagents_and_resumes() {
         .count();
     assert_eq!((style_of(&app, agent).as_deref(), gone), (Some(DEFAULT), 1));
 }
+
+/// A watch that could not list says nothing of the styles, so they stay
+/// as read; the next change it tells reads them again.
+#[test]
+fn a_failed_listing_keeps_the_styles() {
+    let home = scratch_home("sp-output-styles-unavailable");
+    let project = project(&home);
+    let models = Scripts {
+        main: MockCompletionModel::from_stream_turns(vec![reply("ok")]),
+        sub: MockCompletionModel::from_stream_turns(vec![reply("ok")]),
+    };
+    let (mut app, wakes) = start(&home, &SessionId::generate(), &project, &models);
+    let agent = main_agent(&mut app);
+    say(&mut app, &wakes, agent, "/style pirate");
+    // The watches' own events are left out: this test tells them.
+    let world = app.world_mut();
+    let watches: Vec<Entity> = (world.query_filtered::<Entity, With<StyleWatch>>())
+        .iter(world)
+        .collect();
+    for watch in &watches {
+        world.entity_mut(*watch).remove::<FileWatch>();
+    }
+    let pirate = project.join(".rig/styles/pirate.md");
+    fs::remove_file(&pirate).ok();
+    let mut tell = |event: WatchEvent| {
+        if let Some(&watch) = watches.first() {
+            app.world_mut().write_message(FileChanges { watch, event });
+        }
+        for _ in 0..3 {
+            app.update();
+            run_until(&mut app, &wakes, idle);
+        }
+        style_of(&app, agent)
+    };
+
+    let failure = std::io::Error::other("the listing failed");
+    let kept = tell(WatchEvent::Unavailable(std::sync::Arc::new(failure)));
+    let read_again = tell(WatchEvent::Changed(vec![pirate]));
+    fs::remove_dir_all(home.root()).ok();
+
+    assert_eq!(kept.as_deref(), Some("pirate"));
+    assert_eq!(read_again.as_deref(), Some(DEFAULT));
+}

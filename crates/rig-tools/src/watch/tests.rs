@@ -560,7 +560,7 @@ fn a_local_watch_of_a_root_behind_a_locked_directory_cannot_start() {
 
 /// A local watch whose listing fails, of a directory below the root or of
 /// the root itself, reports a file edited meanwhile once a listing works,
-/// as the default watch does.
+/// as the default watch does: within a second, though no event says so.
 #[cfg(unix)]
 #[test]
 fn an_edit_made_while_a_listing_fails_is_reported_once_it_works() {
@@ -593,7 +593,6 @@ fn an_edit_made_while_a_listing_fails_is_reported_once_it_works() {
     raw_sender.send(super::Heard::Paths(vec![f.clone()])).ok();
     let sub_failing = told(&events, wait);
     mode(&sub, 0o755).ok();
-    raw_sender.send(super::Heard::Paths(vec![sub.clone()])).ok();
     let sub_back = told(&events, wait);
     mode(&root, 0o300).ok();
     std::fs::write(&a, "two").ok();
@@ -669,6 +668,12 @@ fn a_directory_swapped_in_with_the_same_names_reports_its_files() {
     let events = batches(watch);
     std::fs::create_dir_all(base.join("new")).ok();
     std::fs::write(base.join("new/x.rs"), "two").ok();
+    // Written within one tick of the clock, both would have the same time.
+    let later = std::time::SystemTime::now() + Duration::from_secs(5);
+    let new = std::fs::File::options()
+        .write(true)
+        .open(base.join("new/x.rs"));
+    assert!(new.and_then(|file| file.set_modified(later)).is_ok());
     std::fs::rename(top.join("dir"), base.join("old")).ok();
     std::fs::rename(base.join("new"), top.join("dir")).ok();
     let mut reported = seen(&events, Duration::from_secs(1));
