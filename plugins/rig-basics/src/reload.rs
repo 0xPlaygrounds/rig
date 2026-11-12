@@ -251,7 +251,7 @@ fn cancel_on_interrupt(
 fn on_cancel_reload(
     _: On<CancelReload>,
     mut status: ResMut<ReloadStatus>,
-    (build, launcher): (Option<Res<rebuild::ReloadBuild>>, Option<Res<LauncherFile>>),
+    build: Option<Res<rebuild::ReloadBuild>>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -266,7 +266,7 @@ fn on_cancel_reload(
         } => "Queued update cancelled.",
         ReloadStatus::Building { .. } => {
             rebuild::stop(&mut commands);
-            rebuild::cancelled(build.as_deref(), launcher.as_deref())
+            rebuild::cancelled(build.as_deref())
         }
         ReloadStatus::Idle | ReloadStatus::Ready | ReloadStatus::Failed => {
             notices.write(Notice::info(None, "No reload or update to cancel."));

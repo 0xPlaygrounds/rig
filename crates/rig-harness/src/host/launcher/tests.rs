@@ -196,7 +196,7 @@ fn the_launcher_reads_how_the_run_ended() {
             _ => 0,
         };
         let status = std::process::ExitStatus::from_raw(i32::from(code) << 8);
-        AgentEnd::read(&run, status).ok()
+        Some(AgentEnd::read(&run, status))
     };
     let failed = ExitReason::Failed(FailCode::or_failure(3));
     let ends = [

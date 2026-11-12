@@ -382,7 +382,7 @@ fn run_agent(
             std::thread::sleep(POLL);
         };
         drop(watch);
-        let end = AgentEnd::read(run, status)?;
+        let end = AgentEnd::read(run, status);
         let reload =
             matches!(end, AgentEnd::Reload | AgentEnd::Switch(_)) && stop::heard().is_none();
         let restart = !headless || (answers_prompt && end == AgentEnd::Reload);

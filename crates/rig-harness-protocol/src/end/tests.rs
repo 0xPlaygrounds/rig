@@ -43,7 +43,7 @@ fn each_end_reads_back_as_written_when_the_agent_exited_with_its_code() {
         .iter()
         .map(|end| {
             end.write(&run).ok()?;
-            AgentEnd::read(&run, exited(end.code())).ok()
+            Some(AgentEnd::read(&run, exited(end.code())))
         })
         .collect();
     std::fs::remove_dir_all(run.path()).ok();
@@ -51,7 +51,8 @@ fn each_end_reads_back_as_written_when_the_agent_exited_with_its_code() {
 }
 
 /// A record whose code is not the one the agent exited with, as when it
-/// was killed after writing it, is not read; nor is a missing one. The
+/// was killed after writing it, is not read; nor is a missing or garbled
+/// one. The
 /// status alone never asks to reload or switch.
 #[cfg(unix)]
 #[test]
@@ -69,18 +70,21 @@ fn without_a_record_for_its_exit_the_status_says_how_the_agent_ended() {
     ];
     let absent: Vec<Option<AgentEnd>> = without
         .iter()
-        .map(|(status, _)| AgentEnd::read(&run, *status).ok())
+        .map(|(status, _)| Some(AgentEnd::read(&run, *status)))
         .collect();
     let switch = AgentEnd::Switch(None);
     let written = switch.write(&run);
-    let after_kill = AgentEnd::read(&run, killed).ok();
-    let after_quit = AgentEnd::read(&run, exited(0)).ok();
+    let after_kill = Some(AgentEnd::read(&run, killed));
+    let after_quit = Some(AgentEnd::read(&run, exited(0)));
+    let garbled = std::fs::write(run.path().join(super::FILE), "reload sometime");
+    let after_garble = Some(AgentEnd::read(&run, exited(75)));
     std::fs::remove_dir_all(run.path()).ok();
-    assert!(written.is_ok());
+    assert!(written.is_ok() && garbled.is_ok());
     let expected: Vec<Option<AgentEnd>> = without.into_iter().map(|(_, end)| Some(end)).collect();
     assert_eq!(absent, expected);
     assert_eq!(after_kill, Some(AgentEnd::Failed(FailCode::FAILURE)));
     assert_eq!(after_quit, Some(AgentEnd::Quit));
+    assert_eq!(after_garble, Some(AgentEnd::Failed(FailCode::FAILURE)));
 }
 
 #[test]
@@ -120,7 +124,7 @@ fn the_fake_agent_says_what_the_agent_says() {
                 .env_remove(crate::env::DESCRIBE)
                 .status()
                 .ok()?;
-            let read = AgentEnd::read(&run, status).ok()?;
+            let read = AgentEnd::read(&run, status);
             Some((read, run.heard_ready(), run.took_screen()))
         })
         .collect();

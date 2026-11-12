@@ -186,33 +186,23 @@ struct Said {
     notes: Vec<String>,
 }
 
-/// What a `/update` said whose `rig update` is the shell `script`, with
-/// this rig's launcher at `$RIG_INSTALLED`, once it failed.
+/// What a `/update` said whose `rig update` is the shell `script`, once
+/// it failed.
 fn failed_update(name: &str, script: &str) -> Said {
     use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
     use rig_harness_test_support::{MemoryStore, app_on, first_agent, run_until, scripted_models};
 
-    use crate::reload::{LauncherFile, ReloadPlugin};
+    use crate::reload::ReloadPlugin;
 
     let launcher = failing_launcher(name, "");
     let dir = launcher
         .parent()
         .map(std::path::Path::to_path_buf)
         .unwrap_or_default();
-    let installed = dir.join("rig-installed");
-    std::fs::write(&installed, "old").ok();
-    let script = format!(
-        "#!/bin/sh\nRIG_INSTALLED='{}'\n{script}\n",
-        installed.display()
-    );
-    std::fs::write(&launcher, script).ok();
+    std::fs::write(&launcher, format!("#!/bin/sh\n{script}\n")).ok();
     let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
     let (mut app, wakes) = app_on(&MemoryStore::default());
     app.insert_resource(scripted_models([("test/model", &model)]))
-        .insert_resource(LauncherFile::new(
-            installed.clone(),
-            harness_protocol::Stamp::of(&installed),
-        ))
         .add_plugins((AgentPlugin, SessionLogPlugin, ReloadPlugin))
         .init_resource::<Said>()
         .add_systems(
@@ -282,11 +272,11 @@ fn a_failed_update_shows_what_rig_update_said() {
 }
 
 /// An update that installed the new launcher, whose agent build then
-/// failed, is told as a failed build: the launcher's file changed, whatever
-/// `rig update` said.
+/// failed, is told as a failed build: the launcher's file changed since
+/// the update started, whatever `rig update` said.
 #[test]
 fn an_update_that_installed_and_failed_to_build_says_the_build_failed() {
-    let script = "echo new > \"$RIG_INSTALLED.new\"; mv \"$RIG_INSTALLED.new\" \"$RIG_INSTALLED\"
+    let script = "cp \"$0\" \"$0.new\"; echo '# new' >> \"$0.new\"; mv \"$0.new\" \"$0\"
 echo 'error: could not compile `rig-harness`' >&2
 exit 1";
     let Said { notes, .. } = failed_update("installed", script);

@@ -72,28 +72,17 @@ impl AgentEnd {
 
     /// How the agent of `run` that exited with `status` ended: its record
     /// when it wrote one for that exit code, else what the code says alone
-    /// ([`Self::of_status`]).
-    ///
-    /// # Errors
-    ///
-    /// When the record exists but cannot be read, or does not read as an
-    /// end.
-    pub fn read(run: &RunDir, status: ExitStatus) -> io::Result<Self> {
-        let text = match std::fs::read_to_string(run.path().join(FILE)) {
-            Ok(text) => text,
-            Err(failure) if failure.kind() == io::ErrorKind::NotFound => {
-                return Ok(Self::of_status(status));
-            }
-            Err(failure) => return Err(failure),
-        };
-        let end: Self = text.parse().map_err(|why: String| {
-            io::Error::new(io::ErrorKind::InvalidData, format!("{FILE}: {why}"))
-        })?;
-        Ok(if status.code() == Some(i32::from(end.code())) {
-            end
-        } else {
-            Self::of_status(status)
-        })
+    /// ([`Self::of_status`]). A record that cannot be read or does not read
+    /// as an end is no record: the launcher must still clean up after the
+    /// agent and put the terminal back.
+    pub fn read(run: &RunDir, status: ExitStatus) -> Self {
+        let recorded = std::fs::read_to_string(run.path().join(FILE))
+            .ok()
+            .and_then(|text| text.parse::<Self>().ok());
+        match recorded {
+            Some(end) if status.code() == Some(i32::from(end.code())) => end,
+            _ => Self::of_status(status),
+        }
     }
 
     /// How an agent that exited with `status` and left no record for it

@@ -32,14 +32,10 @@ pub(crate) fn stop(commands: &mut Commands) {
 }
 
 /// What a cancel of `build` says: an update cancelled once the new rig is
-/// installed at `launcher`'s path leaves it there, for the next start or
-/// reload.
-pub(crate) fn cancelled(
-    build: Option<&ReloadBuild>,
-    launcher: Option<&LauncherFile>,
-) -> &'static str {
+/// installed leaves it there, for the next start or reload.
+pub(crate) fn cancelled(build: Option<&ReloadBuild>) -> &'static str {
     match build {
-        Some(build) if build.installed(launcher) => {
+        Some(build) if build.installed() => {
             "Update cancelled during the agent build: the new rig is installed, and the \
              next start or /reload runs it."
         }
@@ -62,6 +58,9 @@ pub(crate) struct ReloadBuild {
     /// a build queued behind this one, or an older one when this one fails
     /// before it starts its log, may have written.
     output: Vec<String>,
+    /// The launcher's file as this build started, which `rig update`
+    /// replaces once it installed the new rig.
+    installed: LauncherFile,
 }
 
 impl ReloadBuild {
@@ -71,6 +70,8 @@ impl ReloadBuild {
         agent: Entity,
         wake: Wake,
     ) -> std::io::Result<Self> {
+        let path = std::path::PathBuf::from(launcher);
+        let installed = LauncherFile::new(path.clone(), harness_protocol::Stamp::of(&path));
         let mut command = Command::new(launcher);
         command
             .arg(rebuild.command())
@@ -94,13 +95,14 @@ impl ReloadBuild {
             rebuild,
             lines,
             output: Vec::new(),
+            installed,
         })
     }
 
-    /// Whether this is `rig update` and a new launcher is at `launcher`'s
-    /// path, so a failure is its agent build's.
-    fn installed(&self, launcher: Option<&LauncherFile>) -> bool {
-        self.rebuild == Rebuild::Update && launcher.is_some_and(LauncherFile::replaced)
+    /// Whether this is `rig update` and it replaced the launcher's file
+    /// since it started, so a failure is its agent build's.
+    fn installed(&self) -> bool {
+        self.rebuild == Rebuild::Update && self.installed.replaced()
     }
 
     /// At most `count` lines of the output from the first error on, or its
@@ -265,7 +267,7 @@ fn drain_reload(
         .first()
         .map(|line| format!(": {}", line.trim()))
         .unwrap_or_default();
-    if build.rebuild == Rebuild::Update && !build.installed(launcher.as_deref()) {
+    if build.rebuild == Rebuild::Update && !build.installed() {
         // Before any build: cargo's error, not the build log, says why;
         // without one, `rig update`'s own line said it already.
         if !first.is_empty() {
