@@ -1778,6 +1778,26 @@ fn an_exit_code_of_75_alone_is_a_failure_not_a_reload() {
     assert_eq!(starts, Ok((ExitCode::FAILURE, 1)), "{ended:?}");
 }
 
+/// A reload's record is cleared before the next start: an agent that
+/// reloaded, then exits with the reload code alone, ended.
+#[cfg(unix)]
+#[test]
+fn an_earlier_start_s_record_is_not_read_for_the_next() {
+    let home = builds("stale-end", "", "");
+    let agent: &[&[Step]] = &[
+        &[sh(LOG_SESSION), Step::Ready, Step::End(AgentEnd::Reload)],
+        &[sh(LOG_SESSION), Step::Ready, Step::Exit(75)],
+        &[sh(LOG_SESSION), Step::Ready],
+    ];
+    let ended = run_once(&home, agent, Start::New, &Invocation::default(), false);
+    fs::remove_dir_all(home.root()).ok();
+    let ended = ended.map_err(|failure| failure.to_string());
+    let starts = ended
+        .as_ref()
+        .map(|(ended, started)| (ended.code, started.lines().count()));
+    assert_eq!(starts, Ok((ExitCode::FAILURE, 2)), "{ended:?}");
+}
+
 /// An agent killed after it asked to switch sessions, before it exited,
 /// switches nothing: neither then nor on the session's next reload.
 #[cfg(unix)]
