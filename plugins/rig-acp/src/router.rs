@@ -142,6 +142,36 @@ fn runs_in(id: &SessionId, directory: &Path, cwd: &Path) -> Result<(), Error> {
     }
 }
 
+/// The router's launcher warnings, taken for the session being started.
+/// Dropped before that session connected, they go back for the next one.
+struct Unshown<'a> {
+    from: &'a Mutex<Vec<String>>,
+    list: Vec<String>,
+}
+
+impl<'a> Unshown<'a> {
+    fn take(from: &'a Mutex<Vec<String>>) -> Self {
+        let list = std::mem::take(&mut *locked(from));
+        Self { from, list }
+    }
+
+    /// The session connected, so it shows them.
+    fn shown(mut self) {
+        self.list.clear();
+    }
+}
+
+impl Drop for Unshown<'_> {
+    fn drop(&mut self) {
+        if !self.list.is_empty() {
+            let mut held = locked(self.from);
+            let later = std::mem::take(&mut *held);
+            *held = std::mem::take(&mut self.list);
+            held.extend(later);
+        }
+    }
+}
+
 /// An error the client gets for one of the router's own failures.
 fn internal(why: impl ToString) -> Error {
     crate::error(Error::internal_error(), why)
@@ -169,11 +199,12 @@ impl Router {
         std::fs::create_dir_all(run.path()).map_err(internal)?;
         let run_lock = lock_file(&run.lock(), true).map_err(internal)?;
         run_lock.lock().map_err(internal)?;
+        let unshown = Unshown::take(&self.warnings);
         let mut launch = self.launch.clone();
         launch.carry = Carry {
             session: Some(id.clone()),
             reason: Some(reason),
-            warnings: std::mem::take(&mut *locked(&self.warnings)),
+            warnings: unshown.list.clone(),
             ..Carry::default()
         };
         let mut args = self.command.args.clone();
@@ -246,6 +277,7 @@ impl Router {
         let cx = connected
             .await
             .map_err(|_| internal("the session process did not start"))?;
+        unshown.shown();
         let child = Arc::new(Child {
             cx,
             run: number,
