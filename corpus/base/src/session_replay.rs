@@ -458,8 +458,8 @@ fn exit_reason(record: &EffectRecord) -> Option<ExitReason> {
         "Signal" => Some(ExitReason::Signal),
         _ if reason.starts_with("Switch(") => Some(ExitReason::Switch(None)),
         _ => reason
-            .strip_prefix("Failed(")?
-            .strip_suffix(')')?
+            .strip_prefix("Failed(FailCode(")?
+            .strip_suffix("))")?
             .parse()
             .ok()
             .map(|code| ExitReason::Failed(FailCode::or_failure(code))),
