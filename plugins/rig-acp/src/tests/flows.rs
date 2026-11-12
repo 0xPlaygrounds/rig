@@ -135,6 +135,39 @@ fn the_first_session_shows_its_routers_launcher_warnings_once() {
 }
 
 #[test]
+#[cfg(unix)]
+fn a_session_that_fails_to_start_leaves_the_launcher_warnings_for_the_next() {
+    use std::os::unix::fs::PermissionsExt;
+    let mut place = Place::new("launcher-warning-kept");
+    let warning = "The launcher's own warning.";
+    place
+        .env
+        .push(("RIG_WARNING".to_owned(), format!("[{warning:?}]")));
+    // A directory the session's process cannot enter: it is checked to
+    // exist, and the start fails.
+    let shut = place.project.join("shut");
+    std::fs::create_dir(&shut).ok();
+    std::fs::set_permissions(&shut, std::fs::Permissions::from_mode(0o000)).ok();
+    let router = drive(&place, full_client(), async |driven| {
+        let failed = driven
+            .cx
+            .send_request(acp::NewSessionRequest::new(&shut))
+            .block_task()
+            .await;
+        assert!(failed.is_err(), "{failed:?}");
+        let new = driven.new_session(Vec::new()).await;
+        assert!(new.is_some(), "no session");
+        let Some(new) = new else { return };
+        let id = new.session_id;
+        assert!(driven.prompt(&id, "/mcp").await.is_ok());
+        let told = told(driven, &id);
+        assert_eq!(told.matches(warning).count(), 1, "{told}");
+    });
+    std::fs::set_permissions(&shut, std::fs::Permissions::from_mode(0o700)).ok();
+    assert!(router.is_some());
+}
+
+#[test]
 fn a_prompt_streams_its_tool_call_and_text_before_its_answer_and_commands_answer_too() {
     let place = Place::new("prompt");
     let router = drive(&place, acp::ClientCapabilities::new(), async |driven| {
