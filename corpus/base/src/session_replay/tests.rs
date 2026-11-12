@@ -424,7 +424,7 @@ fn a_debug_quoted_text_reads_back_whole() {
             "{quoted}"
         );
     }
-    for malformed in ["\\q", "\\uX41}", "\\u{41", "\\u{zz}", "end\\"] {
+    for malformed in ["\\q", "\\uX41}", "\\u{41", "\\u{zz}", "\\u{+41}", "end\\"] {
         assert_eq!(super::unquote(malformed), None, "{malformed}");
     }
 }

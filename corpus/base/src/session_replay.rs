@@ -495,7 +495,8 @@ fn unquote(quoted: &str) -> Option<String> {
                 loop {
                     match chars.next()? {
                         '}' => break,
-                        digit => hex.push(digit),
+                        digit if digit.is_ascii_hexdigit() => hex.push(digit),
+                        _ => return None,
                     }
                 }
                 char::from_u32(u32::from_str_radix(&hex, 16).ok()?)?
