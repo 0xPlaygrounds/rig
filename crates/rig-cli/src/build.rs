@@ -556,14 +556,27 @@ fn stage(home: &Home, staged: &Path, staging: Staging) -> Result<()> {
     }
     let temporary = home.bin().join("staged.tmp");
     fs::create_dir_all(home.bin())?;
-    fs::copy(&artifact, &temporary)?;
-    File::options()
-        .write(true)
-        .open(&temporary)?
-        .set_modified(fs::metadata(&artifact)?.modified()?)?;
+    copy(&artifact, &temporary)?;
     fs::rename(&temporary, staged)?;
     prune_described(home);
     Ok(())
+}
+
+/// Copies the build `from` to `to`, keeping its modification time so the
+/// copy carries its [`stamp`].
+fn copy(from: &Path, to: &Path) -> std::io::Result<()> {
+    fs::copy(from, to)?;
+    File::options()
+        .write(true)
+        .open(to)?
+        .set_modified(fs::metadata(from)?.modified()?)
+}
+
+/// Links the build `from` at `to`, a path with no file, else copies it
+/// ([`copy`]), such as on another file system. Either way `to` carries
+/// its [`stamp`] and stays when `from` is replaced.
+pub fn hold(from: &Path, to: &Path) -> std::io::Result<()> {
+    fs::hard_link(from, to).or_else(|_| copy(from, to))
 }
 
 /// Removes the reports of builds no file in [`Home::bin`] is a copy of.
@@ -731,7 +744,7 @@ pub fn passed_over(home: &Home, staged: &Path) -> bool {
 }
 
 /// What tells builds apart: the binary's modification time and size.
-fn stamp(binary: &Path) -> Result<String> {
+pub fn stamp(binary: &Path) -> Result<String> {
     let metadata = fs::metadata(binary)?;
     let modified = metadata
         .modified()?

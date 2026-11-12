@@ -1,8 +1,11 @@
 //! Running the agent. [`RELOAD_EXIT_CODE`] restarts it on the staged build;
 //! a new build is this launcher's trial until it signals ready in the
 //! launcher's [`RunDir`]. Several launchers can share one `RIG_HOME`:
-//! building and staging take the root's lock, a `/reload` build and its
-//! trial are per session, and the ready file is per launcher.
+//! building, staging and selecting a build take the root's lock, a
+//! `/reload` build is staged per session, and each launcher holds the
+//! builds it selected ([`BuildRef`]) and its ready file in its run
+//! directory. It starts the build it read the command line against, and
+//! rolls back to the one its session ran before.
 //!
 //! `rig` starts a new session, and `rig --resume <id or name>` an earlier one,
 //! in the directory it ran in. The agent's `/new` and `/resume` leave a
@@ -33,6 +36,7 @@ use std::fs::{self, File};
 use std::io::{ErrorKind, IsTerminal, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, ExitStatus, Stdio};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
 use rig_harness_protocol::config::SettingsFile;
@@ -92,7 +96,7 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
     // The session a replaced launcher left for this run's, which a
     // refused start goes back to, as its own switch would.
     let left = update::left()?;
-    let (run, mut claimed, mut claim_notice, build_notice, build_failure, report) = {
+    let (run, mut claimed, mut claim_notice, build_notice, build_failure, running) = {
         let _typing = (terminal && !print).then(TypeAhead::hold).flatten();
         let _lock = locks::hold_build_lock(home, output)?;
         // Before claiming, so a resumed session's leftover builds from its
@@ -104,16 +108,17 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
         let built = failure.as_ref().map(|failure| {
             format!("Building the agent failed, so the previous build is running: {failure}")
         });
-        let report = report(home, &claimed.id);
+        let running = select(home, &claimed.id, run.dir(), None)?;
         (
             run,
             claimed,
             claim_notice,
             built,
             failure.map(|failure| failure.details()),
-            report,
+            running,
         )
     };
+    let report = &running.current.description;
     let resume = report.resume(args);
     if resume != asked {
         // Only the build says which of its options take a value, and so
@@ -127,10 +132,6 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
         };
         let _lock = locks::hold_build_lock(home, output)?;
         let (next, notice) = claim(home, start, here.as_deref())?;
-        absent(fs::rename(
-            home.staged_for(&claimed.id),
-            home.staged_for(&next.id),
-        ))?;
         claimed.discard_if_unsaved(home);
         (claimed, claim_notice) = (next, notice);
     }
@@ -158,6 +159,7 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
         &invocation,
         headless,
         claimed,
+        running,
         notice,
         build_failure,
     )?;
@@ -227,18 +229,6 @@ fn refused(why: &str) -> ExitCode {
     ExitCode::from(REFUSED_EXIT_CODE)
 }
 
-/// What the plugins of the build the launcher of `session` starts next add
-/// to the command line; nothing when there is no build or it cannot say.
-fn report(home: &Home, session: &SessionId) -> AgentDescription {
-    let Some(binary) = next_build(home, session) else {
-        return AgentDescription::default();
-    };
-    build::described(home, &binary).unwrap_or_else(|failure| {
-        eprintln!("warning: the agent build does not say what its plugins add: {failure}");
-        AgentDescription::default()
-    })
-}
-
 /// The report of the build a new session starts with, as kept from its
 /// last build; `None` when it has none. It never builds.
 pub fn last_report(home: &Home) -> Option<AgentDescription> {
@@ -248,17 +238,9 @@ pub fn last_report(home: &Home) -> Option<AgentDescription> {
         .and_then(|binary| build::good_report(home, &binary))
 }
 
-/// The build the launcher of `session` starts next, as [`pick`] picks it,
-/// without claiming it.
-fn next_build(home: &Home, session: &SessionId) -> Option<PathBuf> {
-    [home.staged_for(session), home.staged(), home.good()]
-        .into_iter()
-        .find(|binary| binary.exists())
-}
-
-/// Starts the agent of `claimed` with the build [`pick`] finds, again on
-/// the reload code, and returns how it ended. `notice` and
-/// `build_failure` go to the first start.
+/// Starts the agent of `claimed` with the build `running` holds, again on
+/// the reload code with the build [`select`] then holds, and returns how
+/// it ended. `notice` and `build_failure` go to the first start.
 fn launch(
     home: &Home,
     launcher: &Path,
@@ -266,6 +248,7 @@ fn launch(
     invocation: &Invocation,
     headless: bool,
     mut claimed: Claimed,
+    mut running: Running,
     mut notice: Option<String>,
     mut build_failure: Option<String>,
 ) -> Result<Ended> {
@@ -299,27 +282,25 @@ fn launch(
     loop {
         let left = claimed.left.take();
         let session = claimed.id.clone();
-        let trial = home.trial_for(&session);
         let directory = home.session(&session);
         let ready = run.ready();
         if ask {
-            for secret in report(home, &session).secrets {
+            for secret in &running.current.description.secrets {
                 let variable = secret_variable(&secret.name);
                 if std::env::var_os(&variable).is_some() || answers.contains_key(&variable) {
                     continue;
                 }
-                let Some(answer) = ask_secret(&secret)? else {
+                let Some(answer) = ask_secret(secret)? else {
                     claimed.discard_if_unsaved(home);
                     return Ok(Ended::quiet(ExitCode::from(SIGNAL_EXIT_CODE)));
                 };
                 answers.insert(variable, answer);
             }
         }
-        let binary = pick(home, &session, &trial)?;
         absent(fs::remove_file(&ready))?;
         absent(fs::remove_file(run.refusal()))?;
         absent(fs::remove_file(run.screen()))?;
-        let mut command = Command::new(binary.path());
+        let mut command = Command::new(&running.current.executable);
         command
             .args(invocation.to_args())
             .env(env::HOME, home.root())
@@ -356,9 +337,11 @@ fn launch(
         }
         let mut watch = stop::Watch::start();
         let mut child = command.spawn()?;
-        // A trial becomes the good build as soon as it is ready, so a
-        // launcher killed later (a closed terminal) keeps it.
+        // A trial becomes the good build as soon as it is ready and the
+        // build lock is free, so a launcher killed later (a closed
+        // terminal) keeps it; once the agent exited, it waits for the lock.
         let mut started = false;
+        let mut promoting = false;
         let mut promoted: Result<()> = Ok(());
         let status = loop {
             watch.pass_on(&mut child);
@@ -366,8 +349,12 @@ fn launch(
             if !started && ready.exists() {
                 started = true;
                 legacy.clear();
-                if let Binary::Trial(trial) = &binary {
-                    promoted = fs::rename(trial, home.good()).map_err(Into::into);
+                promoting = running.current.is_trial();
+            }
+            if promoting {
+                match promote(home, &mut running.current, status.is_some()) {
+                    Ok(done) => promoting = !done,
+                    Err(failure) => (promoting, promoted) = (false, Err(failure)),
                 }
             }
             match status {
@@ -392,10 +379,9 @@ fn launch(
             run.kill_left_groups().ok();
         }
         promoted?;
-        let rejected = matches!(binary, Binary::Trial(_)) && !started && stop::heard().is_none();
+        let rejected = running.current.is_trial() && !started && stop::heard().is_none();
         if rejected {
-            build::reject(home, &trial)?;
-            fs::remove_file(&trial)?;
+            build::reject(home, &running.current.executable)?;
         }
         if replaced {
             // The session the agent switched to, claimed as a switch claims
@@ -426,6 +412,12 @@ fn launch(
             if let Some(target) = take_switch(&directory)? {
                 (claimed, notice) = switch(home, claimed, target)?;
             }
+            let Running { current, previous } = running;
+            let current = if rejected { previous } else { Some(current) };
+            running = {
+                let _lock = locks::hold_build_lock(home, BuildOutput::Live)?;
+                select(home, &claimed.id, run, current)?
+            };
             reason = if claimed.id == session {
                 StartReason::Reloaded
             } else {
@@ -461,7 +453,7 @@ fn launch(
         // a reload of a run that answers a prompt, runs again.
         let again = (!headless || (answers_prompt && reason == StartReason::Reloaded))
             && stop::heard().is_none();
-        let ended = !rejected || !again || !home.good().exists();
+        let ended = !rejected || !again || running.previous.is_none();
         let log = if ended {
             claimed.leave(home, run, status.success())
         } else {
@@ -490,14 +482,15 @@ fn launch(
             let said = stopped(status, resume.as_deref(), refusal, hidden, log);
             return Ok(Ended::new(status, said).restoring(restore));
         }
-        if !home.good().exists() {
+        let Some(previous) = running.previous.take() else {
             let said = format!(
                 "The new build stopped during startup ({status}) and there is no previous \
                  build to roll back to; the next `rig` tries it again. Log: {}",
                 log.display()
             );
             return Ok(Ended::new(status, Some(said)).restoring(restore));
-        }
+        };
+        running.current = previous;
         let message = format!(
             "The new build stopped during startup ({status}); rolled back to the previous \
              build. `rig build` tries it again. Log: {}",
@@ -923,36 +916,137 @@ fn rebuild(
     }
 }
 
-/// The binary a launcher starts.
-enum Binary {
-    /// A staged build, claimed as this launcher's trial until it is ready.
-    Trial(PathBuf),
-    /// The last build that started up.
-    Good(PathBuf),
+/// The builds a launcher holds for its session: the one it starts, and
+/// the one it rolls back to when that one is a trial that stops during
+/// startup.
+struct Running {
+    current: BuildRef,
+    previous: Option<BuildRef>,
 }
 
-impl Binary {
-    fn path(&self) -> &Path {
-        match self {
-            Self::Trial(path) | Self::Good(path) => path,
+/// A build a launcher holds from the moment it selects it until it lets it
+/// go: a file of its own in its run directory ([`locks::builds`]), which
+/// no other launcher claims or replaces, so the build whose description
+/// the launcher read its command line and secrets against is the one it
+/// starts, and starts again. Dropping it removes the file; an agent
+/// started from it keeps running.
+struct BuildRef {
+    executable: PathBuf,
+    /// What its plugins add to the command line.
+    description: AgentDescription,
+    role: Role,
+}
+
+/// What a [`BuildRef`]'s start decides about the build.
+enum Role {
+    /// A staged build on trial until it is ready. It then becomes the good
+    /// build, if the good build is still the one whose stamp is `good`
+    /// (`None` for no good build) as when the trial was selected: another
+    /// launcher's build that became good meanwhile stays good.
+    Trial { good: Option<String> },
+    /// A build that started up before.
+    Proven,
+}
+
+impl BuildRef {
+    /// Holds the build at `executable`, which this launcher alone names,
+    /// reading its description ([`build::described`]); a build that cannot
+    /// say adds nothing.
+    fn new(home: &Home, executable: PathBuf, role: Role) -> Self {
+        let description = build::described(home, &executable).unwrap_or_else(|failure| {
+            eprintln!("warning: the agent build does not say what its plugins add: {failure}");
+            AgentDescription::default()
+        });
+        Self {
+            executable,
+            description,
+            role,
         }
+    }
+
+    fn is_trial(&self) -> bool {
+        matches!(self.role, Role::Trial { .. })
     }
 }
 
-/// The binary to start: a build staged for this launcher or for any, claimed
-/// as its `trial`, or else the last good one.
-fn pick(home: &Home, session: &SessionId, trial: &Path) -> Result<Binary> {
+impl Drop for BuildRef {
+    fn drop(&mut self) {
+        fs::remove_file(&self.executable).ok();
+    }
+}
+
+/// The builds the launcher of `session` holds in `run` for its next start:
+/// a build staged for it or for any launcher, claimed as a trial, rolling
+/// back to `current` or else the good build; without one, `current`, else
+/// the good build. Call it holding [`locks::hold_build_lock`], so the
+/// claims and the good build it reads are the ones it holds.
+fn select(
+    home: &Home,
+    session: &SessionId,
+    run: &RunDir,
+    current: Option<BuildRef>,
+) -> Result<Running> {
+    let good = build::stamp(&home.good()).ok();
     for staged in [home.staged_for(session), home.staged()] {
+        let held = held(run)?;
         // The rename claims the staged build for this launcher alone.
-        if absent(fs::rename(staged, trial))?.is_some() {
-            return Ok(Binary::Trial(trial.to_path_buf()));
+        if absent(fs::rename(staged, &held))?.is_some() {
+            let previous = match current {
+                Some(current) => Some(current),
+                None => hold_good(home, run)?,
+            };
+            let current = BuildRef::new(home, held, Role::Trial { good });
+            return Ok(Running { current, previous });
         }
     }
-    let good = home.good();
-    if good.exists() {
-        return Ok(Binary::Good(good));
+    let current = match current {
+        Some(current) => current,
+        None => hold_good(home, run)?.ok_or("no agent build exists yet; run `rig build`")?,
+    };
+    Ok(Running {
+        current,
+        previous: None,
+    })
+}
+
+/// The good build, held in `run`; `None` when there is none.
+fn hold_good(home: &Home, run: &RunDir) -> Result<Option<BuildRef>> {
+    let held = held(run)?;
+    Ok(absent(build::hold(&home.good(), &held))?.map(|()| BuildRef::new(home, held, Role::Proven)))
+}
+
+/// A path in `run` for a build to hold, which no other build of this
+/// launcher has.
+fn held(run: &RunDir) -> Result<PathBuf> {
+    static HELD: AtomicU32 = AtomicU32::new(0);
+    let builds = locks::builds(run);
+    fs::create_dir_all(&builds)?;
+    Ok(builds.join(HELD.fetch_add(1, Ordering::Relaxed).to_string()))
+}
+
+/// Makes `build`, a trial that is ready, the good build as its
+/// [`Role::Trial`] says, holding the build lock: at once when it is free,
+/// or after waiting for it with `wait`. Returns whether it was done; once
+/// done, the build is [`Role::Proven`].
+fn promote(home: &Home, build: &mut BuildRef, wait: bool) -> Result<bool> {
+    let _lock = if wait {
+        locks::hold_build_lock(home, BuildOutput::LogOnly)?
+    } else {
+        match locks::try_build_lock(home)? {
+            Some(lock) => lock,
+            None => return Ok(false),
+        }
+    };
+    let Role::Trial { good } = std::mem::replace(&mut build.role, Role::Proven) else {
+        return Ok(true);
+    };
+    if build::stamp(&home.good()).ok() == good {
+        let temporary = home.bin().join("good.tmp");
+        absent(fs::remove_file(&temporary))?;
+        build::hold(&build.executable, &temporary)?;
+        fs::rename(&temporary, home.good())?;
     }
-    Err("no agent build exists yet; run `rig build`".into())
+    Ok(true)
 }
 
 /// The agent's exit code; 1 when a signal ended it.
