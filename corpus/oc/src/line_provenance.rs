@@ -329,7 +329,7 @@ impl Asking<'_> {
     fn session_label(&self, session: &str) -> String {
         let named = self.home.as_ref().and_then(|home| {
             let id: SessionId = session.parse().ok()?;
-            home.0.session(&id).name()
+            home.0.session(&id).name().ok().flatten()
         });
         named.unwrap_or_else(|| session.get(..8).unwrap_or(session).to_owned())
     }

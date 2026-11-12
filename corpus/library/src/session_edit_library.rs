@@ -200,7 +200,7 @@ impl Opened {
     /// else the start of its first message.
     fn shown(&self) -> Option<String> {
         let title = Some(self.meta.title.clone()).filter(|title| !title.is_empty());
-        self.dir.name().or(title)
+        self.dir.name().ok().flatten().or(title)
     }
 }
 

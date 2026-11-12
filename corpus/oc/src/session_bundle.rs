@@ -587,7 +587,7 @@ fn write_session(dir: &SessionDir, plan: &Plan, here: &Here<'_>) -> Result<Vec<S
     fs::write(dir.directory(), plan.target.to_string_lossy().as_bytes()).map_err(|f| fail(&f))?;
     dir.mark_saved().map_err(|f| fail(&f))?;
     let mut meta = SessionMeta::read(&*store).unwrap_or_default();
-    if meta.title.is_empty() && dir.name().is_none() {
+    if meta.title.is_empty() && dir.name().map_err(|f| fail(&f))?.is_none() {
         dir.set_name(Some(&manifest.name)).map_err(|f| fail(&f))?;
     }
     meta.labels.insert(

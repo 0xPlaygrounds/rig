@@ -10,6 +10,7 @@ pub mod config;
 pub mod end;
 #[cfg(any(test, feature = "test-utils"))]
 pub mod fake_agent;
+pub mod fs;
 pub mod launch;
 
 use std::ffi::OsString;
@@ -169,7 +170,7 @@ pub fn long_version() -> String {
 /// Which file a path names, to tell when it was replaced, such as the
 /// launcher's own by `rig update`: a file renamed
 /// over it, as `cargo install` does, has another inode and modification
-/// time. A file that cannot be read has none.
+/// time. A missing file has none.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Stamp(Option<(SystemTime, u64)>);
 
@@ -206,15 +207,21 @@ impl Stamp {
         Self(read())
     }
 
-    /// The stamp of the file at `path` now.
-    pub fn of(path: &Path) -> Self {
-        Self(std::fs::metadata(path).ok().and_then(|metadata| {
-            #[cfg(unix)]
-            let identity = std::os::unix::fs::MetadataExt::ino(&metadata);
-            #[cfg(not(unix))]
-            let identity = metadata.len();
-            Some((metadata.modified().ok()?, identity))
-        }))
+    /// The stamp of the file at `path` now; none when it is missing.
+    ///
+    /// # Errors
+    ///
+    /// When the file cannot be looked at, or the system keeps no
+    /// modification time.
+    pub fn of(path: &Path) -> std::io::Result<Self> {
+        let Some(metadata) = fs::optional(fs::metadata(path))? else {
+            return Ok(Self(None));
+        };
+        #[cfg(unix)]
+        let identity = std::os::unix::fs::MetadataExt::ino(&metadata);
+        #[cfg(not(unix))]
+        let identity = metadata.len();
+        Ok(Self(Some((metadata.modified()?, identity))))
     }
 }
 
@@ -529,9 +536,9 @@ impl Home {
     pub fn keep_private(&self) {
         #[cfg(unix)]
         for dir in [self.sessions(), self.projects(), self.data(), self.runs()] {
-            std::fs::create_dir_all(&dir).ok();
-            if dir.is_dir() && dir.canonicalize().ok() != self.root.canonicalize().ok() {
-                std::fs::set_permissions(&dir, PermissionsExt::from_mode(0o700)).ok();
+            fs::create_dir_all(&dir).ok();
+            if dir.is_dir() && fs::canonicalize(&dir).ok() != fs::canonicalize(&self.root).ok() {
+                fs::set_permissions(&dir, PermissionsExt::from_mode(0o700)).ok();
             }
         }
     }
@@ -544,7 +551,7 @@ impl Home {
     ///
     /// When the directory cannot be created.
     pub fn new_session(&self) -> std::io::Result<(SessionId, SessionDir)> {
-        std::fs::create_dir_all(self.sessions())?;
+        fs::create_dir_all(self.sessions())?;
         self.keep_private();
         let base = SessionId::generate();
         let mut id = base.clone();
@@ -552,9 +559,9 @@ impl Home {
         loop {
             let dir = self.session(&id);
             #[cfg(unix)]
-            let created = std::fs::DirBuilder::new().mode(0o700).create(dir.path());
+            let created = fs::create_dir(std::fs::DirBuilder::new().mode(0o700), dir.path());
             #[cfg(not(unix))]
-            let created = std::fs::create_dir(dir.path());
+            let created = fs::create_dir(&std::fs::DirBuilder::new(), dir.path());
             match created {
                 Ok(()) => return Ok((id, dir)),
                 Err(failure) if failure.kind() == std::io::ErrorKind::AlreadyExists => {
@@ -570,7 +577,7 @@ impl Home {
     /// order, with its directory: what every listing and [`Self::find`]
     /// read.
     pub fn saved_sessions(&self) -> Vec<(SessionId, SessionDir)> {
-        let entries = std::fs::read_dir(self.sessions()).into_iter().flatten();
+        let entries = fs::read_dir(self.sessions()).into_iter().flatten();
         let ids = entries.filter_map(|entry| entry.ok()?.file_name().to_str()?.parse().ok());
         ids.map(|id| {
             let dir = self.session(&id);
@@ -587,7 +594,8 @@ impl Home {
     /// # Errors
     ///
     /// When no saved session has that id or name, or several have that
-    /// name: the error lists their ids.
+    /// name: the error lists their ids. When a saved session's name cannot
+    /// be read, naming its file.
     pub fn find(&self, name_or_id: &str) -> Result<SessionId, String> {
         let wanted = name_or_id.trim();
         if let Ok(id) = wanted.parse::<SessionId>()
@@ -595,12 +603,13 @@ impl Home {
         {
             return Ok(id);
         }
-        let mut named: Vec<SessionId> = self
-            .saved_sessions()
-            .into_iter()
-            .filter(|(_, dir)| dir.name().as_deref() == Some(wanted))
-            .map(|(id, _)| id)
-            .collect();
+        let mut named = Vec::new();
+        for (id, dir) in self.saved_sessions() {
+            let name = dir.name().map_err(|failure| failure.to_string())?;
+            if name.as_deref() == Some(wanted) {
+                named.push(id);
+            }
+        }
         named.sort_by(|a, b| a.as_str().cmp(b.as_str()));
         match named.as_slice() {
             [id] => Ok(id.clone()),
@@ -623,14 +632,6 @@ pub(crate) const READY_FILE: &str = "ready";
 
 /// The file of [`RunDir::say_screen`].
 pub(crate) const SCREEN_FILE: &str = "screen";
-
-/// Removes the file at `path`; one that is not there is no error.
-fn remove_if_present(path: &Path) -> std::io::Result<()> {
-    match std::fs::remove_file(path) {
-        Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error),
-        _ => Ok(()),
-    }
-}
 
 /// A launcher's own directory, outside every session, which lives while
 /// the launcher runs: what its agent says to it (that it started, that it
@@ -669,7 +670,7 @@ impl RunDir {
     ///
     /// When the file cannot be written.
     pub fn say_ready(&self) -> std::io::Result<()> {
-        std::fs::write(self.0.join(READY_FILE), b"")
+        fs::write(self.0.join(READY_FILE), b"")
     }
 
     /// Whether the agent said its build started ([`Self::say_ready`]).
@@ -686,7 +687,7 @@ impl RunDir {
     ///
     /// When the file cannot be written.
     pub fn say_screen(&self) -> std::io::Result<()> {
-        std::fs::write(self.0.join(SCREEN_FILE), b"")
+        fs::write(self.0.join(SCREEN_FILE), b"")
     }
 
     /// Takes back [`Self::say_screen`], for a run refused before any front
@@ -696,7 +697,7 @@ impl RunDir {
     ///
     /// When the file exists but cannot be removed.
     pub fn unsay_screen(&self) -> std::io::Result<()> {
-        remove_if_present(&self.0.join(SCREEN_FILE))
+        fs::optional(fs::remove_file(self.0.join(SCREEN_FILE))).map(drop)
     }
 
     /// Whether the agent said its front took the screen
@@ -713,7 +714,7 @@ impl RunDir {
     /// When a file exists but cannot be removed.
     pub fn clear_messages(&self) -> std::io::Result<()> {
         for file in [READY_FILE, SCREEN_FILE, end::FILE] {
-            remove_if_present(&self.0.join(file))?;
+            fs::optional(fs::remove_file(self.0.join(file)))?;
         }
         Ok(())
     }
@@ -742,7 +743,7 @@ impl RunDir {
     /// aside ([`Self::set_groups_aside`]). Their groups are not taken over
     /// by the next agent; the launcher ends them ([`Self::kill_left_groups`]).
     fn groups_aside(&self) -> Vec<PathBuf> {
-        let entries = std::fs::read_dir(&self.0).into_iter().flatten().flatten();
+        let entries = fs::read_dir(&self.0).into_iter().flatten().flatten();
         entries
             .map(|entry| entry.path())
             .filter(|path| {
@@ -765,7 +766,7 @@ impl RunDir {
             .map(|n| self.0.join(format!("{GROUPS_ASIDE}{n}")))
             .find(|path| !path.exists())
             .ok_or_else(|| std::io::Error::from(std::io::ErrorKind::AlreadyExists))?;
-        std::fs::rename(self.groups(), &free)?;
+        fs::rename(self.groups(), &free)?;
         Ok(free)
     }
 
@@ -776,10 +777,8 @@ impl RunDir {
     /// them. None when there is no list. A line that is not an id, even
     /// one that is not text, names no group.
     fn live_in(&self, list: &Path) -> std::io::Result<Vec<i32>> {
-        let listed = match std::fs::read(list) {
-            Ok(listed) => listed,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(error) => return Err(error),
+        let Some(listed) = fs::optional(fs::read(list))? else {
+            return Ok(Vec::new());
         };
         let ledger = self.groups();
         Ok(String::from_utf8_lossy(&listed)
@@ -854,11 +853,8 @@ impl RunDir {
         }
         signal("KILL", &left);
         for list in read {
-            match std::fs::remove_file(list) {
-                Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
-                    failed.get_or_insert(error);
-                }
-                _ => {}
+            if let Err(error) = fs::optional(fs::remove_file(list)) {
+                failed.get_or_insert(error);
             }
         }
         failed.map_or(Ok(()), Err)
@@ -887,10 +883,10 @@ fn members(group: i32) -> Vec<i32> {
     let mut members = vec![group];
     let of_group = |pid: i32, pgid: i32| (pgid == group && pid != group).then_some(pid);
     if cfg!(target_os = "linux") {
-        let entries = std::fs::read_dir("/proc").into_iter().flatten().flatten();
+        let entries = fs::read_dir("/proc").into_iter().flatten().flatten();
         members.extend(entries.filter_map(|entry| {
             let pid = entry.file_name().to_str()?.parse().ok()?;
-            let stat = std::fs::read_to_string(entry.path().join("stat")).ok()?;
+            let stat = fs::read_to_string(entry.path().join("stat")).ok()?;
             // After the command's closing parenthesis: state, parent, group.
             let (_, fields) = stat.rsplit_once(')')?;
             of_group(pid, fields.split_whitespace().nth(2)?.parse().ok()?)
@@ -913,7 +909,7 @@ fn members(group: i32) -> Vec<i32> {
 fn marked(id: i32, ledger: &Path) -> bool {
     let mark = format!("{}={}", env::PROCESS_LEDGER, ledger.display());
     if cfg!(target_os = "linux") {
-        let environ = std::fs::read(format!("/proc/{id}/environ"));
+        let environ = fs::read(format!("/proc/{id}/environ"));
         environ.is_ok_and(|environ| {
             environ
                 .split(|&byte| byte == 0)
@@ -996,9 +992,10 @@ impl SessionDir {
     /// counts as holding nothing: a read that fails counts as a log, so a
     /// deleter keeps the session.
     pub fn holds_logs(&self) -> bool {
-        let entries = match std::fs::read_dir(self.0.join("logs")) {
-            Err(failure) => return failure.kind() != std::io::ErrorKind::NotFound,
-            Ok(entries) => entries,
+        let entries = match fs::optional(fs::read_dir(self.0.join("logs"))) {
+            Ok(Some(entries)) => entries,
+            Ok(None) => return false,
+            Err(_) => return true,
         };
         entries.into_iter().any(|entry| {
             let Ok(entry) = entry else { return true };
@@ -1025,7 +1022,7 @@ impl SessionDir {
     ///
     /// When the marker cannot be written.
     pub fn mark_deleting(&self) -> std::io::Result<()> {
-        std::fs::write(self.deleting(), b"")
+        fs::write(self.deleting(), b"")
     }
 
     /// The plain, empty marker of a session being deleted.
@@ -1040,7 +1037,7 @@ impl SessionDir {
     ///
     /// When the marker cannot be written.
     pub fn mark_saved(&self) -> std::io::Result<()> {
-        std::fs::write(self.saved(), b"")
+        fs::write(self.saved(), b"")
     }
 
     /// Takes away the marker [`Self::mark_saved`] writes, as the harness
@@ -1051,10 +1048,7 @@ impl SessionDir {
     ///
     /// When the marker is there and cannot be removed.
     pub fn unmark_saved(&self) -> std::io::Result<()> {
-        match std::fs::remove_file(self.saved()) {
-            Err(failure) if failure.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            removed => removed,
-        }
+        fs::optional(fs::remove_file(self.saved())).map(drop)
     }
 
     /// The plain, empty marker of a saved session.
@@ -1091,7 +1085,7 @@ impl SessionDir {
     /// When the directory or the lock file cannot be made, or locking
     /// fails otherwise.
     pub fn hold(&self) -> std::io::Result<Option<std::fs::File>> {
-        std::fs::create_dir_all(&self.0)?;
+        fs::create_dir_all(&self.0)?;
         let file = lock_file(&self.launcher_lock(), true)?;
         match file.try_lock() {
             Ok(()) => Ok(Some(file)),
@@ -1118,11 +1112,15 @@ impl SessionDir {
     /// file `name` beside [`Self::directory`], so the launcher finds the
     /// session by it ([`Home::find`]) without opening its store. Like the
     /// directory, it is readable on disk when the store seals what it
-    /// keeps.
-    pub fn name(&self) -> Option<String> {
-        let text = std::fs::read_to_string(self.name_file()).ok()?;
+    /// keeps. None when the file is missing or blank.
+    ///
+    /// # Errors
+    ///
+    /// When the file is there and cannot be read.
+    pub fn name(&self) -> std::io::Result<Option<String>> {
+        let text = fs::optional(fs::read_to_string(self.name_file()))?.unwrap_or_default();
         let name = text.trim();
-        (!name.is_empty()).then(|| name.to_owned())
+        Ok((!name.is_empty()).then(|| name.to_owned()))
     }
 
     /// Names the session, or removes its name with `None` or a blank name.
@@ -1137,13 +1135,10 @@ impl SessionDir {
         match name.map(str::trim).filter(|name| !name.is_empty()) {
             Some(name) => {
                 let part = self.0.join("name.part");
-                std::fs::write(&part, name)?;
-                std::fs::rename(part, file)
+                fs::write(&part, name)?;
+                fs::rename(&part, &file)
             }
-            None => match std::fs::remove_file(file) {
-                Err(failure) if failure.kind() == std::io::ErrorKind::NotFound => Ok(()),
-                removed => removed,
-            },
+            None => fs::optional(fs::remove_file(&file)).map(drop),
         }
     }
 
@@ -1155,10 +1150,10 @@ impl SessionDir {
     ///
     /// When the file cannot be written.
     pub fn set_working_directory(&self, directory: &Path) -> std::io::Result<()> {
-        std::fs::create_dir_all(&self.0)?;
+        fs::create_dir_all(&self.0)?;
         let part = self.0.join("directory.part");
-        std::fs::write(&part, directory.to_string_lossy().as_bytes())?;
-        std::fs::rename(part, self.directory())
+        fs::write(&part, directory.to_string_lossy().as_bytes())?;
+        fs::rename(&part, self.directory())
     }
 
     /// The plain-text file of [`Self::name`].
@@ -1167,17 +1162,26 @@ impl SessionDir {
     }
 
     /// The directory [`Self::directory`] names, whether or not it still
-    /// exists.
-    pub fn saved_directory(&self) -> Option<PathBuf> {
-        let text = std::fs::read_to_string(self.directory()).ok()?;
-        Some(PathBuf::from(text.trim_end_matches('\n')))
+    /// exists; none when the file is missing.
+    ///
+    /// # Errors
+    ///
+    /// When the file is there and cannot be read.
+    pub fn saved_directory(&self) -> std::io::Result<Option<PathBuf>> {
+        let text = fs::optional(fs::read_to_string(self.directory()))?;
+        Ok(text.map(|text| PathBuf::from(text.trim_end_matches('\n'))))
     }
 
     /// The session's working directory, when [`Self::directory`] names one
     /// that still exists.
-    pub fn working_directory(&self) -> Option<PathBuf> {
-        self.saved_directory()
-            .filter(|directory| directory.is_dir())
+    ///
+    /// # Errors
+    ///
+    /// When the file is there and cannot be read.
+    pub fn working_directory(&self) -> std::io::Result<Option<PathBuf>> {
+        Ok(self
+            .saved_directory()?
+            .filter(|directory| directory.is_dir()))
     }
 }
 
@@ -1352,11 +1356,8 @@ fn plugin_flag(flag: &str) -> Result<(String, Option<String>), String> {
 ///
 /// When the file cannot be opened (or is missing and not `create`).
 pub fn lock_file(path: &Path, create: bool) -> std::io::Result<std::fs::File> {
-    std::fs::File::options()
-        .create(create)
-        .write(true)
-        .truncate(false)
-        .open(path)
+    let mut options = std::fs::File::options();
+    fs::open(options.create(create).write(true).truncate(false), path)
 }
 
 /// Whether no live process holds the lock file at `path`: it is missing, or

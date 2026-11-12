@@ -1,3 +1,8 @@
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test fixtures write and read files of their own"
+)]
+
 use super::{
     AgentDescription, DescribedCommand, DescribedFlag, DescribedSecret, Home, Invocation, Stamp,
     secret_variable, warnings,
@@ -386,7 +391,7 @@ fn a_saved_session_is_found_by_its_id_or_its_own_name() {
     std::fs::remove_dir_all(&root).ok();
 
     assert!(written.iter().all(Result::is_ok) && marked.is_ok());
-    assert_eq!(name.as_deref(), Some("parser"));
+    assert_eq!(name.ok().flatten().as_deref(), Some("parser"));
     assert_eq!((by_id, by_name), (Ok(parser.clone()), Ok(parser.clone())));
     assert_eq!(only_saved, Ok(tests.clone()));
     assert!(not_saved.is_err() && nobody.is_err());
@@ -396,7 +401,7 @@ fn a_saved_session_is_found_by_its_id_or_its_own_name() {
             .is_err_and(|why| why.contains(tests.as_str()) && why.contains(unsaved.as_str())),
         "{shared:?}"
     );
-    assert!(unnamed.0.is_ok() && unnamed.1.is_ok() && unnamed.2.is_none());
+    assert!(unnamed.0.is_ok() && unnamed.1.is_ok() && unnamed.2.is_ok_and(|name| name.is_none()));
     assert_eq!(left, Ok(unsaved.clone()));
 }
 
@@ -654,21 +659,32 @@ fn keep_private_tightens_the_four_directories_and_not_the_home() {
 }
 
 /// A file renamed over the launcher's path replaces it; the same file read
-/// again, as at a plain reload, and a file gone do not.
+/// again, as at a plain reload, and a file gone do not. A path that cannot
+/// be looked at, here under a file, has no stamp: it is an error.
 #[test]
 fn a_stamp_tells_a_replaced_file_from_the_same_one_or_none() {
     let dir = std::env::temp_dir().join(format!("rig-stamp-{}", std::process::id()));
     std::fs::create_dir_all(&dir).ok();
     let launcher = dir.join("rig");
-    std::fs::write(&launcher, "old").ok();
-    let started = Stamp::of(&launcher);
-    let again = Stamp::of(&launcher);
-    std::fs::write(dir.join(".rig"), "new").ok();
-    std::fs::rename(dir.join(".rig"), &launcher).ok();
-    let replaced = Stamp::of(&launcher);
-    std::fs::remove_file(&launcher).ok();
-    let gone = Stamp::of(&launcher);
+    let stamps = (|| -> std::io::Result<_> {
+        std::fs::write(&launcher, "old")?;
+        let started = Stamp::of(&launcher)?;
+        let again = Stamp::of(&launcher)?;
+        let under_a_file = Stamp::of(&launcher.join("rig")).is_err();
+        std::fs::write(dir.join(".rig"), "new")?;
+        std::fs::rename(dir.join(".rig"), &launcher)?;
+        let replaced = Stamp::of(&launcher)?;
+        std::fs::remove_file(&launcher)?;
+        let gone = Stamp::of(&launcher)?;
+        Ok((started, again, under_a_file, replaced, gone))
+    })();
     std::fs::remove_dir_all(&dir).ok();
+    let stamps = stamps.map_err(|failure| failure.to_string());
+    assert!(stamps.is_ok(), "{stamps:?}");
+    let Ok((started, again, under_a_file, replaced, gone)) = stamps else {
+        return;
+    };
+    assert!(under_a_file);
     assert!(!started.replaced(&again));
     assert!(started.replaced(&replaced));
     assert!(!started.replaced(&gone));

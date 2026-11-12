@@ -34,8 +34,8 @@
 //! answers.
 
 use std::ffi::OsString;
-use std::fs::{self, File};
-use std::io::{ErrorKind, Read, Write};
+use std::fs::File;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -43,6 +43,7 @@ use std::time::Duration;
 
 use rig_harness_protocol::config::SettingsFile;
 use rig_harness_protocol::end::AgentEnd;
+use rig_harness_protocol::fs;
 use rig_harness_protocol::launch::{AbsPath, Agent, Carry, Launch, Purpose};
 use rig_harness_protocol::{
     AgentDescription, DescribedSecret, Home, Invocation, REFUSED_EXIT_CODE, RunDir,
@@ -276,7 +277,7 @@ fn run_agent(
     mut running: Running,
 ) -> Result<Ended> {
     let home = &launch.home();
-    let installed = Stamp::of(&launch.launcher);
+    let installed = Stamp::of(&launch.launcher)?;
     // The secrets asked for are kept with the launch, for every restart and
     // a re-exec: asked whenever someone is at the terminal, whatever the
     // front, so a command typed there can be asked too; a piped run passes
@@ -386,7 +387,7 @@ fn run_agent(
             ready: started,
             screen: screen.took(run.took_screen()),
             heard: stop::heard().is_some(),
-            replaced: installed.replaced(&Stamp::of(&launch.launcher)),
+            replaced: Stamp::of(&launch.launcher).is_ok_and(|now| installed.replaced(&now)),
             saved: directory.is_saved(),
         };
         let runs = Runs {
@@ -482,7 +483,7 @@ fn run_agent(
                 (claimed, _) = switch(home, claimed, back)?;
                 if claimed.id != session {
                     // Told in the session it went back to, so nothing is kept.
-                    absent(fs::remove_file(run.log()))?;
+                    fs::optional(fs::remove_file(run.log()))?;
                     launch.carry.notice = Some(format!("Could not switch sessions: {why}"));
                     reason = claimed.reason;
                     continue;
@@ -842,7 +843,8 @@ fn resume_command(home: &Home, session: &SessionId, refused: bool) -> Option<Str
     if refused || !directory.is_saved() {
         return None;
     }
-    let name = directory.name().filter(|name| {
+    // A name that cannot be read is left out: the id resumes the session.
+    let name = directory.name().ok().flatten().filter(|name| {
         !name.starts_with('-')
             && !name.chars().any(|c| c.is_control() || is_format(c))
             && name.parse::<SessionId>().is_err()
@@ -885,7 +887,7 @@ fn switch(home: &Home, current: Claimed, target: Start) -> Result<(Claimed, Opti
     match claim(home, target, here.as_deref()) {
         Ok((next, notice)) => {
             current.discard_if_unsaved(home);
-            absent(fs::rename(
+            fs::optional(fs::rename(
                 home.staged_for(&current.id),
                 home.staged_for(&next.id),
             ))?;
@@ -980,11 +982,11 @@ fn claim(home: &Home, start: Start, here: Option<&Path>) -> Result<(Claimed, Opt
     };
     let session = home.session(&id);
     let mut moved = None;
-    let directory = match session.working_directory() {
+    let directory = match session.working_directory()? {
         Some(directory) => Some(directory),
         None => {
             if let Some(here) = here {
-                moved = session.saved_directory().map(|gone| {
+                moved = session.saved_directory()?.map(|gone| {
                     format!(
                         "The session's directory {} is gone, so it runs in {}.",
                         gone.display(),
@@ -1105,14 +1107,6 @@ fn read_secret(input: &mut impl Read) -> std::io::Result<Option<Vec<u8>>> {
             }
             [typed] => answer.push(typed),
         }
-    }
-}
-
-/// `result`, with a missing file as `None`.
-fn absent<T>(result: std::io::Result<T>) -> std::io::Result<Option<T>> {
-    match result {
-        Err(failure) if failure.kind() == ErrorKind::NotFound => Ok(None),
-        result => result.map(Some),
     }
 }
 
@@ -1243,7 +1237,7 @@ fn select(
     for staged in [home.staged_for(session), home.staged()] {
         let held = held(run)?;
         // The rename claims the staged build for this launcher alone.
-        if absent(fs::rename(staged, &held))?.is_some() {
+        if fs::optional(fs::rename(staged, &held))?.is_some() {
             let current = BuildRef::new(launch, held, Role::Trial { good });
             return Ok(Running {
                 current,
@@ -1261,7 +1255,10 @@ fn select(
 fn hold_good(launch: &Launch, run: &RunDir) -> Result<Option<BuildRef>> {
     let held = held(run)?;
     let good = launch.home().good();
-    Ok(absent(build::hold(&good, &held))?.map(|()| BuildRef::new(launch, held, Role::Proven)))
+    Ok(
+        fs::optional(build::hold(&good, &held))?
+            .map(|()| BuildRef::new(launch, held, Role::Proven)),
+    )
 }
 
 /// A path in `run` for a build to hold, which no other build of this
@@ -1285,7 +1282,7 @@ fn promote(home: &Home, build: &mut BuildRef) -> Result<bool> {
     };
     if build::stamp(&home.good()).ok() == good {
         let temporary = home.bin().join("good.tmp");
-        absent(fs::remove_file(&temporary))?;
+        fs::optional(fs::remove_file(&temporary))?;
         build::hold(&build.executable, &temporary)?;
         fs::rename(&temporary, home.good())?;
     }

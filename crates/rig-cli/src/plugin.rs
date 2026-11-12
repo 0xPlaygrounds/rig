@@ -9,7 +9,6 @@
 //! leaves a broken file. Plugin crates live outside every workspace, so
 //! making one never touches the rig repository or a project.
 
-use std::fs;
 use std::path::Path;
 use std::process::ExitCode;
 
@@ -17,6 +16,7 @@ use rig_harness_protocol::config::toml_edit::{ArrayOfTables, DocumentMut, Item, 
 use rig_harness_protocol::config::{
     self, BUILT_IN, Extra, Source, built_in, essential, set_on, table,
 };
+use rig_harness_protocol::fs;
 use rig_harness_protocol::launch::Launch;
 use rig_harness_protocol::{Home, REFUSED_EXIT_CODE};
 

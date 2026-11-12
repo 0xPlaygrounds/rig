@@ -12,13 +12,14 @@
 
 use std::collections::BTreeSet;
 use std::fmt;
-use std::fs::{self, File};
+use std::fs::File;
 use std::io::{IsTerminal, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::mpsc;
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
+use rig_harness_protocol::fs;
 use rig_harness_protocol::launch::{Launch, Purpose};
 use rig_harness_protocol::{AgentDescription, Home, RunDir, config, first_errors};
 
@@ -301,7 +302,7 @@ fn terminal_width(launch: &Launch) -> Option<u16> {
     {
         return Some(columns);
     }
-    let tty = File::open("/dev/tty").ok()?;
+    let tty = fs::open(File::options().read(true), "/dev/tty").ok()?;
     let output = launch
         .build_child(Purpose::Stty)
         .arg("size")
@@ -343,10 +344,13 @@ impl BuildLog {
     fn create(home: &Home, output: BuildOutput, shown: Box<dyn Write>) -> Self {
         let path = home.build_log();
         let file = fs::create_dir_all(home.root())
-            .and_then(|()| File::create(&path))
-            .inspect_err(|failure| {
-                eprintln!("warning: could not write {}: {failure}", path.display());
+            .and_then(|()| {
+                fs::open(
+                    File::options().write(true).create(true).truncate(true),
+                    &path,
+                )
             })
+            .inspect_err(|failure| eprintln!("warning: could not keep the build log: {failure}"))
             .ok();
         Self {
             path,
@@ -564,10 +568,11 @@ pub fn stage(launch: &Launch, staged: &Path, staging: Staging) -> Result<()> {
 /// copy carries its [`stamp`].
 fn copy(from: &Path, to: &Path) -> std::io::Result<()> {
     fs::copy(from, to)?;
-    File::options()
-        .write(true)
-        .open(to)?
-        .set_modified(fs::metadata(from)?.modified()?)
+    let modified = fs::metadata(from)?.modified()?;
+    let copied = fs::open(File::options().write(true), to)?;
+    copied
+        .set_modified(modified)
+        .map_err(fs::named("set the time of", to))
 }
 
 /// Links the build `from` at `to`, a path with no file, else copies it
@@ -698,7 +703,7 @@ fn wait_described(mut command: Command, report: &Path, timeout: Duration) -> Res
         .into());
     };
     if status.success() {
-        return Ok(fs::read_to_string(report).unwrap_or_default());
+        return Ok(fs::optional(fs::read_to_string(report))?.unwrap_or_default());
     }
     let mut errors = Vec::new();
     while let Some(left) = deadline.checked_duration_since(Instant::now())

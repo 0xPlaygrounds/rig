@@ -1,6 +1,6 @@
 #![allow(
     clippy::disallowed_methods,
-    reason = "test fixtures run programs of their own"
+    reason = "test fixtures run programs and touch files of their own"
 )]
 
 use std::os::unix::fs::PermissionsExt;
@@ -26,7 +26,7 @@ fn scratch(name: &str) -> PathBuf {
 /// Writes the shell script `body` to `path`, executable.
 fn script(path: &Path, body: &str) {
     fs::write(path, format!("#!/bin/sh\n{body}\n")).ok();
-    fs::set_permissions(path, fs::Permissions::from_mode(0o755)).ok();
+    fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).ok();
 }
 
 fn words(command: &Command) -> Vec<String> {

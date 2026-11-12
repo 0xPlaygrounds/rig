@@ -3,11 +3,12 @@
 //! build writes. After that the file is the user's, and rig never writes
 //! it again, so an edited or deleted skill stays as the user left it.
 
-use std::fs;
+use std::fs::OpenOptions;
 use std::io::{ErrorKind, Write};
 use std::path::PathBuf;
 
 use rig_harness_protocol::Home;
+use rig_harness_protocol::fs;
 
 use super::super::Result;
 
@@ -33,14 +34,17 @@ fn write(home: &Home) -> Option<String> {
     let file = file(home);
     let written = (file.parent())
         .map_or(Ok(()), fs::create_dir_all)
-        .and_then(|()| match fs::File::create_new(&file) {
-            Err(there) if there.kind() == ErrorKind::AlreadyExists => Ok(()),
-            new => new.and_then(|mut new| new.write_all(SKILL.as_bytes())),
-        });
-    let failure = written.err()?;
+        .and_then(
+            |()| match fs::open(OpenOptions::new().write(true).create_new(true), &file) {
+                Err(there) if there.kind() == ErrorKind::AlreadyExists => Ok(()),
+                new => new.and_then(|mut new| {
+                    (new.write_all(SKILL.as_bytes())).map_err(fs::named("write", &file))
+                }),
+            },
+        );
     Some(format!(
-        "warning: could not write {}: {failure}",
-        file.display()
+        "warning: could not write the skill: {}",
+        written.err()?
     ))
 }
 

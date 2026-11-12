@@ -1,6 +1,6 @@
 #![allow(
     clippy::disallowed_methods,
-    reason = "test fixtures run programs of their own"
+    reason = "test fixtures run programs and touch files of their own"
 )]
 
 use std::time::{Duration, Instant};

@@ -147,7 +147,7 @@ fn only_the_agent_and_the_next_launcher_get_a_secret() {
         dir: None,
         run: &run,
         version: "0.46.0",
-        launcher: Some(Stamp::of(Path::new("/nonexistent"))),
+        launcher: Stamp::of(Path::new("/nonexistent")).ok(),
     });
     for command in [agent, launch.reexec()] {
         assert_eq!(envs(&command).get(PROBE), Some(&Some("hunter2".to_owned())));

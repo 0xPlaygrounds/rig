@@ -1,6 +1,6 @@
 #![allow(
     clippy::disallowed_methods,
-    reason = "test fixtures run programs of their own"
+    reason = "test fixtures run programs and touch files of their own"
 )]
 
 use std::os::unix::fs::PermissionsExt;
@@ -22,7 +22,7 @@ fn built(name: &str, body: &str) -> Home {
             fs::create_dir_all(parent).ok();
         }
         fs::write(path, format!("#!/bin/sh\n{script}\n")).ok();
-        fs::set_permissions(path, fs::Permissions::from_mode(0o755)).ok();
+        fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).ok();
     }
     home
 }
@@ -67,6 +67,25 @@ fn a_build_is_staged_with_its_report_and_one_that_cannot_describe_itself_is_reje
     );
     assert!(good && !staged);
     assert_eq!(rejected, stamp);
+}
+
+/// A build that cannot be staged says which step failed on which file,
+/// not only the system's words: here the copy into the bin directory, where
+/// a directory is in the way.
+#[test]
+fn a_build_that_cannot_be_staged_names_the_step_and_the_file() {
+    let report = "printf 'rig-describe 1\\n' > \"$RIG_DESCRIBE\"";
+    let home = built("unstaged", report);
+    let in_the_way = home.bin().join("staged.tmp");
+    fs::create_dir_all(&in_the_way).ok();
+    let staged = stage_on(&home, &home.staged(), Staging::Always).map_err(|why| why.to_string());
+    fs::remove_dir_all(home.root()).ok();
+    let refused = staged.err().unwrap_or_default();
+    let to = format!(" to {}: ", in_the_way.display());
+    assert!(
+        refused.starts_with("copy ") && refused.contains(&to),
+        "{refused}"
+    );
 }
 
 /// A start that builds the build a trial was rejected for stages nothing,

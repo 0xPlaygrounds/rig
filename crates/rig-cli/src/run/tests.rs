@@ -1,6 +1,6 @@
 #![allow(
     clippy::disallowed_methods,
-    reason = "test fixtures run programs of their own"
+    reason = "test fixtures run programs and touch files of their own"
 )]
 
 use rig_harness_protocol::fake_agent::{self, Step};
@@ -311,7 +311,7 @@ fn builds(name: &str, trial: &str, good: &str) -> Home {
     for (path, which, body) in [(home.staged(), "trial", trial), (home.good(), "good", good)] {
         let script = format!("#!/bin/sh\necho {which} >> \"$RIG_HOME/ran\"\n{body}\n");
         fs::write(&path, script).ok();
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).ok();
+        fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).ok();
     }
     home
 }
@@ -1310,7 +1310,7 @@ fn script(path: &Path, body: &str) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
 
     fs::write(path, format!("#!/bin/sh\n{body}\n"))?;
-    fs::set_permissions(path, fs::Permissions::from_mode(0o755))?;
+    fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))?;
     Ok(())
 }
 

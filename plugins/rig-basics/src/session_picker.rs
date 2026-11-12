@@ -78,8 +78,8 @@ impl SessionEntry {
             ms => Ok(UNIX_EPOCH + Duration::from_millis(ms)),
         };
         Self {
-            name: dir.name(),
-            directory: dir.working_directory(),
+            name: dir.name().ok().flatten(),
+            directory: dir.working_directory().ok().flatten(),
             updated: updated.unwrap_or(UNIX_EPOCH),
             running: dir.runs_elsewhere(),
             meta,

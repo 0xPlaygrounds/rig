@@ -164,7 +164,7 @@ impl Vault {
             Sealing::Sealed => true,
             Sealing::Empty => self.0.encrypted,
             Sealing::Plain => {
-                let project = dir.working_directory();
+                let project = dir.working_directory()?;
                 if project.map_or(self.0.encrypted, |project| config.applies_to(&project)) {
                     let why = "this session is plain; encrypt it with `rig crypt migrate` first";
                     return Err(io::Error::other(why).into());

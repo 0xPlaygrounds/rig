@@ -157,7 +157,7 @@ fn converts_a_transcript_and_loads_it_back() {
     );
     let paths = SessionDir::at(&plain);
     assert!(paths.is_saved());
-    assert_eq!(paths.name().as_deref(), Some("cache-design"));
+    assert_eq!(paths.name().ok().flatten().as_deref(), Some("cache-design"));
     let store = DirStore::open(&plain);
     let meta = store.as_ref().ok().and_then(SessionMeta::read);
     assert_eq!(

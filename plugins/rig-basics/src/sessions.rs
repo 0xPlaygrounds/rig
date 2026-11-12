@@ -121,7 +121,7 @@ impl SessionTitle {
     /// ([`SessionMeta`]); `None` when it has neither. Generic, as
     /// [`SessionMeta::read`] is.
     pub fn read(dir: &SessionDir, store: &(impl Files + ?Sized)) -> Option<Self> {
-        let name = dir.name();
+        let name = dir.name().ok().flatten();
         let meta = SessionMeta::read(store);
         (name.is_some() || meta.is_some()).then(|| Self {
             name,
@@ -487,7 +487,7 @@ fn write_name(
     let Some(paths) = paths else {
         return;
     };
-    let written = paths.name();
+    let written = paths.name().ok().flatten();
     if written == title.name {
         return;
     }
@@ -499,7 +499,7 @@ fn write_name(
     };
     match claimed {
         // As the file has it, so the next frame finds nothing to write.
-        Ok(()) => title.name = paths.name(),
+        Ok(()) => title.name = paths.name().ok().flatten(),
         Err(refusal) => {
             notices.write(refusal);
             title.name = written;
@@ -581,7 +581,11 @@ fn name_conflict(home: &Home, session: Option<&SessionId>, name: &str) -> Option
         }
         // The name first: probing the lock of every session would race a
         // launcher taking one.
-        let named = dir.name().is_some_and(|stored| title_of(&stored) == name);
+        let named = dir
+            .name()
+            .ok()
+            .flatten()
+            .is_some_and(|stored| title_of(&stored) == name);
         named && (dir.is_saved() || dir.runs_elsewhere())
     })?;
     Some(Notice::error(
