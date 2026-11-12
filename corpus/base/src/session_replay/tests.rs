@@ -396,10 +396,22 @@ fn a_session_quit_under_exit_notes_replays_its_summary_call() {
 /// the run with its own verdict.
 #[test]
 fn a_session_that_failed_replays_its_failed_exit() {
-    let home = scratch_home("session-replay-failed");
-    let id = |id: &str| id.parse().unwrap_or_else(|_| SessionId::generate());
-    let (recorded_id, replay_id) = (id("6-1"), id("6-2"));
-    let failed = ExitReason::Failed(FailCode::or_failure(3));
+    replays_its_exit("failed", "6", ExitReason::Failed(FailCode::or_failure(3)));
+}
+
+/// A refused session replays to its refusal, reason and all.
+#[test]
+fn a_refused_session_replays_its_refusal() {
+    let refused = ExitReason::Refused("the \"plan\" table,\nline 2 \\ \u{7}".to_owned());
+    replays_its_exit("refused", "7", refused);
+}
+
+/// Records a session that ends with `failed`, replays it, and expects the
+/// replay to ask for `failed` first.
+fn replays_its_exit(name: &str, number: &str, failed: ExitReason) {
+    let home = scratch_home(&format!("session-replay-{name}"));
+    let id = |id: String| id.parse().unwrap_or_else(|_| SessionId::generate());
+    let (recorded_id, replay_id) = (id(format!("{number}-1")), id(format!("{number}-2")));
     let model = MockCompletionModel::from_stream_turns([reply("done")]);
     let (mut app, wakes) = app_in(&home, &recorded_id);
     with_agents(&mut app, connect(&model));
