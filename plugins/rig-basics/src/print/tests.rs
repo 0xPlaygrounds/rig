@@ -854,6 +854,7 @@ fn a_terminal_run_narrates_a_reply_given_in_place() {
     app.finish();
     app.cleanup();
     run_until(&mut app, |_| false);
+    assert_eq!(app.should_exit(), Some(AppExit::Success));
     let said = err.text().concat();
     assert_eq!(said.matches("Noting it first.").count(), 1, "{said}");
     assert_eq!(out.text().concat().trim(), "done");

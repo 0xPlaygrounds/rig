@@ -1080,19 +1080,22 @@ Every model call streams, a turn's and a plugin's own alike. Each event is a
 `StreamEvent`: a part's `Start` (a tool call's name), its `Text`,
 `Reasoning` or `Arguments` fragments, and its `End` (a finished tool call
 with its id); `part` tells parallel tool calls apart. It is written in
-Arrive in order, after the call's adapted handler rewrote it, and kept two frames,
-so a reader in `PostUpdate` gets a reply's last events even when it settled
-that frame. A reply that did not stream, such as one a plugin answered in
-place, comes the same way, once, before its outcome is applied: each part
-starts, grows by its whole text and ends. A call that streamed any event
-gets no second copy, and a superseded call none. A turn's call also adds each event up in its `Partial`, the
-one record of the reply in flight: its text, reasoning and tool calls,
-each call with its arguments so far until it ends (a successor continuing
-a reply may start it with what came so far). Views, the status and a stop
-read it; a stop keeps it, its calls never run. From its first item, the
-call also has a `StreamTiming { first, last, items }`
-beside its `Started { at }`. A delta moves no stage: a reader spawning
-effects runs `.before(AgentLoop)` or calls `Wake::wake`.
+Arrive in order, after the call's adapted handler rewrote it, and kept two
+frames, so a reader in `PostUpdate` gets a reply's last events even when it
+settled that frame. A reply whose text did not stream, such as one a plugin
+answered in place, comes the same way, once, when its outcome arrives and
+before it is applied: the whole reply, each part starting, growing by its
+whole text and ending, when nothing streamed, else only its text, in parts
+after the streamed ones. Text that streamed, even part of it, never comes
+twice, and a call superseded before its reply arrived gets none. A turn's
+call also adds each event up in its `Partial`, the one record of the reply
+in flight: its text, reasoning and tool calls, each call with its arguments
+so far until it ends (a successor continuing a reply may start it with what
+came so far). Views, the status and a stop read it; a stop keeps it, its
+calls never run. From its first item, the call also has a
+`StreamTiming { first, last, items }` beside its `Started { at }`. A delta
+moves no stage: a reader spawning effects runs `.before(AgentLoop)` or
+calls `Wake::wake`.
 
 ```rust,no_run
 use rig_harness::prelude::*;
