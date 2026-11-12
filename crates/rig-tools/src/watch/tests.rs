@@ -397,3 +397,49 @@ fn rules_read_for_an_edit_go_with_their_moved_directory() {
     std::fs::remove_dir_all(&base).ok();
     assert!(reported.contains(&top.join("a/b/new.rs")), "{reported:?}");
 }
+
+/// A line taken out of `.git/info/exclude` once the watch started shows
+/// the file it hid: an edit of that file is reported, as a look that lists
+/// the files again would.
+#[test]
+fn an_edited_exclude_file_shows_what_it_hid() {
+    let top = std::env::temp_dir().join(format!("rig-tools-watch-exclude-{}", std::process::id()));
+    std::fs::remove_dir_all(&top).ok();
+    std::fs::create_dir_all(top.join(".git/info")).ok();
+    std::fs::write(top.join(".git/info/exclude"), "secret.txt\n").ok();
+    std::fs::write(top.join("secret.txt"), "x").ok();
+    let top = std::fs::canonicalize(&top).unwrap_or(top);
+    let watch = Arc::new(Local).watch(&top, true, Listing::Visible);
+    assert!(watch.is_ok(), "{watch:?}");
+    let Ok(watch) = watch else { return };
+    let events = batches(watch);
+    seen(&events, Duration::from_millis(500));
+    std::fs::write(top.join(".git/info/exclude"), "").ok();
+    seen(&events, Duration::from_millis(500));
+    std::fs::write(top.join("secret.txt"), "edited").ok();
+    let reported = seen(&events, Duration::from_secs(1));
+    std::fs::remove_dir_all(&top).ok();
+    assert!(reported.contains(&top.join("secret.txt")), "{reported:?}");
+}
+
+/// A polling watch whose workspace fails to list once reports no file
+/// removed, and none made again when it lists again: nothing changed.
+#[test]
+fn a_failed_look_reports_no_change() {
+    let memory = Arc::new(Memory::default());
+    for name in ["a.txt", "b.txt"] {
+        memory.write(&Path::new("/project").join(name), b"x").ok();
+    }
+    let watch = memory
+        .clone()
+        .watch(Path::new("/project"), true, Listing::Visible);
+    assert!(watch.is_ok(), "{watch:?}");
+    let Ok(watch) = watch else { return };
+    let events = batches(watch);
+    seen(&events, Duration::from_millis(1500));
+    memory.1.store(true, std::sync::atomic::Ordering::SeqCst);
+    let failing = seen(&events, Duration::from_millis(1500));
+    memory.1.store(false, std::sync::atomic::Ordering::SeqCst);
+    let recovered = seen(&events, Duration::from_millis(1500));
+    assert_eq!((failing, recovered), (vec![], vec![]));
+}

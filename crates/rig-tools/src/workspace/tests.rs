@@ -19,9 +19,12 @@ use crate::{
 };
 
 /// Files held in memory, by absolute path: a workspace that is not this
-/// machine's disk.
+/// machine's disk. While its flag is set, listing its files fails.
 #[derive(Debug, Default)]
-pub(crate) struct Memory(Mutex<BTreeMap<PathBuf, Vec<u8>>>);
+pub(crate) struct Memory(
+    Mutex<BTreeMap<PathBuf, Vec<u8>>>,
+    pub(crate) std::sync::atomic::AtomicBool,
+);
 
 impl Memory {
     pub(crate) fn files(&self) -> std::sync::MutexGuard<'_, BTreeMap<PathBuf, Vec<u8>>> {
@@ -90,6 +93,9 @@ impl Workspace for Memory {
     }
 
     fn files(&self, root: &Path, glob: Option<&str>, _: Listing) -> io::Result<Listed> {
+        if self.1.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(io::Error::other("the listing failed"));
+        }
         let suffix = glob.map(|glob| glob.trim_start_matches('*'));
         let files = self
             .files()

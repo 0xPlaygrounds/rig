@@ -56,3 +56,39 @@ fn a_watch_lists_the_files_there_then_names_the_files_made_and_stops_when_despaw
     assert_eq!(app.world().resource::<Seen>().0.len(), 2);
     std::fs::remove_dir_all(&root).ok();
 }
+
+/// A watch that cannot start never looks like a healthy empty directory:
+/// no `FileChanges` with no files comes for it.
+#[cfg(unix)]
+#[test]
+fn a_watch_that_cannot_start_is_not_an_empty_directory() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let root = std::env::temp_dir().join(format!("rig-watch-locked-{}", std::process::id()));
+    std::fs::create_dir_all(&root).ok();
+    std::fs::write(root.join("there.md"), "x").ok();
+    std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o000)).ok();
+    // Whoever may read it anyway (root) can watch it.
+    let locked = std::fs::read_dir(&root).is_err();
+    let mut app = App::new();
+    app.add_plugins((TaskPoolPlugin::default(), AgentPlugin, WatchPlugin))
+        .init_resource::<Seen>()
+        .add_systems(
+            Last,
+            |mut changes: MessageReader<FileChanges>, mut seen: ResMut<Seen>| {
+                seen.0.extend(changes.read().cloned());
+            },
+        );
+    let watch = app.world_mut().spawn(FileWatch::tree(&root)).id();
+    run_until_seen(&mut app, 1);
+    std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o755)).ok();
+    std::fs::remove_dir_all(&root).ok();
+    let empty = FileChanges {
+        watch,
+        paths: vec![],
+    };
+    assert!(
+        !locked || !app.world().resource::<Seen>().0.contains(&empty),
+        "{:?}",
+        app.world().resource::<Seen>().0
+    );
+}

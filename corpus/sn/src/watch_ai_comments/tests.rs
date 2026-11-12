@@ -194,3 +194,33 @@ fn saved_ai_comments_start_turns_once_and_are_taken_out() {
 }
 
 rig_defaults_test_support::stages_ordered_test!(WatchAiCommentsPlugin);
+
+/// A project whose watch cannot start holds no `--print` run open: the
+/// watch is given up, and the user is told.
+#[cfg(unix)]
+#[test]
+fn a_watch_that_cannot_start_keeps_no_run_going() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let home = scratch_home("watch-ai-comments-locked");
+    let dir = home.root().join("project");
+    std::fs::create_dir_all(&dir).ok();
+    let dir = std::fs::canonicalize(&dir).unwrap_or(dir);
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o000)).ok();
+    // Whoever may read it anyway (root) can watch it.
+    if std::fs::read_dir(&dir).is_ok() {
+        return;
+    }
+    let model = MockCompletionModel::from_stream_turns([reply("Hi.")]);
+    let (mut app, wakes, agent) = start(&model, &dir);
+    app.world_mut()
+        .trigger(Deliver::new(agent, "/watch on", DeliveryMode::Queue));
+    run_until(&mut app, &wakes, |world| world.resource::<Watching>().on);
+    run_until(&mut app, &wakes, |world| !world.resource::<Watching>().on);
+    let kept = app
+        .world_mut()
+        .query::<&KeepRunning>()
+        .iter(app.world())
+        .count();
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).ok();
+    assert_eq!(kept, 0);
+}
