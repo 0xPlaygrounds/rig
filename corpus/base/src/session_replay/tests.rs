@@ -391,6 +391,59 @@ fn a_session_quit_under_exit_notes_replays_its_summary_call() {
     );
 }
 
+/// A session that failed with its own exit code replays to that exit: the
+/// replay ends as the recording did, with the same code.
+#[test]
+fn a_session_that_failed_replays_its_failed_exit() {
+    let home = scratch_home("session-replay-failed");
+    let id = |id: &str| id.parse().unwrap_or_else(|_| SessionId::generate());
+    let (recorded_id, replay_id) = (id("6-1"), id("6-2"));
+    let failed = ExitReason::Failed(FailCode::or_failure(3));
+    let model = MockCompletionModel::from_stream_turns([reply("done")]);
+    let (mut app, wakes) = app_in(&home, &recorded_id);
+    with_agents(&mut app, connect(&model));
+    app.add_plugins((EffectLogPlugin, ExitPlugin));
+    app.finish();
+    app.update();
+    if let Some(agent) = first_agent(app.world_mut()) {
+        let ask = Deliver::new(agent, "hello", DeliveryMode::Queue);
+        app.world_mut().trigger(ask);
+    }
+    run_until(&mut app, &wakes, |world| {
+        let mut agents = world.try_query::<&Conversation>();
+        agents.as_mut().is_some_and(|agents| {
+            let mut conversations = agents.iter(world);
+            conversations.any(|conversation| conversation.messages().len() == 2)
+        })
+    });
+    app.world_mut().trigger(Exit(failed.clone()));
+    run_until(&mut app, &wakes, |world| {
+        !world.resource::<Messages<AppExit>>().is_empty()
+    });
+    // The effect log is written at the end of the frame.
+    app.update();
+
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let (mut app, wakes) = app_in(&home, &replay_id);
+    let dir = home.session(&recorded_id).path().to_string_lossy().into();
+    app.insert_resource(Invoked {
+        args: Invocation {
+            flags: vec![(REPLAY.to_owned(), Some(dir))],
+            ..Invocation::default()
+        },
+        terminal: false,
+    })
+    .add_plugins((ExitPlugin, SessionReplayPlugin));
+    with_agents(&mut app, connect(&model));
+    let outcome = run_replay(&mut app, &wakes);
+    assert_eq!(outcome, Some((ReplayStatus::Finished, Vec::new(), (1, 0))));
+    run_until(&mut app, &wakes, |world| {
+        world.contains_resource::<ExitReason>()
+    });
+    let exit = app.world().get_resource::<ExitReason>().cloned();
+    assert_eq!(exit, Some(failed));
+}
+
 /// Exit-notes' summary calls started.
 #[derive(Resource, Default)]
 struct SummariesStarted(usize);
