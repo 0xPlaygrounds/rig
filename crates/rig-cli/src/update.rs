@@ -2,7 +2,9 @@
 //! it was installed, into the directory it runs from, then builds the agent
 //! with the new launcher. It says the exact command before it runs it, and
 //! a failed install leaves this launcher as it was: cargo moves the new
-//! binary in only once it is built.
+//! binary in only once it is built. The install never runs in the directory
+//! rig was started in, whose `rust-toolchain.toml` may pin a toolchain too
+//! old for rig ([`install_command`]).
 //!
 //! A launcher whose own file was replaced while its agent ran, by `rig
 //! update` or by hand, starts the new file on the agent's next reload, so
@@ -88,17 +90,21 @@ fn install_root(launcher: &Path) -> Result<&Path> {
 
 /// The `cargo install` that replaces the launcher in `root` from `source`:
 /// crates.io's latest `rig-cli`, or the checkout as it is now, whose new
-/// commits are the user's to fetch.
+/// commits are the user's to fetch. rustup picks the toolchain of the
+/// directory cargo starts in, so it starts in the checkout, whose own
+/// `rust-toolchain.toml` builds rig, or for crates.io in `root`, which the
+/// launcher's own `bin` directory is in; never in the user's project.
 pub fn install_command(source: &RigSource, root: &Path) -> Command {
     let mut command = Command::new("cargo");
     command.args(["install", "--force"]);
     match source {
         RigSource::Registry => {
-            command.arg(PACKAGE);
+            command.arg(PACKAGE).current_dir(root);
         }
         RigSource::Local(checkout) => {
             let path = checkout.join("crates").join(PACKAGE);
             command.arg("--locked").arg("--path").arg(path);
+            command.current_dir(checkout);
         }
     }
     command.arg("--root").arg(root);
@@ -154,13 +160,18 @@ fn install_and_build(mut install: Command, launcher: &Path) -> ExitCode {
     }
 }
 
-/// `command` as POSIX shell words ([`shell_word`]).
+/// `command` as POSIX shell words ([`shell_word`]), after a `cd` to the
+/// directory it runs in, so a user who copies it runs the same thing.
 fn shell_words(command: &Command) -> String {
-    std::iter::once(command.get_program())
+    let words = std::iter::once(command.get_program())
         .chain(command.get_args())
         .map(|word| shell_word(&word.to_string_lossy()))
         .collect::<Vec<_>>()
-        .join(" ")
+        .join(" ");
+    match command.get_current_dir() {
+        Some(directory) => format!("cd {} && {words}", shell_word(&directory.to_string_lossy())),
+        None => words,
+    }
 }
 
 /// The launcher to start in place of this one once its session is let go:
