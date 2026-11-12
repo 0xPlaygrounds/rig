@@ -1,3 +1,8 @@
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test fixtures write and read files of their own"
+)]
+
 use std::path::PathBuf;
 
 use super::{AgentEnd, FailCode};

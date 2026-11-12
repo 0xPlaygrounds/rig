@@ -1648,8 +1648,8 @@ fn run_once(
     headless: bool,
 ) -> Result<(Ended, String)> {
     let run = locks::hold_run(home)?;
-    absent(fs::remove_file(home.staged()))?;
-    absent(fs::remove_file(home.root().join("fake-agent-starts")))?;
+    fs::optional(fs::remove_file(home.staged()))?;
+    fs::optional(fs::remove_file(home.root().join("fake-agent-starts")))?;
     fs::write(home.good(), fake_agent::script(starts))?;
     let (claimed, _) = claim(home, start, None)?;
     let running = select(
@@ -1666,7 +1666,7 @@ fn run_once(
         claimed,
         running,
     )?;
-    let started = absent(fs::read_to_string(home.root().join("started")))?;
+    let started = fs::optional(fs::read_to_string(home.root().join("started")))?;
     Ok((ended, started.unwrap_or_default()))
 }
 

@@ -65,7 +65,7 @@ impl ReloadBuild {
         wake: Wake,
     ) -> std::io::Result<Self> {
         let path = std::path::PathBuf::from(launcher);
-        let installed = LauncherFile::new(path.clone(), harness_protocol::Stamp::of(&path));
+        let installed = LauncherFile::new(path.clone(), harness_protocol::Stamp::of(&path)?);
         let mut command = Command::new(launcher);
         command
             .arg(rebuild.command())
