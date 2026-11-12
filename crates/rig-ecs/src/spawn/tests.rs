@@ -161,3 +161,58 @@ fn an_id_is_free_again_once_its_agent_is_gone_or_its_spawn_was_refused() {
     let again = spawn(world, Origin::Root, spec(None));
     assert!(again.is_ok(), "{again:?}");
 }
+
+/// Final and medial sigma lowercase apart but uppercase alike: a disk that
+/// ignores case may give them one file.
+#[test]
+fn an_id_is_taken_by_another_that_only_one_case_mapping_tells_apart() {
+    let mut app = app();
+    let world = app.world_mut();
+    let spec = |id: &str| AgentSpec {
+        id: Some(AgentId(id.into())),
+        ..AgentSpec::default()
+    };
+    assert!(spawn(world, Origin::Root, spec("ς")).is_ok());
+    let made = spawn(world, Origin::Root, spec("σ"));
+    assert_eq!(made, Err(SpawnRefused::IdTaken(AgentId("σ".into()))));
+}
+
+/// Spawns `ς` then `σ` in one system, and keeps whether each was made.
+fn spawn_sigmas(mut spawner: Spawner, mut made: ResMut<Made>) {
+    for id in ["ς", "σ"] {
+        let spec = AgentSpec {
+            id: Some(AgentId(id.into())),
+            ..AgentSpec::default()
+        };
+        made.0.push(spawner.spawn(Origin::Root, spec).map(|_| ()));
+    }
+}
+
+#[test]
+fn a_pending_id_is_taken_by_another_that_only_one_case_mapping_tells_apart() {
+    let mut app = app();
+    app.add_plugins(crate::AgentPlugin)
+        .init_resource::<Made>()
+        .add_systems(Update, spawn_sigmas);
+    app.update();
+    let made = &app.world().resource::<Made>().0;
+    let taken = SpawnRefused::IdTaken(AgentId("σ".into()));
+    assert_eq!(made.as_slice(), [Ok(()), Err(taken)]);
+}
+
+/// The bound counts bytes: 100 two-byte letters fit, one more byte does not.
+#[test]
+fn a_multibyte_id_fits_up_to_the_bound_in_bytes() {
+    let mut app = app();
+    let world = app.world_mut();
+    let spec = |id: String| AgentSpec {
+        id: Some(AgentId(id)),
+        ..AgentSpec::default()
+    };
+    let at = "é".repeat(rig_memory::MAX_NEW_LOG_NAME / 2);
+    assert_eq!(at.len(), rig_memory::MAX_NEW_LOG_NAME);
+    assert!(spawn(world, Origin::Root, spec(at.clone())).is_ok());
+    let over = format!("{at}x");
+    let made = spawn(world, Origin::Root, spec(over.clone()));
+    assert_eq!(made, Err(SpawnRefused::NotALogName(AgentId(over))));
+}

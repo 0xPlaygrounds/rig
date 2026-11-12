@@ -70,14 +70,14 @@ pub struct AgentSpec {
 pub enum SpawnRefused {
     /// The origin is not an agent.
     NotAnAgent,
-    /// An agent has the id asked for, in any case, or a spawn not applied
-    /// yet asked for it first: on a disk that ignores case, the two would
-    /// share one log.
+    /// An agent has the id asked for, or one differing only in letter case
+    /// ([`same_log_name`]), or a spawn not applied yet asked for it first:
+    /// on a disk that ignores case, the two would share one log.
     IdTaken(AgentId),
     /// The id asked for cannot name a new agent log
     /// ([`check_new_log_name`]): it is empty, holds a `/` or `\`, is `.` or
     /// `..`, is longer than [`MAX_NEW_LOG_NAME`](rig_memory::MAX_NEW_LOG_NAME)
-    /// bytes, or is the session's own log's name in any case.
+    /// bytes, or is the session's own log's name in any letter case.
     NotALogName(AgentId),
     /// A tool asked for is not one its origin keeps.
     Tool(NotYours),
