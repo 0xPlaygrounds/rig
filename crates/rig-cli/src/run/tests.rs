@@ -1834,3 +1834,46 @@ fn an_agent_killed_after_asking_to_switch_switches_nothing() {
     });
     assert!(stayed, "{ran:?}");
 }
+
+/// An error in the launcher's loop after a front took the terminal's
+/// screen, such as one at the start after a `/new`, puts the terminal back
+/// before the error is said. The test runs itself again as the launcher,
+/// to read what it wrote to its stderr.
+#[cfg(unix)]
+#[test]
+fn an_error_after_a_front_took_the_screen_puts_the_terminal_back() {
+    const PROBE: &str = "RIG_SCREEN_ERROR_PROBE";
+    if std::env::var_os(PROBE).is_some() {
+        // The screen file as a directory: the agent took the screen, and
+        // the next start cannot clear it.
+        let taken = sh("mkdir -p \"$RIG_RUN/screen/kept\"");
+        let starts: &[&[Step]] = &[
+            &[Step::Ready, taken, Step::End(AgentEnd::Switch(None))],
+            &[Step::Ready],
+        ];
+        let home = builds("screen-error", "", "");
+        let failed = run_once(&home, starts, Start::New, &Invocation::default(), false);
+        fs::remove_dir_all(home.root()).ok();
+        if let Err(failure) = failed {
+            eprintln!("error: {failure}");
+        }
+        return;
+    }
+    let name = "run::tests::an_error_after_a_front_took_the_screen_puts_the_terminal_back";
+    let launcher = std::env::current_exe().and_then(|test| {
+        Command::new(test)
+            .args(["--exact", name, "--test-threads", "1", "--nocapture"])
+            .env(PROBE, "1")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .output()
+    });
+    let said = launcher.map(|output| String::from_utf8_lossy(&output.stderr).into_owned());
+    let said = said.map_err(|failure| failure.to_string());
+    let restored = said.as_deref().ok().and_then(|said| said.find("\x1b[?1049l"));
+    let error = said.as_deref().ok().and_then(|said| said.find("error: "));
+    assert!(
+        matches!((restored, error), (Some(restored), Some(error)) if restored < error),
+        "{said:?}"
+    );
+}
