@@ -113,7 +113,9 @@ fn a_bad_table_refuses_a_run_the_terminal_view_does_not_take() {
     app.cleanup();
     let problems = app.world().resource::<Settings>().problems();
     assert!(
-        problems.iter().any(|problem| problem.contains("[git_status]")),
+        problems
+            .iter()
+            .any(|problem| problem.contains("[git_status]")),
         "{problems:?}"
     );
 }

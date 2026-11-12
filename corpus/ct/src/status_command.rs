@@ -42,15 +42,18 @@ const MAX_CHARS: usize = 256;
 pub struct StatusCommandPlugin;
 
 impl Plugin for StatusCommandPlugin {
-    fn build(&self, _app: &mut App) {}
+    /// Reads the table whatever front takes the run, so a build describing
+    /// itself checks it.
+    fn build(&self, app: &mut App) {
+        app.add_setting::<StatusCommand>(SECTION);
+    }
 
     /// Once every plugin offered its front, so the run's is known.
     fn finish(&self, app: &mut App) {
         if !app.runs_front(FRONT) {
             return;
         }
-        app.add_setting::<StatusCommand>(SECTION)
-            .init_resource::<ProjectRoot>()
+        app.init_resource::<ProjectRoot>()
             .init_resource::<Processes>()
             .init_resource::<ShownAgent>()
             .init_resource::<AppStatus>()

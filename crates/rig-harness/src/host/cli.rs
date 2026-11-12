@@ -251,6 +251,12 @@ impl Cli {
         self.chosen().is_some_and(|front| front.terminal)
     }
 
+    /// Whether the run's front was chosen, even as none, as while the
+    /// build describes itself.
+    pub(crate) fn decided(&self) -> bool {
+        self.chosen.is_some()
+    }
+
     /// The front of this run, once chosen.
     pub(crate) fn chosen(&self) -> Option<&Front> {
         self.chosen.as_ref()?.as_ref().ok()?.as_ref()

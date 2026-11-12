@@ -211,13 +211,17 @@ fn a_bad_table_refuses_a_run_the_terminal_view_does_not_take() {
     // No front takes the run, as while `rig plugin check --build` describes
     // the build: the table is still read, and refused as a start refuses it.
     let mut app = App::new();
-    app.insert_resource(Settings::from_toml("[status_command]\ntimeout_ms = \"bad\"\n"))
-        .add_plugins(StatusCommandPlugin);
+    app.insert_resource(Settings::from_toml(
+        "[status_command]\ntimeout_ms = \"bad\"\n",
+    ))
+    .add_plugins(StatusCommandPlugin);
     app.finish();
     app.cleanup();
     let problems = app.world().resource::<Settings>().problems();
     assert!(
-        problems.iter().any(|problem| problem.contains("[status_command]")),
+        problems
+            .iter()
+            .any(|problem| problem.contains("[status_command]")),
         "{problems:?}"
     );
 }
