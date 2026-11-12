@@ -51,7 +51,7 @@ fn settle(app: &mut App, wakes: &Receiver<()>, path: &Path, times: usize) {
         let changes = &world.resource::<Collected<FileChanges>>().0;
         let seen = changes
             .iter()
-            .filter(|change| change.paths.iter().any(|p| p == path));
+            .filter(|change| change.event.paths().iter().any(|p| p == path));
         seen.count() >= times
     };
     run_until(app, wakes, reported);
@@ -67,7 +67,7 @@ fn reports(app: &App, path: &Path) -> usize {
     let changes = &app.world().resource::<Collected<FileChanges>>().0;
     changes
         .iter()
-        .filter(|change| change.paths.iter().any(|p| p == path))
+        .filter(|change| change.event.paths().iter().any(|p| p == path))
         .count()
 }
 
@@ -117,7 +117,10 @@ fn saved_ai_comments_start_turns_once_and_are_taken_out() {
     app.world_mut()
         .trigger(Deliver::new(agent, "/watch on", DeliveryMode::Queue));
     run_until(&mut app, &wakes, |world| {
-        world.resource::<Watching>().primed
+        let changes = &world.resource::<Collected<FileChanges>>().0;
+        changes
+            .iter()
+            .any(|change| matches!(change.event, WatchEvent::Snapshot(_)))
     });
     // The watch keeps a `--print` run going.
     let kept = app

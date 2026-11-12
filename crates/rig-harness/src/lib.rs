@@ -138,7 +138,7 @@ pub mod prelude {
     pub use crate::settings::{AppSettingsExt, Settings};
     pub use crate::successor::resend;
     pub use crate::timings::{PluginTimings, SystemTimings};
-    pub use crate::watch::{FileChanges, FileWatch};
+    pub use crate::watch::{FileChanges, FileWatch, WatchEvent};
     pub use crate::workspace::ProjectWorkspace;
     pub use crate::{
         AppKeepsExt, HeadlessPlugins, Keeps, PluginEntity, PluginSource, PluginSystems, ProvidedBy,

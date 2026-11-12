@@ -513,7 +513,7 @@ fn read_theme_files(
     let paths = changes
         .read()
         .filter(|change| watches.contains(change.watch));
-    for path in paths.flat_map(|change| change.paths.iter()) {
+    for path in paths.flat_map(|change| change.event.paths()) {
         let Some(name) = theme_name(path) else {
             continue;
         };

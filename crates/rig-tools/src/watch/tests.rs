@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::mpsc::Receiver;
@@ -5,17 +6,37 @@ use std::time::Duration;
 
 use futures::StreamExt as _;
 
-use super::Watch;
+use super::{Watch, WatchEvent};
 use crate::workspace::tests::Memory;
 use crate::workspace::{Listing, Local, Workspace};
 
-/// The batches `watch` sends, on a channel to wait on with a timeout.
-fn batches(watch: Watch) -> Receiver<Vec<PathBuf>> {
-    let (sender, batches) = std::sync::mpsc::channel();
+/// The events `watch` tells, on a channel to wait on with a timeout.
+fn events(watch: Watch) -> Receiver<WatchEvent> {
+    let (sender, events) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
         let mut watch = watch;
-        while let Some(batch) = futures::executor::block_on(watch.next()) {
-            if sender.send(batch).is_err() {
+        while let Some(event) = futures::executor::block_on(watch.next()) {
+            if sender.send(event).is_err() {
+                return;
+            }
+        }
+    });
+    events
+}
+
+/// The batches of changes `watch` tells after its snapshot, on a channel
+/// to wait on with a timeout, once the snapshot came: what changes from
+/// then on is told as a change.
+fn batches(watch: Watch) -> Receiver<Vec<PathBuf>> {
+    let (sender, batches) = std::sync::mpsc::channel();
+    let events = events(watch);
+    let first = events.recv_timeout(Duration::from_secs(10));
+    assert!(matches!(first, Ok(WatchEvent::Snapshot(_))), "{first:?}");
+    std::thread::spawn(move || {
+        while let Ok(event) = events.recv() {
+            if let WatchEvent::Changed(paths) = event
+                && sender.send(paths).is_err()
+            {
                 return;
             }
         }
@@ -173,22 +194,16 @@ fn the_batching_thread_ends_with_its_watch() {
     let (sender, watch) = futures::channel::mpsc::unbounded();
     drop(watch);
     raw_sender
-        .send(super::Raw {
-            path: file.clone(),
-            created: false,
-            made: false,
-        })
+        .send(super::Heard::Paths(vec![file.clone()]))
         .ok();
-    let filter = super::Filter {
-        root: root.clone(),
-        file: Some(file),
+    let tree = super::Tree {
+        root: file,
         recursive: false,
         listing: Listing::All,
-        ignores: super::Ignores::new(&root),
     };
     let (done, ended) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
-        super::send_batches(&raw, &sender, filter);
+        super::send_batches(&raw, &sender, &tree);
         done.send(()).ok();
     });
     assert!(ended.recv_timeout(Duration::from_secs(10)).is_ok());
@@ -422,24 +437,313 @@ fn an_edited_exclude_file_shows_what_it_hid() {
     assert!(reported.contains(&top.join("secret.txt")), "{reported:?}");
 }
 
+/// Each event `events` tells within `wait` of the one before, by kind,
+/// with its paths.
+fn told(events: &Receiver<WatchEvent>, wait: Duration) -> Vec<(&'static str, Vec<PathBuf>)> {
+    let mut told = Vec::new();
+    while let Ok(event) = events.recv_timeout(wait) {
+        let kind = match event {
+            WatchEvent::Snapshot(_) => "snapshot",
+            WatchEvent::Changed(_) => "changed",
+            WatchEvent::Unavailable(_) => "unavailable",
+            WatchEvent::Closed => "closed",
+        };
+        told.push((kind, event.paths().to_vec()));
+    }
+    told
+}
+
 /// A polling watch whose workspace fails to list once reports no file
-/// removed, and none made again when it lists again: nothing changed.
+/// removed, and none made again when it lists again: it says the listing
+/// failed, once, and then only what really changed.
 #[test]
 fn a_failed_look_reports_no_change() {
     let memory = Arc::new(Memory::default());
-    for name in ["a.txt", "b.txt"] {
-        memory.write(&Path::new("/project").join(name), b"x").ok();
-    }
+    let [a, b] = ["a.txt", "b.txt"].map(|name| Path::new("/project").join(name));
+    memory.write(&a, b"x").ok();
+    memory.write(&b, b"x").ok();
     let watch = memory
         .clone()
         .watch(Path::new("/project"), true, Listing::Visible);
     assert!(watch.is_ok(), "{watch:?}");
     let Ok(watch) = watch else { return };
-    let events = batches(watch);
-    seen(&events, Duration::from_millis(1500));
+    let events = events(watch);
+    let started = told(&events, Duration::from_millis(1500));
     memory.1.store(true, std::sync::atomic::Ordering::SeqCst);
-    let failing = seen(&events, Duration::from_millis(1500));
+    let failing = told(&events, Duration::from_millis(2500));
+    memory.write(&b, b"edited").ok();
     memory.1.store(false, std::sync::atomic::Ordering::SeqCst);
-    let recovered = seen(&events, Duration::from_millis(1500));
-    assert_eq!((failing, recovered), (vec![], vec![]));
+    let recovered = told(&events, Duration::from_millis(1500));
+    assert_eq!(
+        (started, failing, recovered),
+        (
+            vec![("snapshot", vec![a, b.clone()])],
+            vec![("unavailable", vec![])],
+            vec![("changed", vec![b])]
+        )
+    );
+}
+
+/// A polling watch whose first listing fails says so, and is no empty
+/// directory: its snapshot comes once a listing works. A root that is not
+/// there is one with no files, whose files are told as they come.
+#[test]
+fn a_failed_start_is_not_an_empty_directory() {
+    let memory = Arc::new(Memory::default());
+    let note = Path::new("/project/note.txt");
+    memory.write(note, b"x").ok();
+    memory.1.store(true, std::sync::atomic::Ordering::SeqCst);
+    let watch = memory
+        .clone()
+        .watch(Path::new("/project"), true, Listing::Visible);
+    assert!(watch.is_ok(), "{watch:?}");
+    let Ok(watch) = watch else { return };
+    let memory_events = events(watch);
+    let failed = told(&memory_events, Duration::from_millis(1500));
+    memory.1.store(false, std::sync::atomic::Ordering::SeqCst);
+    let listed = told(&memory_events, Duration::from_millis(1500));
+    assert_eq!(
+        (failed, listed),
+        (
+            vec![("unavailable", vec![])],
+            vec![("snapshot", vec![note.to_path_buf()])]
+        )
+    );
+
+    let base = std::env::temp_dir().join(format!("rig-tools-watch-later-{}", std::process::id()));
+    std::fs::remove_dir_all(&base).ok();
+    std::fs::create_dir_all(&base).ok();
+    let base = std::fs::canonicalize(&base).unwrap_or(base);
+    let later = base.join("later");
+    let watch = Arc::new(Local).watch(&later, true, Listing::Visible);
+    assert!(watch.is_ok(), "{watch:?}");
+    let Ok(watch) = watch else { return };
+    let later_events = events(watch);
+    let before = told(&later_events, Duration::from_millis(1500));
+    std::fs::create_dir_all(&later).ok();
+    std::fs::write(later.join("made.rs"), "x").ok();
+    let after = told(&later_events, Duration::from_millis(2500));
+    std::fs::remove_dir_all(&base).ok();
+    assert_eq!(
+        (before, after),
+        (
+            vec![("snapshot", vec![])],
+            vec![("changed", vec![later.join("made.rs")])]
+        )
+    );
+}
+
+/// One change to a tree, its paths relative to the directory that holds
+/// it: text written to a file (its directories made), a file or directory
+/// removed, or one renamed.
+#[derive(Clone, Debug)]
+enum Op {
+    Write(&'static str, &'static str),
+    Remove(&'static str),
+    Rename(&'static str, &'static str),
+}
+
+impl Op {
+    fn apply(&self, base: &Path) {
+        match self {
+            Self::Write(file, text) => {
+                let path = base.join(file);
+                path.parent().map(std::fs::create_dir_all);
+                std::fs::write(path, text).ok();
+            }
+            Self::Remove(path) => {
+                let path = base.join(path);
+                match path.is_dir() {
+                    true => std::fs::remove_dir_all(path).ok(),
+                    false => std::fs::remove_file(path).ok(),
+                };
+            }
+            Self::Rename(from, to) => {
+                std::fs::rename(base.join(from), base.join(to)).ok();
+            }
+        }
+    }
+}
+
+/// The steps every watch of the tree goes through: each is applied at
+/// once, then the watches settle.
+const SCRIPT: &[&[Op]] = {
+    use Op::{Remove, Rename, Write};
+    &[
+        &[Write("top/a.rs", "a")],
+        &[Write("top/sub/b.rs", "b")],
+        &[Write("top/sub/deep/c.rs", "c")],
+        &[Write("top/a.rs", "edited")],
+        &[
+            Write("top/.gitignore", "*.log\n"),
+            Write("top/sub/x.log", "x"),
+        ],
+        &[Write("top/.gitignore", "")],
+        &[Write("top/sub/.ignore", "*.rs\n")],
+        &[Remove("top/sub/.ignore")],
+        &[Write("top/.git/info/exclude", "secret.txt\n")],
+        &[
+            Write("top/secret.txt", "s"),
+            Write("top/sub/secret.txt", "s"),
+        ],
+        &[Write("top/.git/info/exclude", "")],
+        &[Write("top/secret.txt", "edited")],
+        &[
+            Write("staging/n/m.rs", "m"),
+            Rename("staging", "top/sub/moved"),
+        ],
+        &[Rename("top/sub/moved", "parked")],
+        &[
+            Write("new/inner/r.rs", "r"),
+            Rename("top/sub/deep", "old-deep"),
+            Rename("new", "top/sub/deep"),
+        ],
+        &[Remove("top/a.rs")],
+        &[
+            Write("top/target/t.rs", "t"),
+            Write("top/.hidden/h.rs", "h"),
+        ],
+        &[Write("top/.gitignore", "sub/deep/\n")],
+        &[Write("top/.gitignore", "")],
+    ]
+};
+
+/// What a seeded walk over `count` steps does: writes, edits and removes
+/// files, and edits the rules that hide some of them.
+fn generated(seed: u64, count: usize) -> Vec<Op> {
+    const FILES: [&str; 6] = [
+        "top/p.rs",
+        "top/q.txt",
+        "top/sub/p.rs",
+        "top/sub/q.txt",
+        "top/sub/deep/p.rs",
+        "top/sub/deep/q.log",
+    ];
+    const RULES: [Op; 6] = [
+        Op::Write("top/sub/.gitignore", "*.txt\n"),
+        Op::Write("top/sub/.gitignore", ""),
+        Op::Write("top/.git/info/exclude", "*.log\n"),
+        Op::Write("top/.git/info/exclude", ""),
+        Op::Write("top/.ignore", "deep/\n"),
+        Op::Write("top/.ignore", ""),
+    ];
+    const TEXTS: [&str; 3] = ["one", "two two", "three three three"];
+    let mut state = seed;
+    let mut next = move |below: usize| {
+        state = state
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        (state >> 33) as usize % below
+    };
+    (0..count)
+        .map(|_| {
+            let file = FILES.get(next(FILES.len())).copied().unwrap_or("top/p.rs");
+            match next(4) {
+                0 => Op::Remove(file),
+                1 => RULES
+                    .get(next(RULES.len()))
+                    .cloned()
+                    .unwrap_or(Op::Remove(file)),
+                _ => Op::Write(file, TEXTS.get(next(TEXTS.len())).copied().unwrap_or("x")),
+            }
+        })
+        .collect()
+}
+
+/// The events of each watch since the last call, until none came for a
+/// while: each watch's paths, a failed listing as the path `!unavailable`.
+fn settled(watches: &[Receiver<WatchEvent>]) -> Vec<BTreeSet<PathBuf>> {
+    let mut told = vec![BTreeSet::new(); watches.len()];
+    let mut last = std::time::Instant::now();
+    while last.elapsed() < Duration::from_millis(400) {
+        for (events, told) in watches.iter().zip(&mut told) {
+            while let Ok(event) = events.try_recv() {
+                last = std::time::Instant::now();
+                match event {
+                    WatchEvent::Unavailable(_) => {
+                        told.insert(PathBuf::from("!unavailable"));
+                    }
+                    event => told.extend(event.paths().iter().cloned()),
+                }
+            }
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    told
+}
+
+/// The system's watch tells what listing again would: run beside a watch
+/// that lists every 100 ms, on the same steps (files made, edited, removed
+/// and moved, a directory moved in, out and replaced, `.gitignore`,
+/// `.ignore` and `.git/info/exclude` edited), of the whole work tree, a
+/// directory in it, the tree's top alone and its hidden files too, each
+/// pair tells the same snapshot and the same files changed at each step.
+#[test]
+fn the_system_watch_tells_what_listing_again_would() {
+    let base = std::env::temp_dir().join(format!("rig-tools-watch-same-{}", std::process::id()));
+    std::fs::remove_dir_all(&base).ok();
+    std::fs::create_dir_all(base.join("top/.git/info")).ok();
+    std::fs::create_dir_all(base.join("top/sub/deep")).ok();
+    std::fs::write(base.join("top/start.rs"), "x").ok();
+    std::fs::write(base.join("top/sub/deep/start.rs"), "x").ok();
+    let base = std::fs::canonicalize(&base).unwrap_or(base);
+    let roots = [
+        (base.join("top"), true, Listing::Visible),
+        (base.join("top/sub"), true, Listing::Visible),
+        (base.join("top"), false, Listing::Visible),
+        (base.join("top"), true, Listing::Hidden),
+    ];
+    let mut watches = Vec::new();
+    for (root, recursive, listing) in &roots {
+        let native = super::notified(root, *recursive, *listing);
+        let every = Duration::from_millis(100);
+        let polled = super::poll_every(Arc::new(Local), root, *recursive, *listing, every);
+        assert!(native.is_ok() && polled.is_ok(), "{native:?} {polled:?}");
+        let (Ok(native), Ok(polled)) = (native, polled) else {
+            return;
+        };
+        watches.extend([events(native), events(polled)]);
+    }
+    let mut steps: Vec<Vec<Op>> = SCRIPT.iter().map(|step| step.to_vec()).collect();
+    steps.extend(generated(0x5eed, 16).into_iter().map(|op| vec![op]));
+    let mut told = vec![(String::from("snapshot"), settled(&watches))];
+    for step in steps {
+        step.iter().for_each(|op| op.apply(&base));
+        told.push((format!("{step:?}"), settled(&watches)));
+    }
+    std::fs::remove_dir_all(&base).ok();
+    let pairs = |told: &[BTreeSet<PathBuf>], at: usize| {
+        let pick = |index| told.get(index).cloned().unwrap_or_default();
+        (pick(at), pick(at + 1))
+    };
+    let differ: Vec<_> = told
+        .iter()
+        .flat_map(|(step, told)| {
+            (0..roots.len()).filter_map(move |root| {
+                let (native, polled) = pairs(told, 2 * root);
+                (native != polled).then(|| (step.clone(), root, native, polled))
+            })
+        })
+        .collect();
+    // A line taken out of the excludes shows its files, and an edit of one
+    // is told after.
+    let at = |name: &str| {
+        told.iter()
+            .find(|(step, _)| step == name)
+            .map(|(_, told)| pairs(told, 0).0)
+    };
+    let shown = at(r#"[Write("top/.git/info/exclude", "")]"#);
+    let edited = at(r#"[Write("top/secret.txt", "edited")]"#);
+    assert_eq!(differ, []);
+    let secret = base.join("top/secret.txt");
+    assert_eq!(
+        (shown, edited),
+        (
+            Some(BTreeSet::from([
+                secret.clone(),
+                base.join("top/sub/secret.txt")
+            ])),
+            Some(BTreeSet::from([secret]))
+        )
+    );
 }

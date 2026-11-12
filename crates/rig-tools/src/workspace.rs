@@ -17,7 +17,7 @@ use rig_core::tool::{ContentHash, ToolExecutionError, content_hash};
 
 use crate::fs::{Previous, io_error, real_path, write_atomic};
 use crate::process::{Launcher, Process, Spawn};
-pub use crate::watch::Watch;
+pub use crate::watch::{Watch, WatchEvent};
 use crate::{MAX_BYTES, MAX_FILE_BYTES, shell_path};
 
 /// The disk and the commands the tools act on: this machine's ([`Local`]),
@@ -174,13 +174,15 @@ pub trait Workspace: Send + Sync + fmt::Debug + 'static {
     ) -> io::Result<Process>;
 
     /// Watches `root`, a file or a directory (with `recursive`, every
-    /// directory under it too), from now on: a batch of the paths created,
-    /// changed or removed each time something changed, of the files
-    /// [`files`](Self::files) would list with `listing`.
-    /// Dropping the [`Watch`] stops it. To miss nothing, list the files
-    /// once after the watch has started.
+    /// directory under it too), from now on, telling of the files
+    /// [`files`](Self::files) would list with `listing`: a
+    /// [`Snapshot`](WatchEvent::Snapshot) of those there once it could
+    /// list them, then the paths created, changed or removed each time
+    /// something changed, and [`Unavailable`](WatchEvent::Unavailable)
+    /// while listing fails. A root that does not exist has no files until
+    /// it appears. Dropping the [`Watch`] stops it.
     ///
-    /// By default it looks at what [`files`](Self::files) lists every
+    /// By default it lists what [`files`](Self::files) lists every
     /// second, on a thread of its own, comparing each file's
     /// size and change time (its hash when [`stat`](Self::stat) cannot tell
     /// the time). [`Local`] hears of changes from the system instead.
@@ -686,13 +688,7 @@ impl Workspace for Local {
     }
 
     fn files(&self, root: &Path, glob: Option<&str>, listing: Listing) -> io::Result<Listed> {
-        let mut walk = WalkBuilder::new(root);
-        match listing {
-            Listing::All => walk.standard_filters(false),
-            Listing::Visible | Listing::Hidden => walk.hidden(false).filter_entry(move |entry| {
-                entry.depth() == 0 || listing.keeps(Path::new(entry.file_name()))
-            }),
-        };
+        let mut walk = walk(root, listing, |_| true);
         if let Some(glob) = glob {
             let overrides = OverrideBuilder::new(root)
                 .add(glob)
@@ -702,29 +698,7 @@ impl Workspace for Local {
                 })?;
             walk.overrides(overrides);
         }
-        // Only regular files: symbolic links are not followed.
-        let mut listed = Listed::default();
-        for entry in walk.build() {
-            match entry {
-                Ok(entry) if entry.file_type().is_some_and(|kind| kind.is_file()) => {
-                    listed.files.push(entry.into_path());
-                }
-                Ok(_) => {}
-                // What the ignore rules say wrong about themselves, such as a
-                // bad glob in a `.gitignore`, hides no file, and a path gone
-                // since it was listed is absent.
-                Err(error) => {
-                    let path = walk_path(&error).map(Path::to_path_buf);
-                    let error = error.into_io_error();
-                    if let (Some(path), Some(error)) = (path, error)
-                        && error.kind() != ErrorKind::NotFound
-                    {
-                        listed.failed.push((path, unwrapped(error)));
-                    }
-                }
-            }
-        }
-        Ok(listed)
+        Ok(listed(&walk))
     }
 
     fn spawn(
@@ -741,13 +715,58 @@ impl Workspace for Local {
         }
     }
 
-    /// The system's file events under `root`, filtered as
-    /// [`files`](Workspace::files) lists with `listing`, gathered into a
-    /// batch until no event came for 50 ms. A `root` that does not exist
-    /// yet is looked at every second, as the default does.
+    /// The system's file events under `root`, gathered into a batch until
+    /// no event came for 50 ms, and the places they name listed again as
+    /// [`files`](Workspace::files) lists with `listing`. A `root` that
+    /// does not exist yet is looked at every second, as the default does.
     fn watch(self: Arc<Self>, root: &Path, recursive: bool, listing: Listing) -> io::Result<Watch> {
         crate::watch::notified(root, recursive, listing)
     }
+}
+
+/// The walk [`Local`] lists the files under `root` with: the ignore rules
+/// `listing` follows, going only into the paths `within` keeps (the root
+/// always).
+pub(crate) fn walk(
+    root: &Path,
+    listing: Listing,
+    within: impl Fn(&Path) -> bool + Send + Sync + 'static,
+) -> WalkBuilder {
+    let mut walk = WalkBuilder::new(root);
+    walk.standard_filters(listing != Listing::All)
+        .hidden(false)
+        .filter_entry(move |entry| {
+            entry.depth() == 0
+                || (listing.keeps(Path::new(entry.file_name())) && within(entry.path()))
+        });
+    walk
+}
+
+/// The regular files `walk` finds, in walk order, and the paths it could
+/// not look into. Symbolic links are not followed.
+pub(crate) fn listed(walk: &WalkBuilder) -> Listed {
+    let mut listed = Listed::default();
+    for entry in walk.build() {
+        match entry {
+            Ok(entry) if entry.file_type().is_some_and(|kind| kind.is_file()) => {
+                listed.files.push(entry.into_path());
+            }
+            Ok(_) => {}
+            // What the ignore rules say wrong about themselves, such as a
+            // bad glob in a `.gitignore`, hides no file, and a path gone
+            // since it was listed is absent.
+            Err(error) => {
+                let path = walk_path(&error).map(Path::to_path_buf);
+                let error = error.into_io_error();
+                if let (Some(path), Some(error)) = (path, error)
+                    && error.kind() != ErrorKind::NotFound
+                {
+                    listed.failed.push((path, unwrapped(error)));
+                }
+            }
+        }
+    }
+    listed
 }
 
 /// `error` without the path a walk put in its message, which the listing

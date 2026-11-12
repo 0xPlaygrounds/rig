@@ -5,11 +5,28 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use rig_ecs::AgentPlugin;
 
+use rig_tools::workspace::WatchEvent;
+
 use super::{FileChanges, FileWatch, WatchPlugin};
 
 /// What the app's watches saw, frame after frame.
 #[derive(Resource, Default)]
 struct Seen(Vec<FileChanges>);
+
+/// What each change of `watch` told, by kind, with its paths.
+fn told(app: &App, watch: Entity) -> Vec<(&'static str, Vec<std::path::PathBuf>)> {
+    let changes = app.world().resource::<Seen>().0.iter();
+    let kind = |event: &WatchEvent| match event {
+        WatchEvent::Snapshot(_) => "snapshot",
+        WatchEvent::Changed(_) => "changed",
+        WatchEvent::Unavailable(_) => "unavailable",
+        WatchEvent::Closed => "closed",
+    };
+    changes
+        .filter(|change| change.watch == watch)
+        .map(|change| (kind(&change.event), change.event.paths().to_vec()))
+        .collect()
+}
 
 /// Runs frames until the watches saw `count` changes, or five seconds
 /// passed.
@@ -43,10 +60,12 @@ fn a_watch_lists_the_files_there_then_names_the_files_made_and_stops_when_despaw
     let made = root.join("nested/new.md");
     std::fs::write(&made, "hello").ok();
     run_until_seen(&mut app, 2);
-    let changes = |paths: Vec<_>| FileChanges { watch, paths };
     assert_eq!(
-        app.world().resource::<Seen>().0,
-        [changes(vec![there.clone()]), changes(vec![made.clone()])]
+        told(&app, watch),
+        [
+            ("snapshot", vec![there.clone()]),
+            ("changed", vec![made.clone()])
+        ]
     );
     app.world_mut().despawn(watch);
     app.update();
@@ -58,7 +77,7 @@ fn a_watch_lists_the_files_there_then_names_the_files_made_and_stops_when_despaw
 }
 
 /// A watch that cannot start never looks like a healthy empty directory:
-/// no `FileChanges` with no files comes for it.
+/// it tells why, then that it closed.
 #[cfg(unix)]
 #[test]
 fn a_watch_that_cannot_start_is_not_an_empty_directory() {
@@ -79,16 +98,13 @@ fn a_watch_that_cannot_start_is_not_an_empty_directory() {
             },
         );
     let watch = app.world_mut().spawn(FileWatch::tree(&root)).id();
-    run_until_seen(&mut app, 1);
+    run_until_seen(&mut app, 2);
     std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o755)).ok();
     std::fs::remove_dir_all(&root).ok();
-    let empty = FileChanges {
-        watch,
-        paths: vec![],
-    };
-    assert!(
-        !locked || !app.world().resource::<Seen>().0.contains(&empty),
-        "{:?}",
-        app.world().resource::<Seen>().0
-    );
+    if locked {
+        assert_eq!(
+            told(&app, watch),
+            [("unavailable", vec![]), ("closed", vec![])]
+        );
+    }
 }

@@ -214,19 +214,34 @@ fn arm(
     inbox.dir = Some(dir);
 }
 
-/// Starts or puts off the settling of each request the watch reports.
+/// Starts or puts off the settling of each request the watch reports. A
+/// watch that ended keeps no run going, and the user is told.
 fn take_changes(
     mut changes: MessageReader<FileChanges>,
     mut inbox: ResMut<Inbox>,
     mut files: Query<&mut Settling>,
     workspace: Res<ProjectWorkspace>,
+    mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
     for change in changes.read() {
         if Some(change.watch) != inbox.watch {
             continue;
         }
-        for path in &change.paths {
+        match &change.event {
+            WatchEvent::Unavailable(why) => {
+                notices.write(Notice::warn(None, format!("The inbox folder: {why}.")));
+            }
+            WatchEvent::Closed => {
+                commands.entity(change.watch).try_remove::<KeepRunning>();
+                notices.write(Notice::error(
+                    None,
+                    "The inbox folder is no longer watched.",
+                ));
+            }
+            WatchEvent::Snapshot(_) | WatchEvent::Changed(_) => {}
+        }
+        for path in change.event.paths() {
             let Some(file) = request_name(path) else {
                 continue;
             };
