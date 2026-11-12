@@ -2622,3 +2622,34 @@ fn an_answer_to_a_question_already_answered_is_refused() {
     let outcome = app.world().get::<Outcome>(ask).and_then(Answer::of);
     assert_eq!(outcome, Some(Answer::choice("yes")));
 }
+
+/// `rig -p --json /new` and `/resume <id>` end on a session switch the
+/// launcher does not follow and exits 0 for, so the exit line says 0 and
+/// no error, as `rig help agents` promises for a run that succeeded.
+#[test]
+fn a_one_shot_session_switch_exits_0_on_its_exit_line() {
+    let other = "1700000000-1".parse::<rig_harness::harness_protocol::SessionId>();
+    assert!(other.is_ok(), "{other:?}");
+    for (command, target) in [("/new", None), ("/resume", other.ok())] {
+        let switch = ExitReason::Switch(target);
+        let (app, lines) = one_shot(command, None, &silent(), true, |app| {
+            let name = command.trim_start_matches('/');
+            app.add_command(
+                name,
+                "Switches sessions as the launcher's agent does",
+                move |_: In<CommandArgs>,
+                      mut commands: Commands,
+                      mut exits: MessageWriter<AppExit>| {
+                    exits.write(switch.exit());
+                    commands.insert_resource(switch.clone());
+                },
+            );
+        });
+        assert!(app.should_exit().is_some(), "{command}");
+        let parsed = lines.parsed();
+        let exit = parsed.last().cloned().unwrap_or_default();
+        assert_eq!(at(&exit, "type"), "exit", "{command}: {parsed:?}");
+        assert_eq!(at(&exit, "code"), 0, "{command}: {exit}");
+        assert_eq!(at(&exit, "error"), &Value::Null, "{command}: {exit}");
+    }
+}
