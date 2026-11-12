@@ -748,8 +748,10 @@ impl RunDir {
             .collect())
     }
 
-    /// The groups listed in [`Self::groups`] that are still the agent's
-    /// ([`Self::live_in`]), which the next agent takes over.
+    /// The groups listed in [`Self::groups`] that still have a process
+    /// carrying [`env::PROCESS_LEDGER`] naming the list, which the next
+    /// agent takes over. A line that is not an id, even one that is not
+    /// text, names no group.
     ///
     /// # Errors
     ///
