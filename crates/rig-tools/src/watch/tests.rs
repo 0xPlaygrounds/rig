@@ -414,8 +414,7 @@ fn rules_read_for_an_edit_go_with_their_moved_directory() {
 }
 
 /// A line taken out of `.git/info/exclude` once the watch started shows
-/// the file it hid: an edit of that file is reported, as a look that lists
-/// the files again would.
+/// the file it hid, as a look that lists the files again would.
 #[test]
 fn an_edited_exclude_file_shows_what_it_hid() {
     let top = std::env::temp_dir().join(format!("rig-tools-watch-exclude-{}", std::process::id()));
@@ -430,11 +429,9 @@ fn an_edited_exclude_file_shows_what_it_hid() {
     let events = batches(watch);
     seen(&events, Duration::from_millis(500));
     std::fs::write(top.join(".git/info/exclude"), "").ok();
-    seen(&events, Duration::from_millis(500));
-    std::fs::write(top.join("secret.txt"), "edited").ok();
     let reported = seen(&events, Duration::from_secs(1));
     std::fs::remove_dir_all(&top).ok();
-    assert!(reported.contains(&top.join("secret.txt")), "{reported:?}");
+    assert_eq!(reported, [top.join("secret.txt")]);
 }
 
 /// Each event `events` tells within `wait` of the one before, by kind,
@@ -484,14 +481,13 @@ fn a_failed_look_reports_no_change() {
     );
 }
 
-/// A polling watch whose first listing fails says so, and is no empty
-/// directory: its snapshot comes once a listing works. A root that is not
+/// A polling watch whose first listing fails says so and ends: it is no
+/// empty directory, nor a watch of nothing kept open. A root that is not
 /// there is one with no files, whose files are told as they come.
 #[test]
 fn a_failed_start_is_not_an_empty_directory() {
     let memory = Arc::new(Memory::default());
-    let note = Path::new("/project/note.txt");
-    memory.write(note, b"x").ok();
+    memory.write(Path::new("/project/note.txt"), b"x").ok();
     memory.1.store(true, std::sync::atomic::Ordering::SeqCst);
     let watch = memory
         .clone()
@@ -500,15 +496,7 @@ fn a_failed_start_is_not_an_empty_directory() {
     let Ok(watch) = watch else { return };
     let memory_events = events(watch);
     let failed = told(&memory_events, Duration::from_millis(1500));
-    memory.1.store(false, std::sync::atomic::Ordering::SeqCst);
-    let listed = told(&memory_events, Duration::from_millis(1500));
-    assert_eq!(
-        (failed, listed),
-        (
-            vec![("unavailable", vec![])],
-            vec![("snapshot", vec![note.to_path_buf()])]
-        )
-    );
+    assert_eq!(failed, [("unavailable", vec![]), ("closed", vec![])]);
 
     let base = std::env::temp_dir().join(format!("rig-tools-watch-later-{}", std::process::id()));
     std::fs::remove_dir_all(&base).ok();
@@ -531,6 +519,148 @@ fn a_failed_start_is_not_an_empty_directory() {
             vec![("changed", vec![later.join("made.rs")])]
         )
     );
+}
+
+/// A local watch of a root it may not look into, here behind a directory
+/// it may not enter, cannot start: only a root that is not there may come
+/// later.
+#[cfg(unix)]
+#[test]
+fn a_local_watch_of_a_root_behind_a_locked_directory_cannot_start() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let base = std::env::temp_dir().join(format!("rig-tools-watch-behind-{}", std::process::id()));
+    let root = base.join("locked/project");
+    std::fs::create_dir_all(&root).ok();
+    let mode =
+        |mode| std::fs::set_permissions(base.join("locked"), std::fs::Permissions::from_mode(mode));
+    mode(0o000).ok();
+    // Whoever may enter it anyway (root) can watch it.
+    let locked = std::fs::metadata(&root).is_err();
+    let watch = Arc::new(Local).watch(&root, true, Listing::Visible);
+    mode(0o755).ok();
+    std::fs::remove_dir_all(&base).ok();
+    if locked {
+        assert!(watch.is_err(), "{watch:?}");
+    }
+}
+
+/// A local watch whose listing fails, of a directory below the root or of
+/// the root itself, reports a file edited meanwhile once a listing works,
+/// as the default watch does.
+#[cfg(unix)]
+#[test]
+fn an_edit_made_while_a_listing_fails_is_reported_once_it_works() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let root = std::env::temp_dir().join(format!("rig-tools-watch-failing-{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    std::fs::create_dir_all(root.join("sub")).ok();
+    let root = std::fs::canonicalize(&root).unwrap_or(root);
+    let [a, sub] = ["a.txt", "sub"].map(|name| root.join(name));
+    let f = sub.join("f.txt");
+    std::fs::write(&a, "one").ok();
+    std::fs::write(&f, "one").ok();
+    let mode =
+        |dir: &Path, mode| std::fs::set_permissions(dir, std::fs::Permissions::from_mode(mode));
+    let (raw_sender, raw) = std::sync::mpsc::channel();
+    let (sender, watch) = futures::channel::mpsc::unbounded();
+    let tree = super::Tree {
+        root: root.clone(),
+        recursive: true,
+        listing: Listing::Visible,
+    };
+    std::thread::spawn(move || super::send_batches(&raw, &sender, &tree));
+    let events = events(Watch::new(watch, ()));
+    let wait = Duration::from_millis(1500);
+    let started = told(&events, wait);
+    // Written to, not listed: the edit's event names the file.
+    mode(&sub, 0o300).ok();
+    let unreadable = std::fs::read_dir(&sub).is_err();
+    std::fs::write(&f, "two").ok();
+    raw_sender.send(super::Heard::Paths(vec![f.clone()])).ok();
+    let sub_failing = told(&events, wait);
+    mode(&sub, 0o755).ok();
+    raw_sender.send(super::Heard::Paths(vec![sub.clone()])).ok();
+    let sub_back = told(&events, wait);
+    mode(&root, 0o300).ok();
+    std::fs::write(&a, "two").ok();
+    raw_sender.send(super::Heard::Paths(vec![a.clone()])).ok();
+    let root_failing = told(&events, wait);
+    mode(&root, 0o755).ok();
+    let root_back = told(&events, Duration::from_millis(2500));
+    std::fs::remove_dir_all(&root).ok();
+    if !unreadable {
+        return;
+    }
+    assert_eq!(
+        (started, sub_failing, sub_back, root_failing, root_back),
+        (
+            vec![("snapshot", vec![a.clone(), f.clone()])],
+            vec![],
+            vec![("changed", vec![f])],
+            vec![("unavailable", vec![])],
+            vec![("changed", vec![a])],
+        )
+    );
+}
+
+/// When the system's watcher says it may have missed events, the watch
+/// lists everything again and reports a file edited meanwhile, though no
+/// event named it.
+#[test]
+fn a_rescan_reports_a_file_edited_unheard() {
+    let root = std::env::temp_dir().join(format!("rig-tools-watch-rescan-{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    std::fs::create_dir_all(&root).ok();
+    let root = std::fs::canonicalize(&root).unwrap_or(root);
+    let [a, b] = ["a.txt", "b.txt"].map(|name| root.join(name));
+    std::fs::write(&a, "one").ok();
+    std::fs::write(&b, "one").ok();
+    let (raw_sender, raw) = std::sync::mpsc::channel();
+    let (sender, watch) = futures::channel::mpsc::unbounded();
+    let tree = super::Tree {
+        root: root.clone(),
+        recursive: true,
+        listing: Listing::Visible,
+    };
+    std::thread::spawn(move || super::send_batches(&raw, &sender, &tree));
+    let events = events(Watch::new(watch, ()));
+    let started = told(&events, Duration::from_millis(1000));
+    std::fs::write(&a, "two").ok();
+    raw_sender.send(super::Heard::Everything).ok();
+    let rescanned = told(&events, Duration::from_millis(1000));
+    std::fs::remove_dir_all(&root).ok();
+    assert_eq!(
+        (started, rescanned),
+        (
+            vec![("snapshot", vec![a.clone(), b])],
+            vec![("changed", vec![a])]
+        )
+    );
+}
+
+/// A directory swapped in for another under the same name, holding files
+/// of the same names and sizes with other content, reports them: they are
+/// other files.
+#[test]
+fn a_directory_swapped_in_with_the_same_names_reports_its_files() {
+    let base = std::env::temp_dir().join(format!("rig-tools-watch-swap-{}", std::process::id()));
+    std::fs::remove_dir_all(&base).ok();
+    std::fs::create_dir_all(base.join("top/dir")).ok();
+    std::fs::write(base.join("top/dir/x.rs"), "one").ok();
+    let base = std::fs::canonicalize(&base).unwrap_or(base);
+    let top = base.join("top");
+    let watch = Arc::new(Local).watch(&top, true, Listing::Visible);
+    assert!(watch.is_ok(), "{watch:?}");
+    let Ok(watch) = watch else { return };
+    let events = batches(watch);
+    std::fs::create_dir_all(base.join("new")).ok();
+    std::fs::write(base.join("new/x.rs"), "two").ok();
+    std::fs::rename(top.join("dir"), base.join("old")).ok();
+    std::fs::rename(base.join("new"), top.join("dir")).ok();
+    let mut reported = seen(&events, Duration::from_secs(1));
+    reported.dedup();
+    std::fs::remove_dir_all(&base).ok();
+    assert_eq!(reported, [top.join("dir/x.rs")]);
 }
 
 /// One change to a tree, its paths relative to the directory that holds
@@ -585,6 +715,7 @@ const SCRIPT: &[&[Op]] = {
         &[
             Write("top/secret.txt", "s"),
             Write("top/sub/secret.txt", "s"),
+            Write("tree/secret.txt", "s"),
         ],
         &[Write("top/.git/info/exclude", "")],
         &[Write("top/secret.txt", "edited")],
@@ -597,6 +728,12 @@ const SCRIPT: &[&[Op]] = {
             Write("new/inner/r.rs", "r"),
             Rename("top/sub/deep", "old-deep"),
             Rename("new", "top/sub/deep"),
+        ],
+        &[Write("top/sub/swap/x.rs", "one")],
+        &[
+            Write("swapped/x.rs", "two"),
+            Rename("top/sub/swap", "unswapped"),
+            Rename("swapped", "top/sub/swap"),
         ],
         &[Remove("top/a.rs")],
         &[
@@ -655,11 +792,18 @@ fn generated(seed: u64, count: usize) -> Vec<Op> {
 }
 
 /// The events of each watch since the last call, until none came for a
-/// while: each watch's paths, a failed listing as the path `!unavailable`.
+/// while and each pair of watches (the system's and the polling one of a
+/// root) told the same, or for at most five seconds: each watch's paths, a
+/// failed listing as the path `!unavailable`. A loaded machine may take
+/// longer than the quiet while to tell what a pair agrees on.
 fn settled(watches: &[Receiver<WatchEvent>]) -> Vec<BTreeSet<PathBuf>> {
     let mut told = vec![BTreeSet::new(); watches.len()];
-    let mut last = std::time::Instant::now();
-    while last.elapsed() < Duration::from_millis(400) {
+    let started = std::time::Instant::now();
+    let mut last = started;
+    let agree = |told: &[BTreeSet<PathBuf>]| told.chunks(2).all(|pair| pair.first() == pair.last());
+    while (last.elapsed() < Duration::from_millis(400) || !agree(&told))
+        && started.elapsed() < Duration::from_secs(5)
+    {
         for (events, told) in watches.iter().zip(&mut told) {
             while let Ok(event) = events.try_recv() {
                 last = std::time::Instant::now();
@@ -678,10 +822,11 @@ fn settled(watches: &[Receiver<WatchEvent>]) -> Vec<BTreeSet<PathBuf>> {
 
 /// The system's watch tells what listing again would: run beside a watch
 /// that lists every 100 ms, on the same steps (files made, edited, removed
-/// and moved, a directory moved in, out and replaced, `.gitignore`,
-/// `.ignore` and `.git/info/exclude` edited), of the whole work tree, a
-/// directory in it, the tree's top alone and its hidden files too, each
-/// pair tells the same snapshot and the same files changed at each step.
+/// and moved, a directory moved in, out and replaced, also by one with
+/// the same names, `.gitignore`, `.ignore` and `.git/info/exclude`
+/// edited), of the whole work tree, a directory in it, the tree's top
+/// alone, its hidden files too, and a linked work tree, each pair tells
+/// the same snapshot and the same files changed at each step.
 #[test]
 fn the_system_watch_tells_what_listing_again_would() {
     let base = std::env::temp_dir().join(format!("rig-tools-watch-same-{}", std::process::id()));
@@ -691,11 +836,21 @@ fn the_system_watch_tells_what_listing_again_would() {
     std::fs::write(base.join("top/start.rs"), "x").ok();
     std::fs::write(base.join("top/sub/deep/start.rs"), "x").ok();
     let base = std::fs::canonicalize(&base).unwrap_or(base);
+    // A linked work tree of `top`'s repository, laid out as `git worktree
+    // add` makes it: its `.git` is a file naming its git directory, whose
+    // `commondir` leads back to `top/.git`, where its excludes are.
+    let linked = base.join("top/.git/worktrees/tree");
+    std::fs::create_dir_all(&linked).ok();
+    std::fs::write(linked.join("commondir"), "../..\n").ok();
+    std::fs::create_dir_all(base.join("tree")).ok();
+    let gitdir = format!("gitdir: {}\n", linked.display());
+    std::fs::write(base.join("tree/.git"), gitdir).ok();
     let roots = [
         (base.join("top"), true, Listing::Visible),
         (base.join("top/sub"), true, Listing::Visible),
         (base.join("top"), false, Listing::Visible),
         (base.join("top"), true, Listing::Hidden),
+        (base.join("tree"), true, Listing::Visible),
     ];
     let mut watches = Vec::new();
     for (root, recursive, listing) in &roots {
@@ -738,16 +893,21 @@ fn the_system_watch_tells_what_listing_again_would() {
     };
     let shown = at(r#"[Write("top/.git/info/exclude", "")]"#);
     let edited = at(r#"[Write("top/secret.txt", "edited")]"#);
+    let shown_linked = told
+        .iter()
+        .find(|(step, _)| step == r#"[Write("top/.git/info/exclude", "")]"#)
+        .map(|(_, told)| pairs(told, 8).0);
     assert_eq!(differ, []);
     let secret = base.join("top/secret.txt");
     assert_eq!(
-        (shown, edited),
+        (shown, edited, shown_linked),
         (
             Some(BTreeSet::from([
                 secret.clone(),
                 base.join("top/sub/secret.txt")
             ])),
-            Some(BTreeSet::from([secret]))
+            Some(BTreeSet::from([secret])),
+            Some(BTreeSet::from([base.join("tree/secret.txt")]))
         )
     );
 }
