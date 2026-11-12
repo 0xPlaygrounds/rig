@@ -168,7 +168,7 @@ pub fn run(mut launch: Launch, args: &[String]) -> Result<ExitCode> {
     let reexec = ended.reexec.take();
     let close = move || {
         if ended.restore {
-            restore_terminal(&launch);
+            restore_terminal(sane(&launch).as_mut());
         }
         if let Some(said) = ended.said {
             eprintln!("{said}");
@@ -264,7 +264,9 @@ pub fn last_report(home: &Home) -> Option<AgentDescription> {
 /// Starts the agent of `claimed` with the build `running` holds, again on
 /// a reload or switch with the build [`select`] then holds, and returns how
 /// it ended. The notice and build failure of `launch`'s carry go to the
-/// first start.
+/// first start. Each time the agent ends, [`next`] decides the step from
+/// what it left; this function carries the step out. An error after a
+/// front took the terminal's screen puts the terminal back ([`Screen`]).
 fn run_agent(
     launch: &mut Launch,
     run: &RunDir,
@@ -280,14 +282,9 @@ fn run_agent(
     // front, so a command typed there can be asked too; a piped run passes
     // only what its environment has.
     let ask = launch.terminal;
-    // Whether the agent's full-screen view kept its screen across a
-    // restart, so what the agent said before it took the terminal is gone
-    // once the launcher takes the terminal back.
+    let mut screen = Screen::new(launch);
+    // Whether a restarted view kept its screen ([`Runs::kept_screen`]).
     let mut kept_screen = false;
-    // Whether an agent's front took the terminal's screen since the
-    // launcher last put it back: a view keeps it across a restart, so a
-    // later start that never takes it may still need it put back.
-    let mut screen = false;
     let mut reason = claimed.reason;
     // A headless run that answers a prompt, restarted on a reload: without
     // the prompt, which it answered already.
@@ -299,7 +296,6 @@ fn run_agent(
     let mut invocation: &Invocation = invocation;
     let legacy = legacy_warnings(home);
     loop {
-        let left = claimed.left.take();
         let session = claimed.id.clone();
         let directory = home.session(&session);
         if ask {
@@ -310,7 +306,8 @@ fn run_agent(
                 }
                 let Some(answer) = ask_secret(launch, secret)? else {
                     claimed.discard_if_unsaved(home);
-                    return Ok(Ended::quiet(ExitCode::from(SIGNAL_EXIT_CODE)));
+                    let code = ExitCode::from(SIGNAL_EXIT_CODE);
+                    return Ok(Ended::quiet(code).restoring(screen.hand_over()));
                 };
                 launch.secrets.insert(variable, answer.into());
             }
@@ -381,174 +378,388 @@ fn run_agent(
             }
             std::thread::sleep(POLL);
         };
+        // Once the watch is dropped, a signal no longer counts as heard: it
+        // ends the launcher. So what was heard is final here.
         drop(watch);
-        let end = AgentEnd::read(run, status);
-        let reload =
-            matches!(end, AgentEnd::Reload | AgentEnd::Switch(_)) && stop::heard().is_none();
-        let restart = !headless || (answers_prompt && end == AgentEnd::Reload);
-        // A view's reload after the launcher's file was replaced restarts on
-        // the new launcher, never the new agent under this one. A headless
-        // agent does not reload once its launcher was replaced, as told by
-        // the stamp passed on, since only this launcher restarts it without
-        // its prompt.
-        let replaced =
-            reload && restart && !headless && installed.replaced(&Stamp::of(&launch.launcher));
-        screen |= run.took_screen();
-        // A reload that restarts leaves the jobs running, listed for the
-        // next build to take over. Best effort: a list that cannot be read
-        // must not keep the terminal from being put back below.
-        if !(reload && restart) || replaced {
+        let left = Left {
+            end: AgentEnd::read(run, status),
+            ready: started,
+            screen: screen.took(run.took_screen()),
+            heard: stop::heard().is_some(),
+            replaced: installed.replaced(&Stamp::of(&launch.launcher)),
+            saved: directory.is_saved(),
+        };
+        let runs = Runs {
+            headless,
+            answers_prompt,
+            reason,
+            kept_screen,
+            back: claimed.left.take(),
+            trial: running.current.is_trial(),
+            previous: running.previous.is_some(),
+        };
+        let step = next(&runs, &left);
+        // A reload that restarts under this launcher leaves the jobs
+        // running, listed for the next build to take over. Best effort: a
+        // list that cannot be read must not keep the terminal from being
+        // put back.
+        if !matches!(step, Step::Restart { .. }) {
             run.kill_left_groups().ok();
         }
         promoted?;
-        let rejected = running.current.is_trial() && !started && stop::heard().is_none();
+        let rejected = runs.rejected(&left);
         if rejected {
             build::reject(home, &running.current.executable)?;
         }
-        if replaced {
-            // The session the agent switched to, claimed as a switch claims
-            // it: one that cannot run leaves this one on, told why. The new
-            // launcher goes on as this one would: resuming it by its
-            // command line, which names no session else, in its directory.
-            if let AgentEnd::Switch(target) = &end {
-                let target = target.clone().map_or(Start::New, Start::Resume);
-                (claimed, launch.carry.notice) = switch(home, claimed, target)?;
+        let ending = match step {
+            Step::Reexec { to } => {
+                // The session the agent switched to, claimed as a switch
+                // claims it: one that cannot run leaves this one on, told
+                // why. The new launcher goes on as this one would: resuming
+                // it by its command line, which names no session else, in
+                // its directory.
+                if let Some(target) = to {
+                    (claimed, launch.carry.notice) = switch(home, claimed, target)?;
+                }
+                let resume = home
+                    .session(&claimed.id)
+                    .is_saved()
+                    .then(|| ["--resume".into(), OsString::from(claimed.id.as_str())]);
+                if let Some(here) = &claimed.directory {
+                    launch.here = Some(AbsPath::new(here)?);
+                }
+                claimed.discard_if_unsaved(home);
+                launch.args = resume.into_iter().flatten().chain(args).collect();
+                launch.carry = Carry {
+                    reason: Some(if claimed.id == session {
+                        StartReason::Reloaded
+                    } else {
+                        claimed.reason
+                    }),
+                    left: (claimed.id != session).then_some(session),
+                    warned: launch.carry.warned,
+                    notice: launch.carry.notice.take(),
+                    ..Carry::default()
+                };
+                return Ok(Ended {
+                    reexec: Some(launch.clone()),
+                    ..Ended::quiet(ExitCode::SUCCESS).restoring(screen.hand_over())
+                });
             }
-            let resume = home
-                .session(&claimed.id)
-                .is_saved()
-                .then(|| ["--resume".into(), OsString::from(claimed.id.as_str())]);
-            if let Some(here) = &claimed.directory {
-                launch.here = Some(AbsPath::new(here)?);
-            }
-            claimed.discard_if_unsaved(home);
-            launch.args = resume.into_iter().flatten().chain(args).collect();
-            launch.carry = Carry {
-                reason: Some(if claimed.id == session {
+            Step::Restart { to } => {
+                if headless {
+                    invocation = &restarted;
+                }
+                if let Some(target) = to {
+                    (claimed, launch.carry.notice) = switch(home, claimed, target)?;
+                }
+                let Running { current, previous } = running;
+                let current = if rejected { previous } else { Some(current) };
+                running = {
+                    let output = if headless {
+                        BuildOutput::LogOnly
+                    } else {
+                        BuildOutput::Live
+                    };
+                    let _lock = locks::hold_build_lock(home, output)?;
+                    select(launch, &claimed.id, run, current)?
+                };
+                reason = if claimed.id == session {
                     StartReason::Reloaded
                 } else {
                     claimed.reason
-                }),
-                left: (claimed.id != session).then_some(session),
-                warned: launch.carry.warned,
-                notice: launch.carry.notice.take(),
-                ..Carry::default()
-            };
-            return Ok(Ended {
-                reexec: Some(launch.clone()),
-                ..Ended::quiet(ExitCode::SUCCESS).restoring(screen)
-            });
-        }
-        if reload && restart {
-            if headless {
-                invocation = &restarted;
-            }
-            if let AgentEnd::Switch(target) = &end {
-                let target = target.clone().map_or(Start::New, Start::Resume);
-                (claimed, launch.carry.notice) = switch(home, claimed, target)?;
-            }
-            let Running { current, previous } = running;
-            let current = if rejected { previous } else { Some(current) };
-            running = {
-                let output = if headless {
-                    BuildOutput::LogOnly
-                } else {
-                    BuildOutput::Live
                 };
-                let _lock = locks::hold_build_lock(home, output)?;
-                select(launch, &claimed.id, run, current)?
-            };
-            reason = if claimed.id == session {
-                StartReason::Reloaded
-            } else {
-                claimed.reason
-            };
-            claimed.left = (claimed.id != session).then_some(session);
-            kept_screen = !headless;
-            continue;
-        }
-        let refusal = match &end {
-            AgentEnd::Refused(why) => Some(why.as_str()),
-            _ => None,
-        };
-        if !rejected
-            && !headless
-            && stop::heard().is_none()
-            && let Some(left) = left
-            && let Some(why) = refusal
-        {
-            let back = if home.session(&left).is_saved() {
-                Start::Resume(left)
-            } else {
-                Start::New
-            };
-            let (previous, _) = switch(home, claimed, back)?;
-            claimed = previous;
-            reason = claimed.reason;
-            if claimed.id != session {
-                // Told in the session it went back to, so nothing is kept.
-                absent(fs::remove_file(run.log()))?;
-                launch.carry.notice = Some(format!("Could not switch sessions: {why}"));
+                claimed.left = (claimed.id != session).then_some(session);
+                kept_screen = !headless;
                 continue;
             }
-        }
-        // Only a session rolled back for someone at the terminal, or after
-        // a reload of a run that answers a prompt, runs again.
-        let again = (!headless || (answers_prompt && reason == StartReason::Reloaded))
-            && stop::heard().is_none();
-        let ended = !rejected || !again || running.previous.is_none();
-        let log = if ended {
-            claimed.leave(home, run, &end)
-        } else {
-            directory.log()
+            Step::GoBack { to, why, otherwise } => {
+                let back = if home.session(&to).is_saved() {
+                    Start::Resume(to)
+                } else {
+                    Start::New
+                };
+                (claimed, _) = switch(home, claimed, back)?;
+                if claimed.id != session {
+                    // Told in the session it went back to, so nothing is kept.
+                    absent(fs::remove_file(run.log()))?;
+                    launch.carry.notice = Some(format!("Could not switch sessions: {why}"));
+                    reason = claimed.reason;
+                    continue;
+                }
+                otherwise
+            }
+            Step::Stop(stop) => stop,
         };
-        if !rejected && headless {
-            return Ok(Ended::quiet(ExitCode::from(end.launcher_code())));
-        }
-        let resume = started
-            .then(|| resume_command(home, &session, refusal.is_some()))
+        let (said, restore) = match ending {
+            Stop::End { said, restore } => (said, restore),
+            Stop::RollBack => {
+                // `next` rolls back only to a previous build.
+                if let Some(previous) = running.previous.take() {
+                    running.current = previous;
+                }
+                let message = rolled_back(status, &directory.log());
+                screen.restore();
+                eprintln!("{message}");
+                kept_screen = false;
+                launch.carry.notice = Some(message);
+                reason = StartReason::Restarted;
+                continue;
+            }
+        };
+        let log = claimed.leave(home, run, &left.end);
+        let refused = matches!(left.end, AgentEnd::Refused(_));
+        let resume = (left.ready)
+            .then(|| resume_command(home, &session, refused))
             .flatten();
-        if !rejected && end == AgentEnd::Quit {
-            let said = resume.map(|resume| format!("To resume this session: {resume}"));
-            // The agent left the terminal as it found it; the line needs
-            // it out of the full screen in case it did not.
-            let restore = said.is_some() && screen;
-            return Ok(Ended::new(&end, said).restoring(restore));
-        }
-        let restore = std::mem::take(&mut screen);
-        if !rejected {
-            let log = Some(log.as_path()).filter(|log| log.exists());
-            // A refusal said while a view had the screen was not seen.
-            let hidden = kept_screen || restore;
-            let said = stopped(&end, status, resume.as_deref(), hidden, log);
-            return Ok(Ended::new(&end, said).restoring(restore));
-        }
-        let Some(previous) = running.previous.take() else {
-            let said = format!(
+        let said = match said {
+            Said::Nothing => None,
+            Said::Resume => resume.map(|resume| format!("To resume this session: {resume}")),
+            Said::Stopped { hidden } => {
+                let log = Some(log.as_path()).filter(|log| log.exists());
+                stopped(&left.end, status, resume.as_deref(), hidden, log)
+            }
+            Said::NoPrevious => Some(format!(
                 "The new build stopped during startup ({status}) and there is no previous \
                  build to roll back to; the next `rig` tries it again. Log: {}",
                 log.display()
-            );
-            return Ok(Ended::new(&end, Some(said)).restoring(restore));
+            )),
+            Said::RolledBack => Some(rolled_back(status, &log)),
         };
-        running.current = previous;
-        let message = format!(
-            "The new build stopped during startup ({status}); rolled back to the previous \
-             build. `rig build` tries it again. Log: {}",
-            log.display()
-        );
-        // A one-shot run is not run twice, its output already out, unless
-        // its agent reloaded: the restart tells the agent of the rollback.
-        if !again {
-            return Ok(Ended::new(&end, Some(message)).restoring(restore));
+        screen.hand_over();
+        return Ok(Ended::new(&left.end, said).restoring(restore));
+    }
+}
+
+/// What the launcher says when it rolls a new build that stopped during
+/// startup with `status` back to the previous one; `log` is the run's.
+fn rolled_back(status: ExitStatus, log: &Path) -> String {
+    format!(
+        "The new build stopped during startup ({status}); rolled back to the previous \
+         build. `rig build` tries it again. Log: {}",
+        log.display()
+    )
+}
+
+/// What the launcher knows of its runs of the session when an agent ends,
+/// for [`next`].
+#[derive(Clone, Debug, PartialEq)]
+struct Runs {
+    /// Whether the run passes its exit code and output through ([`run`]).
+    headless: bool,
+    /// Whether it is a headless run that answers a prompt.
+    answers_prompt: bool,
+    /// Why the agent that ended started.
+    reason: StartReason,
+    /// Whether the agent is a restarted view's, which kept the screen, so
+    /// what the agent said before it took the screen was not seen.
+    kept_screen: bool,
+    /// The session the agent switched away from to start this one, on its
+    /// first start.
+    back: Option<SessionId>,
+    /// Whether the agent ran a trial build.
+    trial: bool,
+    /// Whether there is a previous build to roll back to.
+    previous: bool,
+}
+
+impl Runs {
+    /// Whether the launcher rejects the agent's build: a trial that ended
+    /// before it said it started, but for a signal the launcher heard,
+    /// which did not give it its chance.
+    fn rejected(&self, left: &Left) -> bool {
+        self.trial && !left.ready && !left.heard
+    }
+}
+
+/// What an agent left when it ended, for [`next`].
+#[derive(Clone, Debug, PartialEq)]
+struct Left {
+    end: AgentEnd,
+    /// Whether it said it started.
+    ready: bool,
+    /// Whether a front took the terminal's screen since the launcher last
+    /// put it back ([`Screen`]).
+    screen: bool,
+    /// Whether the launcher heard a signal while the agent ran.
+    heard: bool,
+    /// Whether the launcher's file was replaced since it started, as
+    /// `rig update` does.
+    replaced: bool,
+    /// Whether its session is saved.
+    saved: bool,
+}
+
+/// The launcher's step once an agent ended ([`next`]).
+#[derive(Clone, Debug, PartialEq)]
+enum Step {
+    /// Hand the session to the launcher's new file ([`update::reexec`]),
+    /// first switching to `to` when the agent asked to.
+    Reexec { to: Option<Start> },
+    /// Start the agent again, on the session `to` names when the agent
+    /// switched; on the previous build when the trial was rejected.
+    Restart { to: Option<Start> },
+    /// Go back to `to`, the session the agent switched away from, as its
+    /// start was refused for `why`; else `otherwise`, when it cannot run.
+    GoBack {
+        to: SessionId,
+        why: String,
+        otherwise: Stop,
+    },
+    /// Follow neither a reload nor a switch.
+    Stop(Stop),
+}
+
+/// A [`Step`] that does not follow a reload or switch.
+#[derive(Clone, Debug, PartialEq)]
+enum Stop {
+    /// Start the session again on the previous build, after the trial
+    /// stopped during startup.
+    RollBack,
+    /// End the launcher's runs, saying `said`, after putting the terminal
+    /// back when `restore`.
+    End { said: Said, restore: bool },
+}
+
+/// What the launcher says last ([`Ended::said`]).
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Said {
+    Nothing,
+    /// How to resume the session, when it can be.
+    Resume,
+    /// That the agent stopped ([`stopped`]), the `hidden` way.
+    Stopped {
+        hidden: bool,
+    },
+    /// That the trial stopped during startup with nothing to roll back to.
+    NoPrevious,
+    /// That the trial stopped during startup and was rolled back.
+    RolledBack,
+}
+
+/// The step after an agent of `runs` ended as `left` says. A reload or
+/// switch restarts the agent of a run with someone at the terminal, and a
+/// headless run's reload when it answers a prompt, on a new launcher once
+/// the launcher's file was replaced; a signal the launcher heard follows
+/// neither. A refused first start after a switch goes back to the session
+/// it left.
+fn next(runs: &Runs, left: &Left) -> Step {
+    let to = match &left.end {
+        AgentEnd::Switch(target) => Some(target.clone().map_or(Start::New, Start::Resume)),
+        _ => None,
+    };
+    let reload = left.end == AgentEnd::Reload || to.is_some();
+    let restart = !runs.headless || (runs.answers_prompt && left.end == AgentEnd::Reload);
+    if reload && restart && !left.heard {
+        // A headless agent does not reload onto a new launcher, as told by
+        // the stamp passed on, since only this one restarts it without its
+        // prompt.
+        return if left.replaced && !runs.headless {
+            Step::Reexec { to }
+        } else {
+            Step::Restart { to }
+        };
+    }
+    let otherwise = unfollowed(runs, left);
+    match (&left.end, &runs.back) {
+        (AgentEnd::Refused(why), Some(back))
+            if !runs.headless && !left.heard && !runs.rejected(left) =>
+        {
+            Step::GoBack {
+                to: back.clone(),
+                why: why.clone(),
+                otherwise,
+            }
         }
-        if restore {
-            restore_terminal(launch);
+        _ => Step::Stop(otherwise),
+    }
+}
+
+/// How the runs end when the agent's end is not followed ([`next`]). A
+/// rejected trial runs again on the previous build only for someone at the
+/// terminal, or after a reload of a run that answers a prompt: a one-shot
+/// run's output is already out.
+fn unfollowed(runs: &Runs, left: &Left) -> Stop {
+    let end = |said, restore| Stop::End { said, restore };
+    if !runs.rejected(left) {
+        if runs.headless {
+            return end(Said::Nothing, false);
         }
-        eprintln!("{message}");
-        kept_screen = false;
-        launch.carry.notice = Some(message);
-        reason = StartReason::Restarted;
+        if left.end == AgentEnd::Quit {
+            // The agent left the terminal as it found it; the line needs
+            // it out of the full screen in case it did not.
+            let resume = left.ready && left.saved;
+            let said = if resume { Said::Resume } else { Said::Nothing };
+            return end(said, resume && left.screen);
+        }
+        // A refusal said while a view had the screen was not seen.
+        let hidden = runs.kept_screen || left.screen;
+        return end(Said::Stopped { hidden }, left.screen);
+    }
+    if !runs.previous {
+        return end(Said::NoPrevious, left.screen);
+    }
+    if !runs.headless || (runs.answers_prompt && runs.reason == StartReason::Reloaded) {
+        Stop::RollBack
+    } else {
+        end(Said::RolledBack, left.screen)
+    }
+}
+
+/// Whether an agent's front took the terminal's screen since the launcher
+/// last put it back. A view keeps it across a restart, so a later start
+/// that never takes it may still need it put back. Dropped while taken,
+/// as when an error ends the launcher's runs, it puts the terminal back.
+struct Screen {
+    taken: bool,
+    /// `stty sane` on the launcher's terminal, when it has one.
+    sane: Option<Command>,
+}
+
+impl Screen {
+    fn new(launch: &Launch) -> Self {
+        Self {
+            taken: false,
+            sane: sane(launch),
+        }
+    }
+
+    /// Notes whether the last agent `took` the screen, and returns
+    /// whether it is taken.
+    fn took(&mut self, took: bool) -> bool {
+        self.taken |= took;
+        self.taken
+    }
+
+    /// Puts the terminal back when the screen is taken.
+    fn restore(&mut self) {
+        if std::mem::take(&mut self.taken) {
+            restore_terminal(self.sane.as_mut());
+        }
+    }
+
+    /// Leaves the restore to the caller, and returns whether the screen
+    /// was taken.
+    fn hand_over(&mut self) -> bool {
+        std::mem::take(&mut self.taken)
+    }
+}
+
+impl Drop for Screen {
+    fn drop(&mut self) {
+        if !self.taken {
+            return;
+        }
+        let sane = self.sane.take();
+        let restore = move || {
+            let mut sane = sane;
+            restore_terminal(sane.as_mut());
+        };
+        // After a signal, a terminal nobody reads must not hold the launcher.
+        match stop::heard() {
+            None => restore(),
+            Some(_) => stop::bounded(restore),
+        }
     }
 }
 
@@ -799,12 +1010,22 @@ fn claim(home: &Home, start: Start, here: Option<&Path>) -> Result<(Claimed, Opt
 }
 
 /// Puts the terminal back after an agent that could not restore it: leaves
-/// the alternate screen, mouse reports and, on a terminal, raw mode.
-fn restore_terminal(launch: &Launch) {
+/// the alternate screen, mouse reports and, with `sane` ([`sane`]), raw
+/// mode.
+fn restore_terminal(sane: Option<&mut Command>) {
     eprint!("\x1b[?1049l\x1b[?25h\x1b[?1006l\x1b[?1002l");
-    if launch.terminal {
-        launch.build_child(Purpose::Stty).arg("sane").status().ok();
+    if let Some(sane) = sane {
+        sane.status().ok();
     }
+}
+
+/// `stty sane` on the launcher's terminal; `None` without one.
+fn sane(launch: &Launch) -> Option<Command> {
+    launch.terminal.then(|| {
+        let mut stty = launch.build_child(Purpose::Stty);
+        stty.arg("sane");
+        stty
+    })
 }
 
 /// The terminal's line mode, put aside while the launcher waits for and

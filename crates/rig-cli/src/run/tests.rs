@@ -297,42 +297,6 @@ kill -KILL $$",
     fs::remove_dir_all(&notes).ok();
 }
 
-/// The launcher puts the terminal back only after a front that took its
-/// screen, even when the agent that took it reloaded into one that did
-/// not and failed; not after one that never took it, such as `--json`
-/// typed at a terminal.
-#[cfg(unix)]
-#[test]
-fn the_terminal_is_put_back_only_after_a_front_took_its_screen() {
-    let started = || [sh(MARK), Step::Ready, sh(SAVE)];
-    let [mark, ready, save] = started();
-    let restored = |test: &str, starts: &[&[Step]]| {
-        interactive(test, starts, false).map(|(ended, _)| (ended.code, ended.restore))
-    };
-    let reloaded: &[&[Step]] = &[
-        &[
-            mark.clone(),
-            ready.clone(),
-            save.clone(),
-            Step::Screen,
-            Step::End(AgentEnd::Reload),
-        ],
-        &[mark.clone(), ready.clone(), save.clone(), Step::Exit(2)],
-    ];
-    assert_eq!(
-        restored("screen-reloaded", reloaded),
-        Some((ExitCode::from(2), true))
-    );
-    assert_eq!(
-        restored("screen-lines", &[&started()]),
-        Some((ExitCode::SUCCESS, false))
-    );
-    assert_eq!(
-        restored("screen-quit", &[&[mark, ready, save, Step::Screen]]),
-        Some((ExitCode::SUCCESS, true))
-    );
-}
-
 /// A home whose staged build is `trial` and whose good build is `good`:
 /// shell scripts that add their name to the home's `ran` file and then run
 /// their body, which may use the launcher's environment.
@@ -640,67 +604,6 @@ fn a_refused_switch_goes_back_to_the_session_it_left() {
              {left} resumed Could not switch sessions: too old.\n"
         );
         assert_eq!(started, expected);
-    }
-}
-
-/// A refused switch that a signal to the launcher came with does not go
-/// back: nothing starts after the signal. It signals its own process, so it
-/// needs one of its own, as nextest gives each test.
-#[cfg(unix)]
-#[test]
-fn a_refused_switch_after_a_signal_starts_nothing() {
-    let home = builds("switch-signal", "", "");
-    let back = locks::hold_run(&home).and_then(|run| {
-        let saved = || -> Result<SessionId> {
-            let (id, session) = home.new_session()?;
-            session.mark_saved()?;
-            Ok(id)
-        };
-        let (left, refused) = (saved()?, saved()?);
-        let log = || sh("echo \"$RIG_SESSION $RIG_START\" >> \"$RIG_HOME/started\"");
-        let agent = fake_agent::script(&[
-            &[
-                log(),
-                Step::Ready,
-                Step::End(AgentEnd::Switch(Some(refused.clone()))),
-            ],
-            &[
-                log(),
-                Step::Ready,
-                sh("trap '' TERM"),
-                Step::Record(too_old()),
-                sh("kill -TERM $PPID"),
-                Step::Exit(REFUSED_EXIT_CODE),
-            ],
-        ]);
-        for build in [home.staged(), home.good()] {
-            fs::write(build, &agent)?;
-        }
-        let (claimed, _) = claim(&home, Start::Resume(left.clone()), None)?;
-        let running = select(
-            &at(&home, Path::new(NO_LAUNCHER))?,
-            &claimed.id,
-            run.dir(),
-            None,
-        )?;
-        let ended = run_agent(
-            &mut at(&home, Path::new(NO_LAUNCHER))?,
-            run.dir(),
-            &Invocation::default(),
-            false,
-            claimed,
-            running,
-        )?;
-        let started = fs::read_to_string(home.root().join("started"))?;
-        Ok((ended.code, started, left, refused))
-    });
-    fs::remove_dir_all(home.root()).ok();
-    let back = back.map_err(|failure| failure.to_string());
-    assert!(back.is_ok(), "{back:?}");
-    if let Ok((code, started, left, refused)) = back {
-        // The refused agent's end is the launcher's: no agent ran after it.
-        assert_eq!(code, ExitCode::from(REFUSED_EXIT_CODE));
-        assert_eq!(started, format!("{left} resumed\n{refused} resumed\n"));
     }
 }
 
@@ -1870,10 +1773,296 @@ fn an_error_after_a_front_took_the_screen_puts_the_terminal_back() {
     });
     let said = launcher.map(|output| String::from_utf8_lossy(&output.stderr).into_owned());
     let said = said.map_err(|failure| failure.to_string());
-    let restored = said.as_deref().ok().and_then(|said| said.find("\x1b[?1049l"));
+    let restored = said
+        .as_deref()
+        .ok()
+        .and_then(|said| said.find("\x1b[?1049l"));
     let error = said.as_deref().ok().and_then(|said| said.find("error: "));
     assert!(
         matches!((restored, error), (Some(restored), Some(error)) if restored < error),
         "{said:?}"
     );
+}
+
+/// The step after each end an agent can leave, as a table: the decision
+/// the fake-agent runs above make, without running an agent.
+#[test]
+fn each_end_decides_the_next_step() {
+    use super::Step as Next;
+    use rig_harness_protocol::end::FailCode;
+
+    let id = SessionId::generate();
+    let view = Runs {
+        headless: false,
+        answers_prompt: false,
+        reason: StartReason::New,
+        kept_screen: false,
+        back: None,
+        trial: false,
+        previous: false,
+    };
+    let prompt = Runs {
+        headless: true,
+        answers_prompt: true,
+        ..view.clone()
+    };
+    let command = Runs {
+        headless: true,
+        ..view.clone()
+    };
+    let trial = Runs {
+        trial: true,
+        previous: true,
+        ..view.clone()
+    };
+    let quit = Left {
+        end: AgentEnd::Quit,
+        ready: true,
+        screen: false,
+        heard: false,
+        replaced: false,
+        saved: true,
+    };
+    let ended = |end: AgentEnd| Left {
+        end,
+        ..quit.clone()
+    };
+    let reload = ended(AgentEnd::Reload);
+    let new = ended(AgentEnd::Switch(None));
+    let resume = ended(AgentEnd::Switch(Some(id.clone())));
+    let refused = ended(AgentEnd::Refused("too old.".to_owned()));
+    let failed = ended(AgentEnd::Failed(FailCode::or_failure(3)));
+    let end = |said, restore| Next::Stop(Stop::End { said, restore });
+    let stopped = |hidden| end(Said::Stopped { hidden }, hidden);
+    let replaced = |left: &Left| Left {
+        replaced: true,
+        ..left.clone()
+    };
+    let screen = |left: &Left| Left {
+        screen: true,
+        ..left.clone()
+    };
+    let heard = |left: &Left| Left {
+        heard: true,
+        ..left.clone()
+    };
+    let unready = |left: &Left| Left {
+        ready: false,
+        ..left.clone()
+    };
+    let back = |runs: &Runs| Runs {
+        back: Some(id.clone()),
+        ..runs.clone()
+    };
+    let rows: Vec<(&str, Runs, Left, Next)> = vec![
+        // A quit offers the resume of a saved session the agent started.
+        ("quit", view.clone(), quit.clone(), end(Said::Resume, false)),
+        (
+            "quit unsaved",
+            view.clone(),
+            Left {
+                saved: false,
+                ..quit.clone()
+            },
+            end(Said::Nothing, false),
+        ),
+        (
+            "quit never ready",
+            view.clone(),
+            unready(&quit),
+            end(Said::Nothing, false),
+        ),
+        (
+            "quit headless",
+            prompt.clone(),
+            quit.clone(),
+            end(Said::Nothing, false),
+        ),
+        // The terminal is put back after a front that took the screen,
+        // only when the launcher says something after it.
+        (
+            "quit screen",
+            view.clone(),
+            screen(&quit),
+            end(Said::Resume, true),
+        ),
+        (
+            "quit screen unsaved",
+            view.clone(),
+            Left {
+                saved: false,
+                ..screen(&quit)
+            },
+            end(Said::Nothing, false),
+        ),
+        ("failed", view.clone(), failed.clone(), stopped(false)),
+        (
+            "failed after a view kept the screen",
+            Runs {
+                kept_screen: true,
+                ..view.clone()
+            },
+            screen(&failed),
+            stopped(true),
+        ),
+        (
+            "failed headless",
+            prompt.clone(),
+            failed.clone(),
+            end(Said::Nothing, false),
+        ),
+        // A reload or switch restarts a view, on the new launcher once the
+        // launcher's file was replaced.
+        (
+            "reload",
+            view.clone(),
+            reload.clone(),
+            Next::Restart { to: None },
+        ),
+        (
+            "new",
+            view.clone(),
+            new.clone(),
+            Next::Restart {
+                to: Some(Start::New),
+            },
+        ),
+        (
+            "resume",
+            view.clone(),
+            resume.clone(),
+            Next::Restart {
+                to: Some(Start::Resume(id.clone())),
+            },
+        ),
+        (
+            "reload replaced",
+            view.clone(),
+            replaced(&reload),
+            Next::Reexec { to: None },
+        ),
+        (
+            "resume replaced",
+            view.clone(),
+            replaced(&resume),
+            Next::Reexec {
+                to: Some(Start::Resume(id.clone())),
+            },
+        ),
+        ("reload heard", view.clone(), heard(&reload), stopped(false)),
+        // A headless run follows only a reload, of a prompt, under this
+        // launcher.
+        (
+            "reload headless replaced",
+            prompt.clone(),
+            replaced(&reload),
+            Next::Restart { to: None },
+        ),
+        (
+            "new headless",
+            prompt.clone(),
+            new.clone(),
+            end(Said::Nothing, false),
+        ),
+        (
+            "reload of a command",
+            command.clone(),
+            reload.clone(),
+            end(Said::Nothing, false),
+        ),
+        // A refused first start after a switch goes back, but for a signal.
+        (
+            "refused after a switch",
+            back(&view),
+            refused.clone(),
+            Next::GoBack {
+                to: id.clone(),
+                why: "too old.".to_owned(),
+                otherwise: Stop::End {
+                    said: Said::Stopped { hidden: false },
+                    restore: false,
+                },
+            },
+        ),
+        (
+            "refused after a switch, heard",
+            back(&view),
+            heard(&refused),
+            stopped(false),
+        ),
+        (
+            "refused after a switch, headless",
+            back(&prompt),
+            refused.clone(),
+            end(Said::Nothing, false),
+        ),
+        ("refused", view.clone(), refused.clone(), stopped(false)),
+        // A trial that stops during startup is rolled back, and run again
+        // for a view or a prompt's reload.
+        (
+            "trial stopped",
+            trial.clone(),
+            unready(&failed),
+            Next::Stop(Stop::RollBack),
+        ),
+        (
+            "trial stopped headless",
+            Runs {
+                headless: true,
+                answers_prompt: true,
+                ..trial.clone()
+            },
+            unready(&failed),
+            end(Said::RolledBack, false),
+        ),
+        (
+            "trial stopped after a headless reload",
+            Runs {
+                headless: true,
+                answers_prompt: true,
+                reason: StartReason::Reloaded,
+                ..trial.clone()
+            },
+            unready(&failed),
+            Next::Stop(Stop::RollBack),
+        ),
+        (
+            "trial stopped, no previous",
+            Runs {
+                previous: false,
+                ..trial.clone()
+            },
+            screen(&unready(&failed)),
+            end(Said::NoPrevious, true),
+        ),
+        (
+            "trial stopped, heard",
+            Runs {
+                headless: true,
+                ..trial.clone()
+            },
+            heard(&unready(&failed)),
+            end(Said::Nothing, false),
+        ),
+        (
+            "trial reloaded unready",
+            trial.clone(),
+            unready(&reload),
+            Next::Restart { to: None },
+        ),
+        (
+            "trial refused after a switch",
+            back(&trial),
+            unready(&refused),
+            Next::Stop(Stop::RollBack),
+        ),
+    ];
+    for (row, runs, left, step) in rows {
+        assert_eq!(next(&runs, &left), step, "{row}");
+    }
+    let rejected = |runs: &Runs, left: &Left| runs.rejected(left);
+    assert!(rejected(&trial, &unready(&failed)));
+    assert!(!rejected(&trial, &failed), "a ready trial is kept");
+    assert!(!rejected(&trial, &heard(&unready(&failed))), "heard");
+    assert!(!rejected(&view, &unready(&failed)), "a proven build");
 }
