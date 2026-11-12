@@ -441,7 +441,7 @@ impl Launch {
         command
     }
 
-    /// The process `child` names.
+    /// The process `purpose` names.
     pub fn build_child(&self, purpose: Purpose<'_>) -> Command {
         match purpose {
             Purpose::Cargo => {
