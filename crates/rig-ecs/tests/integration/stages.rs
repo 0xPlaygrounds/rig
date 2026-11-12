@@ -3973,6 +3973,94 @@ fn every_streamed_event_reaches_a_late_reader_in_order() {
     );
 }
 
+/// Answers each turn call in Gate with reasoning and text, as a plugin
+/// standing in for the model does: nothing streams.
+fn answer_in_place(mut calls: Query<&mut Decision, (With<TurnCall>, ReadyToStart)>) {
+    for mut decision in &mut calls {
+        let choice = vec![
+            AssistantContent::reasoning("hm"),
+            AssistantContent::text("hello in place"),
+        ];
+        let origin = rig_core::completion::message::Origin::new("test.api", "test", "model");
+        let reply = rig_core::completion::CompletionResponse::new(
+            choice,
+            rig_core::completion::Usage::default(),
+            origin,
+            serde_json::Value::Null,
+        );
+        let answered = rig_core::effect::Answered::Completion(Arc::new(reply));
+        decision.decide(Decider::plugin("test"), Outcome(Ok(answered)));
+    }
+}
+
+#[test]
+fn a_reply_answered_in_place_streams_its_parts_once() {
+    let mut app = app();
+    let model = MockCompletionModel::from_stream_turns([answer("never sent")]);
+    app.init_resource::<Streams>()
+        .init_resource::<Ended>()
+        .add_observer(log_ended)
+        .add_systems(AgentPass, answer_in_place.in_set(Stage::Gate))
+        .add_systems(
+            PostUpdate,
+            |mut deltas: MessageReader<StreamDelta>, mut seen: ResMut<Streams>| {
+                let read = deltas
+                    .read()
+                    .map(|delta| (delta.effect, delta.event.clone()));
+                seen.events.extend(read);
+            },
+        );
+    let agent = agent_on(&mut app, &model);
+    let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, done), "{:?}", notices(&app));
+    // Frames after the end, where a second copy would show.
+    for _ in 0..3 {
+        app.update();
+    }
+    assert_eq!(model.request_count(), 0);
+    let seen = &app.world().resource::<Streams>().events;
+    let calls: HashSet<Entity> = seen.iter().map(|(call, _)| *call).collect();
+    assert_eq!(calls.len(), 1, "{seen:?}");
+    let events: Vec<&StreamEvent> = seen.iter().map(|(_, event)| event).collect();
+    let (reasoning, text) = (Part::new(0), Part::new(1));
+    let expected = [
+        StreamEvent::Start {
+            part: reasoning,
+            kind: PartKind::Reasoning,
+            name: None,
+        },
+        StreamEvent::Reasoning {
+            part: reasoning,
+            text: "hm".to_owned(),
+        },
+        StreamEvent::End {
+            part: reasoning,
+            content: AssistantContent::reasoning("hm"),
+        },
+        StreamEvent::Start {
+            part: text,
+            kind: PartKind::Text,
+            name: None,
+        },
+        StreamEvent::Text {
+            part: text,
+            text: "hello in place".to_owned(),
+        },
+        StreamEvent::End {
+            part: text,
+            content: AssistantContent::text("hello in place"),
+        },
+    ];
+    assert_eq!(events, expected.iter().collect::<Vec<_>>());
+    let said = conversation(&app, agent);
+    assert_eq!(
+        said.last()
+            .and_then(|message| message.final_answer())
+            .as_deref(),
+        Some("hello in place")
+    );
+}
+
 #[test]
 fn a_chosen_model_the_catalog_lists_only_later_connects_then() {
     let mut app = app();
