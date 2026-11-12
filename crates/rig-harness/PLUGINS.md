@@ -1082,7 +1082,10 @@ Every model call streams, a turn's and a plugin's own alike. Each event is a
 with its id); `part` tells parallel tool calls apart. It is written in
 Arrive in order, after the call's adapted handler rewrote it, and kept two frames,
 so a reader in `PostUpdate` gets a reply's last events even when it settled
-that frame. A turn's call also adds each event up in its `Partial`, the
+that frame. A reply that did not stream, such as one a plugin answered in
+place, comes the same way, once, before its outcome is applied: each part
+starts, grows by its whole text and ends. A call that streamed any event
+gets no second copy, and a superseded call none. A turn's call also adds each event up in its `Partial`, the
 one record of the reply in flight: its text, reasoning and tool calls,
 each call with its arguments so far until it ends (a successor continuing
 a reply may start it with what came so far). Views, the status and a stop
