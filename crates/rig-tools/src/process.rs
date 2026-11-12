@@ -1051,8 +1051,10 @@ impl Ledger {
     }
 
     /// Mirrors the list in the file, if one is kept, after the bytes it
-    /// could not read; a file that cannot be written lists nothing new.
-    fn write(&self) {
+    /// could not read. A file that cannot be written so is replaced by
+    /// the list alone, and one that cannot be written at all lists
+    /// nothing new.
+    fn write(&mut self) {
         let Some(path) = &self.path else {
             return;
         };
@@ -1060,16 +1062,19 @@ impl Ledger {
             // Without its contents the list cannot be renamed over the
             // file, so it is rewritten in place after them.
             let text: String = self.listed.iter().map(|id| format!("\n{id}")).collect();
-            std::fs::OpenOptions::new()
-                .write(true)
-                .open(path)
-                .and_then(|mut file| {
-                    file.set_len(unread)?;
-                    file.seek(io::SeekFrom::End(0))?;
-                    file.write_all(format!("{text}\n").as_bytes())
-                })
-                .ok();
-            return;
+            let written =
+                std::fs::OpenOptions::new()
+                    .write(true)
+                    .open(path)
+                    .and_then(|mut file| {
+                        file.set_len(unread)?;
+                        file.seek(io::SeekFrom::End(0))?;
+                        file.write_all(text.as_bytes())
+                    });
+            if written.is_ok() {
+                return;
+            }
+            self.unread = None;
         }
         let text: String = self.listed.iter().map(|id| format!("{id}\n")).collect();
         let written = path.with_extension("tmp");
@@ -1119,14 +1124,20 @@ pub fn record_groups(path: impl Into<PathBuf>, adopted: impl IntoIterator<Item =
 ///
 /// # Errors
 ///
-/// When the ledger's length cannot be read; no ledger is kept then.
+/// When the ledger cannot be kept so, as its length cannot be read or it
+/// cannot be opened for writing. The ledger is then replaced by the list
+/// alone, as [`record_groups`] with no group adopted does.
 pub fn record_groups_after(path: impl Into<PathBuf>) -> io::Result<()> {
     let path = path.into();
-    let unread = std::fs::metadata(&path)?.len();
+    let unread = std::fs::metadata(&path).and_then(|file| {
+        std::fs::OpenOptions::new().write(true).open(&path)?;
+        Ok(file.len())
+    });
     let mut ledger = ledger();
     ledger.path = Some(path);
-    ledger.unread = Some(unread);
-    Ok(())
+    ledger.unread = unread.as_ref().ok().copied();
+    ledger.write();
+    unread.map(|_| ())
 }
 
 /// Ends the groups the agent owns whose leader exited, such as a job a

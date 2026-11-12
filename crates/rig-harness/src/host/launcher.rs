@@ -97,16 +97,18 @@ fn own_groups(run: &RunDir) -> Result<(), GroupsUnread> {
     let adopted = match run.live_groups() {
         Ok(adopted) => adopted,
         Err(error) => {
-            let kept = match rig_tools::process::record_groups_after(&list) {
-                Ok(()) => {
-                    "rig keeps what it holds and lists the jobs it starts after that".to_owned()
-                }
-                Err(error) => format!("rig keeps no list either ({error})"),
+            let list = list.display();
+            let what = match rig_tools::process::record_groups_after(run.groups()) {
+                Ok(()) => "rig keeps what it holds and lists the jobs it starts after that, and \
+                           cannot end the background jobs it names while it cannot be read"
+                    .to_owned(),
+                Err(kept) => format!(
+                    "it cannot be kept either ({kept}), so rig lists the jobs it starts in a \
+                     new list, and cannot end the background jobs the old one named"
+                ),
             };
             return Err(GroupsUnread(format!(
-                "could not read the list of process groups {}: {error}; {kept}, and cannot end \
-                 the background jobs it names while it cannot be read",
-                list.display()
+                "could not read the list of process groups {list}: {error}; {what}"
             )));
         }
     };

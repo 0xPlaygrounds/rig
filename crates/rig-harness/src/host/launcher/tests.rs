@@ -380,3 +380,40 @@ fn a_list_a_reload_cannot_read_keeps_its_jobs_and_follows_the_new_ones() {
     assert_eq!(owned.len(), 2, "could not start the job");
     assert_eq!(live.ok(), Some(owned));
 }
+
+/// An agent started by a reload whose list can be neither read nor
+/// written in place, as with mode 000, lists the jobs it starts in a new
+/// list, which the next agent and the launcher read.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_list_a_reload_can_neither_read_nor_write_is_replaced() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = std::env::temp_dir().join(format!("rig-harness-closed-{}", std::process::id()));
+    std::fs::create_dir_all(&root).ok();
+    let run = rig_harness_protocol::RunDir::at(&root);
+    std::fs::write(run.groups(), "12345\n").ok();
+    std::fs::set_permissions(run.groups(), PermissionsExt::from_mode(0o000)).ok();
+    // Root opens it anyway, so the failure cannot be set up.
+    if std::fs::read(run.groups()).is_ok() {
+        std::fs::remove_dir_all(&root).ok();
+        return;
+    }
+    let unread = super::own_groups(&run).is_err();
+    let started = rig_tools::process::Launcher::default().spawn(
+        "sleep",
+        ["30"],
+        rig_tools::process::Spawn::default(),
+    );
+    let live = run.live_groups().ok();
+    let started = started.map(|started| (started.id(), started));
+    let id = started
+        .as_ref()
+        .ok()
+        .and_then(|job| i32::try_from(job.0).ok());
+    drop(started);
+    std::fs::remove_dir_all(&root).ok();
+    assert!(unread, "reading the list should have failed");
+    assert!(id.is_some(), "could not start the job");
+    assert_eq!(live, id.map(|id| vec![id]));
+}
