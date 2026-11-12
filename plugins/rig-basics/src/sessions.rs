@@ -28,12 +28,13 @@ use rig_harness::harness_protocol::{Home, SessionDir, SessionId, lock_file};
 use rig_harness::rig_memory::{SessionMeta, title_of};
 
 use crate::session_picker::{SessionPicker, SessionPickerPlugin};
-use rig_ecs::WriteLogs;
 use rig_ecs::agent::{Agent, AgentId, Conversation, Notice, SpawnedBy, TurnOf};
 use rig_ecs::model::ModelChoice;
 use rig_ecs::prelude::{SavedKeys, now_ms};
 use rig_ecs::session_log::{ConversationChanged, SessionStore};
+use rig_ecs::{Persist, WriteLogs};
 use rig_harness::commands::{AppCommandsExt, CommandArgs, NoArgs};
+use rig_harness::host::session::MarkSaved;
 use rig_harness::pick::Picker;
 use rig_harness::prelude::{
     CurrentAgent, Exit, ExitReason, Files, MainAgentQuery, RigHome, SessionPaths, first_typed,
@@ -73,7 +74,7 @@ impl Plugin for SessionsPlugin {
             .add_observer(name_session)
             .add_systems(PreStartup, restore_title)
             .add_systems(
-                Last,
+                Persist,
                 (
                     read_listed,
                     update_meta.run_if(
@@ -86,10 +87,11 @@ impl Plugin for SessionsPlugin {
                     ),
                 )
                     .chain()
-                    .after(WriteLogs),
+                    .after(WriteLogs)
+                    .after(MarkSaved),
             )
             .add_systems(
-                Last,
+                Persist,
                 write_name
                     .after(update_meta)
                     .run_if(resource_exists::<SessionStore>)

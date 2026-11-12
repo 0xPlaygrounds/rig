@@ -202,7 +202,9 @@ pub struct ToolCalled<A: Send + Sync + 'static> {
 /// [`normalized`](Touches::normalized), unless a plugin [`DeclaredFootprint`] it on
 /// the call. A call waits
 /// while an earlier call of its reply that conflicts with it is not
-/// settled ([`Waiting`](super::stage::Waiting)).
+/// settled ([`Waiting`](super::stage::Waiting)). On a plugin's own effect,
+/// what it may change: one that may change something does not start once
+/// the session can no longer be saved, as a tool call that may does not.
 #[derive(Component, Reflect, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[reflect(opaque, Component, Clone, Debug, Default, PartialEq)]
 #[serde(transparent)]

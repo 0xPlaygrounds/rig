@@ -366,15 +366,18 @@ fn tidy_messages(mut messages: Query<&mut Incoming, Added<Admitted>>) {
 }
 ```
 
-**Saving and writing in `Last`**, on the exit frame too: the kernel queues
-what the frame changed for the session log (`rig_ecs::SaveSystems`), then
-writes it (`rig_ecs::WriteLogs`). A `Last` system that changes saved state, a
-conversation or a [saved component](#saved-state-counting-every-tool-call),
-goes `.before(SaveSystems)`; after it, the change is saved a frame late, and
-on exit never. A notice sent in `Last`, such as the session log's write
-failure in `WriteLogs`, is read the next frame by the systems before its
-sender, so one that keeps something on exit goes `.after(WriteLogs)` or asks
-`SessionLog::failure()`.
+**Saving and writing after `Last`**, on the exit frame too: the kernel queues
+what the frame changed for the session log after every plugin's `Last` system
+ran, so a change to a conversation or a
+[saved component](#saved-state-counting-every-tool-call) made in `Last` is
+saved with its frame, with no ordering to add. Then its own schedule
+`rig_ecs::Persist` writes the logs (`rig_ecs::WriteLogs`): a plugin that
+writes a log of its own adds that system to `Persist` in `WriteLogs`. A notice
+sent there, such as the session log's write failure, is read the next frame,
+so a system that keeps something on exit runs in `Persist`
+`.after(WriteLogs)` or asks `SessionLog::failure()`. A schedule of a plugin's
+own that it inserts after `Last` (`MainScheduleOrder::insert_after`) runs
+before the save, so what it changes is saved with its frame.
 
 # A tool
 
@@ -1282,7 +1285,13 @@ Others can gate it, review its outcome and its `Published` facts (an open
 effect inserts its own as it decides: `Published(context.result_context())`
 of a rig-core `ToolContext` it `insert_result`s them into) and replay it;
 `CallOf(turn)` keeps a turn open until it settles. Work off the main
-thread is `Running::answering(pool, wake, future)` on the effect.
+thread is `Running::answering(pool, wake, future)` on the effect. An effect
+that may change something outside the session, such as files or a
+deployment, carries a `Footprint` saying so (`Footprint::default()` may
+change anything): once the session can no longer be saved, it is answered
+"Not run" instead of starting, as a tool call that may change something
+is. An effect without one is treated as changing nothing, so it still
+starts, as an exit or a question for the user must.
 
 **What a running effect would answer if stopped.** Its owner keeps an
 `IfStopped(outcome)` on it current (the output so far), which the kernel
@@ -1324,7 +1333,8 @@ fn build(app: &mut App) {
 /// `/deploy`: a deploy effect any plugin can gate.
 fn deploy(In(args): In<CommandArgs>, mut commands: Commands) {
     let kind = EffectKind::Custom { kind: "deploy".into(), payload: serde_json::json!({ "target": args.args }) };
-    commands.spawn((EffectRequest { kind, handler: None }, ForAgent(args.agent), Deploy::default()));
+    let request = EffectRequest { kind, handler: None };
+    commands.spawn((request, Footprint::default(), ForAgent(args.agent), Deploy::default()));
 }
 
 /// Keeps what each deploy answers if it is stopped first, the steps it
@@ -1461,7 +1471,7 @@ settle order: its request (`kind`), its answer (`outcome`, a reviewer's as
 `reviewed`), who decided it before it ran (`decided_by`), its times, the agent
 it worked for (`scope`, an `AgentId`), its `turn` (`Turn.index`), and the
 effect it was made under (`parent`). `rig_basics::telemetry` writes them to
-the session's effect log in `Last` (`WriteLogs`) and reads them back through
+the session's effect log in `Persist` (`WriteLogs`) and reads them back through
 its `EffectLog`: `read()`, or `read_matching(&filter)` by agent, kind name
 (`completion`, `tool_call`, `message`, `subagent` or a plugin's) and turn
 (rig-cassette's `EffectFilter::default().agent(id).turn(n)`), as written by
@@ -1490,10 +1500,10 @@ they start: a model call by an adapter in
 ```rust,no_run
 use rig_harness::prelude::*;
 use rig_harness::rig_core::redact;
-use rig_harness::rig_ecs::{StopTurnsOnExit, WriteLogs};
+use rig_harness::rig_ecs::StopTurnsOnExit;
 
 fn build(app: &mut App) {
-    app.add_systems(Last, hide_secrets.after(StopTurnsOnExit).before(WriteLogs));
+    app.add_systems(Last, hide_secrets.after(StopTurnsOnExit));
 }
 
 /// Takes every key-shaped secret out of every record before it is written.

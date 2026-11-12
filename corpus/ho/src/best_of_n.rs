@@ -274,7 +274,8 @@ impl Work {
 }
 
 /// Spawns `work` as an effect of `agent`, a child of `run` when it has one
-/// so it is cancelled with it.
+/// so it is cancelled with it. Every job may change the project, so none
+/// starts once the session can no longer be saved.
 fn spawn_job(commands: &mut Commands, agent: Entity, run: Option<Entity>, work: Work) {
     let kind = EffectKind::Custom {
         kind: work.name().into(),
@@ -285,7 +286,8 @@ fn spawn_job(commands: &mut Commands, agent: Entity, run: Option<Entity>, work: 
         handler: None,
     };
     let name = Name::new(work.name());
-    let mut job = commands.spawn((request, ForAgent(agent), name, Job { run, work }));
+    let job = (request, Footprint::default(), ForAgent(agent), name);
+    let mut job = commands.spawn((job, Job { run, work }));
     if let Some(run) = run {
         job.insert(ChildOf(run));
     }

@@ -58,3 +58,161 @@ fn a_child_takes_what_its_spec_leaves_out_from_its_origin_at_any_depth() {
     assert_eq!(parent(world, like), parent(world, deepest));
     assert!(keeps(world, like));
 }
+
+/// Spawns two agents with the id `id` in one system, and keeps whether
+/// each was made.
+fn spawn_twice(id: &'static str) -> impl FnMut(Spawner, ResMut<Made>) {
+    move |mut spawner: Spawner, mut made: ResMut<Made>| {
+        for _ in 0..2 {
+            let spec = AgentSpec {
+                id: Some(AgentId(id.into())),
+                ..AgentSpec::default()
+            };
+            made.0.push(spawner.spawn(Origin::Root, spec).map(|_| ()));
+        }
+    }
+}
+
+/// What each spawn of [`spawn_twice`] gave.
+#[derive(Resource, Default)]
+struct Made(Vec<Result<(), SpawnRefused>>);
+
+#[test]
+fn an_id_is_taken_as_soon_as_it_is_asked_for() {
+    let mut app = app();
+    app.add_plugins(crate::AgentPlugin)
+        .init_resource::<Made>()
+        .add_systems(Update, spawn_twice("helper"));
+    app.update();
+    let made = &app.world().resource::<Made>().0;
+    let taken = SpawnRefused::IdTaken(AgentId("helper".into()));
+    assert_eq!(made.as_slice(), [Ok(()), Err(taken)]);
+    let mut ids = app.world_mut().query::<&AgentId>();
+    let helpers = ids.iter(app.world()).filter(|id| id.0 == "helper");
+    assert_eq!(helpers.count(), 1);
+}
+
+#[test]
+fn an_id_that_names_no_agent_log_is_refused() {
+    let mut app = app();
+    let world = app.world_mut();
+    // The session's own log on a disk that ignores case, and a name too
+    // long for a file name with its extension.
+    let long = "x".repeat(300);
+    for id in [
+        "session",
+        "Session",
+        "SESSION",
+        "a/b",
+        "..",
+        "",
+        long.as_str(),
+    ] {
+        let spec = AgentSpec {
+            id: Some(AgentId(id.into())),
+            ..AgentSpec::default()
+        };
+        let made = spawn(world, Origin::Root, spec);
+        let refused = SpawnRefused::NotALogName(AgentId(id.into()));
+        assert_eq!(made, Err(refused), "{id:?}");
+    }
+    let longest = "x".repeat(rig_memory::MAX_NEW_LOG_NAME);
+    let spec = AgentSpec {
+        id: Some(AgentId(longest)),
+        ..AgentSpec::default()
+    };
+    assert!(spawn(world, Origin::Root, spec).is_ok());
+}
+
+/// Two agents whose ids differ only in case would share one log on a disk
+/// that ignores case.
+#[test]
+fn an_id_is_taken_whatever_its_case() {
+    let mut app = app();
+    let world = app.world_mut();
+    let spec = |id: &str| AgentSpec {
+        id: Some(AgentId(id.into())),
+        ..AgentSpec::default()
+    };
+    assert!(spawn(world, Origin::Root, spec("helper")).is_ok());
+    let made = spawn(world, Origin::Root, spec("Helper"));
+    assert_eq!(made, Err(SpawnRefused::IdTaken(AgentId("Helper".into()))));
+}
+
+#[test]
+fn an_id_is_free_again_once_its_agent_is_gone_or_its_spawn_was_refused() {
+    let mut app = app();
+    app.add_plugins(crate::AgentPlugin);
+    let world = app.world_mut();
+    let spec = |tools: Option<Vec<String>>| AgentSpec {
+        id: Some(AgentId("helper".into())),
+        tools,
+        ..AgentSpec::default()
+    };
+    let refused = spawn(world, Origin::Root, spec(Some(vec!["missing".into()])));
+    assert!(matches!(refused, Err(SpawnRefused::Tool(_))), "{refused:?}");
+    let first = spawn(world, Origin::Root, spec(None));
+    assert!(first.is_ok(), "{first:?}");
+    let taken = spawn(world, Origin::Root, spec(None));
+    assert_eq!(taken, Err(SpawnRefused::IdTaken(AgentId("helper".into()))));
+    if let Ok(first) = first {
+        world.despawn(first);
+    }
+    let again = spawn(world, Origin::Root, spec(None));
+    assert!(again.is_ok(), "{again:?}");
+}
+
+/// Final and medial sigma lowercase apart but uppercase alike: a disk that
+/// ignores case may give them one file.
+#[test]
+fn an_id_is_taken_by_another_that_only_one_case_mapping_tells_apart() {
+    let mut app = app();
+    let world = app.world_mut();
+    let spec = |id: &str| AgentSpec {
+        id: Some(AgentId(id.into())),
+        ..AgentSpec::default()
+    };
+    assert!(spawn(world, Origin::Root, spec("ς")).is_ok());
+    let made = spawn(world, Origin::Root, spec("σ"));
+    assert_eq!(made, Err(SpawnRefused::IdTaken(AgentId("σ".into()))));
+}
+
+/// Spawns `ς` then `σ` in one system, and keeps whether each was made.
+fn spawn_sigmas(mut spawner: Spawner, mut made: ResMut<Made>) {
+    for id in ["ς", "σ"] {
+        let spec = AgentSpec {
+            id: Some(AgentId(id.into())),
+            ..AgentSpec::default()
+        };
+        made.0.push(spawner.spawn(Origin::Root, spec).map(|_| ()));
+    }
+}
+
+#[test]
+fn a_pending_id_is_taken_by_another_that_only_one_case_mapping_tells_apart() {
+    let mut app = app();
+    app.add_plugins(crate::AgentPlugin)
+        .init_resource::<Made>()
+        .add_systems(Update, spawn_sigmas);
+    app.update();
+    let made = &app.world().resource::<Made>().0;
+    let taken = SpawnRefused::IdTaken(AgentId("σ".into()));
+    assert_eq!(made.as_slice(), [Ok(()), Err(taken)]);
+}
+
+/// The bound counts bytes: 100 two-byte letters fit, one more byte does not.
+#[test]
+fn a_multibyte_id_fits_up_to_the_bound_in_bytes() {
+    let mut app = app();
+    let world = app.world_mut();
+    let spec = |id: String| AgentSpec {
+        id: Some(AgentId(id)),
+        ..AgentSpec::default()
+    };
+    let at = "é".repeat(rig_memory::MAX_NEW_LOG_NAME / 2);
+    assert_eq!(at.len(), rig_memory::MAX_NEW_LOG_NAME);
+    assert!(spawn(world, Origin::Root, spec(at.clone())).is_ok());
+    let over = format!("{at}x");
+    let made = spawn(world, Origin::Root, spec(over.clone()));
+    assert_eq!(made, Err(SpawnRefused::NotALogName(AgentId(over))));
+}

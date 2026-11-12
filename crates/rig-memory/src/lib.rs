@@ -86,8 +86,8 @@ pub use session::{
     LogRecord, SavedAgent, Session, Unreadable, as_of, history, load, load_async, save, save_async,
 };
 pub use store::{
-    AsyncStore, Files, LogWriteError, MemoryStore, PLUGINS, PluginFiles, Store, check_log_name,
-    check_name,
+    AsyncStore, Files, LogWriteError, MAX_NEW_LOG_NAME, MemoryStore, PLUGINS, PluginFiles, Store,
+    check_log_name, check_name, check_new_log_name, same_log_name,
 };
 pub use tokens::{
     ATTACHMENT_TOKENS, Anchor, HeuristicTokenCounter, OUTPUT_MARGIN, Prepared, RequestStart,

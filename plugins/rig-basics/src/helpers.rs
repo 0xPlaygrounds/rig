@@ -133,7 +133,6 @@ impl Plugin for HelpersPlugin {
                 Last,
                 record_at_exit
                     .after(rig_ecs::StopTurnsOnExit)
-                    .before(rig_ecs::SaveSystems)
                     .run_if(on_message::<AppExit>),
             );
     }

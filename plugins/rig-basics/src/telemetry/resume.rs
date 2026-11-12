@@ -4,7 +4,7 @@
 
 use crate::sessions::ResumeLabel;
 use rig_core::completion::tokens_label;
-use rig_ecs::{StopTurnsOnExit, WriteLogs};
+use rig_ecs::StopTurnsOnExit;
 use rig_harness::prelude::*;
 
 use super::usage::SessionUsage;
@@ -41,8 +41,7 @@ pub(super) fn add(app: &mut App) {
             label_usage.run_if(resource_changed::<SessionUsage>),
             label_context.after(CurrentAgentSystems),
         )
-            .after(StopTurnsOnExit)
-            .before(WriteLogs),
+            .after(StopTurnsOnExit),
     );
 }
 

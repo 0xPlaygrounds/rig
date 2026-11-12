@@ -8,7 +8,7 @@ use rig_core::completion::{Cost, Usage};
 use rig_core::providers::registry::ProviderId;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::harness_protocol::{Invocation, SessionDir, SessionId};
-use rig_harness::rig_ecs::{StopTurnsOnExit, WriteLogs};
+use rig_harness::rig_ecs::StopTurnsOnExit;
 use rig_harness_test_support::{
     Ended, app_in, first_agent, log_ended, run_until, scratch_home, scripted_models,
 };
@@ -91,7 +91,7 @@ fn session(
             SubagentsPlugin,
         ))
         .add_open_tool("noop", "Do nothing.", ToolOptions::default(), noop)
-        .add_systems(Last, shift.after(StopTurnsOnExit).before(WriteLogs))
+        .add_systems(Last, shift.after(StopTurnsOnExit))
         .init_resource::<Ended>()
         .add_observer(log_ended);
     app.finish();

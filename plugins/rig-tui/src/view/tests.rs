@@ -119,7 +119,7 @@ fn a_notice_sent_as_a_reload_exits_is_kept_for_its_build() {
     app.insert_resource(data(&session))
         .insert_resource(ExitReason::Reload)
         .add_systems(
-            Last,
+            rig_ecs::Persist,
             fail.in_set(rig_ecs::WriteLogs)
                 .run_if(on_message::<AppExit>),
         );

@@ -29,7 +29,7 @@ use rig_harness::host::pipes::Writer;
 use rig_harness::host::signals;
 use rig_harness::prelude::*;
 use rig_harness::rig_ecs::session_log::{SessionRestored, SessionStore};
-use rig_harness::rig_ecs::{StopTurnsOnExit, WriteLogs};
+use rig_harness::rig_ecs::{Persist, StopTurnsOnExit, WriteLogs};
 use rig_harness::rig_memory::summarized_in_log;
 use rig_harness::run::RunStartSystems;
 use rig_harness::services::WorkDir;
@@ -353,13 +353,16 @@ pub(crate) fn install(app: &mut App) {
     .add_observer(ended)
     .add_systems(
         Last,
-        (
-            answer_open.after(StopTurnsOnExit),
-            // Last: the session log is written before output may wait.
-            finish_output.after(answer_open).after(WriteLogs),
-        )
+        answer_open
+            .after(StopTurnsOnExit)
             .in_set(OnAppExitSystems)
-            .distributive_run_if(on_message::<AppExit>),
+            .run_if(on_message::<AppExit>),
+    )
+    // After the logs are written, so the session log is written before
+    // output may wait.
+    .add_systems(
+        Persist,
+        finish_output.after(WriteLogs).run_if(on_message::<AppExit>),
     );
     let mut session = app.world_mut().resource_mut::<Session>();
     for note in renamed {

@@ -16,7 +16,7 @@ use std::collections::{HashMap, HashSet};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::Message;
 use rig_harness::rig_core::conversation::Conversation as Chat;
-use rig_harness::rig_ecs::WriteLogs;
+use rig_harness::rig_ecs::Persist;
 use rig_harness::rig_memory::{HeuristicTokenCounter, TokenCounter, summary_in};
 use serde::{Deserialize, Serialize};
 
@@ -33,7 +33,9 @@ impl Plugin for HistoryVersionsPlugin {
         app.add_setting::<HistorySettings>(NAME)
             .register_required_components::<Agent, ConvVersions>()
             .keeps_saved::<ConvVersions>()
-            .add_systems(Last, (record, prune).chain().after(WriteLogs))
+            // After the kernel's save, which sends the changes it records;
+            // its own change is saved with the next frame.
+            .add_systems(Persist, (record, prune).chain())
             .add_command("conv-log", "List the versions of the conversation, newest first", log)
             .add_command("conv-diff", "What version N of the conversation changed: /conv-diff N", diff)
             .add_command(

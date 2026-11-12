@@ -319,6 +319,55 @@ pub fn check_log_name(name: &str) -> io::Result<()> {
     Ok(())
 }
 
+/// The longest name, in bytes, [`check_new_log_name`] allows: with its
+/// file's extension it fits the 255 bytes every disk allows a file name.
+pub const MAX_NEW_LOG_NAME: usize = 200;
+
+/// Refuses `name` for a new log: [`check_log_name`], a name longer than
+/// [`MAX_NEW_LOG_NAME`] bytes, or [`SESSION`](crate::SESSION) in any letter
+/// case ([`same_log_name`]), which names the session's own log on a disk
+/// that ignores case. A log that exists keeps its name: stores read and
+/// write it under [`check_log_name`].
+///
+/// ```
+/// use rig_memory::check_new_log_name;
+///
+/// assert!(check_new_log_name("helper").is_ok());
+/// assert!(check_new_log_name("Session").is_err());
+/// assert!(check_new_log_name(&"x".repeat(300)).is_err());
+/// ```
+///
+/// # Errors
+///
+/// [`io::ErrorKind::InvalidInput`], naming it.
+pub fn check_new_log_name(name: &str) -> io::Result<()> {
+    check_log_name(name)?;
+    let why = if name.len() > MAX_NEW_LOG_NAME {
+        format!("{name:?} is longer than {MAX_NEW_LOG_NAME} bytes")
+    } else if same_log_name(name, crate::SESSION) {
+        format!("{name:?} is the session's own log")
+    } else {
+        return Ok(());
+    };
+    Err(io::Error::new(io::ErrorKind::InvalidInput, why))
+}
+
+/// Whether the logs `a` and `b` may be one file on a disk that ignores
+/// case: their names differ only in letter case, as Unicode's lower- or
+/// uppercase mapping sees it, so the final and medial sigma (`ς`, `σ`)
+/// match too. A file system's own folding can still differ.
+///
+/// ```
+/// use rig_memory::same_log_name;
+///
+/// assert!(same_log_name("Helper", "helper"));
+/// assert!(same_log_name("ς", "σ"));
+/// assert!(!same_log_name("helper", "helpers"));
+/// ```
+pub fn same_log_name(a: &str, b: &str) -> bool {
+    a.to_lowercase() == b.to_lowercase() || a.to_uppercase() == b.to_uppercase()
+}
+
 /// A session kept in memory, such as for tests or where there is no file
 /// system. Cloning shares the contents.
 #[derive(Clone, Default)]

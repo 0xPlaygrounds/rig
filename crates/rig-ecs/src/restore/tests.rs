@@ -30,10 +30,10 @@ use crate::session_log::{
     ConversationChanged, ReflectSaved, SessionLog, SessionLogPlugin, SessionRestored, SessionStore,
 };
 use crate::stage::{
-    AgentPass, Decision, Effect, ForAgent, HoldOf, Outcome, PrepareSystems, ReadyToSettle,
-    ReadyToStart, Settled, Stage, Started, SupersededBy, Supersedes,
+    AgentPass, Decision, Effect, EffectRequest, ForAgent, HoldOf, Outcome, PrepareSystems,
+    ReadyToSettle, ReadyToStart, Settled, Stage, Started, SupersededBy, Supersedes,
 };
-use crate::tools::{AppToolsExt, ToolRequest};
+use crate::tools::{AppToolsExt, Footprint, ToolRequest};
 use crate::turn::{RetryVerdict, TurnCall};
 use rig_core::catalog::Catalog;
 use rig_core::completion::{CompletionResponse, FinishReason};
@@ -56,7 +56,7 @@ use std::sync::Arc;
 /// An app on `store`, after its first frame restored the session. Like
 /// the harness, it only warns about a command on a despawned entity. The
 /// store comes after the plugins: any plugin may insert it.
-fn app(store: &MemoryStore) -> App {
+fn app(store: &(impl Store + Clone)) -> App {
     let mut app = App::new();
     app.set_error_handler(bevy_ecs::error::warn)
         .add_plugins((AgentPlugin, SessionLogPlugin))
@@ -765,7 +765,7 @@ fn no_changing_call_starts_once_the_session_cannot_be_saved() {
     let mut app = tools_app(&Full, &model, |app| {
         // The log reports its failure at the end of the frame.
         app.init_resource::<Errors>()
-            .add_systems(Last, note_errors.after(crate::WriteLogs));
+            .add_systems(crate::Persist, note_errors.after(crate::WriteLogs));
     });
     if let Some(agent) = first_agent(&mut app) {
         app.world_mut()
@@ -1835,4 +1835,88 @@ fn a_value_saved_under_its_key_survives_a_rename_of_its_type() {
 fn interrupted() -> String {
     let restarted = StopCause::Restarted;
     format!("Stopped: {restarted}. It may have partly run; check before running it again.")
+}
+
+#[test]
+fn a_removed_saved_resource_stays_removed_after_a_restart() {
+    let store = MemoryStore::default();
+    let mut first = app(&store);
+    let agent = first_agent(&mut first);
+    assert!(agent.is_some());
+    let Some(agent) = agent else { return };
+    say(&mut first, agent, Message::user("hello"));
+    first.world_mut().insert_resource(Compactions(3));
+    first.update();
+    first.world_mut().remove_resource::<Compactions>();
+    first.update();
+    drop(first);
+
+    let second = app(&store);
+    let compactions = second.world().get_resource::<Compactions>();
+    assert_eq!(compactions.map(|count| count.0), None);
+}
+
+/// Once the session can no longer be saved, a plugin's own effect whose
+/// footprint may change something is answered without starting; one that
+/// says nothing of what it touches, such as a question for the user, still
+/// starts.
+#[test]
+fn no_changing_plugin_effect_starts_once_the_session_cannot_be_saved() {
+    let mut app = app(&Full);
+    let agent = first_agent(&mut app);
+    assert!(agent.is_some());
+    let Some(agent) = agent else { return };
+    say(&mut app, agent, Message::user("hello"));
+    app.update();
+    assert!(app.world().resource::<SessionLog>().failure().is_some());
+    let open = || EffectRequest {
+        kind: EffectKind::Custom {
+            kind: Arc::from("apply"),
+            payload: Value::Null,
+        },
+        handler: None,
+    };
+    let world = app.world_mut();
+    let changing = world
+        .spawn((open(), Footprint::default(), ForAgent(agent)))
+        .id();
+    let asking = world.spawn((open(), ForAgent(agent))).id();
+    let reads = Footprint(Touches::Reads(Scope::Anything));
+    let reading = world.spawn((open(), reads, ForAgent(agent))).id();
+    app.update();
+    let world = app.world();
+    let refused = world.get::<Outcome>(changing).and_then(|outcome| {
+        let report = outcome.0.as_ref().err()?;
+        Some(report.message.clone())
+    });
+    assert!(world.get::<Started>(changing).is_none());
+    assert!(
+        refused.is_some_and(|why| why.starts_with("Not run: the session can no longer be saved")),
+    );
+    assert!(world.get::<Started>(asking).is_some());
+    assert!(world.get::<Started>(reading).is_some());
+}
+
+#[test]
+fn a_saved_resource_removed_after_a_restart_stays_removed_after_the_next() {
+    let store = MemoryStore::default();
+    let mut first = app(&store);
+    let agent = first_agent(&mut first);
+    assert!(agent.is_some());
+    let Some(agent) = agent else { return };
+    say(&mut first, agent, Message::user("hello"));
+    first.world_mut().insert_resource(Compactions(3));
+    first.update();
+    drop(first);
+
+    let mut second = app(&store);
+    let restored = second.world().get_resource::<Compactions>();
+    assert_eq!(restored.map(|count| count.0), Some(3));
+    second.world_mut().remove_resource::<Compactions>();
+    second.update();
+    drop(second);
+
+    let third = app(&store);
+    let compactions = third.world().get_resource::<Compactions>();
+    assert_eq!(compactions.map(|count| count.0), None);
 }

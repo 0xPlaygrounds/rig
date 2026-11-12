@@ -35,7 +35,7 @@ use rig_harness::rig_core::providers::anthropic::wire::{AnthropicConfig, compati
 use rig_harness::rig_core::providers::openai::wire::{Auth, Dialect, OpenAIConfig, Route};
 use rig_harness::rig_core::providers::registry::{ConnectError, ProviderConfig, ProviderId};
 use rig_harness::rig_core::serve::ErasedHandler;
-use rig_harness::rig_ecs::{StopTurnsOnExit, WriteLogs};
+use rig_harness::rig_ecs::StopTurnsOnExit;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -76,7 +76,7 @@ impl Plugin for OpaqueReasoningPlugin {
                 ),
             )
             .add_observer(follow_successor::<WithoutBlobs>)
-            .add_systems(Last, hide_blobs.after(StopTurnsOnExit).before(WriteLogs))
+            .add_systems(Last, hide_blobs.after(StopTurnsOnExit))
             .add_systems(Startup, report_problems);
     }
 

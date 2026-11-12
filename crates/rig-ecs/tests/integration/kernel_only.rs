@@ -665,10 +665,36 @@ fn last_word(mut modes: Query<&mut Mode>) {
 fn a_saved_component_a_plugin_changes_in_last_on_the_exit_frame_is_saved() {
     let store = MemoryStore::default();
     let (mut app, _wakes) = kernel(&store);
+    app.add_systems(Last, last_word.run_if(on_message::<AppExit>));
+    app.update();
+    let agent = agents(&mut app).first().map(|(agent, _)| *agent);
+    assert!(agent.is_some(), "the kernel spawns the first agent");
+    let Some(agent) = agent else {
+        return;
+    };
+    if let Ok(mut agent) = app.world_mut().get_entity_mut(agent) {
+        agent.insert(Mode(1));
+    }
+    app.update();
+    app.world_mut().write_message(AppExit::Success);
+    app.update();
+    drop(app);
+
+    let (mut restored, _wakes) = kernel(&store);
+    restored.update();
+    let mut modes = restored.world_mut().query::<&Mode>();
+    let modes: Vec<u32> = modes.iter(restored.world()).map(|mode| mode.0).collect();
+    assert_eq!(modes, [2]);
+}
+
+#[test]
+fn a_saved_component_changed_after_the_turns_stopped_on_exit_is_saved() {
+    let store = MemoryStore::default();
+    let (mut app, _wakes) = kernel(&store);
     app.add_systems(
         Last,
         last_word
-            .before(rig_ecs::SaveSystems)
+            .after(rig_ecs::StopTurnsOnExit)
             .run_if(on_message::<AppExit>),
     );
     app.update();
@@ -687,6 +713,50 @@ fn a_saved_component_a_plugin_changes_in_last_on_the_exit_frame_is_saved() {
 
     let (mut restored, _wakes) = kernel(&store);
     restored.update();
+    let mut modes = restored.world_mut().query::<&Mode>();
+    let modes: Vec<u32> = modes.iter(restored.world()).map(|mode| mode.0).collect();
+    assert_eq!(modes, [2]);
+}
+
+/// A plugin's own schedule after `Last`.
+#[derive(bevy_ecs::schedule::ScheduleLabel, Debug, Clone, PartialEq, Eq, Hash)]
+struct AfterLast;
+
+/// A kernel app on `store`, started, with [`AfterLast`] inserted after
+/// `Last` before the kernel was added, and `last_word` in it on exit.
+fn after_last(store: &MemoryStore) -> App {
+    let mut app = App::new();
+    app.init_schedule(AfterLast);
+    app.world_mut()
+        .resource_mut::<bevy_app::MainScheduleOrder>()
+        .insert_after(Last, AfterLast);
+    app.add_plugins(TaskPoolPlugin::default())
+        .insert_resource(SessionStore::new(store.clone()))
+        .add_plugins((AgentPlugin, SessionLogPlugin))
+        .add_systems(AfterLast, last_word.run_if(on_message::<AppExit>));
+    app.finish();
+    app.update();
+    app
+}
+
+#[test]
+fn a_saved_component_changed_in_a_plugin_schedule_after_last_on_the_exit_frame_is_saved() {
+    let store = MemoryStore::default();
+    let mut app = after_last(&store);
+    let agent = agents(&mut app).first().map(|(agent, _)| *agent);
+    assert!(agent.is_some(), "the kernel spawns the first agent");
+    let Some(agent) = agent else {
+        return;
+    };
+    if let Ok(mut agent) = app.world_mut().get_entity_mut(agent) {
+        agent.insert(Mode(1));
+    }
+    app.update();
+    app.world_mut().write_message(AppExit::Success);
+    app.update();
+    drop(app);
+
+    let mut restored = after_last(&store);
     let mut modes = restored.world_mut().query::<&Mode>();
     let modes: Vec<u32> = modes.iter(restored.world()).map(|mode| mode.0).collect();
     assert_eq!(modes, [2]);
