@@ -26,22 +26,16 @@ pub(crate) fn add(app: &mut App) {
     );
 }
 
-/// Stops the running build.
-pub(crate) fn stop(commands: &mut Commands) {
-    commands.remove_resource::<ReloadBuild>();
-}
-
-/// What a cancel of `build` says: an update cancelled once the new rig is
-/// installed leaves it there, for the next start or reload.
-pub(crate) fn cancelled(build: Option<&ReloadBuild>) -> &'static str {
-    match build {
-        Some(build) if build.installed() => {
-            "Update cancelled during the agent build: the new rig is installed, and the \
-             next start or /reload runs it."
-        }
-        Some(build) if build.rebuild == Rebuild::Update => "Update cancelled.",
-        _ => "Rebuild cancelled.",
-    }
+/// Stops the running build, then says it was cancelled. What an update
+/// left is read once it stopped, so an install that landed as it stopped
+/// is told: the new rig stays installed, for the next start or reload.
+pub(crate) fn cancel(commands: &mut Commands) {
+    commands.queue(|world: &mut World| {
+        let notice = world
+            .remove_resource::<ReloadBuild>()
+            .map_or("Rebuild cancelled.", |mut build| build.cancel());
+        world.write_message(Notice::info(None, notice));
+    });
 }
 
 /// The rebuild's process. Dropping it while the build runs stops the
@@ -103,6 +97,20 @@ impl ReloadBuild {
     /// since it started, so a failure is its agent build's.
     fn installed(&self) -> bool {
         self.rebuild == Rebuild::Update && self.installed.replaced()
+    }
+
+    /// Stops the build; what its cancel says.
+    fn cancel(&mut self) -> &'static str {
+        let process = self.process.get_mut();
+        process.unwrap_or_else(PoisonError::into_inner).stop(STOP_GRACE).ok();
+        match self.rebuild {
+            Rebuild::Update if self.installed.replaced() => {
+                "Update cancelled during the agent build: the new rig is installed, and the \
+                 next start or /reload runs it."
+            }
+            Rebuild::Update => "Update cancelled.",
+            Rebuild::Build => "Rebuild cancelled.",
+        }
     }
 
     /// At most `count` lines of the output from the first error on, or its
