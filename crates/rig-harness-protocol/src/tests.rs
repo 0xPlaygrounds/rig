@@ -689,3 +689,40 @@ fn a_stamp_tells_a_replaced_file_from_the_same_one_or_none() {
     assert_eq!(Stamp::parse(&gone.text()), gone);
     assert_eq!(Stamp::parse("12:x"), gone);
 }
+
+/// A list holding bytes that are not text still names its groups, to the
+/// agent that takes them over and to the launcher that kills them.
+#[cfg(unix)]
+#[test]
+fn a_list_with_bytes_that_are_not_text_still_names_its_groups() {
+    use std::os::unix::process::CommandExt;
+
+    let root = std::env::temp_dir().join(format!("rig-protocol-bytes-{}", std::process::id()));
+    std::fs::create_dir_all(&root).ok();
+    let run = super::RunDir::at(&root);
+    let job = std::process::Command::new("sleep")
+        .arg("30")
+        .env(super::env::PROCESS_LEDGER, run.groups())
+        .process_group(0)
+        .spawn();
+    assert!(job.is_ok());
+    let Ok(mut job) = job else { return };
+    let mut listed = b"\xff\n".to_vec();
+    listed.extend_from_slice(format!("{}\n", job.id()).as_bytes());
+    std::fs::write(run.groups(), listed).ok();
+    let live = run.live_groups().ok();
+    let killed = run.kill_left_groups().is_ok();
+    // Reaped only once killed, so `try_wait` sees it ended.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let mut ended = job.try_wait().ok().flatten().is_some();
+    while !ended && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        ended = job.try_wait().ok().flatten().is_some();
+    }
+    job.kill().ok();
+    job.wait().ok();
+    std::fs::remove_dir_all(root).ok();
+    let id = i32::try_from(job.id()).ok();
+    assert_eq!(live, id.map(|id| vec![id]));
+    assert!(killed && ended, "killed: {killed}, ended: {ended}");
+}

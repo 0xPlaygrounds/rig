@@ -90,14 +90,28 @@ impl Invoked {
 /// # Errors
 ///
 /// When the list cannot be read. It then keeps what it holds, since
-/// writing it anew would drop the groups it names, and the agent appends
-/// the groups it starts to it.
-fn own_groups(run: &RunDir) -> std::io::Result<()> {
-    let adopted = run
-        .live_groups()
-        .inspect_err(|_| rig_tools::process::keep_groups(run.groups()))?;
+/// writing it anew would drop the groups it names, and the agent lists
+/// the groups it owns after that.
+fn own_groups(run: &RunDir) -> Result<(), GroupsUnread> {
+    let list = run.groups();
+    let adopted = match run.live_groups() {
+        Ok(adopted) => adopted,
+        Err(error) => {
+            let kept = match rig_tools::process::record_groups_after(&list) {
+                Ok(()) => {
+                    "rig keeps what it holds and lists the jobs it starts after that".to_owned()
+                }
+                Err(error) => format!("rig keeps no list either ({error})"),
+            };
+            return Err(GroupsUnread(format!(
+                "could not read the list of process groups {}: {error}; {kept}, and cannot end \
+                 the background jobs it names while it cannot be read",
+                list.display()
+            )));
+        }
+    };
     let adopted = adopted.into_iter().filter_map(|id| u32::try_from(id).ok());
-    rig_tools::process::record_groups(run.groups(), adopted);
+    rig_tools::process::record_groups(list, adopted);
     Ok(())
 }
 
@@ -126,12 +140,8 @@ impl Plugin for LauncherPlugin {
         if !app.world().contains_resource::<LauncherRun>()
             && let Some(run) = RunDir::from_env()
         {
-            if let Err(error) = own_groups(&run) {
-                app.insert_resource(GroupsUnread(format!(
-                    "could not read the list of process groups {}: {error}; it is kept \
-                     and only added to, and rig may not end the background jobs it names",
-                    run.groups().display()
-                )));
+            if let Err(unread) = own_groups(&run) {
+                app.insert_resource(unread);
             }
             app.insert_resource(LauncherRun(run));
         }

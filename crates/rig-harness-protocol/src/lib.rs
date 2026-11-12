@@ -691,16 +691,17 @@ impl RunDir {
     }
 
     /// The group ids listed in [`Self::groups`], none when there is no
-    /// list.
+    /// list. A line that is not an id, even one that is not text, names
+    /// no group.
     fn listed_groups(&self) -> std::io::Result<Vec<i32>> {
-        let listed = match std::fs::read_to_string(self.groups()) {
+        let listed = match std::fs::read(self.groups()) {
             Ok(listed) => listed,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
             Err(error) => return Err(error),
         };
         // A group id of 0 or 1 would name the caller's own group or every
         // process.
-        Ok(listed
+        Ok(String::from_utf8_lossy(&listed)
             .lines()
             .filter_map(|id| id.trim().parse::<i32>().ok())
             .filter(|&id| id > 1)

@@ -317,16 +317,19 @@ fn a_settings_table_read_in_a_finish_refuses_the_run() {
 }
 
 /// An agent started by a reload that cannot read the list of the jobs
-/// the agent before it left running keeps what the list holds, and still
-/// lists the jobs it starts itself.
+/// the agent before it left running keeps them listed, lists the jobs it
+/// starts, and takes a job it hands over off the list: the next agent and
+/// the launcher find just those once the list can be read again.
 #[cfg(target_os = "linux")]
 #[test]
-fn a_list_a_reload_cannot_read_is_kept_and_grows() {
+fn a_list_a_reload_cannot_read_keeps_its_jobs_and_follows_the_new_ones() {
+    use std::os::unix::fs::PermissionsExt;
     use std::os::unix::process::CommandExt;
 
     let root = std::env::temp_dir().join(format!("rig-harness-unread-{}", std::process::id()));
     std::fs::create_dir_all(&root).ok();
     let run = rig_harness_protocol::RunDir::at(&root);
+    let mode = |mode| std::fs::set_permissions(run.groups(), PermissionsExt::from_mode(mode)).ok();
     let mut sleep = std::process::Command::new("sleep");
     sleep
         .arg("30")
@@ -336,26 +339,44 @@ fn a_list_a_reload_cannot_read_is_kept_and_grows() {
         std::fs::remove_dir_all(&root).ok();
         return;
     };
-    // Bytes that are not text make reading the list fail, while writing it
-    // anew would succeed.
-    let mut listed = format!("{}\n", kept.id()).into_bytes();
-    listed.extend_from_slice(b"\xff\n");
-    std::fs::write(run.groups(), &listed).ok();
-    let owned = super::own_groups(&run);
+    // A list that can be written but not read; one who reads it anyway,
+    // such as root, cannot see the failure.
+    std::fs::write(run.groups(), format!("{}\n", kept.id())).ok();
+    mode(0o200);
+    if std::fs::read(run.groups()).is_ok() {
+        kept.kill().ok();
+        kept.wait().ok();
+        std::fs::remove_dir_all(&root).ok();
+        return;
+    }
+    let unread = super::own_groups(&run).is_err();
     let launcher = rig_tools::process::Launcher::default();
-    let started = launcher.spawn("sleep", ["30"], rig_tools::process::Spawn::default());
-    let after = std::fs::read(run.groups()).unwrap_or_default();
-    let started = started.map(|started| started.id());
+    let job = || launcher.spawn("sleep", ["30"], rig_tools::process::Spawn::default());
+    let (started, handed) = (job(), job());
+    let started = started.map(|started| (started.id(), started));
+    let handed = handed.map(|mut handed| {
+        handed.release();
+        (handed.id(), handed)
+    });
+    mode(0o600);
+    let live = run.live_groups().map(|mut live| {
+        live.sort_unstable();
+        live
+    });
+    let mut owned: Vec<i32> = [Some(kept.id()), started.as_ref().ok().map(|job| job.0)]
+        .into_iter()
+        .flatten()
+        .filter_map(|id| i32::try_from(id).ok())
+        .collect();
+    owned.sort_unstable();
     kept.kill().ok();
     kept.wait().ok();
+    if let Ok((id, _)) = &handed {
+        rig_tools::process::kill_group_of(*id);
+    }
+    drop((started, handed));
     std::fs::remove_dir_all(&root).ok();
-    assert!(owned.is_err(), "reading the list should have failed");
-    assert!(after.starts_with(&listed), "the list lost what it held");
-    let lines = String::from_utf8_lossy(&after);
-    assert!(
-        started
-            .as_ref()
-            .is_ok_and(|started| lines.lines().any(|line| line == started.to_string())),
-        "the job {started:?} is not listed: {lines:?}"
-    );
+    assert!(unread, "reading the list should have failed");
+    assert_eq!(owned.len(), 2, "could not start the job");
+    assert_eq!(live.ok(), Some(owned));
 }

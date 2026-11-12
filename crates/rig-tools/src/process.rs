@@ -21,7 +21,7 @@ use std::borrow::Cow;
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::{OsStr, OsString};
-use std::io::{self, Read, Write as _};
+use std::io::{self, Read, Seek as _, Write as _};
 use std::path::PathBuf;
 use std::process::{
     Child, ChildStderr, ChildStdin, ChildStdout, Command, ExitStatus, Output, Stdio,
@@ -1016,9 +1016,9 @@ const SWEEP: Duration = Duration::from_secs(1);
 struct Ledger {
     /// The file [`record_groups`] mirrors `listed` in.
     path: Option<PathBuf>,
-    /// The ids appended to the file, when it holds what could not be read
-    /// and is only appended to ([`keep_groups`]).
-    appended: Option<BTreeSet<u32>>,
+    /// How many bytes the file began with that could not be read, kept
+    /// before the list ([`record_groups_after`]).
+    unread: Option<u64>,
     listed: BTreeSet<u32>,
     left: BTreeSet<u32>,
     /// Groups asked to stop and killed after their grace if they still
@@ -1031,7 +1031,7 @@ struct Ledger {
 
 static LEDGER: Mutex<Ledger> = Mutex::new(Ledger {
     path: None,
-    appended: None,
+    unread: None,
     listed: BTreeSet::new(),
     left: BTreeSet::new(),
     stopping: BTreeSet::new(),
@@ -1050,32 +1050,25 @@ impl Ledger {
         graces.fold(STOP_GRACE, Duration::max)
     }
 
-    /// Mirrors the list in the file, if one is kept, or appends the ids
-    /// listed since the last append to a file only appended to; a file
-    /// that cannot be written lists nothing new.
-    fn write(&mut self) {
+    /// Mirrors the list in the file, if one is kept, after the bytes it
+    /// could not read; a file that cannot be written lists nothing new.
+    fn write(&self) {
         let Some(path) = &self.path else {
             return;
         };
-        if let Some(appended) = &mut self.appended {
-            let new: Vec<u32> = self.listed.difference(appended).copied().collect();
-            if new.is_empty() {
-                return;
-            }
-            // Starting on a new line keeps an id off a last line without one.
-            let text: String = new
-                .iter()
-                .map(|id| format!("\n{id}"))
-                .chain(["\n".into()])
-                .collect();
-            let written = std::fs::OpenOptions::new()
-                .append(true)
-                .create(true)
+        if let Some(unread) = self.unread {
+            // Without its contents the list cannot be renamed over the
+            // file, so it is rewritten in place after them.
+            let text: String = self.listed.iter().map(|id| format!("\n{id}")).collect();
+            std::fs::OpenOptions::new()
+                .write(true)
                 .open(path)
-                .and_then(|mut file| file.write_all(text.as_bytes()));
-            if written.is_ok() {
-                appended.extend(new);
-            }
+                .and_then(|mut file| {
+                    file.set_len(unread)?;
+                    file.seek(io::SeekFrom::End(0))?;
+                    file.write_all(format!("{text}\n").as_bytes())
+                })
+                .ok();
             return;
         }
         let text: String = self.listed.iter().map(|id| format!("{id}\n")).collect();
@@ -1113,21 +1106,27 @@ impl Ledger {
 pub fn record_groups(path: impl Into<PathBuf>, adopted: impl IntoIterator<Item = u32>) {
     let mut ledger = ledger();
     ledger.path = Some(path.into());
-    ledger.appended = None;
+    ledger.unread = None;
     for id in adopted.into_iter().filter(|&id| has_members(id)) {
         ledger.keep_left(id);
     }
     ledger.write();
 }
 
-/// [`record_groups`] with a ledger at `path` that could not be read, so
-/// none of its groups is adopted: from now on only appends the groups
-/// listed to it, never taking one off, since rewriting it would drop the
-/// groups it names.
-pub fn keep_groups(path: impl Into<PathBuf>) {
+/// [`record_groups`] for a ledger at `path` that could not be read, so
+/// none of its groups is adopted: the bytes it holds stay as they are, and
+/// the list is mirrored after them.
+///
+/// # Errors
+///
+/// When the ledger's length cannot be read; no ledger is kept then.
+pub fn record_groups_after(path: impl Into<PathBuf>) -> io::Result<()> {
+    let path = path.into();
+    let unread = std::fs::metadata(&path)?.len();
     let mut ledger = ledger();
-    ledger.path = Some(path.into());
-    ledger.appended = Some(BTreeSet::new());
+    ledger.path = Some(path);
+    ledger.unread = Some(unread);
+    Ok(())
 }
 
 /// Ends the groups the agent owns whose leader exited, such as a job a
