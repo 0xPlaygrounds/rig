@@ -638,8 +638,7 @@ fn describe(home: &Home, binary: &Path, settings: Option<&Path>) -> Result<Strin
         .env(env::HOME, &scratch_home)
         .current_dir(&scratch_home)
         .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped());
+        .stdout(Stdio::null());
     for name in env::AGENT_ONLY.iter().chain(&[env::LAUNCHER]) {
         command.env_remove(name);
     }
@@ -647,50 +646,71 @@ fn describe(home: &Home, binary: &Path, settings: Option<&Path>) -> Result<Strin
         Some(settings) => command.env(env::DESCRIBE_SETTINGS, settings),
         None => command.env_remove(env::DESCRIBE_SETTINGS),
     };
-    let result = wait_described(command.spawn()?, &report, DESCRIBE_TIMEOUT);
+    let result = wait_described(command, &report, DESCRIBE_TIMEOUT);
     fs::remove_dir_all(&scratch).ok();
     // A launcher with no run of its own, `rig build`, leaves none.
     fs::remove_dir(run.path()).ok();
     result
 }
 
-/// Waits for a describing build, at most `timeout`, and returns its
-/// `report`, or what it said on stderr when it failed.
-fn wait_described(mut child: Child, report: &Path, timeout: Duration) -> Result<String> {
-    let errors = child.stderr.take();
-    let errors = std::thread::spawn(move || {
-        let mut text = String::new();
-        if let Some(mut errors) = errors {
-            errors.read_to_string(&mut text).ok();
-        }
-        text
-    });
+/// Runs a describing build and waits for it, at most `timeout`, and
+/// returns its `report`, or what it said on stderr when it failed. On unix
+/// it leads a process group of its own (unless the launcher leads its
+/// session, see [`stop::spawn`]), which is killed once it exits or the time
+/// is up, so nothing it started outlives it or holds its stderr.
+fn wait_described(mut command: Command, report: &Path, timeout: Duration) -> Result<String> {
+    command.stderr(Stdio::piped());
+    #[cfg(unix)]
+    let group = stop::lead_group(&mut command);
+    let mut child = command.spawn()?;
+    let (send, said) = mpsc::channel();
+    if let Some(mut errors) = child.stderr.take() {
+        std::thread::spawn(move || {
+            let mut chunk = [0; 4096];
+            while let Ok(read @ 1..) = errors.read(&mut chunk)
+                && send
+                    .send(chunk.get(..read).unwrap_or_default().to_vec())
+                    .is_ok()
+            {}
+        });
+    }
     let deadline = Instant::now() + timeout;
     let status = loop {
         if let Some(status) = child.try_wait()? {
-            break status;
+            break Some(status);
         }
         if Instant::now() > deadline {
             child.kill().ok();
-            child.wait().ok();
-            return Err(format!(
-                "it did not describe itself within {} s",
-                timeout.as_secs_f32()
-            )
-            .into());
+            break None;
         }
         std::thread::sleep(Duration::from_millis(20));
     };
-    let errors = errors.join().unwrap_or_default();
-    if !status.success() {
-        let said = errors.trim();
-        return Err(if said.is_empty() {
-            format!("describing it failed ({status})").into()
-        } else {
-            said.to_owned().into()
-        });
+    #[cfg(unix)]
+    if group {
+        stop::kill_group(&child);
     }
-    Ok(fs::read_to_string(report).unwrap_or_default())
+    child.wait().ok();
+    let Some(status) = status else {
+        return Err(format!(
+            "it did not describe itself within {} s",
+            timeout.as_secs_f32()
+        )
+        .into());
+    };
+    if status.success() {
+        return Ok(fs::read_to_string(report).unwrap_or_default());
+    }
+    let mut errors = Vec::new();
+    while let Ok(chunk) = said.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
+        errors.extend(chunk);
+    }
+    let errors = String::from_utf8_lossy(&errors);
+    let said = errors.trim();
+    Err(if said.is_empty() {
+        format!("describing it failed ({status})").into()
+    } else {
+        said.to_owned().into()
+    })
 }
 
 /// Records `trial`, a build that stopped before it was ready, as rejected,
@@ -881,11 +901,9 @@ mod stop {
     /// group instead, which the agent kills as a whole. The signals wait
     /// while it starts, so one that comes meanwhile finds the group.
     pub(super) fn spawn(command: &mut Command) -> std::io::Result<Child> {
-        // SAFETY: plain calls without arguments that can fail.
-        let (leads, own) = unsafe { (libc::getsid(0) == libc::getpid(), libc::getpgrp()) };
-        if !leads {
-            command.process_group(0);
-        }
+        // SAFETY: a plain call without arguments that cannot fail.
+        let own = unsafe { libc::getpgrp() };
+        let leads = !lead_group(command);
         let mut replaced = Vec::new();
         // SAFETY: plain calls on zeroed signal sets and actions this
         // function owns; the closure runs in the forked child before `exec`
@@ -935,6 +953,28 @@ mod stop {
             libc::pthread_sigmask(libc::SIG_SETMASK, &raw const mask, std::ptr::null_mut());
         }
         spawned
+    }
+
+    /// Makes `command` lead a new process group, unless the launcher leads
+    /// its session, and says whether it does.
+    pub(super) fn lead_group(command: &mut Command) -> bool {
+        // SAFETY: plain calls without arguments that can fail.
+        let leads = unsafe { libc::getsid(0) == libc::getpid() };
+        if !leads {
+            command.process_group(0);
+        }
+        !leads
+    }
+
+    /// Kills the process group `child` leads, as [`lead_group`] made it.
+    pub(super) fn kill_group(child: &Child) {
+        if let Ok(group) = i32::try_from(child.id()) {
+            // SAFETY: `kill` takes plain integers; a negative pid names a
+            // process group.
+            unsafe {
+                libc::kill(-group, libc::SIGKILL);
+            }
+        }
     }
 
     /// The build ended: the ending signals act as they did before it.
