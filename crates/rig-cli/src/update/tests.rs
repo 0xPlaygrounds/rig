@@ -30,7 +30,9 @@ fn the_install_command_follows_the_detected_source() {
     assert_eq!(registry.get_program(), "cargo");
     assert_eq!(
         words(&registry),
-        ["install", "--force", "rig-cli", "--root", "/opt/rig"]
+        [
+            "install", "--force", "--locked", "rig-cli", "--root", "/opt/rig"
+        ]
     );
     let checkout = RigSource::Local(PathBuf::from("/src/my rig"));
     let local = install_command(&checkout, root);
