@@ -616,6 +616,51 @@ fn an_edit_made_while_a_listing_fails_is_reported_once_it_works() {
     );
 }
 
+/// A local watch whose root cannot be looked at for a while, here behind
+/// a directory locked after it started, says so and keeps watching: an
+/// edit made once the directory opens again is told.
+#[cfg(unix)]
+#[test]
+fn a_root_locked_for_a_while_is_watched_again() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let top = std::env::temp_dir().join(format!("rig-tools-watch-locked-{}", std::process::id()));
+    std::fs::remove_dir_all(&top).ok();
+    std::fs::create_dir_all(top.join(".git")).ok();
+    std::fs::create_dir_all(top.join("a/root")).ok();
+    let top = std::fs::canonicalize(&top).unwrap_or(top);
+    let root = top.join("a/root");
+    let file = root.join("f.txt");
+    std::fs::write(&file, "one").ok();
+    let mode =
+        |mode| std::fs::set_permissions(top.join("a"), std::fs::Permissions::from_mode(mode));
+    let watch = Arc::new(Local).watch(&root, true, Listing::Visible);
+    assert!(watch.is_ok(), "{watch:?}");
+    let Ok(watch) = watch else { return };
+    let events = events(watch);
+    let wait = Duration::from_millis(1500);
+    let started = told(&events, wait);
+    mode(0o000).ok();
+    // Whoever may enter it anyway (root) never sees it fail.
+    let locked = std::fs::metadata(&root).is_err();
+    let failing = told(&events, wait);
+    mode(0o755).ok();
+    told(&events, wait);
+    std::fs::write(&file, "two").ok();
+    let edited = told(&events, wait);
+    std::fs::remove_dir_all(&top).ok();
+    if !locked {
+        return;
+    }
+    assert_eq!(
+        (started, failing, edited),
+        (
+            vec![("snapshot", vec![file.clone()])],
+            vec![("unavailable", vec![])],
+            vec![("changed", vec![file])],
+        )
+    );
+}
+
 /// When the system's watcher says it may have missed events, the watch
 /// lists everything again and reports a file edited meanwhile, though no
 /// event named it.
