@@ -604,6 +604,10 @@ const SCRIPT: &[&[Op]] = {
             Write("top/.hidden/h.rs", "h"),
         ],
         &[Write("top/.gitignore", "sub/deep/\n")],
+        &[
+            Write("top/sub/deep/inner/r.rs", "edited"),
+            Write("top/sub/deep/d.rs", "d"),
+        ],
         &[Write("top/.gitignore", "")],
     ]
 };
