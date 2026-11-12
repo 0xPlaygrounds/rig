@@ -78,14 +78,11 @@ fn a_build_that_does_not_describe_itself_in_time_is_stopped() {
     let home = built("slow", "exec sleep 5");
     let artifact = home.target().join("debug").join(PACKAGE);
     let started = Instant::now();
-    let child = child(&artifact).stderr(Stdio::piped()).spawn();
-    let waited = child.map_err(Into::into).and_then(|child| {
-        wait_described(
-            child,
-            &home.root().join("report"),
-            Duration::from_millis(200),
-        )
-    });
+    let waited = wait_described(
+        child(&artifact),
+        &home.root().join("report"),
+        Duration::from_millis(200),
+    );
     fs::remove_dir_all(home.root()).ok();
     let why = waited
         .map_err(|why| why.to_string())
@@ -93,6 +90,121 @@ fn a_build_that_does_not_describe_itself_in_time_is_stopped() {
         .unwrap_or_default();
     assert!(why.contains("did not describe itself"), "{why}");
     assert!(started.elapsed() < Duration::from_secs(4));
+}
+
+/// A build that leaves a process holding its stderr still ends the wait
+/// within the timeout, and one that fails still says why.
+#[test]
+fn a_build_whose_child_holds_its_stderr_is_waited_for_within_the_timeout() {
+    let run = |name: &str, body: &str, timeout: Duration| {
+        let home = built(name, body);
+        let artifact = home.target().join("debug").join(PACKAGE);
+        let report = home.root().join("report");
+        let started = Instant::now();
+        let mut command = child(&artifact);
+        command.env(env::DESCRIBE, &report);
+        let waited = wait_described(command, &report, timeout).map_err(|why| why.to_string());
+        fs::remove_dir_all(home.root()).ok();
+        (waited, started.elapsed())
+    };
+    let (described, took) = run(
+        "held",
+        "sleep 20 & printf 'rig-describe 1\\n' > \"$RIG_DESCRIBE\"; exit 0",
+        Duration::from_secs(1),
+    );
+    assert_eq!(described.as_deref(), Ok("rig-describe 1\n"));
+    assert!(took < Duration::from_secs(3), "{took:?}");
+    let (failed, took) = run(
+        "held-failing",
+        "sleep 20 & echo 'rig: a plugin failed' >&2; exit 3",
+        Duration::from_secs(10),
+    );
+    assert_eq!(failed, Err("rig: a plugin failed".to_owned()));
+    assert!(took < Duration::from_secs(3), "{took:?}");
+}
+
+/// A launcher told to end while a build describes itself, as Ctrl-C ends
+/// it, ends the build too.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_launcher_ended_during_a_describe_ends_the_build() {
+    use std::os::unix::process::ExitStatusExt;
+
+    const PROBE: &str = "RIG_DESCRIBE_INTERRUPT_PROBE";
+    let seen = std::env::temp_dir().join(format!("rig-describe-interrupt-{}", std::process::id()));
+    if let Some(seen) = std::env::var_os(PROBE) {
+        let seen = std::path::PathBuf::from(seen);
+        let home = built(
+            "interrupted",
+            &format!("echo $$ > '{}'; exec sleep 30", seen.display()),
+        );
+        let artifact = home.target().join("debug").join(PACKAGE);
+        let watched = seen.clone();
+        std::thread::spawn(move || {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while !watched.exists() && Instant::now() < deadline {
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            std::thread::sleep(Duration::from_millis(50));
+            // SAFETY: plain integers; this run of the test binary is its own.
+            unsafe {
+                libc::kill(libc::getpid(), libc::SIGINT);
+            }
+        });
+        wait_described(
+            child(&artifact),
+            &home.root().join("report"),
+            Duration::from_secs(10),
+        )
+        .ok();
+        return;
+    }
+    let name = "build::tests::a_launcher_ended_during_a_describe_ends_the_build";
+    let launcher = std::env::current_exe().and_then(|test| {
+        Command::new(test)
+            .args(["--exact", name, "--test-threads", "1"])
+            .env(PROBE, &seen)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+    });
+    let Ok(mut launcher) = launcher else {
+        return assert!(launcher.is_ok());
+    };
+    let status = launcher.wait();
+    let build = fs::read_to_string(&seen).unwrap_or_default();
+    fs::remove_file(&seen).ok();
+    let root = format!("rig-describe-interrupted-{}", launcher.id());
+    fs::remove_dir_all(std::env::temp_dir().join(root)).ok();
+    let alive = || {
+        fs::read_to_string(format!("/proc/{}/stat", build.trim())).is_ok_and(|stat| {
+            !stat
+                .rsplit(')')
+                .next()
+                .unwrap_or_default()
+                .trim_start()
+                .starts_with('Z')
+        })
+    };
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while alive() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let outlived = alive();
+    if outlived && let Ok(pid) = build.trim().parse() {
+        // SAFETY: plain integers; the build this test started.
+        unsafe {
+            libc::kill(pid, libc::SIGKILL);
+        }
+    }
+    assert_eq!(
+        status.ok().and_then(|status| status.signal()),
+        Some(libc::SIGINT)
+    );
+    assert!(
+        !build.trim().is_empty() && !outlived,
+        "the build outlived it"
+    );
 }
 
 /// The secret this file's tests run a copy of themselves with.

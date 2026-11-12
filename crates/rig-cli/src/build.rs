@@ -638,8 +638,7 @@ fn describe(home: &Home, binary: &Path, settings: Option<&Path>) -> Result<Strin
         .env(env::HOME, &scratch_home)
         .current_dir(&scratch_home)
         .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped());
+        .stdout(Stdio::null());
     for name in env::AGENT_ONLY.iter().chain(&[env::LAUNCHER]) {
         command.env_remove(name);
     }
@@ -647,50 +646,69 @@ fn describe(home: &Home, binary: &Path, settings: Option<&Path>) -> Result<Strin
         Some(settings) => command.env(env::DESCRIBE_SETTINGS, settings),
         None => command.env_remove(env::DESCRIBE_SETTINGS),
     };
-    let result = wait_described(command.spawn()?, &report, DESCRIBE_TIMEOUT);
+    let result = wait_described(command, &report, DESCRIBE_TIMEOUT);
     fs::remove_dir_all(&scratch).ok();
     // A launcher with no run of its own, `rig build`, leaves none.
     fs::remove_dir(run.path()).ok();
     result
 }
 
-/// Waits for a describing build, at most `timeout`, and returns its
-/// `report`, or what it said on stderr when it failed.
-fn wait_described(mut child: Child, report: &Path, timeout: Duration) -> Result<String> {
-    let errors = child.stderr.take();
-    let errors = std::thread::spawn(move || {
-        let mut text = String::new();
-        if let Some(mut errors) = errors {
-            errors.read_to_string(&mut text).ok();
-        }
-        text
-    });
+/// Runs a describing build as a [`Build`] and waits for it, at most
+/// `timeout`, and returns its `report`, or what it said on stderr when it
+/// failed. Its group is killed once it exits or the time is up, so nothing
+/// it started outlives it or holds its stderr.
+fn wait_described(mut command: Command, report: &Path, timeout: Duration) -> Result<String> {
+    command.stderr(Stdio::piped());
+    let mut build = Build::spawn(command)?;
+    let child = &mut build.0;
+    let (send, said) = mpsc::channel();
+    if let Some(mut errors) = child.stderr.take() {
+        std::thread::spawn(move || {
+            let mut chunk = [0; 4096];
+            while let Ok(read @ 1..) = errors.read(&mut chunk)
+                && send
+                    .send(chunk.get(..read).unwrap_or_default().to_vec())
+                    .is_ok()
+            {}
+        });
+    }
     let deadline = Instant::now() + timeout;
     let status = loop {
         if let Some(status) = child.try_wait()? {
-            break status;
+            break Some(status);
         }
         if Instant::now() > deadline {
             child.kill().ok();
-            child.wait().ok();
-            return Err(format!(
-                "it did not describe itself within {} s",
-                timeout.as_secs_f32()
-            )
-            .into());
+            break None;
         }
         std::thread::sleep(Duration::from_millis(20));
     };
-    let errors = errors.join().unwrap_or_default();
-    if !status.success() {
-        let said = errors.trim();
-        return Err(if said.is_empty() {
-            format!("describing it failed ({status})").into()
-        } else {
-            said.to_owned().into()
-        });
+    #[cfg(unix)]
+    stop::kill();
+    child.wait().ok();
+    let Some(status) = status else {
+        return Err(format!(
+            "it did not describe itself within {} s",
+            timeout.as_secs_f32()
+        )
+        .into());
+    };
+    if status.success() {
+        return Ok(fs::read_to_string(report).unwrap_or_default());
     }
-    Ok(fs::read_to_string(report).unwrap_or_default())
+    let mut errors = Vec::new();
+    while let Some(left) = deadline.checked_duration_since(Instant::now())
+        && let Ok(chunk) = said.recv_timeout(left)
+    {
+        errors.extend(chunk);
+    }
+    let errors = String::from_utf8_lossy(&errors);
+    let said = errors.trim();
+    Err(if said.is_empty() {
+        format!("describing it failed ({status})").into()
+    } else {
+        said.to_owned().into()
+    })
 }
 
 /// Records `trial`, a build that stopped before it was ready, as rejected,
@@ -828,10 +846,11 @@ fn package(line: &str) -> Option<(&str, &str)> {
     Some((name, version))
 }
 
-/// cargo, running in a process group of its own (or the launcher's, when
-/// the launcher leads a session of its own), which is killed should the
-/// launcher be told to end (`SIGTERM`, `SIGINT`, `SIGHUP`) meanwhile, so no
-/// cargo or rustc outlives it. Elsewhere than unix, cargo alone.
+/// cargo or a describing build, running in a process group of its own (or
+/// the launcher's, when the launcher leads a session of its own), which is
+/// killed should the launcher be told to end (`SIGTERM`, `SIGINT`, `SIGHUP`)
+/// meanwhile, so nothing it started outlives it. Elsewhere than unix, the
+/// child alone.
 struct Build(Child);
 
 impl Build {
@@ -954,10 +973,10 @@ mod stop {
         }
     }
 
-    /// Kills the build's group, if one runs.
+    /// Kills the build's group, if one runs and is not the launcher's own.
     pub(super) fn kill() {
         let group = GROUP.load(Ordering::SeqCst);
-        if group > 0 {
+        if group > 0 && !OWN.load(Ordering::SeqCst) {
             // SAFETY: `kill` takes plain integers; a negative pid names the
             // build's process group.
             unsafe {
