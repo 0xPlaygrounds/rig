@@ -67,12 +67,13 @@ fn a_reply_that_did_not_stream_comes_as_deltas_once() {
             .is_ok()
     );
     let mut texts = texts(&mut world, 3);
-    texts.sort();
+    // Calls are read in no set order.
+    texts.sort_by(|left, right| left.1.cmp(&right.1));
     assert_eq!(
         texts,
         [
-            (answered, "in place".to_owned()),
-            (ended, "ended".to_owned())
+            (ended, "ended".to_owned()),
+            (answered, "in place".to_owned())
         ]
     );
 }
