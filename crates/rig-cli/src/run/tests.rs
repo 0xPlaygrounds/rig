@@ -1492,3 +1492,90 @@ fn two_launchers_starting_after_rig_build_both_run_the_new_build() {
     let ran = ran.map_err(|failure| failure.to_string());
     assert_eq!(ran, Ok(vec![(true, true), (true, true)]));
 }
+
+/// A reload after the launcher's file was replaced goes on, on the new
+/// launcher, as the same reload would on this one: its agent is told it
+/// reloaded, not that the session was resumed, and is not warned again of
+/// a 0.46 home the run warned of already.
+#[cfg(unix)]
+#[test]
+fn a_reload_on_the_new_launcher_starts_as_a_reload() {
+    let home = builds("replaced-carry", "", "");
+    let started = locks::hold_run(&home).and_then(|run| {
+        fs::write(home.root().join("plugins.toml"), "")?;
+        let (session, saved) = home.new_session()?;
+        saved.mark_saved()?;
+        let launcher = home.root().join("launcher").join("rig");
+        fs::create_dir_all(home.root().join("launcher"))?;
+        fs::write(&launcher, "old")?;
+        let agent = "[ -n \"$RIG_DESCRIBE\" ] && exit 0
+echo \"$RIG_START|$RIG_NOTICE|$RIG_WARNING\" >> \"$RIG_HOME/started\"
+touch \"$RIG_RUN/ready\"
+[ -e \"$RIG_HOME/reloaded\" ] && exit 0
+touch \"$RIG_HOME/reloaded\"
+echo new > \"$RIG_LAUNCHER.new\"; mv \"$RIG_LAUNCHER.new\" \"$RIG_LAUNCHER\"
+exit 75";
+        for build in [home.staged(), home.good()] {
+            fs::write(build, format!("#!/bin/sh\n{agent}\n"))?;
+        }
+        let here = Some(home.root());
+        let (claimed, notice) = claim(&home, Start::Resume(session.clone()), here)?;
+        let running = select(&home, &claimed.id, run.dir(), None)?;
+        let reexec = launch(
+            &home,
+            &launcher,
+            run.dir(),
+            &Invocation::default(),
+            false,
+            claimed,
+            running,
+            notice,
+            None,
+        )?
+        .reexec;
+        let told = Reexec::new(
+            &home,
+            &launcher,
+            Some(session.as_str()),
+            Vec::new(),
+            here.map(Path::to_path_buf),
+            None,
+        );
+        let told = reexec == Some(told);
+        // The new launcher, as `reexec` starts it.
+        let (claimed, notice) = claim(&home, Start::Resume(session), here)?;
+        let running = select(&home, &claimed.id, run.dir(), None)?;
+        launch(
+            &home,
+            &launcher,
+            run.dir(),
+            &Invocation::default(),
+            false,
+            claimed,
+            running,
+            notice,
+            None,
+        )?;
+        Ok((fs::read_to_string(home.root().join("started"))?, told))
+    });
+    fs::remove_dir_all(home.root()).ok();
+    let started = started.map_err(|failure| failure.to_string());
+    assert!(started.as_ref().is_ok_and(|(_, told)| *told), "{started:?}");
+    let started = started.map(|(started, _)| started);
+    let lines: Vec<String> = started
+        .iter()
+        .flat_map(|started| started.lines().map(str::to_owned))
+        .collect();
+    assert_eq!(lines.len(), 2, "{started:?}");
+    assert!(
+        lines.first().is_some_and(
+            |first| first.starts_with("resumed|Resumed the session.|[\"rig no longer reads ")
+        ),
+        "{lines:?}"
+    );
+    assert_eq!(
+        lines.get(1).map(String::as_str),
+        Some("reloaded||"),
+        "{lines:?}"
+    );
+}
