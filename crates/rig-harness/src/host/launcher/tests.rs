@@ -268,13 +268,14 @@ fn jobs_a_reload_kept_are_taken_over_while_marked() {
     };
     let listed = format!("{}\n{}\n", kept.id(), stranger.id());
     std::fs::write(run.groups(), listed).ok();
-    super::own_groups(&run);
+    let owned_ok = super::own_groups(&run).is_ok();
     let owned = std::fs::read_to_string(run.groups()).unwrap_or_default();
     for job in [&mut kept, &mut stranger] {
         job.kill().ok();
         job.wait().ok();
     }
     std::fs::remove_dir_all(&root).ok();
+    assert!(owned_ok, "the list should have been read");
     let owned: Vec<&str> = owned.lines().collect();
     assert_eq!(owned, [kept.id().to_string()]);
 }
@@ -313,4 +314,38 @@ fn a_settings_table_read_in_a_finish_refuses_the_run() {
         }
     }
     assert_eq!(app.should_exit(), Some(AppExit::from_code(2)));
+}
+
+/// An agent started by a reload that cannot read the list of the jobs
+/// the agent before it left running keeps the list as it is: the launcher
+/// still ends those jobs once rig exits.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_list_a_reload_cannot_read_is_kept() {
+    use std::os::unix::process::CommandExt;
+
+    let root = std::env::temp_dir().join(format!("rig-harness-unread-{}", std::process::id()));
+    std::fs::create_dir_all(&root).ok();
+    let run = rig_harness_protocol::RunDir::at(&root);
+    let mut sleep = std::process::Command::new("sleep");
+    sleep
+        .arg("30")
+        .process_group(0)
+        .env(rig_harness_protocol::env::PROCESS_LEDGER, run.groups());
+    let Ok(mut kept) = sleep.spawn() else {
+        std::fs::remove_dir_all(&root).ok();
+        return;
+    };
+    // Bytes that are not text make reading the list fail, while writing it
+    // anew would succeed.
+    let mut listed = format!("{}\n", kept.id()).into_bytes();
+    listed.extend_from_slice(b"\xff\n");
+    std::fs::write(run.groups(), &listed).ok();
+    let owned = super::own_groups(&run);
+    let after = std::fs::read(run.groups()).unwrap_or_default();
+    kept.kill().ok();
+    kept.wait().ok();
+    std::fs::remove_dir_all(&root).ok();
+    assert!(owned.is_err(), "reading the list should have failed");
+    assert_eq!(after, listed);
 }

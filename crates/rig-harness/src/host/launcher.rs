@@ -86,11 +86,22 @@ impl Invoked {
 /// those the agent before a reload left running: each only while one of
 /// its processes carries the list's mark, so an id the system gave another
 /// group while the launcher restarted, however long that took, is not.
-fn own_groups(run: &RunDir) {
-    let adopted = run.live_groups().unwrap_or_default();
+///
+/// # Errors
+///
+/// When the list cannot be read. It is then left as it is, since writing
+/// it anew would drop the groups it names, and the agent keeps no list.
+fn own_groups(run: &RunDir) -> std::io::Result<()> {
+    let adopted = run.live_groups()?;
     let adopted = adopted.into_iter().filter_map(|id| u32::try_from(id).ok());
     rig_tools::process::record_groups(run.groups(), adopted);
+    Ok(())
 }
+
+/// Why the agent keeps no list of the process groups it owns, said as a
+/// warning once it starts.
+#[derive(Resource)]
+struct GroupsUnread(String);
 
 /// The run directory of the launcher that started this agent, from
 /// [`env::RUN`]. [`LauncherPlugin`] inserts it unless the app inserted one
@@ -112,7 +123,14 @@ impl Plugin for LauncherPlugin {
         if !app.world().contains_resource::<LauncherRun>()
             && let Some(run) = RunDir::from_env()
         {
-            own_groups(&run);
+            if let Err(error) = own_groups(&run) {
+                app.insert_resource(GroupsUnread(format!(
+                    "could not read the list of process groups {}: {error}; it is kept \
+                     as it is, and rig may not end the background jobs it names or this agent \
+                     leaves running",
+                    run.groups().display()
+                )));
+            }
             app.insert_resource(LauncherRun(run));
         }
         watch_launcher(app);
@@ -385,6 +403,7 @@ pub fn inform_build_failure(commands: &mut Commands, agent: Entity, text: String
 fn launcher_notice(
     settings: Option<Res<Settings>>,
     refused: Option<Res<Refused>>,
+    unread: Option<Res<GroupsUnread>>,
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
@@ -392,6 +411,9 @@ fn launcher_notice(
         && !notice.is_empty()
     {
         notices.write(Notice::info(None, notice));
+    }
+    if let Some(unread) = unread {
+        notices.write(Notice::warn(None, unread.0.clone()));
     }
     if let Ok(warning) = std::env::var(env::WARNING) {
         notices.write_batch(
