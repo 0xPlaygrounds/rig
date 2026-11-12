@@ -258,9 +258,9 @@ fn reload(
     watches: Query<(), With<StyleWatch>>,
     mut commands: Commands,
 ) {
-    let mine = changes
-        .read()
-        .fold(false, |mine, change| mine | watches.contains(change.watch));
+    let mine = changes.read().fold(false, |mine, change| {
+        mine | (watches.contains(change.watch) && change.event.names_files())
+    });
     if mine {
         commands.queue(read_now);
     }

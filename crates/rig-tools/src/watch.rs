@@ -671,7 +671,8 @@ impl Tree {
 /// gone. The first listing, of everything, is made once the system's
 /// watch is armed, so nothing made in between is missed; the watch ends
 /// when it fails. After a later one that failed, everything is listed
-/// again, every second until one works. When another directory is at the
+/// again, every second until one works; paths a listing could not look
+/// into are listed again every second the same way. When another directory is at the
 /// target of `armed`, it is watched and everything listed again; while
 /// none is there, it is looked for every second. The watch ends when that
 /// cannot be done.
@@ -684,8 +685,16 @@ pub(crate) fn send_batches(
     let wide = tree.wide_rules();
     let mut seen = Baseline::new();
     let mut heard = Vec::new();
+    // Arming a recursive watch walks the tree without reading the events
+    // that walk makes, so the system may drop some and ask for a rescan
+    // soon after. The first listing covers what came before it.
+    let deadline = Instant::now() + LONGEST;
+    while let Some(left) = deadline.checked_duration_since(Instant::now())
+        && raw.recv_timeout(QUIET.min(left)).is_ok()
+    {}
+    let mut failed = Scopes::default();
     loop {
-        let (mut scopes, mut touched) = (Scopes::default(), BTreeSet::new());
+        let (mut scopes, mut touched) = (std::mem::take(&mut failed), BTreeSet::new());
         let moved = match armed.follow() {
             Ok(moved) => moved,
             Err(error) => {
@@ -715,14 +724,19 @@ pub(crate) fn send_batches(
             // A directory the last listing found files under is listed by
             // the rules as they are: an edit of them is a scope of its own.
             let look = tree.look(scopes.clone(), |dir| seen.holds_below(dir));
+            if let Ok(look) = &look {
+                for path in &look.failed {
+                    failed.add(path.clone());
+                }
+            }
             let event = seen.update(&scopes, look, &touched);
             if event.is_some_and(|event| sender.unbounded_send(event).is_err()) || seen.ended() {
                 return;
             }
         }
-        // A listing that failed, or a target not there, is tried again
-        // every second.
-        let first = match seen.known() && armed.watching() {
+        // A listing that failed, in whole or in part, or a target not
+        // there, is tried again every second.
+        let first = match seen.known() && armed.watching() && failed.0.is_empty() {
             true => raw.recv().map_err(|_| RecvTimeoutError::Disconnected),
             false => raw.recv_timeout(EVERY),
         };

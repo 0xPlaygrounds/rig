@@ -179,8 +179,10 @@ pub trait Workspace: Send + Sync + fmt::Debug + 'static {
     /// [`Snapshot`](WatchEvent::Snapshot) of those there once it could
     /// list them, then the paths created, changed or removed each time
     /// something changed, and [`Unavailable`](WatchEvent::Unavailable)
-    /// while listing fails. A root that does not exist has no files until
-    /// it appears. Dropping the [`Watch`] stops it.
+    /// while listing fails. When the first listing fails, `Unavailable`
+    /// and then [`Closed`](WatchEvent::Closed) end the watch. A root that
+    /// does not exist has no files until it appears. Dropping the
+    /// [`Watch`] stops it.
     ///
     /// By default it lists what [`files`](Self::files) lists every
     /// second, on a thread of its own, comparing each file's
