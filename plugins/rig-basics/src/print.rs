@@ -1468,6 +1468,12 @@ fn json_ended(ended: On<HeadlessEnded>, mut out: ResMut<JsonOut>) {
     out.ended = Some(ended.event().clone());
 }
 
+/// The code on the exit line: the one the launcher exits with for this
+/// end, so a one-shot `/new`, which it ends on as done, says 0.
+fn exit_code(reason: Option<&ExitReason>) -> u8 {
+    reason.map_or(0, |reason| reason.end().launcher_code())
+}
+
 /// Why an exit cuts off the work the run started, as the lines that close
 /// it say; `None` for a reload, after which the launcher starts the agent
 /// again and the run goes on.
@@ -1507,10 +1513,7 @@ fn note_cut_off(
     let Some(why) = cut_off(reason.as_deref()) else {
         return;
     };
-    let code = match reason.as_deref().map(ExitReason::exit) {
-        Some(AppExit::Error(code)) => code.get(),
-        _ => 0,
-    };
+    let code = exit_code(reason.as_deref());
     let ended = out.out.ended.as_ref().filter(|ended| ended.code == code);
     let why = ended
         .and_then(|ended| ended.why.clone())
@@ -1578,10 +1581,7 @@ fn json_exit(
     if ended.is_none() && !out.out.one_shot {
         return;
     }
-    let code = match reason.map(ExitReason::exit) {
-        Some(AppExit::Error(code)) => code.get(),
-        _ => 0,
-    };
+    let code = exit_code(reason);
     let (agent, answer, error) = match ended {
         Some(ended) if ended.code == code => (ended.agent, ended.answer, ended.why),
         // Something else ended it first, such as a signal.

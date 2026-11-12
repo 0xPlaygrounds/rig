@@ -503,7 +503,7 @@ fn run_agent(
             directory.log()
         };
         if !rejected && headless {
-            return Ok(Ended::quiet(exit_code(&end)));
+            return Ok(Ended::quiet(ExitCode::from(end.launcher_code())));
         }
         let resume = started
             .then(|| resume_command(home, &session, refusal.is_some()))
@@ -569,7 +569,7 @@ impl Ended {
     /// The end of an agent that ended as `end`, followed by `said`.
     fn new(end: &AgentEnd, said: Option<String>) -> Self {
         Self {
-            code: exit_code(end),
+            code: ExitCode::from(end.launcher_code()),
             said,
             restore: false,
             reexec: None,
@@ -1069,16 +1069,6 @@ fn promote(home: &Home, build: &mut BuildRef) -> Result<bool> {
         fs::rename(&temporary, home.good())?;
     }
     Ok(true)
-}
-
-/// The launcher's exit code for an agent that ended as `end`: the agent's
-/// own, but 0 for a reload or a switch the launcher does not follow, such
-/// as a one-shot run's `/new`, so a script never gets the reload code.
-fn exit_code(end: &AgentEnd) -> ExitCode {
-    match end {
-        AgentEnd::Reload | AgentEnd::Switch(_) => ExitCode::SUCCESS,
-        end => ExitCode::from(end.code()),
-    }
 }
 
 #[cfg(test)]

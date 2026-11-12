@@ -58,6 +58,16 @@ impl AgentEnd {
         }
     }
 
+    /// The code the launcher exits with when it ends on this end: [`Self::code`],
+    /// but 0 for a reload or a switch it does not follow, such as a one-shot
+    /// run's `/new`, so a script never gets the reload code.
+    pub fn launcher_code(&self) -> u8 {
+        match self {
+            Self::Reload | Self::Switch(_) => 0,
+            end => end.code(),
+        }
+    }
+
     /// Writes this end as `run`'s record, whole or not at all: to a
     /// temporary file first, then renamed over the record.
     ///
