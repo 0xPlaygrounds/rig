@@ -1629,3 +1629,119 @@ exit 75";
         "{lines:?}"
     );
 }
+
+/// Runs the agent `agent`, a shell body, as the only build of `home` for
+/// `start`, as `invocation` says, and returns how the run ended and what
+/// the agent wrote to the home's `started` file.
+#[cfg(unix)]
+fn run_once(
+    home: &Home,
+    agent: &str,
+    start: Start,
+    invocation: &Invocation,
+    headless: bool,
+) -> Result<(Ended, String)> {
+    let run = locks::hold_run(home)?;
+    absent(fs::remove_file(home.staged()))?;
+    let script = format!("#!/bin/sh\n[ -n \"$RIG_DESCRIBE\" ] && exit 0\n{agent}\n");
+    fs::write(home.good(), script)?;
+    let (claimed, _) = claim(home, start, None)?;
+    let running = select(
+        &at(home, Path::new(NO_LAUNCHER))?,
+        &claimed.id,
+        run.dir(),
+        None,
+    )?;
+    let ended = run_agent(
+        &mut at(home, Path::new(NO_LAUNCHER))?,
+        run.dir(),
+        invocation,
+        headless,
+        claimed,
+        running,
+    )?;
+    let started = absent(fs::read_to_string(home.root().join("started")))?;
+    Ok((ended, started.unwrap_or_default()))
+}
+
+/// A one-shot run whose prompt is `/new` or `/resume` ends with the codes
+/// `rig help-agents` promises: the agent's switch is not followed, and the
+/// script is not told the reload code.
+#[cfg(unix)]
+#[test]
+fn a_one_shot_switch_ends_with_a_code_scripts_are_promised() {
+    let home = builds("one-shot-switch", "", "");
+    let print = Invocation {
+        print: Some("/new".to_owned()),
+        ..Invocation::default()
+    };
+    let agent = "echo \"$RIG_SESSION\" >> \"$RIG_HOME/started\"
+touch \"$RIG_RUN/ready\"
+: > \"$RIG_HOME/sessions/$RIG_SESSION/switch\"
+exit 75";
+    let ended = run_once(&home, agent, Start::New, &print, true);
+    fs::remove_dir_all(home.root()).ok();
+    let ended = ended.map_err(|failure| failure.to_string());
+    let code = ended
+        .as_ref()
+        .map(|(ended, started)| (ended.code, started.lines().count()));
+    assert_eq!(code, Ok((ExitCode::SUCCESS, 1)), "{ended:?}");
+}
+
+/// An agent that exits with the reload code without asking to reload, as
+/// a plugin's front failing with its child's code 75 did, ended: it is
+/// not restarted.
+#[cfg(unix)]
+#[test]
+fn an_exit_code_of_75_alone_is_a_failure_not_a_reload() {
+    let home = builds("raw-75", "", "");
+    let agent = "echo \"$RIG_SESSION\" >> \"$RIG_HOME/started\"
+touch \"$RIG_RUN/ready\"
+[ -e \"$RIG_HOME/once\" ] && exit 0
+touch \"$RIG_HOME/once\"
+exit 75";
+    let ended = run_once(&home, agent, Start::New, &Invocation::default(), false);
+    fs::remove_dir_all(home.root()).ok();
+    let ended = ended.map_err(|failure| failure.to_string());
+    let starts = ended
+        .as_ref()
+        .map(|(ended, started)| (ended.code, started.lines().count()));
+    assert_eq!(starts, Ok((ExitCode::FAILURE, 1)), "{ended:?}");
+}
+
+/// An agent killed after it asked to switch sessions, before it exited,
+/// switches nothing: neither then nor on the session's next reload.
+#[cfg(unix)]
+#[test]
+fn an_agent_killed_after_asking_to_switch_switches_nothing() {
+    let home = builds("killed-switch", "", "");
+    let ran = (|| -> Result<_> {
+        let saved = || -> Result<SessionId> {
+            let (id, session) = home.new_session()?;
+            session.mark_saved()?;
+            Ok(id)
+        };
+        let (current, other) = (saved()?, saved()?);
+        let killed = format!(
+            "echo \"$RIG_SESSION\" >> \"$RIG_HOME/started\"
+touch \"$RIG_RUN/ready\"
+echo {other} > \"$RIG_HOME/sessions/$RIG_SESSION/switch\"
+kill -9 $$"
+        );
+        let resume = || Start::Resume(current.clone());
+        run_once(&home, &killed, resume(), &Invocation::default(), false)?;
+        let reloads = "echo \"$RIG_SESSION\" >> \"$RIG_HOME/started\"
+touch \"$RIG_RUN/ready\"
+[ -e \"$RIG_HOME/reloaded\" ] && exit 0
+touch \"$RIG_HOME/reloaded\"
+exit 75";
+        let (_, started) = run_once(&home, reloads, resume(), &Invocation::default(), false)?;
+        Ok((started, current))
+    })();
+    fs::remove_dir_all(home.root()).ok();
+    let ran = ran.map_err(|failure| failure.to_string());
+    let stayed = ran
+        .as_ref()
+        .is_ok_and(|(started, current)| *started == format!("{current}\n").repeat(3));
+    assert!(stayed, "{ran:?}");
+}
