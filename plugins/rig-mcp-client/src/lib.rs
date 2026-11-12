@@ -103,7 +103,9 @@ impl Plugin for McpCorePlugin {
     }
 
     fn build(&self, app: &mut App) {
-        app.add_setting::<McpSettings>("mcp")
+        let client = app.world_mut().spawn(Name::new("MCP client")).id();
+        app.insert_resource(Client(client))
+            .add_setting::<McpSettings>("mcp")
             .init_resource::<RigHome>()
             .init_resource::<Processes>()
             .init_resource::<Groups>()
@@ -142,6 +144,11 @@ impl Plugin for McpCorePlugin {
             .add_command("mcp", USAGE, mcp_command);
     }
 }
+
+/// The entity [`McpCorePlugin`] spawns as it builds, so attributed to the
+/// plugin that added it, whose [`ProvidedBy`] the tools of its servers take.
+#[derive(Resource)]
+struct Client(Entity);
 
 /// That [`McpPlugin`] is on: the `mcp.json` files are read, and `/mcp`
 /// changes them.
@@ -1063,6 +1070,11 @@ fn register(
     let trusted = world
         .get_resource::<McpSettings>()
         .is_some_and(|settings| settings.trust_read_only.contains(&name));
+    // Attributed as what a plugin spawns as it builds is, so a plugin
+    // filter such as tool search finds them.
+    let by = (world.get_resource::<Client>())
+        .and_then(|client| world.get::<ProvidedBy>(client.0))
+        .map(|by| by.0);
     let Ok(mut entity) = world.get_entity_mut(server) else {
         return;
     };
@@ -1086,14 +1098,10 @@ fn register(
             left_out.push(format!("`{full}` (another tool has that name)"));
             continue;
         };
-        // Attributed as the tools a plugin spawns as it builds are, so a
-        // plugin filter such as tool search finds them.
-        let plugin = world.get_resource::<PluginEntity<McpPlugin>>();
-        let by = plugin.map(|plugin| ProvidedBy(plugin.entity()));
         if let Ok(mut tool) = world.get_entity_mut(tool) {
             tool.insert(McpToolOf(server));
             if let Some(by) = by {
-                tool.insert(by);
+                tool.insert(ProvidedBy(by));
             }
         }
         // A policy that saw the tool may have held the server: it then

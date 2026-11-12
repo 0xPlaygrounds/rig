@@ -1176,6 +1176,16 @@ fn a_client_server_is_taken_as_given_and_no_file_is_read_without_the_plugin() {
     run_until(&mut app, &wakes, |world| has(world, "files__add"));
     assert!(literal.exists() && !mine.exists());
     assert_eq!(scope(app.world_mut(), "files"), Some(Scope::Client));
+    // The tool is the crate's, as with McpPlugin, so a plugin filter such as
+    // tool search's `plugins = ["rig-mcp-client"]` finds it.
+    let world = app.world_mut();
+    let package = world
+        .query::<(&ToolDef, &ProvidedBy)>()
+        .iter(world)
+        .find(|(def, _)| def.0.name.as_str() == "files__add")
+        .and_then(|(_, by)| world.get::<PluginSource>(by.0))
+        .map(|source| source.package.clone());
+    assert_eq!(package.as_deref(), Some("rig-mcp-client"));
     let agent = rig_harness_test_support::first_agent(app.world_mut());
     let agent = agent.unwrap_or(Entity::PLACEHOLDER);
     mcp(&mut app, agent, "");
