@@ -8,10 +8,10 @@ use rig_core::effect::Answered;
 use rig_core::message::AssistantContent;
 use rig_core::streaming::{Part, PartKind, StreamEvent};
 
-use super::{Fed, ModelRequest, StreamDelta, feed, stream_partials};
+use super::{Fed, ModelRequest, StreamDelta, feed, stream_partials, write_unstreamed};
 use crate::stage::{Outcome, SupersededBy};
 
-/// A world `stream_partials` runs in.
+/// A world the kernel's delta writers run in.
 fn world() -> World {
     let mut world = World::new();
     world.init_resource::<Messages<StreamDelta>>();
@@ -23,6 +23,13 @@ fn call() -> ModelRequest {
     ModelRequest::new(CompletionRequest::new(Message::user("hi")))
 }
 
+/// What a pass does with deltas: what streamed is read in Arrive, and
+/// what did not stream is written in Commit.
+fn pass(world: &mut World) {
+    assert!(world.run_system_cached(stream_partials).is_ok());
+    assert!(world.run_system_cached(write_unstreamed).is_ok());
+}
+
 /// A reply of `text`, as its outcome.
 fn replied(text: &str) -> Outcome {
     let choice = vec![AssistantContent::text(text)];
@@ -31,11 +38,11 @@ fn replied(text: &str) -> Outcome {
     Outcome(Ok(Answered::Completion(Arc::new(reply))))
 }
 
-/// Runs `stream_partials` `passes` times; the text each call's deltas
+/// Runs [`pass`] `passes` times; the text each call's deltas
 /// carried.
 fn texts(world: &mut World, passes: usize) -> Vec<(Entity, String)> {
     for _ in 0..passes {
-        assert!(world.run_system_cached(stream_partials).is_ok());
+        pass(world);
     }
     let deltas = world.resource::<Messages<StreamDelta>>();
     let mut cursor = deltas.get_cursor();
@@ -85,7 +92,7 @@ fn a_reply_that_streamed_any_text_gets_no_copy() {
     let (sender, fed) = feed();
     let call = world.spawn((call(), fed)).id();
     assert!(sender.try_send(text_event("Hel")).is_ok());
-    assert!(world.run_system_cached(stream_partials).is_ok());
+    pass(&mut world);
     world.entity_mut(call).insert(replied("Hello"));
     assert!(sender.try_send(text_event("lo")).is_ok());
     let texts = texts(&mut world, 2);
@@ -110,7 +117,7 @@ fn each_part_of_a_reply_that_did_not_stream_starts_grows_and_ends() {
     let origin = Origin::new("test.api", "test", "model");
     let reply = CompletionResponse::new(choice, Usage::default(), origin, serde_json::Value::Null);
     world.spawn((call(), Outcome(Ok(Answered::Completion(Arc::new(reply))))));
-    assert!(world.run_system_cached(stream_partials).is_ok());
+    pass(&mut world);
     let deltas = world.resource::<Messages<StreamDelta>>();
     let events: Vec<StreamEvent> = deltas
         .get_cursor()
@@ -167,10 +174,10 @@ fn a_reply_whose_stream_had_no_text_gets_its_text_after_what_streamed() {
         let item = Fed::Item(web_time::SystemTime::now(), Some(event));
         assert!(sender.try_send(item).is_ok());
     }
-    assert!(world.run_system_cached(stream_partials).is_ok());
+    pass(&mut world);
     world.entity_mut(call).insert(replied("hello"));
-    assert!(world.run_system_cached(stream_partials).is_ok());
-    assert!(world.run_system_cached(stream_partials).is_ok());
+    pass(&mut world);
+    pass(&mut world);
     let deltas = world.resource::<Messages<StreamDelta>>();
     let events: Vec<StreamEvent> = deltas
         .get_cursor()

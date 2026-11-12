@@ -1083,16 +1083,17 @@ with its id); `part` tells parallel tool calls apart. It is written in
 Arrive in order, after the call's adapted handler rewrote it, and kept two
 frames, so a reader in `PostUpdate` gets a reply's last events even when it
 settled that frame. A reply whose text did not stream, such as one a plugin
-answered in place, comes the same way, once, when its outcome arrives and
-before it is applied: the whole reply, each part starting, growing by its
-whole text and ending, when nothing streamed, else only its text, in parts
-after the streamed ones. Text that streamed, even part of it, never comes
-twice, and a call superseded before its reply arrived gets none. A turn's
-call also adds each event up in its `Partial`, the one record of the reply
-in flight: its text, reasoning and tool calls, each call with its arguments
-so far until it ends (a successor continuing a reply may start it with what
-came so far). Views, the status and a stop read it; a stop keeps it, its
-calls never run. From its first item, the call also has a
+answered in place, one a reviewer edited, or a failure a reviewer took over,
+comes the same way, once, in Commit just before the call settles, as Review
+left it: the whole reply, each part starting, growing by its whole text and
+ending, when nothing streamed, else only its text, in parts after the
+streamed ones. Text that streamed, even part of it, never comes twice, and a
+superseded call gets none. A turn's call also adds each event up in its
+`Partial`, the one record of the reply in flight: its text, reasoning and
+tool calls, each call with its arguments so far until it ends (a successor
+continuing a reply may start it with what came so far). Views, the status
+and a stop read it; a stop keeps it, its calls never run. From its first
+item, the call also has a
 `StreamTiming { first, last, items }` beside its `Started { at }`. A delta
 moves no stage: a reader spawning effects runs `.before(AgentLoop)` or
 calls `Wake::wake`.
