@@ -3998,6 +3998,188 @@ impl Serve for Stalls {
     }
 }
 
+/// A model that streams these events, then ends: with a reply holding
+/// only reasoning, or with a failure.
+struct Ends(Vec<StreamEvent>, Result<(), &'static str>);
+
+impl Serve for Ends {
+    type Family = Dynamic;
+
+    fn descriptor(&self) -> HandlerDescriptor {
+        HandlerDescriptor {
+            key: HandlerKey::from("ends"),
+            family: FamilyDescriptor::Custom {
+                kind: "test:ends".into(),
+            },
+            layers: Vec::new(),
+        }
+    }
+
+    async fn serve(&self, _: EffectKind, _: Dispatch) -> Reply {
+        let events = self.0.iter().cloned();
+        let mut items: Vec<_> = events
+            .map(|event| Ok(Relayed::Item(Item::Event(event))))
+            .collect();
+        items.push(match self.1 {
+            Ok(()) => {
+                let thought = vec![AssistantContent::reasoning("hm")];
+                let origin =
+                    rig_core::completion::message::Origin::new("test.api", "test", "model");
+                let reply = rig_core::completion::CompletionResponse::new(
+                    thought,
+                    rig_core::completion::Usage::default(),
+                    origin,
+                    serde_json::Value::Null,
+                );
+                Ok(Relayed::Done(Arc::new(reply)))
+            }
+            Err(why) => Err(rig_core::error::ErrorReport::new(ErrorKind::Provider, why)),
+        });
+        Reply::Stream(Box::pin(futures::stream::iter(items)))
+    }
+}
+
+/// A reasoning part, start to end, as a stream writes it.
+fn thought() -> Vec<StreamEvent> {
+    let part = Part::new(0);
+    vec![
+        StreamEvent::Start {
+            part,
+            kind: PartKind::Reasoning,
+            name: None,
+        },
+        StreamEvent::Reasoning {
+            part,
+            text: "hm".to_owned(),
+        },
+        StreamEvent::End {
+            part,
+            content: AssistantContent::reasoning("hm"),
+        },
+    ]
+}
+
+/// Gives each turn call's reply the text "added in place" in Review, where
+/// it has none: an answer with only reasoning gets it added, a failure is
+/// taken over by it, as a reviewer does in place.
+fn add_text_in_review(mut calls: Query<&mut Outcome, (With<TurnCall>, ReadyToSettle)>) {
+    for mut outcome in &mut calls {
+        let mut choice = match &outcome.0 {
+            Ok(rig_core::effect::Answered::Completion(reply)) => reply.choice.clone(),
+            Err(_) => Vec::new(),
+            Ok(_) => continue,
+        };
+        if choice
+            .iter()
+            .any(|content| matches!(content, AssistantContent::Text(_)))
+        {
+            continue;
+        }
+        choice.push(AssistantContent::text("added in place"));
+        let origin = rig_core::completion::message::Origin::new("test.api", "test", "model");
+        let reply = rig_core::completion::CompletionResponse::new(
+            choice,
+            rig_core::completion::Usage::default(),
+            origin,
+            serde_json::Value::Null,
+        );
+        outcome.0 = Ok(rig_core::effect::Answered::Completion(Arc::new(reply)));
+    }
+}
+
+/// The text deltas `app`'s reader saw, in order.
+fn texts_seen(app: &App) -> Vec<(Part, String)> {
+    let seen = &app.world().resource::<Streams>().events;
+    let texts = seen.iter().filter_map(|(_, event)| match event {
+        StreamEvent::Text { part, text } => Some((*part, text.clone())),
+        _ => None,
+    });
+    texts.collect()
+}
+
+/// An app whose reader keeps every delta in [`Streams`], whose turns end
+/// in [`Ended`], with `stage_system` added.
+fn reading_app<M>(stage_system: impl IntoScheduleConfigs<ScheduleSystem, M>) -> App {
+    let mut app = app();
+    app.init_resource::<Streams>()
+        .init_resource::<Ended>()
+        .add_observer(log_ended)
+        .add_systems(AgentPass, stage_system)
+        .add_systems(
+            PostUpdate,
+            |mut deltas: MessageReader<StreamDelta>, mut seen: ResMut<Streams>| {
+                let read = deltas
+                    .read()
+                    .map(|delta| (delta.effect, delta.event.clone()));
+                seen.events.extend(read);
+            },
+        );
+    app
+}
+
+/// A reply that streamed only reasoning and got its text in Review, added
+/// to its answer or taking over its failure, has that text written once,
+/// in a part after the reasoning, before it settles.
+#[test]
+fn a_reply_given_its_text_in_review_after_a_stream_gets_its_text_once() {
+    for end in [Ok(()), Err("the stream broke")] {
+        let mut app = reading_app(add_text_in_review.in_set(ReviewSystems::Edit));
+        app.insert_resource(no_retries());
+        let model = MockCompletionModel::from_stream_turns([answer("never sent")]);
+        let agent = agent_on(&mut app, &model);
+        if let Some(mut connection) = app.world_mut().get_mut::<Connection>(agent) {
+            connection.handler = Handler(ErasedHandler::new(Ends(thought(), end)));
+        }
+        let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
+        assert!(run_until(&mut app, done), "{end:?} {:?}", notices(&app));
+        for _ in 0..3 {
+            app.update();
+        }
+        let texts = texts_seen(&app);
+        assert_eq!(
+            texts,
+            [(Part::new(1), "added in place".to_owned())],
+            "{end:?}"
+        );
+        let said = conversation(&app, agent);
+        let answer = said.last().and_then(|message| message.final_answer());
+        assert_eq!(answer.as_deref(), Some("added in place"), "{end:?}");
+    }
+}
+
+/// A reply whose text began to stream keeps only what streamed when a
+/// plugin answers it in place: no copy of the answer's text.
+#[test]
+fn a_reply_answered_in_place_after_some_text_streamed_writes_no_copy() {
+    let mut app = reading_app(answer_streaming_in_place.in_set(Stage::Arrive));
+    let model = MockCompletionModel::from_stream_turns([answer("never sent")]);
+    let agent = agent_on(&mut app, &model);
+    let part = Part::new(0);
+    let began = vec![
+        StreamEvent::Start {
+            part,
+            kind: PartKind::Text,
+            name: None,
+        },
+        StreamEvent::Text {
+            part,
+            text: "Hel".to_owned(),
+        },
+    ];
+    if let Some(mut connection) = app.world_mut().get_mut::<Connection>(agent) {
+        connection.handler = Handler(ErasedHandler::new(Stalls(began)));
+    }
+    let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, done), "{:?}", notices(&app));
+    for _ in 0..3 {
+        app.update();
+    }
+    assert_eq!(texts_seen(&app), [(part, "Hel".to_owned())]);
+    let said = conversation(&app, agent);
+    let answer = said.last().and_then(|message| message.final_answer());
+    assert_eq!(answer.as_deref(), Some("hello in place"));
+}
+
 /// The reply [`answer_in_place`] and [`answer_streaming_in_place`] give.
 fn in_place_reply() -> Outcome {
     let choice = vec![

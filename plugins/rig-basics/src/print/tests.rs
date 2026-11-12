@@ -792,6 +792,46 @@ fn a_json_run_writes_a_reply_given_in_place_as_text_once() {
     assert_eq!(model.request_count(), 0);
 }
 
+/// Adds the text "added in review" to each turn call's answer that has
+/// none, in Review, as a reviewer edits an outcome in place.
+fn add_text_in_review(mut calls: Query<&mut Outcome, (ReadyToSettle, With<TurnCall>)>) {
+    for mut outcome in &mut calls {
+        let Ok(rig_core::effect::Answered::Completion(reply)) = &outcome.0 else {
+            continue;
+        };
+        let mut choice = reply.choice.clone();
+        if choice
+            .iter()
+            .any(|content| matches!(content, AssistantContent::Text(_)))
+        {
+            continue;
+        }
+        choice.push(AssistantContent::text("added in review"));
+        let made = Made::new("plugin", "test", "review");
+        let reply = CompletionResponse::new(choice, Usage::default(), made, Value::Null);
+        outcome.0 = Ok(rig_core::effect::Answered::Completion(reply.into()));
+    }
+}
+
+/// `--json` writes the text a reviewer gives a reply that streamed only
+/// reasoning as `text`, once.
+#[test]
+fn a_json_run_writes_text_a_reviewer_adds_to_a_reply_as_text_once() {
+    let model = MockCompletionModel::from_stream_turns([vec![
+        MockStreamEvent::reasoning("hm"),
+        MockStreamEvent::final_response_with_default_usage(),
+    ]]);
+    let (_, lines) = one_shot("hi", None, &model, true, |app| {
+        app.add_systems(AgentPass, add_text_in_review.in_set(ReviewSystems::Edit));
+    });
+    let texts: Vec<Value> = lines
+        .of("text")
+        .iter()
+        .map(|line| at(line, "text").clone())
+        .collect();
+    assert_eq!(texts, [json!("added in review")], "{:?}", lines.parsed());
+}
+
 /// Answers the first model call in place with text and a call of `noted`,
 /// and the next with "done": nothing streams.
 fn narrate_in_place(

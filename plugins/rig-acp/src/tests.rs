@@ -207,6 +207,7 @@ fn agent() {
                 .in_set(PrepareSystems::Edit)
                 .before(PrepareSystems::Adapt),
             take_over.in_set(Stage::Arrive),
+            give_text_in_review.in_set(ReviewSystems::Edit),
         ),
     );
     let limit = std::env::var(LINE_LIMIT_BYTES).ok();
@@ -438,6 +439,86 @@ impl rig_harness::rig_core::serve::Serve for Stalls {
     }
 }
 
+/// Prompts whose model call streams a reasoning part, then ends with a
+/// reply holding only it, or fails; a reviewer then gives it text.
+const THINK_THEN_REVIEWED: &str = "Think, then be given text in review.";
+const THINK_THEN_FAIL: &str = "Think, then fail and be taken over.";
+
+/// A model that streams these events, then ends with a reply holding only
+/// the reasoning "pondering", or fails.
+struct Ends(Vec<StreamEvent>, bool);
+
+impl rig_harness::rig_core::serve::Serve for Ends {
+    type Family = rig_harness::rig_core::effect::family::Dynamic;
+
+    fn descriptor(&self) -> rig_harness::rig_core::effect::HandlerDescriptor {
+        rig_harness::rig_core::effect::HandlerDescriptor {
+            key: rig_harness::rig_core::effect::HandlerKey::from("ends"),
+            family: rig_harness::rig_core::effect::FamilyDescriptor::Custom {
+                kind: "test:ends".into(),
+            },
+            layers: Vec::new(),
+        }
+    }
+
+    async fn serve(
+        &self,
+        _: rig_harness::rig_core::effect::EffectKind,
+        _: rig_harness::rig_core::serve::Dispatch,
+    ) -> rig_harness::rig_core::serve::Reply {
+        use rig_harness::rig_core::completion::message::{AssistantContent, Origin};
+        use rig_harness::rig_core::completion::{CompletionResponse, Usage};
+        use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
+        use rig_harness::rig_core::streaming::{Item, Relayed};
+
+        let events = self.0.iter().cloned();
+        let mut items: Vec<_> = events
+            .map(|event| Ok(Relayed::Item(Item::Event(event))))
+            .collect();
+        items.push(match self.1 {
+            true => {
+                let thought = vec![AssistantContent::reasoning("pondering")];
+                let origin = Origin::new("test.api", "test", "model");
+                let reply = CompletionResponse::new(thought, Usage::default(), origin, Value::Null);
+                Ok(Relayed::Done(Arc::new(reply)))
+            }
+            false => Err(ErrorReport::new(ErrorKind::Provider, "the stream broke")),
+        });
+        rig_harness::rig_core::serve::Reply::Stream(Box::pin(futures::stream::iter(items)))
+    }
+}
+
+/// On a model call a reviewer gives text.
+#[derive(Component)]
+struct GivenTextInReview;
+
+/// Gives each answered call [`stream_then_take_over`] marked the text
+/// "REVIEW-REPLY added in place" when it has none, in Review: added to an
+/// answer, or taking over a failure, as a reviewer does in place.
+fn give_text_in_review(mut calls: Query<&mut Outcome, (With<GivenTextInReview>, ReadyToSettle)>) {
+    use rig_harness::rig_core::completion::message::{AssistantContent, Origin};
+    use rig_harness::rig_core::completion::{CompletionResponse, Usage};
+    use rig_harness::rig_core::effect::Answered;
+
+    for mut outcome in &mut calls {
+        let mut choice = match &outcome.0 {
+            Ok(Answered::Completion(reply)) => reply.choice.clone(),
+            Err(_) => Vec::new(),
+            Ok(_) => continue,
+        };
+        if choice
+            .iter()
+            .any(|content| matches!(content, AssistantContent::Text(_)))
+        {
+            continue;
+        }
+        choice.push(AssistantContent::text("REVIEW-REPLY added in place"));
+        let origin = Origin::new("test.api", "test", "model");
+        let reply = CompletionResponse::new(choice, Usage::default(), origin, Value::Null);
+        outcome.0 = Ok(Answered::Completion(Arc::new(reply)));
+    }
+}
+
 /// On a model call a plugin takes over once its stream began.
 #[derive(Component)]
 struct TakenOver;
@@ -487,6 +568,33 @@ fn stream_then_take_over(
                     content: AssistantContent::reasoning("pondering"),
                 },
             ]
+        } else if asked(THINK_THEN_REVIEWED) || asked(THINK_THEN_FAIL) {
+            let Ok(connection) = agents.get(agent) else {
+                continue;
+            };
+            let thought = vec![
+                StreamEvent::Start {
+                    part,
+                    kind: PartKind::Reasoning,
+                    name: None,
+                },
+                StreamEvent::Reasoning {
+                    part,
+                    text: "pondering".to_owned(),
+                },
+                StreamEvent::End {
+                    part,
+                    content: AssistantContent::reasoning("pondering"),
+                },
+            ];
+            let ends = Ends(thought, asked(THINK_THEN_REVIEWED));
+            let handler = rig_harness::rig_core::serve::ErasedHandler::new(ends);
+            request.connection = Some(Connection {
+                spec: connection.spec.clone(),
+                handler: rig_harness::rig_ecs::effects::Handler(handler),
+            });
+            commands.entity(call).try_insert(GivenTextInReview);
+            continue;
         } else {
             continue;
         };

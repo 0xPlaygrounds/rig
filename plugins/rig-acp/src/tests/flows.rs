@@ -1059,3 +1059,23 @@ fn a_reply_taken_over_after_a_stream_with_no_text_reaches_the_client_once() {
         assert!(router.is_some(), "the router ran");
     }
 }
+
+#[test]
+fn text_a_reviewer_gives_a_reply_that_streamed_reasoning_reaches_the_client_once() {
+    for marker in [THINK_THEN_REVIEWED, THINK_THEN_FAIL] {
+        let place = Place::new("reviewed");
+        let router = drive(&place, acp::ClientCapabilities::new(), async |driven| {
+            let new = driven.new_session(Vec::new()).await;
+            assert!(new.is_some(), "no session");
+            let Some(new) = new else { return };
+            let id = new.session_id;
+            let answer = driven.prompt(&id, marker).await;
+            let said = driven.said(&id);
+            assert!(
+                said.matches("REVIEW-REPLY added in place").count() == 1,
+                "{marker}: stop reason {answer:?}; the agent said {said:?}"
+            );
+        });
+        assert!(router.is_some(), "the router ran");
+    }
+}
