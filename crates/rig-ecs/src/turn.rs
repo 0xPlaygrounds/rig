@@ -48,7 +48,7 @@ use rig_core::message::{
 };
 use rig_core::now_ms;
 use rig_core::serve::{Reply, stream_truncated};
-use rig_core::streaming::{Item, Relayed, StreamEvent};
+use rig_core::streaming::{Item, Part, PartKind, Relayed, StreamEvent};
 use rig_core::tool::{ToolErrorKind, ToolExecutionError, ToolResult, feedback};
 use rig_memory::{Anchor, is_output_notes};
 use web_time::Instant;
@@ -284,11 +284,14 @@ pub(crate) enum Fed {
 #[derive(Component, Clone, Copy, Debug, PartialEq)]
 pub struct ReportedUsage(pub Usage);
 
-/// An event a model call streamed, any model call, written in
-/// [`Stage::Arrive`] in the order it came, before the call's outcome is
-/// applied: a part's start (a tool call's name), its fragments of text,
-/// reasoning or argument JSON, and its end (a finished tool call, with its
-/// id and arguments). The event's part tells parallel tool calls apart.
+/// An event of a model call's reply as it came, any model call, written in
+/// [`Stage::Arrive`] in order, before the call's outcome is applied: a
+/// part's start (a tool call's name), its fragments of text, reasoning or
+/// argument JSON, and its end (a finished tool call, with its id and
+/// arguments). The event's part tells parallel tool calls apart. A reply
+/// that did not stream, such as one a plugin answered in place, comes as
+/// one start, fragment and end per part; a call that streamed any event
+/// gets no second copy, and a superseded call none.
 /// Bevy keeps a message at least two frames, so a reader in `PostUpdate`
 /// sees the last events of a reply that settled this frame. A
 /// [`TurnCall`]'s events also add up in its [`Partial`].
@@ -1320,31 +1323,64 @@ pub(crate) fn feed() -> (Sender<Fed>, Feed) {
     (sender, Feed(receiver))
 }
 
+/// On a model call that wrote a [`StreamDelta`]: its reply's text is
+/// written, so no other copy of it is.
+#[derive(Component)]
+#[component(storage = "SparseSet")]
+pub(crate) struct WroteDeltas;
+
 /// Reads what each model call streamed, in [`Stage::Arrive`] after the
 /// finished calls' outcomes, so a reply that finished has fed it all: its
 /// [`StreamTiming`], a [`StreamDelta`] per event, in order, each event
-/// into its [`Partial`], if it has one, and its [`ReportedUsage`].
+/// into its [`Partial`], if it has one, and its [`ReportedUsage`]. A call
+/// whose [`Outcome`] is a reply and that wrote no delta, such as one a
+/// plugin answered in place or a reply that streamed no event, writes its
+/// reply's parts as a stream would ([`reply_events`]), once. A call that
+/// wrote any delta writes no copy, so a call decided while it streamed
+/// shows what it streamed. A superseded call writes none.
 pub(crate) fn stream_partials(
-    mut calls: Query<(
-        Entity,
-        &Feed,
-        Option<&mut Partial>,
-        Option<&mut StreamTiming>,
-        Option<&ForAgent>,
-        Option<&CallOf>,
-        Has<TurnCall>,
-    )>,
+    mut calls: Query<
+        (
+            Entity,
+            Option<&Feed>,
+            Option<&Outcome>,
+            Option<&mut Partial>,
+            Option<&mut StreamTiming>,
+            Option<&ForAgent>,
+            Option<&CallOf>,
+            Has<TurnCall>,
+            Has<WroteDeltas>,
+        ),
+        (With<ModelRequest>, Without<Settled>, Without<SupersededBy>),
+    >,
     mut deltas: MessageWriter<StreamDelta>,
     mut commands: Commands,
 ) {
-    for (effect, feed, mut partial, mut streamed, agent, of, turn_call) in &mut calls {
+    for (effect, feed, outcome, mut partial, mut streamed, agent, of, turn_call, wrote) in
+        &mut calls
+    {
+        let agent = agent.map(|agent| agent.0);
+        let mut write = |event: StreamEvent, partial: Option<&mut Mut<Partial>>| {
+            if let Some(partial) = partial {
+                partial.follow(&event);
+            }
+            deltas.write(StreamDelta {
+                effect,
+                agent,
+                event,
+            });
+        };
         // The stamp of a call whose first item came now.
         let mut first: Option<StreamTiming> = None;
+        let mut fed = false;
         // What came before this look, so a stream that keeps feeding never
         // holds the frame; a finished reply sent all of it before it did.
-        let came = feed.0.len();
-        for fed in std::iter::from_fn(|| feed.0.try_recv().ok()).take(came) {
-            let (at, event) = match fed {
+        let came = feed.map_or(0, |feed| feed.0.len());
+        let items = feed
+            .into_iter()
+            .flat_map(|feed| std::iter::from_fn(|| feed.0.try_recv().ok()).take(came));
+        for item in items {
+            let (at, event) = match item {
                 Fed::Item(at, event) => (at, event),
                 Fed::Usage(usage) => {
                     commands.entity(effect).try_insert(ReportedUsage(usage));
@@ -1370,20 +1406,76 @@ pub(crate) fn stream_partials(
             if let Some(&CallOf(turn)) = of.filter(|_| turn_call) {
                 commands.entity(turn).try_insert_if_new(FirstStreamed(at));
             }
-            if let Some(partial) = partial.as_mut() {
-                partial.follow(&event);
-            }
-            let agent = agent.map(|agent| agent.0);
-            deltas.write(StreamDelta {
-                effect,
-                agent,
-                event,
-            });
+            fed = true;
+            write(event, partial.as_mut());
         }
         if let Some(first) = first {
             commands.entity(effect).try_insert(first);
         }
+        if wrote {
+            continue;
+        }
+        if fed {
+            commands.entity(effect).try_insert(WroteDeltas);
+        } else if let Some(reply) = outcome.and_then(Outcome::completion) {
+            for event in reply_events(reply) {
+                write(event, partial.as_mut());
+            }
+            // The answer stands for the stream: what a cancelled handler
+            // fed after it is never read.
+            commands
+                .entity(effect)
+                .try_insert(WroteDeltas)
+                .try_remove::<Feed>();
+        }
     }
+}
+
+/// The events a stream of `reply` would have written: each part of its
+/// `choice`, in order, starts, grows by its whole text, reasoning or
+/// argument JSON, and ends with its content.
+fn reply_events(reply: &CompletionResponse) -> Vec<StreamEvent> {
+    let mut events = Vec::new();
+    for (index, content) in (0..).zip(&reply.choice) {
+        let part = Part::new(index);
+        let (kind, name, grown) = match content {
+            AssistantContent::Text(text) => (
+                PartKind::Text,
+                None,
+                (!text.text.is_empty()).then(|| StreamEvent::Text {
+                    part,
+                    text: text.text.clone(),
+                }),
+            ),
+            AssistantContent::Reasoning(reasoning) => (
+                PartKind::Reasoning,
+                None,
+                (!reasoning.text.is_empty()).then(|| StreamEvent::Reasoning {
+                    part,
+                    text: reasoning.text.clone(),
+                }),
+            ),
+            AssistantContent::ToolCall(call) => {
+                let function = &call.function;
+                let json = function.invalid_arguments.clone().unwrap_or_else(|| {
+                    serde_json::Value::Object(function.arguments.clone()).to_string()
+                });
+                let grown = (!json.is_empty()).then_some(StreamEvent::Arguments { part, json });
+                (PartKind::ToolCall, Some(function.name.clone()), grown)
+            }
+            AssistantContent::Image(_) => (PartKind::Image, None, None),
+            AssistantContent::Opaque(_) => (PartKind::Opaque, None, None),
+            // A kind no stream carries yet: its position stays a gap.
+            _ => continue,
+        };
+        events.push(StreamEvent::Start { part, kind, name });
+        events.extend(grown);
+        events.push(StreamEvent::End {
+            part,
+            content: content.clone(),
+        });
+    }
+    events
 }
 
 /// Puts the [`RetryPolicy`]'s [`RetryVerdict`] on each model call whose
