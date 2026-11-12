@@ -4015,7 +4015,7 @@ fn in_place_reply() -> Outcome {
 }
 
 /// Answers each turn call whose stream began, as a plugin taking a reply
-/// over does.
+/// over does, in Arrive, which runs on every pass.
 fn answer_streaming_in_place(
     mut calls: Query<&mut Decision, (With<TurnCall>, With<StreamTiming>, Without<Outcome>)>,
 ) {
@@ -4058,7 +4058,7 @@ fn a_reply_answered_in_place_after_a_stream_with_no_text_gets_its_text_once() {
         app.init_resource::<Streams>()
             .init_resource::<Ended>()
             .add_observer(log_ended)
-            .add_systems(AgentPass, answer_streaming_in_place.in_set(Stage::Review))
+            .add_systems(AgentPass, answer_streaming_in_place.in_set(Stage::Arrive))
             .add_systems(
                 PostUpdate,
                 |mut deltas: MessageReader<StreamDelta>, mut seen: ResMut<Streams>| {

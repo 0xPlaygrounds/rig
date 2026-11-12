@@ -206,7 +206,7 @@ fn agent() {
             stream_then_take_over
                 .in_set(PrepareSystems::Edit)
                 .before(PrepareSystems::Adapt),
-            take_over.in_set(Stage::Review),
+            take_over.in_set(Stage::Arrive),
         ),
     );
     let limit = std::env::var(LINE_LIMIT_BYTES).ok();
@@ -449,7 +449,7 @@ fn stream_then_take_over(
     agents: Query<&Connection>,
     mut commands: Commands,
 ) {
-    use rig_harness::rig_core::completion::message::{Message, UserContent};
+    use rig_harness::rig_core::completion::message::{AssistantContent, Message, UserContent};
     use rig_harness::rig_core::streaming::{Part, PartKind};
 
     for (call, mut request, &ForAgent(agent)) in &mut calls {
@@ -481,6 +481,10 @@ fn stream_then_take_over(
                 StreamEvent::Reasoning {
                     part,
                     text: "pondering".to_owned(),
+                },
+                StreamEvent::End {
+                    part,
+                    content: AssistantContent::reasoning("pondering"),
                 },
             ]
         } else {
