@@ -66,8 +66,8 @@ before running it. cargo runs in the checkout, or for crates.io in the
 install root, not in the directory rig was started in, so a
 `rust-toolchain.toml` there pinning an older Rust does not apply:
 
-- From crates.io: `cd <root> && cargo install --force rig-cli --root
-  <root>`. `rig-cli` is not on crates.io until the next release, so until then
+- From crates.io: `cd <root> && cargo install --force --locked rig-cli
+  --root <root>`. `rig-cli` is not on crates.io until the next release, so until then
   cargo cannot find it. 0.46.0 has no `rig update`: reinstall it by hand as in
   [Install and run](#install-and-run). `--force` replaces the `rig` that the
   `rig` crate installed.
