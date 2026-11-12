@@ -74,6 +74,9 @@ use super::stage::{
 use super::tasks::{Running, Wake};
 use super::tools::{Footprint, InReply, ResultFilter, ToolDef, ToolRequest, offered};
 
+#[cfg(test)]
+mod tests;
+
 /// The purpose of the effect of an agent's own model call in a turn.
 pub const PURPOSE: &str = "turn";
 
