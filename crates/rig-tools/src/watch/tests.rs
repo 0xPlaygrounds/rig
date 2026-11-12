@@ -26,7 +26,8 @@ fn events(watch: Watch) -> Receiver<WatchEvent> {
 
 /// The batches of changes `watch` tells after its snapshot, on a channel
 /// to wait on with a timeout, once the snapshot came: what changes from
-/// then on is told as a change.
+/// then on is told as a change. The system's watch may also tell one made
+/// while it took the snapshot, which the snapshot already holds.
 fn batches(watch: Watch) -> Receiver<Vec<PathBuf>> {
     let (sender, batches) = std::sync::mpsc::channel();
     let events = events(watch);

@@ -1,10 +1,11 @@
 //! Watching a workspace's files: [`Watch`], what
 //! [`Workspace::watch`](crate::workspace::Workspace::watch) gives, a stream
-//! of [`WatchEvent`]s. Both ways of watching keep the files they last saw
-//! and compare a new listing with it: the default lists every second;
-//! [`Local`](crate::workspace::Local) hears of changes from the system
-//! (inotify, FSEvents, …) and lists again only where they were, with the
-//! same walk [`Workspace::files`] lists with.
+//! of [`WatchEvent`]s. Both ways of watching keep the files they last saw,
+//! each with its size and change time, and compare a new listing with it:
+//! the default lists every second; [`Local`](crate::workspace::Local)
+//! hears of changes from the system (inotify, FSEvents, …) and lists again
+//! only where they were, with the same walk [`Workspace::files`] lists
+//! with.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -36,7 +37,8 @@ const LONGEST: Duration = Duration::from_millis(500);
 
 /// What a [`Watch`] tells, in order: one [`Snapshot`](Self::Snapshot)
 /// once it could list, then a [`Changed`](Self::Changed) for each batch of
-/// changes, and [`Closed`](Self::Closed) last.
+/// changes, and [`Closed`](Self::Closed) last. A watch whose first listing
+/// fails tells [`Unavailable`](Self::Unavailable) and then `Closed`.
 #[derive(Clone, Debug)]
 pub enum WatchEvent {
     /// The files under the root when the watch first listed them, in path
@@ -45,9 +47,9 @@ pub enum WatchEvent {
     /// The files created, changed or removed since the last event, in path
     /// order.
     Changed(Vec<PathBuf>),
-    /// Listing the files failed, so what is there is not known. The watch
-    /// goes on: the next listing that works is compared with the last one
-    /// that did.
+    /// Listing the files failed, so what is there is not known. Unless
+    /// `Closed` follows, the watch goes on: the next listing that works is
+    /// compared with the last one that did.
     Unavailable(Arc<io::Error>),
     /// The watch stopped; nothing comes after it.
     Closed,
@@ -60,6 +62,13 @@ impl WatchEvent {
             Self::Snapshot(paths) | Self::Changed(paths) => paths,
             Self::Unavailable(_) | Self::Closed => &[],
         }
+    }
+
+    /// Whether it says what the files are: a snapshot or a change. A
+    /// failed listing or the end leaves them as they were last told, so
+    /// one who reads the files again on news waits for this.
+    pub fn names_files(&self) -> bool {
+        matches!(self, Self::Snapshot(_) | Self::Changed(_))
     }
 }
 
@@ -77,8 +86,11 @@ pub struct Watch {
 impl Watch {
     /// A watch whose events come on `events`, keeping `keep` (such as the
     /// system watcher that feeds them) until it is dropped: for a
-    /// workspace of your own that hears of changes its own way. Once
-    /// `events` ends, the watch tells [`WatchEvent::Closed`].
+    /// workspace of your own that hears of changes its own way. Send the
+    /// [`WatchEvent::Snapshot`] first, listed once the changes are heard,
+    /// so none made in between is missed, and each `Changed` after it; or
+    /// `Unavailable` and end when the first listing fails. Once `events`
+    /// ends, the watch tells [`WatchEvent::Closed`].
     pub fn new(events: UnboundedReceiver<WatchEvent>, keep: impl Send + 'static) -> Self {
         Self {
             events,
@@ -110,23 +122,30 @@ impl fmt::Debug for Watch {
     }
 }
 
+/// What a watch compares a file by: its size and change time, and its
+/// hash when the workspace cannot tell the time. Both ways of watching
+/// compare by it, so a file is changed when they see it changed: also one
+/// moved in for another of the same name, or edited while the system's
+/// events about it went unheard.
+type Mark = (u64, Option<SystemTime>, Option<ContentHash>);
+
 /// What one listing found under the paths it was asked about: each file
-/// with what it is compared by, and the paths it could not look into.
-struct Look<M> {
-    files: BTreeMap<PathBuf, M>,
+/// with its [`Mark`], and the paths it could not look into.
+struct Look {
+    files: BTreeMap<PathBuf, Mark>,
     failed: Vec<PathBuf>,
 }
 
-impl<M> Look<M> {
-    /// The listing `listed` of the watch of `root`, each file kept by
-    /// `recursive` with its mark from `mark`: `Ok(None)` leaves the file
-    /// out, as gone, and an error makes it unknown. A listing that could
-    /// not look into the root itself failed.
-    fn of(
+impl Look {
+    /// The listing `listed` of the watch of `root` in `workspace`, each
+    /// file kept by `recursive` with its mark: a file gone since is left
+    /// out, and one whose mark could not be read is unknown. A listing
+    /// that could not look into the root itself failed.
+    fn of<W: Workspace + ?Sized>(
+        workspace: &W,
         listed: Listed,
         root: &Path,
         recursive: bool,
-        mut mark: impl FnMut(&Path) -> io::Result<Option<M>>,
     ) -> io::Result<Self> {
         let mut failed = Vec::new();
         for (path, error) in listed.failed {
@@ -141,7 +160,7 @@ impl<M> Look<M> {
             .into_iter()
             .filter(|path| recursive || path == root || path.parent() == Some(root));
         for path in watched {
-            match mark(&path) {
+            match mark(workspace, &path) {
                 Ok(Some(mark)) => {
                     files.insert(path, mark);
                 }
@@ -150,6 +169,21 @@ impl<M> Look<M> {
             }
         }
         Ok(Self { files, failed })
+    }
+}
+
+/// The [`Mark`] of the file `path` in `workspace`; none when it is no
+/// file, or gone.
+fn mark<W: Workspace + ?Sized>(workspace: &W, path: &Path) -> io::Result<Option<Mark>> {
+    match workspace.stat(path)? {
+        Stat::File { size, modified, .. } => {
+            let hash = match modified {
+                Some(_) => None,
+                None => Some(content_hash(&workspace.read(path, MAX_FILE_BYTES)?.bytes)),
+            };
+            Ok(Some((size, modified, hash)))
+        }
+        Stat::Dir | Stat::Other | Stat::Missing => Ok(None),
     }
 }
 
@@ -196,14 +230,14 @@ impl Scopes {
     }
 }
 
-/// The files a watch last saw, with what each is compared by, and whether
-/// its last listing failed.
-struct Baseline<M> {
-    files: Option<BTreeMap<PathBuf, M>>,
+/// The files a watch last saw, each with its [`Mark`], and whether its
+/// last listing failed.
+struct Baseline {
+    files: Option<BTreeMap<PathBuf, Mark>>,
     failing: bool,
 }
 
-impl<M: PartialEq> Baseline<M> {
+impl Baseline {
     /// Nothing seen yet.
     fn new() -> Self {
         Self {
@@ -218,6 +252,11 @@ impl<M: PartialEq> Baseline<M> {
         self.files.is_some() && !self.failing
     }
 
+    /// Whether the watch ends: its first listing failed.
+    fn ended(&self) -> bool {
+        self.files.is_none() && self.failing
+    }
+
     /// Whether a file it holds is below `dir`.
     fn holds_below(&self, dir: &Path) -> bool {
         let from: (Bound<&Path>, Bound<&Path>) = (Bound::Excluded(dir), Bound::Unbounded);
@@ -227,15 +266,17 @@ impl<M: PartialEq> Baseline<M> {
     }
 
     /// Takes `look`, the listing of what is under `scopes`, and says what
-    /// changed: the first listing that works is a snapshot; a later one
-    /// names the files it shows that this did not hold, held otherwise, or
+    /// changed: the first listing is a snapshot; a later one names the
+    /// files it shows that this did not hold, held with another mark, or
     /// that `touched` names, and those under `scopes` it no longer shows,
-    /// unless under a path it could not look into. A failed listing
-    /// changes nothing and is told once until one works again.
+    /// unless under a path it could not look into, whose files keep their
+    /// marks until a listing sees them again. A failed listing changes
+    /// nothing and is told once until one works again; when the first one
+    /// fails, the watch [`ended`](Self::ended).
     fn update(
         &mut self,
         scopes: &Scopes,
-        look: io::Result<Look<M>>,
+        look: io::Result<Look>,
         touched: &BTreeSet<PathBuf>,
     ) -> Option<WatchEvent> {
         let look = match look {
@@ -277,10 +318,6 @@ impl<M: PartialEq> Baseline<M> {
     }
 }
 
-/// What the default watch compares a file by: its size and change time,
-/// and its hash when the workspace cannot tell the time.
-type Mark = (u64, Option<SystemTime>, Option<ContentHash>);
-
 /// The default watch: lists what `workspace` lists under `root` at once
 /// and then every second, on a thread of its own, and tells what changed.
 pub(crate) fn poll<W: Workspace + ?Sized>(
@@ -310,7 +347,8 @@ fn poll_every<W: Workspace + ?Sized>(
             while !sender.is_closed() {
                 let look = look(&*workspace, &root, recursive, listing);
                 let event = seen.update(&scopes, look, &none);
-                if event.is_some_and(|event| sender.unbounded_send(event).is_err()) {
+                if event.is_some_and(|event| sender.unbounded_send(event).is_err()) || seen.ended()
+                {
                     break;
                 }
                 thread::sleep(every);
@@ -326,23 +364,12 @@ fn look<W: Workspace + ?Sized>(
     root: &Path,
     recursive: bool,
     listing: Listing,
-) -> io::Result<Look<Mark>> {
+) -> io::Result<Look> {
     let listed = match workspace.files(root, None, listing) {
         Err(error) if error.kind() == ErrorKind::NotFound => Listed::default(),
         listed => listed?,
     };
-    Look::of(listed, root, recursive, |path| {
-        match workspace.stat(path)? {
-            Stat::File { size, modified, .. } => {
-                let hash = match modified {
-                    Some(_) => None,
-                    None => Some(content_hash(&workspace.read(path, MAX_FILE_BYTES)?.bytes)),
-                };
-                Ok(Some((size, modified, hash)))
-            }
-            Stat::Dir | Stat::Other | Stat::Missing => Ok(None),
-        }
-    })
+    Look::of(workspace, listed, root, recursive)
 }
 
 /// [`Local`](crate::workspace::Local)'s watch of `root`: the system's file
@@ -353,9 +380,17 @@ fn look<W: Workspace + ?Sized>(
 /// yet is looked at every second instead. A relative `root` that exists is
 /// resolved against the current directory once, so the paths told are
 /// absolute.
+///
+/// # Errors
+///
+/// When `root` cannot be looked at, other than for not being there, or
+/// the system's watch cannot be armed.
 pub(crate) fn notified(root: &Path, recursive: bool, listing: Listing) -> io::Result<Watch> {
-    let Ok(meta) = fs::metadata(root) else {
-        return poll(Arc::new(crate::workspace::Local), root, recursive, listing);
+    let meta = match fs::metadata(root) {
+        Err(error) if error.kind() == ErrorKind::NotFound => {
+            return poll(Arc::new(crate::workspace::Local), root, recursive, listing);
+        }
+        meta => meta?,
     };
     // The system's events name absolute paths, which a relative root never matches.
     let root = std::path::absolute(root)?;
@@ -383,7 +418,7 @@ pub(crate) fn notified(root: &Path, recursive: bool, listing: Listing) -> io::Re
         true => (tree.root.as_path(), RecursiveMode::NonRecursive),
     };
     watcher.watch(target, mode).map_err(io::Error::other)?;
-    for rules in tree.rules_outside() {
+    for rules in tree.rules_outside(&tree.wide_rules()) {
         // Missing one leaves its rules' edits unheard, not the files.
         watcher.watch(&rules, RecursiveMode::NonRecursive).ok();
     }
@@ -411,13 +446,14 @@ pub(crate) struct Tree {
 impl Tree {
     /// What may change which files are listed under the root: an ignore
     /// file in `path`'s directory changes the listing of that directory, a
-    /// `.git` there or the excludes in it the listing of its work tree, the
-    /// user's global excludes everything; else `path` itself. None when it
-    /// is no path the watch lists, nor one above the root.
-    fn scope(&self, path: &Path, global: Option<&Path>) -> Option<PathBuf> {
+    /// `.git` there or the excludes in it the listing of its work tree, one
+    /// of `wide` (the user's global excludes, the root's work tree's
+    /// excludes) everything; else `path` itself. None when it is no path
+    /// the watch lists, nor one above the root.
+    fn scope(&self, path: &Path, wide: &[PathBuf]) -> Option<PathBuf> {
         let name = path.file_name()?;
         let parent = path.parent()?;
-        let dir = if Some(path) == global {
+        let dir = if wide.iter().any(|rules| rules == path) {
             &self.root
         } else if name == ".gitignore" || name == ".ignore" || name == ".git" {
             parent
@@ -437,30 +473,60 @@ impl Tree {
         (near && self.listing.keeps(below)).then(|| dir.to_path_buf())
     }
 
-    /// The directories outside the system's watch whose files hold rules
-    /// for the root: those from the root's up to the top of its git work
-    /// tree, that top's `.git/info`, and the directory of the user's
-    /// global excludes. Outside a work tree only the root's own rules
-    /// are heard.
-    fn rules_outside(&self) -> Vec<PathBuf> {
-        let watched =
-            |dir: &Path| dir.starts_with(&self.root) && (self.recursive || dir == self.root);
-        let Some(top) = self.root.ancestors().find(|dir| dir.join(".git").exists()) else {
+    /// The top of the git work tree the root is in, as the walk finds it:
+    /// the nearest directory with a `.git`.
+    fn top(&self) -> Option<&Path> {
+        self.root.ancestors().find(|dir| dir.join(".git").exists())
+    }
+
+    /// The files of rules for the whole root, in a git work tree only, as
+    /// the walk reads them: the user's global excludes, and the excludes of
+    /// the work tree. A linked work tree or a submodule has a `.git` file
+    /// naming its git directory; one whose `commondir` names another keeps
+    /// its excludes there.
+    fn wide_rules(&self) -> Vec<PathBuf> {
+        let Some(top) = self.top() else {
             return Vec::new();
         };
-        let above = self
-            .root
-            .ancestors()
-            .skip(1)
-            .take_while(|dir| dir.starts_with(top));
-        let global = ignore::gitignore::gitconfig_excludes_path();
-        let global = global
-            .as_deref()
-            .and_then(Path::parent)
-            .map(Path::to_path_buf);
+        let mut wide: Vec<PathBuf> = ignore::gitignore::gitconfig_excludes_path()
+            .into_iter()
+            .collect();
+        // The system's events name these without the `..` they may hold.
+        let dot_git = top.join(".git");
+        let git_dir = match fs::read_to_string(&dot_git) {
+            Ok(text) => match text.trim_end().strip_prefix("gitdir: ") {
+                Some(dir) => fs::canonicalize(top.join(dir)),
+                None => return wide,
+            },
+            Err(_) => Ok(dot_git),
+        };
+        let common =
+            git_dir.and_then(
+                |git_dir| match fs::read_to_string(git_dir.join("commondir")) {
+                    Ok(text) => fs::canonicalize(git_dir.join(text.trim_end())),
+                    Err(_) => Ok(git_dir),
+                },
+            );
+        wide.extend(common.map(|common| common.join("info/exclude")));
+        wide
+    }
+
+    /// The directories outside the system's watch whose files hold rules
+    /// for the root: those from the root's up to the top of its git work
+    /// tree, and those holding `wide`. Outside a work tree only the root's
+    /// own rules are heard.
+    fn rules_outside(&self, wide: &[PathBuf]) -> Vec<PathBuf> {
+        let watched =
+            |dir: &Path| dir.starts_with(&self.root) && (self.recursive || dir == self.root);
+        let above = self.top().into_iter().flat_map(|top| {
+            (self.root.ancestors().skip(1)).take_while(move |dir| dir.starts_with(top))
+        });
         let mut dirs: Vec<PathBuf> = above.map(Path::to_path_buf).collect();
-        dirs.push(top.join(".git/info"));
-        dirs.extend(global);
+        dirs.extend(
+            wide.iter()
+                .filter_map(|rules| rules.parent())
+                .map(Path::to_path_buf),
+        );
         dirs.retain(|dir| !watched(dir) && dir.is_dir());
         dirs
     }
@@ -470,7 +536,7 @@ impl Tree {
     /// that `visible` says the root's listing goes into, else the root, so
     /// the walk reads the same rules the root's would, and none of the
     /// directories above that one, however large.
-    fn look(&self, scopes: Scopes, visible: impl Fn(&Path) -> bool) -> io::Result<Look<()>> {
+    fn look(&self, scopes: Scopes, visible: impl Fn(&Path) -> bool) -> io::Result<Look> {
         let mut starts: BTreeMap<PathBuf, Scopes> = BTreeMap::new();
         for scope in scopes.0 {
             let start = scope
@@ -494,7 +560,7 @@ impl Tree {
             found.files.extend(listed.files);
             found.failed.extend(listed.failed);
         }
-        Look::of(found, &self.root, true, |_| Ok(Some(())))
+        Look::of(&crate::workspace::Local, found, &self.root, true)
     }
 }
 
@@ -502,14 +568,15 @@ impl Tree {
 /// for [`QUIET`] or it waited [`LONGEST`], lists again where the batch
 /// says, and sends what changed, until the watcher or the [`Watch`] is
 /// gone. The first listing, of everything, is made once the system's
-/// watch is armed, so nothing made in between is missed; after one that
-/// failed, everything is listed again, every second until one works.
+/// watch is armed, so nothing made in between is missed; the watch ends
+/// when it fails. After a later one that failed, everything is listed
+/// again, every second until one works.
 pub(crate) fn send_batches(
     raw: &Receiver<Heard>,
     sender: &UnboundedSender<WatchEvent>,
     tree: &Tree,
 ) {
-    let global = ignore::gitignore::gitconfig_excludes_path();
+    let wide = tree.wide_rules();
     let mut seen = Baseline::new();
     let mut heard = Vec::new();
     loop {
@@ -522,7 +589,7 @@ pub(crate) fn send_batches(
                 Heard::Everything => scopes.add(tree.root.clone()),
                 Heard::Paths(paths) => {
                     for path in paths {
-                        if let Some(scope) = tree.scope(&path, global.as_deref()) {
+                        if let Some(scope) = tree.scope(&path, &wide) {
                             scopes.add(scope);
                         }
                         touched.insert(path);
@@ -535,7 +602,7 @@ pub(crate) fn send_batches(
             // the rules as they are: an edit of them is a scope of its own.
             let look = tree.look(scopes.clone(), |dir| seen.holds_below(dir));
             let event = seen.update(&scopes, look, &touched);
-            if event.is_some_and(|event| sender.unbounded_send(event).is_err()) {
+            if event.is_some_and(|event| sender.unbounded_send(event).is_err()) || seen.ended() {
                 return;
             }
         }
