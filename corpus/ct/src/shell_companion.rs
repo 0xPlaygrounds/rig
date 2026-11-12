@@ -85,7 +85,7 @@ impl Plugin for ShellCompanionPlugin {
                     }
                     None => {
                         eprintln!("rig shell-init: name a shell: zsh, bash or fish");
-                        commands.trigger(Exit(ExitReason::Failed(2)));
+                        commands.trigger(Exit(ExitReason::Failed(FailCode::or_failure(2))));
                     }
                 }
             });

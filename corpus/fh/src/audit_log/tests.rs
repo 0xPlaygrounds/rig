@@ -216,7 +216,10 @@ fn calls_are_logged_chained_and_checked() {
     let broken = chain::verify(&audit, None).err().map(|broken| broken.line);
     assert_eq!(broken, at);
     assert!(at.is_some());
-    assert_eq!(verify_command(&home), Some(ExitReason::Failed(1)));
+    assert_eq!(
+        verify_command(&home),
+        Some(ExitReason::Failed(FailCode::FAILURE))
+    );
 }
 
 rig_defaults_test_support::stages_ordered_test!(AuditLogPlugin);

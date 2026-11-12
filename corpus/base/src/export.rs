@@ -247,7 +247,7 @@ fn export_and_exit(invoked: Option<Res<Invoked>>, sessions: Sessions, mut comman
         }
         Err(why) => {
             eprintln!("rig --export: {why}");
-            ExitReason::Failed(1)
+            ExitReason::Failed(FailCode::FAILURE)
         }
     };
     commands.trigger(Exit(reason));

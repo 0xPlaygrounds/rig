@@ -5,11 +5,15 @@ edition.workspace = true
 rust-version.workspace = true
 license = "MIT"
 readme = "README.md"
-description = "The protocol between the rig launcher and the rig-harness agent: the RIG_HOME layout, the settings both read, session ids, the launch environment and the reload exit code."
+description = "The protocol between the rig launcher and the rig-harness agent: the RIG_HOME layout, the settings both read, session ids, the launch environment and how the agent ended."
 repository = "https://github.com/0xPlaygrounds/rig"
 
 [lints]
 workspace = true
+
+[features]
+# A stand-in agent for a launcher's tests (`fake_agent`).
+test-utils = []
 
 [dependencies]
 toml_edit = { workspace = true }

@@ -111,6 +111,7 @@ pub mod prelude {
     pub use crate::commands::{
         AppCommandsExt, Args, CommandArgs, CommandSystems, NoArgs, RunCommand, SlashCommand,
     };
+    pub use crate::harness_protocol::end::FailCode;
     pub use crate::harness_protocol::{Home, StartReason};
     pub use crate::host::cli::{AppCliExt, Declared, Flag, Front};
     pub use crate::host::exit::{Exit, ExitReason, ExitRequest};

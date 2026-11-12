@@ -132,7 +132,7 @@ pub(crate) fn build(app: &mut App, words: &[String]) {
     let Some(state) = words.state.clone() else {
         app.add_systems(Startup, |mut commands: Commands| {
             eprintln!("rig shell-ask: --state DIR is required (the snippet passes it)");
-            commands.trigger(Exit(ExitReason::Failed(2)));
+            commands.trigger(Exit(ExitReason::Failed(FailCode::or_failure(2))));
         });
         return;
     };
@@ -174,7 +174,7 @@ fn relay(app: &mut App, socket: PathBuf, ask: ShellAsk, state: PathBuf) {
                     .ok();
             });
         if spawned.is_err() {
-            commands.trigger(Exit(ExitReason::Failed(1)));
+            commands.trigger(Exit(ExitReason::Failed(FailCode::FAILURE)));
             return;
         }
         let pool = IoTaskPool::get_or_init(TaskPool::default);
@@ -194,7 +194,7 @@ fn relay(app: &mut App, socket: PathBuf, ask: ShellAsk, state: PathBuf) {
                 }
                 Err(why) => {
                     eprintln!("rig: {why}");
-                    ExitReason::Failed(1)
+                    ExitReason::Failed(FailCode::FAILURE)
                 }
             };
             commands.trigger(Exit(exit));

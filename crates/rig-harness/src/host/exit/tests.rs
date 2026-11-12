@@ -5,6 +5,7 @@ use rig_ecs::AgentPlugin;
 use rig_ecs::agent::Notice;
 use rig_ecs::stage::{AgentPass, Decision, HoldOf, Outcome, PluginEffects, ReadyToStart, Stage};
 use rig_harness_protocol::RELOAD_EXIT_CODE;
+use rig_harness_protocol::end::FailCode;
 
 use super::{Exit, ExitPlugin, ExitReason, ExitRequest};
 
@@ -49,24 +50,31 @@ fn the_first_reason_stands_and_writes_the_launchers_exit_code() {
     );
 }
 
+/// A plain exit gets the reason its code stands for, but never a reload:
+/// the reload code written as a plain exit, such as a plugin passing on a
+/// child's code 75, is a failure.
 #[test]
 fn a_plain_exit_gets_the_reason_its_code_stands_for() {
     for (exit, reason) in [
         (AppExit::Success, ExitReason::Quit),
-        (AppExit::from_code(RELOAD_EXIT_CODE), ExitReason::Reload),
         (AppExit::from_code(130), ExitReason::Signal),
-        (AppExit::from_code(2), ExitReason::Failed(2)),
+        (
+            AppExit::from_code(2),
+            ExitReason::Failed(FailCode::or_failure(2)),
+        ),
+        (
+            AppExit::from_code(RELOAD_EXIT_CODE),
+            ExitReason::Failed(FailCode::FAILURE),
+        ),
     ] {
-        assert_eq!(reason.exit(), exit);
         let mut app = app();
         app.world_mut().write_message(exit);
         app.update();
         assert_eq!(app.world().get_resource::<ExitReason>(), Some(&reason));
     }
-    assert_eq!(
-        ExitReason::Switch(None).exit(),
-        AppExit::from_code(RELOAD_EXIT_CODE)
-    );
+    for reason in [ExitReason::Reload, ExitReason::Switch(None)] {
+        assert_eq!(reason.exit(), AppExit::from_code(RELOAD_EXIT_CODE));
+    }
 }
 
 #[test]
@@ -146,7 +154,8 @@ fn a_refused_exit_still_exits() {
         })
         .in_set(Stage::Gate),
     );
-    app.world_mut().trigger(Exit(ExitReason::Failed(3)));
+    app.world_mut()
+        .trigger(Exit(ExitReason::Failed(FailCode::or_failure(3))));
     app.update();
     assert_eq!(
         app.world().resource::<Seen>().exits,

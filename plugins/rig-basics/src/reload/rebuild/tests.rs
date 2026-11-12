@@ -186,28 +186,33 @@ struct Said {
     notes: Vec<String>,
 }
 
-/// A failed `/update` runs `rig update`, shows the lines it starts with
-/// `rig update: `, such as the command it runs, and keeps this build. One
-/// that failed before it installed anything says so with cargo's error, not
-/// the build log of an older build.
-#[test]
-fn a_failed_update_shows_what_rig_update_said() {
+/// What a `/update` said whose `rig update` is the shell `script`, with
+/// this rig's launcher at `$RIG_INSTALLED`, once it failed.
+fn failed_update(name: &str, script: &str) -> Said {
     use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
     use rig_harness_test_support::{MemoryStore, app_on, first_agent, run_until, scripted_models};
 
-    use crate::reload::ReloadPlugin;
+    use crate::reload::{LauncherFile, ReloadPlugin};
 
-    let said = "rig update: `cargo install --force rig-cli` failed (exit status: 101); this rig \
-                is unchanged.";
-    let launcher = failing_launcher("update", "");
+    let launcher = failing_launcher(name, "");
+    let dir = launcher
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_default();
+    let installed = dir.join("rig-installed");
+    std::fs::write(&installed, "old").ok();
     let script = format!(
-        "#!/bin/sh\necho \"rig update: running $1\" >&2\n\
-         echo 'error: could not find `rig-cli` in registry' >&2\necho '{said}' >&2\nexit 1\n"
+        "#!/bin/sh\nRIG_INSTALLED='{}'\n{script}\n",
+        installed.display()
     );
     std::fs::write(&launcher, script).ok();
     let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
     let (mut app, wakes) = app_on(&MemoryStore::default());
     app.insert_resource(scripted_models([("test/model", &model)]))
+        .insert_resource(LauncherFile::new(
+            installed.clone(),
+            harness_protocol::Stamp::of(&installed),
+        ))
         .add_plugins((AgentPlugin, SessionLogPlugin, ReloadPlugin))
         .init_resource::<Said>()
         .add_systems(
@@ -239,10 +244,25 @@ fn a_failed_update_shows_what_rig_update_said() {
     for _ in 0..3 {
         app.update();
     }
-    let Said { notices, notes } = std::mem::take(app.world_mut().resource_mut::<Said>().as_mut());
-    if let Some(dir) = launcher.parent() {
-        std::fs::remove_dir_all(dir).ok();
-    }
+    let said = std::mem::take(app.world_mut().resource_mut::<Said>().as_mut());
+    std::fs::remove_dir_all(dir).ok();
+    assert_eq!(model.request_count(), 0);
+    said
+}
+
+/// A failed `/update` runs `rig update`, shows the lines it starts with
+/// `rig update: `, such as the command it runs, and keeps this build. One
+/// that failed before it installed anything says so with cargo's error, not
+/// the build log of an older build.
+#[test]
+fn a_failed_update_shows_what_rig_update_said() {
+    let said = "rig update: `cargo install --force rig-cli` failed (exit status: 101); this rig \
+                is unchanged.";
+    let script = format!(
+        "echo \"rig update: running $1\" >&2\n\
+         echo 'error: could not find `rig-cli` in registry' >&2\necho '{said}' >&2\nexit 1"
+    );
+    let Said { notices, notes } = failed_update("update", &script);
     assert_eq!(
         notices.get(..3).map(<[String]>::to_vec),
         Some(vec![
@@ -259,7 +279,25 @@ fn a_failed_update_shows_what_rig_update_said() {
             && note.contains("could not find `rig-cli`")
             && !note.contains("build.log")
     }));
-    assert_eq!(model.request_count(), 0);
+}
+
+/// An update that installed the new launcher, whose agent build then
+/// failed, is told as a failed build: the launcher's file changed, whatever
+/// `rig update` said.
+#[test]
+fn an_update_that_installed_and_failed_to_build_says_the_build_failed() {
+    let script = "echo new > \"$RIG_INSTALLED.new\"; mv \"$RIG_INSTALLED.new\" \"$RIG_INSTALLED\"
+echo 'error: could not compile `rig-harness`' >&2
+exit 1";
+    let Said { notes, .. } = failed_update("installed", script);
+    assert_eq!(notes.len(), 1);
+    assert!(
+        notes.iter().all(|note| {
+            note.starts_with("Building the agent (/update) failed")
+                && note.contains("could not compile `rig-harness`")
+        }),
+        "{notes:?}"
+    );
 }
 
 /// The exits asked for, how the headless runs ended, and the notices.

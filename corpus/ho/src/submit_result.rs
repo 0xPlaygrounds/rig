@@ -195,7 +195,7 @@ fn load_startup_schema(
         Ok(schema) => offer(&mut commands, tool.entity, schema),
         Err(why) => {
             notices.write(Notice::error(None, format!("--{SCHEMA}: {why}")));
-            commands.trigger(Exit(ExitReason::Failed(INVALID_EXIT)));
+            commands.trigger(Exit(ExitReason::Failed(FailCode::or_failure(INVALID_EXIT))));
         }
     }
 }
@@ -293,7 +293,7 @@ fn judge(
         let why = format!("{MAX_INVALID} invalid {TOOL} calls; the last: {errors}");
         commands.entity(turn).insert(TurnOutcome::Failed(why));
         if !tool.interactive {
-            commands.trigger(Exit(ExitReason::Failed(INVALID_EXIT)));
+            commands.trigger(Exit(ExitReason::Failed(FailCode::or_failure(INVALID_EXIT))));
         }
     }
 }
@@ -326,7 +326,9 @@ fn remind(
         let why = format!("The turn ended twice without calling {TOOL}.");
         notices.write(Notice::error(agent, why));
         if !tool.interactive {
-            commands.trigger(Exit(ExitReason::Failed(NO_RESULT_EXIT)));
+            commands.trigger(Exit(ExitReason::Failed(FailCode::or_failure(
+                NO_RESULT_EXIT,
+            ))));
         }
     }
 }

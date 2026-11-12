@@ -9,8 +9,8 @@
 //! `/resume` with no argument opens the harness's [`SessionPicker`]. With
 //! the `tui` feature, the status line shows the session's name.
 //!
-//! The agent runs one session per process: switching names the next one in
-//! [`SessionDir::switch`] and exits with the reload code, and the launcher
+//! The agent runs one session per process: switching ends it with
+//! [`ExitReason::Switch`], naming the next one to the launcher, which
 //! starts it in its own directory.
 
 use std::any::TypeId;

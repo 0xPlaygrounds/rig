@@ -1874,7 +1874,7 @@ which is trusted.
 
 **Exiting.** A plugin that ends the run triggers `Exit(reason)`
 (`ExitReason::Quit`, `Reload`, `Switch(Some(id))` or `Switch(None)`,
-`Signal`, `Failed(code)`), never `AppExit`; the first reason is the
+`Refused(why)`, `Signal`, `Failed(code)`), never `AppExit`; the first reason is the
 `ExitReason` resource. Each exit asked for is an app-level effect, an
 `ExitRequest`, and the app exits when the first one settles. A plugin
 delays it by holding it, with a deadline of its own: nothing cancels an
@@ -2251,8 +2251,9 @@ A command is a front of its own: `Front::new("stats").on_command("stats",
 "[--all]", "Count the saved sessions")` takes every run of `rig stats …`,
 and the words after the name are `Invoked::command()`. A command whose
 front is not `on_terminal()` runs headless: the launcher passes stdin,
-stdout, stderr and the exit code through (`ExitReason::Failed(n)` exits
-with `n`) and never restarts it; `headless()` is only for runs that name
+stdout, stderr and the exit code through (`ExitReason::Failed(code)` exits
+with `code.get()`; a `FailCode` is never 0, 75 or 130, and
+`FailCode::or_failure(n)` makes one of a child's code) and never restarts it; `headless()` is only for runs that name
 no command or option. `rig -r <id or name> stats` runs it in that session;
 `sessionless()` leaves no session behind and refuses a resumed one.
 

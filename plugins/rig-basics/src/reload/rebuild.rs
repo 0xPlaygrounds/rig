@@ -7,7 +7,7 @@ use std::sync::{Mutex, PoisonError};
 
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 use rig_harness::harness_protocol;
-use rig_harness::harness_protocol::{UPDATE_INSTALLED, UPDATE_SAYS, first_errors, without_secrets};
+use rig_harness::harness_protocol::{UPDATE_SAYS, first_errors, without_secrets};
 use rig_harness::host::launcher::Invoked;
 use rig_harness::prelude::*;
 use rig_tools::process::{Process, STOP_GRACE};
@@ -32,10 +32,14 @@ pub(crate) fn stop(commands: &mut Commands) {
 }
 
 /// What a cancel of `build` says: an update cancelled once the new rig is
-/// installed leaves it there, for the next start or reload.
-pub(crate) fn cancelled(build: Option<&ReloadBuild>) -> &'static str {
+/// installed at `launcher`'s path leaves it there, for the next start or
+/// reload.
+pub(crate) fn cancelled(
+    build: Option<&ReloadBuild>,
+    launcher: Option<&LauncherFile>,
+) -> &'static str {
     match build {
-        Some(build) if build.installed() => {
+        Some(build) if build.installed(launcher) => {
             "Update cancelled during the agent build: the new rig is installed, and the \
              next start or /reload runs it."
         }
@@ -93,12 +97,10 @@ impl ReloadBuild {
         })
     }
 
-    /// Whether `rig update` installed the new launcher, and so a failure
-    /// is its agent build's.
-    fn installed(&self) -> bool {
-        self.output
-            .iter()
-            .any(|line| line.starts_with(UPDATE_INSTALLED))
+    /// Whether this is `rig update` and a new launcher is at `launcher`'s
+    /// path, so a failure is its agent build's.
+    fn installed(&self, launcher: Option<&LauncherFile>) -> bool {
+        self.rebuild == Rebuild::Update && launcher.is_some_and(LauncherFile::replaced)
     }
 
     /// At most `count` lines of the output from the first error on, or its
@@ -263,7 +265,7 @@ fn drain_reload(
         .first()
         .map(|line| format!(": {}", line.trim()))
         .unwrap_or_default();
-    if build.rebuild == Rebuild::Update && !build.installed() {
+    if build.rebuild == Rebuild::Update && !build.installed(launcher.as_deref()) {
         // Before any build: cargo's error, not the build log, says why;
         // without one, `rig update`'s own line said it already.
         if !first.is_empty() {

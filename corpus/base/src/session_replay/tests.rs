@@ -333,7 +333,7 @@ fn a_model_without_its_key_replays_from_the_record_and_a_turn_without_a_model_fa
         "{report}"
     );
     assert!(report.contains("No model is connected"), "{report}");
-    assert_eq!(exit, Some(ExitReason::Failed(1)));
+    assert_eq!(exit, Some(ExitReason::Failed(FailCode::FAILURE)));
 }
 
 /// A session that ended with `/quit` under exit-notes replays whole: the

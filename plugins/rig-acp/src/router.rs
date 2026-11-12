@@ -1035,7 +1035,7 @@ fn served_ended(served: Res<Served>, mut commands: Commands) {
     if let Ok(ok) = served.done.try_recv() {
         let reason = match ok {
             true => ExitReason::Quit,
-            false => ExitReason::Failed(1),
+            false => ExitReason::Failed(FailCode::FAILURE),
         };
         commands.trigger(Exit(reason));
     }

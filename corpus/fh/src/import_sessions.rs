@@ -193,12 +193,12 @@ fn import_command_line(
     let reason = match Source::named(name) {
         None => {
             eprintln!("usage: rig import claude-code|codex [path]");
-            ExitReason::Failed(2)
+            ExitReason::Failed(FailCode::or_failure(2))
         }
         Some(source) => match import_all((&home.0, &stores), source, path) {
             Err(why) => {
                 eprintln!("rig import: {why}");
-                ExitReason::Failed(1)
+                ExitReason::Failed(FailCode::FAILURE)
             }
             Ok(done) => {
                 let mut failed = false;
@@ -215,7 +215,7 @@ fn import_command_line(
                     }
                 }
                 if failed {
-                    ExitReason::Failed(1)
+                    ExitReason::Failed(FailCode::FAILURE)
                 } else {
                     ExitReason::Quit
                 }

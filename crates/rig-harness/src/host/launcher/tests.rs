@@ -5,6 +5,7 @@ use bevy_app::prelude::*;
 use bevy_ecs::schedule::IntoScheduleConfigs;
 use rig_ecs::AgentPlugin;
 use rig_ecs::agent::Notice;
+use rig_harness_protocol::end::{AgentEnd, FailCode};
 use rig_harness_protocol::{Home, Invocation, SIGNAL_EXIT_CODE};
 
 use super::{Invoked, LauncherPlugin, LauncherRun, refuse};
@@ -118,43 +119,100 @@ fn an_exit_on_purpose_in_the_first_frame_counts_as_started() {
             app.world_mut().write_message(plain);
         }
         app.update();
-        run.ready().exists()
+        run.heard_ready()
     };
     assert!(ready(None, None));
-    assert!(ready(Some(Exit(ExitReason::Failed(2))), None));
+    assert!(ready(
+        Some(Exit(ExitReason::Failed(FailCode::FAILURE))),
+        None
+    ));
     assert!(ready(Some(Exit(ExitReason::Quit)), None));
     assert!(!ready(None, Some(AppExit::from_code(1))), "a crash path");
     std::fs::remove_dir_all(home.root()).ok();
 }
 
 /// The launcher says a refusal again once it has the terminal back, as a
-/// restarted full-screen view kept the screen it was said on. The refused
-/// run keeps no files in its session.
+/// restarted full-screen view kept the screen it was said on: the run ends
+/// as refused, with its reason as a sentence. Only the first refusal
+/// stands. The refused run keeps no files in its session.
 #[test]
 fn a_refusal_is_told_to_the_launcher() {
-    let home = Home::at(std::env::temp_dir().join(format!("rig-refusal-{}", std::process::id())));
-    let run = home.run(1);
-    std::fs::create_dir_all(run.path()).ok();
-    let mut app = App::new();
-    app.insert_resource(LauncherRun(run.clone()));
-    refuse(&mut app, "this session is plain".to_owned());
-    refuse(&mut app, "said once".to_owned());
-    let said = std::fs::read_to_string(run.refusal()).ok();
+    let refused = |whys: &[&str]| {
+        let mut app = App::new();
+        for why in whys {
+            refuse(&mut app, (*why).to_owned());
+        }
+        let scratch = app.world().get_resource::<Scratch>().cloned();
+        (app.world().get_resource::<ExitReason>().cloned(), scratch)
+    };
+    let said = refused(&["this session is plain", "said once"]);
     // A question ends the sentence already.
-    let mut asked = App::new();
-    asked.insert_resource(LauncherRun(run.clone()));
-    refuse(
-        &mut asked,
-        "unknown tool `shel`; did you mean `shell`?".to_owned(),
-    );
-    let asked_said = std::fs::read_to_string(run.refusal()).ok();
-    std::fs::remove_dir_all(home.root()).ok();
-    assert_eq!(said.as_deref(), Some("rig: this session is plain.\n"));
+    let asked = refused(&["unknown tool `shel`; did you mean `shell`?"]);
     assert_eq!(
-        asked_said.as_deref(),
-        Some("rig: unknown tool `shel`; did you mean `shell`?\n")
+        said,
+        (
+            Some(ExitReason::Refused("this session is plain.".to_owned())),
+            Some(Scratch(None))
+        )
     );
-    assert_eq!(app.world().get_resource::<Scratch>(), Some(&Scratch(None)));
+    assert_eq!(
+        asked.0,
+        Some(ExitReason::Refused(
+            "unknown tool `shel`; did you mean `shell`?".to_owned()
+        ))
+    );
+}
+
+/// The launcher reads how the run ended from the record the agent writes
+/// as it exits, once: the first reason, with the code the app exits with.
+#[cfg(unix)]
+#[test]
+fn the_launcher_reads_how_the_run_ended() {
+    use std::os::unix::process::ExitStatusExt;
+
+    let home = Home::at(std::env::temp_dir().join(format!("rig-end-{}", std::process::id())));
+    let ended = |reason: ExitReason| {
+        let run = home.run(1);
+        std::fs::remove_dir_all(run.path()).ok();
+        std::fs::create_dir_all(run.path()).ok();
+        let lock = std::fs::File::create(run.lock());
+        let _held = lock.as_ref().map(std::fs::File::try_lock);
+        let mut app = App::new();
+        app.add_message::<AppExit>()
+            .add_message::<Notice>()
+            .insert_resource(Invoked::default())
+            .insert_resource(LauncherRun(run.clone()))
+            .add_plugins((TaskPoolPlugin::default(), AgentPlugin))
+            .add_plugins((LauncherPlugin, ExitPlugin));
+        app.finish();
+        app.cleanup();
+        app.world_mut().trigger(Exit(reason));
+        app.world_mut().trigger(Exit(ExitReason::Quit));
+        for _ in 0..3 {
+            app.update();
+        }
+        let code = match app.should_exit() {
+            Some(AppExit::Error(code)) => code.get(),
+            _ => 0,
+        };
+        let status = std::process::ExitStatus::from_raw(i32::from(code) << 8);
+        AgentEnd::read(&run, status).ok()
+    };
+    let failed = ExitReason::Failed(FailCode::or_failure(3));
+    let ends = [
+        ended(ExitReason::Reload),
+        ended(failed),
+        ended(ExitReason::Signal),
+    ];
+    std::fs::remove_dir_all(home.root()).ok();
+    assert_eq!(
+        ends,
+        [
+            Some(AgentEnd::Reload),
+            Some(AgentEnd::Failed(FailCode::or_failure(3))),
+            Some(AgentEnd::Signal),
+        ]
+    );
 }
 
 /// The launcher is told when the run's front takes the terminal's screen,
@@ -186,7 +244,7 @@ fn the_launcher_hears_when_a_front_takes_the_screen() {
         if refused {
             app.refuse_run("no".to_owned());
         }
-        run.screen().exists()
+        run.took_screen()
     };
     let taken = [
         screen(&[], false),

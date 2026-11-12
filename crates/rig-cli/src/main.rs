@@ -1,7 +1,7 @@
 //! The `rig` launcher. It generates a Cargo project for the rig-harness agent
 //! with the plugins `$RIG_HOME/settings.toml` turns on, builds it, and runs
 //! it.
-//! When the agent exits with the reload code it starts the new build, and a
+//! When the agent ends asking to reload it starts the new build, and a
 //! build that crashes during startup is rolled back to the last one that
 //! worked. It uses std, and libc on unix (ctrlc elsewhere) to stop its build
 //! and to pass a signal on to its agent and wait for it, when told to end.

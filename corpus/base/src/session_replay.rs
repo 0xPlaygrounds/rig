@@ -462,7 +462,7 @@ fn exit_reason(record: &EffectRecord) -> Option<ExitReason> {
             .strip_suffix(')')?
             .parse()
             .ok()
-            .map(ExitReason::Failed),
+            .map(|code| ExitReason::Failed(FailCode::or_failure(code))),
     }
 }
 
@@ -659,7 +659,7 @@ impl Plugin for SessionReplayPlugin {
                 Err(failure) => {
                     eprintln!("rig --replay: cannot read the session: {failure}");
                     app.add_systems(Startup, |mut commands: Commands| {
-                        commands.trigger(Exit(ExitReason::Failed(1)));
+                        commands.trigger(Exit(ExitReason::Failed(FailCode::FAILURE)));
                     });
                     return;
                 }
@@ -730,7 +730,7 @@ fn report_and_exit(
     println!("Replay {how}: {models} model calls and {others} other effects replayed.");
     let exit = match replay.divergences().is_empty() {
         true => ExitReason::Quit,
-        false => ExitReason::Failed(1),
+        false => ExitReason::Failed(FailCode::FAILURE),
     };
     match exiting {
         Some(_) => commands.insert_resource(exit),

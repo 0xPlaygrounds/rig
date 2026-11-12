@@ -3,8 +3,21 @@
     reason = "test fixtures run programs of their own"
 )]
 
+use rig_harness_protocol::fake_agent::{self, Step};
+
 use super::*;
 use crate::test_launch as at;
+
+/// A step of the test's own shell commands.
+fn sh(commands: &str) -> Step {
+    Step::Shell(commands.to_owned())
+}
+
+/// Notes the session the agent runs in `RIG_HOME/last`.
+const MARK: &str = "echo \"$RIG_SESSION\" > \"$RIG_HOME/last\"";
+
+/// Marks the agent's session saved.
+const SAVE: &str = "touch \"$RIG_HOME/sessions/$RIG_SESSION/saved\"";
 
 /// The launcher path the tests' runs pass on: no file, so never replaced.
 const NO_LAUNCHER: &str = "/nonexistent/rig";
@@ -14,41 +27,53 @@ const NO_LAUNCHER: &str = "/nonexistent/rig";
 fn only_a_failure_says_the_agent_stopped_and_only_a_saved_session_is_offered_to_resume() {
     use std::os::unix::process::ExitStatusExt;
 
-    let failed = ExitStatus::from_raw(1 << 8);
+    let status = |code: i32| ExitStatus::from_raw(code << 8);
+    let failed = AgentEnd::of_status(status(1));
     let log = Some(Path::new("/home/.rig/sessions/s/agent.log"));
-    let saved = stopped(failed, Some("rig --resume 1-2"), None, false, log);
+    let saved = stopped(&failed, status(1), Some("rig --resume 1-2"), false, log);
     assert!(
         saved.is_some_and(|saved| saved.contains("`rig --resume 1-2` resumes")),
         "a failure offers to resume"
     );
     let expected = "The agent stopped (exit status: 1). Log: /home/.rig/sessions/s/agent.log";
     assert_eq!(
-        stopped(failed, None, None, false, log).as_deref(),
+        stopped(&failed, status(1), None, false, log).as_deref(),
         Some(expected)
     );
-    let no_log = stopped(failed, None, None, false, None);
+    let no_log = stopped(&failed, status(1), None, false, None);
     assert_eq!(
         no_log.as_deref(),
         Some("The agent stopped (exit status: 1).")
     );
-    let crashed = stopped(ExitStatus::from_raw(9), None, None, false, log);
+    let killed = ExitStatus::from_raw(9);
+    let crashed = stopped(&AgentEnd::of_status(killed), killed, None, false, log);
     assert!(crashed.is_some_and(|said| said.starts_with("The agent stopped (signal: 9")));
     // A refusal is said once: again only where a restarted view kept the
     // screen, and never as the agent stopping.
-    let refused = ExitStatus::from_raw(i32::from(REFUSED_EXIT_CODE) << 8);
-    let refusal = Some("rig: plain.\n");
-    assert_eq!(stopped(refused, None, refusal, false, log), None);
+    let refused = AgentEnd::Refused("plain.".to_owned());
+    let code = status(i32::from(REFUSED_EXIT_CODE));
+    assert_eq!(stopped(&refused, code, None, false, log), None);
     assert_eq!(
-        stopped(refused, None, refusal, true, log).as_deref(),
+        stopped(&refused, code, None, true, log).as_deref(),
         Some("rig: plain.")
     );
     // A signal the agent was told of ends the run as a quit does.
-    let signalled = ExitStatus::from_raw(i32::from(SIGNAL_EXIT_CODE) << 8);
+    let signalled = status(i32::from(SIGNAL_EXIT_CODE));
     assert_eq!(
-        stopped(signalled, Some("rig --resume 1-2"), None, false, log).as_deref(),
+        stopped(
+            &AgentEnd::Signal,
+            signalled,
+            Some("rig --resume 1-2"),
+            false,
+            log
+        )
+        .as_deref(),
         Some("To resume this session: rig --resume 1-2")
     );
-    assert_eq!(stopped(signalled, None, None, false, log), None);
+    assert_eq!(
+        stopped(&AgentEnd::Signal, signalled, None, false, log),
+        None
+    );
 }
 
 /// The resume command for a session named `name`, beside a second saved
@@ -110,17 +135,16 @@ fn a_resume_command_names_the_session_quoted_or_by_its_id() {
     }
 }
 
-/// How an interactive run of a new session ends whose agent runs `agent`
-/// and exits, and describes itself as adding nothing; and the session the
-/// run ended in.
+/// How an interactive run of a new session ends whose agent takes the
+/// steps `starts` (one list per start, [`fake_agent::script`]); and the
+/// session the run ended in.
 #[cfg(unix)]
-fn interactive(test: &str, agent: &str, headless: bool) -> Option<(Ended, SessionId)> {
+fn interactive(test: &str, starts: &[&[Step]], headless: bool) -> Option<(Ended, SessionId)> {
     let home = builds(&format!("interactive-{test}"), "", "");
     let ended = locks::hold_run(&home).and_then(|run| {
         // The good build only: a trial that never says it started is rolled back.
         fs::remove_file(home.staged())?;
-        let agent = format!("#!/bin/sh\n[ -n \"$RIG_DESCRIBE\" ] && exit 0\n{agent}\n");
-        fs::write(home.good(), agent)?;
+        fs::write(home.good(), fake_agent::script(starts))?;
         let (claimed, _) = claim(&home, Start::New, None)?;
         let running = select(
             &at(&home, Path::new(NO_LAUNCHER))?,
@@ -149,15 +173,15 @@ fn interactive(test: &str, agent: &str, headless: bool) -> Option<(Ended, Sessio
 #[cfg(unix)]
 #[test]
 fn a_clean_exit_says_how_to_resume_the_session_it_ended_in() {
-    let saved = "echo \"$RIG_SESSION\" > \"$RIG_HOME/last\"
-touch \"$RIG_RUN/ready\"
-if [ ! -e \"$RIG_HOME/switched\" ]; then
-  touch \"$RIG_HOME/switched\"
-  touch \"$RIG_HOME/sessions/$RIG_SESSION/saved\"
-  : > \"$RIG_HOME/sessions/$RIG_SESSION/switch\"
-  exit 75
-fi
-touch \"$RIG_HOME/sessions/$RIG_SESSION/saved\"";
+    let saved: &[&[Step]] = &[
+        &[
+            sh(MARK),
+            Step::Ready,
+            sh(SAVE),
+            Step::End(AgentEnd::Switch(None)),
+        ],
+        &[sh(MARK), Step::Ready, sh(SAVE)],
+    ];
     let ended = interactive("clean", saved, false);
     let said =
         ended.map(|(ended, id)| (ended, format!("To resume this session: rig --resume {id}")));
@@ -168,21 +192,13 @@ touch \"$RIG_HOME/sessions/$RIG_SESSION/saved\"";
         "{said:?}"
     );
 
-    let quiet = |test: &str, agent: &str, headless: bool| {
-        let ended = interactive(test, agent, headless).map(|(ended, _)| ended);
+    let quiet = |test: &str, agent: &[Step], headless: bool| {
+        let ended = interactive(test, &[agent], headless).map(|(ended, _)| ended);
         assert_eq!(ended, Some(Ended::quiet(ExitCode::SUCCESS)), "{test}");
     };
-    let mark = "echo \"$RIG_SESSION\" > \"$RIG_HOME/last\"";
-    quiet(
-        "unsaved",
-        &format!("{mark}\ntouch \"$RIG_RUN/ready\""),
-        false,
-    );
-    let saved_once =
-        format!("{mark}\ntouch \"$RIG_RUN/ready\" \"$RIG_HOME/sessions/$RIG_SESSION/saved\"");
-    quiet("headless", &saved_once, true);
-    let never_started = format!("{mark}\ntouch \"$RIG_HOME/sessions/$RIG_SESSION/saved\"");
-    quiet("never-started", &never_started, false);
+    quiet("unsaved", &[sh(MARK), Step::Ready], false);
+    quiet("headless", &[sh(MARK), Step::Ready, sh(SAVE)], true);
+    quiet("never-started", &[sh(MARK), sh(SAVE)], false);
 }
 
 /// A failed exit of a saved session says how to resume it only when its
@@ -190,10 +206,13 @@ touch \"$RIG_HOME/sessions/$RIG_SESSION/saved\"";
 #[cfg(unix)]
 #[test]
 fn a_failed_exit_offers_the_resume_only_after_the_agent_started() {
-    let mark = "echo \"$RIG_SESSION\" > \"$RIG_HOME/last\"
-touch \"$RIG_HOME/sessions/$RIG_SESSION/saved\"";
-    let offers = |test: &str, agent: &str| {
-        let ended = interactive(test, &format!("{mark}\n{agent}\nexit 3"), false);
+    let offers = |test: &str, ready: bool| {
+        let agent = [sh(MARK), sh(SAVE)]
+            .into_iter()
+            .chain(ready.then_some(Step::Ready))
+            .chain([Step::Exit(3)])
+            .collect::<Vec<_>>();
+        let ended = interactive(test, &[&agent], false);
         ended.map(|(ended, id)| {
             let offered = ended
                 .said
@@ -202,11 +221,8 @@ touch \"$RIG_HOME/sessions/$RIG_SESSION/saved\"";
         })
     };
     let failed = ExitCode::from(3);
-    assert_eq!(
-        offers("failed-started", "touch \"$RIG_RUN/ready\""),
-        Some((failed, true))
-    );
-    assert_eq!(offers("failed-never-started", ":"), Some((failed, false)));
+    assert_eq!(offers("failed-started", true), Some((failed, true)));
+    assert_eq!(offers("failed-never-started", false), Some((failed, false)));
 }
 
 /// The process groups an agent leaves running when it dies without stopping
@@ -220,27 +236,35 @@ fn groups_the_agent_left_are_killed_after_it_dies_and_kept_across_a_reload() {
     let notes = std::env::temp_dir().join(format!("rig-left-groups-{}", std::process::id()));
     fs::remove_dir_all(&notes).ok();
     fs::create_dir_all(&notes).ok();
-    let agent = format!(
-        "echo \"$RIG_SESSION\" > \"$RIG_HOME/last\"
-touch \"$RIG_RUN/ready\"
-cd '{}'
-if [ ! -e marked ]; then
-  perl -MPOSIX -e 'POSIX::setsid(); exec @ARGV' env {}=\"$RIG_RUN/groups\" \\
-    sh -c 'sleep 30 & echo $! > child; wait' &
-  echo $! > marked
-  while [ ! -s child ]; do sleep 0.01; done
-  perl -MPOSIX -e 'POSIX::setsid(); exec @ARGV' sleep 30 &
-  echo $! > unmarked
-  cat marked unmarked > \"$RIG_RUN/groups\"
-  exit 75
-fi
+    let start = format!(
+        "cd '{}'
+perl -MPOSIX -e 'POSIX::setsid(); exec @ARGV' env {}=\"$RIG_RUN/groups\" \\
+  sh -c 'sleep 30 & echo $! > child; wait' &
+echo $! > marked
+while [ ! -s child ]; do sleep 0.01; done
+perl -MPOSIX -e 'POSIX::setsid(); exec @ARGV' sleep 30 &
+echo $! > unmarked
+cat marked unmarked > \"$RIG_RUN/groups\"",
+        notes.display(),
+        rig_harness_protocol::env::PROCESS_LEDGER,
+    );
+    let killed = format!(
+        "cd '{}'
 kill -0 \"$(cat marked)\" && touch kept
 cat marked unmarked > \"$RIG_RUN/groups\"
 kill -KILL $$",
         notes.display(),
-        rig_harness_protocol::env::PROCESS_LEDGER,
     );
-    let ended = interactive("left-groups", &agent, false);
+    let starts: &[&[Step]] = &[
+        &[
+            sh(MARK),
+            Step::Ready,
+            sh(&start),
+            Step::End(AgentEnd::Reload),
+        ],
+        &[sh(MARK), Step::Ready, sh(&killed)],
+    ];
+    let ended = interactive("left-groups", starts, false);
     assert!(ended.is_some());
     let id = |name: &str| {
         let id = fs::read_to_string(notes.join(name)).ok();
@@ -280,30 +304,31 @@ kill -KILL $$",
 #[cfg(unix)]
 #[test]
 fn the_terminal_is_put_back_only_after_a_front_took_its_screen() {
-    let mark = "echo \"$RIG_SESSION\" > \"$RIG_HOME/last\"
-touch \"$RIG_RUN/ready\" \"$RIG_HOME/sessions/$RIG_SESSION/saved\"";
-    let reloaded = format!(
-        "{mark}
-if [ ! -e \"$RIG_HOME/reloaded\" ]; then
-  touch \"$RIG_HOME/reloaded\" \"$RIG_RUN/screen\"
-  exit 75
-fi
-exit 2"
-    );
-    let restored = |test: &str, agent: &str| {
-        interactive(test, agent, false).map(|(ended, _)| (ended.code, ended.restore))
+    let started = || [sh(MARK), Step::Ready, sh(SAVE)];
+    let [mark, ready, save] = started();
+    let restored = |test: &str, starts: &[&[Step]]| {
+        interactive(test, starts, false).map(|(ended, _)| (ended.code, ended.restore))
     };
+    let reloaded: &[&[Step]] = &[
+        &[
+            mark.clone(),
+            ready.clone(),
+            save.clone(),
+            Step::Screen,
+            Step::End(AgentEnd::Reload),
+        ],
+        &[mark.clone(), ready.clone(), save.clone(), Step::Exit(2)],
+    ];
     assert_eq!(
-        restored("screen-reloaded", &reloaded),
+        restored("screen-reloaded", reloaded),
         Some((ExitCode::from(2), true))
     );
     assert_eq!(
-        restored("screen-lines", mark),
+        restored("screen-lines", &[&started()]),
         Some((ExitCode::SUCCESS, false))
     );
-    let quit = format!("{mark}\ntouch \"$RIG_RUN/screen\"");
     assert_eq!(
-        restored("screen-quit", &quit),
+        restored("screen-quit", &[&[mark, ready, save, Step::Screen]]),
         Some((ExitCode::SUCCESS, true))
     );
 }
@@ -374,7 +399,8 @@ fn a_one_shot_run_is_never_run_again_on_the_previous_build() {
     assert_eq!(ran, "trial\n", "the previous build ran too");
     assert_eq!((code, good.as_str()), (Some(ExitCode::from(3)), "good"));
     // A build that said it started is kept, whatever its exit.
-    let home = builds("ready", "touch \"$RIG_RUN/ready\"; exit 1", "exit 0");
+    let ready = fake_agent::commands(&[Step::Ready, Step::Exit(1)]);
+    let home = builds("ready", &ready, "exit 0");
     let (code, ran, good) = one_shot(&home);
     assert_eq!(ran, "trial\n");
     assert_eq!((code, good.as_str()), (Some(ExitCode::from(1)), "trial"));
@@ -464,10 +490,12 @@ printf 'rig-describe 1\\ncommand\\tstats\\t-\\theadless\\tsession\\tCount\\n' > 
 #[cfg(unix)]
 #[test]
 fn a_failed_run_leaves_no_unsaved_session_but_its_log() {
-    let failing = "touch \"$RIG_RUN/ready\"
-echo refused > \"$RIG_HOME/sessions/$RIG_SESSION/agent.log\"
-exit 2";
-    let home = builds("unsaved", failing, "exit 0");
+    let failing = fake_agent::commands(&[
+        Step::Ready,
+        sh("echo refused > \"$RIG_HOME/sessions/$RIG_SESSION/agent.log\""),
+        Step::Exit(2),
+    ]);
+    let home = builds("unsaved", &failing, "exit 0");
     let print = Invocation {
         print: Some("hi".to_owned()),
         ..Invocation::default()
@@ -513,8 +541,8 @@ fn a_refused_run_of_a_saved_session_names_the_log_of_the_run() {
         session.mark_saved()?;
         fs::write(session.log(), "earlier runs\n")?;
         let (claimed, _) = claim(&home, Start::Resume(id), None)?;
-        fs::write(run.dir().refusal(), "rig: refused.\n")?;
-        let named = claimed.leave(&home, run.dir(), false);
+        let refused = AgentEnd::Refused("refused.".to_owned());
+        let named = claimed.leave(&home, run.dir(), &refused);
         let kept = fs::read_to_string(session.log())?;
         Ok((named == run.dir().log(), kept))
     });
@@ -548,6 +576,15 @@ fn a_resumed_session_whose_directory_is_gone_says_where_it_runs() {
     assert_eq!(said.ok(), Some((Some(here), Some(moved))));
 }
 
+/// Notes each start's session, why it started and its notice in
+/// `RIG_HOME/started`.
+const LOG_START: &str = "echo \"$RIG_SESSION $RIG_START $RIG_NOTICE\" >> \"$RIG_HOME/started\"";
+
+/// The refusal of a session an older rig saved.
+fn too_old() -> AgentEnd {
+    AgentEnd::Refused("too old.".to_owned())
+}
+
 /// A `/resume` of a session whose run is refused, such as one an older rig
 /// saved, goes back to the session it left, told why, instead of ending.
 #[cfg(unix)]
@@ -561,17 +598,18 @@ fn a_refused_switch_goes_back_to_the_session_it_left() {
             Ok(id)
         };
         let (left, refused) = (saved()?, saved()?);
-        let agent = format!(
-            "echo \"$RIG_SESSION $RIG_START $RIG_NOTICE\" >> \"$RIG_HOME/started\"
-touch \"$RIG_RUN/ready\"
-[ \"$RIG_SESSION\" = {refused} ] && echo 'rig: too old.' > \"$RIG_RUN/refusal\" && exit 2
-[ -e \"$RIG_HOME/switched\" ] && exit 0
-touch \"$RIG_HOME/switched\"
-echo {refused} > \"$RIG_HOME/sessions/$RIG_SESSION/switch\"
-exit 75"
-        );
+        let log = || sh(LOG_START);
+        let agent = fake_agent::script(&[
+            &[
+                log(),
+                Step::Ready,
+                Step::End(AgentEnd::Switch(Some(refused.clone()))),
+            ],
+            &[log(), Step::Ready, Step::End(too_old())],
+            &[log(), Step::Ready],
+        ]);
         for build in [home.staged(), home.good()] {
-            fs::write(build, format!("#!/bin/sh\n{agent}\n"))?;
+            fs::write(build, &agent)?;
         }
         let (claimed, _) = claim(&home, Start::Resume(left.clone()), None)?;
         let running = select(
@@ -619,19 +657,40 @@ fn a_refused_switch_after_a_signal_starts_nothing() {
             Ok(id)
         };
         let (left, refused) = (saved()?, saved()?);
-        let agent = format!(
-            "echo \"$RIG_SESSION $RIG_START\" >> \"$RIG_HOME/started\"
-touch \"$RIG_RUN/ready\"
-[ \"$RIG_SESSION\" = {refused} ] && trap '' TERM && echo 'rig: too old.' > \"$RIG_RUN/refusal\" && kill -TERM $PPID && exit 2
-echo {refused} > \"$RIG_HOME/sessions/$RIG_SESSION/switch\"
-exit 75"
-        );
+        let log = || sh("echo \"$RIG_SESSION $RIG_START\" >> \"$RIG_HOME/started\"");
+        let agent = fake_agent::script(&[
+            &[
+                log(),
+                Step::Ready,
+                Step::End(AgentEnd::Switch(Some(refused.clone()))),
+            ],
+            &[
+                log(),
+                Step::Ready,
+                sh("trap '' TERM"),
+                Step::Record(too_old()),
+                sh("kill -TERM $PPID"),
+                Step::Exit(REFUSED_EXIT_CODE),
+            ],
+        ]);
         for build in [home.staged(), home.good()] {
-            fs::write(build, format!("#!/bin/sh\n{agent}\n"))?;
+            fs::write(build, &agent)?;
         }
         let (claimed, _) = claim(&home, Start::Resume(left.clone()), None)?;
-        let running = select(&at(&home, Path::new(NO_LAUNCHER))?, &claimed.id, run.dir(), None)?;
-        let ended = run_agent(&mut at(&home, Path::new(NO_LAUNCHER))?, run.dir(), &Invocation::default(), false, claimed, running)?;
+        let running = select(
+            &at(&home, Path::new(NO_LAUNCHER))?,
+            &claimed.id,
+            run.dir(),
+            None,
+        )?;
+        let ended = run_agent(
+            &mut at(&home, Path::new(NO_LAUNCHER))?,
+            run.dir(),
+            &Invocation::default(),
+            false,
+            claimed,
+            running,
+        )?;
         let started = fs::read_to_string(home.root().join("started"))?;
         Ok((ended.code, started, left, refused))
     });
@@ -653,23 +712,32 @@ exit 75"
 fn each_start_says_why_it_started() {
     let home = builds("reasons", "", "");
     let starts = locks::hold_run(&home).and_then(|run| {
-        let agent = format!(
-            "#!/bin/sh
-echo \"$RIG_START\" >> \"$RIG_HOME/starts\"
-case $(( $(wc -l < \"$RIG_HOME/starts\") )) in
-1) touch \"$RIG_RUN/ready\"; exit 75 ;;
-2) touch \"$RIG_RUN/ready\"; cp \"$0\" {staged}; : > \"$RIG_HOME/sessions/$RIG_SESSION/switch\"; exit 75 ;;
-3) exit 1 ;;
-esac
-touch \"$RIG_RUN/ready\"",
-            staged = home.staged().display(),
-        );
+        let log = || sh("echo \"$RIG_START\" >> \"$RIG_HOME/starts\"");
+        let stage = sh(&format!("cp \"$0\" {}", home.staged().display()));
+        let agent = fake_agent::script(&[
+            &[log(), Step::Ready, Step::End(AgentEnd::Reload)],
+            &[log(), Step::Ready, stage, Step::End(AgentEnd::Switch(None))],
+            &[log(), Step::Exit(1)],
+            &[log(), Step::Ready],
+        ]);
         for build in [home.staged(), home.good()] {
             fs::write(build, &agent)?;
         }
         let (claimed, _) = claim(&home, Start::New, None)?;
-        let running = select(&at(&home, Path::new(NO_LAUNCHER))?, &claimed.id, run.dir(), None)?;
-        let code = run_agent(&mut at(&home, Path::new(NO_LAUNCHER))?, run.dir(), &Invocation::default(), false, claimed, running)?
+        let running = select(
+            &at(&home, Path::new(NO_LAUNCHER))?,
+            &claimed.id,
+            run.dir(),
+            None,
+        )?;
+        let code = run_agent(
+            &mut at(&home, Path::new(NO_LAUNCHER))?,
+            run.dir(),
+            &Invocation::default(),
+            false,
+            claimed,
+            running,
+        )?
         .code;
         Ok((code, fs::read_to_string(home.root().join("starts"))?))
     });
@@ -692,16 +760,13 @@ touch \"$RIG_RUN/ready\"",
 fn a_one_shot_run_that_reloads_carries_on_without_its_prompt() {
     let home = builds("headless-reload", "", "");
     let starts = locks::hold_run(&home).and_then(|run| {
-        let agent = format!(
-            "#!/bin/sh
-echo \"$RIG_START $*\" >> \"$RIG_HOME/starts\"
-case $(( $(wc -l < \"$RIG_HOME/starts\") )) in
-1) touch \"$RIG_RUN/ready\"; cp \"$0\" {staged}; exit 75 ;;
-2) exit 1 ;;
-esac
-touch \"$RIG_RUN/ready\"",
-            staged = home.staged().display(),
-        );
+        let log = || sh("echo \"$RIG_START $*\" >> \"$RIG_HOME/starts\"");
+        let stage = sh(&format!("cp \"$0\" {}", home.staged().display()));
+        let agent = fake_agent::script(&[
+            &[log(), Step::Ready, stage, Step::End(AgentEnd::Reload)],
+            &[log(), Step::Exit(1)],
+            &[log(), Step::Ready],
+        ]);
         for build in [home.staged(), home.good()] {
             fs::write(build, &agent)?;
         }
@@ -811,7 +876,7 @@ fn a_trial_stopped_by_a_heard_ctrl_c_is_not_rejected() {
 /// Writes an agent's log holding a user message where the default store
 /// keeps it, `logs/<agent>.jsonl`, as a session whose saved marker could
 /// not be written has it.
-fn log_a_conversation(session: &SessionDir) -> Result<()> {
+fn log_a_conversation(session: &rig_harness_protocol::SessionDir) -> Result<()> {
     let logs = session.path().join("logs");
     fs::create_dir_all(&logs)?;
     let log = r#"{"seq":0,"n":3,"t":1700000000000,"type":"header","format":"rig-session/2","log":"0a589d65-24d0-42bc-ae72-da7e134a17a6","lineage":1}
@@ -832,7 +897,7 @@ fn a_session_with_a_logged_conversation_outlives_the_leave_and_the_sweep() {
         let (claimed, _) = claim(&home, Start::New, None)?;
         let left = home.session(&claimed.id);
         log_a_conversation(&left)?;
-        claimed.leave(&home, run.dir(), true);
+        claimed.leave(&home, run.dir(), &AgentEnd::Quit);
         let (id, _) = home.new_session()?;
         let swept = home.session(&id);
         drop(swept.hold()?.ok_or("held elsewhere")?);
@@ -881,6 +946,10 @@ struct Reload<'a> {
     busy: bool,
 }
 
+/// Renames a new file over the agent's launcher, as `rig update` does.
+const REPLACE_LAUNCHER: &str =
+    "echo new > \"$RIG_LAUNCHER.new\"; mv \"$RIG_LAUNCHER.new\" \"$RIG_LAUNCHER\"";
+
 /// How a run as `reload` says ends, with its launcher, its session, the
 /// second saved session, and whether its session is still there.
 #[cfg(unix)]
@@ -903,28 +972,19 @@ fn reloaded(test: &str, reload: Reload) -> Option<(Ended, PathBuf, SessionId, Se
         let launcher = home.root().join("launcher").join("rig");
         fs::create_dir_all(home.root().join("launcher"))?;
         fs::write(&launcher, "old")?;
-        let switch = reload.switch.map_or_else(String::new, |target| {
-            let target = if target.is_empty() {
-                String::new()
-            } else {
-                other.to_string()
-            };
-            format!("printf '{target}' > \"$RIG_HOME/sessions/$RIG_SESSION/switch\"")
+        let end = reload.switch.map_or(AgentEnd::Reload, |target| {
+            AgentEnd::Switch((!target.is_empty()).then(|| other.clone()))
         });
-        let replace = if reload.replace {
-            "echo new > \"$RIG_LAUNCHER.new\"; mv \"$RIG_LAUNCHER.new\" \"$RIG_LAUNCHER\""
+        let replace = sh(if reload.replace {
+            REPLACE_LAUNCHER
         } else {
-            ""
-        };
-        let agent = format!(
-            "[ -e \"$RIG_HOME/reloaded\" ] && exit 0
-touch \"$RIG_HOME/reloaded\"
-{switch}
-{replace}
-exit 75"
-        );
+            ":"
+        });
         fs::remove_file(home.staged())?;
-        fs::write(home.good(), format!("#!/bin/sh\n{agent}\n"))?;
+        fs::write(
+            home.good(),
+            fake_agent::script(&[&[replace, Step::End(end)], &[]]),
+        )?;
         // The directory the session runs in, which a new one runs in too.
         let here = Some(home.root());
         let (claimed, _) = claim(&home, Start::Resume(current.clone()), here)
@@ -1004,7 +1064,7 @@ fn a_reload_after_the_launcher_was_replaced_restarts_on_the_new_one() {
             ended.reexec == reexec(&launcher, Some(&other), resumed(current))
         })
     );
-    // The switch file outlives the unsaved session it is in.
+    // The switch outlives the unsaved session it left.
     let unsaved = reloaded(
         "unsaved",
         Reload {
@@ -1110,18 +1170,19 @@ fn a_refused_switch_on_the_new_launcher_goes_back_to_the_session_it_left() {
         let launcher = home.root().join("launcher").join("rig");
         fs::create_dir_all(home.root().join("launcher"))?;
         fs::write(&launcher, "old")?;
-        let agent = format!(
-            "echo \"$RIG_SESSION $RIG_START $RIG_NOTICE\" >> \"$RIG_HOME/started\"
-touch \"$RIG_RUN/ready\"
-[ \"$RIG_SESSION\" = {refused} ] && echo 'rig: too old.' > \"$RIG_RUN/refusal\" && exit 2
-[ -e \"$RIG_HOME/switched\" ] && exit 0
-touch \"$RIG_HOME/switched\"
-echo {refused} > \"$RIG_HOME/sessions/$RIG_SESSION/switch\"
-echo new > \"$RIG_LAUNCHER.new\"; mv \"$RIG_LAUNCHER.new\" \"$RIG_LAUNCHER\"
-exit 75"
-        );
+        let log = || sh(LOG_START);
+        let agent = fake_agent::script(&[
+            &[
+                log(),
+                Step::Ready,
+                sh(REPLACE_LAUNCHER),
+                Step::End(AgentEnd::Switch(Some(refused.clone()))),
+            ],
+            &[log(), Step::Ready, Step::End(too_old())],
+            &[log(), Step::Ready],
+        ]);
         for build in [home.staged(), home.good()] {
-            fs::write(build, format!("#!/bin/sh\n{agent}\n"))?;
+            fs::write(build, &agent)?;
         }
         let here = Some(home.root());
         let (claimed, _) = claim(&home, Start::Resume(left.clone()), here)?;
@@ -1161,13 +1222,13 @@ exit 75"
 /// from an agent that reloads once and then exits.
 #[cfg(unix)]
 fn warned(home: &Home) -> Result<Vec<Vec<String>>> {
-    let agent = "#!/bin/sh
-printf '%s\\n---\\n' \"$RIG_WARNING\" >> \"$RIG_HOME/warned\"
-touch \"$RIG_RUN/ready\"
-[ $(grep -c -- --- \"$RIG_HOME/warned\") -lt 2 ] && exit 75
-exit 0";
+    let log = || sh("printf '%s\\n---\\n' \"$RIG_WARNING\" >> \"$RIG_HOME/warned\"");
+    let agent = fake_agent::script(&[
+        &[log(), Step::Ready, Step::End(AgentEnd::Reload)],
+        &[log(), Step::Ready],
+    ]);
     for build in [home.staged(), home.good()] {
-        fs::write(build, agent)?;
+        fs::write(build, &agent)?;
     }
     let run = locks::hold_run(home)?;
     let (claimed, _) = claim(home, Start::New, None)?;
@@ -1265,11 +1326,11 @@ fn a_0_46_home_is_warned_of_once_per_run_and_left_as_it_is() {
 #[cfg(unix)]
 #[test]
 fn a_rolled_back_first_start_still_warns_of_a_0_46_home() {
-    let home = builds(
-        "legacy-rollback",
-        "exit 1",
-        "printf %s \"$RIG_WARNING\" > \"$RIG_HOME/warned\"; touch \"$RIG_RUN/ready\"",
-    );
+    let good = fake_agent::commands(&[
+        sh("printf %s \"$RIG_WARNING\" > \"$RIG_HOME/warned\""),
+        Step::Ready,
+    ]);
+    let home = builds("legacy-rollback", "exit 1", &good);
     let warned = fs::write(home.root().join("plugins.toml"), "[[plugin]]\n")
         .map_err(Into::into)
         .and_then(|()| {
@@ -1381,20 +1442,18 @@ fn a_rolled_back_reload_runs_the_sessions_own_previous_build() {
         script(&failing, "echo failing >> \"$RIG_HOME/ran\"; exit 1")?;
         // The first start reloads onto a build that fails; meanwhile
         // another session's build becomes the good one.
-        script(
-            &home.good(),
-            &format!(
-                "[ -n \"$RIG_DESCRIBE\" ] && exit 0
-echo own >> \"$RIG_HOME/ran\"
-[ \"$(wc -l < \"$RIG_HOME/ran\")\" -gt 1 ] && exit 0
-touch \"$RIG_RUN/ready\"
-cp {other} \"$RIG_HOME/bin/other\" && mv \"$RIG_HOME/bin/other\" \"$RIG_HOME/bin/good\"
-cp {failing} \"$RIG_HOME/bin/staged-$RIG_SESSION\"
-exit 75",
-                other = other.display(),
-                failing = failing.display(),
-            ),
-        )?;
+        let swap = format!(
+            "cp {other} \"$RIG_HOME/bin/other\" && mv \"$RIG_HOME/bin/other\" \"$RIG_HOME/bin/good\"
+cp {failing} \"$RIG_HOME/bin/staged-$RIG_SESSION\"",
+            other = other.display(),
+            failing = failing.display(),
+        );
+        let own = || sh("echo own >> \"$RIG_HOME/ran\"");
+        let agent = fake_agent::script(&[
+            &[own(), Step::Ready, sh(&swap), Step::End(AgentEnd::Reload)],
+            &[own()],
+        ]);
+        fs::write(home.good(), agent)?;
         let (claimed, _) = claim(&home, Start::New, None)?;
         let running = select(
             &at(&home, Path::new(NO_LAUNCHER))?,
@@ -1431,8 +1490,9 @@ fn a_trial_ready_after_a_newer_good_build_leaves_it_good() {
             &format!(
                 "[ -n \"$RIG_DESCRIBE\" ] && exit 0
 cp {newer} \"$RIG_HOME/bin/newer\" && mv \"$RIG_HOME/bin/newer\" \"$RIG_HOME/bin/good\"
-touch \"$RIG_RUN/ready\"",
+{ready}",
                 newer = newer.display(),
+                ready = fake_agent::commands(&[Step::Ready]),
             ),
         )?;
         let print = Invocation {
@@ -1472,8 +1532,8 @@ fn a_signal_ends_the_wait_to_promote_a_ready_trial() {
             &home.staged(),
             &format!(
                 "[ -n \"$RIG_DESCRIBE\" ] && exit 0
-touch \"$RIG_RUN/ready\"
-(sleep 1; kill -TERM {}) &",
+{}(sleep 1; kill -TERM {}) &",
+                fake_agent::commands(&[Step::Ready]),
                 std::process::id()
             ),
         )?;
@@ -1573,15 +1633,20 @@ fn a_reload_on_the_new_launcher_starts_as_a_reload() {
         let launcher = home.root().join("launcher").join("rig");
         fs::create_dir_all(home.root().join("launcher"))?;
         fs::write(&launcher, "old")?;
-        let agent = "[ -n \"$RIG_DESCRIBE\" ] && exit 0
-echo \"$RIG_START|$RIG_NOTICE|$RIG_WARNING|$RIG_SECRET_TYPED\" >> \"$RIG_HOME/started\"
-touch \"$RIG_RUN/ready\"
-[ -e \"$RIG_HOME/reloaded\" ] && exit 0
-touch \"$RIG_HOME/reloaded\"
-echo new > \"$RIG_LAUNCHER.new\"; mv \"$RIG_LAUNCHER.new\" \"$RIG_LAUNCHER\"
-exit 75";
+        let log = || {
+            sh("echo \"$RIG_START|$RIG_NOTICE|$RIG_WARNING|$RIG_SECRET_TYPED\" >> \"$RIG_HOME/started\"")
+        };
+        let agent = fake_agent::script(&[
+            &[
+                log(),
+                Step::Ready,
+                sh(REPLACE_LAUNCHER),
+                Step::End(AgentEnd::Reload),
+            ],
+            &[log(), Step::Ready],
+        ]);
         for build in [home.staged(), home.good()] {
-            fs::write(build, format!("#!/bin/sh\n{agent}\n"))?;
+            fs::write(build, &agent)?;
         }
         let here = Some(home.root());
         let (claimed, notice) = claim(&home, Start::Resume(session), here)?;
@@ -1630,21 +1695,22 @@ exit 75";
     );
 }
 
-/// Runs the agent `agent`, a shell body, as the only build of `home` for
-/// `start`, as `invocation` says, and returns how the run ended and what
-/// the agent wrote to the home's `started` file.
+/// Runs an agent that takes the steps `starts` (one list per start,
+/// [`fake_agent::script`]) as the only build of `home` for `start`, as
+/// `invocation` says, and returns how the run ended and what the agent
+/// wrote to the home's `started` file.
 #[cfg(unix)]
 fn run_once(
     home: &Home,
-    agent: &str,
+    starts: &[&[Step]],
     start: Start,
     invocation: &Invocation,
     headless: bool,
 ) -> Result<(Ended, String)> {
     let run = locks::hold_run(home)?;
     absent(fs::remove_file(home.staged()))?;
-    let script = format!("#!/bin/sh\n[ -n \"$RIG_DESCRIBE\" ] && exit 0\n{agent}\n");
-    fs::write(home.good(), script)?;
+    absent(fs::remove_file(home.root().join("fake-agent-starts")))?;
+    fs::write(home.good(), fake_agent::script(starts))?;
     let (claimed, _) = claim(home, start, None)?;
     let running = select(
         &at(home, Path::new(NO_LAUNCHER))?,
@@ -1664,6 +1730,9 @@ fn run_once(
     Ok((ended, started.unwrap_or_default()))
 }
 
+/// Notes each start's session in `RIG_HOME/started`.
+const LOG_SESSION: &str = "echo \"$RIG_SESSION\" >> \"$RIG_HOME/started\"";
+
 /// A one-shot run whose prompt is `/new` or `/resume` ends with the codes
 /// `rig help-agents` promises: the agent's switch is not followed, and the
 /// script is not told the reload code.
@@ -1675,10 +1744,11 @@ fn a_one_shot_switch_ends_with_a_code_scripts_are_promised() {
         print: Some("/new".to_owned()),
         ..Invocation::default()
     };
-    let agent = "echo \"$RIG_SESSION\" >> \"$RIG_HOME/started\"
-touch \"$RIG_RUN/ready\"
-: > \"$RIG_HOME/sessions/$RIG_SESSION/switch\"
-exit 75";
+    let agent: &[&[Step]] = &[&[
+        sh(LOG_SESSION),
+        Step::Ready,
+        Step::End(AgentEnd::Switch(None)),
+    ]];
     let ended = run_once(&home, agent, Start::New, &print, true);
     fs::remove_dir_all(home.root()).ok();
     let ended = ended.map_err(|failure| failure.to_string());
@@ -1695,11 +1765,10 @@ exit 75";
 #[test]
 fn an_exit_code_of_75_alone_is_a_failure_not_a_reload() {
     let home = builds("raw-75", "", "");
-    let agent = "echo \"$RIG_SESSION\" >> \"$RIG_HOME/started\"
-touch \"$RIG_RUN/ready\"
-[ -e \"$RIG_HOME/once\" ] && exit 0
-touch \"$RIG_HOME/once\"
-exit 75";
+    let agent: &[&[Step]] = &[
+        &[sh(LOG_SESSION), Step::Ready, Step::Exit(75)],
+        &[sh(LOG_SESSION), Step::Ready],
+    ];
     let ended = run_once(&home, agent, Start::New, &Invocation::default(), false);
     fs::remove_dir_all(home.root()).ok();
     let ended = ended.map_err(|failure| failure.to_string());
@@ -1722,26 +1791,26 @@ fn an_agent_killed_after_asking_to_switch_switches_nothing() {
             Ok(id)
         };
         let (current, other) = (saved()?, saved()?);
-        let killed = format!(
-            "echo \"$RIG_SESSION\" >> \"$RIG_HOME/started\"
-touch \"$RIG_RUN/ready\"
-echo {other} > \"$RIG_HOME/sessions/$RIG_SESSION/switch\"
-kill -9 $$"
-        );
+        let killed: &[&[Step]] = &[&[
+            sh(LOG_SESSION),
+            Step::Ready,
+            Step::Record(AgentEnd::Switch(Some(other))),
+            sh("kill -9 $$"),
+        ]];
         let resume = || Start::Resume(current.clone());
-        run_once(&home, &killed, resume(), &Invocation::default(), false)?;
-        let reloads = "echo \"$RIG_SESSION\" >> \"$RIG_HOME/started\"
-touch \"$RIG_RUN/ready\"
-[ -e \"$RIG_HOME/reloaded\" ] && exit 0
-touch \"$RIG_HOME/reloaded\"
-exit 75";
-        let (_, started) = run_once(&home, reloads, resume(), &Invocation::default(), false)?;
-        Ok((started, current))
+        let none = Invocation::default();
+        let (ended, _) = run_once(&home, killed, resume(), &none, false)?;
+        let reloads: &[&[Step]] = &[
+            &[sh(LOG_SESSION), Step::Ready, Step::End(AgentEnd::Reload)],
+            &[sh(LOG_SESSION), Step::Ready],
+        ];
+        let (_, started) = run_once(&home, reloads, resume(), &none, false)?;
+        Ok((ended.code, started, current))
     })();
     fs::remove_dir_all(home.root()).ok();
     let ran = ran.map_err(|failure| failure.to_string());
-    let stayed = ran
-        .as_ref()
-        .is_ok_and(|(started, current)| *started == format!("{current}\n").repeat(3));
+    let stayed = ran.as_ref().is_ok_and(|(code, started, current)| {
+        *code == ExitCode::FAILURE && *started == format!("{current}\n").repeat(3)
+    });
     assert!(stayed, "{ran:?}");
 }

@@ -973,7 +973,7 @@ fn end(run: &mut Run, (mut ended, reason): (HeadlessEnded, Reason), mut commands
         // Nobody reads the answer: the run was cut off, as by SIGPIPE.
         _ if run.unread.is_some_and(|unread| unread()) => ExitReason::Signal,
         0 => ExitReason::Quit,
-        code => ExitReason::Failed(code),
+        code => ExitReason::Failed(FailCode::or_failure(code)),
     };
     commands.trigger(Exit(exit));
     commands.trigger(ended);
