@@ -1881,6 +1881,8 @@ fn no_changing_plugin_effect_starts_once_the_session_cannot_be_saved() {
         .spawn((open(), Footprint::default(), ForAgent(agent)))
         .id();
     let asking = world.spawn((open(), ForAgent(agent))).id();
+    let reads = Footprint(Touches::Reads(Scope::Anything));
+    let reading = world.spawn((open(), reads, ForAgent(agent))).id();
     app.update();
     let world = app.world();
     let refused = world.get::<Outcome>(changing).and_then(|outcome| {
@@ -1892,4 +1894,29 @@ fn no_changing_plugin_effect_starts_once_the_session_cannot_be_saved() {
         refused.is_some_and(|why| why.starts_with("Not run: the session can no longer be saved")),
     );
     assert!(world.get::<Started>(asking).is_some());
+    assert!(world.get::<Started>(reading).is_some());
+}
+
+#[test]
+fn a_saved_resource_removed_after_a_restart_stays_removed_after_the_next() {
+    let store = MemoryStore::default();
+    let mut first = app(&store);
+    let agent = first_agent(&mut first);
+    assert!(agent.is_some());
+    let Some(agent) = agent else { return };
+    say(&mut first, agent, Message::user("hello"));
+    first.world_mut().insert_resource(Compactions(3));
+    first.update();
+    drop(first);
+
+    let mut second = app(&store);
+    let restored = second.world().get_resource::<Compactions>();
+    assert_eq!(restored.map(|count| count.0), Some(3));
+    second.world_mut().remove_resource::<Compactions>();
+    second.update();
+    drop(second);
+
+    let third = app(&store);
+    let compactions = third.world().get_resource::<Compactions>();
+    assert_eq!(compactions.map(|count| count.0), None);
 }

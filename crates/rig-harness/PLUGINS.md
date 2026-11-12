@@ -375,7 +375,9 @@ saved with its frame, with no ordering to add. Then its own schedule
 writes a log of its own adds that system to `Persist` in `WriteLogs`. A notice
 sent there, such as the session log's write failure, is read the next frame,
 so a system that keeps something on exit runs in `Persist`
-`.after(WriteLogs)` or asks `SessionLog::failure()`.
+`.after(WriteLogs)` or asks `SessionLog::failure()`. A schedule of a plugin's
+own that it inserts after `Last` (`MainScheduleOrder::insert_after`) runs
+before the save, so what it changes is saved with its frame.
 
 # A tool
 
@@ -1283,7 +1285,13 @@ Others can gate it, review its outcome and its `Published` facts (an open
 effect inserts its own as it decides: `Published(context.result_context())`
 of a rig-core `ToolContext` it `insert_result`s them into) and replay it;
 `CallOf(turn)` keeps a turn open until it settles. Work off the main
-thread is `Running::answering(pool, wake, future)` on the effect.
+thread is `Running::answering(pool, wake, future)` on the effect. An effect
+that may change something outside the session, such as files or a
+deployment, carries a `Footprint` saying so (`Footprint::default()` may
+change anything): once the session can no longer be saved, it is answered
+"Not run" instead of starting, as a tool call that may change something
+is. An effect without one is treated as changing nothing, so it still
+starts, as an exit or a question for the user must.
 
 **What a running effect would answer if stopped.** Its owner keeps an
 `IfStopped(outcome)` on it current (the output so far), which the kernel
@@ -1325,7 +1333,8 @@ fn build(app: &mut App) {
 /// `/deploy`: a deploy effect any plugin can gate.
 fn deploy(In(args): In<CommandArgs>, mut commands: Commands) {
     let kind = EffectKind::Custom { kind: "deploy".into(), payload: serde_json::json!({ "target": args.args }) };
-    commands.spawn((EffectRequest { kind, handler: None }, ForAgent(args.agent), Deploy::default()));
+    let request = EffectRequest { kind, handler: None };
+    commands.spawn((request, Footprint::default(), ForAgent(args.agent), Deploy::default()));
 }
 
 /// Keeps what each deploy answers if it is stopped first, the steps it

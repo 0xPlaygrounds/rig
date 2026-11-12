@@ -33,6 +33,8 @@ impl Plugin for HistoryVersionsPlugin {
         app.add_setting::<HistorySettings>(NAME)
             .register_required_components::<Agent, ConvVersions>()
             .keeps_saved::<ConvVersions>()
+            // After the kernel's save, which sends the changes it records;
+            // its own change is saved with the next frame.
             .add_systems(Persist, (record, prune).chain())
             .add_command("conv-log", "List the versions of the conversation, newest first", log)
             .add_command("conv-diff", "What version N of the conversation changed: /conv-diff N", diff)

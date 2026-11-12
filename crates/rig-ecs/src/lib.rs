@@ -111,8 +111,8 @@ pub mod prelude {
 use bevy_app::MainScheduleOrder;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
+use bevy_ecs::schedule::ScheduleLabel;
 use bevy_ecs::schedule::SingleThreadedExecutor;
-use bevy_ecs::schedule::{InternedScheduleLabel, ScheduleLabel};
 use bevy_time::TimePlugin;
 
 use agent::{Agent, Notice};
@@ -141,8 +141,9 @@ pub enum StartupSystems {
     Reconcile,
 }
 
-/// The frame's last schedule, the kernel's. It runs after `Last` and after
-/// the kernel queued what the frame changed for the session log: every
+/// The frame's last schedule, the kernel's. It runs after `Last`, after any
+/// schedule a plugin inserts after `Last`, and after the kernel queued what
+/// the frame changed for the session log: every
 /// conversation changed and every [`ReflectSaved`](session_log::ReflectSaved)
 /// value, so whatever a plugin changes in `Last`, on the exit frame too, is
 /// saved with the frame. It holds the [`WriteLogs`] systems and what reads
@@ -193,18 +194,15 @@ impl Plugin for AgentPlugin {
                 .edit_schedule(Persist, single);
         }
         if let Some(mut order) = app.world_mut().get_resource_mut::<MainScheduleOrder>() {
-            let at = |order: &MainScheduleOrder, label: InternedScheduleLabel| {
-                order.labels.iter().position(|it| *it == label)
-            };
             // A conversation changed before `Update` is saved before it runs.
-            if let Some(update) = at(&order, Update.intern()) {
+            let update = order.labels.iter().position(|it| *it == Update.intern());
+            if let Some(update) = update {
                 order.labels.insert(update, SaveConversations.intern());
             }
-            // Saved and written after every schedule a plugin runs systems in.
-            if let Some(last) = at(&order, Last.intern()) {
-                order.labels.insert(last + 1, SaveFrame.intern());
-                order.labels.insert(last + 2, Persist.intern());
-            }
+            // Saved and written at the end of the frame: a schedule a plugin
+            // inserts after `Last`, before or after this, runs before them.
+            order.labels.push(SaveFrame.intern());
+            order.labels.push(Persist.intern());
         }
         app.init_resource::<effects::Effects>()
             .init_resource::<SessionLog>()

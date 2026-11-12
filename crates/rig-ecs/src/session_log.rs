@@ -389,7 +389,8 @@ pub(crate) fn retire(
 }
 
 /// Restores the session at startup, settles what a crash or restart left
-/// half done, and logs everything after.
+/// half done, and logs everything after. It needs [`AgentPlugin`](super::AgentPlugin),
+/// which runs the schedules that save and write the logs.
 pub struct SessionLogPlugin;
 
 impl Plugin for SessionLogPlugin {

@@ -106,3 +106,26 @@ fn an_id_that_names_no_agent_log_is_refused() {
         assert_eq!(made, Err(refused));
     }
 }
+
+#[test]
+fn an_id_is_free_again_once_its_agent_is_gone_or_its_spawn_was_refused() {
+    let mut app = app();
+    app.add_plugins(crate::AgentPlugin);
+    let world = app.world_mut();
+    let spec = |tools: Option<Vec<String>>| AgentSpec {
+        id: Some(AgentId("helper".into())),
+        tools,
+        ..AgentSpec::default()
+    };
+    let refused = spawn(world, Origin::Root, spec(Some(vec!["missing".into()])));
+    assert!(matches!(refused, Err(SpawnRefused::Tool(_))), "{refused:?}");
+    let first = spawn(world, Origin::Root, spec(None));
+    assert!(first.is_ok(), "{first:?}");
+    let taken = spawn(world, Origin::Root, spec(None));
+    assert_eq!(taken, Err(SpawnRefused::IdTaken(AgentId("helper".into()))));
+    if let Ok(first) = first {
+        world.despawn(first);
+    }
+    let again = spawn(world, Origin::Root, spec(None));
+    assert!(again.is_ok(), "{again:?}");
+}

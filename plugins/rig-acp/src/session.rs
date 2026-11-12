@@ -358,7 +358,8 @@ pub(crate) fn install(app: &mut App) {
             .in_set(OnAppExitSystems)
             .run_if(on_message::<AppExit>),
     )
-    // Last: the session log is written before output may wait.
+    // After the logs are written, so the session log is written before
+    // output may wait.
     .add_systems(
         Persist,
         finish_output.after(WriteLogs).run_if(on_message::<AppExit>),
