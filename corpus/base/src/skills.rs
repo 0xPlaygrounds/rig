@@ -257,8 +257,10 @@ fn refresh(
     mut sections: Query<&mut PromptSection, With<SkillsSection>>,
     mut notices: MessageWriter<Notice>,
 ) {
-    let changed =
-        (changes.read()).any(|change| roots.contains(change.watch) && change.event.names_files());
+    let changed = (changes.read())
+        .filter(|change| roots.contains(change.watch) && change.event.names_files())
+        .count()
+        > 0;
     if !changed && !roots.iter().any(|(_, watch)| watch.is_added()) {
         return;
     }

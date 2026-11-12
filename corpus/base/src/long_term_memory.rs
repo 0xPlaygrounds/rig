@@ -355,8 +355,10 @@ fn reload(
     files: Query<(), With<MemoryFile>>,
     memories: Option<ResMut<Memories>>,
 ) {
-    let changed =
-        (changes.read()).any(|change| files.contains(change.watch) && change.event.names_files());
+    let changed = (changes.read())
+        .filter(|change| files.contains(change.watch) && change.event.names_files())
+        .count()
+        > 0;
     if let Some(mut memories) = memories.filter(|_| changed) {
         memories.read();
     }

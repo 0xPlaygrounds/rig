@@ -63,7 +63,10 @@ impl Plugin for OutputStylesPlugin {
             .init_resource::<ProjectRoot>()
             .init_resource::<RigHome>()
             .add_systems(Startup, (read_now, watch))
-            .add_systems(Update, (reload, restyle).chain().before(AgentLoop))
+            .add_systems(
+                Update,
+                (reload, restyle).chain().after(PollTasks).before(AgentLoop),
+            )
             .add_observer(styled)
             .add_observer(unstyled)
             .add_observer(read)

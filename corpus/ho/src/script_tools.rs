@@ -169,8 +169,10 @@ fn refresh(
 ) {
     // Read at once on startup too, so the first request has them, not
     // only once the watch's first look comes.
-    let changed =
-        (changes.read()).any(|change| dirs.contains(change.watch) && change.event.names_files());
+    let changed = (changes.read())
+        .filter(|change| dirs.contains(change.watch) && change.event.names_files())
+        .count()
+        > 0;
     if !changed && !dirs.iter().any(|(_, watch)| watch.is_added()) {
         return;
     }
