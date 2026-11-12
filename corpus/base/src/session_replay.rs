@@ -471,7 +471,8 @@ fn exit_reason(record: &EffectRecord) -> Option<ExitReason> {
     }
 }
 
-/// The text inside a string's debug form, its escapes undone.
+/// The text inside a string's debug form, its escapes undone; `None` for
+/// an escape that form never writes.
 fn unquote(quoted: &str) -> Option<String> {
     let mut text = String::with_capacity(quoted.len());
     let mut chars = quoted.chars();
@@ -485,11 +486,21 @@ fn unquote(quoted: &str) -> Option<String> {
             'r' => '\r',
             't' => '\t',
             '0' => '\0',
+            plain @ ('\\' | '"' | '\'') => plain,
             'u' => {
-                let hex: String = chars.by_ref().skip(1).take_while(|&c| c != '}').collect();
+                if chars.next()? != '{' {
+                    return None;
+                }
+                let mut hex = String::new();
+                loop {
+                    match chars.next()? {
+                        '}' => break,
+                        digit => hex.push(digit),
+                    }
+                }
                 char::from_u32(u32::from_str_radix(&hex, 16).ok()?)?
             }
-            other => other,
+            _ => return None,
         };
         text.push(escaped);
     }
