@@ -466,7 +466,8 @@ fn told(events: &Receiver<WatchEvent>, wait: Duration) -> Vec<(&'static str, Vec
 
 /// A polling watch whose workspace fails to list once reports no file
 /// removed, and none made again when it lists again: it says the listing
-/// failed, once, and then only what really changed.
+/// failed, once, then the files there as a snapshot, and what really
+/// changed.
 #[test]
 fn a_failed_look_reports_no_change() {
     let memory = Arc::new(Memory::default());
@@ -488,20 +489,22 @@ fn a_failed_look_reports_no_change() {
     assert_eq!(
         (started, failing, recovered),
         (
-            vec![("snapshot", vec![a, b.clone()])],
+            vec![("snapshot", vec![a.clone(), b.clone()])],
             vec![("unavailable", vec![])],
-            vec![("changed", vec![b])]
+            vec![("snapshot", vec![a, b.clone()]), ("changed", vec![b])]
         )
     );
 }
 
-/// A polling watch whose first listing fails says so and ends: it is no
-/// empty directory, nor a watch of nothing kept open. A root that is not
-/// there is one with no files, whose files are told as they come.
+/// A polling watch whose first listing fails says so and keeps looking:
+/// it is no empty directory, and once a listing works it tells the files
+/// there, then what changes. A root that is not there is one with no
+/// files, whose files are told as they come.
 #[test]
 fn a_failed_start_is_not_an_empty_directory() {
     let memory = Arc::new(Memory::default());
-    memory.write(Path::new("/project/note.txt"), b"x").ok();
+    let note = Path::new("/project/note.txt");
+    memory.write(note, b"x").ok();
     memory.1.store(true, std::sync::atomic::Ordering::SeqCst);
     let watch = memory
         .clone()
@@ -509,8 +512,20 @@ fn a_failed_start_is_not_an_empty_directory() {
     assert!(watch.is_ok(), "{watch:?}");
     let Ok(watch) = watch else { return };
     let memory_events = events(watch);
-    let failed = told(&memory_events, Duration::from_millis(1500));
-    assert_eq!(failed, [("unavailable", vec![]), ("closed", vec![])]);
+    let wait = Duration::from_millis(1500);
+    let failed = told(&memory_events, wait);
+    memory.1.store(false, std::sync::atomic::Ordering::SeqCst);
+    let listed = told(&memory_events, wait);
+    memory.write(note, b"edited").ok();
+    let edited = told(&memory_events, wait);
+    assert_eq!(
+        (failed, listed, edited),
+        (
+            vec![("unavailable", vec![])],
+            vec![("snapshot", vec![note.to_path_buf()])],
+            vec![("changed", vec![note.to_path_buf()])]
+        )
+    );
 
     let base = std::env::temp_dir().join(format!("rig-tools-watch-later-{}", std::process::id()));
     std::fs::remove_dir_all(&base).ok();
@@ -535,26 +550,121 @@ fn a_failed_start_is_not_an_empty_directory() {
     );
 }
 
-/// A local watch of a root it may not look into, here behind a directory
-/// it may not enter, cannot start: only a root that is not there may come
-/// later.
+/// A local watch of a root it may not look into at first, a locked
+/// directory or one behind a locked directory, says so and keeps trying:
+/// once it opens, it tells the files there, then what changes.
 #[cfg(unix)]
 #[test]
-fn a_local_watch_of_a_root_behind_a_locked_directory_cannot_start() {
+fn a_local_watch_of_a_locked_root_starts_once_it_opens() {
     use std::os::unix::fs::PermissionsExt as _;
     let base = std::env::temp_dir().join(format!("rig-tools-watch-behind-{}", std::process::id()));
-    let root = base.join("locked/project");
-    std::fs::create_dir_all(&root).ok();
-    let mode =
-        |mode| std::fs::set_permissions(base.join("locked"), std::fs::Permissions::from_mode(mode));
-    mode(0o000).ok();
-    // Whoever may enter it anyway (root) can watch it.
-    let locked = std::fs::metadata(&root).is_err();
-    let watch = Arc::new(Local).watch(&root, true, Listing::Visible);
-    mode(0o755).ok();
     std::fs::remove_dir_all(&base).ok();
-    if locked {
-        assert!(watch.is_err(), "{watch:?}");
+    std::fs::create_dir_all(base.join("locked/project")).ok();
+    let base = std::fs::canonicalize(&base).unwrap_or(base);
+    for (locked, root) in [
+        (base.join("locked"), base.join("locked/project")),
+        (base.join("locked"), base.join("locked")),
+    ] {
+        let file = root.join("f.txt");
+        std::fs::write(&file, "one").ok();
+        let mode = |mode| std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(mode));
+        mode(0o000).ok();
+        // Whoever may read it anyway (root) can watch it.
+        let refused = std::fs::read_dir(&root).is_err();
+        let watch = Arc::new(Local).watch(&root, true, Listing::Visible);
+        if watch.is_err() {
+            mode(0o755).ok();
+        }
+        assert!(watch.is_ok(), "{root:?}: {watch:?}");
+        let Ok(watch) = watch else { return };
+        let events = events(watch);
+        let wait = Duration::from_millis(1500);
+        let failed = told(&events, wait);
+        mode(0o755).ok();
+        let listed = told(&events, wait);
+        std::fs::write(&file, "two").ok();
+        let edited = told(&events, wait);
+        std::fs::remove_file(&file).ok();
+        if refused {
+            assert_eq!(
+                (failed, listed, edited),
+                (
+                    vec![("unavailable", vec![])],
+                    vec![("snapshot", vec![file.clone()])],
+                    vec![("changed", vec![file])]
+                ),
+                "{root:?}"
+            );
+        }
+    }
+    std::fs::remove_dir_all(&base).ok();
+}
+
+/// A watched file whose mark cannot be read, though it is listed, cannot
+/// be looked at: the watch says so, and is no watch of a missing file.
+#[test]
+fn a_watched_file_that_cannot_be_looked_at_is_unavailable() {
+    let watch = Arc::new(Unstatable).watch(Path::new("/watched.txt"), false, Listing::All);
+    assert!(watch.is_ok(), "{watch:?}");
+    let Ok(watch) = watch else { return };
+    let events = events(watch);
+    assert_eq!(
+        told(&events, Duration::from_millis(500)),
+        [("unavailable", vec![])]
+    );
+}
+
+/// A workspace that lists the file it is asked about and cannot look at
+/// any.
+#[derive(Debug)]
+struct Unstatable;
+
+impl Workspace for Unstatable {
+    fn stat(&self, _: &Path) -> std::io::Result<crate::workspace::Stat> {
+        Err(std::io::ErrorKind::PermissionDenied.into())
+    }
+
+    fn read(&self, _: &Path, _: u64) -> std::io::Result<crate::workspace::Contents> {
+        Err(std::io::ErrorKind::PermissionDenied.into())
+    }
+
+    fn write(&self, _: &Path, _: &[u8]) -> std::io::Result<()> {
+        Err(std::io::ErrorKind::Unsupported.into())
+    }
+
+    fn remove(&self, _: &Path) -> std::io::Result<()> {
+        Err(std::io::ErrorKind::Unsupported.into())
+    }
+
+    fn rename(&self, _: &Path, _: &Path) -> std::io::Result<()> {
+        Err(std::io::ErrorKind::Unsupported.into())
+    }
+
+    fn canonical(&self, path: &Path) -> PathBuf {
+        path.to_path_buf()
+    }
+
+    fn files(
+        &self,
+        root: &Path,
+        _: Option<&str>,
+        _: Listing,
+    ) -> std::io::Result<crate::workspace::Listed> {
+        Ok(crate::workspace::Listed {
+            files: vec![root.to_path_buf()],
+            failed: Vec::new(),
+        })
+    }
+
+    fn spawn(
+        &self,
+        _: &crate::process::Launcher,
+        _: Option<&Path>,
+        _: &std::ffi::OsStr,
+        _: &[std::ffi::OsString],
+        _: crate::process::Spawn,
+    ) -> std::io::Result<crate::process::Process> {
+        Err(std::io::ErrorKind::Unsupported.into())
     }
 }
 
@@ -609,16 +719,16 @@ fn an_edit_made_while_a_listing_fails_is_reported_once_it_works() {
         (
             vec![("snapshot", vec![a.clone(), f.clone()])],
             vec![],
-            vec![("changed", vec![f])],
+            vec![("changed", vec![f.clone()])],
             vec![("unavailable", vec![])],
-            vec![("changed", vec![a])],
+            vec![("snapshot", vec![a.clone(), f]), ("changed", vec![a])],
         )
     );
 }
 
 /// A local watch whose root cannot be looked at for a while, here behind
-/// a directory locked after it started, says so and keeps watching: an
-/// edit made once the directory opens again is told.
+/// a directory locked after it started, says so and keeps watching: once
+/// the directory opens again it tells the files there, then an edit.
 #[cfg(unix)]
 #[test]
 fn a_root_locked_for_a_while_is_watched_again() {
@@ -644,7 +754,7 @@ fn a_root_locked_for_a_while_is_watched_again() {
     let locked = std::fs::metadata(&root).is_err();
     let failing = told(&events, wait);
     mode(0o755).ok();
-    told(&events, wait);
+    let back = told(&events, wait);
     std::fs::write(&file, "two").ok();
     let edited = told(&events, wait);
     std::fs::remove_dir_all(&top).ok();
@@ -652,10 +762,11 @@ fn a_root_locked_for_a_while_is_watched_again() {
         return;
     }
     assert_eq!(
-        (started, failing, edited),
+        (started, failing, back, edited),
         (
             vec![("snapshot", vec![file.clone()])],
             vec![("unavailable", vec![])],
+            vec![("snapshot", vec![file.clone()])],
             vec![("changed", vec![file])],
         )
     );

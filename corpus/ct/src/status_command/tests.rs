@@ -225,3 +225,39 @@ fn a_bad_table_refuses_a_run_the_terminal_view_does_not_take() {
         "{problems:?}"
     );
 }
+
+/// The watch's snapshot, also the one it tells once a failed listing
+/// works again, reads the settings again: an edit it made in between is
+/// not lost.
+#[test]
+fn a_snapshot_reads_the_settings_again() {
+    let home = scratch_home("corpus-ct-status-command-snapshot");
+    let dir = home.root().to_path_buf();
+    assert!(fs::create_dir_all(&dir).is_ok());
+    let (mut app, _wakes) = app_in(&home, &SessionId::generate());
+    app.insert_resource(Settings::from_toml(&format!("{SECTION} = 'echo one'")))
+        .insert_resource(Invoked {
+            terminal: true,
+            ..Invoked::default()
+        })
+        .add_front(Front::new(FRONT).on_terminal())
+        .insert_resource(ProjectRoot(dir.clone()))
+        .add_plugins((AgentPlugin, SessionLogPlugin, WatchPlugin))
+        .add_plugins((rig_harness::pick::PickPlugin, StatusCommandPlugin));
+    app.finish();
+    app.update();
+    // The watch's own events are left out: this test tells them.
+    let world = app.world_mut();
+    let watch = (world.query_filtered::<Entity, With<SettingsWatch>>())
+        .iter(world)
+        .next()
+        .unwrap_or(Entity::PLACEHOLDER);
+    world.entity_mut(watch).remove::<FileWatch>();
+    assert!(fs::write(home.settings(), format!("{SECTION} = 'echo two'\n")).is_ok());
+    let event = WatchEvent::Snapshot(vec![home.settings()]);
+    app.world_mut().write_message(FileChanges { watch, event });
+    app.update();
+    let command = app.world().resource::<StatusCommand>().command.clone();
+    fs::remove_dir_all(&dir).ok();
+    assert_eq!(command.as_deref(), Some("echo two"));
+}

@@ -198,8 +198,9 @@ fn saved_ai_comments_start_turns_once_and_are_taken_out() {
 
 rig_defaults_test_support::stages_ordered_test!(WatchAiCommentsPlugin);
 
-/// A project whose watch cannot start holds no `--print` run open: the
-/// watch is given up, and the user is told.
+/// A project whose watch cannot start holds no `--print` run open while
+/// it cannot: the user is told, and once the project opens and the watch
+/// lists it, it holds the run again.
 #[cfg(unix)]
 #[test]
 fn a_watch_that_cannot_start_keeps_no_run_going() {
@@ -217,13 +218,31 @@ fn a_watch_that_cannot_start_keeps_no_run_going() {
     let (mut app, wakes, agent) = start(&model, &dir);
     app.world_mut()
         .trigger(Deliver::new(agent, "/watch on", DeliveryMode::Queue));
-    run_until(&mut app, &wakes, |world| world.resource::<Watching>().on);
-    run_until(&mut app, &wakes, |world| !world.resource::<Watching>().on);
-    let kept = app
-        .world_mut()
-        .query::<&KeepRunning>()
-        .iter(app.world())
-        .count();
+    let told = |kind: fn(&WatchEvent) -> bool| {
+        move |world: &World| {
+            let changes = &world.resource::<Collected<FileChanges>>().0;
+            changes.iter().any(|change| kind(&change.event))
+        }
+    };
+    let kept = |app: &mut App| {
+        let world = app.world_mut();
+        world.query::<&KeepRunning>().iter(world).count()
+    };
+    run_until(
+        &mut app,
+        &wakes,
+        told(|event| matches!(event, WatchEvent::Unavailable(_))),
+    );
+    app.update();
+    let locked = kept(&mut app);
     std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).ok();
-    assert_eq!(kept, 0);
+    run_until(
+        &mut app,
+        &wakes,
+        told(|event| matches!(event, WatchEvent::Snapshot(_))),
+    );
+    app.update();
+    let opened = kept(&mut app);
+    let on = app.world().resource::<Watching>().on;
+    assert_eq!((locked, opened, on), (0, 1, true));
 }
