@@ -596,7 +596,7 @@ impl Home {
     ///
     /// When no saved session has that id or name, or several have that
     /// name: the error lists their ids. When a saved session's name cannot
-    /// be read, naming its file.
+    /// be read, naming its file and saying to resume by id.
     pub fn find(&self, name_or_id: &str) -> Result<SessionId, String> {
         let wanted = name_or_id.trim();
         if let Ok(id) = wanted.parse::<SessionId>()
@@ -606,7 +606,12 @@ impl Home {
         }
         let mut named = Vec::new();
         for (id, dir) in self.saved_sessions() {
-            let name = dir.name().map_err(|failure| failure.to_string())?;
+            // The name that cannot be read may be `wanted`, so no match is sure.
+            let name = dir.name().map_err(|failure| {
+                format!(
+                    "{failure}; that session may be named `{wanted}` too, so resume it by its id"
+                )
+            })?;
             if name.as_deref() == Some(wanted) {
                 named.push(id);
             }

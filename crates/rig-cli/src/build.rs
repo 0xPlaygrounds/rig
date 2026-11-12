@@ -546,14 +546,16 @@ pub fn stage(launch: &Launch, staged: &Path, staging: Staging) -> Result<()> {
         return Ok(());
     }
     let shared = home.staged();
-    if stamp(&shared).is_ok_and(|stamp| stamp != built) {
+    let shared_stamp = stamp_if_any(&shared)?;
+    if shared_stamp.as_ref().is_some_and(|stamp| *stamp != built) {
         fs::remove_file(&shared)?;
     }
-    let known = [home.good(), shared]
-        .iter()
-        .any(|binary| stamp(binary).is_ok_and(|stamp| stamp == built))
-        || fs::read_to_string(home.rejected()).is_ok_and(|rejected| rejected == built);
-    if staging == Staging::OnlyNew && known {
+    let built = Some(built);
+    if staging == Staging::OnlyNew
+        && (stamp_if_any(&home.good())? == built
+            || shared_stamp == built
+            || rejected(home)? == built)
+    {
         return Ok(());
     }
     let temporary = home.bin().join("staged.tmp");
@@ -622,7 +624,7 @@ const DESCRIBE_TIMEOUT: Duration = Duration::from_secs(10);
 /// [`DESCRIBE_TIMEOUT`].
 pub fn described(launch: &Launch, binary: &Path) -> Result<AgentDescription> {
     let home = &launch.home();
-    if let Some(report) = good_report(home, binary) {
+    if let Some(report) = good_report(home, binary)? {
         return Ok(report);
     }
     let kept = home.described(&stamp(binary)?);
@@ -636,10 +638,18 @@ pub fn described(launch: &Launch, binary: &Path) -> Result<AgentDescription> {
     Ok(AgentDescription::parse(&text))
 }
 
-/// The report kept for the build `binary`, if any.
-pub fn good_report(home: &Home, binary: &Path) -> Option<AgentDescription> {
-    let text = fs::read_to_string(home.described(&stamp(binary).ok()?)).ok()?;
-    Some(AgentDescription::parse(&text))
+/// The report kept for the build `binary`; `None` when there is no such
+/// build or no report for it.
+///
+/// # Errors
+///
+/// When the build's stamp or its report cannot be read, naming the file.
+pub fn good_report(home: &Home, binary: &Path) -> std::io::Result<Option<AgentDescription>> {
+    let Some(stamp) = stamp_if_any(binary)? else {
+        return Ok(None);
+    };
+    let text = fs::optional(fs::read_to_string(home.described(&stamp)))?;
+    Ok(text.map(|text| AgentDescription::parse(&text)))
 }
 
 /// Runs `binary` with [`env::DESCRIBE`] and returns what it wrote, empty
@@ -732,17 +742,40 @@ pub fn reject(home: &Home, trial: &Path) -> Result<()> {
 /// Whether the last build is the one [`reject`] recorded, is not the good
 /// build, and neither `staged` nor the build staged for any launcher
 /// replaces it, so a start runs the previous build instead.
-pub fn passed_over(home: &Home, staged: &Path) -> bool {
-    stamp(&artifact(home)).is_ok_and(|built| {
-        !staged.exists()
-            && !home.staged().exists()
-            && stamp(&home.good()).is_ok_and(|good| good != built)
-            && fs::read_to_string(home.rejected()).is_ok_and(|rejected| rejected == built)
-    })
+///
+/// # Errors
+///
+/// When one of those builds' stamps cannot be read, naming the file.
+pub fn passed_over(home: &Home, staged: &Path) -> std::io::Result<bool> {
+    let Some(built) = stamp_if_any(&artifact(home))? else {
+        return Ok(false);
+    };
+    Ok(stamp_if_any(staged)?.is_none()
+        && stamp_if_any(&home.staged())?.is_none()
+        && stamp_if_any(&home.good())?.is_some_and(|good| good != built)
+        && rejected(home)?.is_some_and(|rejected| rejected == built))
+}
+
+/// The stamp [`reject`] recorded; `None` when none was.
+fn rejected(home: &Home) -> std::io::Result<Option<String>> {
+    fs::optional(fs::read_to_string(home.rejected()))
+}
+
+/// The [`stamp`] of `binary`; `None` when there is no file.
+///
+/// # Errors
+///
+/// When `binary` is there but cannot be looked at, naming it.
+pub fn stamp_if_any(binary: &Path) -> std::io::Result<Option<String>> {
+    fs::optional(stamp(binary))
 }
 
 /// What tells builds apart: the binary's modification time and size.
-pub fn stamp(binary: &Path) -> Result<String> {
+///
+/// # Errors
+///
+/// When `binary` cannot be looked at, naming it.
+pub fn stamp(binary: &Path) -> std::io::Result<String> {
     let metadata = fs::metadata(binary)?;
     let modified = metadata
         .modified()

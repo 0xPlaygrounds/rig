@@ -254,12 +254,22 @@ fn refused(why: &str) -> ExitCode {
 }
 
 /// The report of the build a new session starts with, as kept from its
-/// last build; `None` when it has none. It never builds.
+/// last build; `None` when it has none. It never builds. A report that
+/// cannot be read is warned of on stderr and is `None`, so a start still
+/// builds and `rig help` still answers.
 pub fn last_report(home: &Home) -> Option<AgentDescription> {
-    [home.staged(), home.good()]
-        .into_iter()
-        .find(|binary| binary.exists())
-        .and_then(|binary| build::good_report(home, &binary))
+    let read = || {
+        for binary in [home.staged(), home.good()] {
+            if fs::optional(fs::metadata(&binary))?.is_some() {
+                return build::good_report(home, &binary);
+            }
+        }
+        Ok(None)
+    };
+    read().unwrap_or_else(|why: std::io::Error| {
+        eprintln!("warning: the last build's report cannot be read: {why}");
+        None
+    })
 }
 
 /// Starts the agent of `claimed` with the build `running` holds, again on
@@ -1140,11 +1150,13 @@ fn rebuild(
     let staged = home.staged_for(session);
     match build::compile(launch, &staged, staging, output) {
         Ok(()) => {
-            if build::passed_over(home, &staged) {
-                eprintln!(
+            match build::passed_over(home, &staged) {
+                Ok(true) => eprintln!(
                     "The new build stopped during startup before, so the previous build is \
                      running; `rig build` tries it again."
-                );
+                ),
+                Ok(false) => {}
+                Err(why) => eprintln!("warning: which build runs is not known: {why}"),
             }
             Ok(None)
         }
@@ -1229,7 +1241,7 @@ fn select(
     current: Option<BuildRef>,
 ) -> Result<Running> {
     let home = &launch.home();
-    let good = build::stamp(&home.good()).ok();
+    let good = build::stamp_if_any(&home.good())?;
     let held_before = match current {
         Some(current) => Some(current),
         None => hold_good(launch, run)?,
@@ -1280,7 +1292,7 @@ fn promote(home: &Home, build: &mut BuildRef) -> Result<bool> {
     let Role::Trial { good } = std::mem::replace(&mut build.role, Role::Proven) else {
         return Ok(true);
     };
-    if build::stamp(&home.good()).ok() == good {
+    if build::stamp_if_any(&home.good())? == good {
         let temporary = home.bin().join("good.tmp");
         fs::optional(fs::remove_file(&temporary))?;
         build::hold(&build.executable, &temporary)?;

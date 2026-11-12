@@ -47,7 +47,7 @@ fn a_build_is_staged_with_its_report_and_one_that_cannot_describe_itself_is_reje
                   > \"$RIG_DESCRIBE\"";
     let home = built("staged", report);
     let staged = stage_on(&home, &home.staged(), Staging::Always);
-    let kept = good_report(&home, &home.staged());
+    let kept = good_report(&home, &home.staged()).ok().flatten();
     fs::remove_dir_all(home.root()).ok();
     assert!(staged.is_ok(), "{staged:?}");
     assert!(kept.is_some_and(|report| report.command("stats").is_some()));
@@ -100,6 +100,7 @@ fn a_known_build_whose_stamp_cannot_be_read_fails_the_build_naming_it() {
     let rejected = home.rejected();
     let made = fs::create_dir_all(&rejected);
     let refused = stage_on(&home, &staged, Staging::OnlyNew).map_err(|why| why.to_string());
+    let passed = passed_over(&home, &staged).map_err(|why| why.to_string());
     let removed = fs::remove_dir(&rejected);
     let looped = std::os::unix::fs::symlink(home.staged(), home.staged());
     let looping = stage_on(&home, &staged, Staging::OnlyNew).map_err(|why| why.to_string());
@@ -109,6 +110,10 @@ fn a_known_build_whose_stamp_cannot_be_read_fails_the_build_naming_it() {
     assert!(
         refused.as_ref().is_err_and(|why| why.starts_with(&read)),
         "{refused:?}"
+    );
+    assert!(
+        passed.as_ref().is_err_and(|why| why.starts_with(&read)),
+        "{passed:?}"
     );
     let look = format!("look at {}: ", home.staged().display());
     assert!(
@@ -125,18 +130,20 @@ fn a_rebuilt_rejected_build_is_passed_over_out_loud() {
                   > \"$RIG_DESCRIBE\"";
     let home = built("passed-over", report);
     let staged = home.bin().join("staged-for-session");
-    let before = passed_over(&home, &staged);
+    let before = passed_over(&home, &staged).ok();
     let recorded = stamp(&artifact(&home)).map(|stamp| fs::write(home.rejected(), stamp));
     let restaged = stage_on(&home, &staged, Staging::OnlyNew).map_err(|why| why.to_string());
-    let after = passed_over(&home, &staged);
-    let retried = stage_on(&home, &staged, Staging::Always).is_ok() && !passed_over(&home, &staged);
+    let after = passed_over(&home, &staged).ok();
+    let retried = stage_on(&home, &staged, Staging::Always).is_ok()
+        && passed_over(&home, &staged).is_ok_and(|passed| !passed);
     // The retried build started, so it is the good build that runs.
-    let promoted = fs::rename(&staged, home.good()).is_ok() && !passed_over(&home, &staged);
+    let promoted = fs::rename(&staged, home.good()).is_ok()
+        && passed_over(&home, &staged).is_ok_and(|passed| !passed);
     fs::remove_dir_all(home.root()).ok();
     assert!(matches!(recorded, Ok(Ok(()))), "{recorded:?}");
     assert_eq!(
         (before, restaged, after, retried, promoted),
-        (false, Ok(()), true, true, true)
+        (Some(false), Ok(()), Some(true), true, true)
     );
 }
 
