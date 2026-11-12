@@ -106,23 +106,30 @@ fn the_agent_speaks_v1_to_a_client_that_offers_2_and_says_what_it_takes() {
     assert!(router.wait().is_ok_and(|status| status.success()));
 }
 
-/// A session's process is told nothing its router's launcher told the
-/// router: the launcher's warnings were shown once, by the router.
+/// The router's launcher's warnings reach the user once: the first
+/// session the router opens shows them, and no later session repeats them.
 #[test]
-fn a_session_does_not_repeat_its_routers_launcher_warnings() {
+fn the_first_session_shows_its_routers_launcher_warnings_once() {
     let mut place = Place::new("launcher-warning");
-    let warning = r#"["The launcher's own warning."]"#;
+    let warning = "The launcher's own warning.";
     place
         .env
-        .push(("RIG_WARNING".to_owned(), warning.to_owned()));
+        .push(("RIG_WARNING".to_owned(), format!("[{warning:?}]")));
     let router = drive(&place, full_client(), async |driven| {
-        let new = driven.new_session(Vec::new()).await;
-        assert!(new.is_some(), "no session");
-        let Some(new) = new else { return };
-        let id = new.session_id;
-        assert!(driven.prompt(&id, "/mcp").await.is_ok());
-        let told = told(driven, &id);
-        assert!(!told.contains("The launcher's own warning."), "{told}");
+        let mut told_each = Vec::new();
+        for _ in 0..2 {
+            let new = driven.new_session(Vec::new()).await;
+            assert!(new.is_some(), "no session");
+            let Some(new) = new else { return };
+            let id = new.session_id;
+            assert!(driven.prompt(&id, "/mcp").await.is_ok());
+            told_each.push(told(driven, &id));
+        }
+        let shown: Vec<usize> = told_each
+            .iter()
+            .map(|told| told.matches(warning).count())
+            .collect();
+        assert_eq!(shown, [1, 0], "{told_each:?}");
     });
     assert!(router.is_some());
 }

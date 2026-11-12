@@ -1,7 +1,16 @@
 use super::{
     AgentDescription, DescribedCommand, DescribedFlag, DescribedSecret, Home, Invocation, Stamp,
-    secret_variable,
+    secret_variable, warnings,
 };
+
+/// Blank text is no warning, and any other text that is not an array of
+/// strings is one warning, as it is.
+#[test]
+fn warnings_read_plain_text_whole() {
+    assert!(warnings("").is_empty() && warnings(" \n").is_empty());
+    assert_eq!(warnings("not an array"), ["not an array"]);
+    assert_eq!(warnings("[1, \"a\"]"), ["[1, \"a\"]"]);
+}
 
 #[test]
 fn plugin_options_pass_through_and_read_back() {
