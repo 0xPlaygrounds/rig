@@ -96,21 +96,22 @@ fn install_root(launcher: &Path) -> Result<PathBuf> {
 
 /// The `cargo install` that replaces the launcher in `root` from `source`:
 /// crates.io's latest `rig-cli`, or the checkout as it is now, whose new
-/// commits are the user's to fetch. rustup picks the toolchain of the
-/// directory cargo starts in, so it starts in the checkout, whose own
-/// `rust-toolchain.toml` builds rig, or for crates.io in `root`, which the
-/// launcher's own `bin` directory is in, not in the directory rig was
-/// started in.
+/// commits are the user's to fetch. Both build with the lock rig was
+/// tested with: the checkout's, or the one published in the package.
+/// rustup picks the toolchain of the directory cargo starts in, so it
+/// starts in the checkout, whose own `rust-toolchain.toml` builds rig, or
+/// for crates.io in `root`, which the launcher's own `bin` directory is
+/// in, not in the directory rig was started in.
 pub fn install_command(source: &RigSource, root: &Path) -> Command {
     let mut command = child("cargo");
-    command.args(["install", "--force"]);
+    command.args(["install", "--force", "--locked"]);
     match source {
         RigSource::Registry => {
             command.arg(PACKAGE).current_dir(root);
         }
         RigSource::Local(checkout) => {
             let path = checkout.join("crates").join(PACKAGE);
-            command.arg("--locked").arg("--path").arg(path);
+            command.arg("--path").arg(path);
             command.current_dir(checkout);
         }
     }
