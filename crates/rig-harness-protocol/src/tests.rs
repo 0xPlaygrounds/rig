@@ -405,6 +405,42 @@ fn a_saved_session_is_found_by_its_id_or_its_own_name() {
     assert_eq!(left, Ok(unsaved.clone()));
 }
 
+/// A saved session whose name cannot be read may have the wanted name, so
+/// finding by name is refused naming its file and saying that resuming by
+/// id still works; finding by id is not affected.
+#[test]
+fn a_name_that_cannot_be_read_refuses_finding_by_name_but_not_by_id() {
+    let root = std::env::temp_dir().join(format!("rig-find-unreadable-{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    let home = Home::at(&root);
+    let made: Vec<_> = (0..2).filter_map(|_| home.new_session().ok()).collect();
+    let [(wanted, first), (_, second)] = made.as_slice() else {
+        std::fs::remove_dir_all(&root).ok();
+        assert_eq!(made.len(), 2, "{made:?}");
+        return;
+    };
+    let unreadable = second.path().join("name");
+    let written = [
+        first.mark_saved(),
+        second.mark_saved(),
+        first.set_name(Some("mysess")),
+        std::fs::create_dir_all(&unreadable),
+    ];
+    let by_name = home.find("mysess");
+    let by_id = home.find(wanted.as_str());
+    std::fs::remove_dir_all(&root).ok();
+
+    assert!(written.iter().all(Result::is_ok), "{written:?}");
+    let read = format!("read {}: ", unreadable.display());
+    assert!(
+        by_name
+            .as_ref()
+            .is_err_and(|why| why.starts_with(&read) && why.ends_with("resume it by its id")),
+        "{by_name:?}"
+    );
+    assert_eq!(by_id, Ok(wanted.clone()));
+}
+
 /// `-r` goes wherever an option goes, so `rig -m a/b -r fix-login -p hi`
 /// resumes `fix-login`; never among a command's words or after `--`.
 #[test]

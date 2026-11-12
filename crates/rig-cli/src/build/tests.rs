@@ -88,6 +88,35 @@ fn a_build_that_cannot_be_staged_names_the_step_and_the_file() {
     );
 }
 
+/// A new build is checked against the stamps of the builds already known.
+/// One that cannot be read, here the rejected build's as a directory or the
+/// staged build as a symlink loop, fails the build naming the file and the
+/// step, rather than counting as no build.
+#[test]
+fn a_known_build_whose_stamp_cannot_be_read_fails_the_build_naming_it() {
+    let report = "printf 'rig-describe 1\\n' > \"$RIG_DESCRIBE\"";
+    let home = built("unreadable-stamp", report);
+    let staged = home.bin().join("staged-for-session");
+    let rejected = home.rejected();
+    let made = fs::create_dir_all(&rejected);
+    let refused = stage_on(&home, &staged, Staging::OnlyNew).map_err(|why| why.to_string());
+    let removed = fs::remove_dir(&rejected);
+    let looped = std::os::unix::fs::symlink(home.staged(), home.staged());
+    let looping = stage_on(&home, &staged, Staging::OnlyNew).map_err(|why| why.to_string());
+    fs::remove_dir_all(home.root()).ok();
+    assert!(made.is_ok() && removed.is_ok() && looped.is_ok());
+    let read = format!("read {}: ", rejected.display());
+    assert!(
+        refused.as_ref().is_err_and(|why| why.starts_with(&read)),
+        "{refused:?}"
+    );
+    let look = format!("look at {}: ", home.staged().display());
+    assert!(
+        looping.as_ref().is_err_and(|why| why.starts_with(&look)),
+        "{looping:?}"
+    );
+}
+
 /// A start that builds the build a trial was rejected for stages nothing,
 /// and is said to run the previous build, until a build replaces it.
 #[test]
