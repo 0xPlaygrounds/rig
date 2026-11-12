@@ -664,6 +664,50 @@ fn a_directory_swapped_in_with_the_same_names_reports_its_files() {
     assert_eq!(reported, [top.join("dir/x.rs")]);
 }
 
+/// A local watch of a directory that is moved away and replaced, or
+/// removed and made again, watches the one now there: what it held is
+/// removed, and a later edit in the new one is told.
+#[test]
+fn a_replaced_root_is_watched_again() {
+    let base =
+        std::env::temp_dir().join(format!("rig-tools-watch-replaced-root-{}", std::process::id()));
+    std::fs::remove_dir_all(&base).ok();
+    std::fs::create_dir_all(base.join("root")).ok();
+    std::fs::write(base.join("root/old.txt"), "old").ok();
+    let base = std::fs::canonicalize(&base).unwrap_or(base);
+    let root = base.join("root");
+    let watch = Arc::new(Local).watch(&root, true, Listing::Visible);
+    assert!(watch.is_ok(), "{watch:?}");
+    let Ok(watch) = watch else { return };
+    let events = batches(watch);
+    let [old, new] = ["old.txt", "new.txt"].map(|name| root.join(name));
+    std::fs::rename(&root, base.join("root.old")).ok();
+    std::fs::create_dir_all(&root).ok();
+    std::fs::write(&new, "new").ok();
+    let replaced = seen(&events, Duration::from_millis(2500));
+    std::fs::write(&new, "edited").ok();
+    let edited = seen(&events, Duration::from_millis(1500));
+    std::fs::remove_dir_all(&root).ok();
+    let removed = seen(&events, Duration::from_millis(1500));
+    std::fs::create_dir_all(&root).ok();
+    std::fs::write(&old, "again").ok();
+    let remade = seen(&events, Duration::from_millis(2500));
+    std::fs::write(&old, "edited again").ok();
+    let edited_again = seen(&events, Duration::from_millis(1500));
+    std::fs::remove_dir_all(&base).ok();
+    let set = |paths: Vec<PathBuf>| paths.into_iter().collect::<BTreeSet<_>>();
+    assert_eq!(
+        [replaced, edited, removed, remade, edited_again].map(set),
+        [
+            BTreeSet::from([old.clone(), new.clone()]),
+            BTreeSet::from([new.clone()]),
+            BTreeSet::from([new]),
+            BTreeSet::from([old.clone()]),
+            BTreeSet::from([old]),
+        ]
+    );
+}
+
 /// One change to a tree, its paths relative to the directory that holds
 /// it: text written to a file (its directories made), a file or directory
 /// removed, or one renamed.
@@ -747,6 +791,15 @@ const SCRIPT: &[&[Op]] = {
             Write("top/sub/deep/d.rs", "d"),
         ],
         &[Write("top/.gitignore", "")],
+        &[
+            Write("newsub/z.rs", "z"),
+            Rename("top/sub", "oldsub"),
+            Rename("newsub", "top/sub"),
+        ],
+        &[Write("top/sub/z.rs", "edited")],
+        &[Remove("top/sub")],
+        &[Write("top/sub/y.rs", "y")],
+        &[Write("top/sub/y.rs", "edited")],
     ]
 };
 
@@ -825,7 +878,8 @@ fn settled(watches: &[Receiver<WatchEvent>]) -> Vec<BTreeSet<PathBuf>> {
 /// that lists every 100 ms, on the same steps (files made, edited, removed
 /// and moved, a directory moved in, out and replaced, also by one with
 /// the same names, `.gitignore`, `.ignore` and `.git/info/exclude`
-/// edited), of the whole work tree, a directory in it, the tree's top
+/// edited, a watched directory replaced, removed and made again), of the
+/// whole work tree, a directory in it, the tree's top
 /// alone, its hidden files too, and a linked work tree, each pair tells
 /// the same snapshot and the same files changed at each step.
 #[test]
