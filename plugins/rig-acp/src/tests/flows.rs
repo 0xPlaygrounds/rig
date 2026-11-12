@@ -148,6 +148,11 @@ fn a_session_that_fails_to_start_leaves_the_launcher_warnings_for_the_next() {
     let shut = place.project.join("shut");
     std::fs::create_dir(&shut).ok();
     std::fs::set_permissions(&shut, std::fs::Permissions::from_mode(0o000)).ok();
+    // A privileged user enters it anyway, so there is no failed start.
+    if std::fs::read_dir(&shut).is_ok() {
+        std::fs::set_permissions(&shut, std::fs::Permissions::from_mode(0o700)).ok();
+        return;
+    }
     let router = drive(&place, full_client(), async |driven| {
         let failed = driven
             .cx

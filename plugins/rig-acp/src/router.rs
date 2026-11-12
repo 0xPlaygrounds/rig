@@ -142,8 +142,8 @@ fn runs_in(id: &SessionId, directory: &Path, cwd: &Path) -> Result<(), Error> {
     }
 }
 
-/// The router's launcher warnings, taken for the session being started.
-/// Dropped before that session connected, they go back for the next one.
+/// The router's launcher warnings, taken for the session being opened.
+/// Dropped before that session opened, they go back for the next one.
 struct Unshown<'a> {
     from: &'a Mutex<Vec<String>>,
     list: Vec<String>,
@@ -155,7 +155,7 @@ impl<'a> Unshown<'a> {
         Self { from, list }
     }
 
-    /// The session connected, so it shows them.
+    /// The session opened, so it shows them.
     fn shown(mut self) {
         self.list.clear();
     }
@@ -193,18 +193,18 @@ impl Router {
         reason: StartReason,
         lock: File,
         client: ConnectionTo<Client>,
+        warnings: Vec<String>,
     ) -> Result<Arc<Child>, Error> {
         let number = self.next.fetch_add(1, Ordering::Relaxed);
         let run = RunDir::at(self.runs.join(number.to_string()));
         std::fs::create_dir_all(run.path()).map_err(internal)?;
         let run_lock = lock_file(&run.lock(), true).map_err(internal)?;
         run_lock.lock().map_err(internal)?;
-        let unshown = Unshown::take(&self.warnings);
         let mut launch = self.launch.clone();
         launch.carry = Carry {
             session: Some(id.clone()),
             reason: Some(reason),
-            warnings: unshown.list.clone(),
+            warnings,
             ..Carry::default()
         };
         let mut args = self.command.args.clone();
@@ -277,7 +277,6 @@ impl Router {
         let cx = connected
             .await
             .map_err(|_| internal("the session process did not start"))?;
-        unshown.shown();
         let child = Arc::new(Child {
             cx,
             run: number,
@@ -315,7 +314,10 @@ impl Router {
         let initialize = locked(&self.client).clone();
         let initialize =
             initialize.ok_or_else(|| crate::error(Error::invalid_request(), "initialize first"))?;
-        let child = self.start(&id, cwd, reason, lock, client).await?;
+        let unshown = Unshown::take(&self.warnings);
+        let child = self
+            .start(&id, cwd, reason, lock, client, unshown.list.clone())
+            .await?;
         if let Err(error) = child.cx.send_request(initialize).block_task().await {
             child.end().await;
             return Err(error);
@@ -337,6 +339,8 @@ impl Router {
                 "the session's process ended before it opened",
             )));
             child.end().await;
+        } else {
+            unshown.shown();
         }
         Ok(())
     }
