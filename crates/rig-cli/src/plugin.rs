@@ -10,12 +10,14 @@
 //! making one never touches the rig repository or a project.
 
 use std::fs;
+use std::path::Path;
 use std::process::ExitCode;
 
 use rig_harness_protocol::config::toml_edit::{ArrayOfTables, DocumentMut, Item, Table, value};
 use rig_harness_protocol::config::{
     self, BUILT_IN, Extra, Source, built_in, essential, set_on, table,
 };
+use rig_harness_protocol::launch::Launch;
 use rig_harness_protocol::{Home, REFUSED_EXIT_CODE};
 
 use super::Result;
@@ -62,18 +64,20 @@ pub const USAGE: &str =
 ";
 
 /// Runs `rig plugin` with `args`, the words after `plugin`.
-pub fn run(home: &Home, args: &[&str]) -> Result<ExitCode> {
+pub fn run(launch: &Launch, args: &[&str]) -> Result<ExitCode> {
+    let home = &launch.home();
+    let source = launch.source.as_deref();
     if args.iter().any(|arg| matches!(*arg, "--help" | "-h")) {
         print!("{USAGE}");
         return Ok(ExitCode::SUCCESS);
     }
     match args {
-        ["new", name] => new(home, name),
+        ["new", name] => new(home, name, source),
         ["list"] => list(home),
         ["enable", type_path] => enable(home, type_path, true),
         ["disable", type_path] => enable(home, type_path, false),
-        ["check"] => check(home),
-        ["check", "--build"] => check(home).and_then(|()| check_build(home)),
+        ["check"] => check(home, source),
+        ["check", "--build"] => check(home, source).and_then(|()| check_build(launch)),
         _ => {
             eprint!("usage:\n{USAGE}");
             return Ok(ExitCode::from(REFUSED_EXIT_CODE));
@@ -85,8 +89,8 @@ pub fn run(home: &Home, args: &[&str]) -> Result<ExitCode> {
 /// `rig plugin new <name>`: the crate `name` in `RIG_HOME/plugins/<name>`,
 /// with one plugin that adds `/<name>`, added to the home's
 /// `[[plugins.extra]]`.
-fn new(home: &Home, name: &str) -> Result<()> {
-    let source = RigSource::detect()?;
+fn new(home: &Home, name: &str, source: Option<&Path>) -> Result<()> {
+    let source = RigSource::detect(source)?;
     validate_name(name, &source)?;
     if let Some(extra) = (config::chosen(home)?.extra.iter()).find(|extra| extra.krate == name) {
         return Err(format!(
@@ -445,9 +449,9 @@ fn lib_rs(name: &str, type_name: &str) -> String {
 /// there, has the package name its table gives, and its library is the
 /// crate the plugin type names. Whether the code builds is for
 /// [`check_build`] (`--build`) or `rig build` to say.
-fn check(home: &Home) -> Result<()> {
+fn check(home: &Home, source: Option<&Path>) -> Result<()> {
     let chosen = config::chosen(home)?;
-    let source = RigSource::detect()?;
+    let source = RigSource::detect(source)?;
     let problems: Vec<String> = (chosen.extras_on())
         .filter_map(|extra| check_plugin(extra, &source))
         .collect();
@@ -474,8 +478,8 @@ fn check(home: &Home) -> Result<()> {
 /// it. Fails, naming the plugins, when the build reports systems of one
 /// agent-loop stage that use the same data unordered, one writing it:
 /// which runs first would be chance.
-fn check_build(home: &Home) -> Result<()> {
-    let report = super::build::check(home)?;
+fn check_build(launch: &Launch) -> Result<()> {
+    let report = super::build::check(launch)?;
     if !report.conflicts.is_empty() {
         return Err(format!(
             "the agent builds, but these plugins' agent-loop systems use the same data with \

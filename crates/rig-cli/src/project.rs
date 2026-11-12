@@ -11,9 +11,9 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use rig_harness_protocol::Home;
 use rig_harness_protocol::config::toml_edit::{DocumentMut, Item};
 use rig_harness_protocol::config::{BUILT_IN, Extra, Plugins, Source, built_in};
-use rig_harness_protocol::{Home, env};
 
 use super::{LONG_VERSION, Result, VERSION};
 
@@ -44,12 +44,13 @@ pub enum RigSource {
 }
 
 impl RigSource {
-    /// `RIG_SOURCE` when set; else the checkout this launcher was installed
-    /// from (`cargo install --path`), when it is still there; else
-    /// crates.io. A checkout in cargo's own cache (`cargo install --git`)
-    /// does not count: cargo may delete it at any time.
-    pub fn detect() -> Result<Self> {
-        if let Some(checkout) = Self::from_env()? {
+    /// `source`, the launch's `RIG_SOURCE`, when set; else the checkout
+    /// this launcher was installed from (`cargo install --path`), when it
+    /// is still there; else crates.io. A checkout in cargo's own cache
+    /// (`cargo install --git`) does not count: cargo may delete it at any
+    /// time.
+    pub fn detect(source: Option<&Path>) -> Result<Self> {
+        if let Some(checkout) = source.map(Path::to_path_buf) {
             if !is_checkout(&checkout) {
                 return Err(format!(
                     "RIG_SOURCE={} is not a rig checkout: it has no crates/rig-harness/Cargo.toml",
@@ -70,16 +71,6 @@ impl RigSource {
         } else {
             Self::Registry
         })
-    }
-
-    /// `RIG_SOURCE` made absolute against this process's directory;
-    /// `None` when it is unset or empty. A process the launcher starts in
-    /// another directory gets it so, to read the same checkout.
-    pub fn from_env() -> std::io::Result<Option<PathBuf>> {
-        std::env::var_os(env::SOURCE)
-            .filter(|path| !path.is_empty())
-            .map(std::path::absolute)
-            .transpose()
     }
 
     /// Fails when this is crates.io and the launcher was built from

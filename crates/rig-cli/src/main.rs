@@ -21,6 +21,7 @@ mod update;
 use std::process::ExitCode;
 
 use plugin::USAGE as PLUGIN_USAGE;
+use rig_harness_protocol::launch::Launch;
 use rig_harness_protocol::{AgentDescription, Home, INVOCATION_USAGE, REFUSED_EXIT_CODE};
 use run::last_report;
 
@@ -94,16 +95,23 @@ const AGENTS: &str = include_str!("help-agents.txt");
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let home = Home::from_env();
+    let launch = match Launch::from_process() {
+        Ok(launch) => launch,
+        Err(failure) => {
+            eprintln!("error: {failure}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let home = launch.home();
     let result = match args
         .iter()
         .map(String::as_str)
         .collect::<Vec<_>>()
         .as_slice()
     {
-        ["build"] => build::build(&home).map(|()| ExitCode::SUCCESS),
-        ["update"] => Ok(update::update()),
-        ["plugin", command @ ..] => plugin::run(&home, command),
+        ["build"] => build::build(&launch).map(|()| ExitCode::SUCCESS),
+        ["update"] => Ok(update::update(&launch)),
+        ["plugin", command @ ..] => plugin::run(&launch, command),
         ["help" | "--help" | "-h"] => {
             print!(
                 "{USAGE}{PLUGIN_USAGE}{SESSION}{INVOCATION_USAGE}{}{ENVIRONMENT}",
@@ -120,12 +128,24 @@ fn main() -> ExitCode {
             Ok(ExitCode::SUCCESS)
         }
         ["help", command] => Ok(help(&home, command)),
-        _ => run::run(&home, &args),
+        _ => run::run(launch, &args),
     };
     result.unwrap_or_else(|failure| {
         eprintln!("error: {failure}");
         ExitCode::FAILURE
     })
+}
+
+/// The launch of the launcher at `launcher` on `home`, with nobody at its
+/// terminal, as tests run one.
+#[cfg(test)]
+fn test_launch(home: &Home, launcher: &std::path::Path) -> Result<Launch> {
+    let root = home.root().as_os_str();
+    let envs = [(
+        std::ffi::OsStr::new(rig_harness_protocol::env::HOME),
+        Some(root),
+    )];
+    Ok(Launch::from_parts(launcher, false, envs, None, [])?)
 }
 
 /// The plugins' commands, options and secrets for `rig help`.

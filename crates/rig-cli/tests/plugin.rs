@@ -1,3 +1,8 @@
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test fixtures run programs of their own"
+)]
+
 use std::fs;
 use std::path::Path;
 use std::process::{Command, Output, Stdio};

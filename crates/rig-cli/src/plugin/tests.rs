@@ -7,6 +7,14 @@ fn old_home(test: &str) -> Home {
     Home::at(std::env::temp_dir().join(format!("rig-plugin-{test}-{}", std::process::id())))
 }
 
+/// `rig plugin` with `args` on `home`.
+fn run(home: &Home, args: &[&str]) -> Result<ExitCode> {
+    super::run(
+        &crate::test_launch(home, Path::new("/opt/rig/bin/rig"))?,
+        args,
+    )
+}
+
 /// A user's own `settings.toml`, with comments.
 const COMMENTED: &str = "# My rig.\n[tui] # the view\n# keep this\n\n# Plugins I tried:\n";
 

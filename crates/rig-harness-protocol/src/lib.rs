@@ -1,12 +1,14 @@
 //! The protocol between the `rig` launcher (the `rig-cli` crate) and the
 //! rig-harness agent it builds and runs: the `RIG_HOME` layout, session ids,
-//! the environment the launcher passes to the agent, the exit codes that
-//! say how the agent ended, and the settings both read ([`config`]). The
+//! the environment the launcher passes to the agent ([`launch`]), the exit
+//! codes that say how the agent ended, and the settings both read
+//! ([`config`]). The
 //! launcher and `rig-harness` both use this crate, so the two sides cannot
 //! drift apart. It uses std and `toml_edit`, and it changes with
 //! rig-harness.
 
 pub mod config;
+pub mod launch;
 
 use std::ffi::OsString;
 use std::fmt;
@@ -80,8 +82,8 @@ pub mod env {
     /// What the agent warns of at startup, which a run nobody sits at
     /// shows too: what the launcher changed of what was asked, such as a
     /// resumed session's directory that is gone, and the files of a rig
-    /// 0.46 home it no longer reads. Written by
-    /// [`warning_text`](super::warning_text), read by
+    /// 0.46 home it no longer reads, as a TOML array of strings. Written
+    /// by [`Launch`](super::launch::Launch), read by
     /// [`warnings`](super::warnings).
     pub const WARNING: &str = "RIG_WARNING";
     /// Why the build before this start failed, so an older build runs:
@@ -134,6 +136,14 @@ pub mod env {
     pub const SECRET_PREFIX: &str = "RIG_SECRET_";
     /// A rig checkout the agent is built from instead of crates.io.
     pub const SOURCE: &str = "RIG_SOURCE";
+    /// Set by a launcher on the launcher it starts in its place, and only
+    /// on it: the session its agent switched away from to the one the new
+    /// launcher resumes.
+    pub const SWITCHED_FROM: &str = "RIG_SWITCHED_FROM";
+    /// Set to `1` by a launcher on the launcher it starts in its place
+    /// once its run warned of a 0.46 home, which the new launcher then
+    /// does not warn of again.
+    pub const WARNED: &str = "RIG_WARNED";
 }
 
 /// The launcher that started this agent, if one did: it sets both
@@ -206,17 +216,7 @@ impl Stamp {
     }
 }
 
-/// The text of [`env::WARNING`] for `warnings`: a TOML array of strings,
-/// so a line break in a warning, such as one in a path it names, stays in
-/// that warning.
-pub fn warning_text<'a>(warnings: impl IntoIterator<Item = &'a str>) -> String {
-    warnings
-        .into_iter()
-        .collect::<toml_edit::Array>()
-        .to_string()
-}
-
-/// The warnings [`warning_text`] wrote in `text`, in order; none for
+/// The warnings [`Launch`](launch::Launch) wrote in `text`, in order; none for
 /// blank text. Other text that is not an array of strings is one warning,
 /// as it is.
 pub fn warnings(text: &str) -> Vec<String> {

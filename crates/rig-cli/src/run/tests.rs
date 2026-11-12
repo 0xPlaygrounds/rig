@@ -1,4 +1,10 @@
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test fixtures run programs of their own"
+)]
+
 use super::*;
+use crate::test_launch as at;
 
 /// The launcher path the tests' runs pass on: no file, so never replaced.
 const NO_LAUNCHER: &str = "/nonexistent/rig";
@@ -116,17 +122,19 @@ fn interactive(test: &str, agent: &str, headless: bool) -> Option<(Ended, Sessio
         let agent = format!("#!/bin/sh\n[ -n \"$RIG_DESCRIBE\" ] && exit 0\n{agent}\n");
         fs::write(home.good(), agent)?;
         let (claimed, _) = claim(&home, Start::New, None)?;
-        let running = select(&home, &claimed.id, run.dir(), None)?;
-        let ended = launch(
-            &home,
-            Path::new(NO_LAUNCHER),
+        let running = select(
+            &at(&home, Path::new(NO_LAUNCHER))?,
+            &claimed.id,
+            run.dir(),
+            None,
+        )?;
+        let ended = run_agent(
+            &mut at(&home, Path::new(NO_LAUNCHER))?,
             run.dir(),
             &Invocation::default(),
             headless,
             claimed,
             running,
-            None,
-            None,
         )?;
         let last = fs::read_to_string(home.root().join("last"))?;
         Ok((ended, last.trim().parse()?))
@@ -230,7 +238,7 @@ kill -0 \"$(cat marked)\" && touch kept
 cat marked unmarked > \"$RIG_RUN/groups\"
 kill -KILL $$",
         notes.display(),
-        env::PROCESS_LEDGER,
+        rig_harness_protocol::env::PROCESS_LEDGER,
     );
     let ended = interactive("left-groups", &agent, false);
     assert!(ended.is_some());
@@ -243,7 +251,7 @@ kill -KILL $$",
     assert!(notes.join("kept").exists(), "killed on the reload");
     // Dead once it is gone or a zombie waiting for its new parent.
     let alive = |pid: u32| {
-        let state = child("ps")
+        let state = Command::new("ps")
             .args(["-o", "stat=", "-p", &pid.to_string()])
             .output();
         state.is_ok_and(|state| {
@@ -260,7 +268,7 @@ kill -KILL $$",
     assert!(!any_alive());
     assert!(unmarked.is_some_and(alive));
     if let Some(unmarked) = unmarked {
-        child("kill").arg(unmarked.to_string()).status().ok();
+        Command::new("kill").arg(unmarked.to_string()).status().ok();
     }
     fs::remove_dir_all(&notes).ok();
 }
@@ -331,17 +339,19 @@ fn one_shot(home: &Home) -> (Option<ExitCode>, String, String) {
     let code = locks::hold_run(home)
         .and_then(|run| {
             let (claimed, _) = claim(home, Start::New, None)?;
-            let running = select(home, &claimed.id, run.dir(), None)?;
-            launch(
-                home,
-                Path::new(NO_LAUNCHER),
+            let running = select(
+                &at(home, Path::new(NO_LAUNCHER))?,
+                &claimed.id,
+                run.dir(),
+                None,
+            )?;
+            run_agent(
+                &mut at(home, Path::new(NO_LAUNCHER))?,
                 run.dir(),
                 &print,
                 true,
                 claimed,
                 running,
-                None,
-                None,
             )
         })
         .map(|ended| ended.code)
@@ -401,8 +411,9 @@ fn an_unknown_plugin_refuses_the_start_instead_of_running_the_previous_build() {
         fs::write(home.settings(), settings).ok();
         fs::create_dir_all(home.root().join("plugins/bad")).ok();
         fs::write(home.root().join("plugins/bad/Cargo.toml"), "[package\n").ok();
-        let started =
-            run(&home, &["-p".to_owned(), "hi".to_owned()]).map_err(|why| why.to_string());
+        let started = at(&home, Path::new(NO_LAUNCHER))
+            .and_then(|launch| run(launch, &["-p".to_owned(), "hi".to_owned()]))
+            .map_err(|why| why.to_string());
         let ran = fs::read_to_string(home.root().join("ran")).unwrap_or_default();
         fs::remove_dir_all(home.root()).ok();
         assert_eq!(ran, "", "a build ran for {name}");
@@ -424,10 +435,13 @@ printf 'rig-describe 1\\ncommand\\tstats\\t-\\theadless\\tsession\\tCount\\n' > 
     let run = RunDir::at(home.runs().join("report"));
     let session = SessionId::generate();
     let read = (|| -> Result<_> {
-        let staged = select(&home, &session, &run, None)?;
-        let again = build::described(&home, &staged.current.executable)?;
+        let staged = select(&at(&home, Path::new(NO_LAUNCHER))?, &session, &run, None)?;
+        let again = build::described(
+            &at(&home, Path::new(NO_LAUNCHER))?,
+            &staged.current.executable,
+        )?;
         // A build from before reports ignores the request: it has none.
-        let old = select(&home, &session, &run, None)?;
+        let old = select(&at(&home, Path::new(NO_LAUNCHER))?, &session, &run, None)?;
         let first = staged.current.description.clone();
         Ok((first, again, old.current.description.clone()))
     })();
@@ -460,18 +474,20 @@ exit 2";
     };
     let left = locks::hold_run(&home).and_then(|run| {
         let (claimed, _) = claim(&home, Start::New, None)?;
-        let running = select(&home, &claimed.id, run.dir(), None)?;
+        let running = select(
+            &at(&home, Path::new(NO_LAUNCHER))?,
+            &claimed.id,
+            run.dir(),
+            None,
+        )?;
         let session = home.session(&claimed.id);
-        let code = launch(
-            &home,
-            Path::new(NO_LAUNCHER),
+        let code = run_agent(
+            &mut at(&home, Path::new(NO_LAUNCHER))?,
             run.dir(),
             &print,
             true,
             claimed,
             running,
-            None,
-            None,
         )?
         .code;
         let log = fs::read_to_string(run.dir().log()).ok();
@@ -558,17 +574,19 @@ exit 75"
             fs::write(build, format!("#!/bin/sh\n{agent}\n"))?;
         }
         let (claimed, _) = claim(&home, Start::Resume(left.clone()), None)?;
-        let running = select(&home, &claimed.id, run.dir(), None)?;
-        let code = launch(
-            &home,
-            Path::new(NO_LAUNCHER),
+        let running = select(
+            &at(&home, Path::new(NO_LAUNCHER))?,
+            &claimed.id,
+            run.dir(),
+            None,
+        )?;
+        let code = run_agent(
+            &mut at(&home, Path::new(NO_LAUNCHER))?,
             run.dir(),
             &Invocation::default(),
             false,
             claimed,
             running,
-            None,
-            None,
         )?
         .code;
         let started = fs::read_to_string(home.root().join("started"))?;
@@ -612,18 +630,8 @@ exit 75"
             fs::write(build, format!("#!/bin/sh\n{agent}\n"))?;
         }
         let (claimed, _) = claim(&home, Start::Resume(left.clone()), None)?;
-        let running = select(&home, &claimed.id, run.dir(), None)?;
-        let ended = launch(
-            &home,
-            Path::new(NO_LAUNCHER),
-            run.dir(),
-            &Invocation::default(),
-            false,
-            claimed,
-            running,
-            None,
-            None,
-        )?;
+        let running = select(&at(&home, Path::new(NO_LAUNCHER))?, &claimed.id, run.dir(), None)?;
+        let ended = run_agent(&mut at(&home, Path::new(NO_LAUNCHER))?, run.dir(), &Invocation::default(), false, claimed, running)?;
         let started = fs::read_to_string(home.root().join("started"))?;
         Ok((ended.code, started, left, refused))
     });
@@ -660,18 +668,8 @@ touch \"$RIG_RUN/ready\"",
             fs::write(build, &agent)?;
         }
         let (claimed, _) = claim(&home, Start::New, None)?;
-        let running = select(&home, &claimed.id, run.dir(), None)?;
-        let code = launch(
-            &home,
-            Path::new(NO_LAUNCHER),
-            run.dir(),
-            &Invocation::default(),
-            false,
-            claimed,
-            running,
-            None,
-            None,
-        )?
+        let running = select(&at(&home, Path::new(NO_LAUNCHER))?, &claimed.id, run.dir(), None)?;
+        let code = run_agent(&mut at(&home, Path::new(NO_LAUNCHER))?, run.dir(), &Invocation::default(), false, claimed, running)?
         .code;
         Ok((code, fs::read_to_string(home.root().join("starts"))?))
     });
@@ -712,17 +710,19 @@ touch \"$RIG_RUN/ready\"",
             ..Invocation::default()
         };
         let (claimed, _) = claim(&home, Start::New, None)?;
-        let running = select(&home, &claimed.id, run.dir(), None)?;
-        let code = launch(
-            &home,
-            Path::new(NO_LAUNCHER),
+        let running = select(
+            &at(&home, Path::new(NO_LAUNCHER))?,
+            &claimed.id,
+            run.dir(),
+            None,
+        )?;
+        let code = run_agent(
+            &mut at(&home, Path::new(NO_LAUNCHER))?,
             run.dir(),
             &print,
             true,
             claimed,
             running,
-            None,
-            None,
         )?
         .code;
         Ok((code, fs::read_to_string(home.root().join("starts"))?))
@@ -748,7 +748,8 @@ printf 'rig-describe 1\\ncommand\\t{name}\\t-\\theadless\\tsession\\tCount\\n' >
 #[test]
 fn help_reads_the_build_that_starts_next() {
     let home = builds("help", &describing("new"), &describing("old"));
-    let kept = [home.staged(), home.good()].map(|binary| build::described(&home, &binary));
+    let kept = [home.staged(), home.good()]
+        .map(|binary| build::described(&at(&home, Path::new(NO_LAUNCHER))?, &binary));
     let report = last_report(&home);
     fs::remove_dir_all(home.root()).ok();
     assert!(kept.iter().all(Result::is_ok));
@@ -782,17 +783,19 @@ fn a_trial_stopped_by_a_heard_ctrl_c_is_not_rejected() {
     };
     let ended = locks::hold_run(&home).and_then(|run| {
         let (claimed, _) = claim(&home, Start::New, None)?;
-        let running = select(&home, &claimed.id, run.dir(), None)?;
-        launch(
-            &home,
-            Path::new(NO_LAUNCHER),
+        let running = select(
+            &at(&home, Path::new(NO_LAUNCHER))?,
+            &claimed.id,
+            run.dir(),
+            None,
+        )?;
+        run_agent(
+            &mut at(&home, Path::new(NO_LAUNCHER))?,
             run.dir(),
             &print,
             true,
             claimed,
             running,
-            None,
-            None,
         )
     });
     let rejected = home.rejected().exists();
@@ -926,18 +929,20 @@ exit 75"
         let here = Some(home.root());
         let (claimed, _) = claim(&home, Start::Resume(current.clone()), here)
             .or_else(|_| claim(&home, Start::New, here))?;
-        let running = select(&home, &claimed.id, run.dir(), None)?;
+        let running = select(
+            &at(&home, Path::new(NO_LAUNCHER))?,
+            &claimed.id,
+            run.dir(),
+            None,
+        )?;
         let current = claimed.id.clone();
-        let ended = launch(
-            &home,
-            &launcher,
+        let ended = run_agent(
+            &mut at(&home, &launcher)?,
             run.dir(),
             &Invocation::default(),
             reload.headless,
             claimed,
             running,
-            None,
-            None,
         )?;
         let kept = home.session(&current).path().exists();
         Ok((ended, launcher, current, other, kept))
@@ -957,20 +962,21 @@ fn a_reload_after_the_launcher_was_replaced_restarts_on_the_new_one() {
         replace: true,
         ..Reload::default()
     };
-    let reexec = |launcher: &Path, session: Option<&SessionId>, left: Option<SessionId>| {
-        let here = launcher
-            .parent()
-            .and_then(Path::parent)
-            .map(Path::to_path_buf);
-        let home = Home::at(here.clone().unwrap_or_default());
-        Some(Reexec::new(
-            &home,
-            launcher,
-            session.map(SessionId::as_str),
-            Vec::new(),
-            here,
-            left,
-        ))
+    // The launch the new launcher gets: resuming `session`, or a new one,
+    // in the session's directory, told what this launcher hands on.
+    let reexec = |launcher: &Path, session: Option<&SessionId>, carry: Carry| {
+        let here = launcher.parent().and_then(Path::parent)?;
+        let mut launch = at(&Home::at(here), launcher).ok()?;
+        launch.here = AbsPath::new(here).ok();
+        launch.args = (session.into_iter())
+            .flat_map(|id| ["--resume".into(), OsString::from(id.as_str())])
+            .collect();
+        launch.carry = carry;
+        Some(launch)
+    };
+    let reloaded_on = Carry {
+        reason: Some(StartReason::Reloaded),
+        ..Carry::default()
     };
     let plain = reloaded("plain", Reload::default());
     assert!(
@@ -979,8 +985,15 @@ fn a_reload_after_the_launcher_was_replaced_restarts_on_the_new_one() {
     );
     let own = reloaded("own", replace);
     assert!(own.is_some_and(|(ended, launcher, current, ..)| {
-        ended.reexec == reexec(&launcher, Some(&current), None) && ended.said.is_none()
+        ended.reexec == reexec(&launcher, Some(&current), reloaded_on.clone())
+            && ended.said.is_none()
     }));
+    let resumed = |left| Carry {
+        reason: Some(StartReason::Resumed),
+        left: Some(left),
+        notice: Some("Resumed the session.".to_owned()),
+        ..Carry::default()
+    };
     let other = Reload {
         switch: Some("other"),
         ..replace
@@ -988,7 +1001,7 @@ fn a_reload_after_the_launcher_was_replaced_restarts_on_the_new_one() {
     let switched = reloaded("switch", other);
     assert!(
         switched.is_some_and(|(ended, launcher, current, other, _)| {
-            ended.reexec == reexec(&launcher, Some(&other), Some(current))
+            ended.reexec == reexec(&launcher, Some(&other), resumed(current))
         })
     );
     // The switch file outlives the unsaved session it is in.
@@ -1001,7 +1014,7 @@ fn a_reload_after_the_launcher_was_replaced_restarts_on_the_new_one() {
     );
     assert!(
         unsaved.is_some_and(|(ended, launcher, current, other, kept)| {
-            ended.reexec == reexec(&launcher, Some(&other), Some(current)) && !kept
+            ended.reexec == reexec(&launcher, Some(&other), resumed(current)) && !kept
         })
     );
     let busy = reloaded(
@@ -1011,12 +1024,15 @@ fn a_reload_after_the_launcher_was_replaced_restarts_on_the_new_one() {
             ..other
         },
     );
+    // Told by the new launcher's agent, as a switch refused without a new
+    // launcher is.
     assert!(busy.is_some_and(|(ended, launcher, current, other, _)| {
-        ended.reexec == reexec(&launcher, Some(&current), None)
-            && ended.said
-                == Some(format!(
-                    "Could not switch sessions: session {other} is open in another rig."
-                ))
+        let notice = format!("Could not switch sessions: session {other} is open in another rig.");
+        let carry = Carry {
+            notice: Some(notice),
+            ..reloaded_on.clone()
+        };
+        ended.reexec == reexec(&launcher, Some(&current), carry) && ended.said.is_none()
     }));
     let new = reloaded(
         "new",
@@ -1026,7 +1042,12 @@ fn a_reload_after_the_launcher_was_replaced_restarts_on_the_new_one() {
         },
     );
     assert!(new.is_some_and(|(ended, launcher, current, ..)| {
-        ended.reexec == reexec(&launcher, None, Some(current))
+        let carry = Carry {
+            reason: Some(StartReason::New),
+            left: Some(current),
+            ..Carry::default()
+        };
+        ended.reexec == reexec(&launcher, None, carry)
     }));
     let headless = reloaded(
         "headless",
@@ -1038,6 +1059,38 @@ fn a_reload_after_the_launcher_was_replaced_restarts_on_the_new_one() {
     assert!(headless.is_some_and(|(ended, _, _, _, kept)| {
         ended.reexec.is_none() && ended.code == ExitCode::SUCCESS && kept
     }));
+}
+
+/// Runs the launcher `next`'s re-exec starts, past its build, as its
+/// command carries it ([`Launch::from_parts`]): it resumes the session
+/// its command line names, and its first start goes on with what the
+/// launcher before it handed on ([`carry_on`]).
+#[cfg(unix)]
+fn as_reexecuted(home: &Home, next: &Launch, run: &RunDir) -> Result<Ended> {
+    let command = next.reexec();
+    let mut launch = Launch::from_parts(
+        Path::new(command.get_program()),
+        false,
+        command.get_envs(),
+        command.get_current_dir(),
+        command.get_args(),
+    )?;
+    let args: Vec<String> = (launch.args.iter())
+        .map(|arg| arg.to_string_lossy().into_owned())
+        .collect();
+    let start = start_of(home, AgentDescription::default().resume(&args).as_deref())?;
+    let carried = std::mem::take(&mut launch.carry);
+    let (mut claimed, notice) = claim(home, start, launch.here.as_deref())?;
+    launch.carry.notice = carry_on(&mut launch, carried, &mut claimed, notice);
+    let running = select(&launch, &claimed.id, run, None)?;
+    run_agent(
+        &mut launch,
+        run,
+        &Invocation::default(),
+        false,
+        claimed,
+        running,
+    )
 }
 
 /// A `/resume` after the launcher's file was replaced, of a session the
@@ -1072,36 +1125,23 @@ exit 75"
         }
         let here = Some(home.root());
         let (claimed, _) = claim(&home, Start::Resume(left.clone()), here)?;
-        let start = |claimed: Claimed, notice| {
-            let running = select(&home, &claimed.id, run.dir(), None)?;
-            launch(
-                &home,
-                &launcher,
-                run.dir(),
-                &Invocation::default(),
-                false,
-                claimed,
-                running,
-                notice,
-                None,
-            )
+        let mut launch = at(&home, &launcher)?;
+        let running = select(&launch, &claimed.id, run.dir(), None)?;
+        let ended = run_agent(
+            &mut launch,
+            run.dir(),
+            &Invocation::default(),
+            false,
+            claimed,
+            running,
+        )?;
+        let Some(next) = ended.reexec else {
+            return Err("no re-exec".into());
         };
-        let reexec = start(claimed, None)?.reexec;
-        let told = Reexec::new(
-            &home,
-            &launcher,
-            Some(refused.as_str()),
-            Vec::new(),
-            here.map(Path::to_path_buf),
-            Some(left.clone()),
-        );
-        // The new launcher, as `reexec` starts it: resuming the refused
-        // session, told the one it left.
-        let (mut claimed, notice) = claim(&home, Start::Resume(refused.clone()), here)?;
-        claimed.left = Some(left.clone());
-        let code = start(claimed, notice)?.code;
+        let told = next.carry.left.as_ref() == Some(&left);
+        let code = as_reexecuted(&home, &next, run.dir())?.code;
         let started = fs::read_to_string(home.root().join("started"))?;
-        Ok((code, started, reexec == Some(told), left, refused))
+        Ok((code, started, told, left, refused))
     });
     fs::remove_dir_all(home.root()).ok();
     let back = back.map_err(|failure| failure.to_string());
@@ -1131,17 +1171,19 @@ exit 0";
     }
     let run = locks::hold_run(home)?;
     let (claimed, _) = claim(home, Start::New, None)?;
-    let running = select(home, &claimed.id, run.dir(), None)?;
-    launch(
-        home,
-        Path::new(NO_LAUNCHER),
+    let running = select(
+        &at(home, Path::new(NO_LAUNCHER))?,
+        &claimed.id,
+        run.dir(),
+        None,
+    )?;
+    run_agent(
+        &mut at(home, Path::new(NO_LAUNCHER))?,
         run.dir(),
         &Invocation::default(),
         false,
         claimed,
         running,
-        None,
-        None,
     )?;
     let warned = fs::read_to_string(home.root().join("warned"))?;
     Ok(warned
@@ -1233,17 +1275,19 @@ fn a_rolled_back_first_start_still_warns_of_a_0_46_home() {
         .and_then(|()| {
             let run = locks::hold_run(&home)?;
             let (claimed, _) = claim(&home, Start::New, None)?;
-            let running = select(&home, &claimed.id, run.dir(), None)?;
-            launch(
-                &home,
-                Path::new(NO_LAUNCHER),
+            let running = select(
+                &at(&home, Path::new(NO_LAUNCHER))?,
+                &claimed.id,
+                run.dir(),
+                None,
+            )?;
+            run_agent(
+                &mut at(&home, Path::new(NO_LAUNCHER))?,
                 run.dir(),
                 &Invocation::default(),
                 false,
                 claimed,
                 running,
-                None,
-                None,
             )?;
             Ok(fs::read_to_string(home.root().join("warned"))?)
         });
@@ -1281,18 +1325,24 @@ fn a_launcher_runs_the_build_it_read_its_command_line_against() {
     let [run_a, run_b] = ["a", "b"].map(|run| RunDir::at(home.runs().join(run)));
     let ran = (|| -> Result<_> {
         // B selects after A read the staged build.
-        let a_staged = select(&home, &a, &run_a, None)?;
-        let _b = select(&home, &b, &run_b, None)?;
+        let a_staged = select(&at(&home, Path::new(NO_LAUNCHER))?, &a, &run_a, None)?;
+        let _b = select(&at(&home, Path::new(NO_LAUNCHER))?, &b, &run_b, None)?;
         let read_staged = a_staged.current.description.clone();
-        let ran_staged = build::described(&home, &a_staged.current.executable)?;
+        let ran_staged = build::described(
+            &at(&home, Path::new(NO_LAUNCHER))?,
+            &a_staged.current.executable,
+        )?;
         // B's trial, which describes itself otherwise, becomes the good build.
         drop(a_staged);
-        let a_good = select(&home, &a, &run_a, None)?;
+        let a_good = select(&at(&home, Path::new(NO_LAUNCHER))?, &a, &run_a, None)?;
         let newer = home.bin().join("newer");
         script(&newer, &describing("newer"))?;
         fs::rename(&newer, home.good())?;
         let read_good = a_good.current.description.clone();
-        let ran_good = build::described(&home, &a_good.current.executable)?;
+        let ran_good = build::described(
+            &at(&home, Path::new(NO_LAUNCHER))?,
+            &a_good.current.executable,
+        )?;
         Ok([(read_staged, ran_staged), (read_good, ran_good)])
     })();
     fs::remove_dir_all(home.root()).ok();
@@ -1346,17 +1396,19 @@ exit 75",
             ),
         )?;
         let (claimed, _) = claim(&home, Start::New, None)?;
-        let running = select(&home, &claimed.id, run.dir(), None)?;
-        launch(
-            &home,
-            Path::new(NO_LAUNCHER),
+        let running = select(
+            &at(&home, Path::new(NO_LAUNCHER))?,
+            &claimed.id,
+            run.dir(),
+            None,
+        )?;
+        run_agent(
+            &mut at(&home, Path::new(NO_LAUNCHER))?,
             run.dir(),
             &Invocation::default(),
             false,
             claimed,
             running,
-            None,
-            None,
         )?;
         Ok(fs::read_to_string(home.root().join("ran"))?)
     });
@@ -1388,17 +1440,19 @@ touch \"$RIG_RUN/ready\"",
             ..Invocation::default()
         };
         let (claimed, _) = claim(&home, Start::New, None)?;
-        let running = select(&home, &claimed.id, run.dir(), None)?;
-        launch(
-            &home,
-            Path::new(NO_LAUNCHER),
+        let running = select(
+            &at(&home, Path::new(NO_LAUNCHER))?,
+            &claimed.id,
+            run.dir(),
+            None,
+        )?;
+        run_agent(
+            &mut at(&home, Path::new(NO_LAUNCHER))?,
             run.dir(),
             &print,
             true,
             claimed,
             running,
-            None,
-            None,
         )?;
         Ok(fs::read_to_string(home.good())?)
     });
@@ -1428,7 +1482,12 @@ touch \"$RIG_RUN/ready\"
             ..Invocation::default()
         };
         let (claimed, _) = claim(&home, Start::New, None)?;
-        let running = select(&home, &claimed.id, run.dir(), None)?;
+        let running = select(
+            &at(&home, Path::new(NO_LAUNCHER))?,
+            &claimed.id,
+            run.dir(),
+            None,
+        )?;
         // Another launcher's build holds the lock for longer than the test.
         let other = locks::try_build_lock(&home)?.ok_or("the build lock is held")?;
         std::thread::spawn(move || {
@@ -1436,16 +1495,13 @@ touch \"$RIG_RUN/ready\"
             drop(other);
         });
         let started = std::time::Instant::now();
-        launch(
-            &home,
-            Path::new(NO_LAUNCHER),
+        run_agent(
+            &mut at(&home, Path::new(NO_LAUNCHER))?,
             run.dir(),
             &print,
             true,
             claimed,
             running,
-            None,
-            None,
         )?;
         Ok(started.elapsed())
     });
@@ -1475,14 +1531,22 @@ fn two_launchers_starting_after_rig_build_both_run_the_new_build() {
             fs::create_dir_all(target)?;
         }
         script(&artifact, &describing("new"))?;
-        build::stage(&home, &home.staged(), Staging::Always)?;
+        build::stage(
+            &at(&home, Path::new(NO_LAUNCHER))?,
+            &home.staged(),
+            Staging::Always,
+        )?;
         let mut ran = Vec::new();
         for name in ["a", "b"] {
             let session = SessionId::generate();
             let run = RunDir::at(home.runs().join(name));
             let _lock = locks::hold_build_lock(&home, BuildOutput::LogOnly)?;
-            build::stage(&home, &home.staged_for(&session), Staging::OnlyNew)?;
-            let running = select(&home, &session, &run, None)?;
+            build::stage(
+                &at(&home, Path::new(NO_LAUNCHER))?,
+                &home.staged_for(&session),
+                Staging::OnlyNew,
+            )?;
+            let running = select(&at(&home, Path::new(NO_LAUNCHER))?, &session, &run, None)?;
             let new = running.current.description.command("new").is_some();
             ran.push((new, running.current.is_trial()));
         }
@@ -1495,8 +1559,9 @@ fn two_launchers_starting_after_rig_build_both_run_the_new_build() {
 
 /// A reload after the launcher's file was replaced goes on, on the new
 /// launcher, as the same reload would on this one: its agent is told it
-/// reloaded, not that the session was resumed, and is not warned again of
-/// a 0.46 home the run warned of already.
+/// reloaded, not that the session was resumed, is not warned again of a
+/// 0.46 home the run warned of already, and gets the secrets typed at the
+/// old launcher's prompt.
 #[cfg(unix)]
 #[test]
 fn a_reload_on_the_new_launcher_starts_as_a_reload() {
@@ -1509,7 +1574,7 @@ fn a_reload_on_the_new_launcher_starts_as_a_reload() {
         fs::create_dir_all(home.root().join("launcher"))?;
         fs::write(&launcher, "old")?;
         let agent = "[ -n \"$RIG_DESCRIBE\" ] && exit 0
-echo \"$RIG_START|$RIG_NOTICE|$RIG_WARNING\" >> \"$RIG_HOME/started\"
+echo \"$RIG_START|$RIG_NOTICE|$RIG_WARNING|$RIG_SECRET_TYPED\" >> \"$RIG_HOME/started\"
 touch \"$RIG_RUN/ready\"
 [ -e \"$RIG_HOME/reloaded\" ] && exit 0
 touch \"$RIG_HOME/reloaded\"
@@ -1519,49 +1584,30 @@ exit 75";
             fs::write(build, format!("#!/bin/sh\n{agent}\n"))?;
         }
         let here = Some(home.root());
-        let (claimed, notice) = claim(&home, Start::Resume(session.clone()), here)?;
-        let running = select(&home, &claimed.id, run.dir(), None)?;
-        let reexec = launch(
-            &home,
-            &launcher,
-            run.dir(),
-            &Invocation::default(),
-            false,
-            claimed,
-            running,
-            notice,
-            None,
-        )?
-        .reexec;
-        let told = Reexec::new(
-            &home,
-            &launcher,
-            Some(session.as_str()),
-            Vec::new(),
-            here.map(Path::to_path_buf),
-            None,
-        );
-        let told = reexec == Some(told);
-        // The new launcher, as `reexec` starts it.
         let (claimed, notice) = claim(&home, Start::Resume(session), here)?;
-        let running = select(&home, &claimed.id, run.dir(), None)?;
-        launch(
-            &home,
-            &launcher,
+        let mut launch = at(&home, &launcher)?;
+        launch.carry.notice = notice;
+        // As the prompt keeps a secret typed at it.
+        launch
+            .secrets
+            .insert("RIG_SECRET_TYPED".into(), "typed".into());
+        let running = select(&launch, &claimed.id, run.dir(), None)?;
+        let ended = run_agent(
+            &mut launch,
             run.dir(),
             &Invocation::default(),
             false,
             claimed,
             running,
-            notice,
-            None,
         )?;
-        Ok((fs::read_to_string(home.root().join("started"))?, told))
+        let Some(next) = ended.reexec else {
+            return Err("no re-exec".into());
+        };
+        as_reexecuted(&home, &next, run.dir())?;
+        Ok(fs::read_to_string(home.root().join("started"))?)
     });
     fs::remove_dir_all(home.root()).ok();
     let started = started.map_err(|failure| failure.to_string());
-    assert!(started.as_ref().is_ok_and(|(_, told)| *told), "{started:?}");
-    let started = started.map(|(started, _)| started);
     let lines: Vec<String> = started
         .iter()
         .flat_map(|started| started.lines().map(str::to_owned))
@@ -1573,9 +1619,13 @@ exit 75";
         ),
         "{lines:?}"
     );
+    assert!(
+        lines.first().is_some_and(|first| first.ends_with("|typed")),
+        "{lines:?}"
+    );
     assert_eq!(
         lines.get(1).map(String::as_str),
-        Some("reloaded||"),
+        Some("reloaded|||typed"),
         "{lines:?}"
     );
 }

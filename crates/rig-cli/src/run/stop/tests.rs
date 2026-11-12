@@ -1,3 +1,8 @@
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test fixtures run programs of their own"
+)]
+
 use std::time::{Duration, Instant};
 
 /// A SIGTERM to the launcher reaches its agent, and the launcher's wait

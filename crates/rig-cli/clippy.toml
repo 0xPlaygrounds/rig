@@ -1,0 +1,10 @@
+# The root clippy.toml, plus: every process the launcher starts is built by
+# rig_harness_protocol::launch::Launch, which drops every variable of the
+# protocol and every secret and sets only what that process gets. Clippy
+# reads the nearest clippy.toml, so this covers this crate alone; keep the
+# first two entries the same as the root's.
+disallowed-methods = [
+    { path = "serde_json::Map::remove", reason = "with preserve_order it moves the last key into the gap; use shift_remove to keep a provider item's key order" },
+    { path = "serde_json::Map::remove_entry", reason = "with preserve_order it moves the last key into the gap; use shift_remove_entry" },
+    { path = "std::process::Command::new", reason = "build it with Launch (agent, describing, build_child, reexec), so it inherits no secret and no launch state" },
+]

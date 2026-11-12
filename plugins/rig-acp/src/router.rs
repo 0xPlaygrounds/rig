@@ -25,7 +25,10 @@ use agent_client_protocol::{Agent, Client, ConnectionTo, Error, Lines, Responder
 use futures::future::{BoxFuture, Shared};
 use futures::{FutureExt, StreamExt};
 use rig_basics::session_picker::SessionEntry;
-use rig_harness::harness_protocol::{Home, RunDir, SessionId, StartReason, env, lock_file};
+use rig_harness::harness_protocol::launch::{self, AbsPath, Carry, Launch};
+use rig_harness::harness_protocol::{
+    Home, RunDir, SessionId, StartReason, lock_file, long_version,
+};
 use rig_harness::host::pipes::{self, Stream, Writer};
 use rig_harness::host::session::StoreOpener;
 use rig_harness::host::signals;
@@ -161,18 +164,26 @@ impl Router {
         std::fs::create_dir_all(run.path()).map_err(internal)?;
         let run_lock = lock_file(&run.lock(), true).map_err(internal)?;
         run_lock.lock().map_err(internal)?;
-        let mut command = std::process::Command::new(&self.command.program);
+        // The router's own launch, telling the session only its session and
+        // why it starts, and no launcher, which the router stands for.
+        let mut launch = Launch::from_process().map_err(internal)?;
+        launch.home = AbsPath::new(self.home.root()).map_err(internal)?;
+        launch.carry = Carry {
+            session: Some(id.clone()),
+            reason: Some(reason),
+            ..Carry::default()
+        };
+        let mut args = self.command.args.clone();
+        args.push(session::FRONT.into());
+        let mut command = launch.agent(&launch::Agent {
+            program: &self.command.program,
+            args: &args,
+            dir: Some(cwd),
+            run: &run,
+            version: &long_version(),
+            launcher: None,
+        });
         command
-            .args(&self.command.args)
-            .arg(session::FRONT)
-            .current_dir(cwd)
-            .env(env::HOME, self.home.root())
-            .env(env::SESSION, id.as_str())
-            .env(env::RUN, run.path())
-            .env(env::START, reason.as_str())
-            .env_remove(env::NOTICE)
-            .env_remove(env::BUILD_FAILURE)
-            .env_remove(env::LAUNCHER)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit());

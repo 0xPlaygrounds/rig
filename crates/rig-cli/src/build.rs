@@ -7,11 +7,10 @@
 //! prints also goes to [`Home::build_log`], and a failure names its reason
 //! and first compiler errors ([`BuildFailure`]).
 //!
-//! No process the launcher starts but the agent inherits a secret
-//! ([`child`]).
+//! Every process it starts comes from the launch ([`Launch`]), so none
+//! inherits a secret.
 
 use std::collections::BTreeSet;
-use std::ffi::OsStr;
 use std::fmt;
 use std::fs::{self, File};
 use std::io::{IsTerminal, Read, Write};
@@ -20,12 +19,11 @@ use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::mpsc;
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
-use rig_harness_protocol::{
-    AgentDescription, Home, RunDir, SessionId, config, env, first_errors, without_secrets,
-};
+use rig_harness_protocol::launch::{Launch, Purpose};
+use rig_harness_protocol::{AgentDescription, Home, RunDir, config, first_errors};
 
 use super::project::{self, PACKAGE, RigSource};
-use super::{BEVY_VERSION, COMMIT, Result, locks, update};
+use super::{BEVY_VERSION, COMMIT, Result, locks};
 
 /// Whether a build that is already known gets staged again.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -132,22 +130,23 @@ impl std::error::Error for BuildFailure {}
 /// `staging` says. The build's output goes to [`Home::build_log`], and to
 /// stderr as `output` says.
 pub fn compile(
-    home: &Home,
+    launch: &Launch,
     staged: &Path,
     staging: Staging,
     output: BuildOutput,
 ) -> std::result::Result<(), BuildFailure> {
+    let home = &launch.home();
     let mut log = BuildLog::create(home, output, Box::new(std::io::stderr()));
     let wanted = (|| -> Result<_> {
         let plugins = config::chosen(home)?;
         local_crates(home, &plugins)?;
-        Ok((plugins, RigSource::detect()?))
+        Ok((plugins, RigSource::detect(launch.source.as_deref())?))
     })();
     let (plugins, source) = match wanted {
         Ok(wanted) => wanted,
         Err(failure) => return Err(log.fail(FailedAt::Settings, failure.to_string())),
     };
-    match compile_logged(home, &plugins, &source, staged, staging, &mut log) {
+    match compile_logged(launch, &plugins, &source, staged, staging, &mut log) {
         Ok(()) => {
             log.record("build succeeded");
             Ok(())
@@ -157,7 +156,7 @@ pub fn compile(
 }
 
 fn compile_logged(
-    home: &Home,
+    launch: &Launch,
     plugins: &config::Plugins,
     source: &RigSource,
     staged: &Path,
@@ -167,17 +166,19 @@ fn compile_logged(
     // A build that cannot be made, not a settings mistake: the previous
     // build still starts where a failed build lets it.
     source.check(COMMIT)?;
+    let home = &launch.home();
     let generate = || project::generate(home, plugins, source);
     if let Some(warning) = super::plugin::skill::set_up(home, generate)? {
         log.say(&warning);
     }
     // `/reload` shows the latest of these lines and of cargo's.
     log.say("Compiling the agent…");
-    let mut command = cargo(home);
+    let mut command = cargo(launch);
     command.args(["build", "--package", PACKAGE]);
     // A Windows console may not take the erase sequence, which cargo
     // itself writes on Unix only.
-    log.erase = cfg!(unix) && log.output == BuildOutput::Live && show_progress(&mut command);
+    log.erase =
+        cfg!(unix) && log.output == BuildOutput::Live && show_progress(launch, &mut command);
     let status = log.run(command)?;
     // The check reads the graph the build resolved into `Cargo.lock`, so a
     // lock it passed passes again; after a failed build it runs anyway, to
@@ -188,7 +189,7 @@ fn compile_logged(
         log.say("Resolving dependencies…");
         let rig_crates = project::rig_crates(plugins, source)?;
         check_bevy(
-            home,
+            launch,
             plugins,
             &rig_crates,
             &project::rig_version(source),
@@ -201,7 +202,7 @@ fn compile_logged(
     if !status.success() {
         return Err(format!("cargo could not build the agent ({status})").into());
     }
-    stage(home, staged, staging)
+    stage(launch, staged, staging)
 }
 
 /// Checks that every `[[plugins.extra]]` crate that is on and comes from a
@@ -226,25 +227,32 @@ fn local_crates(home: &Home, plugins: &config::Plugins) -> Result<()> {
 /// `rig build`, holding the root's build lock. It always stages, so it also
 /// retries a build that was rolled back. Run by an agent's `/reload`
 /// (`RIG_SESSION` set), it stages for that agent's launcher alone.
-pub fn build(home: &Home) -> Result<()> {
+pub fn build(launch: &Launch) -> Result<()> {
+    let home = &launch.home();
     let _lock = locks::hold_build_lock(home, BuildOutput::Live)?;
-    let staged = match SessionId::from_env()? {
-        Some(session) => home.staged_for(&session),
+    let staged = match &launch.carry.session {
+        Some(session) => home.staged_for(session),
         None => home.staged(),
     };
-    Ok(compile(home, &staged, Staging::Always, BuildOutput::Live)?)
+    Ok(compile(
+        launch,
+        &staged,
+        Staging::Always,
+        BuildOutput::Live,
+    )?)
 }
 
 /// `rig plugin check --build`, holding the root's build lock: builds the
 /// agent like [`build`] but stages nothing, and returns its report. Fails,
 /// as a start would refuse, when a table of the home's settings does not
 /// read as the plugin that reads it expects.
-pub fn check(home: &Home) -> Result<AgentDescription> {
+pub fn check(launch: &Launch) -> Result<AgentDescription> {
+    let home = &launch.home();
     let _lock = locks::hold_build_lock(home, BuildOutput::Live)?;
-    compile(home, &home.staged(), Staging::Never, BuildOutput::Live)?;
+    compile(launch, &home.staged(), Staging::Never, BuildOutput::Live)?;
     let binary = artifact(home);
-    let report = described(home, &binary)?;
-    describe(home, &binary, Some(&home.settings()))?;
+    let report = described(launch, &binary)?;
+    describe(launch, &binary, Some(&home.settings()))?;
     Ok(report)
 }
 
@@ -255,24 +263,12 @@ pub fn artifact(home: &Home) -> PathBuf {
         .join(format!("{PACKAGE}{}", std::env::consts::EXE_SUFFIX))
 }
 
-/// A process the launcher starts that is not the agent, such as cargo or
-/// `stty`: without any secret ([`without_secrets`]), which a user who
-/// exported one for a headless run gave the agent alone, nor
-/// [`update::LEFT`], which only the next launcher reads.
-pub fn child(program: impl AsRef<OsStr>) -> Command {
-    let mut command = Command::new(program);
-    without_secrets(&mut command);
-    command.env_remove(update::LEFT);
-    command
-}
-
 /// cargo in the agent project, with stdout discarded and stderr piped, for
 /// [`BuildLog::run`] to pass on. Without colors, so the log and the first
 /// errors read as plain text.
-fn cargo(home: &Home) -> Command {
-    let mut command = child("cargo");
+fn cargo(launch: &Launch) -> Command {
+    let mut command = launch.build_child(Purpose::Cargo);
     command
-        .current_dir(home.project())
         // The project's own `.cargo/config.toml` names the target directory.
         .env_remove("CARGO_TARGET_DIR")
         .env("CARGO_TERM_COLOR", "never")
@@ -284,10 +280,10 @@ fn cargo(home: &Home) -> Command {
 
 /// Keeps cargo's progress bar on a terminal, which cargo no longer sees
 /// through the pipe; whether it did. A caller's own settings win.
-fn show_progress(command: &mut Command) -> bool {
+fn show_progress(launch: &Launch, command: &mut Command) -> bool {
     if std::io::stderr().is_terminal()
         && std::env::var_os("CARGO_TERM_PROGRESS_WHEN").is_none()
-        && let Some(width) = terminal_width()
+        && let Some(width) = terminal_width(launch)
     {
         command
             .env("CARGO_TERM_PROGRESS_WHEN", "always")
@@ -298,7 +294,7 @@ fn show_progress(command: &mut Command) -> bool {
 }
 
 /// The terminal's width in columns: `COLUMNS`, else `stty size`.
-fn terminal_width() -> Option<u16> {
+fn terminal_width(launch: &Launch) -> Option<u16> {
     if let Some(columns) = std::env::var("COLUMNS")
         .ok()
         .and_then(|columns| columns.parse().ok())
@@ -306,7 +302,8 @@ fn terminal_width() -> Option<u16> {
         return Some(columns);
     }
     let tty = File::open("/dev/tty").ok()?;
-    let output = child("stty")
+    let output = launch
+        .build_child(Purpose::Stty)
         .arg("size")
         .stdin(tty)
         .stderr(Stdio::null())
@@ -531,10 +528,11 @@ impl BuildLog {
 /// the copy carries its [`stamp`], once it described itself: a build that
 /// does not is rejected, and the build fails. A build `rig build` staged
 /// for any launcher that differs from this one is older, so it goes.
-pub fn stage(home: &Home, staged: &Path, staging: Staging) -> Result<()> {
+pub fn stage(launch: &Launch, staged: &Path, staging: Staging) -> Result<()> {
+    let home = &launch.home();
     let artifact = artifact(home);
     let built = stamp(&artifact)?;
-    if let Err(why) = described(home, &artifact) {
+    if let Err(why) = described(launch, &artifact) {
         if staging != Staging::Never {
             fs::write(home.rejected(), &built)?;
         }
@@ -615,12 +613,13 @@ const DESCRIBE_TIMEOUT: Duration = Duration::from_secs(10);
 /// the request, has an empty one. Fails when the build exits with a
 /// failure, such as two plugins adding one command, or takes over
 /// [`DESCRIBE_TIMEOUT`].
-pub fn described(home: &Home, binary: &Path) -> Result<AgentDescription> {
+pub fn described(launch: &Launch, binary: &Path) -> Result<AgentDescription> {
+    let home = &launch.home();
     if let Some(report) = good_report(home, binary) {
         return Ok(report);
     }
     let kept = home.described(&stamp(binary)?);
-    let text = describe(home, binary, None)?;
+    let text = describe(launch, binary, None)?;
     let parent = kept.parent().ok_or("no directory for build reports")?;
     fs::create_dir_all(parent)?;
     // Written whole, then renamed: another launcher may read it meanwhile.
@@ -643,27 +642,14 @@ pub fn good_report(home: &Home, binary: &Path) -> Option<AgentDescription> {
 /// reach the user's sessions; it is killed after [`DESCRIBE_TIMEOUT`].
 /// With `settings` ([`env::DESCRIBE_SETTINGS`]) it reads that settings
 /// file, and fails when a start would refuse it.
-fn describe(home: &Home, binary: &Path, settings: Option<&Path>) -> Result<String> {
-    let run = home.run(std::process::id());
+fn describe(launch: &Launch, binary: &Path, settings: Option<&Path>) -> Result<String> {
+    let run = launch.home().run(std::process::id());
     let scratch = run.path().join("describe");
     fs::remove_dir_all(&scratch).ok();
     let scratch_home = scratch.join("home");
     fs::create_dir_all(&scratch_home)?;
     let report = scratch.join("report");
-    let mut command = child(binary);
-    command
-        .env(env::DESCRIBE, &report)
-        .env(env::HOME, &scratch_home)
-        .current_dir(&scratch_home)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null());
-    for name in env::AGENT_ONLY.iter().chain(&[env::LAUNCHER]) {
-        command.env_remove(name);
-    }
-    match settings {
-        Some(settings) => command.env(env::DESCRIBE_SETTINGS, settings),
-        None => command.env_remove(env::DESCRIBE_SETTINGS),
-    };
+    let command = launch.describing(binary, &scratch_home, &report, settings);
     let result = wait_described(command, &report, DESCRIBE_TIMEOUT);
     fs::remove_dir_all(&scratch).ok();
     // A launcher with no run of its own, `rig build`, leaves none.
@@ -763,13 +749,13 @@ pub fn stamp(binary: &Path) -> Result<String> {
 /// when a plugin pulls in a Bevy other than [`BEVY_VERSION`] or rig crates
 /// other than the agent's.
 fn check_bevy(
-    home: &Home,
+    launch: &Launch,
     plugins: &config::Plugins,
     rig_crates: &BTreeSet<String>,
     rig_version: &str,
     log: &mut BuildLog,
 ) -> Result<()> {
-    let packages = tree(home, &[], log)?;
+    let packages = tree(launch, &[], log)?;
     check_rig(&packages, rig_crates, rig_version)?;
     let Some((bevy, version)) = packages.iter().find_map(|line| {
         let (name, version) = package(line)?;
@@ -779,7 +765,7 @@ fn check_bevy(
         return Ok(());
     };
     // Every package that depends on the foreign Bevy, directly or not.
-    let dependents = tree(home, &["--invert", &format!("{bevy}@{version}")], log)?;
+    let dependents = tree(launch, &["--invert", &format!("{bevy}@{version}")], log)?;
     let culprit = plugins.extras_on().map(|extra| &extra.krate).find(|krate| {
         (dependents.iter()).any(|line| package(line).is_some_and(|(name, _)| name == *krate))
     });
@@ -828,8 +814,8 @@ fn check_rig(packages: &[String], rig_crates: &BTreeSet<String>, rig_version: &s
 /// The lines of `cargo tree` over the agent project with `args`, one
 /// package per line, as `name vVERSION (source)`. Its stderr goes through
 /// `log`.
-fn tree(home: &Home, args: &[&str], log: &mut BuildLog) -> Result<Vec<String>> {
-    let mut command = cargo(home);
+fn tree(launch: &Launch, args: &[&str], log: &mut BuildLog) -> Result<Vec<String>> {
+    let mut command = cargo(launch);
     command
         .args(["tree", "--prefix", "none", "--format", "{p}"])
         .args(args)
