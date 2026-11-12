@@ -47,9 +47,10 @@ pub enum WatchEvent {
     /// The files created, changed or removed since the last event, in path
     /// order.
     Changed(Vec<PathBuf>),
-    /// Listing the files failed, so what is there is not known. Unless
-    /// `Closed` follows, the watch goes on: the next listing that works is
-    /// compared with the last one that did.
+    /// Listing the files failed, or the system's watch of a directory put
+    /// in the root's place could not be armed, so what is there is not
+    /// known. Unless `Closed` follows, the watch goes on: the next listing
+    /// that works is compared with the last one that did.
     Unavailable(Arc<io::Error>),
     /// The watch stopped; nothing comes after it.
     Closed,
@@ -379,7 +380,10 @@ fn look<W: Workspace + ?Sized>(
 /// directory, so a write that replaces it is seen; one that does not exist
 /// yet is looked at every second instead. A directory put in place of the
 /// one watched, once that is moved or removed, is watched in its turn,
-/// looked for every second while none is there. A relative `root` that
+/// looked for every second while none is there; on systems other than
+/// Unix only one put in place after none was there. A root that cannot be
+/// looked at for a while is [`Unavailable`](WatchEvent::Unavailable),
+/// listed again every second. A relative `root` that
 /// exists is resolved against the current directory once, so the paths
 /// told are absolute.
 ///
@@ -436,10 +440,11 @@ pub(crate) fn notified(root: &Path, recursive: bool, listing: Listing) -> io::Re
     Ok(Watch::new(events, watcher))
 }
 
-/// Which directory a path is: where the system tells it, its device and
-/// inode, so one put in its place is another.
+/// Which directory a path is: where the system tells it, its device,
+/// inode and birth time, so one put in its place is another even when it
+/// reuses the inode.
 #[cfg(unix)]
-type Identity = (u64, u64);
+type Identity = (u64, u64, Option<std::time::SystemTime>);
 #[cfg(not(unix))]
 type Identity = ();
 
@@ -454,7 +459,7 @@ fn identity(path: &Path) -> io::Result<Option<Identity>> {
 #[cfg(unix)]
 fn identity_of(meta: &fs::Metadata) -> Identity {
     use std::os::unix::fs::MetadataExt as _;
-    (meta.dev(), meta.ino())
+    (meta.dev(), meta.ino(), meta.created().ok())
 }
 
 #[cfg(not(unix))]
@@ -498,14 +503,16 @@ impl Armed {
     }
 
     /// Watches what is at the target now, if that is not what it watched:
-    /// true when it changed, so what was heard meanwhile may be missing.
+    /// true when it changed, or cannot be looked at, so what was heard
+    /// meanwhile may be missing.
     ///
     /// # Errors
     ///
-    /// When the target cannot be looked at, other than for not being
-    /// there, or the new one cannot be watched.
+    /// When a directory is at the target and cannot be watched.
     fn follow(&mut self) -> io::Result<bool> {
-        let now = identity(&self.target)?;
+        let Ok(now) = identity(&self.target) else {
+            return Ok(true);
+        };
         if now == self.at {
             return Ok(false);
         }
@@ -520,8 +527,8 @@ impl Armed {
         if now.is_some()
             && let Err(error) = watcher.watch(&self.target, self.mode)
         {
-            // Removed again since: looked for again.
-            self.at = identity(&self.target)?;
+            // Removed again since, or not to be looked at: looked for again.
+            self.at = identity(&self.target).ok().flatten();
             if self.at.is_some() {
                 return Err(io::Error::other(error));
             }

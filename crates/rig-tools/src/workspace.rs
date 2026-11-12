@@ -180,7 +180,9 @@ pub trait Workspace: Send + Sync + fmt::Debug + 'static {
     /// list them, then the paths created, changed or removed each time
     /// something changed, and [`Unavailable`](WatchEvent::Unavailable)
     /// while listing fails. When the first listing fails, `Unavailable`
-    /// and then [`Closed`](WatchEvent::Closed) end the watch. A root that
+    /// and then [`Closed`](WatchEvent::Closed) end the watch; [`Local`]'s
+    /// also ends so when a directory put in the root's place cannot be
+    /// watched. A root that
     /// does not exist has no files until it appears. Dropping the
     /// [`Watch`] stops it.
     ///
