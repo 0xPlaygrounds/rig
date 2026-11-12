@@ -22,6 +22,7 @@ use std::process::{Command, ExitCode};
 use rig_harness_protocol::{Home, SessionId, UPDATE_INSTALLED, UPDATE_SAYS, env, shell_word};
 
 use super::Result;
+use super::build::child;
 use super::project::RigSource;
 
 /// Set by a launcher on the new launcher it starts in its place
@@ -101,7 +102,7 @@ fn install_root(launcher: &Path) -> Result<PathBuf> {
 /// launcher's own `bin` directory is in, not in the directory rig was
 /// started in.
 pub fn install_command(source: &RigSource, root: &Path) -> Command {
-    let mut command = Command::new("cargo");
+    let mut command = child("cargo");
     command.args(["install", "--force"]);
     match source {
         RigSource::Registry => {
@@ -118,7 +119,8 @@ pub fn install_command(source: &RigSource, root: &Path) -> Command {
 }
 
 /// Runs `install`, then the new launcher's `rig build`; their output goes
-/// to stderr, where the agent's `/update` reads it. Says each step first.
+/// to stderr, where the agent's `/update` reads it, and neither gets a
+/// secret ([`child`]). Says each step first.
 /// `ExitCode::FAILURE` when either fails.
 fn install_and_build(mut install: Command, launcher: &Path) -> ExitCode {
     let shown = shell_words(&install);
@@ -144,7 +146,7 @@ fn install_and_build(mut install: Command, launcher: &Path) -> ExitCode {
         "{UPDATE_INSTALLED} Building the agent with the new rig (`rig build`); after a \
          change this takes 2-3 minutes."
     );
-    match Command::new(launcher).arg("build").status() {
+    match child(launcher).arg("build").status() {
         Ok(status) if status.success() => {
             eprintln!("{UPDATE_SAYS}done.");
             ExitCode::SUCCESS
