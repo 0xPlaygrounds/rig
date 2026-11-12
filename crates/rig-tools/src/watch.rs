@@ -155,7 +155,7 @@ impl<M> Look<M> {
 
 /// The paths a listing covers: each one and everything below it, none
 /// below another.
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct Scopes(BTreeSet<PathBuf>);
 
 impl Scopes {
@@ -216,6 +216,14 @@ impl<M: PartialEq> Baseline<M> {
     /// listed once, and its last listing worked.
     fn known(&self) -> bool {
         self.files.is_some() && !self.failing
+    }
+
+    /// Whether a file it holds is below `dir`.
+    fn holds_below(&self, dir: &Path) -> bool {
+        let from: (Bound<&Path>, Bound<&Path>) = (Bound::Excluded(dir), Bound::Unbounded);
+        (self.files.iter())
+            .flat_map(|files| files.range::<Path, _>(from).next())
+            .any(|(path, _)| path.starts_with(dir))
     }
 
     /// Takes `look`, the listing of what is under `scopes`, and says what
@@ -458,16 +466,35 @@ impl Tree {
     }
 
     /// The files under `scopes` that [`Workspace::files`] would list for
-    /// the root.
-    fn look(&self, scopes: &Arc<Scopes>) -> io::Result<Look<()>> {
-        let within = Arc::clone(scopes);
-        let mut walk =
-            crate::workspace::walk(&self.root, self.listing, move |path| within.leads_to(path));
-        if !self.recursive {
-            walk.max_depth(Some(1));
+    /// the root. Each scope is walked from the nearest directory above it
+    /// that `visible` says the root's listing goes into, else the root, so
+    /// the walk reads the same rules the root's would, and none of the
+    /// directories above that one, however large.
+    fn look(&self, scopes: Scopes, visible: impl Fn(&Path) -> bool) -> io::Result<Look<()>> {
+        let mut starts: BTreeMap<PathBuf, Scopes> = BTreeMap::new();
+        for scope in scopes.0 {
+            let start = scope
+                .ancestors()
+                .skip(1)
+                .take_while(|dir| dir.starts_with(&self.root) && *dir != self.root)
+                .find(|dir| visible(dir))
+                .unwrap_or(&self.root)
+                .to_path_buf();
+            starts.entry(start).or_default().add(scope);
         }
-        let listed = crate::workspace::listed(&walk);
-        Look::of(listed, &self.root, true, |_| Ok(Some(())))
+        let mut found = Listed::default();
+        for (start, within) in starts {
+            let within = Arc::new(within);
+            let mut walk =
+                crate::workspace::walk(&start, self.listing, move |path| within.leads_to(path));
+            if !self.recursive {
+                walk.max_depth(Some(1));
+            }
+            let listed = crate::workspace::listed(&walk);
+            found.files.extend(listed.files);
+            found.failed.extend(listed.failed);
+        }
+        Look::of(found, &self.root, true, |_| Ok(Some(())))
     }
 }
 
@@ -504,8 +531,9 @@ pub(crate) fn send_batches(
             }
         }
         if !scopes.0.is_empty() {
-            let scopes = Arc::new(scopes);
-            let look = tree.look(&scopes);
+            // A directory the last listing found files under is listed by
+            // the rules as they are: an edit of them is a scope of its own.
+            let look = tree.look(scopes.clone(), |dir| seen.holds_below(dir));
             let event = seen.update(&scopes, look, &touched);
             if event.is_some_and(|event| sender.unbounded_send(event).is_err()) {
                 return;
