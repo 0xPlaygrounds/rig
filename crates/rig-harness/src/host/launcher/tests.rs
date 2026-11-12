@@ -268,13 +268,14 @@ fn jobs_a_reload_kept_are_taken_over_while_marked() {
     };
     let listed = format!("{}\n{}\n", kept.id(), stranger.id());
     std::fs::write(run.groups(), listed).ok();
-    super::own_groups(&run);
+    let owned_ok = super::own_groups(&run).is_ok();
     let owned = std::fs::read_to_string(run.groups()).unwrap_or_default();
     for job in [&mut kept, &mut stranger] {
         job.kill().ok();
         job.wait().ok();
     }
     std::fs::remove_dir_all(&root).ok();
+    assert!(owned_ok, "the list should have been read");
     let owned: Vec<&str> = owned.lines().collect();
     assert_eq!(owned, [kept.id().to_string()]);
 }
@@ -313,4 +314,101 @@ fn a_settings_table_read_in_a_finish_refuses_the_run() {
         }
     }
     assert_eq!(app.should_exit(), Some(AppExit::from_code(2)));
+}
+
+/// An agent started by a reload that cannot read the list of the jobs the
+/// agent before it left running, whether it can still write it (mode
+/// 0200) or not (0000), moves it aside and starts a list the next agent
+/// reads: it names the jobs the agent starts and not one it hands over.
+/// The launcher ends the jobs of both lists once it can read them.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_list_a_reload_cannot_read_is_set_aside_and_ended_with_the_new_one() {
+    use std::os::unix::fs::PermissionsExt;
+    use std::os::unix::process::CommandExt;
+    use std::time::{Duration, Instant};
+
+    for mode in [0o200, 0o000] {
+        let root = std::env::temp_dir().join(format!(
+            "rig-harness-unread-{mode:o}-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).ok();
+        let run = rig_harness_protocol::RunDir::at(&root);
+        let chmod = |path: &std::path::Path, mode| {
+            std::fs::set_permissions(path, PermissionsExt::from_mode(mode)).ok()
+        };
+        let mut sleep = std::process::Command::new("sleep");
+        sleep
+            .arg("30")
+            .process_group(0)
+            .env(rig_harness_protocol::env::PROCESS_LEDGER, run.groups());
+        let Ok(mut kept) = sleep.spawn() else {
+            std::fs::remove_dir_all(&root).ok();
+            return;
+        };
+        std::fs::write(run.groups(), format!("{}\n", kept.id())).ok();
+        chmod(&run.groups(), mode);
+        // Root reads it anyway, so the failure cannot be set up.
+        if std::fs::read(run.groups()).is_ok() {
+            kept.kill().ok();
+            kept.wait().ok();
+            std::fs::remove_dir_all(&root).ok();
+            return;
+        }
+        let unread = super::own_groups(&run).is_err();
+        let launcher = rig_tools::process::Launcher::default();
+        let job = || launcher.spawn("sleep", ["30"], rig_tools::process::Spawn::default());
+        let (started, handed) = (job(), job());
+        let mut handed = handed.map(|mut handed| {
+            handed.release();
+            handed
+        });
+        let started_id = started
+            .as_ref()
+            .ok()
+            .and_then(|job| i32::try_from(job.id()).ok());
+        // What the next agent takes over.
+        let adopted = run.live_groups().ok();
+        // The failure ends: the launcher can read every list as rig exits.
+        for entry in std::fs::read_dir(&root).into_iter().flatten().flatten() {
+            chmod(&entry.path(), 0o600);
+        }
+        let cleaned = run.kill_left_groups();
+        let lists_left = std::fs::read_dir(&root).into_iter().flatten().count();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut kept_ended = kept.try_wait().ok().flatten().is_some();
+        while !kept_ended && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(20));
+            kept_ended = kept.try_wait().ok().flatten().is_some();
+        }
+        let started_ended =
+            started.and_then(|mut started| started.wait_for(Duration::from_secs(5)));
+        let handed_runs = handed.as_mut().is_ok_and(|handed| {
+            handed
+                .wait_for(Duration::ZERO)
+                .is_ok_and(|ended| ended.is_none())
+        });
+        if let Ok(handed) = &handed {
+            rig_tools::process::kill_group_of(handed.id());
+        }
+        kept.kill().ok();
+        kept.wait().ok();
+        drop(handed);
+        std::fs::remove_dir_all(&root).ok();
+        assert!(unread, "{mode:o}: reading the list should have failed");
+        assert!(started_id.is_some(), "{mode:o}: could not start the job");
+        assert_eq!(adopted, started_id.map(|id| vec![id]), "{mode:o}");
+        assert!(cleaned.is_ok(), "{mode:o}: {cleaned:?}");
+        assert!(
+            kept_ended,
+            "{mode:o}: the job of the list set aside runs on"
+        );
+        assert!(
+            started_ended.is_ok_and(|ended| ended.is_some()),
+            "{mode:o}: the job the agent started runs on"
+        );
+        assert!(handed_runs, "{mode:o}: the job handed over was ended");
+        assert_eq!(lists_left, 0, "{mode:o}: lists are left");
+    }
 }

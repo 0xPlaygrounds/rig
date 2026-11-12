@@ -622,6 +622,10 @@ impl Home {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RunDir(PathBuf);
 
+/// The start of the name of a list of process groups set aside in a run
+/// directory ([`RunDir::set_groups_aside`]); a number follows.
+const GROUPS_ASIDE: &str = "groups.unread-";
+
 impl RunDir {
     /// The directory the launcher named in [`env::RUN`], or `None` when
     /// it is unset or empty.
@@ -682,44 +686,76 @@ impl RunDir {
         self.0.join("groups")
     }
 
-    /// The group ids listed in [`Self::groups`], none when there is no
-    /// list.
-    fn listed_groups(&self) -> std::io::Result<Vec<i32>> {
-        let listed = match std::fs::read_to_string(self.groups()) {
+    /// The lists of [`Self::groups`] agents could not read and moved
+    /// aside ([`Self::set_groups_aside`]). Their groups are not taken over
+    /// by the next agent; the launcher ends them ([`Self::kill_left_groups`]).
+    fn groups_aside(&self) -> Vec<PathBuf> {
+        let entries = std::fs::read_dir(&self.0).into_iter().flatten().flatten();
+        entries
+            .map(|entry| entry.path())
+            .filter(|path| {
+                let name = path.file_name().and_then(|name| name.to_str());
+                name.is_some_and(|name| name.starts_with(GROUPS_ASIDE))
+            })
+            .collect()
+    }
+
+    /// Moves [`Self::groups`], which could not be read, aside under a name
+    /// of its own in the run directory, so an agent can start the list anew
+    /// without writing into or over it. A rename, which needs only the
+    /// directory's permissions. Returns where it went.
+    ///
+    /// # Errors
+    ///
+    /// When it cannot be renamed.
+    pub fn set_groups_aside(&self) -> std::io::Result<PathBuf> {
+        let free = (1..=u32::MAX)
+            .map(|n| self.0.join(format!("{GROUPS_ASIDE}{n}")))
+            .find(|path| !path.exists())
+            .ok_or_else(|| std::io::Error::from(std::io::ErrorKind::AlreadyExists))?;
+        std::fs::rename(self.groups(), &free)?;
+        Ok(free)
+    }
+
+    /// The groups listed in `list`, [`Self::groups`] or one set aside, that
+    /// still have a process carrying [`env::PROCESS_LEDGER`] naming
+    /// [`Self::groups`], its leader or one the leader left behind as it
+    /// exited: so an id the system gave another process since is not among
+    /// them. None when there is no list. A line that is not an id, even
+    /// one that is not text, names no group.
+    fn live_in(&self, list: &Path) -> std::io::Result<Vec<i32>> {
+        let listed = match std::fs::read(list) {
             Ok(listed) => listed,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
             Err(error) => return Err(error),
         };
-        // A group id of 0 or 1 would name the caller's own group or every
-        // process.
-        Ok(listed
+        let ledger = self.groups();
+        Ok(String::from_utf8_lossy(&listed)
             .lines()
             .filter_map(|id| id.trim().parse::<i32>().ok())
+            // A group id of 0 or 1 would name the caller's own group or
+            // every process.
             .filter(|&id| id > 1)
+            .filter(|&id| members(id).into_iter().any(|pid| marked(pid, &ledger)))
             .collect())
     }
 
     /// The groups listed in [`Self::groups`] that still have a process
-    /// carrying [`env::PROCESS_LEDGER`] naming the list, its leader or one
-    /// the leader left behind as it exited: so an id the system gave
-    /// another process since is not among them.
+    /// carrying [`env::PROCESS_LEDGER`] naming the list, which the next
+    /// agent takes over. A line that is not an id, even one that is not
+    /// text, names no group.
     ///
     /// # Errors
     ///
     /// When the list cannot be read.
     pub fn live_groups(&self) -> std::io::Result<Vec<i32>> {
-        let ledger = self.groups();
-        Ok(self
-            .listed_groups()?
-            .into_iter()
-            .filter(|&id| members(id).into_iter().any(|pid| marked(pid, &ledger)))
-            .collect())
+        self.live_in(&self.groups())
     }
 
     /// Ends the process groups the agent listed in [`Self::groups`] and
     /// left running ([`Self::live_groups`]), as after `SIGKILL` or when it
-    /// exits with a job still running in the background, and removes the
-    /// list: asks them to stop (`SIGTERM`), so an agent among them, such as
+    /// exits with a job still running in the background, with those of the
+    /// lists set aside ([`Self::set_groups_aside`]), and removes the lists: asks them to stop (`SIGTERM`), so an agent among them, such as
     /// a session of `rig acp`, ends its own; waits at most
     /// [`STOP_GRACE`](Self::STOP_GRACE) for them to empty; then kills what
     /// is left (`SIGKILL`). `kill(1)` sends the signals, so this keeps to
@@ -727,7 +763,8 @@ impl RunDir {
     ///
     /// # Errors
     ///
-    /// When the list cannot be read or removed.
+    /// When a list cannot be read or removed. The groups of the others are
+    /// ended all the same, and a list that cannot be read is kept.
     pub fn kill_left_groups(&self) -> std::io::Result<()> {
         let signal = |name: &str, groups: &[i32]| {
             if !groups.is_empty() {
@@ -739,7 +776,22 @@ impl RunDir {
                     .ok();
             }
         };
-        let mut left = self.live_groups()?;
+        let mut left = Vec::new();
+        let mut read = Vec::new();
+        let mut failed = None;
+        for list in std::iter::once(self.groups()).chain(self.groups_aside()) {
+            match self.live_in(&list) {
+                Ok(live) => {
+                    left.extend(live);
+                    read.push(list);
+                }
+                Err(error) => {
+                    failed.get_or_insert(error);
+                }
+            }
+        }
+        left.sort_unstable();
+        left.dedup();
         signal("TERM", &left);
         // From here on a group is ended once it is empty: one that holds
         // processes is never given to another, marked or not.
@@ -749,10 +801,15 @@ impl RunDir {
             left.retain(|&id| exists(id));
         }
         signal("KILL", &left);
-        match std::fs::remove_file(self.groups()) {
-            Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error),
-            _ => Ok(()),
+        for list in read {
+            match std::fs::remove_file(list) {
+                Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
+                    failed.get_or_insert(error);
+                }
+                _ => {}
+            }
         }
+        failed.map_or(Ok(()), Err)
     }
 
     /// How long [`Self::kill_left_groups`] waits for the groups it asked to
