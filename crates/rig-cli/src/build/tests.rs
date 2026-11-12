@@ -89,32 +89,30 @@ fn a_build_that_cannot_be_staged_names_the_step_and_the_file() {
 }
 
 /// A new build is checked against the stamps of the builds already known.
-/// One that cannot be read, here the rejected build's as a directory or the
-/// staged build as a symlink loop, fails the build naming the file and the
-/// step, rather than counting as no build.
+/// A staged build whose stamp cannot be read, here a symlink loop, fails
+/// the build naming the file and the step. A rejected stamp that cannot be
+/// read, here a directory, is named when telling which build runs, and
+/// staging goes on: it only keeps a crashed build from being retried.
 #[test]
-fn a_known_build_whose_stamp_cannot_be_read_fails_the_build_naming_it() {
+fn a_known_build_whose_stamp_cannot_be_read_is_named() {
     let report = "printf 'rig-describe 1\\n' > \"$RIG_DESCRIBE\"";
     let home = built("unreadable-stamp", report);
     let staged = home.bin().join("staged-for-session");
     let rejected = home.rejected();
     let made = fs::create_dir_all(&rejected);
-    let refused = stage_on(&home, &staged, Staging::OnlyNew).map_err(|why| why.to_string());
     let passed = passed_over(&home, &staged).map_err(|why| why.to_string());
-    let removed = fs::remove_dir(&rejected);
+    let restaged = stage_on(&home, &staged, Staging::OnlyNew).map_err(|why| why.to_string());
+    let restaged = restaged.map(|()| staged.exists());
     let looped = std::os::unix::fs::symlink(home.staged(), home.staged());
     let looping = stage_on(&home, &staged, Staging::OnlyNew).map_err(|why| why.to_string());
     fs::remove_dir_all(home.root()).ok();
-    assert!(made.is_ok() && removed.is_ok() && looped.is_ok());
+    assert!(made.is_ok() && looped.is_ok());
     let read = format!("read {}: ", rejected.display());
-    assert!(
-        refused.as_ref().is_err_and(|why| why.starts_with(&read)),
-        "{refused:?}"
-    );
     assert!(
         passed.as_ref().is_err_and(|why| why.starts_with(&read)),
         "{passed:?}"
     );
+    assert_eq!(restaged, Ok(true));
     let look = format!("look at {}: ", home.staged().display());
     assert!(
         looping.as_ref().is_err_and(|why| why.starts_with(&look)),

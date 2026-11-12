@@ -531,7 +531,9 @@ impl BuildLog {
 /// Copies the built binary to `staged`, keeping its modification time so
 /// the copy carries its [`stamp`], once it described itself: a build that
 /// does not is rejected, and the build fails. A build `rig build` staged
-/// for any launcher that differs from this one is older, so it goes.
+/// for any launcher that differs from this one is older, so it goes. A
+/// good or staged build whose stamp cannot be read fails the build; a
+/// rejected stamp that cannot be read is warned of and counts as none.
 pub fn stage(launch: &Launch, staged: &Path, staging: Staging) -> Result<()> {
     let home = &launch.home();
     let artifact = artifact(home);
@@ -554,7 +556,11 @@ pub fn stage(launch: &Launch, staged: &Path, staging: Staging) -> Result<()> {
     if staging == Staging::OnlyNew
         && (stamp_if_any(&home.good())? == built
             || shared_stamp == built
-            || rejected(home)? == built)
+            || rejected(home).unwrap_or_else(|why| {
+                // Only a hint against retrying: the build runs as a trial, rolled back if it crashes.
+                eprintln!("warning: a build that crashed at startup may be tried again: {why}");
+                None
+            }) == built)
     {
         return Ok(());
     }
