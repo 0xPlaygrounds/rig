@@ -549,6 +549,43 @@ fn too_old() -> AgentEnd {
     AgentEnd::Refused("too old.".to_owned())
 }
 
+/// A resumed session whose saved directory file cannot be read, here as it
+/// is not text, is refused, naming the file, and the file stays: rig does
+/// not take the read as no directory and move the session to where it was
+/// started.
+#[cfg(unix)]
+#[test]
+fn a_resumed_session_whose_directory_cannot_be_read_is_refused() {
+    let root = std::env::temp_dir().join(format!("rig-unread-dir-{}", std::process::id()));
+    fs::remove_dir_all(&root).ok();
+    let home = Home::at(&root);
+    let here = root.join("here");
+    let unreadable = [0xff, 0xfe, b'\n'];
+    let said = locks::hold_run(&home).and_then(|_run| {
+        let (id, session) = home.new_session()?;
+        session.mark_saved()?;
+        fs::write(session.directory(), unreadable)?;
+        fs::create_dir_all(&here)?;
+        let claimed = claim(&home, Start::Resume(id), Some(&here)).map(|_| ());
+        Ok((
+            claimed.map_err(|failure| failure.to_string()),
+            fs::read(session.directory())?,
+        ))
+    });
+    fs::remove_dir_all(&root).ok();
+    let (claimed, kept) = match said {
+        Ok(said) => said,
+        Err(failure) => (Err(format!("setup: {failure}")), Vec::new()),
+    };
+    assert!(
+        claimed
+            .as_ref()
+            .is_err_and(|failure| failure.contains("/directory: ")),
+        "{claimed:?}"
+    );
+    assert_eq!(kept, unreadable);
+}
+
 /// A `/resume` of a session whose run is refused, such as one an older rig
 /// saved, goes back to the session it left, told why, instead of ending.
 #[cfg(unix)]
