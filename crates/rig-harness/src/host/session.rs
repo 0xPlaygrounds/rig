@@ -15,7 +15,6 @@ use std::os::unix::fs::DirBuilderExt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
-use bevy_app::OnAppExitSystems;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_log::tracing::field::{Field, Visit};
@@ -29,10 +28,10 @@ use rig_harness_protocol::{Home, SessionDir, SessionId, StartReason};
 
 use rig_core::completion::Message;
 use rig_core::conversation::Author;
-use rig_ecs::WriteLogs;
 use rig_ecs::agent::{Agent, Conversation, Notice, NoticeLevel};
 use rig_ecs::restore::SavedKeys;
 use rig_ecs::session_log::{SessionLog, SessionStore, open_session};
+use rig_ecs::{Persist, WriteLogs};
 use rig_memory::{
     DirFiles, DirStore, Files, Rewrite, Rewritten, Session, SessionError, SessionMeta, Store,
     rewrite, rewrite_file,
@@ -248,12 +247,8 @@ impl Plugin for SessionPlugin {
             app.insert_resource(AppStart(reason));
         }
         if first {
-            app.insert_resource(Unmarked).add_systems(
-                Last,
-                mark_started
-                    .run_if(resource_exists::<Unmarked>)
-                    .before(discard_unsaved),
-            );
+            app.insert_resource(Unmarked)
+                .add_systems(Last, mark_started.run_if(resource_exists::<Unmarked>));
         }
         app.init_resource::<StoreOpener>()
             .init_resource::<SystemTimings>()
@@ -268,17 +263,15 @@ impl Plugin for SessionPlugin {
             )
             .add_systems(First, timings::next_frame)
             .add_systems(
-                Last,
-                track_saved
-                    .after(WriteLogs)
-                    .before(discard_unsaved)
-                    .run_if(resource_exists::<KeepsSession>),
-            )
-            .add_systems(
-                Last,
-                discard_unsaved
-                    .after(OnAppExitSystems)
-                    .run_if(on_message::<AppExit>),
+                Persist,
+                (
+                    track_saved
+                        .run_if(resource_exists::<KeepsSession>)
+                        .in_set(MarkSaved),
+                    discard_unsaved.run_if(on_message::<AppExit>),
+                )
+                    .chain()
+                    .after(WriteLogs),
             );
     }
 
@@ -386,6 +379,12 @@ pub(crate) fn leave_session(world: &mut World) {
     world.insert_resource(Scratch(None));
     world.remove_resource::<Unmarked>();
 }
+
+/// The system in [`Persist`], after the logs are written, that marks the
+/// session saved once it holds a conversation. A system in [`Persist`]
+/// that reads `SessionPaths::is_saved` goes `.after(MarkSaved)`.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct MarkSaved;
 
 /// Keeps the session's saved marker equal to whether it holds a
 /// conversation: marked once its log wrote and it does, unmarked once it

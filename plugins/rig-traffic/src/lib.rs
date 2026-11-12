@@ -17,8 +17,8 @@ use std::sync::{Arc, OnceLock};
 use bevy_app::AppExit;
 use bevy_log::warn;
 use rig_cassette::traffic::TrafficLog;
-use rig_ecs::WriteLogs;
 use rig_ecs::session_log::SessionStore;
+use rig_ecs::{Persist, WriteLogs};
 use rig_harness::prelude::*;
 use rig_memory::Files;
 use serde::Deserialize;
@@ -77,8 +77,10 @@ impl Plugin for TrafficPlugin {
                 Some(log) => log.wrap_http(http),
                 None => http,
             });
-        app.insert_resource(traffic)
-            .add_systems(Last, flush.in_set(WriteLogs).run_if(on_message::<AppExit>));
+        app.insert_resource(traffic).add_systems(
+            Persist,
+            flush.in_set(WriteLogs).run_if(on_message::<AppExit>),
+        );
     }
 
     fn finish(&self, app: &mut App) {

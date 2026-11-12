@@ -290,7 +290,9 @@ impl Effect {
 /// A plugin's rig-core effect: the kernel dispatches `kind` to `handler` at
 /// Start, recorded, and its answer becomes the [`Outcome`]. Without a
 /// handler it is open: Start marks it [`Started`], and it waits for any
-/// system to answer it.
+/// system to answer it. One that may change something carries a
+/// [`Footprint`] that says so, and then does not start once the session
+/// can no longer be saved.
 #[derive(Component, Clone)]
 #[require(Effect)]
 pub struct EffectRequest {
@@ -1190,24 +1192,31 @@ fn start(
         let ending = item.of.and_then(|of| turns.get(of.0).ok());
         ending.and_then(TurnOutcome::stops).is_some()
     };
-    // Before a call that may change something starts, the reply that asked
-    // for it and, for a call of a reply, the call's mark are written to the
-    // store (not yet synced to disk). When they cannot be, no such call
-    // starts: a restart could not tell that it may have run. A call of no
-    // reply has no place to mark, but it too waits for that write.
-    let changing: Vec<_> = ready
+    // Before an effect that may change something starts, the reply that
+    // asked for it and, for a call of a reply, the call's mark are written
+    // to the store (not yet synced to disk). When they cannot be, no such
+    // effect starts: a restart could not tell that it may have run. An
+    // effect of no reply has no place to mark, but it too waits for that
+    // write.
+    let mut changing = false;
+    let mut marks = Vec::new();
+    let starting = ready
         .iter()
-        .filter(|item| !item.message && !item.decision.is_decided() && !stopping(item))
-        .filter(|item| !item.footprint.is_some_and(|it| it.0.reads_only()))
-        .filter_map(|item| {
-            let at = item.in_reply.map(InReply::at);
-            Some((item.agent?.0, item.tool?.call.id.clone(), at))
-        })
-        .collect();
+        .filter(|item| !item.message && !item.decision.is_decided() && !stopping(item));
+    for item in starting.filter(|item| changes(item.tool.is_some(), item.footprint)) {
+        changing = true;
+        if let (Some(agent), Some(tool)) = (item.agent, item.tool) {
+            marks.push((
+                agent.0,
+                tool.call.id.clone(),
+                item.in_reply.map(InReply::at),
+            ));
+        }
+    }
     let mut unsaved = None;
-    if !changing.is_empty() {
+    if changing {
         let mut conversations = saving.p1();
-        for (agent, call, at) in &changing {
+        for (agent, call, at) in &marks {
             if let (Ok(mut conversation), Some(at)) = (conversations.get_mut(*agent), at) {
                 mark_started(&mut conversation, (call, *at));
             }
@@ -1237,7 +1246,7 @@ fn start(
             continue;
         }
         let (entity, effect) = (item.entity, item.effect);
-        let changes = item.tool.is_some() && !item.footprint.is_some_and(|it| it.0.reads_only());
+        let changes = changes(item.tool.is_some(), item.footprint);
         if let Some(unsaved) = unsaved.as_ref().filter(|_| changes) {
             commands
                 .entity(entity)
@@ -1324,6 +1333,13 @@ fn start(
         let running = Running::finishing(effect_pool(), &wake, work.instrument(span), answer);
         started.try_insert((Started { at }, running));
     }
+}
+
+/// Whether an effect may change something outside the session, as its
+/// [`Footprint`] says: a tool call that says nothing may change anything,
+/// any other effect changes nothing unless its footprint says so.
+fn changes(tool: bool, footprint: Option<&Footprint>) -> bool {
+    footprint.map_or(tool, |footprint| !footprint.0.reads_only())
 }
 
 /// Puts what a handler's run left on its effect, unless it was answered

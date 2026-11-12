@@ -20,10 +20,13 @@
 //! # let _ = add_reviewer;
 //! ```
 
+use std::collections::HashSet;
+
 use bevy_ecs::prelude::*;
 use bevy_ecs::query::QueryData;
 use bevy_ecs::system::{EntityCommands, SystemParam, SystemState};
 use rig_core::effect::EffectId;
+use rig_memory::{SESSION, check_log_name};
 
 use super::agent::{Agent, AgentId, EffectParent, NotYours, SpawnedBy, SystemPrompt, ToolAccess};
 use super::model::{Connection, ModelChoice, Models, ReasoningSetting};
@@ -67,8 +70,12 @@ pub struct AgentSpec {
 pub enum SpawnRefused {
     /// The origin is not an agent.
     NotAnAgent,
-    /// An agent has the id asked for.
+    /// An agent has the id asked for, or a spawn not applied yet asked for
+    /// it first.
     IdTaken(AgentId),
+    /// The id asked for cannot name an agent's log: it is empty, holds a
+    /// `/` or `\`, is `.` or `..`, or is [`SESSION`], the session's own.
+    NotALogName(AgentId),
     /// A tool asked for is not one its origin keeps.
     Tool(NotYours),
     /// The model or effort asked for cannot be used, for the reason given.
@@ -80,6 +87,7 @@ impl std::fmt::Display for SpawnRefused {
         match self {
             Self::NotAnAgent => f.write_str("the agent to spawn from is gone"),
             Self::IdTaken(id) => write!(f, "an agent with the id `{}` exists", id.0),
+            Self::NotALogName(id) => write!(f, "`{}` cannot name an agent's log", id.0),
             Self::Tool(refused) => refused.fmt(f),
             Self::Model(why) => f.write_str(why),
         }
@@ -99,12 +107,18 @@ struct Settings {
     under: Option<&'static EffectParent>,
 }
 
+/// The ids of the agents whose spawn is queued and not applied yet, so a
+/// second spawn asking for one is refused.
+#[derive(Resource, Default)]
+pub(crate) struct PendingIds(HashSet<AgentId>);
+
 /// Makes agents from a system, by the rule of the [module](self).
 #[derive(SystemParam)]
 pub struct Spawner<'w, 's> {
     origins: Query<'w, 's, Settings, With<Agent>>,
     lineage: Query<'w, 's, &'static SpawnedBy>,
     ids: Query<'w, 's, &'static AgentId>,
+    pending: ResMut<'w, PendingIds>,
     tools: Query<'w, 's, &'static ToolDef>,
     models: Option<Res<'w, Models>>,
     commands: Commands<'w, 's>,
@@ -129,7 +143,10 @@ impl Spawner<'_, '_> {
         let from = from.map(|agent| self.origins.get(agent)).transpose();
         let from = from.map_err(|_| SpawnRefused::NotAnAgent)?;
         let id = spec.id.unwrap_or_default();
-        if self.ids.iter().any(|taken| *taken == id) {
+        if id.0 == SESSION || check_log_name(&id.0).is_err() {
+            return Err(SpawnRefused::NotALogName(id));
+        }
+        if self.pending.0.contains(&id) || self.ids.iter().any(|taken| *taken == id) {
             return Err(SpawnRefused::IdTaken(id));
         }
         let model = from.as_ref().and_then(|from| from.model);
@@ -174,7 +191,8 @@ impl Spawner<'_, '_> {
         // Each before `Agent`, so what observes a new agent sees it: the
         // connection before the model choice, so connecting keeps it, and
         // the parent after the id, so the agent's log opens naming it.
-        let mut agent = self.commands.spawn(id);
+        self.pending.0.insert(id.clone());
+        let mut agent = self.commands.spawn(id.clone());
         if let Some(connection) = connection {
             agent.insert(connection);
         }
@@ -189,13 +207,21 @@ impl Spawner<'_, '_> {
         }
         let prompt = prompt.unwrap_or_default();
         agent.insert((Agent::new(), Name::new(name), prompt, access, effort));
-        Ok(agent)
+        let entity = agent.id();
+        // Once the agent has its id, the world holds it.
+        self.commands.queue(move |world: &mut World| {
+            if let Some(mut pending) = world.get_resource_mut::<PendingIds>() {
+                pending.0.remove(&id);
+            }
+        });
+        Ok(self.commands.entity(entity))
     }
 }
 
 /// Spawns an agent from `origin` with `spec`, as a [`Spawner`] does, and
 /// returns it; or why it may not be made.
 pub fn spawn(world: &mut World, origin: Origin, spec: AgentSpec) -> Result<Entity, SpawnRefused> {
+    world.init_resource::<PendingIds>();
     let mut state = SystemState::<Spawner>::new(world);
     let mut spawner = state.get_mut(world).map_err(|_| SpawnRefused::NotAnAgent)?;
     let spawned = spawner.spawn(origin, spec).map(|agent| agent.id());

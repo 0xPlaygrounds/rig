@@ -321,7 +321,7 @@ fn a_sessionless_front_leaves_no_directory_and_a_failed_run_keeps_its_log() {
             .insert_resource(RigHome(home.clone()))
             .insert_resource(SessionPaths(session.clone()))
             .insert_resource(LauncherRun(run.clone()))
-            .add_plugins(SessionPlugin)
+            .add_plugins((rig_ecs::AgentPlugin, SessionPlugin))
             .add_front(front);
         assert!(app.runs_front("replay"));
         app.world_mut().write_message(exit);
@@ -363,7 +363,7 @@ fn an_unsaved_session_left_for_good_leaves_no_directory() {
         app.add_message::<Notice>()
             .insert_resource(RigHome(home.clone()))
             .insert_resource(SessionPaths(session.clone()))
-            .add_plugins(SessionPlugin);
+            .add_plugins((rig_ecs::AgentPlugin, SessionPlugin));
         app.update();
         app.world_mut().write_message(reason.exit());
         app.insert_resource(reason);
@@ -406,7 +406,7 @@ fn a_sessionless_front_refuses_a_resumed_session_and_keeps_it() {
             .insert_resource(RigHome(home.clone()))
             .insert_resource(SessionPaths(session.clone()))
             .insert_resource(AppStart(reason))
-            .add_plugins(SessionPlugin)
+            .add_plugins((rig_ecs::AgentPlugin, SessionPlugin))
             .add_front(Front::new("export").headless().sessionless());
         let refusal = crate::host::cli::refusal(&mut app);
         app.world_mut().write_message(AppExit::Success);

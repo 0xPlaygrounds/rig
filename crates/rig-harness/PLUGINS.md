@@ -366,15 +366,16 @@ fn tidy_messages(mut messages: Query<&mut Incoming, Added<Admitted>>) {
 }
 ```
 
-**Saving and writing in `Last`**, on the exit frame too: the kernel queues
-what the frame changed for the session log (`rig_ecs::SaveSystems`), then
-writes it (`rig_ecs::WriteLogs`). A `Last` system that changes saved state, a
-conversation or a [saved component](#saved-state-counting-every-tool-call),
-goes `.before(SaveSystems)`; after it, the change is saved a frame late, and
-on exit never. A notice sent in `Last`, such as the session log's write
-failure in `WriteLogs`, is read the next frame by the systems before its
-sender, so one that keeps something on exit goes `.after(WriteLogs)` or asks
-`SessionLog::failure()`.
+**Saving and writing after `Last`**, on the exit frame too: the kernel queues
+what the frame changed for the session log after every plugin's `Last` system
+ran, so a change to a conversation or a
+[saved component](#saved-state-counting-every-tool-call) made in `Last` is
+saved with its frame, with no ordering to add. Then its own schedule
+`rig_ecs::Persist` writes the logs (`rig_ecs::WriteLogs`): a plugin that
+writes a log of its own adds that system to `Persist` in `WriteLogs`. A notice
+sent there, such as the session log's write failure, is read the next frame,
+so a system that keeps something on exit runs in `Persist`
+`.after(WriteLogs)` or asks `SessionLog::failure()`.
 
 # A tool
 
@@ -1461,7 +1462,7 @@ settle order: its request (`kind`), its answer (`outcome`, a reviewer's as
 `reviewed`), who decided it before it ran (`decided_by`), its times, the agent
 it worked for (`scope`, an `AgentId`), its `turn` (`Turn.index`), and the
 effect it was made under (`parent`). `rig_basics::telemetry` writes them to
-the session's effect log in `Last` (`WriteLogs`) and reads them back through
+the session's effect log in `Persist` (`WriteLogs`) and reads them back through
 its `EffectLog`: `read()`, or `read_matching(&filter)` by agent, kind name
 (`completion`, `tool_call`, `message`, `subagent` or a plugin's) and turn
 (rig-cassette's `EffectFilter::default().agent(id).turn(n)`), as written by
@@ -1490,10 +1491,10 @@ they start: a model call by an adapter in
 ```rust,no_run
 use rig_harness::prelude::*;
 use rig_harness::rig_core::redact;
-use rig_harness::rig_ecs::{StopTurnsOnExit, WriteLogs};
+use rig_harness::rig_ecs::StopTurnsOnExit;
 
 fn build(app: &mut App) {
-    app.add_systems(Last, hide_secrets.after(StopTurnsOnExit).before(WriteLogs));
+    app.add_systems(Last, hide_secrets.after(StopTurnsOnExit));
 }
 
 /// Takes every key-shaped secret out of every record before it is written.

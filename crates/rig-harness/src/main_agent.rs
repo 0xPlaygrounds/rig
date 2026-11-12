@@ -20,7 +20,6 @@
 
 use bevy_ecs::schedule::ScheduleLabel;
 use bevy_ecs::system::SystemParam;
-use rig_ecs::SaveSystems;
 use rig_ecs::agent::{Agent, AgentId, SpawnedBy};
 use rig_ecs::prelude::*;
 use rig_ecs::stage::AgentLoop;
@@ -71,8 +70,7 @@ impl Plugin for CurrentAgentPlugin {
         app.init_resource::<CurrentAgent>()
             .init_resource::<ShownAgent>()
             .add_systems(First, keep_shown)
-            .configure_sets(Update, CurrentAgentSystems.after(AgentLoop))
-            .configure_sets(Last, CurrentAgentSystems.before(SaveSystems));
+            .configure_sets(Update, CurrentAgentSystems.after(AgentLoop));
         for schedule in [Update.intern(), Last.intern()] {
             let follow = follow_shown.run_if(resource_changed::<ShownAgent>);
             app.add_systems(schedule, follow.in_set(CurrentAgentSystems));

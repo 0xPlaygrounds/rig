@@ -230,3 +230,42 @@ fn the_setup_and_its_changes_are_recorded_resumed_and_never_sent() {
     }
     fs::remove_dir_all(home.root()).ok();
 }
+
+/// A model chosen on the exit frame is recorded on it, and the record is
+/// saved with the session.
+#[test]
+fn a_model_chosen_as_the_session_exits_is_kept() {
+    let home = scratch_home("sp-session-provenance-exit");
+    let repo = home.root().join("repo");
+    assert!(fs::create_dir_all(&repo).is_ok());
+    git(&repo, &["init", "-q", "-b", "main"]);
+    commit(&repo, "a.txt");
+    let a = MockCompletionModel::from_stream_turns([reply("Done.")]);
+    let b = MockCompletionModel::from_stream_turns(Vec::<Vec<_>>::new());
+    let models = || scripted_models([("test/scripted-a", &a), ("test/scripted-b", &b)]);
+    let at = (&home, repo.as_path());
+
+    let started = start(at, "1000-3", models(), "0.1", true);
+    assert!(started.is_some(), "a session with an agent");
+    let Some((mut app, wakes, agent)) = started else {
+        return;
+    };
+    send(&mut app, &wakes, agent, "Do it.");
+    app.world_mut().trigger(SetModel {
+        entity: agent,
+        model: "test/scripted-b".to_owned(),
+        kind: ChoiceKind::ForThisRun,
+    });
+    app.world_mut().write_message(AppExit::Success);
+    app.update();
+    assert_eq!(kinds(&record(&app, agent)), [EntryKind::Model]);
+    drop(app);
+
+    let resumed = start(at, "1000-3", models(), "0.1", true);
+    assert!(resumed.is_some(), "the session was resumed");
+    let Some((app, _wakes, agent)) = resumed else {
+        return;
+    };
+    assert_eq!(kinds(&record(&app, agent)).first(), Some(&EntryKind::Model));
+    fs::remove_dir_all(home.root()).ok();
+}

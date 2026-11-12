@@ -41,7 +41,18 @@ fn session(
     main: &MockCompletionModel,
     sub: &MockCompletionModel,
 ) -> (App, Receiver<()>, Entity) {
-    let (mut app, wakes) = app_on(&MemoryStore::default());
+    session_on(&MemoryStore::default(), home, root, main, sub)
+}
+
+/// As [`session`], kept in `store`.
+fn session_on(
+    store: &MemoryStore,
+    home: &Home,
+    root: &Path,
+    main: &MockCompletionModel,
+    sub: &MockCompletionModel,
+) -> (App, Receiver<()>, Entity) {
+    let (mut app, wakes) = app_on(store);
     app.insert_resource(RigHome(home.clone()))
         .insert_resource(ProjectRoot(root.to_path_buf()))
         .insert_resource(scripted_models([("test/main", main), ("test/sub", sub)]))
@@ -248,4 +259,30 @@ fn calls_are_counted_per_session_per_agent_and_per_project() {
     app.update();
     let all = toolstats(&mut app, &wakes, agent, "--all");
     assert!(all.rows.is_empty(), "{all:#?}");
+}
+
+/// A call the exit stops is counted on the exit frame, and the count is
+/// saved with the session.
+#[test]
+fn a_call_the_exit_stops_is_counted_and_saved() {
+    let home = scratch_home("tool-stats-exit");
+    let root: PathBuf = home.root().join("project");
+    std::fs::create_dir_all(&root).ok();
+    let main = MockCompletionModel::from_stream_turns([vec![
+        MockStreamEvent::tool_call("s1", "shell", json!({ "command": "sleep 5" })),
+        MockStreamEvent::final_response_with_default_usage(),
+    ]]);
+    let sub = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let store = MemoryStore::default();
+    let (mut app, wakes, agent) = session_on(&store, &home, &root, &main, &sub);
+    app.world_mut()
+        .trigger(Deliver::new(agent, "go", DeliveryMode::Queue));
+    run_until(&mut app, &wakes, |world| world.resource::<ShellStarted>().0);
+    app.world_mut().write_message(AppExit::Success);
+    app.update();
+    assert_eq!(session_calls(app.world(), "shell").cancelled, 1);
+    drop(app);
+
+    let (app, _wakes, _agent) = session_on(&store, &home, &root, &main, &sub);
+    assert_eq!(session_calls(app.world(), "shell").cancelled, 1);
 }

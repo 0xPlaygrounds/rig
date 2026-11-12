@@ -58,3 +58,51 @@ fn a_child_takes_what_its_spec_leaves_out_from_its_origin_at_any_depth() {
     assert_eq!(parent(world, like), parent(world, deepest));
     assert!(keeps(world, like));
 }
+
+/// Spawns two agents with the id `id` in one system, and keeps whether
+/// each was made.
+fn spawn_twice(id: &'static str) -> impl FnMut(Spawner, ResMut<Made>) {
+    move |mut spawner: Spawner, mut made: ResMut<Made>| {
+        for _ in 0..2 {
+            let spec = AgentSpec {
+                id: Some(AgentId(id.into())),
+                ..AgentSpec::default()
+            };
+            made.0.push(spawner.spawn(Origin::Root, spec).map(|_| ()));
+        }
+    }
+}
+
+/// What each spawn of [`spawn_twice`] gave.
+#[derive(Resource, Default)]
+struct Made(Vec<Result<(), SpawnRefused>>);
+
+#[test]
+fn an_id_is_taken_as_soon_as_it_is_asked_for() {
+    let mut app = app();
+    app.add_plugins(crate::AgentPlugin)
+        .init_resource::<Made>()
+        .add_systems(Update, spawn_twice("helper"));
+    app.update();
+    let made = &app.world().resource::<Made>().0;
+    let taken = SpawnRefused::IdTaken(AgentId("helper".into()));
+    assert_eq!(made.as_slice(), [Ok(()), Err(taken)]);
+    let mut ids = app.world_mut().query::<&AgentId>();
+    let helpers = ids.iter(app.world()).filter(|id| id.0 == "helper");
+    assert_eq!(helpers.count(), 1);
+}
+
+#[test]
+fn an_id_that_names_no_agent_log_is_refused() {
+    let mut app = app();
+    let world = app.world_mut();
+    for id in ["session", "a/b", "..", ""] {
+        let spec = AgentSpec {
+            id: Some(AgentId(id.into())),
+            ..AgentSpec::default()
+        };
+        let made = spawn(world, Origin::Root, spec);
+        let refused = SpawnRefused::NotALogName(AgentId(id.into()));
+        assert_eq!(made, Err(refused));
+    }
+}

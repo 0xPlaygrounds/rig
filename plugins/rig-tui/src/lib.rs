@@ -322,14 +322,17 @@ pub fn add_view(app: &mut App) {
         )
         .add_systems(
             Last,
-            (
-                view::keep_draft,
-                // With the notices sent in `Last`, such as a failed last save.
-                (view::collect_notices, view::keep_notices)
-                    .chain()
-                    .after(rig_ecs::WriteLogs),
-            )
+            view::keep_draft
                 .in_set(bevy_app::OnAppExitSystems)
+                .run_if(on_message::<AppExit>),
+        )
+        // With the notices sent as the logs are written, such as a failed
+        // last save.
+        .add_systems(
+            rig_ecs::Persist,
+            (view::collect_notices, view::keep_notices)
+                .chain()
+                .after(rig_ecs::WriteLogs)
                 .run_if(on_message::<AppExit>),
         )
         // After the frame, and after what runs on the way out, which may

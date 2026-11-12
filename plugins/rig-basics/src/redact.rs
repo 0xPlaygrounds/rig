@@ -32,9 +32,9 @@ use rig_harness::rig_core::redact::{self, Streamed};
 use rig_harness::rig_core::serve::{AfterServe, BeforeServe, Intercept};
 use rig_harness::rig_core::streaming::{Item, Relayed};
 use rig_harness::rig_core::tool::{ContextValue, FilesChanged, Hunk, HunkLine};
+use rig_harness::rig_ecs::StopTurnsOnExit;
 use rig_harness::rig_ecs::effects::Handler;
 use rig_harness::rig_ecs::tools::ResultFilter;
-use rig_harness::rig_ecs::{SaveSystems, StopTurnsOnExit};
 use rig_harness::run::RunExitSystems;
 use rig_tools::LineFilter;
 use serde::Serialize;
@@ -169,8 +169,7 @@ impl Plugin for RedactPlugin {
                         keep_count,
                     )
                         .chain()
-                        .after(StopTurnsOnExit)
-                        .before(SaveSystems),
+                        .after(StopTurnsOnExit),
                 ),
             );
         // In the key schedule too, so a prompt seeded from a conversation

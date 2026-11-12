@@ -30,16 +30,17 @@ use rig_memory::{Repair, SESSION, Session, SessionError, Store, Writer};
 
 use super::agent::{Agent, AgentId, Conversation, Notice, SpawnedBy};
 use super::restore::SavedKeys;
-use super::{SaveSystems, StartupSystems, WriteLogs};
+use super::{Persist, StartupSystems, WriteLogs};
 
 /// Saves an agent component or a resource with the session: derive
 /// `Reflect` and add `Saved`, as `#[reflect(Component, Saved)]` or
 /// `#[reflect(Resource, Saved)]`.
 ///
-/// - Each change is logged at the end of the frame under its type path, or
-///   the key its plugin gives it ([`SavedKeys`]): an agent's in its log, a
-///   resource in the [`SESSION`] log. A value that serializes to `null`, or
-///   a removed component, is saved as absent.
+/// - Each change is logged at the end of the frame, after `Last`, under its
+///   type path, or the key its plugin gives it ([`SavedKeys`]): an agent's
+///   in its log, a resource in the [`SESSION`] log. A value that serializes
+///   to `null`, a removed component or a removed resource is saved as
+///   absent, so a restore does not bring it back.
 /// - On restore it is inserted before [`SessionRestored`] exists, on the
 ///   agent it was saved with, so an `On<Insert<T>>` observer re-arms what
 ///   it says. A resource replaces the one its plugin inserted while the app
@@ -90,7 +91,7 @@ impl ReflectSaved {
         // `Changed` also sees an immutable value inserted in place of
         // another.
         let watch = |app: &mut App| {
-            app.add_systems(Last, log_changed::<T>.in_set(SaveSystems));
+            app.add_systems(SaveFrame, log_changed::<T>);
         };
         Self { watch, fork }
     }
@@ -119,19 +120,34 @@ impl<T: Component + Reflect + TypePath> CreateTypeData<T, Never> for ReflectSave
     }
 }
 
+/// The log a saved value of an entity goes in.
+#[derive(SystemParam)]
+struct Owners<'w, 's> {
+    agents: Query<'w, 's, &'static AgentId, With<Agent>>,
+    resources: Query<'w, 's, (), With<IsResource>>,
+    spawned: Query<'w, 's, (), Added<Agent>>,
+}
+
+impl Owners<'_, '_> {
+    /// The log of `entity`'s saved values, and whether a change starts it:
+    /// an agent's own, which a change starts unless the agent was spawned
+    /// with it, so a session nobody used is not kept; the [`SESSION`] log
+    /// for a resource, which no change starts. `None` for another entity.
+    fn of(&self, entity: Entity) -> Option<(&str, bool)> {
+        match self.agents.get(entity) {
+            Ok(id) => Some((id.0.as_str(), !self.spawned.contains(entity))),
+            Err(_) => self.resources.contains(entity).then_some((SESSION, false)),
+        }
+    }
+}
+
 /// Logs each change of the saved component `T` on the agents or as a
-/// resource, and its removal from an agent; reflection runs only for a
-/// change. A change starts its agent's log, as a message does, unless it
-/// is a value the agent was spawned with, so a session nobody used is not
-/// kept.
+/// resource, and each removal, in the log of its owner ([`Owners`]);
+/// reflection runs only for a change.
 fn log_changed<T: Component + Reflect + TypePath>(
-    changed: Query<
-        (Entity, Option<&AgentId>, &T),
-        (Or<(With<Agent>, With<IsResource>)>, Changed<T>),
-    >,
+    changed: Query<(Entity, &T), (Or<(With<Agent>, With<IsResource>)>, Changed<T>)>,
     mut removed: RemovedComponents<T>,
-    agents: Query<&AgentId, With<Agent>>,
-    spawned: Query<(), Added<Agent>>,
+    owners: Owners,
     log: Res<SessionLog>,
     registry: Res<AppTypeRegistry>,
     keys: Res<SavedKeys>,
@@ -142,21 +158,21 @@ fn log_changed<T: Component + Reflect + TypePath>(
     let path = T::type_path();
     let name = keys.key(path).unwrap_or(path);
     let registry = registry.read();
-    for (entity, id, component) in &changed {
+    for (entity, component) in &changed {
+        let Some((owner, starts)) = owners.of(entity) else {
+            continue;
+        };
         let value = TypedReflectSerializer::new(component.as_partial_reflect(), &registry);
-        let log_name = id.map_or(SESSION, |id| id.0.as_str());
-        let starts = id.is_some() && !spawned.contains(entity);
         match serde_json::to_value(value) {
-            Ok(value) => log.0.save_value(log_name, name, Some(value), starts),
+            Ok(value) => log.0.save_value(owner, name, Some(value), starts),
             Err(failure) => error!("not logging {name}: {failure}"),
         }
     }
     for entity in removed.read() {
-        if let Ok(id) = agents.get(entity)
+        if let Some((owner, starts)) = owners.of(entity)
             && !changed.contains(entity)
         {
-            log.0
-                .save_value(&id.0, name, None, !spawned.contains(entity));
+            log.0.save_value(owner, name, None, starts);
         }
     }
 }
@@ -300,9 +316,15 @@ impl Drain<'_, '_> {
 
 /// The schedule that saves the agent conversations changed since it last
 /// ran ([`save_now`]): right before `Update`, between the stages of each
-/// agent pass and in `Last` ([`SaveSystems`]).
+/// agent pass and in [`SaveFrame`].
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct SaveConversations;
+
+/// The kernel's schedule right after `Last`, before [`Persist`]: it queues
+/// what the frame changed for the session log, every conversation and
+/// every [`ReflectSaved`] value. No plugin adds to it.
+#[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct SaveFrame;
 
 /// An agent whose conversation [`save_conversations`] saved changes of,
 /// since [`save_now`] last took it.
@@ -377,7 +399,7 @@ impl Plugin for SessionLogPlugin {
                 Startup,
                 super::restore::reconcile.in_set(StartupSystems::Reconcile),
             )
-            .add_systems(Last, write_logs.in_set(WriteLogs))
+            .add_systems(Persist, write_logs.in_set(WriteLogs))
             .add_observer(open_child_log)
             .init_resource::<SavedKeys>();
     }

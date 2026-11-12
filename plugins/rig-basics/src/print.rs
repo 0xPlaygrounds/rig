@@ -50,7 +50,7 @@ use bevy_ecs::message::{MessageCursor, Messages};
 use bevy_ecs::system::SystemParam;
 use ratatui_core::style::Style;
 use rig_core::json_utils::remove_preserving_order;
-use rig_ecs::{StartupSystems, StopTurnsOnExit, WriteLogs};
+use rig_ecs::{Persist, StartupSystems, StopTurnsOnExit, WriteLogs};
 use rig_harness::harness_protocol::REFUSED_EXIT_CODE;
 use rig_harness::host::launcher::Refused;
 use rig_harness::host::pipes::{self, Stream, TooLarge, Writer};
@@ -196,12 +196,18 @@ impl Plugin for PrintPlugin {
                 .add_systems(PostUpdate, flush)
                 .add_systems(
                     Last,
-                    (
-                        note_cut_off.after(RunExitSystems).before(StopTurnsOnExit),
-                        (json_exit, finish_json).chain().after(WriteLogs),
-                    )
+                    note_cut_off
+                        .after(RunExitSystems)
+                        .before(StopTurnsOnExit)
                         .in_set(OnAppExitSystems)
-                        .distributive_run_if(on_message::<AppExit>),
+                        .run_if(on_message::<AppExit>),
+                )
+                .add_systems(
+                    Persist,
+                    (json_exit, finish_json)
+                        .chain()
+                        .after(WriteLogs)
+                        .run_if(on_message::<AppExit>),
                 );
             if prompt.is_some() {
                 app.world_mut().resource_mut::<JsonOut>().one_shot = true;
@@ -235,11 +241,10 @@ impl Plugin for PrintPlugin {
             .add_observer(print_answer)
             .add_observer(print_ended)
             .add_systems(
-                Last,
+                Persist,
                 (print_interrupted, finish_printed)
                     .chain()
                     .after(WriteLogs)
-                    .in_set(OnAppExitSystems)
                     .run_if(on_message::<AppExit>),
             );
         }
