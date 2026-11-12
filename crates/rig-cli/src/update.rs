@@ -2,9 +2,10 @@
 //! it was installed, into the directory it runs from, then builds the agent
 //! with the new launcher. It says the exact command before it runs it, and
 //! a failed install leaves this launcher as it was: cargo moves the new
-//! binary in only once it is built. The install never runs in the directory
-//! rig was started in, whose `rust-toolchain.toml` may pin a toolchain too
-//! old for rig ([`install_command`]).
+//! binary in only once it is built. cargo runs in the checkout, or for
+//! crates.io in the install root, not in the directory rig was started in,
+//! whose `rust-toolchain.toml` may pin a toolchain too old for rig
+//! ([`install_command`]).
 //!
 //! A launcher whose own file was replaced while its agent ran, by `rig
 //! update` or by hand, starts the new file on the agent's next reload, so
@@ -58,7 +59,7 @@ pub fn update() -> ExitCode {
                 RigSource::Local(checkout) => RigSource::Local(fs::canonicalize(checkout)?),
                 RigSource::Registry => RigSource::Registry,
             };
-            let install = install_command(&source, install_root(&launcher)?);
+            let install = install_command(&source, &install_root(&launcher)?);
             Ok((install, launcher))
         });
     match install {
@@ -71,12 +72,16 @@ pub fn update() -> ExitCode {
 }
 
 /// The directory `cargo install --root` takes for the launcher at
-/// `launcher`: the one above its `bin` directory.
-fn install_root(launcher: &Path) -> Result<&Path> {
-    launcher
+/// `launcher`: the one above its `bin` directory, made absolute, since
+/// cargo starts elsewhere and macOS may give a launcher path relative to
+/// the directory rig was started in.
+fn install_root(launcher: &Path) -> Result<PathBuf> {
+    let absolute = std::path::absolute(launcher)?;
+    absolute
         .parent()
         .filter(|bin| bin.file_name().is_some_and(|name| name == "bin"))
         .and_then(Path::parent)
+        .map(Path::to_path_buf)
         .ok_or_else(|| {
             format!(
                 "it replaces a rig that `cargo install` put in a `bin` directory; this one \
@@ -93,7 +98,8 @@ fn install_root(launcher: &Path) -> Result<&Path> {
 /// commits are the user's to fetch. rustup picks the toolchain of the
 /// directory cargo starts in, so it starts in the checkout, whose own
 /// `rust-toolchain.toml` builds rig, or for crates.io in `root`, which the
-/// launcher's own `bin` directory is in; never in the user's project.
+/// launcher's own `bin` directory is in, not in the directory rig was
+/// started in.
 pub fn install_command(source: &RigSource, root: &Path) -> Command {
     let mut command = Command::new("cargo");
     command.args(["install", "--force"]);

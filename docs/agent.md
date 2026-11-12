@@ -62,9 +62,9 @@ newer and runs on Linux and macOS. Windows is not supported.
 `rig update` reinstalls the launcher where it is installed (`--root` is the
 directory above the running `rig`'s `bin`), then builds the agent with the
 new one, which takes 2-3 minutes after a change. It prints the command
-before running it. The command runs in a directory of its own, not the one
-rig was started in, so a `rust-toolchain.toml` there pinning an older Rust
-does not apply:
+before running it. cargo runs in the checkout, or for crates.io in the
+install root, not in the directory rig was started in, so a
+`rust-toolchain.toml` there pinning an older Rust does not apply:
 
 - From crates.io: `cd <root> && cargo install --force rig-cli --root
   <root>`. `rig-cli` is not on crates.io until the next release, so until then

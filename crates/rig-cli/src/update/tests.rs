@@ -52,8 +52,37 @@ fn the_install_command_follows_the_detected_source() {
          --root /opt/rig"
     );
     assert_eq!(registry.get_current_dir(), Some(root));
-    assert_eq!(install_root(Path::new("/opt/rig/bin/rig")).ok(), Some(root));
+    assert_eq!(
+        install_root(Path::new("/opt/rig/bin/rig")).ok().as_deref(),
+        Some(root)
+    );
     assert!(install_root(Path::new("/src/rig/target/debug/rig")).is_err());
+}
+
+/// A launcher path relative to where rig started, as macOS may give it,
+/// still names its own install root once cargo starts somewhere else.
+#[test]
+fn a_relative_launcher_installs_into_its_own_root() {
+    let started_in = std::env::current_dir().unwrap_or_default();
+    assert!(started_in.is_absolute());
+    for (launcher, root) in [
+        (".cargo/bin/rig", started_in.join(".cargo")),
+        ("bin/rig", started_in.clone()),
+    ] {
+        let found = install_root(Path::new(launcher)).unwrap_or_default();
+        assert_eq!(found, root, "{launcher}");
+        let install = install_command(&RigSource::Registry, &found);
+        assert_eq!(
+            install.get_current_dir(),
+            Some(root.as_path()),
+            "{launcher}"
+        );
+        let given = words(&install)
+            .last()
+            .map(PathBuf::from)
+            .unwrap_or_default();
+        assert_eq!(given, root, "{launcher}: --root");
+    }
 }
 
 /// A failed install fails `rig update` and leaves the launcher as it was,
