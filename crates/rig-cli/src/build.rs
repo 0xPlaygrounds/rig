@@ -568,7 +568,9 @@ pub fn stage(launch: &Launch, staged: &Path, staging: Staging) -> Result<()> {
 /// copy carries its [`stamp`].
 fn copy(from: &Path, to: &Path) -> std::io::Result<()> {
     fs::copy(from, to)?;
-    let modified = fs::metadata(from)?.modified()?;
+    let modified = fs::metadata(from)?
+        .modified()
+        .map_err(fs::named("look at", from))?;
     let copied = fs::open(File::options().write(true), to)?;
     copied
         .set_modified(modified)
@@ -743,7 +745,8 @@ pub fn passed_over(home: &Home, staged: &Path) -> bool {
 pub fn stamp(binary: &Path) -> Result<String> {
     let metadata = fs::metadata(binary)?;
     let modified = metadata
-        .modified()?
+        .modified()
+        .map_err(fs::named("look at", binary))?
         .duration_since(UNIX_EPOCH)
         .map(|since| since.as_nanos())
         .unwrap_or_default();
