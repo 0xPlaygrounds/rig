@@ -257,14 +257,14 @@ pub(crate) struct FileIndex {
     root: Option<PathBuf>,
 }
 
-/// The root a walk went through and the paths it found, on the walk's
-/// entity.
+/// The root a walk went through and the paths it found, none when it
+/// failed, on the walk's entity.
 #[derive(Component)]
-pub(crate) struct WalkedPaths(PathBuf, Arc<Vec<String>>);
+pub(crate) struct WalkedPaths(PathBuf, Option<Arc<Vec<String>>>);
 
-impl From<(PathBuf, Vec<String>)> for WalkedPaths {
-    fn from((root, paths): (PathBuf, Vec<String>)) -> Self {
-        Self(root, Arc::new(paths))
+impl From<(PathBuf, Option<Vec<String>>)> for WalkedPaths {
+    fn from((root, paths): (PathBuf, Option<Vec<String>>)) -> Self {
+        Self(root, paths.map(Arc::new))
     }
 }
 
@@ -294,10 +294,17 @@ impl FileIndex {
         let walked = root.clone();
         let walk = blocking(move || Ok(walk(&*workspace, &root)));
         let walk = async move {
-            let paths = walk.await.unwrap_or_else(|failure| {
-                warn!("could not list the project's files: {failure}");
-                Vec::new()
-            });
+            let paths = match walk.await {
+                Ok(Ok(paths)) => Some(paths),
+                Ok(Err(failure)) => {
+                    warn!("could not list the project's files: {failure}");
+                    None
+                }
+                Err(failure) => {
+                    warn!("could not list the project's files: {failure}");
+                    None
+                }
+            };
             (walked, paths)
         };
         let pool = IoTaskPool::get_or_init(TaskPool::default);
@@ -310,15 +317,15 @@ impl FileIndex {
 
 /// The files under `root` in `workspace` and the directories that hold
 /// them, relative to it, directories ending in `/`, skipping what
-/// `.gitignore` and hidden names leave out.
-fn walk(workspace: &dyn Workspace, root: &Path) -> Vec<String> {
-    let files = match workspace.files(root, None, Listing::Visible) {
-        Ok(listed) => listed.files,
-        Err(failure) => {
-            warn!("could not list the project's files: {failure}");
-            return Vec::new();
-        }
-    };
+/// `.gitignore` and hidden names leave out. A root it could not look into
+/// fails.
+fn walk(workspace: &dyn Workspace, root: &Path) -> std::io::Result<Vec<String>> {
+    let listed = workspace.files(root, None, Listing::Visible)?;
+    let mut failed = listed.failed.into_iter();
+    if let Some((_, failure)) = failed.find(|(path, _)| root.starts_with(path)) {
+        return Err(failure);
+    }
+    let files = listed.files;
     // `/` between directories; on Unix a `\` is part of a name. A first
     // name `~` or one with a `:` goes after `./`, so it is not read as the
     // home directory or as `HOST:PATH`.
@@ -348,7 +355,7 @@ fn walk(workspace: &dyn Workspace, root: &Path) -> Vec<String> {
         }
         paths.push(text(relative));
     }
-    paths
+    Ok(paths)
 }
 
 /// The `/command`, argument, `@path` or marked token that ends at the
@@ -585,15 +592,22 @@ pub(crate) fn receive_paths(
         index.fresh = false;
     }
     let received = walked.map(|walked| walked.into_inner());
+    let mut walked = false;
     if let Some((walk, WalkedPaths(root, paths))) = received {
-        // A walk of a root since left behind is stale.
-        if index.root.as_ref() == Some(root) {
-            index.paths = paths.clone();
+        // A walk of a root since left behind is stale. One that failed
+        // keeps the paths, and is tried again at the next change or key.
+        match paths {
+            Some(paths) if index.root.as_ref() == Some(root) => {
+                index.paths = paths.clone();
+                walked = true;
+            }
+            Some(_) => {}
+            None => index.fresh = false,
         }
         index.walking = false;
         commands.entity(walk).despawn();
     }
-    if changed || received.is_some() {
+    if changed || walked {
         update(
             &mut view,
             input,

@@ -112,6 +112,8 @@ struct Watching {
     watch: Option<Entity>,
     /// The files the watch reported, which may hold AI comments.
     files: BTreeSet<PathBuf>,
+    /// Whether the watch listed the project once.
+    listed: bool,
     /// The files saved since the last settled save.
     saved: BTreeSet<PathBuf>,
     /// The entity whose [`WakeAt`] ends the settling.
@@ -163,7 +165,7 @@ fn watch(
 
 /// Arms the watch of the project once watching is on, on this machine,
 /// whose files the plugin reads on the main thread; it keeps a headless
-/// run going while it is armed.
+/// run going while it is armed, unless it never could list.
 fn arm(
     mut watching: ResMut<Watching>,
     workspace: Res<ProjectWorkspace>,
@@ -202,7 +204,8 @@ fn stop(watching: &mut Watching, commands: &mut Commands) {
 }
 
 /// Notes the files saved under the watch and puts the settling off; a
-/// watch that ended stops watching, and the user is told.
+/// watch that ended stops watching, and the user is told. A watch that
+/// could not list yet holds no headless run until it can.
 fn take_changes(
     mut changes: MessageReader<FileChanges>,
     mut watching: ResMut<Watching>,
@@ -215,13 +218,20 @@ fn take_changes(
             continue;
         }
         match &change.event {
-            WatchEvent::Snapshot(paths) => watching.files.extend(paths.iter().cloned()),
+            WatchEvent::Snapshot(paths) => {
+                watching.files = paths.iter().cloned().collect();
+                watching.listed = true;
+                commands.entity(change.watch).try_insert(KeepRunning);
+            }
             WatchEvent::Changed(paths) => {
                 watching.files.extend(paths.iter().cloned());
                 watching.saved.extend(paths.iter().cloned());
                 saved = true;
             }
             WatchEvent::Unavailable(why) => {
+                if !watching.listed {
+                    commands.entity(change.watch).try_remove::<KeepRunning>();
+                }
                 notices.write(Notice::warn(
                     None,
                     format!("Watching for AI comments: {why}."),

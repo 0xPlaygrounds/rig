@@ -1,11 +1,12 @@
 //! Watching files. An entity with a [`FileWatch`] on a file or a
 //! directory gets a [`FileChanges`] message for each [`WatchEvent`] of its
-//! watch: a snapshot of the files there once armed, each batch of files
-//! created, changed or removed under it, a listing that failed, and the
-//! watch's end (also when it could not start), and the loop is woken for
-//! each; despawning it, or removing the `FileWatch`, stops the watch. A
-//! plugin that reloads templates or skills from a directory watches it,
-//! and reads them on its snapshot, so no file made in between is missed.
+//! watch, and the loop is woken for each: a snapshot of the files there
+//! once armed, and again once a listing works after one failed, each batch
+//! of files created, changed or removed under it, a listing that failed,
+//! and the watch's end (also when it could not be made). Despawning it, or
+//! removing the `FileWatch`, stops the watch. A plugin that reloads
+//! templates or skills from a directory watches it, and reads them on each
+//! snapshot, so no file made in between is missed.
 //!
 //! The watch is a [`Running::stream`] on its entity, so put a `FileWatch`
 //! on an entity of its own. It watches through the project's workspace
@@ -136,11 +137,11 @@ enum WatchState {
     Unarmed(Arc<dyn Workspace>, FileWatch),
     /// Armed: the events to come, of the path.
     Armed(Watch, PathBuf),
-    /// It could not start, which was told: it ends.
+    /// It could not be made, which was told: it ends.
     Failed,
 }
 
-/// The events of `watch` through `workspace`; one that cannot start tells
+/// The events of `watch` through `workspace`; one that cannot be made tells
 /// why, then that it closed.
 fn watch_stream(workspace: Arc<dyn Workspace>, watch: FileWatch) -> impl Stream<Item = Seen> {
     stream::unfold(

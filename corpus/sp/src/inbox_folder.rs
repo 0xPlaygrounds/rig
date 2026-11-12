@@ -113,6 +113,8 @@ pub struct Inbox {
     dir: Option<PathBuf>,
     /// The entity with the watch.
     watch: Option<Entity>,
+    /// Whether the watch listed the folder once.
+    listed: bool,
     /// The items in flight when the last run stopped, by file name.
     interrupted: BTreeMap<String, InFlight>,
     /// Each file settling, by name, and the entity whose wake reads it.
@@ -215,7 +217,8 @@ fn arm(
 }
 
 /// Starts or puts off the settling of each request the watch reports. A
-/// watch that ended keeps no run going, and the user is told.
+/// watch that ended, or could not list yet, keeps no run going, and the
+/// user is told.
 fn take_changes(
     mut changes: MessageReader<FileChanges>,
     mut inbox: ResMut<Inbox>,
@@ -230,6 +233,9 @@ fn take_changes(
         }
         match &change.event {
             WatchEvent::Unavailable(why) => {
+                if !inbox.listed {
+                    commands.entity(change.watch).try_remove::<KeepRunning>();
+                }
                 notices.write(Notice::warn(None, format!("The inbox folder: {why}.")));
             }
             WatchEvent::Closed => {
@@ -239,7 +245,11 @@ fn take_changes(
                     "The inbox folder is no longer watched.",
                 ));
             }
-            WatchEvent::Snapshot(_) | WatchEvent::Changed(_) => {}
+            WatchEvent::Snapshot(_) => {
+                inbox.listed = true;
+                commands.entity(change.watch).try_insert(KeepRunning);
+            }
+            WatchEvent::Changed(_) => {}
         }
         for path in change.event.paths() {
             let Some(file) = request_name(path) else {

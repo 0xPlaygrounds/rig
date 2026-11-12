@@ -35,22 +35,25 @@ const QUIET: Duration = Duration::from_millis(50);
 /// The longest a batch waits, however many events come.
 const LONGEST: Duration = Duration::from_millis(500);
 
-/// What a [`Watch`] tells, in order: one [`Snapshot`](Self::Snapshot)
-/// once it could list, then a [`Changed`](Self::Changed) for each batch of
-/// changes, and [`Closed`](Self::Closed) last. A watch whose first listing
-/// fails tells [`Unavailable`](Self::Unavailable) and then `Closed`.
+/// What a [`Watch`] tells, in order: a [`Snapshot`](Self::Snapshot) once
+/// it could list, then a [`Changed`](Self::Changed) for each batch of
+/// changes, and [`Closed`](Self::Closed) last. A watch that cannot list
+/// tells [`Unavailable`](Self::Unavailable), once, and keeps trying; the
+/// next listing that works is a `Snapshot` again, so one who reads the
+/// files on a snapshot reads them all again, followed by a `Changed` for
+/// what changed since the last listing that worked.
 #[derive(Clone, Debug)]
 pub enum WatchEvent {
-    /// The files under the root when the watch first listed them, in path
-    /// order. A root that does not exist has none.
+    /// The files under the root, in path order, when the watch first
+    /// listed them and when it could list them again after it could not.
+    /// A root that does not exist has none.
     Snapshot(Vec<PathBuf>),
     /// The files created, changed or removed since the last event, in path
     /// order.
     Changed(Vec<PathBuf>),
-    /// Listing the files failed, or the system's watch of a directory put
-    /// in the root's place could not be armed, so what is there is not
-    /// known. Unless `Closed` follows, the watch goes on: the next listing
-    /// that works is compared with the last one that did.
+    /// Listing the files failed, or the system's watch of the root could
+    /// not be armed, so what is there is not known until the next
+    /// `Snapshot`. The watch goes on trying every second.
     Unavailable(Arc<io::Error>),
     /// The watch stopped; nothing comes after it.
     Closed,
@@ -89,9 +92,9 @@ impl Watch {
     /// system watcher that feeds them) until it is dropped: for a
     /// workspace of your own that hears of changes its own way. Send the
     /// [`WatchEvent::Snapshot`] first, listed once the changes are heard,
-    /// so none made in between is missed, and each `Changed` after it; or
-    /// `Unavailable` and end when the first listing fails. Once `events`
-    /// ends, the watch tells [`WatchEvent::Closed`].
+    /// so none made in between is missed, and each `Changed` after it;
+    /// `Unavailable` while it cannot list, and a `Snapshot` again once it
+    /// can. Once `events` ends, the watch tells [`WatchEvent::Closed`].
     pub fn new(events: UnboundedReceiver<WatchEvent>, keep: impl Send + 'static) -> Self {
         Self {
             events,
@@ -141,7 +144,8 @@ impl Look {
     /// The listing `listed` of the watch of `root` in `workspace`, each
     /// file kept by `recursive` with its mark: a file gone since is left
     /// out, and one whose mark could not be read is unknown. A listing
-    /// that could not look into the root itself failed.
+    /// that could not look into the root itself, or read the mark of a
+    /// root that is a file, failed.
     fn of<W: Workspace + ?Sized>(
         workspace: &W,
         listed: Listed,
@@ -166,6 +170,7 @@ impl Look {
                     files.insert(path, mark);
                 }
                 Ok(None) => {}
+                Err(error) if path == root => return Err(error),
                 Err(_) => failed.push(path),
             }
         }
@@ -253,11 +258,6 @@ impl Baseline {
         self.files.is_some() && !self.failing
     }
 
-    /// Whether the watch ends: its first listing failed.
-    fn ended(&self) -> bool {
-        self.files.is_none() && self.failing
-    }
-
     /// Whether a file it holds is below `dir`.
     fn holds_below(&self, dir: &Path) -> bool {
         let from: (Bound<&Path>, Bound<&Path>) = (Bound::Excluded(dir), Bound::Unbounded);
@@ -272,26 +272,26 @@ impl Baseline {
     /// that `touched` names, and those under `scopes` it no longer shows,
     /// unless under a path it could not look into, whose files keep their
     /// marks until a listing sees them again. A failed listing changes
-    /// nothing and is told once until one works again; when the first one
-    /// fails, the watch [`ended`](Self::ended).
+    /// nothing and is told once; the next one that works, of everything,
+    /// is told as a snapshot, then what changed since the last that did.
     fn update(
         &mut self,
         scopes: &Scopes,
         look: io::Result<Look>,
         touched: &BTreeSet<PathBuf>,
-    ) -> Option<WatchEvent> {
+    ) -> Vec<WatchEvent> {
         let look = match look {
             Ok(look) => look,
-            Err(error) => {
-                let told = std::mem::replace(&mut self.failing, true);
-                return (!told).then(|| WatchEvent::Unavailable(Arc::new(error)));
+            Err(error) if !std::mem::replace(&mut self.failing, true) => {
+                return vec![WatchEvent::Unavailable(Arc::new(error))];
             }
+            Err(_) => return Vec::new(),
         };
-        self.failing = false;
+        let recovered = std::mem::replace(&mut self.failing, false);
         let Some(files) = self.files.as_mut() else {
             let paths = look.files.keys().cloned().collect();
             self.files = Some(look.files);
-            return Some(WatchEvent::Snapshot(paths));
+            return vec![WatchEvent::Snapshot(paths)];
         };
         let unknown = |path: &Path| look.failed.iter().any(|failed| path.starts_with(failed));
         let mut changed = BTreeSet::new();
@@ -315,7 +315,10 @@ impl Baseline {
             }
             files.insert(path, mark);
         }
-        (!changed.is_empty()).then(|| WatchEvent::Changed(changed.into_iter().collect()))
+        let snapshot = recovered.then(|| WatchEvent::Snapshot(files.keys().cloned().collect()));
+        let changed =
+            (!changed.is_empty()).then(|| WatchEvent::Changed(changed.into_iter().collect()));
+        snapshot.into_iter().chain(changed).collect()
     }
 }
 
@@ -347,10 +350,8 @@ fn poll_every<W: Workspace + ?Sized>(
             let none = BTreeSet::new();
             while !sender.is_closed() {
                 let look = look(&*workspace, &root, recursive, listing);
-                let event = seen.update(&scopes, look, &none);
-                if event.is_some_and(|event| sender.unbounded_send(event).is_err()) || seen.ended()
-                {
-                    break;
+                for event in seen.update(&scopes, look, &none) {
+                    sender.unbounded_send(event).ok();
                 }
                 thread::sleep(every);
             }
@@ -378,25 +379,21 @@ fn look<W: Workspace + ?Sized>(
 /// walk [`Workspace::files`] lists with, so it reports what the default
 /// watch would, at once. A `root` that is a file is watched through its
 /// directory, so a write that replaces it is seen; one that does not exist
-/// yet is looked at every second instead. A directory put in place of the
-/// one watched, once that is moved or removed, is watched in its turn,
-/// looked for every second while none is there; on systems other than
-/// Unix only one put in place after none was there. A root that cannot be
-/// looked at for a while is [`Unavailable`](WatchEvent::Unavailable),
-/// listed again every second. A relative `root` that
-/// exists is resolved against the current directory once, so the paths
-/// told are absolute.
+/// yet, or cannot be looked at, is looked at every second instead. A
+/// directory put in place of the one watched, once that is moved or
+/// removed, is watched in its turn, looked for every second while none is
+/// there; on systems other than Unix only one put in place after none was
+/// there. A root that cannot be looked at for a while, or whose system
+/// watch cannot be armed, is [`Unavailable`](WatchEvent::Unavailable),
+/// tried again every second. A relative `root` that exists is resolved
+/// against the current directory once, so the paths told are absolute.
 ///
 /// # Errors
 ///
-/// When `root` cannot be looked at, other than for not being there, or
-/// the system's watch cannot be armed.
+/// When the system's watcher cannot be made.
 pub(crate) fn notified(root: &Path, recursive: bool, listing: Listing) -> io::Result<Watch> {
-    let meta = match fs::metadata(root) {
-        Err(error) if error.kind() == ErrorKind::NotFound => {
-            return poll(Arc::new(crate::workspace::Local), root, recursive, listing);
-        }
-        meta => meta?,
+    let Ok(meta) = fs::metadata(root) else {
+        return poll(Arc::new(crate::workspace::Local), root, recursive, listing);
     };
     // The system's events name absolute paths, which a relative root never matches.
     let root = std::path::absolute(root)?;
@@ -424,10 +421,12 @@ pub(crate) fn notified(root: &Path, recursive: bool, listing: Listing) -> io::Re
         true => (tree.root.as_path(), RecursiveMode::NonRecursive),
     };
     let watcher = Arc::new(Mutex::new(watcher));
-    let mut armed = Armed::new(Arc::downgrade(&watcher), target.to_path_buf(), mode)?;
+    let mut armed = Armed::new(Arc::downgrade(&watcher), target.to_path_buf(), mode);
+    // Armed before the watch is given, so no change made after is missed;
+    // one that cannot be armed yet is told and tried again by the thread.
+    armed.follow().ok();
     {
         let mut watcher = watcher.lock().unwrap_or_else(PoisonError::into_inner);
-        watcher.watch(target, mode).map_err(io::Error::other)?;
         for rules in tree.rules_outside(&tree.wide_rules()) {
             // Missing one leaves its rules' edits unheard, not the files.
             watcher.watch(&rules, RecursiveMode::NonRecursive).ok();
@@ -472,29 +471,24 @@ pub(crate) struct Armed {
     watcher: Weak<Mutex<RecommendedWatcher>>,
     target: PathBuf,
     mode: RecursiveMode,
-    /// The directory watched; none while nothing is at `target`.
+    /// The directory watched; none while none is.
     at: Option<Identity>,
 }
 
 impl Armed {
-    /// The watch of `target` with `mode` by `watcher`, of what is at
-    /// `target` now, to be armed by the caller.
-    ///
-    /// # Errors
-    ///
-    /// When `target` cannot be looked at, other than for not being there.
+    /// The watch of `target` with `mode` by `watcher`, armed by the first
+    /// [`follow`](Self::follow).
     pub(crate) fn new(
         watcher: Weak<Mutex<RecommendedWatcher>>,
         target: PathBuf,
         mode: RecursiveMode,
-    ) -> io::Result<Self> {
-        let at = identity(&target)?;
-        Ok(Self {
+    ) -> Self {
+        Self {
             watcher,
             target,
             mode,
-            at,
-        })
+            at: None,
+        }
     }
 
     /// Whether a directory is watched; when not, it is looked for.
@@ -508,7 +502,7 @@ impl Armed {
     ///
     /// # Errors
     ///
-    /// When a directory is at the target and cannot be watched.
+    /// When a directory is at the target and cannot be watched yet.
     fn follow(&mut self) -> io::Result<bool> {
         let Ok(now) = identity(&self.target) else {
             return Ok(true);
@@ -527,9 +521,9 @@ impl Armed {
         if now.is_some()
             && let Err(error) = watcher.watch(&self.target, self.mode)
         {
-            // Removed again since, or not to be looked at: looked for again.
-            self.at = identity(&self.target).ok().flatten();
-            if self.at.is_some() {
+            // Not armed: tried again at the next call.
+            self.at = None;
+            if !matches!(identity(&self.target), Ok(None)) {
                 return Err(io::Error::other(error));
             }
         }
@@ -676,13 +670,12 @@ impl Tree {
 /// for [`QUIET`] or it waited [`LONGEST`], lists again where the batch
 /// says, and sends what changed, until the watcher or the [`Watch`] is
 /// gone. The first listing, of everything, is made once the system's
-/// watch is armed, so nothing made in between is missed; the watch ends
-/// when it fails. After a later one that failed, everything is listed
-/// again, every second until one works; paths a listing could not look
-/// into are listed again every second the same way. When another directory is at the
-/// target of `armed`, it is watched and everything listed again; while
-/// none is there, it is looked for every second. The watch ends when that
-/// cannot be done.
+/// watch is armed, so nothing made in between is missed. After a listing
+/// that failed, everything is listed again, every second until one works;
+/// paths a listing could not look into are listed again every second the
+/// same way. When another directory is at the target of `armed`, it is
+/// watched and everything listed again; while none is there, or it cannot
+/// be watched yet, it is looked for every second.
 pub(crate) fn send_batches(
     raw: &Receiver<Heard>,
     sender: &UnboundedSender<WatchEvent>,
@@ -702,16 +695,8 @@ pub(crate) fn send_batches(
     let mut failed = Scopes::default();
     loop {
         let (mut scopes, mut touched) = (std::mem::take(&mut failed), BTreeSet::new());
-        let moved = match armed.follow() {
-            Ok(moved) => moved,
-            Err(error) => {
-                sender
-                    .unbounded_send(WatchEvent::Unavailable(Arc::new(error)))
-                    .ok();
-                return;
-            }
-        };
-        if moved || !seen.known() {
+        let followed = armed.follow();
+        if !matches!(followed, Ok(false)) || !seen.known() {
             scopes = Scopes::all(&tree.root);
         }
         for told in heard.drain(..) {
@@ -730,15 +715,17 @@ pub(crate) fn send_batches(
         if !scopes.0.is_empty() {
             // A directory the last listing found files under is listed by
             // the rules as they are: an edit of them is a scope of its own.
-            let look = tree.look(scopes.clone(), |dir| seen.holds_below(dir));
+            let look =
+                followed.and_then(|_| tree.look(scopes.clone(), |dir| seen.holds_below(dir)));
             if let Ok(look) = &look {
                 for path in &look.failed {
                     failed.add(path.clone());
                 }
             }
-            let event = seen.update(&scopes, look, &touched);
-            if event.is_some_and(|event| sender.unbounded_send(event).is_err()) || seen.ended() {
-                return;
+            for event in seen.update(&scopes, look, &touched) {
+                if sender.unbounded_send(event).is_err() {
+                    return;
+                }
             }
         }
         // A listing that failed, in whole or in part, or a target not

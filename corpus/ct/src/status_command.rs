@@ -228,8 +228,8 @@ fn watch_settings(home: Option<Res<RigHome>>, mut commands: Commands) {
     commands.spawn((Name::new("status command settings"), SettingsWatch, watch));
 }
 
-/// Reads the setting again when `settings.toml` changed, and runs the new
-/// command.
+/// Reads the setting again on each snapshot of the watch and when
+/// `settings.toml` changed, and runs the new command.
 fn reload_settings(
     mut changes: MessageReader<FileChanges>,
     watches: Query<(), With<SettingsWatch>>,
@@ -243,15 +243,15 @@ fn reload_settings(
     };
     let file = home.0.settings();
     for change in changes.read() {
-        // The snapshot is the settings already read.
-        let WatchEvent::Changed(paths) = &change.event else {
-            continue;
+        // A snapshot may hold an edit made while the watch could not list.
+        let edited = match &change.event {
+            WatchEvent::Snapshot(_) => true,
+            WatchEvent::Changed(paths) => {
+                (paths.iter()).any(|path| path.file_name() == file.file_name())
+            }
+            WatchEvent::Unavailable(_) | WatchEvent::Closed => false,
         };
-        if !watches.contains(change.watch)
-            || !paths
-                .iter()
-                .any(|path| path.file_name() == file.file_name())
-        {
+        if !edited || !watches.contains(change.watch) {
             continue;
         }
         match Settings::read(&file).get::<StatusCommand>(SECTION) {

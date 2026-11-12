@@ -93,6 +93,8 @@ fn the_item_follows_the_session_through_slow_failing_and_replaced_scripts() {
     let model = MockCompletionModel::from_stream_turns([reply("hello")]);
     let (mut app, wakes) = app_in(&home, &SessionId::generate());
     let setting = format!("{SECTION} = '{}'", script.display());
+    // Where a run reads it from, and the plugin reads it again.
+    assert!(fs::write(home.settings(), &setting).is_ok());
     app.insert_resource(Settings::from_toml(&setting))
         .insert_resource(scripted_models([("test/model", &model)]))
         // The terminal view's run, without rig-tui opening a terminal.

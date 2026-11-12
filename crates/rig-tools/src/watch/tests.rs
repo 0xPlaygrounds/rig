@@ -192,10 +192,8 @@ fn send_batches(
     tree: &super::Tree,
 ) {
     let target = tree.root.clone();
-    let armed = super::Armed::new(Weak::new(), target, notify::RecursiveMode::Recursive);
-    if let Ok(mut armed) = armed {
-        super::send_batches(raw, sender, tree, &mut armed);
-    }
+    let mut armed = super::Armed::new(Weak::new(), target, notify::RecursiveMode::Recursive);
+    super::send_batches(raw, sender, tree, &mut armed);
 }
 
 /// The thread that gathers a watch's events into batches ends once the

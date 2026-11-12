@@ -1793,8 +1793,9 @@ project goes through the workspace (`workspace.0.spawn(&launcher, ..)`).
 messages, each carrying a `WatchEvent`: a `Snapshot` of the files under its
 path once armed (read them then, so none made in between is missed), a
 `Changed` for each batch created, changed or removed (another workspace may
-look every second), `Unavailable` while listing fails, and `Closed` when
-the watch ended or could not start, leaving out what the
+look every second), `Unavailable` while listing fails (the next listing
+that works is a `Snapshot` again: read them all again then), and `Closed`
+when the watch ended or could not be made, leaving out what the
 workspace's listing does (ignored and hidden files, `target`) unless
 `.listing(..)` says otherwise: rig-tools' `Listing::Hidden` adds the
 hidden files the ignore rules keep, `All` every file, as for
