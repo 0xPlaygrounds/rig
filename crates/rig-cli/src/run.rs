@@ -339,7 +339,8 @@ fn launch(
         let mut child = command.spawn()?;
         // A trial becomes the good build as soon as it is ready and the
         // build lock is free, so a launcher killed later (a closed
-        // terminal) keeps it; once the agent exited, it waits for the lock.
+        // terminal) keeps it; once the agent exited, it waits for the lock,
+        // unless a signal asks the launcher to end.
         let mut started = false;
         let mut promoting = false;
         let mut promoted: Result<()> = Ok(());
@@ -352,7 +353,8 @@ fn launch(
                 promoting = running.current.is_trial();
             }
             if promoting {
-                match promote(home, &mut running.current, status.is_some()) {
+                let wait = status.is_some() && stop::heard().is_none();
+                match promote(home, &mut running.current, wait) {
                     Ok(done) => promoting = !done,
                     Err(failure) => (promoting, promoted) = (false, Err(failure)),
                 }
@@ -415,7 +417,12 @@ fn launch(
             let Running { current, previous } = running;
             let current = if rejected { previous } else { Some(current) };
             running = {
-                let _lock = locks::hold_build_lock(home, BuildOutput::Live)?;
+                let output = if headless {
+                    BuildOutput::LogOnly
+                } else {
+                    BuildOutput::Live
+                };
+                let _lock = locks::hold_build_lock(home, output)?;
                 select(home, &claimed.id, run, current)?
             };
             reason = if claimed.id == session {
@@ -987,24 +994,23 @@ fn select(
     current: Option<BuildRef>,
 ) -> Result<Running> {
     let good = build::stamp(&home.good()).ok();
+    let held_before = match current {
+        Some(current) => Some(current),
+        None => hold_good(home, run)?,
+    };
     for staged in [home.staged_for(session), home.staged()] {
         let held = held(run)?;
         // The rename claims the staged build for this launcher alone.
         if absent(fs::rename(staged, &held))?.is_some() {
-            let previous = match current {
-                Some(current) => Some(current),
-                None => hold_good(home, run)?,
-            };
             let current = BuildRef::new(home, held, Role::Trial { good });
-            return Ok(Running { current, previous });
+            return Ok(Running {
+                current,
+                previous: held_before,
+            });
         }
     }
-    let current = match current {
-        Some(current) => current,
-        None => hold_good(home, run)?.ok_or("no agent build exists yet; run `rig build`")?,
-    };
     Ok(Running {
-        current,
+        current: held_before.ok_or("no agent build exists yet; run `rig build`")?,
         previous: None,
     })
 }

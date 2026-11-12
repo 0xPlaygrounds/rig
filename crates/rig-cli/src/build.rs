@@ -21,7 +21,7 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
 use rig_harness_protocol::{
-    AgentDescription, Home, SessionId, config, env, first_errors, without_secrets,
+    AgentDescription, Home, RunDir, SessionId, config, env, first_errors, without_secrets,
 };
 
 use super::project::{self, PACKAGE, RigSource};
@@ -579,12 +579,17 @@ pub fn hold(from: &Path, to: &Path) -> std::io::Result<()> {
     fs::hard_link(from, to).or_else(|_| copy(from, to))
 }
 
-/// Removes the reports of builds no file in [`Home::bin`] is a copy of.
+/// Removes the reports of builds no file in [`Home::bin`], nor any build a
+/// launcher holds ([`locks::builds`]), is a copy of.
 fn prune_described(home: &Home) {
-    let stamps: BTreeSet<String> = fs::read_dir(home.bin())
+    let held = fs::read_dir(home.runs())
         .into_iter()
         .flatten()
         .flatten()
+        .map(|run| locks::builds(&RunDir::at(run.path())));
+    let stamps: BTreeSet<String> = std::iter::once(home.bin())
+        .chain(held)
+        .flat_map(|directory| fs::read_dir(directory).into_iter().flatten().flatten())
         .filter_map(|entry| stamp(&entry.path()).ok())
         .map(|stamp| home.described(&stamp))
         .filter_map(|report| Some(report.file_name()?.to_owned()))
