@@ -3973,23 +3973,145 @@ fn every_streamed_event_reaches_a_late_reader_in_order() {
     );
 }
 
+/// A model that streams these events, then never finishes.
+struct Stalls(Vec<StreamEvent>);
+
+impl Serve for Stalls {
+    type Family = Dynamic;
+
+    fn descriptor(&self) -> HandlerDescriptor {
+        HandlerDescriptor {
+            key: HandlerKey::from("stalls"),
+            family: FamilyDescriptor::Custom {
+                kind: "test:stalls".into(),
+            },
+            layers: Vec::new(),
+        }
+    }
+
+    async fn serve(&self, _: EffectKind, _: Dispatch) -> Reply {
+        let events = self.0.iter().cloned();
+        let events = events.map(|event| Ok(Relayed::Item(Item::Event(event))));
+        let stalls =
+            futures::stream::iter(events.collect::<Vec<_>>()).chain(futures::stream::pending());
+        Reply::Stream(Box::pin(stalls))
+    }
+}
+
+/// The reply [`answer_in_place`] and [`answer_streaming_in_place`] give.
+fn in_place_reply() -> Outcome {
+    let choice = vec![
+        AssistantContent::reasoning("hm"),
+        AssistantContent::text("hello in place"),
+    ];
+    let origin = rig_core::completion::message::Origin::new("test.api", "test", "model");
+    let reply = rig_core::completion::CompletionResponse::new(
+        choice,
+        rig_core::completion::Usage::default(),
+        origin,
+        serde_json::Value::Null,
+    );
+    Outcome(Ok(rig_core::effect::Answered::Completion(Arc::new(reply))))
+}
+
+/// Answers each turn call whose stream began, as a plugin taking a reply
+/// over does.
+fn answer_streaming_in_place(
+    mut calls: Query<&mut Decision, (With<TurnCall>, With<StreamTiming>, Without<Outcome>)>,
+) {
+    for mut decision in &mut calls {
+        decision.decide(Decider::plugin("test"), in_place_reply());
+    }
+}
+
+/// A reply answered in place after its stream began with no text, only a
+/// text part's start or a reasoning part, gets its text once, in a part of
+/// its own after them, and nothing it streamed again.
+#[test]
+fn a_reply_answered_in_place_after_a_stream_with_no_text_gets_its_text_once() {
+    let first = Part::new(0);
+    let began = [
+        vec![StreamEvent::Start {
+            part: first,
+            kind: PartKind::Text,
+            name: None,
+        }],
+        vec![
+            StreamEvent::Start {
+                part: first,
+                kind: PartKind::Reasoning,
+                name: None,
+            },
+            StreamEvent::Reasoning {
+                part: first,
+                text: "hm".to_owned(),
+            },
+            StreamEvent::End {
+                part: first,
+                content: AssistantContent::reasoning("hm"),
+            },
+        ],
+    ];
+    for streamed in began {
+        let mut app = app();
+        let model = MockCompletionModel::from_stream_turns([answer("never sent")]);
+        app.init_resource::<Streams>()
+            .init_resource::<Ended>()
+            .add_observer(log_ended)
+            .add_systems(AgentPass, answer_streaming_in_place.in_set(Stage::Review))
+            .add_systems(
+                PostUpdate,
+                |mut deltas: MessageReader<StreamDelta>, mut seen: ResMut<Streams>| {
+                    let read = deltas
+                        .read()
+                        .map(|delta| (delta.effect, delta.event.clone()));
+                    seen.events.extend(read);
+                },
+            );
+        let agent = agent_on(&mut app, &model);
+        if let Some(mut connection) = app.world_mut().get_mut::<Connection>(agent) {
+            connection.handler = Handler(ErasedHandler::new(Stalls(streamed.clone())));
+        }
+        let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
+        assert!(run_until(&mut app, done), "{:?}", notices(&app));
+        for _ in 0..3 {
+            app.update();
+        }
+        let seen = &app.world().resource::<Streams>().events;
+        let events: Vec<&StreamEvent> = seen.iter().map(|(_, event)| event).collect();
+        let text = Part::new(1);
+        let mut expected = streamed;
+        expected.extend([
+            StreamEvent::Start {
+                part: text,
+                kind: PartKind::Text,
+                name: None,
+            },
+            StreamEvent::Text {
+                part: text,
+                text: "hello in place".to_owned(),
+            },
+            StreamEvent::End {
+                part: text,
+                content: AssistantContent::text("hello in place"),
+            },
+        ]);
+        assert_eq!(events, expected.iter().collect::<Vec<_>>());
+        let said = conversation(&app, agent);
+        assert_eq!(
+            said.last()
+                .and_then(|message| message.final_answer())
+                .as_deref(),
+            Some("hello in place")
+        );
+    }
+}
+
 /// Answers each turn call in Gate with reasoning and text, as a plugin
 /// standing in for the model does: nothing streams.
 fn answer_in_place(mut calls: Query<&mut Decision, (With<TurnCall>, ReadyToStart)>) {
     for mut decision in &mut calls {
-        let choice = vec![
-            AssistantContent::reasoning("hm"),
-            AssistantContent::text("hello in place"),
-        ];
-        let origin = rig_core::completion::message::Origin::new("test.api", "test", "model");
-        let reply = rig_core::completion::CompletionResponse::new(
-            choice,
-            rig_core::completion::Usage::default(),
-            origin,
-            serde_json::Value::Null,
-        );
-        let answered = rig_core::effect::Answered::Completion(Arc::new(reply));
-        decision.decide(Decider::plugin("test"), Outcome(Ok(answered)));
+        decision.decide(Decider::plugin("test"), in_place_reply());
     }
 }
 

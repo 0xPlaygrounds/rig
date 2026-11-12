@@ -147,3 +147,65 @@ fn each_part_of_a_reply_that_did_not_stream_starts_grows_and_ends() {
         ]
     );
 }
+
+#[test]
+fn a_reply_whose_stream_had_no_text_gets_its_text_after_what_streamed() {
+    let mut world = world();
+    let (sender, fed) = feed();
+    let call = world.spawn((call(), fed)).id();
+    let reasoning = Part::new(0);
+    let began = StreamEvent::Start {
+        part: reasoning,
+        kind: PartKind::Reasoning,
+        name: None,
+    };
+    let thought = StreamEvent::Reasoning {
+        part: reasoning,
+        text: "hm".to_owned(),
+    };
+    for event in [began.clone(), thought.clone()] {
+        let item = Fed::Item(web_time::SystemTime::now(), Some(event));
+        assert!(sender.try_send(item).is_ok());
+    }
+    assert!(world.run_system_cached(stream_partials).is_ok());
+    world.entity_mut(call).insert(replied("hello"));
+    assert!(world.run_system_cached(stream_partials).is_ok());
+    assert!(world.run_system_cached(stream_partials).is_ok());
+    let deltas = world.resource::<Messages<StreamDelta>>();
+    let events: Vec<StreamEvent> = deltas
+        .get_cursor()
+        .read(deltas)
+        .map(|delta| delta.event.clone())
+        .collect();
+    let text = Part::new(1);
+    assert_eq!(
+        events,
+        [
+            began,
+            thought,
+            StreamEvent::Start {
+                part: text,
+                kind: PartKind::Text,
+                name: None,
+            },
+            StreamEvent::Text {
+                part: text,
+                text: "hello".to_owned(),
+            },
+            StreamEvent::End {
+                part: text,
+                content: AssistantContent::text("hello"),
+            },
+        ]
+    );
+}
+
+#[test]
+fn what_a_superseded_call_streamed_before_it_was_read_is_still_written() {
+    let mut world = world();
+    let successor = world.spawn(call()).id();
+    let (sender, fed) = feed();
+    let call = world.spawn((call(), fed, SupersededBy(successor))).id();
+    assert!(sender.try_send(text_event("Hel")).is_ok());
+    assert_eq!(texts(&mut world, 1), [(call, "Hel".to_owned())]);
+}
