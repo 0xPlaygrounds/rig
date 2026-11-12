@@ -3,6 +3,11 @@
 //! that commit, as `0.46.0 (b1321662b)`. A crates.io package has no
 //! checkout, so it gets the version alone.
 
+#![allow(
+    clippy::disallowed_methods,
+    reason = "it runs git while cargo builds the launcher, which starts no process yet"
+)]
+
 use std::path::PathBuf;
 use std::process::Command;
 

@@ -1,3 +1,8 @@
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test fixtures run programs of their own"
+)]
+
 use crate::LONG_VERSION;
 use rig_harness_protocol::config::SettingsFile;
 

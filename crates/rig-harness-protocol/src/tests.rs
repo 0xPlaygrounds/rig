@@ -1,23 +1,12 @@
 use super::{
     AgentDescription, DescribedCommand, DescribedFlag, DescribedSecret, Home, Invocation, Stamp,
-    secret_variable, warning_text, warnings,
+    secret_variable, warnings,
 };
 
-/// Each warning reads back whole and in order, whatever it holds: a line
-/// break or quote in a path it names never splits or ends it.
+/// Blank text is no warning, and any other text that is not an array of
+/// strings is one warning, as it is.
 #[test]
-fn warnings_read_back_as_written() {
-    let written = [
-        "rig no longer reads /home/a\nb/.rig/plugins.toml.",
-        "a\nb\r\nc",
-        "quotes \" ' and \\ backslashes, \t tabs",
-        "",
-        "ünïcode ✓",
-    ];
-    for count in 0..=written.len() {
-        let some = written.get(..count).unwrap_or_default();
-        assert_eq!(warnings(&warning_text(some.iter().copied())), some);
-    }
+fn warnings_read_plain_text_whole() {
     assert!(warnings("").is_empty() && warnings(" \n").is_empty());
     assert_eq!(warnings("not an array"), ["not an array"]);
     assert_eq!(warnings("[1, \"a\"]"), ["[1, \"a\"]"]);

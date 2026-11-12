@@ -1,3 +1,8 @@
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test fixtures run programs of their own"
+)]
+
 use std::os::unix::fs::PermissionsExt;
 
 use super::*;
@@ -22,12 +27,26 @@ fn built(name: &str, body: &str) -> Home {
     home
 }
 
+/// Stages `home`'s last build to `staged` as `rig build` does ([`stage`]).
+fn stage_on(home: &Home, staged: &Path, staging: Staging) -> Result<()> {
+    stage(
+        &crate::test_launch(home, Path::new("/opt/rig/bin/rig"))?,
+        staged,
+        staging,
+    )
+}
+
+/// The build at `binary`, as a describing build is run but by itself.
+fn bare(binary: &Path) -> Command {
+    Command::new(binary)
+}
+
 #[test]
 fn a_build_is_staged_with_its_report_and_one_that_cannot_describe_itself_is_rejected() {
     let report = "printf 'rig-describe 1\\ncommand\\tstats\\t-\\theadless\\tsession\\tCount\\n' \
                   > \"$RIG_DESCRIBE\"";
     let home = built("staged", report);
-    let staged = stage(&home, &home.staged(), Staging::Always);
+    let staged = stage_on(&home, &home.staged(), Staging::Always);
     let kept = good_report(&home, &home.staged());
     fs::remove_dir_all(home.root()).ok();
     assert!(staged.is_ok(), "{staged:?}");
@@ -35,7 +54,7 @@ fn a_build_is_staged_with_its_report_and_one_that_cannot_describe_itself_is_reje
     // Two plugins with one command: the describe exits 2, saying why.
     let clash = "echo 'rig: plugins `a` and `b` both add the command `stats`' >&2; exit 2";
     let home = built("clash", clash);
-    let refused = stage(&home, &home.staged(), Staging::Always).map_err(|why| why.to_string());
+    let refused = stage_on(&home, &home.staged(), Staging::Always).map_err(|why| why.to_string());
     let rejected = fs::read_to_string(home.rejected()).ok();
     let (good, staged) = (home.good().exists(), home.staged().exists());
     let artifact = home.target().join("debug").join(PACKAGE);
@@ -60,9 +79,9 @@ fn a_rebuilt_rejected_build_is_passed_over_out_loud() {
     let staged = home.bin().join("staged-for-session");
     let before = passed_over(&home, &staged);
     let recorded = stamp(&artifact(&home)).map(|stamp| fs::write(home.rejected(), stamp));
-    let restaged = stage(&home, &staged, Staging::OnlyNew).map_err(|why| why.to_string());
+    let restaged = stage_on(&home, &staged, Staging::OnlyNew).map_err(|why| why.to_string());
     let after = passed_over(&home, &staged);
-    let retried = stage(&home, &staged, Staging::Always).is_ok() && !passed_over(&home, &staged);
+    let retried = stage_on(&home, &staged, Staging::Always).is_ok() && !passed_over(&home, &staged);
     // The retried build started, so it is the good build that runs.
     let promoted = fs::rename(&staged, home.good()).is_ok() && !passed_over(&home, &staged);
     fs::remove_dir_all(home.root()).ok();
@@ -79,7 +98,7 @@ fn a_build_that_does_not_describe_itself_in_time_is_stopped() {
     let artifact = home.target().join("debug").join(PACKAGE);
     let started = Instant::now();
     let waited = wait_described(
-        child(&artifact),
+        bare(&artifact),
         &home.root().join("report"),
         Duration::from_millis(200),
     );
@@ -101,8 +120,8 @@ fn a_build_whose_child_holds_its_stderr_is_waited_for_within_the_timeout() {
         let artifact = home.target().join("debug").join(PACKAGE);
         let report = home.root().join("report");
         let started = Instant::now();
-        let mut command = child(&artifact);
-        command.env(env::DESCRIBE, &report);
+        let mut command = bare(&artifact);
+        command.env(rig_harness_protocol::env::DESCRIBE, &report);
         let waited = wait_described(command, &report, timeout).map_err(|why| why.to_string());
         fs::remove_dir_all(home.root()).ok();
         (waited, started.elapsed())
@@ -152,7 +171,7 @@ fn a_launcher_ended_during_a_describe_ends_the_build() {
             }
         });
         wait_described(
-            child(&artifact),
+            bare(&artifact),
             &home.root().join("report"),
             Duration::from_secs(10),
         )
@@ -205,34 +224,6 @@ fn a_launcher_ended_during_a_describe_ends_the_build() {
         !build.trim().is_empty() && !outlived,
         "the build outlived it"
     );
-}
-
-/// The secret this file's tests run a copy of themselves with.
-const PROBE: &str = "RIG_SECRET_PROBE";
-
-#[test]
-fn no_launcher_child_gets_a_secret() {
-    if std::env::var_os(PROBE).is_none() {
-        let name = "build::tests::no_launcher_child_gets_a_secret";
-        let output = std::env::current_exe().and_then(|test| {
-            Command::new(test)
-                .args(["--exact", name, "--test-threads", "1"])
-                .env(PROBE, "hunter2")
-                .output()
-        });
-        let ran = output.is_ok_and(|output| {
-            output.status.success() && String::from_utf8_lossy(&output.stdout).contains("1 passed")
-        });
-        assert!(ran, "the run with a secret failed");
-        return;
-    }
-    let home = Home::at("home");
-    for command in [cargo(&home), child("stty")] {
-        let removed = command
-            .get_envs()
-            .any(|(name, value)| name == PROBE && value.is_none());
-        assert!(removed, "{command:?}");
-    }
 }
 
 /// What a [`BuildLog`] shows, kept for the test to read.

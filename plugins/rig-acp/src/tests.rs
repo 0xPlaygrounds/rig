@@ -491,6 +491,8 @@ struct Place {
     tools: Option<String>,
     /// The line limit `rig acp` reads with, when not its own.
     limit: Option<usize>,
+    /// Variables the router starts with besides its own.
+    env: Vec<(String, String)>,
 }
 
 impl Place {
@@ -511,6 +513,7 @@ impl Place {
             project,
             tools: None,
             limit: None,
+            env: Vec::new(),
         }
     }
 
@@ -765,6 +768,7 @@ impl Router {
                     .limit
                     .map(|limit| (LINE_LIMIT_BYTES, limit.to_string())),
             )
+            .envs(place.env.iter().map(|(name, value)| (name, value)))
             .current_dir(&place.project)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())

@@ -25,7 +25,10 @@ use agent_client_protocol::{Agent, Client, ConnectionTo, Error, Lines, Responder
 use futures::future::{BoxFuture, Shared};
 use futures::{FutureExt, StreamExt};
 use rig_basics::session_picker::SessionEntry;
-use rig_harness::harness_protocol::{Home, RunDir, SessionId, StartReason, env, lock_file};
+use rig_harness::harness_protocol::launch::{self, AbsPath, Carry, Launch};
+use rig_harness::harness_protocol::{
+    Home, RunDir, SessionId, StartReason, lock_file, long_version,
+};
 use rig_harness::host::pipes::{self, Stream, Writer};
 use rig_harness::host::session::StoreOpener;
 use rig_harness::host::signals;
@@ -74,6 +77,11 @@ struct Router {
     writer: Writer,
     /// The most bytes of a line it reads ([`crate::LINE_LIMIT`]).
     limit: usize,
+    /// How the router was started, which each session's process starts
+    /// from, with no launcher, which the router stands for.
+    launch: Launch,
+    /// The launcher's warnings, until the first session takes them to show.
+    warnings: Mutex<Vec<String>>,
 }
 
 /// A session's process, as the router runs it.
@@ -134,6 +142,36 @@ fn runs_in(id: &SessionId, directory: &Path, cwd: &Path) -> Result<(), Error> {
     }
 }
 
+/// The router's launcher warnings, taken for the session being opened.
+/// Dropped before that session opened, they go back for the next one.
+struct Unshown<'a> {
+    from: &'a Mutex<Vec<String>>,
+    list: Vec<String>,
+}
+
+impl<'a> Unshown<'a> {
+    fn take(from: &'a Mutex<Vec<String>>) -> Self {
+        let list = std::mem::take(&mut *locked(from));
+        Self { from, list }
+    }
+
+    /// The session opened, so it shows them.
+    fn shown(mut self) {
+        self.list.clear();
+    }
+}
+
+impl Drop for Unshown<'_> {
+    fn drop(&mut self) {
+        if !self.list.is_empty() {
+            let mut held = locked(self.from);
+            let later = std::mem::take(&mut *held);
+            *held = std::mem::take(&mut self.list);
+            held.extend(later);
+        }
+    }
+}
+
 /// An error the client gets for one of the router's own failures.
 fn internal(why: impl ToString) -> Error {
     crate::error(Error::internal_error(), why)
@@ -155,24 +193,31 @@ impl Router {
         reason: StartReason,
         lock: File,
         client: ConnectionTo<Client>,
+        warnings: Vec<String>,
     ) -> Result<Arc<Child>, Error> {
         let number = self.next.fetch_add(1, Ordering::Relaxed);
         let run = RunDir::at(self.runs.join(number.to_string()));
         std::fs::create_dir_all(run.path()).map_err(internal)?;
         let run_lock = lock_file(&run.lock(), true).map_err(internal)?;
         run_lock.lock().map_err(internal)?;
-        let mut command = std::process::Command::new(&self.command.program);
+        let mut launch = self.launch.clone();
+        launch.carry = Carry {
+            session: Some(id.clone()),
+            reason: Some(reason),
+            warnings,
+            ..Carry::default()
+        };
+        let mut args = self.command.args.clone();
+        args.push(session::FRONT.into());
+        let mut command = launch.agent(&launch::Agent {
+            program: &self.command.program,
+            args: &args,
+            dir: Some(cwd),
+            run: &run,
+            version: &long_version(),
+            launcher: None,
+        });
         command
-            .args(&self.command.args)
-            .arg(session::FRONT)
-            .current_dir(cwd)
-            .env(env::HOME, self.home.root())
-            .env(env::SESSION, id.as_str())
-            .env(env::RUN, run.path())
-            .env(env::START, reason.as_str())
-            .env_remove(env::NOTICE)
-            .env_remove(env::BUILD_FAILURE)
-            .env_remove(env::LAUNCHER)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit());
@@ -269,7 +314,10 @@ impl Router {
         let initialize = locked(&self.client).clone();
         let initialize =
             initialize.ok_or_else(|| crate::error(Error::invalid_request(), "initialize first"))?;
-        let child = self.start(&id, cwd, reason, lock, client).await?;
+        let unshown = Unshown::take(&self.warnings);
+        let child = self
+            .start(&id, cwd, reason, lock, client, unshown.list.clone())
+            .await?;
         if let Err(error) = child.cx.send_request(initialize).block_task().await {
             child.end().await;
             return Err(error);
@@ -291,6 +339,8 @@ impl Router {
                 "the session's process ended before it opened",
             )));
             child.end().await;
+        } else {
+            unshown.shown();
         }
         Ok(())
     }
@@ -844,6 +894,20 @@ pub(crate) fn install(app: &mut App) {
     };
     let home = home.0.clone();
     let (stores, runtime, wake) = (stores.clone(), runtime.0.clone(), wake.clone());
+    let launched = Launch::from_process()
+        .map_err(|why| why.to_string())
+        .and_then(|launch| {
+            let home = AbsPath::new(home.root()).map_err(|why| why.to_string())?;
+            Ok(Launch { home, ..launch })
+        });
+    let mut launch = match launched {
+        Ok(launch) => launch,
+        Err(why) => {
+            app.refuse_run(format!("rig acp could not read how it was started: {why}"));
+            return;
+        }
+    };
+    let warnings = std::mem::take(&mut launch.carry.warnings);
     let base = match runs(&home) {
         Ok(base) => base,
         Err(why) => {
@@ -888,6 +952,8 @@ pub(crate) fn install(app: &mut App) {
         stopping: AtomicBool::new(false),
         writer: writer.clone(),
         limit: crate::LineLimit::of(app.world()),
+        launch,
+        warnings: Mutex::new(warnings),
     });
     let (stop, stopped) = oneshot::channel();
     let (done, finished) = async_channel::bounded(1);
