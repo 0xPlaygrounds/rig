@@ -102,7 +102,10 @@ impl ReloadBuild {
     /// Stops the build; what its cancel says.
     fn cancel(&mut self) -> &'static str {
         let process = self.process.get_mut();
-        process.unwrap_or_else(PoisonError::into_inner).stop(STOP_GRACE).ok();
+        process
+            .unwrap_or_else(PoisonError::into_inner)
+            .stop(STOP_GRACE)
+            .ok();
         match self.rebuild {
             Rebuild::Update if self.installed.replaced() => {
                 "Update cancelled during the agent build: the new rig is installed, and the \
