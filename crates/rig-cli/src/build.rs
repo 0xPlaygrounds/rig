@@ -249,7 +249,7 @@ pub fn check(home: &Home) -> Result<AgentDescription> {
 }
 
 /// The binary cargo builds the agent into.
-fn artifact(home: &Home) -> PathBuf {
+pub fn artifact(home: &Home) -> PathBuf {
     home.target()
         .join("debug")
         .join(format!("{PACKAGE}{}", std::env::consts::EXE_SUFFIX))
@@ -531,7 +531,7 @@ impl BuildLog {
 /// the copy carries its [`stamp`], once it described itself: a build that
 /// does not is rejected, and the build fails. A build `rig build` staged
 /// for any launcher that differs from this one is older, so it goes.
-fn stage(home: &Home, staged: &Path, staging: Staging) -> Result<()> {
+pub fn stage(home: &Home, staged: &Path, staging: Staging) -> Result<()> {
     let artifact = artifact(home);
     let built = stamp(&artifact)?;
     if let Err(why) = described(home, &artifact) {

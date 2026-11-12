@@ -1459,3 +1459,36 @@ touch \"$RIG_RUN/ready\"
         "{waited:?}"
     );
 }
+
+/// Two launchers that start after `rig build` staged a build for any
+/// launcher, A then B, each staging as a start's build does (only a build
+/// not already known) and selecting in one hold of the build lock: both
+/// run the new build, B from its own copy once A claimed the shared one.
+#[cfg(unix)]
+#[test]
+fn two_launchers_starting_after_rig_build_both_run_the_new_build() {
+    let home = builds("both-new", "", &describing("old"));
+    let ran = (|| -> Result<_> {
+        fs::remove_file(home.staged())?;
+        let artifact = build::artifact(&home);
+        if let Some(target) = artifact.parent() {
+            fs::create_dir_all(target)?;
+        }
+        script(&artifact, &describing("new"))?;
+        build::stage(&home, &home.staged(), Staging::Always)?;
+        let mut ran = Vec::new();
+        for name in ["a", "b"] {
+            let session = SessionId::generate();
+            let run = RunDir::at(home.runs().join(name));
+            let _lock = locks::hold_build_lock(&home, BuildOutput::LogOnly)?;
+            build::stage(&home, &home.staged_for(&session), Staging::OnlyNew)?;
+            let running = select(&home, &session, &run, None)?;
+            let new = running.current.description.command("new").is_some();
+            ran.push((new, running.current.is_trial()));
+        }
+        Ok(ran)
+    })();
+    fs::remove_dir_all(home.root()).ok();
+    let ran = ran.map_err(|failure| failure.to_string());
+    assert_eq!(ran, Ok(vec![(true, true), (true, true)]));
+}
