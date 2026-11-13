@@ -914,15 +914,13 @@ impl TurnSource for StreamingTurnSource {
                         StreamedTurnEvent::InvalidToolCall(invalid) => {
                             // A call the reply was cut off in is answered as
                             // cut off whatever its name, so it is neither
-                            // offered to the hook nor resolved as invalid. The
-                            // reply marks it only at its end, which rig-core
-                            // queues with the ends of the calls it closes, so
-                            // the stream is read ahead past those ends, taking
-                            // only what has arrived: a stream that stalls never
-                            // holds the decision back.
-                            while let None | Some(Some(Ok(Item::Event(StreamEvent::End { .. })))) =
-                                ahead.back()
-                            {
+                            // offered to the hook nor resolved as invalid.
+                            // rig-core ends such a call in the step that ends
+                            // the reply, so the stream is read ahead through
+                            // what has already arrived to learn whether it
+                            // ended: a stream that stalls never holds the
+                            // decision back.
+                            while !matches!(ahead.back(), Some(None)) {
                                 match futures::FutureExt::now_or_never(stream.next()) {
                                     Some(item) => ahead.push_back(item),
                                     None => break,

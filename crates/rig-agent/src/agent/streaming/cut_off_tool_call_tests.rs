@@ -469,3 +469,158 @@ async fn an_unknown_call_is_decided_without_waiting_on_a_stalled_stream() {
         "the unknown call is decided while the stream stalls: {outcome:?}"
     );
 }
+
+/// Two calls to tools the turn does not offer, both open when the reply
+/// reaches the limit, the later with no arguments yet. The reply ends the
+/// later call with the arguments it states, `{}`, before its end, and each
+/// call is still answered as cut off, none offered to the hook.
+#[tokio::test]
+async fn two_cut_unknown_calls_the_later_without_arguments_are_answered_as_cut_off() {
+    for first in [Some("{"), None, Some(r#"{"x":1}"#)] {
+        let mut cut = vec![MockStreamEvent::tool_call_name_delta("call_1", "nope_a")];
+        cut.extend(first.map(|args| MockStreamEvent::tool_call_arguments_delta("call_1", args)));
+        cut.push(MockStreamEvent::tool_call_name_delta("call_2", "nope_b"));
+        cut.push(MockStreamEvent::FinalResponse(Finish {
+            reason: Some(FinishReason::Length),
+            ..mock_final(Usage::default())
+        }));
+        let model = MockCompletionModel::from_stream_turns([
+            cut,
+            vec![
+                MockStreamEvent::text("split it"),
+                MockStreamEvent::final_response_with_default_usage(),
+            ],
+        ]);
+        let recorded = model.clone();
+        let offered = Offered::default();
+        let agent = AgentBuilder::new(model).tool(WriteFile::default()).build();
+        let runner = agent
+            .prompt("write a long file")
+            .max_turns(5)
+            .add_hook(offered.clone());
+        let outcome = drive(runner).await;
+        assert_eq!(outcome.as_deref(), Ok("split it"), "{first:?}");
+        let seen = offered
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        assert!(
+            seen.is_empty(),
+            "{first:?}: not offered to the hook: {seen:?}"
+        );
+        let results = recorded
+            .requests()
+            .get(1)
+            .map(|request| serde_json::to_string(&request.chat_history))
+            .and_then(Result::ok)
+            .unwrap_or_default();
+        assert_eq!(
+            results.matches("reached the output limit").count(),
+            2,
+            "{first:?}: both are answered as cut off: {results}"
+        );
+    }
+}
+
+/// On the Responses API, the provider states a cut call done a frame
+/// before the reply ends. A call to an unknown tool cut there, with the
+/// two frames in separate network reads, is answered as cut off, not
+/// offered to the hook, every time the model sends it.
+#[tokio::test]
+async fn a_responses_call_cut_between_reads_is_answered_as_cut_off() {
+    use rig_core::providers::openai::{OpenAIConfig, wire::OPENAI};
+    use rig_core::test_utils::PacedStreamingClient;
+
+    let paced = PacedStreamingClient {
+        chunks: vec![
+            "event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\",\"object\":\"response\",\"status\":\"in_progress\",\"model\":\"gpt-5.4\",\"output\":[]}}\n\n",
+            "event: response.output_item.added\ndata: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"function_call\",\"id\":\"fc_1\",\"call_id\":\"call_1\",\"name\":\"delete_everything\",\"arguments\":\"\",\"status\":\"in_progress\"}}\n\n",
+            "event: response.function_call_arguments.delta\ndata: {\"type\":\"response.function_call_arguments.delta\",\"output_index\":0,\"item_id\":\"fc_1\",\"delta\":\"{\\\"x\\\":481\"}\n\n",
+            "event: response.output_item.done\ndata: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"type\":\"function_call\",\"id\":\"fc_1\",\"call_id\":\"call_1\",\"name\":\"delete_everything\",\"arguments\":\"{\\\"x\\\":481\",\"status\":\"incomplete\"}}\n\n",
+            "event: response.incomplete\ndata: {\"type\":\"response.incomplete\",\"response\":{\"id\":\"resp_1\",\"object\":\"response\",\"status\":\"incomplete\",\"model\":\"gpt-5.4\",\"incomplete_details\":{\"reason\":\"max_output_tokens\"},\"output\":[{\"type\":\"function_call\",\"id\":\"fc_1\",\"call_id\":\"call_1\",\"name\":\"delete_everything\",\"arguments\":\"{\\\"x\\\":481\",\"status\":\"incomplete\"}]}}\n\n",
+        ],
+        gap: std::time::Duration::from_millis(20),
+    };
+    let model = OpenAIConfig::with_key(&OPENAI, "key")
+        .connect(paced)
+        .completion("gpt-5.4");
+    let offered = Offered::default();
+    let agent = AgentBuilder::new(model).tool(WriteFile::default()).build();
+    let runner = agent
+        .prompt("write a long file")
+        .max_turns(2)
+        .add_hook(offered.clone());
+    let outcome = drive(runner).await;
+    let seen = offered
+        .0
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone();
+    assert!(seen.is_empty(), "not offered to the hook: {seen:?}");
+    // Every reply is the same cut call, so the run ends at its turn limit,
+    // not on an unknown tool.
+    assert!(
+        matches!(&outcome, Err(error) if error.contains("max turns")),
+        "{outcome:?}"
+    );
+}
+
+/// The same two cut calls to unknown tools on a real wire, DeepSeek's chat
+/// stream: the later with no arguments, the earlier with `{` or none.
+#[tokio::test]
+async fn two_cut_unknown_calls_on_a_real_wire_are_answered_as_cut_off() {
+    use rig_core::providers::openai::{OpenAIConfig, wire::DEEPSEEK};
+    use rig_core::test_utils::{MockHttpResponse, SequencedHttpClient};
+
+    let sse = |delta: serde_json::Value, finish: &str| {
+        let chunk = json!({"id": "c", "object": "chat.completion.chunk", "model": "m",
+            "choices": [{"index": 0, "delta": delta, "finish_reason": finish}]});
+        MockHttpResponse::success_typed(
+            format!("data: {chunk}\n\ndata: [DONE]\n\n"),
+            "text/event-stream",
+        )
+    };
+    for first in ["{", ""] {
+        let cut = sse(
+            json!({"role": "assistant", "tool_calls": [
+                {"index": 0, "id": "call_1", "type": "function",
+                    "function": {"name": "nope_a", "arguments": first}},
+                {"index": 1, "id": "call_2", "type": "function",
+                    "function": {"name": "nope_b", "arguments": ""}}]}),
+            "length",
+        );
+        let done = sse(json!({"role": "assistant", "content": "split it"}), "stop");
+        let http = SequencedHttpClient::new([cut, done]);
+        let model = OpenAIConfig::with_key(&DEEPSEEK, "key")
+            .connect(http.clone())
+            .completion("deepseek-v4-flash");
+        let offered = Offered::default();
+        let agent = AgentBuilder::new(model).tool(WriteFile::default()).build();
+        let runner = agent
+            .prompt("write a long file")
+            .max_turns(5)
+            .add_hook(offered.clone());
+        let outcome = drive(runner).await;
+        assert_eq!(outcome.as_deref(), Ok("split it"), "{first:?}");
+        let seen = offered
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        assert!(
+            seen.is_empty(),
+            "{first:?}: not offered to the hook: {seen:?}"
+        );
+        let bodies: Vec<String> = http
+            .requests()
+            .iter()
+            .map(|request| String::from_utf8_lossy(&request.body).into_owned())
+            .collect();
+        assert!(
+            matches!(bodies.as_slice(), [_, next]
+                if next.matches("reached the output limit").count() == 2),
+            "{first:?}: {bodies:?}"
+        );
+    }
+}
