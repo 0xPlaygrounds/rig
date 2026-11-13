@@ -409,7 +409,7 @@ impl Book {
     }
 }
 
-/// A running session's logs, the harness's appender. Every method takes
+/// A running session's logs, appended to as it runs. Every method takes
 /// `&self`, so clones share them. Nothing is logged before
 /// [`start`](Self::start), nor once a write failed; a default writer has no
 /// store and logs nothing.

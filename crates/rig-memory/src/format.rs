@@ -17,7 +17,7 @@
 //!
 //! ```json
 //! {"seq":0,"n":0,"t":1791779409181,"type":"header","format":"rig-session/4","log":"cd9a…","lineage":8125…}
-//! {"seq":1,"n":1,"t":1791779409181,"type":"state","key":"rig_ecs::agent::ToolAccess","value":"All"}
+//! {"seq":1,"n":1,"t":1791779409181,"type":"state","key":"my_app::Mode","value":"Plan"}
 //! {"seq":2,"n":2,"t":1791779409182,"type":"push","entries":[{"message":{…},"id":0}]}
 //! ```
 
