@@ -14,7 +14,7 @@ use rig::{
     providers::openai::{self, OpenAI},
     tool::{
         DynamicTool,
-        rmcp::{McpClientHandler, McpConnection},
+        rmcp::{McpClientHandler, McpConnection, client_config},
         server::ToolServer,
     },
 };
@@ -116,13 +116,6 @@ async fn serve() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn client_config() -> ClientConfig {
-    ClientConfig::new(
-        ClientCapabilities::default(),
-        Implementation::new("rig", env!("CARGO_PKG_VERSION")),
-    )
-}
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
@@ -131,7 +124,11 @@ async fn main() -> anyhow::Result<()> {
 
     // Owned connection: the tools keep it open, so nothing else must be held.
     let transport = StreamableHttpClientTransport::from_uri("http://localhost:8080");
-    let connection = McpConnection::new(client_config().serve(transport).await?);
+    let connection = McpConnection::new(
+        client_config("rig", env!("CARGO_PKG_VERSION"))
+            .serve(transport)
+            .await?,
+    );
     let tools = connection
         .tools()
         .await?
@@ -155,9 +152,12 @@ async fn main() -> anyhow::Result<()> {
     // they change. The tool server owns them, so keep the connection.
     let tool_server = ToolServer::new().run();
     let transport = StreamableHttpClientTransport::from_uri("http://localhost:8080");
-    let connection = McpClientHandler::new(client_config(), tool_server.clone())
-        .connect(transport)
-        .await?;
+    let connection = McpClientHandler::new(
+        client_config("rig", env!("CARGO_PKG_VERSION")),
+        tool_server.clone(),
+    )
+    .connect(transport)
+    .await?;
     let agent = AgentBuilder::new(openai.completion(openai::GPT_5_4_MINI))
         .preamble("Use the calculator's tools.")
         .tool_server_handle(tool_server)

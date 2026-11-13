@@ -297,3 +297,47 @@ async fn resources_are_listed_read_and_given_as_agent_context() {
     connection.close().await;
     server_task.abort();
 }
+
+/// A server that records the protocol version each `initialize` request
+/// offered, before negotiation replaces it.
+#[derive(Clone, Default)]
+struct OfferRecorder(Arc<Mutex<Vec<ProtocolVersion>>>);
+
+impl ServerHandler for OfferRecorder {
+    async fn initialize(
+        &self,
+        request: InitializeRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<InitializeResult, ErrorData> {
+        if let Ok(mut offers) = self.0.lock() {
+            offers.push(request.protocol_version.clone());
+        }
+        context.peer.set_peer_info(request.clone());
+        self.negotiate_initialize(&request)
+    }
+}
+
+/// The config rig-rmcp builds offers a protocol version that has the
+/// `initialize` handshake, as the server receives it. Some servers accept a
+/// draft offer and then refuse the session.
+#[tokio::test]
+async fn client_config_offers_a_version_with_the_initialize_handshake() {
+    let (c2s, sfc) = tokio::io::duplex(8192);
+    let (s2c, cfs) = tokio::io::duplex(8192);
+    let recorder = OfferRecorder::default();
+    let server = tokio::spawn(recorder.clone().serve((sfc, s2c)));
+    let client = crate::client_config("rig-rmcp-test", "0.1.0")
+        .serve((cfs, c2s))
+        .await
+        .expect("client connect");
+    let server = server.await.expect("server task").expect("server start");
+
+    let offers = recorder.0.lock().expect("offers").clone();
+    assert_eq!(offers.len(), 1, "one initialize request");
+    assert!(
+        offers.iter().all(ProtocolVersion::has_initialize),
+        "offered {offers:?}"
+    );
+    client.cancel().await.expect("client close");
+    server.cancel().await.expect("server close");
+}

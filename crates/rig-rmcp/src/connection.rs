@@ -9,7 +9,7 @@
 //!     T: IntoTransport<RoleClient, E, A>,
 //!     E: std::error::Error + Send + Sync + 'static,
 //! {
-//!     let client = rmcp::model::ClientConfig::default().serve(transport).await?;
+//!     let client = rig_rmcp::client_config("my-app", "1.0").serve(transport).await?;
 //!     let connection = McpConnection::new(client);
 //!     let tools = connection.tools().await?;
 //!     Ok(())

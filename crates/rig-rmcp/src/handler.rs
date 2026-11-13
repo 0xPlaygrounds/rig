@@ -2,10 +2,10 @@
 //!
 //! ```
 //! use rig_core::tool::ManagedToolSink;
-//! use rig_rmcp::{McpClientHandler, rmcp};
+//! use rig_rmcp::McpClientHandler;
 //!
 //! fn handler<S: ManagedToolSink + Send + Sync + 'static>(sink: S) -> McpClientHandler<S> {
-//!     McpClientHandler::new(rmcp::model::ClientConfig::default(), sink)
+//!     McpClientHandler::new(rig_rmcp::client_config("my-app", "1.0"), sink)
 //! }
 //! ```
 
