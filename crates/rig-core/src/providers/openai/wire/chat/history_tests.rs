@@ -6,7 +6,7 @@
 use serde_json::{Value, json};
 
 use super::Chat;
-use crate::completion::{CompletionRequest, Message};
+use crate::completion::{CompletionRequest, FinishReason, Message};
 use crate::message::{
     AssistantContent, AssistantMessage, CallId, DocumentSourceKind, Image, ImageMediaType, Origin,
     StopReason, ToolCall, ToolFunction, ToolName, ToolResultContent, UserContent,
@@ -297,6 +297,40 @@ fn only_a_complete_item_becomes_a_native() {
         "{:?}",
         whole.choice
     );
+}
+
+/// A streamed reply the output limit cut inside a call, or before any of
+/// its arguments: the decoder closes the call as never stated complete, so
+/// the reply lists it among its unfinished calls. A finished call, with or
+/// without arguments, is not listed.
+#[test]
+fn a_call_the_limit_cut_is_an_unfinished_call() {
+    let wire = wire(&DEEPSEEK, "deepseek-v4-flash");
+    let reply = |arguments: &str, finish: &str| {
+        let frames = vec![
+            chunk(
+                json!({"role": "assistant", "tool_calls": [{"index": 0, "id": "call_1",
+                    "type": "function", "function": {"name": "write_file", "arguments": arguments}}]}),
+                Some(finish),
+            ),
+            WireFrame::Text("[DONE]".to_owned()),
+        ];
+        decode(&wire, Mode::Streaming, frames).expect("the reply decodes")
+    };
+    for arguments in [r#"{"path": "a.rs", "content": "fn ma"#, ""] {
+        let cut = reply(arguments, "length");
+        assert_eq!(cut.finish_reason(), Some(FinishReason::Length));
+        let ids: Vec<Option<&str>> = cut
+            .unfinished_calls()
+            .map(|call| call.id.provider().map(|id| id.as_str()))
+            .collect();
+        assert_eq!(ids, [Some("call_1")], "{arguments:?}: {:?}", cut.choice);
+    }
+    for arguments in [r#"{"path": "a.rs", "content": "fn main() {}"}"#, ""] {
+        let whole = reply(arguments, "tool_calls");
+        let unfinished = whole.unfinished_calls().count();
+        assert_eq!(unfinished, 0, "{arguments:?}: {:?}", whole.choice);
+    }
 }
 
 /// chatB "accepts_images dead": the text-only models of Z.AI, Moonshot,

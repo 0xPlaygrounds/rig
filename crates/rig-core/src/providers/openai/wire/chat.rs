@@ -1579,8 +1579,8 @@ impl ChatDecoder {
     /// end (`all`), only those whose arguments are whole at a finish chunk,
     /// since a provider may still send fragments after it. A custom call's
     /// arguments are its `{"input"}`. A call the output budget cut before
-    /// its arguments were a whole object closes with no native: the
-    /// provider never stated it complete.
+    /// its arguments were a whole object, or before any came, closes with
+    /// no native: the provider never stated it complete.
     fn close_calls(
         &mut self,
         out: &mut Out<'_, Completion>,
@@ -1600,6 +1600,9 @@ impl ChatDecoder {
                     input = Some(custom.unwrap_or_else(|| Value::from("")));
                 }
                 complete = match item.at("/function/arguments") {
+                    // Blank text reads as `{}`, but under the limit it is a
+                    // call cut before its arguments.
+                    Some(Value::String(text)) if cut && text.trim().is_empty() => false,
                     Some(Value::String(text)) => matches!(
                         crate::json_utils::parse_tool_arguments(text),
                         Ok(Value::Object(_))

@@ -707,24 +707,15 @@ impl ReplyFold {
     }
 
     /// Close the item at `index`: its block becomes visible, holding the
-    /// provider's item as its native when `closing` says it is complete.
+    /// provider's item as its native when `closing` says it is complete. A
+    /// call the provider never stated complete is one of the reply's
+    /// unfinished calls, whichever path closed it.
     fn close_item(
         &mut self,
         items: &mut Items,
         index: usize,
         closing: Closing,
     ) -> Result<(), ProviderError> {
-        self.close_block(items, index, closing).map(drop)
-    }
-
-    /// [`Self::close_item`], saying the id of the call it closed, if it
-    /// closed one.
-    fn close_block(
-        &mut self,
-        items: &mut Items,
-        index: usize,
-        closing: Closing,
-    ) -> Result<Option<CallId>, ProviderError> {
         let mut draft = self.open.remove(&index).ok_or_else(|| not_open(index))?;
         // A call streams what it has not yet: its start, if it names a tool,
         // and the argument text since its last fragment.
@@ -750,7 +741,7 @@ impl ReplyFold {
         let content = match body {
             Body::Text(text) => {
                 if text.is_empty() && item.is_null() {
-                    return Ok(None);
+                    return Ok(());
                 }
                 // Resolved at close: a provider may cite a text before its
                 // last fragment arrives.
@@ -766,7 +757,7 @@ impl ReplyFold {
             }
             Body::Reasoning { text, redacted } => {
                 if text.is_empty() && !redacted && item.is_null() {
-                    return Ok(None);
+                    return Ok(());
                 }
                 let reasoning = Reasoning {
                     text,
@@ -790,11 +781,14 @@ impl ReplyFold {
                         index,
                         "the provider closed a tool call without a name; nothing can answer it"
                     );
-                    return Ok(None);
+                    return Ok(());
                 };
                 let function = arguments.function(name);
                 let (id, item) = self.distinct_call_id(id, item);
-                let call = ToolCall::new(id.clone(), function);
+                if closing == Closing::Incomplete {
+                    self.unfinished.push(id.clone());
+                }
+                let call = ToolCall::new(id, function);
                 let content = self.with_item(AssistantContent::ToolCall(call), item);
                 // A call that streamed no text (none arrived, or only a
                 // prefix of a placeholder `null`) states the arguments it
@@ -805,7 +799,7 @@ impl ReplyFold {
                     emit(items, fragment);
                 }
                 emit(items, StreamEvent::End { part, content });
-                return Ok(Some(id));
+                return Ok(());
             }
         };
         if !started {
@@ -819,7 +813,7 @@ impl ReplyFold {
             );
         }
         emit(items, StreamEvent::End { part, content });
-        Ok(None)
+        Ok(())
     }
 
     /// `block` holding `item` as its native, with where it keeps its blob,
@@ -1010,10 +1004,8 @@ impl ReplyFold {
             } else {
                 Closing::Incomplete
             };
-            match self.close_block(items, index, closing) {
-                Ok(Some(call)) if closing == Closing::Incomplete => self.unfinished.push(call),
-                Ok(_) => {}
-                Err(error) => items.push_back(Err(error)),
+            if let Err(error) = self.close_item(items, index, closing) {
+                items.push_back(Err(error));
             }
         }
     }

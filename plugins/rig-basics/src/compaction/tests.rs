@@ -2005,6 +2005,49 @@ fn a_call_cut_off_by_the_output_limit_is_answered_so() {
     );
 }
 
+/// A reply on a real wire, DeepSeek's chat stream, that the output limit
+/// cut in the middle of a call's arguments: the decoder closes the call
+/// unfinished, so it is answered as cut off and never run.
+#[test]
+fn a_call_a_real_wire_cut_at_the_output_limit_is_answered_so() {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    app.add_tool(rig_tools::Read::default());
+    let chunk = |delta: serde_json::Value, finish: Option<&str>| {
+        serde_json::json!({"id": "c", "object": "chat.completion.chunk", "model": "m",
+            "choices": [{"index": 0, "delta": delta, "finish_reason": finish}]})
+    };
+    let sse = |chunks: Vec<serde_json::Value>| {
+        let mut body: String = chunks
+            .iter()
+            .map(|chunk| format!("data: {chunk}\n\n"))
+            .collect();
+        body.push_str("data: [DONE]\n\n");
+        rig_core::test_utils::MockHttpResponse::success_typed(body, "text/event-stream")
+    };
+    let cut = chunk(
+        serde_json::json!({"role": "assistant", "tool_calls": [{"index": 0, "id": "call_1",
+            "type": "function", "function": {"name": "read", "arguments": "{\"path\": \"Cargo.to"}}]}),
+        Some("length"),
+    );
+    let done = chunk(
+        serde_json::json!({"role": "assistant", "content": "done"}),
+        Some("stop"),
+    );
+    let http = rig_core::test_utils::SequencedHttpClient::new([sse(vec![cut]), sse(vec![done])]);
+    let deepseek = &rig_core::providers::openai::wire::DEEPSEEK;
+    let agent = on_responses(&mut app, (deepseek, "deepseek-v4-flash"), 1_000_000, &http);
+    assert!(agent.is_some(), "an agent on the DeepSeek chat wire");
+    let Some(agent) = agent else { return };
+    ask(&mut app, &wakes, agent);
+    assert_eq!(answer(&app).as_deref(), Some("done"));
+    let bodies = bodies(&http);
+    assert!(
+        matches!(bodies.as_slice(), [_, next]
+            if next.contains("Not run: your reply reached the output limit before `read`")),
+        "{bodies:?}"
+    );
+}
+
 #[test]
 fn an_interrupt_during_the_summary_cancels_the_compaction() {
     let (mut app, wakes) = start(&MemoryStore::default());
