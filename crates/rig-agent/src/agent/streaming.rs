@@ -63,10 +63,27 @@ pub enum MultiTurnStreamItem {
         /// execution commit and its result.
         tool_call: rig_core::message::ToolCall,
     },
-    /// Confirmation that Rig **executed and committed** a tool call. This is not
-    /// a real-time start notification: it is surfaced together with its
-    /// `ToolResult` only after the whole batch settles successfully. Use tool
-    /// hooks for live host-side start/result observation.
+    /// A tool call **starts**: Rig dispatches it now, before its dispatch
+    /// hooks and its body run. The consumer takes this item before the call
+    /// runs on, so a slow consumer delays the call.
+    ///
+    /// One item per dispatched call, after the turn's
+    /// [`ToolCall`](Self::ToolCall) items and before the batch's commits and
+    /// results: in call order when calls run one at a time, in start order
+    /// under `tool_concurrency`. A call a dispatch hook skips still starts.
+    /// A call answered by invalid-call recovery, or dropped because a
+    /// sibling ended the run, never starts. A start is not a commit: a
+    /// batch that fails surfaces its starts but no commits or results.
+    ToolExecutionStarted {
+        /// The call as the model emitted it, before any hook rewrite. Its
+        /// id is the one its [`ToolCall`](Self::ToolCall), execution commit
+        /// and result carry.
+        tool_call: rig_core::message::ToolCall,
+    },
+    /// Confirmation that Rig **executed and committed** a tool call. It is
+    /// surfaced together with its `ToolResult` only after the whole batch
+    /// settles successfully; the live start is
+    /// [`ToolExecutionStarted`](Self::ToolExecutionStarted).
     ///
     /// This item is emitted only for a tool whose body actually ran (it passed
     /// its `ToolCall` hook checks), never for a call dropped by a sibling's
@@ -223,6 +240,10 @@ impl AgentRunner {
         .flat_map(|item| {
             let (head, tools) = match item {
                 Ok(DriveItem::Surfaced(item)) => (Some(Ok(item.into())), None),
+                Ok(DriveItem::Started(tool_call)) => (
+                    Some(Ok(MultiTurnStreamItem::ToolExecutionStarted { tool_call })),
+                    None,
+                ),
                 Ok(DriveItem::Projected(items)) => (None, Some(items)),
                 Ok(DriveItem::Done(_)) => (None, None),
                 Err(err) => (Some(Err(err)), None),
@@ -425,3 +446,5 @@ mod cut_off_tool_call_tests;
 mod malformed_tool_args_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tool_started_tests;

@@ -8,7 +8,12 @@ use std::sync::{
     atomic::{AtomicU64, Ordering},
 };
 
-use futures::{Stream, StreamExt, stream};
+use futures::{
+    Stream, StreamExt,
+    channel::{mpsc, oneshot},
+    future::{self, Either},
+    stream,
+};
 use tracing::{Instrument, span::Id};
 
 use rig_core::error::ProviderError;
@@ -72,10 +77,13 @@ pub(crate) enum Surfaced {
 }
 
 /// Engine output: stream items for forwarding (no bare tool item: only
-/// [`committed_stream_items`] builds [`ProjectedItems`]) or the terminal response.
+/// [`committed_stream_items`] builds [`ProjectedItems`]), a tool call's live
+/// start, or the terminal response.
 pub(crate) enum DriveItem {
     /// A non-tool item, including the streaming surface's final response.
     Surfaced(Surfaced),
+    /// See [`MultiTurnStreamItem::ToolExecutionStarted`](crate::agent::MultiTurnStreamItem::ToolExecutionStarted).
+    Started(ToolCall),
     /// The tool items of what the run committed since the last projection.
     Projected(ProjectedItems),
     /// The run finished: the response the blocking fold returns.
@@ -402,16 +410,31 @@ where
                                 .to_string(),
                         )), break 'outer);
                     };
-                    let settled = drive_tool_calls(
-                        &runner,
-                        &hook_ctx,
-                        &mut run,
-                        calls,
-                        tool_snapshot,
-                        |span| source.chain_span(span),
-                        S::STREAMS,
-                    )
-                    .await;
+                    // Starts are reported only where something forwards them.
+                    let (report, mut reports) = mpsc::unbounded();
+                    let settled = {
+                        let mut settle = drive_tool_calls(
+                            &runner,
+                            &hook_ctx,
+                            &mut run,
+                            calls,
+                            tool_snapshot,
+                            |span| source.chain_span(span),
+                            S::STREAMS,
+                            S::STREAMS.then_some(report),
+                        );
+                        loop {
+                            match future::select(&mut settle, reports.next()).await {
+                                Either::Left((settled, _)) => break settled,
+                                Either::Right((Some((call, taken)), _)) => {
+                                    yield Ok(DriveItem::Started(call));
+                                    // The consumer took the start: the call may run.
+                                    let _ = taken.send(());
+                                }
+                                Either::Right((None, _)) => break settle.await,
+                            }
+                        }
+                    };
                     match settled {
                         Ok(ran) => executed = ran,
                         Err(err) => fail!(err, break 'outer),
@@ -481,6 +504,8 @@ where
 ///
 /// `chain_tool_span` lets the blocking surface chain spans into its linear
 /// `follows_from` sequence; `is_streaming` is reported to the invalid-call hook.
+/// With `started`, each call that is dispatched reports its start there and
+/// waits until the report is taken, before its hooks and body run.
 pub(crate) fn drive_tool_calls<'a, F>(
     runner: &'a AgentRunner,
     hook_ctx: &'a HookContext,
@@ -489,6 +514,7 @@ pub(crate) fn drive_tool_calls<'a, F>(
     tool_snapshot: Arc<ToolCatalog>,
     chain_tool_span: F,
     is_streaming: bool,
+    started: Option<StartedSender>,
 ) -> WasmBoxedFuture<'a, Result<Vec<Option<ToolCall>>, PromptError>>
 where
     F: Fn(tracing::Span) -> tracing::Span + WasmCompatSend + 'a,
@@ -545,6 +571,7 @@ where
             )| {
                 let tool_snapshot = &tool_snapshot;
                 let terminating = terminating.clone();
+                let started = started.clone();
                 async move {
                     // `None` marks a dropped (never-started) sibling.
                     if terminating.load(std::sync::atomic::Ordering::SeqCst) {
@@ -552,6 +579,9 @@ where
                     }
                     let outcome = match call {
                         Ok(call) => {
+                            if let Some(started) = &started {
+                                report_start(started, call.tool_call()).await;
+                            }
                             run_single_tool(runner, hook_ctx, tool_snapshot, call.tool_call())
                                 .await
                                 .map(|outcome| (call.answer(outcome.result), outcome.executed))
@@ -656,6 +686,19 @@ where
         }
         Ok(executed)
     })
+}
+
+/// Where [`drive_tool_calls`] reports each call it dispatches: the call, and
+/// the signal that the report was taken.
+pub(crate) type StartedSender = mpsc::UnboundedSender<(ToolCall, oneshot::Sender<()>)>;
+
+/// Report that `call` starts and wait until the report is taken. A report
+/// nobody receives holds nothing back.
+async fn report_start(started: &StartedSender, call: &ToolCall) {
+    let (taken, wait) = oneshot::channel();
+    if started.unbounded_send((call.clone(), taken)).is_ok() {
+        let _ = wait.await;
+    }
 }
 
 /// Whether call `index` waits for an earlier unsettled call of its batch,

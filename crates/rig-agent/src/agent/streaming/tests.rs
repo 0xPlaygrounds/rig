@@ -384,6 +384,7 @@ async fn execution_commit_items_are_not_emitted_when_run_commit_fails() {
         tool_snapshot,
         |span| span,
         true,
+        None,
     )
     .await;
 
@@ -963,6 +964,7 @@ async fn a_streamed_run_reads_back_item_by_item() {
             "streamAssistantItem",
             "toolCall",
             "toolExecutionCommitted",
+            "toolExecutionStarted",
             "toolResult",
         ]
     );
