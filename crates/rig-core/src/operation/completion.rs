@@ -1198,7 +1198,8 @@ fn item_of(content: &mut AssistantContent) -> Option<&mut serde_json::Value> {
     native.map(|native| &mut native.item)
 }
 
-/// The events of `content` written whole as the part at `part`.
+/// The events of `content` written whole as the part at `part`. A call's
+/// arguments are the text the model sent, none when it sent no text.
 fn write_part(items: &mut Items, part: Part, content: AssistantContent) {
     let name = match &content {
         AssistantContent::ToolCall(call) => Some(call.function.name.clone()),
@@ -1227,13 +1228,12 @@ fn write_part(items: &mut Items, part: Part, content: AssistantContent) {
                 text: reasoning.text.clone(),
             },
         ),
-        AssistantContent::ToolCall(call) => emit(
-            items,
-            StreamEvent::Arguments {
-                part,
-                json: call.function.arguments_json(),
-            },
-        ),
+        AssistantContent::ToolCall(call) => {
+            let json = call.function.raw_arguments();
+            if !json.is_empty() {
+                emit(items, StreamEvent::Arguments { part, json });
+            }
+        }
         _ => {}
     }
     emit(items, StreamEvent::End { part, content });

@@ -751,6 +751,66 @@ fn a_restated_call_starts_with_its_name() {
     );
 }
 
+/// A call whose arguments did not parse restates the text the model sent,
+/// the same text a stream of that call carried.
+#[test]
+fn a_restated_malformed_call_carries_its_arguments_as_sent() {
+    let streamed = events(&write(|out| {
+        out.fragment(
+            Some(0),
+            CallFragment {
+                id: Some("call_1"),
+                name: Some("add"),
+                arguments: Some(r#"{"x": 1"#),
+            },
+        )
+    }));
+    let choice: Vec<AssistantContent> = streamed
+        .iter()
+        .filter_map(|event| match event {
+            StreamEvent::End { content, .. } => Some(content.clone()),
+            _ => None,
+        })
+        .collect();
+    let response = CompletionResponse::new(
+        choice,
+        Usage::default(),
+        crate::message::Origin::new("test", "test", "test"),
+        Value::Null,
+    );
+    let items = events_of(&response).expect("restates");
+    let transcript = StreamRecord::from_items(items).expect("a valid sequence");
+    let restated: Vec<StreamEvent> = transcript.events().cloned().collect();
+    assert_eq!(
+        shape(&restated),
+        ["0:start:add", r#"0:args:{"x": 1"#, "0:end"]
+    );
+    assert_eq!(
+        streamed_and_final(&restated, 0).0,
+        streamed_and_final(&streamed, 0).0
+    );
+}
+
+/// A call stopped before the model sent any argument text, which keeps
+/// that empty text as sent, restates no arguments, as its stream carried
+/// none.
+#[test]
+fn a_restated_call_with_no_argument_text_carries_no_arguments() {
+    let mut function = crate::message::ToolFunction::parse(name("add"), "");
+    function.invalid_arguments = Some(String::new());
+    let call = ToolCall::from_wire("call_1", function);
+    let response = CompletionResponse::new(
+        vec![AssistantContent::ToolCall(call)],
+        Usage::default(),
+        crate::message::Origin::new("test", "test", "test"),
+        Value::Null,
+    );
+    let items = events_of(&response).expect("restates");
+    let transcript = StreamRecord::from_items(items).expect("a valid sequence");
+    let events: Vec<StreamEvent> = transcript.events().cloned().collect();
+    assert_eq!(shape(&events), ["0:start:add", "0:end"]);
+}
+
 /// Restating a finished reply states its calls as the reply holds them,
 /// two that share an id included, so a caller running the calls from the
 /// events files each result under an id the reply contains.
