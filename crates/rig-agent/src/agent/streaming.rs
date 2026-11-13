@@ -91,7 +91,8 @@ pub enum MultiTurnStreamItem {
     /// time, each as one JSON block (an empty array reports nothing); any
     /// other output is one item holding all its blocks. Text is never
     /// reparsed as JSON. Items come in completion order under
-    /// `tool_concurrency`. Every started call that answers reports its items,
+    /// `tool_concurrency`, so items of different calls may interleave: group
+    /// them by `tool_result.call`. Every started call that answers reports its items,
     /// a hook-skipped one included; a call answered by invalid-call recovery
     /// reports none. An item is not a commit: items stay reported when a
     /// sibling later fails the batch, and the committed
