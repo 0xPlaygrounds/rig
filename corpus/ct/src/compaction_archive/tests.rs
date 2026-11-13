@@ -54,7 +54,7 @@ fn start(store: &MemoryStore) -> (App, Receiver<()>) {
     // the last two turns of short messages.
     app.world_mut()
         .resource_mut::<CompactionDefault>()
-        .0
+        .policy
         .keep_asked = 20;
     app.finish();
     app.update();

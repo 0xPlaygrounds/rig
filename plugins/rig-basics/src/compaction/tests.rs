@@ -861,7 +861,7 @@ fn thinking_turn(window: u32, budget: Option<u32>) -> (Option<CompletionRequest>
     collect::<Notice>(&mut app);
     app.world_mut()
         .resource_mut::<CompactionDefault>()
-        .0
+        .policy
         .near_window = NearWindow::Clear;
     let model = MockCompletionModel::from_stream_turns(vec![reply("done")]);
     let agent = agent(&mut app, &model, window, read_files(5));
@@ -1061,7 +1061,7 @@ fn a_set_keep_recent_is_named_when_nothing_older_is_left() {
     collect::<Notice>(&mut app);
     app.world_mut()
         .resource_mut::<CompactionDefault>()
-        .0
+        .policy
         .keep_recent = Some(1_000_000);
     let model = MockCompletionModel::from_stream_turns(vec![too_long()]);
     let agent = agent(&mut app, &model, 1_000_000, Vec::new());
@@ -1571,7 +1571,7 @@ fn notes_too_big_near_the_limit_give_way_to_a_summary_on_the_route() {
     let (mut app, wakes) = start(&MemoryStore::default());
     app.world_mut()
         .resource_mut::<CompactionDefault>()
-        .0
+        .policy
         .near_window = NearWindow::Summarize;
     let own = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
     let routed =
@@ -1705,7 +1705,7 @@ fn notes_too_big_for_the_input_limit_give_way_to_a_summary() {
     let (mut app, wakes) = start(&MemoryStore::default());
     app.world_mut()
         .resource_mut::<CompactionDefault>()
-        .0
+        .policy
         .near_window = NearWindow::Summarize;
     let model =
         MockCompletionModel::from_stream_turns([reply("## Goal\nRead six files."), reply("done")]);
@@ -1851,7 +1851,7 @@ fn a_request_that_still_does_not_fit_after_a_cut_summary_is_not_sent() {
             .world_mut()
             .resource_mut::<CompactionDefault>()
             .into_inner()
-            .0;
+            .policy;
         limits.summarizer.limits.reserve = reserve;
         let model =
             MockCompletionModel::from_stream_turns(vec![stopped_summary(FinishReason::Length)]);
@@ -2368,13 +2368,15 @@ fn the_compaction_notice_says_it_or_they_by_how_many_messages_were_kept() {
 fn settings_set_only_what_they_name() {
     let (mut app, _wakes) = app_on(&MemoryStore::default());
     app.insert_resource(rig_harness::settings::Settings::from_toml(
-        "[compaction]\nkeep_recent = 5000\nlimits = { reserve = 30000 }",
+        "[compaction]\nkeep_recent = 5000\nlimits = { reserve = 30000 }\nanswer_tokens = 8000",
     ));
     app.add_plugins(CompactionPlugin);
-    let default = app.world().resource::<CompactionDefault>().0.clone();
+    let answer = app.world().resource::<CompactionDefault>().answer_tokens;
+    assert_eq!(answer.map(NonZeroU64::get), Some(8_000));
+    let default = app.world().resource::<CompactionDefault>().policy.clone();
     assert_eq!(default.keep_recent, Some(5000));
     assert_eq!(default.summarizer.limits.reserve, 30_000);
-    let built_in = CompactionDefault::default().0;
+    let built_in = CompactionDefault::default().policy;
     assert_eq!(default.keep_asked, built_in.keep_asked);
     assert_eq!(
         default.summarizer.limits.summary_tokens,
@@ -2390,7 +2392,7 @@ fn settings_set_only_what_they_name() {
     assert!(
         app.world()
             .resource::<CompactionDefault>()
-            .0
+            .policy
             .tracked
             .is_empty()
     );
@@ -2891,7 +2893,7 @@ fn noted_turn(
     collect::<Notice>(&mut app).add_tool(Shell);
     app.world_mut()
         .resource_mut::<CompactionDefault>()
-        .0
+        .policy
         .near_window = near_window;
     let model = (&rig_core::providers::chatgpt::DIALECT, "gpt-6.1-sol");
     let agent = on_responses(&mut app, model, 200_000 + 16_384, &http);
@@ -3056,7 +3058,7 @@ fn a_stop_while_the_notes_are_held_clears_nothing() {
     collect::<Notice>(&mut app).add_tool(Shell);
     app.world_mut()
         .resource_mut::<CompactionDefault>()
-        .0
+        .policy
         .near_window = NearWindow::Summarize;
     // The answered notes wait for review, so the stop comes while they are
     // open.

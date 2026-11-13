@@ -89,7 +89,7 @@ impl Plugin for StructuredCompactionPlugin {
         }
         let world = app.world_mut();
         if let Some(mut default) = world.get_resource_mut::<CompactionDefault>() {
-            let policy = &mut default.0;
+            let policy = &mut default.policy;
             let fallback = Fallback {
                 prompts: std::mem::replace(&mut policy.summarizer.prompts, TEMPLATE),
             };
@@ -147,7 +147,7 @@ struct Fallback {
 impl Fallback {
     /// `default` with these prompts.
     fn over(&self, default: &CompactionDefault) -> CompactionPolicy {
-        let mut policy = default.0.clone();
+        let mut policy = default.policy.clone();
         policy.summarizer.prompts = self.prompts.clone();
         policy
     }
@@ -271,7 +271,7 @@ fn structure(
                 });
                 let spec = routed.as_ref().or(own).map(|connection| &connection.spec);
                 let planned =
-                    spec.map(|spec| plan_structured(conversation, &default.0, reason, spec));
+                    spec.map(|spec| plan_structured(conversation, &default.policy, reason, spec));
                 match planned {
                     Some(Ok(Some((planned, request)))) => {
                         *summarizing = planned;

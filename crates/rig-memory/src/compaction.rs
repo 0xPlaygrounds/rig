@@ -15,7 +15,6 @@
 use std::borrow::{Borrow, Cow};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{self, Write as _};
-use std::num::NonZeroU64;
 use std::sync::Arc;
 
 use rig_core::catalog::ModelSpec;
@@ -272,12 +271,6 @@ pub struct CompactionPolicy {
     pub clearing: ClearToolOutputs,
     /// What happens to the tool outputs a clearing near the window drops.
     pub near_window: NearWindow,
-    /// The most tokens a turn's answer may take, besides its thinking,
-    /// unless its request names its own (held to the model's output
-    /// limit); `None` takes the model's output limit, or the server's
-    /// default when the catalog does not know it. Either way within the
-    /// room the window leaves. 0 does not read.
-    pub answer_tokens: Option<NonZeroU64>,
 }
 
 impl Default for CompactionPolicy {
@@ -294,7 +287,6 @@ impl Default for CompactionPolicy {
             keep_asked: 0,
             clearing: ClearToolOutputs::default(),
             near_window: NearWindow::default(),
-            answer_tokens: None,
         }
     }
 }
@@ -326,8 +318,6 @@ struct PolicyTable {
     keep_asked: usize,
     clearing: ClearToolOutputs,
     near_window: NearWindow,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    answer_tokens: Option<NonZeroU64>,
 }
 
 impl Default for PolicyTable {
@@ -348,7 +338,6 @@ impl From<PolicyTable> for CompactionPolicy {
             keep_asked: table.keep_asked,
             clearing: table.clearing,
             near_window: table.near_window,
-            answer_tokens: table.answer_tokens,
         }
     }
 }
@@ -363,7 +352,6 @@ impl From<CompactionPolicy> for PolicyTable {
             keep_asked: policy.keep_asked,
             clearing: policy.clearing,
             near_window: policy.near_window,
-            answer_tokens: policy.answer_tokens,
         }
     }
 }
