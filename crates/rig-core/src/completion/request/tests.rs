@@ -891,3 +891,40 @@ fn tool_annotations_ride_on_the_definition_and_are_written_only_when_stated() {
     assert!(!stated.read_only() && !stated.destructive() && stated.idempotent());
     assert!(!stated.open_world());
 }
+
+/// A reply cut at the output limit or by a content filter cuts off the
+/// call it ended in the middle of, and only that one; the same unfinished
+/// call under any other finish reason, or none, is not cut off.
+#[test]
+fn only_a_truncated_reply_cuts_off_its_unfinished_calls() {
+    let name = |name| crate::message::ToolName::new(name).expect("tool name");
+    let choice = vec![
+        AssistantContent::tool_call("done", name("read"), serde_json::json!({"path": "a"})),
+        AssistantContent::tool_call("open", name("write"), serde_json::json!({"path": "b"})),
+    ];
+    let reply = CompletionResponse::new(
+        choice,
+        Usage::default(),
+        crate::message::Origin::new("test.api", "example", ""),
+        serde_json::json!({}),
+    );
+    let open = reply.tool_calls().nth(1).map(|call| call.id.clone());
+    let reply = reply.with_unfinished_calls(open);
+    let cut_off = |finish: Option<FinishReason>| {
+        let reply = match finish {
+            Some(finish) => reply.clone().with_finish_reason(finish),
+            None => reply.clone(),
+        };
+        let names = reply
+            .cut_off_calls()
+            .map(|call| call.function.name.as_str().to_owned());
+        names.collect::<Vec<_>>()
+    };
+
+    assert_eq!(cut_off(Some(FinishReason::Length)), ["write"]);
+    assert_eq!(cut_off(Some(FinishReason::ContentFilter)), ["write"]);
+    assert!(cut_off(Some(FinishReason::ToolCalls)).is_empty());
+    assert!(cut_off(Some(FinishReason::Stop)).is_empty());
+    assert!(cut_off(None).is_empty());
+    assert_eq!(reply.unfinished_calls().count(), 1);
+}

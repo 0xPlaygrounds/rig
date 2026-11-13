@@ -49,7 +49,7 @@ use rig_core::message::{
 use rig_core::now_ms;
 use rig_core::serve::{Reply, stream_truncated};
 use rig_core::streaming::{Item, Part, PartKind, Relayed, StreamEvent};
-use rig_core::tool::{ToolErrorKind, ToolExecutionError, ToolResult, feedback};
+use rig_core::tool::{ToolErrorKind, ToolExecutionError, ToolResult, Touches, feedback};
 use rig_memory::{Anchor, is_output_notes};
 use web_time::Instant;
 
@@ -1744,9 +1744,8 @@ pub(crate) fn commit_turn_calls(
                     (Next::Call, None) => spawn_turn_call(&mut commands, turn, agent),
                     (Next::Run(asked, calls), None) => {
                         state.reply = Some(effect.id());
-                        let cut_off = cut_off(response);
                         let reply = (effect.id(), asked);
-                        spawn_reply(&mut commands, (agent, turn), calls, reply, &cut_off);
+                        spawn_reply(&mut commands, (agent, turn), calls, reply, response);
                     }
                     (Next::Run(_, calls), Some(why)) => {
                         let results = close_pending_with(&calls, &format!("not run: {why}"));
@@ -1856,16 +1855,19 @@ pub(crate) struct Answered {
 /// Spawns a call of `turn`, for `agent`, for each of `calls`, in order,
 /// asked for by the model call `reply`, whose reply is the entry `asked`:
 /// each call is [`InReply`] at its place. Every call exists before any is
-/// gated.
+/// gated. A call `response` [cut off](CompletionResponse::cut_off_calls)
+/// is answered as such, never run, so the model sends less rather than the
+/// same call again.
 pub(crate) fn spawn_reply(
     commands: &mut Commands,
     (agent, turn): (Entity, Entity),
     calls: Vec<ToolCall>,
     (reply, asked): (EffectId, MessageId),
-    cut_off: &[ToolCall],
+    response: &CompletionResponse,
 ) {
     for (index, call) in (0..).zip(calls) {
-        let refused = cut_off.iter().find(|cut| cut.id == call.id).map(|cut| {
+        let mut cut_off = response.cut_off_calls();
+        let refused = cut_off.find(|cut| cut.id == call.id).map(|cut| {
             let name = cut.function.name.as_str();
             let why = feedback::output_limit_feedback(name, &cut.function.raw_arguments());
             Outcome(Err(ErrorReport::new(
@@ -1887,17 +1889,6 @@ pub(crate) fn spawn_reply(
             call.insert(refused);
         }
     }
-}
-
-/// The tool calls `response` ended in the middle of at the output limit:
-/// each is answered as cut off, never run, so the model sends less rather
-/// than the same call again.
-fn cut_off(response: &CompletionResponse) -> Vec<ToolCall> {
-    let truncated = response
-        .finish_reason()
-        .is_some_and(|finish| finish.truncated_output());
-    let unfinished = response.unfinished_calls().filter(|_| truncated);
-    unfinished.cloned().collect()
 }
 
 /// A call of a model's reply, as the stages find it.
@@ -1978,17 +1969,15 @@ pub(crate) fn wait_in_order(
     replies: Query<ReplyCall>,
     mut commands: Commands,
 ) {
-    let anything = Footprint::default();
+    let anything = Touches::default();
     for (state, calls) in &turns {
         let Some(reply) = state.reply else {
             continue;
         };
-        let mut earlier: Vec<&Footprint> = Vec::new();
+        let mut earlier: Vec<&Touches> = Vec::new();
         for call in reply_calls(reply, calls, &replies) {
-            let footprint = call.footprint.unwrap_or(&anything);
-            let waits = earlier
-                .iter()
-                .any(|before| footprint.0.conflicts_with(&before.0));
+            let footprint = call.footprint.map_or(&anything, |footprint| &footprint.0);
+            let waits = footprint.must_wait(earlier.iter().copied());
             let open = !call.started && call.outcome.is_none() && !call.settled;
             if open && waits != call.waiting {
                 let mut entity = commands.entity(call.entity);
