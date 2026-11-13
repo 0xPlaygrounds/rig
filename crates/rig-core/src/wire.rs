@@ -357,7 +357,7 @@ pub(crate) mod reply {
         }
     }
 
-    /// What the reply's end closes before it is recorded.
+    /// What the reply's end closes, after it is recorded.
     pub trait Closing<Op: Operation> {
         fn close(shared: &mut Shared<Op>);
     }

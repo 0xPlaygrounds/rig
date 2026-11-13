@@ -299,8 +299,9 @@ pub struct ReplyFold {
     /// complete. An item there may be the partner a later one needs, so
     /// blocks from it on replay from their canonical fields.
     first_incomplete: Option<usize>,
-    /// The calls still open when the provider ended the reply, in the
-    /// order they opened ([`CompletionResponse::unfinished_calls`]).
+    /// The calls still open when the provider ended the reply, and those
+    /// closed early when the reply was cut, in the order they opened
+    /// ([`CompletionResponse::unfinished_calls`]).
     unfinished: Vec<CallId>,
     /// The call the last index-less fragment went to.
     last_call: Option<usize>,
@@ -720,10 +721,11 @@ impl ReplyFold {
 
     /// Close the item at `index`: its block becomes visible, holding the
     /// provider's item as its native when `closing` says it is complete. A
-    /// call the provider never stated complete is one of the reply's
-    /// unfinished calls, whichever path closed it, and is held until the
-    /// reply ends ([`Self::close_open`]): its end comes in the same step as
-    /// the reply's, so whoever reads the call's end can read the reply's.
+    /// call the provider never stated complete is held until the reply ends
+    /// ([`Self::close_open`]), whichever path closed it: its end comes in the
+    /// same step as the reply's, so whoever reads the call's end can read the
+    /// reply's, and it is one of the reply's unfinished calls when the reply
+    /// was cut.
     fn close_item(
         &mut self,
         items: &mut Items,
