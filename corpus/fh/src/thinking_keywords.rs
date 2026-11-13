@@ -130,7 +130,7 @@ impl ThinkConfig {
         let Some(range) = budget else {
             return Some(Reasoning::Effort(level));
         };
-        let limit = limit.or(spec.max_output_tokens.map(u64::from));
+        let limit = limit.or(spec.output_limit().map(u64::from));
         let below = limit.map_or(u32::MAX, |limit| {
             u32::try_from(limit.saturating_sub(1)).unwrap_or(u32::MAX)
         });

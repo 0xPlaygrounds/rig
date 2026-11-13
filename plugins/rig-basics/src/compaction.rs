@@ -54,9 +54,10 @@ use rig_harness::successor::resend;
 use rig_harness::workspace::ProjectWorkspace;
 use rig_harness::{PluginEntity, ProvidedBy};
 use rig_memory::{
-    ClearPlan, Cleared, CompactReason, CompactionPolicy, NearWindow, OUTPUT_MARGIN, Prepared,
-    RequestStart, Summarizer, SummaryCut, SummaryPlan, SummaryPrompts, SummaryState, TrackArgument,
-    apply_summary, estimate_tokens, known_limits, next_request_tokens, undo_summary,
+    ClearPlan, Cleared, CompactReason, CompactionPolicy, NearWindow, Prepared, RequestStart,
+    Summarizer, SummaryCut, SummaryPlan, SummaryPrompts, SummaryState, TrackArgument,
+    apply_summary, estimate_tokens, fits, known_limits, next_request_tokens, output_room,
+    undo_summary,
 };
 pub use rig_memory::{summarized_prefix, summary_author, summary_in, summary_state};
 use rig_tools::Read;
@@ -1168,8 +1169,8 @@ impl<'a> Measure<'a> {
         // and its thinking then.
         let asked = (request.request.max_tokens).unwrap_or(most.saturating_add(thinking));
         let least = most.clamp(1, LEAST_OUTPUT).saturating_add(thinking);
-        fits(self.spec, tokens, (asked, least))
-            .then(|| room(self.spec, asked, tokens).saturating_sub(thinking))
+        fits(self.spec, tokens, asked, least)
+            .then(|| output_room(self.spec, tokens, asked).saturating_sub(thinking))
     }
 }
 
@@ -1186,7 +1187,7 @@ const LEAST_SHARE: u64 = 16;
 /// The explicit output limit, within the model's own, as one past it is
 /// refused (a request moved to a smaller model keeps its first model's), or
 /// else `answer` ([`CompactionDefault::answer_tokens`]), else the model's
-/// output limit within its window, plus thinking
+/// output limit ([`ModelSpec::output_limit`]), plus thinking
 /// ([`with_thinking`]); `None`, for the server's default, when none of them
 /// is known.
 fn output_budget(
@@ -1194,10 +1195,7 @@ fn output_budget(
     spec: &ModelSpec,
     answer: Option<u64>,
 ) -> Option<u64> {
-    let window = spec.context_window.map_or(u64::MAX, u64::from);
-    let known = spec
-        .max_output_tokens
-        .map(|most| u64::from(most).min(window));
+    let known = spec.output_limit().map(u64::from);
     let explicit = (request.max_tokens).map(|asked| known.map_or(asked, |most| asked.min(most)));
     let answer = answer.or(known);
     explicit.or_else(|| answer.map(|answer| with_thinking(request, spec, answer)))
@@ -1207,7 +1205,7 @@ fn output_budget(
 /// and its [`thinking`], within `spec`'s output limit.
 fn with_thinking(request: &CompletionRequest, spec: &ModelSpec, answer: u64) -> u64 {
     let wanted = answer.saturating_add(thinking(request));
-    spec.max_output_tokens
+    spec.output_limit()
         .map_or(wanted, |most| wanted.min(most.into()))
 }
 
@@ -1218,23 +1216,6 @@ fn thinking(request: &CompletionRequest) -> u64 {
         Some(completion::Reasoning::Budget { tokens }) => u64::from(tokens) + 1024,
         _ => 0,
     }
-}
-
-/// The room `spec`'s window leaves for the output of a request of
-/// `tokens`, at most its output budget.
-fn room(spec: &ModelSpec, asked: u64, tokens: u64) -> u64 {
-    spec.context_window.map_or(asked, |window| {
-        asked.min(u64::from(window).saturating_sub(tokens.saturating_add(OUTPUT_MARGIN)))
-    })
-}
-
-/// Whether a request of `tokens` to `spec` that asks for `asked` tokens of
-/// output fits: within the model's input limit, with room for at least
-/// `least` of them. A limit not known is taken to fit.
-fn fits(spec: &ModelSpec, tokens: u64, (asked, least): (u64, u64)) -> bool {
-    spec.input_limit()
-        .is_none_or(|limit| tokens <= u64::from(limit))
-        && room(spec, asked, tokens) >= least
 }
 
 /// Before a turn's request that leaves less than the reserve of the input
@@ -1312,7 +1293,7 @@ fn compact_near_the_window(
         } else {
             0
         };
-        if step == Some(&Recovering::NotSummarized) && !fits(spec, used, (answer, least)) {
+        if step == Some(&Recovering::NotSummarized) && !fits(spec, used, answer, least) {
             let why = "The conversation does not fit the model's context window, and was not \
                        summarized";
             let why = ErrorReport::context_overflow(why);
@@ -1324,7 +1305,7 @@ fn compact_near_the_window(
         let over = |used| {
             default.policy.over_threshold(used, spec)
                 || asked.is_some_and(|asked| {
-                    let room = room(spec, asked, used);
+                    let room = output_room(spec, used, asked);
                     room == 0 || (room < asked && room <= thinking(&model.request))
                 })
         };
@@ -1475,7 +1456,7 @@ fn fit_output(
     answer: Option<u64>,
 ) -> Option<String> {
     let asked = output_budget(&model.request, spec, answer)?;
-    let lowered = match (model.request.max_tokens, spec.max_output_tokens) {
+    let lowered = match (model.request.max_tokens, spec.output_limit()) {
         (Some(own), Some(most)) if own > u64::from(most) => Some(format!(
             "This request carries an output limit of {own} tokens, more than {}'s {most}, so it \
              is capped at {most} and then fitted to the room left.",
@@ -1483,7 +1464,7 @@ fn fit_output(
         )),
         _ => None,
     };
-    let room = room(spec, asked, used);
+    let room = output_room(spec, used, asked);
     if room > 0 {
         model.request_mut().max_tokens = Some(room);
     }
