@@ -370,6 +370,29 @@ fn a_one_shot_run_is_never_run_again_on_the_previous_build() {
     assert_eq!((code, good.as_str()), (Some(ExitCode::from(1)), "trial"));
 }
 
+/// A staged build that is a directory or a symlink loop is no build: the
+/// start runs the good build instead of failing on it.
+#[cfg(unix)]
+#[test]
+fn a_staged_file_that_is_no_build_starts_the_good_build() {
+    for broken in ["directory", "loop"] {
+        let home = builds(&format!("staged-{broken}"), "exit 3", "exit 0");
+        let staged = home.staged();
+        fs::remove_file(&staged).ok();
+        match broken {
+            "directory" => fs::create_dir_all(&staged),
+            _ => std::os::unix::fs::symlink(&staged, &staged),
+        }
+        .ok();
+        let (code, ran, _) = one_shot(&home);
+        assert_eq!(
+            (code, ran.as_str()),
+            (Some(ExitCode::SUCCESS), "good\n"),
+            "{broken}"
+        );
+    }
+}
+
 /// A start whose settings name a plugin rig does not know, or a local
 /// crate that is not there or whose `Cargo.toml` is not TOML, refuses,
 /// naming the mistake and the fix, and runs no build: the previous one was
