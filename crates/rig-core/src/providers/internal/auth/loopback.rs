@@ -27,7 +27,7 @@ use std::time::{Duration, Instant};
 
 /// How often the listener checks whether its waiter is gone.
 const ACCEPT_POLL: Duration = Duration::from_millis(100);
-/// Reading a request or writing a page gives up after this.
+/// Reading one request head, or writing a page, gives up after this.
 const STREAM_TIMEOUT: Duration = Duration::from_secs(10);
 /// How long the browser waits for the token exchange before its page.
 const EXCHANGE_WAIT: Duration = Duration::from_secs(120);
@@ -214,8 +214,9 @@ impl Listener {
     /// # Errors
     ///
     /// [`LoopbackError::Refused`] when the provider refused the sign-in,
-    /// [`LoopbackError::TimedOut`] when the deadline passed, and
-    /// [`LoopbackError::Io`] when the listener failed.
+    /// [`LoopbackError::TimedOut`] when the deadline passed,
+    /// [`LoopbackError::Io`] when the listener failed, and
+    /// [`LoopbackError::Stopped`] when its thread ended without an answer.
     pub async fn code(self) -> Result<Received, LoopbackError> {
         self.callback.await.map_err(|_| LoopbackError::Stopped)?
     }
@@ -341,7 +342,8 @@ impl Serving {
                 continue;
             };
             // A browser that stalls or sends garbage only loses its own request.
-            let Ok(line) = read_request_line(&mut stream) else {
+            let until = (Instant::now() + STREAM_TIMEOUT).min(self.deadline);
+            let Ok(line) = read_request_line(&mut stream, until, || sender.is_canceled()) else {
                 continue;
             };
             match parse_callback(&line, &self.path, &self.state) {
@@ -373,12 +375,16 @@ impl Serving {
     }
 }
 
-/// Reads the request head and returns its first line. The whole head is
-/// read so that closing the connection does not reset it before the page.
-fn read_request_line(stream: &mut TcpStream) -> io::Result<String> {
+/// Reads the request head and returns its first line, giving up at `until`
+/// or once `stopped` says the waiter is gone. The whole head is read so that
+/// closing the connection does not reset it before the page.
+fn read_request_line(
+    stream: &mut TcpStream,
+    until: Instant,
+    stopped: impl Fn() -> bool,
+) -> io::Result<String> {
     // Accepted sockets inherit non-blocking mode on some platforms.
     stream.set_nonblocking(false)?;
-    stream.set_read_timeout(Some(STREAM_TIMEOUT))?;
     stream.set_write_timeout(Some(STREAM_TIMEOUT))?;
     let mut head = Vec::new();
     let mut chunk = [0u8; 1024];
@@ -389,11 +395,24 @@ fn read_request_line(stream: &mut TcpStream) -> io::Result<String> {
                 "request head too large",
             ));
         }
-        let read = stream.read(&mut chunk)?;
-        if read == 0 {
-            break;
+        let left = until.saturating_duration_since(Instant::now());
+        if left.is_zero() || stopped() {
+            return Err(io::ErrorKind::TimedOut.into());
         }
-        head.extend(chunk.iter().take(read));
+        // Short reads, so a client trickling bytes cannot outlast `until`.
+        stream.set_read_timeout(Some(left.min(ACCEPT_POLL)))?;
+        match stream.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(read) => head.extend(chunk.iter().take(read)),
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::WouldBlock
+                        | io::ErrorKind::TimedOut
+                        | io::ErrorKind::Interrupted
+                ) => {}
+            Err(error) => return Err(error),
+        }
     }
     let head = String::from_utf8_lossy(&head);
     Ok(head.lines().next().unwrap_or_default().to_owned())

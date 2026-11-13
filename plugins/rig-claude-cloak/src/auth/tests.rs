@@ -349,6 +349,11 @@ fn callback_falls_back_when_only_ipv6_preferred_port_is_occupied() -> anyhow::Re
         loopback(preferred_port).listen("expected".into(), Instant::now() + LOGIN_WAIT)?;
     let port = port(listener.redirect_uri())?;
     anyhow::ensure!(port != preferred_port);
+    // The abandoned preferred port is free again while the login waits.
+    drop(std::net::TcpListener::bind((
+        std::net::Ipv4Addr::LOCALHOST,
+        preferred_port,
+    ))?);
     let address = (std::net::Ipv6Addr::LOCALHOST, port).into();
     let browser =
         std::thread::spawn(move || get(address, "/callback?state=expected&code=fallback"));

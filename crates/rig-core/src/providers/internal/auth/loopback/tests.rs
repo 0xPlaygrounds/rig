@@ -1,6 +1,8 @@
 use super::{Callback, Loopback, LoopbackError, LoopbackHost, parse_callback};
 use std::io::{Read, Write};
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, TcpListener, TcpStream};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 fn deadline() -> Instant {
@@ -223,5 +225,74 @@ fn a_port_taken_only_on_ipv6_is_passed_over() -> anyhow::Result<()> {
     let port = ipv4(listener.redirect_uri())?.port();
     anyhow::ensure!(port != preferred, "{port}");
     anyhow::ensure!(TcpListener::bind((Ipv6Addr::LOCALHOST, port)).is_err());
+    // The passed-over port's IPv4 side is not kept.
+    drop(TcpListener::bind((Ipv4Addr::LOCALHOST, preferred))?);
+    drop(listener);
+    Ok(())
+}
+
+/// Connects and sends one byte of a request head every 300 ms, never
+/// finishing it, until `stop` is set or 20 seconds pass.
+fn trickle(address: SocketAddr, stop: Arc<AtomicBool>) -> std::thread::JoinHandle<()> {
+    std::thread::spawn(move || {
+        let Ok(mut stream) = TcpStream::connect(address) else {
+            return;
+        };
+        let started = Instant::now();
+        while !stop.load(Ordering::Relaxed) && started.elapsed() < Duration::from_secs(20) {
+            if stream.write_all(b"G").is_err() {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(300));
+        }
+    })
+}
+
+#[tokio::test]
+async fn a_trickling_client_does_not_hold_the_listener_past_its_deadline() -> anyhow::Result<()> {
+    let started = Instant::now();
+    let listener = Loopback::new("Example", LoopbackHost::Ipv4, [0], "/callback")
+        .listen("s1".into(), started + Duration::from_secs(2))?;
+    let stop = Arc::new(AtomicBool::new(false));
+    let client = trickle(ipv4(listener.redirect_uri())?, stop.clone());
+    let result = listener.code().await;
+    let waited = started.elapsed();
+    stop.store(true, Ordering::Relaxed);
+    client
+        .join()
+        .map_err(|_| anyhow::anyhow!("client thread"))?;
+    anyhow::ensure!(
+        matches!(result, Err(LoopbackError::TimedOut)),
+        "{:?}",
+        result.err()
+    );
+    anyhow::ensure!(waited < Duration::from_secs(4), "{waited:?}");
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_callback_after_a_stalled_client_is_taken() -> anyhow::Result<()> {
+    let started = Instant::now();
+    let listener = Loopback::new("Example", LoopbackHost::Ipv4, [0], "/callback")
+        .listen("s1".into(), started + Duration::from_secs(30))?;
+    let address = ipv4(listener.redirect_uri())?;
+    let stop = Arc::new(AtomicBool::new(false));
+    let client = trickle(address, stop.clone());
+    let browser = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(500));
+        get(address, "/callback?state=s1&code=c1")
+    });
+    let received = listener.code().await?;
+    let waited = started.elapsed();
+    stop.store(true, Ordering::Relaxed);
+    anyhow::ensure!(received.code() == "c1");
+    received.succeeded();
+    browser
+        .join()
+        .map_err(|_| anyhow::anyhow!("browser thread"))??;
+    client
+        .join()
+        .map_err(|_| anyhow::anyhow!("client thread"))?;
+    anyhow::ensure!(waited < Duration::from_secs(15), "{waited:?}");
     Ok(())
 }
