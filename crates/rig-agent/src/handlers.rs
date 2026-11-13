@@ -38,7 +38,7 @@ use rig_core::{
         HandlerDescriptor, HandlerKey, Key, RetrieveQuery, RetrievedDocuments, family,
     },
     error::{ErrorKind, ErrorReport},
-    serve::{Dispatch, DispatchContext, ErasedHandler, Recorder, Serve},
+    serve::{Dispatch, DispatchContext, ErasedHandler, Recorder, Serve, catch_panics},
     streaming::{CompletionStream, Relayed, StreamEvents},
     tool::{PublishedContext, ToolContext, ToolResult},
     vector_store::{
@@ -318,7 +318,7 @@ impl Handlers {
     }
 
     /// The dispatch `id` of `kind`, with the scopes it is served with and,
-    /// when the table records, its record begun.
+    /// when the table records, its record begun and the recorder.
     fn open(&self, id: EffectId, key: &HandlerKey, kind: &EffectKind, beside: Beside) -> Opened {
         let (handler, recorder) = match &beside.handler {
             Some(handler) => (handler.clone(), self.read().recorder.clone()),
@@ -339,15 +339,15 @@ impl Handlers {
         if let Some(published) = beside.published {
             dispatch = dispatch.with_scope(published);
         }
-        if let Some(recorder) = recorder {
+        if let Some(recorder) = &recorder {
             let origin = DispatchContext {
                 parent: self.parent,
                 ..DispatchContext::default()
             };
             recorder.begin(id, key.clone(), kind.clone(), origin);
-            dispatch = dispatch.recorded_by(recorder);
+            dispatch = dispatch.recorded_by(Arc::clone(recorder));
         }
-        Ok((handler, dispatch))
+        Ok((handler, dispatch, recorder))
     }
 
     /// Dispatch a unary effect to the handler under `key`. A streaming
@@ -368,7 +368,9 @@ impl Handlers {
         self.serve_stream(self.mint_id(), key.clone(), kind, None)
     }
 
-    /// Serve `kind` as the effect `id`, in the returned future.
+    /// Serve `kind` as the effect `id`, in the returned future. A panic in
+    /// the handler resolves the effect to an internal error reading
+    /// `panicked: <message>`, where panics unwind.
     pub(crate) fn serve(
         &self,
         id: EffectId,
@@ -379,8 +381,9 @@ impl Handlers {
         let this = self.clone();
         async move {
             yield_once().await;
-            let (handler, dispatch) = this.open(id, &key, &kind, beside)?;
-            handler.handle(kind, dispatch).await.into_outcome().await
+            let (handler, dispatch, recorder) = this.open(id, &key, &kind, beside)?;
+            let work = async move { handler.handle(kind, dispatch).await.into_outcome().await };
+            catch_panics(recorder, id, work).await
         }
         // The handler runs under the span the dispatch was made in.
         .instrument(tracing::Span::current())
@@ -413,7 +416,7 @@ impl Handlers {
         };
         let events = async_stream::stream! {
             yield_once().await;
-            let (handler, dispatch) = match this.open(id, &key, &kind, beside) {
+            let (handler, dispatch, _) = match this.open(id, &key, &kind, beside) {
                 Ok(opened) => opened,
                 Err(report) => {
                     yield Err(report);
@@ -509,7 +512,14 @@ impl WeakHandlers {
     }
 }
 
-type Opened = Result<(ErasedHandler, Dispatch), ErrorReport>;
+type Opened = Result<
+    (
+        ErasedHandler,
+        Dispatch,
+        Option<Arc<dyn Recorder + Send + Sync>>,
+    ),
+    ErrorReport,
+>;
 
 /// How many items of a streamed reply are read ahead of its consumer.
 const READ_AHEAD: usize = 64;
