@@ -102,26 +102,50 @@ impl McpConnection {
         self.closed().await;
     }
 
-    /// Every tool the server lists, each keeping this connection open.
+    /// Every tool the server lists, each keeping this connection open; none
+    /// when its handshake declared no tools.
     ///
     /// # Errors
     ///
     /// Fails when a request fails or the list takes longer than
     /// [`DEFAULT_MCP_REFRESH_TIMEOUT`].
     pub async fn tools(&self) -> Result<Vec<McpTool>, McpClientError> {
-        Ok(list_tools(self.peer(), DEFAULT_MCP_REFRESH_TIMEOUT)
+        Ok(self
+            .list_tools(DEFAULT_MCP_REFRESH_TIMEOUT)
             .await?
             .into_iter()
             .map(|definition| McpTool::new(definition, self))
             .collect())
     }
 
-    /// Every resource the server lists.
+    /// The definitions of every tool the server lists, page by page, within
+    /// `timeout`; none when its handshake declared no tools.
+    ///
+    /// # Errors
+    ///
+    /// [`McpClientError::Timeout`] when the list takes longer than `timeout`,
+    /// [`McpClientError::Request`] when a request fails.
+    pub async fn list_tools(
+        &self,
+        timeout: Duration,
+    ) -> Result<Vec<rmcp::model::Tool>, McpClientError> {
+        list_tools(self.peer(), timeout).await
+    }
+
+    /// Every resource the server lists; none when its handshake declared no
+    /// resources.
     ///
     /// # Errors
     ///
     /// Fails when a request fails.
     pub async fn resources(&self) -> Result<Vec<Resource>, McpClientError> {
+        if !self
+            .peer()
+            .peer_info()
+            .is_some_and(|info| info.capabilities.resources.is_some())
+        {
+            return Ok(Vec::new());
+        }
         Ok(self.peer().list_all_resources().await?)
     }
 
@@ -161,11 +185,18 @@ impl<S: Service<RoleClient>> From<RunningService<RoleClient, S>> for McpConnecti
     }
 }
 
-/// Lists all of a server's tools, page by page, within `timeout`.
+/// [`McpConnection::list_tools`] on a server's handle.
 pub(crate) async fn list_tools(
     peer: &ServerSink,
     timeout: Duration,
 ) -> Result<Vec<rmcp::model::Tool>, McpClientError> {
+    // Before the handshake nothing is declared.
+    if !peer
+        .peer_info()
+        .is_some_and(|info| info.capabilities.tools.is_some())
+    {
+        return Ok(Vec::new());
+    }
     let deadline = tokio::time::Instant::now() + timeout;
     let mut tools = Vec::new();
     let mut cursor = None;
