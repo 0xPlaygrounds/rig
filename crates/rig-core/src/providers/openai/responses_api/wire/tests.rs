@@ -489,3 +489,37 @@ fn the_chatgpt_body_sends_the_model_requested_model_reads() {
         assert_eq!(body["model"], json!(named), "{body}");
     }
 }
+
+/// A wire's `store` goes on every request, with the reasoning ciphertext a
+/// stateless request replays by. A request's own `store`, in its provider
+/// options or `additional_params`, replaces it, and a wire without one
+/// sends none and serializes without one.
+#[test]
+fn a_wire_store_is_sent_unless_the_request_sets_its_own() {
+    use serde_json::json;
+    let wire = openai().with_store(false);
+    let body = encoded_body_of(&wire, prompt(), Mode::Unary);
+    assert_eq!(body["store"], json!(false), "{body}");
+    assert_eq!(
+        body["include"],
+        json!(["reasoning.encrypted_content"]),
+        "{body}"
+    );
+
+    let own_options = prompt()
+        .provider_option(crate::providers::openai::extension::OpenAiOptions::default().store(true));
+    let own_params = prompt().additional_params(json!({"store": true}));
+    for request in [own_options, own_params] {
+        let body = encoded_body_of(&wire, request, Mode::Unary);
+        assert_eq!(body["store"], json!(true), "{body}");
+        assert!(body.get("include").is_none(), "{body}");
+    }
+
+    let body = encoded_body_of(&openai(), prompt(), Mode::Unary);
+    assert!(body.get("store").is_none(), "{body}");
+
+    let saved = serde_json::to_value(openai()).expect("the wire serializes");
+    assert!(saved.get("store").is_none(), "{saved}");
+    let read: Responses = serde_json::from_value(saved).expect("the wire reads");
+    assert_eq!(read.store, None);
+}
