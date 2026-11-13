@@ -370,18 +370,21 @@ fn a_one_shot_run_is_never_run_again_on_the_previous_build() {
     assert_eq!((code, good.as_str()), (Some(ExitCode::from(1)), "trial"));
 }
 
-/// A staged build that is a directory or a symlink loop is no build: the
-/// start runs the good build instead of failing on it.
+/// A staged build that is a directory, a symlink loop or a file that cannot
+/// be read is no build: the start runs the good build instead of failing on it.
 #[cfg(unix)]
 #[test]
 fn a_staged_file_that_is_no_build_starts_the_good_build() {
-    for broken in ["directory", "loop"] {
+    use std::os::unix::fs::PermissionsExt;
+    for broken in ["directory", "loop", "unreadable"] {
         let home = builds(&format!("staged-{broken}"), "exit 3", "exit 0");
         let staged = home.staged();
-        fs::remove_file(&staged).ok();
         match broken {
-            "directory" => fs::create_dir_all(&staged),
-            _ => std::os::unix::fs::symlink(&staged, &staged),
+            "directory" => fs::remove_file(&staged).and_then(|()| fs::create_dir_all(&staged)),
+            "loop" => {
+                fs::remove_file(&staged).and_then(|()| std::os::unix::fs::symlink(&staged, &staged))
+            }
+            _ => fs::set_permissions(&staged, std::fs::Permissions::from_mode(0o000)),
         }
         .ok();
         let (code, ran, _) = one_shot(&home);
