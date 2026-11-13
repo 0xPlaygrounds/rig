@@ -178,3 +178,22 @@ fn kept_facts_are_without_old_text_and_bounded() {
     let size = serde_json::to_vec(&kept).map_or(usize::MAX, |json| json.len());
     assert!(size <= MAX, "{size}");
 }
+
+/// A budget below an empty map's `{}` keeps nothing and still encodes to
+/// those 2 bytes; a budget of exactly 2 keeps nothing either.
+#[test]
+fn kept_facts_under_the_empty_map_floor_are_empty() {
+    use crate::tool::ExitStatus;
+
+    let mut context = ToolContext::new();
+    assert!(context.insert_result(ExitStatus::Exited(0)).is_ok());
+    let sizes: Vec<(bool, usize)> = [0, 1, 2]
+        .into_iter()
+        .map(|budget| {
+            let kept = context.result_context().kept(budget);
+            let size = serde_json::to_vec(&kept).map_or(usize::MAX, |json| json.len());
+            (kept.is_empty(), size)
+        })
+        .collect();
+    assert_eq!(sizes, [(true, 2); 3]);
+}

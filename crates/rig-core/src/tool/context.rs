@@ -108,7 +108,8 @@ impl ToolResultContext {
     /// changed file ([`FileChange::before_text`]) left out, since the hunks
     /// show the change, and, past `max_bytes` of JSON, the largest values
     /// left out, so a small one such as an exit status stays. The result
-    /// encodes to at most `max_bytes`.
+    /// encodes to at most `max_bytes.max(2)`: an empty map's `{}` is the
+    /// floor, kept for any smaller budget.
     ///
     /// ```
     /// use rig_core::tool::{ExitStatus, FileChange, FilesChanged, ToolContext};
