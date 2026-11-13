@@ -41,7 +41,8 @@ Credentials are stored at `$RIG_HOME/anthropic-oauth/credentials.json`, or
 `~/.rig/anthropic-oauth/credentials.json`, through rig-core's `FileTokenStore`:
 the directory it creates has mode 0700 and the file mode 0600, a file others
 may read is narrowed to 0600 before it is read, and one behind a symlink is
-refused. Token writes use atomic replacement. Refresh is serialized across
+refused. The plugin refuses a credential directory that is a symlink or that
+others may access. Token writes use atomic replacement. Refresh is serialized across
 processes with a lock on `credentials.lock` beside it, waited for at most two
 minutes, and preserves refresh tokens omitted by the server. Login holds that
 lock only while it saves, not while the browser is open. Rotated tokens are
