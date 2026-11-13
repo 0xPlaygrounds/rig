@@ -1140,3 +1140,41 @@ fn the_system_watch_tells_what_listing_again_would() {
         )
     );
 }
+
+/// A recursive watch whose system watch cannot be armed, because a folder
+/// under the root cannot be read, still tells the files it can list, and
+/// an edit to one of them.
+#[cfg(unix)]
+#[test]
+fn a_watch_the_system_cannot_arm_lists_instead() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let root = std::env::temp_dir().join(format!("rig-tools-watch-unarmed-{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    std::fs::create_dir_all(root.join("locked")).ok();
+    let root = std::fs::canonicalize(&root).unwrap_or(root);
+    let file = root.join("a.txt");
+    std::fs::write(&file, "one").ok();
+    let locked = root.join("locked");
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).ok();
+    // Whoever may read it anyway (root) arms the watch.
+    let refused = std::fs::read_dir(&locked).is_err();
+    let watch = Arc::new(Local).watch(&root, true, Listing::Visible);
+    let started = watch.map(|watch| {
+        let events = events(watch);
+        let wait = Duration::from_millis(1500);
+        let started = told(&events, wait);
+        std::fs::write(&file, "two").ok();
+        (started, told(&events, wait))
+    });
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).ok();
+    std::fs::remove_dir_all(&root).ok();
+    if refused {
+        assert_eq!(
+            started.ok(),
+            Some((
+                vec![("snapshot", vec![file.clone()])],
+                vec![("changed", vec![file])]
+            ))
+        );
+    }
+}
