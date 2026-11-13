@@ -1424,6 +1424,64 @@ fn a_models_dev_refresh_updates_what_rig_does_not_pin() {
 }
 
 #[test]
+fn a_reasoning_setting_as_text_reads_and_prints_for_its_model() {
+    let budgeted = ReasoningSupport::Listed {
+        levels: Vec::new(),
+        budget: Some(1024..=32000),
+        can_disable: false,
+        default: None,
+    };
+    let budget = |tokens| Ok(Some(Reasoning::Budget { tokens }));
+    assert_eq!(budgeted.parse("high"), budget(16384));
+    assert_eq!(budgeted.parse(" 4096 tokens "), budget(4096));
+    assert_eq!(budgeted.parse("default"), Ok(None));
+    for refused in ["999999 tokens", "hihg", "off", "xhigh", "4096"] {
+        assert!(budgeted.parse(refused).is_err(), "{refused}");
+    }
+    let leveled = ReasoningSupport::Listed {
+        levels: vec![Effort::Low, Effort::High],
+        budget: None,
+        can_disable: true,
+        default: None,
+    };
+    assert_eq!(
+        leveled.parse("high"),
+        Ok(Some(Reasoning::Effort(Effort::High)))
+    );
+    assert!(leveled.parse("4096 tokens").is_err());
+    // A model whose controls the catalog does not list refuses nothing.
+    let unknown = ReasoningSupport::Unknown { default: None };
+    assert_eq!(
+        unknown.parse("xhigh"),
+        Ok(Some(Reasoning::Effort(Effort::XHigh)))
+    );
+    assert!(unknown.parse("hihg").is_err());
+
+    let settings = [
+        None,
+        Some(Reasoning::Budget { tokens: 2048 }),
+        Some(Reasoning::Budget { tokens: 5000 }),
+        Some(Reasoning::Budget { tokens: 16384 }),
+    ];
+    let names: Vec<String> = settings.iter().map(|&s| budgeted.name_of(s)).collect();
+    assert_eq!(names, ["default", "low", "5000 tokens", "high"]);
+    for setting in settings {
+        assert_eq!(budgeted.parse(&budgeted.name_of(setting)), Ok(setting));
+    }
+    for choice in leveled.choices() {
+        let name = leveled.name_of(choice.reasoning);
+        assert_eq!(leveled.parse(&name), Ok(choice.reasoning), "{name}");
+    }
+
+    for text in ["default", "off", "max", "16384 tokens", " high "] {
+        assert!(ReasoningSupport::reads(text), "{text}");
+    }
+    for text in ["hihg", "16384", "many tokens", ""] {
+        assert!(!ReasoningSupport::reads(text), "{text}");
+    }
+}
+
+#[test]
 fn reasoning_choices_and_default_options_follow_the_spec() {
     let budgeted = ReasoningSupport::Listed {
         levels: Vec::new(),
@@ -1451,7 +1509,11 @@ fn reasoning_choices_and_default_options_follow_the_spec() {
     assert_eq!(off, Ok(Some(Reasoning::Off)));
     assert_eq!(
         budgeted.named("xhigh").map_err(|why| why.to_string()),
-        Err("the reasoning settings are default, off, low, medium, high, not `xhigh`".to_owned())
+        Err(
+            "the reasoning settings are default, off, low, medium, high, or 1024 to 4096 tokens, \
+             not `xhigh`"
+                .to_owned()
+        )
     );
 
     let provider = ProviderId::catalog("anthropic").expect("a known vendor");

@@ -69,21 +69,22 @@ impl Options<'_, '_> {
         )
         .category(acp::SessionConfigOptionCategory::Model);
         let choices = current.reasoning.choices();
-        let setting = reasoning.and_then(|setting| setting.0);
-        let level = choices
+        let setting = current
+            .reasoning
+            .name_of(reasoning.and_then(|setting| setting.0));
+        let mut levels: Vec<_> = choices
             .iter()
-            .find(|choice| choice.reasoning == setting)
-            .map_or("default", |choice| choice.name);
-        let levels = choices
-            .iter()
-            .map(|choice| acp::SessionConfigSelectOption::new(choice.name, choice.label()));
-        let reasoning = acp::SessionConfigOption::select(
-            REASONING,
-            "Reasoning",
-            level,
-            levels.collect::<Vec<_>>(),
-        )
-        .category(acp::SessionConfigOptionCategory::ThoughtLevel);
+            .map(|choice| acp::SessionConfigSelectOption::new(choice.name, choice.label()))
+            .collect();
+        // A setting set by hand, such as `4096 tokens`, is shown as itself.
+        if !choices.iter().any(|choice| choice.name == setting) {
+            levels.push(acp::SessionConfigSelectOption::new(
+                setting.clone(),
+                setting.clone(),
+            ));
+        }
+        let reasoning = acp::SessionConfigOption::select(REASONING, "Reasoning", setting, levels)
+            .category(acp::SessionConfigOptionCategory::ThoughtLevel);
         vec![model, reasoning]
     }
 
@@ -128,12 +129,12 @@ impl Options<'_, '_> {
                 let found = catalog
                     .resolve(&model.0)
                     .map_err(|why| invalid(why.to_string()))?;
-                let choice = found
+                let reasoning = found
                     .spec
                     .reasoning
-                    .named(&value)
+                    .parse(&value)
                     .map_err(|why| invalid(why.to_string()))?;
-                let effort = ReasoningSetting(choice.reasoning);
+                let effort = ReasoningSetting(reasoning);
                 self.commands.trigger(SetReasoning {
                     entity: agent,
                     effort,

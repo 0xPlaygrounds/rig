@@ -130,7 +130,10 @@ per home.
 
 ## Models and sign-in
 
-`/model` picks a model, and `/effort` its reasoning setting. It lists the
+`/model` picks a model, and `/effort` its reasoning setting: one the model
+lists, such as `high`, or a budget it takes, such as `/effort 4096 tokens`.
+On a model that takes a budget and no levels, `low`, `medium` and `high` are
+budgets. `/model` lists the
 models you can use now: those of a provider whose key is exported or saved
 with `/login`, those of a sign-in, and those of a local server that needs no
 key (Ollama, llama.cpp) once `OLLAMA_API_BASE_URL` or `LLAMACPP_API_BASE_URL`
@@ -144,7 +147,8 @@ saved with a model you picked with `/model` or saved before). They are saved
 as `[model]` in `RIG_HOME/settings.toml`, `default = "vendor/model"` and
 `effort = "high"` (`default`, `off`, a level, or `"1024 tokens"`), which you
 may also set by hand; rig rewrites only those two keys and keeps your
-comments. A project's `[model]` is not read. `-m
+comments. `effort` is read as the model it starts on reads `/effort`, and one
+that model does not take is reset to its default with a warning. A project's `[model]` is not read. `-m
 vendor/model` picks one on the command line for that run only, with the saved
 reasoning setting when that model takes it, and none when it does not
 connect (a headless run then exits 2); an editor's

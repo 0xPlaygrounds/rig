@@ -2,7 +2,6 @@
 //! sends, and how the choice is connected. The catalog and how its models
 //! are reached are rig-core's [`Connector`].
 
-use std::fmt;
 use std::sync::Arc;
 
 use bevy_ecs::prelude::*;
@@ -77,8 +76,11 @@ pub struct ModelRefused(pub String);
 impl ModelChoice {
     /// The model and reasoning setting of an agent spawned by an agent with
     /// `parent`'s: `model`, a reference to a catalog model that calls tools,
-    /// when given, else the parent's; the reasoning setting named `effort`
-    /// when given, else the parent's with the parent's model.
+    /// when given, else the parent's; the reasoning setting `effort` names
+    /// for that model ([`ReasoningSupport::parse`]) when given, else the
+    /// parent's with the parent's model.
+    ///
+    /// [`ReasoningSupport::parse`]: rig_core::catalog::ReasoningSupport::parse
     pub fn inherit(
         models: &Connector,
         parent: (Option<&ModelChoice>, ReasoningSetting),
@@ -100,14 +102,10 @@ impl ModelChoice {
             None => parent.0.cloned(),
         };
         let effort = match (asked(effort), &model) {
-            (Some(name), Some(model)) => {
+            (Some(text), Some(model)) => {
                 let spec = resolve(&model.0).map_err(|why| why.to_string())?;
-                let named = spec.reasoning.named(name);
-                ReasoningSetting(
-                    named
-                        .map_err(|why| format!("{}: {why}", spec.display_name))?
-                        .reasoning,
-                )
+                let parsed = spec.reasoning.parse(text);
+                ReasoningSetting(parsed.map_err(|why| format!("{}: {why}", spec.display_name))?)
             }
             _ if model.is_some() && model.as_ref() == parent.0 => parent.1,
             _ => ReasoningSetting::default(),
@@ -137,19 +135,6 @@ pub struct Connection {
 #[component(immutable)]
 #[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
 pub struct ReasoningSetting(pub Option<Reasoning>);
-
-/// `default`, `off`, the level's word, or `1024 tokens`.
-impl fmt::Display for ReasoningSetting {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.0 {
-            None => f.write_str("default"),
-            Some(Reasoning::Off) => f.write_str("off"),
-            Some(Reasoning::Effort(level)) => f.write_str(level.as_str()),
-            Some(Reasoning::Budget { tokens }) => write!(f, "{tokens} tokens"),
-            Some(_) => f.write_str("custom"),
-        }
-    }
-}
 
 /// Who made a model or reasoning choice, which says whether it outlives
 /// the run.
@@ -387,7 +372,10 @@ pub(crate) fn on_set_reasoning(
             });
             notices.write(Notice::info(
                 set.entity,
-                format!("Reasoning: {}.", set.effort),
+                format!(
+                    "Reasoning: {}.",
+                    connection.spec.reasoning.name_of(set.effort.0)
+                ),
             ));
         }
         Some(refusal) => {

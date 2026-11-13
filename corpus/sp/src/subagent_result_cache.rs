@@ -153,6 +153,8 @@ fn key_of(
     let (Some(model), effort) = inherited.ok()? else {
         return None;
     };
+    let spec = models.0.catalog().resolve(&model.0).ok()?.spec;
+    let effort = spec.reasoning.name_of(effort.0);
     let registered: Vec<&str> = tools.iter().map(|def| def.0.name.as_str()).collect();
     // The access `task` gives: the parent's own, or the tools asked with
     // those that reach the parent; a list it refuses is no task to take.

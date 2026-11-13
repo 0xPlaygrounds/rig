@@ -18,6 +18,7 @@
 //! [`Connector`]: rig_harness::rig_core::catalog::Connector
 
 use rig_harness::prelude::*;
+use rig_harness::rig_core::catalog::ReasoningSupport;
 
 pub mod defaults;
 mod pick;
@@ -40,7 +41,7 @@ impl Plugin for ModelsPlugin {
         )
         .add_command(
             "effort",
-            "Pick the reasoning setting, or set it with /effort <level>",
+            "Pick the reasoning setting, or set it with /effort <level> or /effort <n> tokens",
             effort,
         )
         .init_resource::<TypedChoices>()
@@ -250,8 +251,11 @@ fn model(
     });
 }
 
-/// `/effort <level>` sets the agent's reasoning setting; without
-/// arguments, a picker lets the user pick one. Refused without a model.
+/// `/effort <setting>` sets the agent's reasoning setting, as its model
+/// reads the text ([`ReasoningSupport::parse`]); without arguments, a
+/// picker lets the user pick one. Refused without a model.
+///
+/// [`ReasoningSupport::parse`]: rig_harness::rig_core::catalog::ReasoningSupport::parse
 fn effort(
     In(args): In<CommandArgs>,
     agents: Query<&Connection>,
@@ -270,11 +274,11 @@ fn effort(
         pick::pick_effort(args.agent, spec, &mut commands);
         return;
     }
-    match spec.reasoning.named(&args.args) {
-        Ok(choice) => {
+    match spec.reasoning.parse(&args.args) {
+        Ok(reasoning) => {
             commands.trigger(SetReasoning {
                 entity: args.agent,
-                effort: ReasoningSetting(choice.reasoning),
+                effort: ReasoningSetting(reasoning),
                 kind: typed.0,
             });
         }
@@ -283,6 +287,15 @@ fn effort(
             notices.write(Notice::error(args.agent, why));
         }
     }
+}
+
+/// The text of the agent's reasoning setting as its connected model reads
+/// it back, such as `high` for a budget the model calls that; without a
+/// connection, as any model reads it.
+pub(crate) fn effort_name(connection: Option<&Connection>, effort: ReasoningSetting) -> String {
+    let any = ReasoningSupport::default();
+    let reasoning = connection.map_or(&any, |connection| &connection.spec.reasoning);
+    reasoning.name_of(effort.0)
 }
 
 #[cfg(test)]
