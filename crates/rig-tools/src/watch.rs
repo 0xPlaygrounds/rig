@@ -34,6 +34,9 @@ const EVERY: Duration = Duration::from_secs(1);
 const QUIET: Duration = Duration::from_millis(50);
 /// The longest a batch waits, however many events come.
 const LONGEST: Duration = Duration::from_millis(500);
+/// The longest wait before a system watch that could not be armed is tried
+/// again.
+const RETRY: Duration = Duration::from_secs(60);
 
 /// What a [`Watch`] tells, in order: a [`Snapshot`](Self::Snapshot) once
 /// it could list, then a [`Changed`](Self::Changed) for each batch of
@@ -51,9 +54,8 @@ pub enum WatchEvent {
     /// The files created, changed or removed since the last event, in path
     /// order.
     Changed(Vec<PathBuf>),
-    /// Listing the files failed, or the system's watch of the root could
-    /// not be armed, so what is there is not known until the next
-    /// `Snapshot`. The watch goes on trying every second.
+    /// Listing the files failed, so what is there is not known until the
+    /// next `Snapshot`. The watch goes on trying every second.
     Unavailable(Arc<io::Error>),
     /// The watch stopped; nothing comes after it.
     Closed,
@@ -383,9 +385,12 @@ fn look<W: Workspace + ?Sized>(
 /// directory put in place of the one watched, once that is moved or
 /// removed, is watched in its turn, looked for every second while none is
 /// there; on systems other than Unix only one put in place after none was
-/// there. A root that cannot be looked at for a while, or whose system
-/// watch cannot be armed, is [`Unavailable`](WatchEvent::Unavailable),
-/// tried again every second. A relative `root` that exists is resolved
+/// there. A root that cannot be looked at for a while is
+/// [`Unavailable`](WatchEvent::Unavailable), tried again every second. One
+/// whose system watch cannot be armed, such as for a directory below it
+/// that cannot be read or the system's limit of watches, is listed every
+/// second as the default watch does, and arming is tried again after a
+/// wait that doubles up to a minute. A relative `root` that exists is resolved
 /// against the current directory once, so the paths told are absolute.
 ///
 /// # Errors
@@ -423,8 +428,8 @@ pub(crate) fn notified(root: &Path, recursive: bool, listing: Listing) -> io::Re
     let watcher = Arc::new(Mutex::new(watcher));
     let mut armed = Armed::new(Arc::downgrade(&watcher), target.to_path_buf(), mode);
     // Armed before the watch is given, so no change made after is missed;
-    // one that cannot be armed yet is told and tried again by the thread.
-    armed.follow().ok();
+    // one that cannot be armed yet is listed every second by the thread.
+    armed.follow();
     {
         let mut watcher = watcher.lock().unwrap_or_else(PoisonError::into_inner);
         for rules in tree.rules_outside(&tree.wide_rules()) {
@@ -473,6 +478,8 @@ pub(crate) struct Armed {
     mode: RecursiveMode,
     /// The directory watched; none while none is.
     at: Option<Identity>,
+    /// After a failed arming, when to try again and the wait that led there.
+    retry: Option<(Instant, Duration)>,
 }
 
 impl Armed {
@@ -488,6 +495,7 @@ impl Armed {
             target,
             mode,
             at: None,
+            retry: None,
         }
     }
 
@@ -497,37 +505,39 @@ impl Armed {
     }
 
     /// Watches what is at the target now, if that is not what it watched:
-    /// true when it changed, or cannot be looked at, so what was heard
-    /// meanwhile may be missing.
-    ///
-    /// # Errors
-    ///
-    /// When a directory is at the target and cannot be watched yet.
-    fn follow(&mut self) -> io::Result<bool> {
+    /// true when it changed, cannot be looked at, or cannot be watched yet,
+    /// so what was heard meanwhile may be missing. A directory that cannot
+    /// be watched is tried again after a wait that doubles up to [`RETRY`].
+    fn follow(&mut self) -> bool {
         let Ok(now) = identity(&self.target) else {
-            return Ok(true);
+            return true;
         };
-        if now == self.at {
-            return Ok(false);
+        // While arming failed, nothing hears changes, so a target gone
+        // since is as unwatched as one that never went.
+        if now == self.at && self.retry.is_none() {
+            return false;
+        }
+        if self.retry.is_some_and(|(next, _)| Instant::now() < next) {
+            return true;
         }
         let Some(watcher) = self.watcher.upgrade() else {
-            return Ok(false);
+            return false;
         };
         let mut watcher = watcher.lock().unwrap_or_else(PoisonError::into_inner);
         // The old directory's watch is gone with it, or watches a path no
         // longer the target's.
         watcher.unwatch(&self.target).ok();
         self.at = now;
-        if now.is_some()
-            && let Err(error) = watcher.watch(&self.target, self.mode)
-        {
-            // Not armed: tried again at the next call.
+        let waited = self.retry.take().map(|(_, wait)| wait);
+        if now.is_some() && watcher.watch(&self.target, self.mode).is_err() {
+            // A recursive watch may be armed in part. Its events would only
+            // add listings to the ones made every second while it is not.
+            watcher.unwatch(&self.target).ok();
             self.at = None;
-            if !matches!(identity(&self.target), Ok(None)) {
-                return Err(io::Error::other(error));
-            }
+            let wait = waited.map_or(EVERY, |wait| (wait * 2).min(RETRY));
+            self.retry = Some((Instant::now() + wait, wait));
         }
-        Ok(true)
+        true
     }
 }
 
@@ -674,8 +684,9 @@ impl Tree {
 /// that failed, everything is listed again, every second until one works;
 /// paths a listing could not look into are listed again every second the
 /// same way. When another directory is at the target of `armed`, it is
-/// watched and everything listed again; while none is there, or it cannot
-/// be watched yet, it is looked for every second.
+/// watched and everything listed again; while none is there it is looked
+/// for every second, and while it cannot be watched everything is listed
+/// every second.
 pub(crate) fn send_batches(
     raw: &Receiver<Heard>,
     sender: &UnboundedSender<WatchEvent>,
@@ -695,8 +706,7 @@ pub(crate) fn send_batches(
     let mut failed = Scopes::default();
     loop {
         let (mut scopes, mut touched) = (std::mem::take(&mut failed), BTreeSet::new());
-        let followed = armed.follow();
-        if !matches!(followed, Ok(false)) || !seen.known() {
+        if armed.follow() || !seen.known() {
             scopes = Scopes::all(&tree.root);
         }
         for told in heard.drain(..) {
@@ -715,8 +725,7 @@ pub(crate) fn send_batches(
         if !scopes.0.is_empty() {
             // A directory the last listing found files under is listed by
             // the rules as they are: an edit of them is a scope of its own.
-            let look =
-                followed.and_then(|_| tree.look(scopes.clone(), |dir| seen.holds_below(dir)));
+            let look = tree.look(scopes.clone(), |dir| seen.holds_below(dir));
             if let Ok(look) = &look {
                 for path in &look.failed {
                     failed.add(path.clone());

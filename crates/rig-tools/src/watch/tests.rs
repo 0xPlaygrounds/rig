@@ -1140,3 +1140,145 @@ fn the_system_watch_tells_what_listing_again_would() {
         )
     );
 }
+
+/// A recursive watch whose system watch cannot be armed, because a folder
+/// under the root cannot be read, still tells the files it can list, and
+/// an edit to one of them. Only inotify refuses such a folder below the
+/// root; FSEvents and the others arm the root alone.
+#[cfg(any(target_os = "linux", target_os = "android"))]
+#[test]
+fn a_watch_the_system_cannot_arm_lists_instead() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let root = std::env::temp_dir().join(format!("rig-tools-watch-unarmed-{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    std::fs::create_dir_all(root.join("locked")).ok();
+    let root = std::fs::canonicalize(&root).unwrap_or(root);
+    let file = root.join("a.txt");
+    std::fs::write(&file, "one").ok();
+    let locked = root.join("locked");
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).ok();
+    // Whoever may read it anyway (root) arms the watch.
+    let refused = std::fs::read_dir(&locked).is_err();
+    let watch = Arc::new(Local).watch(&root, true, Listing::Visible);
+    let started = watch.map(|watch| {
+        let events = events(watch);
+        let wait = Duration::from_millis(1500);
+        let started = told(&events, wait);
+        std::fs::write(&file, "two").ok();
+        (started, told(&events, wait))
+    });
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).ok();
+    std::fs::remove_dir_all(&root).ok();
+    if refused {
+        assert_eq!(
+            started.ok(),
+            Some((
+                vec![("snapshot", vec![file.clone()])],
+                vec![("changed", vec![file])]
+            ))
+        );
+    }
+}
+
+/// A watch listing every second because its system watch cannot be armed
+/// tells the files of a root moved away as removed, at the next listing,
+/// and those of one put back in its place as made.
+#[cfg(any(target_os = "linux", target_os = "android"))]
+#[test]
+fn an_unarmed_watch_tells_a_root_moved_away_and_back() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let base = std::env::temp_dir().join(format!("rig-tools-watch-gone-{}", std::process::id()));
+    std::fs::remove_dir_all(&base).ok();
+    std::fs::create_dir_all(base.join("root/locked")).ok();
+    let base = std::fs::canonicalize(&base).unwrap_or(base);
+    let (root, away) = (base.join("root"), base.join("away"));
+    let file = root.join("a.txt");
+    std::fs::write(&file, "one").ok();
+    let locked = root.join("locked");
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).ok();
+    // Whoever may read it anyway (root) arms the watch.
+    let refused = std::fs::read_dir(&locked).is_err();
+    let watch = Arc::new(Local).watch(&root, true, Listing::Visible);
+    let told_all = watch.map(|watch| {
+        let events = events(watch);
+        let wait = Duration::from_millis(1500);
+        let started = told(&events, wait);
+        std::fs::rename(&root, &away).ok();
+        let gone = told(&events, wait);
+        std::fs::create_dir(&root).ok();
+        std::fs::write(&file, "two").ok();
+        (started, gone, told(&events, wait))
+    });
+    let unlock = |dir: &Path| {
+        std::fs::set_permissions(dir.join("locked"), std::fs::Permissions::from_mode(0o755))
+    };
+    unlock(&root).ok();
+    unlock(&away).ok();
+    std::fs::remove_dir_all(&base).ok();
+    if refused {
+        assert_eq!(
+            told_all.ok(),
+            Some((
+                vec![("snapshot", vec![file.clone()])],
+                vec![("changed", vec![file.clone()])],
+                vec![("changed", vec![file])],
+            ))
+        );
+    }
+}
+
+/// A system watch that cannot be armed is tried again after a wait that
+/// doubles, and is armed once it can be. The waits are cut short by
+/// moving the time of the next try, so a slow machine cannot change what
+/// the test sees.
+#[cfg(any(target_os = "linux", target_os = "android"))]
+#[test]
+fn a_watch_that_cannot_be_armed_is_tried_again_later() {
+    use std::os::unix::fs::PermissionsExt as _;
+    use std::time::Instant;
+    let root = std::env::temp_dir().join(format!("rig-tools-watch-retry-{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    std::fs::create_dir_all(root.join("locked")).ok();
+    let locked = root.join("locked");
+    let mode = |mode| std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(mode));
+    mode(0o000).ok();
+    let refused = std::fs::read_dir(&locked).is_err();
+    let watcher = notify::recommended_watcher(|_: notify::Result<notify::Event>| {});
+    let Ok(watcher) = watcher else {
+        mode(0o755).ok();
+        return;
+    };
+    let watcher = Arc::new(std::sync::Mutex::new(watcher));
+    let mut armed = super::Armed::new(
+        Arc::downgrade(&watcher),
+        root.clone(),
+        notify::RecursiveMode::Recursive,
+    );
+    let next_try = |armed: &mut super::Armed, at| {
+        armed.retry = armed.retry.map(|(_, wait)| (at, wait));
+    };
+    let first = (armed.follow(), armed.watching());
+    let waits = armed.retry.map(|(_, wait)| wait);
+    next_try(&mut armed, Instant::now());
+    let second = (armed.follow(), armed.watching());
+    let doubled = armed.retry.map(|(_, wait)| wait);
+    mode(0o755).ok();
+    next_try(&mut armed, Instant::now() + Duration::from_secs(3600));
+    let waiting = (armed.follow(), armed.watching());
+    next_try(&mut armed, Instant::now());
+    let after = (armed.follow(), armed.watching(), armed.retry.is_some());
+    std::fs::remove_dir_all(&root).ok();
+    if refused {
+        assert_eq!(
+            (first, waits, second, doubled, waiting, after),
+            (
+                (true, false),
+                Some(Duration::from_secs(1)),
+                (true, false),
+                Some(Duration::from_secs(2)),
+                (true, false),
+                (true, true, false),
+            )
+        );
+    }
+}
