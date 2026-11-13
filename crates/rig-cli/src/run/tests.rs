@@ -2211,7 +2211,7 @@ printf 'rig-describe 1\\nsecret\\tcrypt\\tPassphrase\\n' > \"$RIG_DESCRIBE\"",
         stop::end_as_heard();
         return;
     }
-    let restored = signalled_at_prompt(PROBE, libc::SIGTERM, true);
+    let restored = signalled_at_prompt(PROBE, libc::SIGTERM, Stderr::Read);
     let restored = restored.map_err(|failure| failure.to_string());
     let put_back = restored.as_ref().is_ok_and(|(said, signal)| {
         said.split_once(SECRET_PROMPT)
@@ -2219,11 +2219,17 @@ printf 'rig-describe 1\\nsecret\\tcrypt\\tPassphrase\\n' > \"$RIG_DESCRIBE\"",
             && *signal == Some(libc::SIGTERM)
     });
     assert!(put_back, "{restored:?}");
-    let hung_up = signalled_at_prompt(PROBE, libc::SIGHUP, false);
+    let hung_up = signalled_at_prompt(PROBE, libc::SIGHUP, Stderr::Closed);
     let hung_up = hung_up.map_err(|failure| failure.to_string());
     assert!(
         matches!(&hung_up, Ok((_, Some(libc::SIGHUP)))),
         "{hung_up:?}"
+    );
+    let paused = signalled_at_prompt(PROBE, libc::SIGTERM, Stderr::Full);
+    let paused = paused.map_err(|failure| failure.to_string());
+    assert!(
+        matches!(&paused, Ok((_, Some(libc::SIGTERM)))),
+        "{paused:?}"
     );
 }
 
@@ -2233,29 +2239,45 @@ printf 'rig-describe 1\\nsecret\\tcrypt\\tPassphrase\\n' > \"$RIG_DESCRIBE\"",
 #[cfg(unix)]
 const SECRET_PROMPT: &str = "Passphrase (crypt): ";
 
+/// What becomes of the probe's stderr once it shows the prompt.
+#[cfg(unix)]
+#[derive(Clone, Copy, PartialEq)]
+enum Stderr {
+    /// Read to its end.
+    Read,
+    /// Closed, so every write fails, as on a closed terminal.
+    Closed,
+    /// Filled and never read, so every write blocks, as on a terminal
+    /// whose output is paused (Ctrl+S).
+    Full,
+}
+
 /// Runs that test's probe (`probe`) as a launcher, sends it `signal` as
-/// it waits at the prompt, its stderr closed first unless `keep`, and
-/// returns what it wrote to stderr and the signal that ended it.
+/// it waits at the prompt, its stderr then as `stderr` says, and returns
+/// what it wrote to stderr and the signal that ended it.
 #[cfg(unix)]
 fn signalled_at_prompt(
     probe: &str,
     signal: libc::c_int,
-    keep: bool,
+    stderr: Stderr,
 ) -> std::io::Result<(String, Option<i32>)> {
     use std::io::BufRead;
     use std::os::unix::process::ExitStatusExt;
 
     let name =
         "run::tests::a_signal_at_a_secret_prompt_puts_the_terminal_back_and_ends_the_launcher";
-    let mut launcher = Command::new(std::env::current_exe()?)
+    let (output, written) = std::io::pipe()?;
+    let filler = (stderr == Stderr::Full)
+        .then(|| written.try_clone())
+        .transpose()?;
+    let launcher = Command::new(std::env::current_exe()?)
         .args(["--exact", name, "--test-threads", "1", "--nocapture"])
         .env(probe, "1")
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
-        .stderr(Stdio::piped())
+        .stderr(written)
         .spawn()?;
     let pid = libc::pid_t::try_from(launcher.id()).unwrap_or_default();
-    let stderr = launcher.stderr.take();
     // A launcher that never ends is killed, so the test fails instead. The
     // kill and the reaping share a lock, and `Child::kill` sends nothing
     // once the launcher was reaped, so no other process's pid is killed.
@@ -2268,23 +2290,29 @@ fn signalled_at_prompt(
         }
     });
     let mut said = Vec::new();
-    if let Some(stderr) = stderr {
-        let mut stderr = std::io::BufReader::new(stderr);
-        // The prompt ends with no newline: read up to its last byte.
-        while !String::from_utf8_lossy(&said).contains(SECRET_PROMPT) {
-            if stderr.read_until(b' ', &mut said)? == 0 {
-                break;
-            }
-        }
-        let kept = keep.then_some(stderr);
-        // Signalled as it waits for the answer.
-        std::thread::sleep(Duration::from_millis(300));
-        // SAFETY: `kill` takes plain integers; the launcher is not reaped yet.
-        unsafe { libc::kill(pid, signal) };
-        if let Some(mut stderr) = kept {
-            stderr.read_to_end(&mut said)?;
+    let mut output = std::io::BufReader::new(output);
+    // The prompt ends with no newline: read up to its last byte.
+    while !String::from_utf8_lossy(&said).contains(SECRET_PROMPT) {
+        if output.read_until(b' ', &mut said)? == 0 {
+            break;
         }
     }
+    let kept = (stderr != Stderr::Closed).then_some(output);
+    // Writes until the pipe is full, and ends once its reader is gone.
+    if let Some(mut filler) = filler {
+        std::thread::spawn(move || while filler.write_all(&[0; 4096]).is_ok() {});
+    }
+    // Signalled as it waits for the answer.
+    std::thread::sleep(Duration::from_millis(300));
+    // SAFETY: `kill` takes plain integers; the launcher is not reaped yet.
+    unsafe { libc::kill(pid, signal) };
+    let kept = match kept {
+        Some(mut output) if stderr == Stderr::Read => {
+            output.read_to_end(&mut said)?;
+            None
+        }
+        kept => kept,
+    };
     let status = loop {
         let exited = launcher
             .lock()
@@ -2295,5 +2323,6 @@ fn signalled_at_prompt(
         }
         std::thread::sleep(Duration::from_millis(20));
     };
+    drop(kept);
     Ok((String::from_utf8_lossy(&said).into_owned(), status.signal()))
 }
