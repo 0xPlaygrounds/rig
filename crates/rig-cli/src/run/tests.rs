@@ -371,8 +371,9 @@ fn a_one_shot_run_is_never_run_again_on_the_previous_build() {
 }
 
 /// A staged build that is a directory, a symlink loop, a file that cannot
-/// be read, one that may not be run or one that is no program is no build:
-/// the start runs the good build instead of failing on it.
+/// be read, one that may not be run, one that is no program or a script
+/// without `#!` is no build: the start runs the good build instead of
+/// failing on it, and never hands the file to a shell.
 #[cfg(unix)]
 #[test]
 fn a_staged_file_that_is_no_build_starts_the_good_build() {
@@ -383,6 +384,7 @@ fn a_staged_file_that_is_no_build_starts_the_good_build() {
         "unreadable",
         "not-a-program",
         "not-executable",
+        "no-shebang",
     ] {
         let home = builds(&format!("staged-{broken}"), "exit 3", "exit 0");
         let staged = home.staged();
@@ -395,6 +397,10 @@ fn a_staged_file_that_is_no_build_starts_the_good_build() {
             "not-executable" => {
                 fs::set_permissions(&staged, std::fs::Permissions::from_mode(0o644))
             }
+            "no-shebang" => fs::write(
+                &staged,
+                format!("echo trial >> '{}'\n", home.root().join("ran").display()),
+            ),
             _ => fs::write(&staged, [0x7f, b'E', b'L', b'F', 0, 0xff, 0xfe, 0]),
         }
         .ok();

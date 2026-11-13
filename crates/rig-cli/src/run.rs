@@ -1261,9 +1261,10 @@ impl Drop for BuildRef {
 /// The builds the launcher of `session` holds in `run` for its next start:
 /// a build staged for it or for any launcher, claimed as a trial, rolling
 /// back to `current` or else the good build; without one, `current`, else
-/// the good build. A staged path that is no file, or cannot be looked at
-/// or read, is warned of and passed over. Call it holding [`locks::hold_build_lock`],
-/// so the claims and the good build it reads are the ones it holds.
+/// the good build. A staged path that is no program ([`starts_a_program`]),
+/// or cannot be looked at or read, is warned of and passed over. Call it
+/// holding [`locks::hold_build_lock`], so the claims and the good build it
+/// reads are the ones it holds.
 fn select(
     launch: &Launch,
     session: &SessionId,
@@ -1277,16 +1278,15 @@ fn select(
         None => hold_good(launch, run)?,
     };
     for staged in [home.staged_for(session), home.staged()] {
-        match fs::optional(fs::metadata(&staged)) {
-            Ok(Some(metadata)) if metadata.is_file() => {
-                // One this launcher cannot read is no build it can start.
-                if let Err(why) = fs::open(File::options().read(true), &staged) {
-                    eprintln!("warning: a staged build is not started: {why}");
-                    continue;
-                }
-            }
+        let program = match fs::optional(fs::metadata(&staged)) {
             Ok(None) => continue,
-            Ok(Some(_)) => {
+            Ok(Some(metadata)) if metadata.is_file() => starts_a_program(&staged),
+            Ok(Some(_)) => Ok(false),
+            Err(why) => Err(why),
+        };
+        match program {
+            Ok(true) => {}
+            Ok(false) => {
                 eprintln!(
                     "warning: {} is not a build, so it is not started",
                     staged.display()
@@ -1312,6 +1312,36 @@ fn select(
         current: held_before.ok_or("no agent build exists yet; run `rig build`")?,
         previous: None,
     })
+}
+
+/// How a program in this platform's object format starts.
+#[cfg(target_vendor = "apple")]
+const OBJECT_MAGIC: &[&[u8]] = &[
+    b"\xcf\xfa\xed\xfe",
+    b"\xce\xfa\xed\xfe",
+    b"\xca\xfe\xba\xbe",
+    b"\xca\xfe\xba\xbf",
+];
+#[cfg(windows)]
+const OBJECT_MAGIC: &[&[u8]] = &[b"MZ"];
+#[cfg(not(any(target_vendor = "apple", windows)))]
+const OBJECT_MAGIC: &[&[u8]] = &[b"\x7fELF"];
+
+/// Whether the file at `path` starts as a script (`#!`) or as a program in
+/// this platform's object format. Any other file is no build: spawning it
+/// hands it to `/bin/sh` on macOS, and in a describing start everywhere,
+/// instead of failing.
+///
+/// # Errors
+///
+/// When the file cannot be opened or read, naming it.
+fn starts_a_program(path: &Path) -> std::io::Result<bool> {
+    let mut head = Vec::new();
+    fs::open(File::options().read(true), path)?
+        .take(4)
+        .read_to_end(&mut head)
+        .map_err(fs::named("read", path))?;
+    Ok(head.starts_with(b"#!") || OBJECT_MAGIC.iter().any(|magic| head.starts_with(magic)))
 }
 
 /// The good build, held in `run`; `None` when there is none.
