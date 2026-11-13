@@ -20,9 +20,12 @@ use rig_core::completion::{Message, Reasoning, Section, ToolDefinition};
 use rig_core::effect::{EffectId, EffectRecord, HandlerKey, tool_key};
 use rig_core::message::{ToolName, UserContent};
 use rig_core::operation::Completion;
+use rig_core::providers::registry::ConnectOptions;
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::{ModelAdapter, ToolAdapter};
-use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
+use rig_core::test_utils::{
+    MockCompletionModel, MockError, MockStreamEvent, SilentStreamingClient,
+};
 use rig_ecs::effects::{Effects, Handler};
 use rig_ecs::prelude::*;
 use rig_ecs::session_log::SessionStore;
@@ -917,7 +920,15 @@ fn a_higher_unavailable_call_limit_lets_the_turn_go_on() {
 #[test]
 fn a_budget_the_models_route_refuses_is_reset_with_a_warning() {
     let (mut app, _wakes) = kernel(&MemoryStore::default());
-    let connection = app.world().resource::<Models>().connect("ollama/qwen3");
+    // Without an HTTP client of its own, rig-ecs alone has none: the check
+    // sends nothing, so one that never answers will do.
+    let mut models = app.world_mut().resource_mut::<Models>();
+    let ollama = models.0.catalog().resolve("ollama/qwen3");
+    if let Ok(vendor) = ollama.map(|found| found.spec.provider) {
+        let http = ConnectOptions::new().http(SilentStreamingClient);
+        models.0.provide(vendor, http);
+    }
+    let connection = models.connect("ollama/qwen3");
     assert_eq!(connection.as_ref().err(), None);
     let Ok(connection) = connection else { return };
     let budget = ReasoningSetting(Some(Reasoning::Budget { tokens: 1024 }));
