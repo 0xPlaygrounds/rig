@@ -247,7 +247,7 @@ fn usage(prompt: i32, candidates: i32, thoughts: i32, cached: i32) -> proto::Usa
     }
 }
 
-fn settings(thinking: Thinking) -> ChatSettings {
+fn settings(thinking: Option<Reasoning>) -> ChatSettings {
     ChatSettings {
         model: "gemini-2.5-flash".to_owned(),
         thinking,
@@ -311,7 +311,11 @@ async fn thinking_tool_calls_and_signatures_survive_a_reload() {
 
     let mut events = Vec::new();
     let reply = ok!(gem
-        .chat(settings(Thinking::Budget(1024)), store.clone(), None)
+        .chat(
+            settings(Some(Reasoning::Budget { tokens: 1024 })),
+            store.clone(),
+            None
+        )
         .send("What do my notes say about fog?", |event| events
             .push(event))
         .await);
@@ -339,7 +343,11 @@ async fn thinking_tool_calls_and_signatures_survive_a_reload() {
     // A new chat over the same store reads the conversation back from its
     // serialized log, as a restarted program does.
     ok!(gem
-        .chat(settings(Thinking::Budget(1024)), store, None)
+        .chat(
+            settings(Some(Reasoning::Budget { tokens: 1024 })),
+            store,
+            None
+        )
         .send("And now?", |_| {})
         .await);
     server.abort();
@@ -490,7 +498,7 @@ async fn failures_are_typed() {
 
     let cut = tokio::time::timeout(
         Duration::from_secs(10),
-        gem.chat(settings(Thinking::Off), MemoryStore::default(), None)
+        gem.chat(settings(Some(Reasoning::Off)), MemoryStore::default(), None)
             .send("Describe it.", |_| {}),
     )
     .await;
@@ -499,5 +507,49 @@ async fn failures_are_typed() {
     assert!(
         matches!(&cut, Err(GemError::Cut { partial, .. }) if partial == "The lighthouse "),
         "{cut:?}"
+    );
+}
+
+/// `--thinking high` on Gemini 2.5, which takes a budget and no levels,
+/// sends the catalog's `high` budget instead of a level the model refuses.
+#[tokio::test]
+async fn thinking_high_on_a_budget_model_sends_a_budget() {
+    let fake = Fake::new([vec![Ok(message(
+        vec![part(Data::Text("Hi.".to_owned()))],
+        STOP,
+    ))]]);
+    let (gem, server) = ok!(fake.serve().await);
+    let thinking = ok!(thinking("gemini-2.5-flash", "high"));
+    let reply = gem
+        .chat(settings(thinking), MemoryStore::default(), None)
+        .send("Hello?", |_| {})
+        .await;
+    server.abort();
+    assert!(reply.is_ok(), "{:?}", reply.err());
+    let budget = fake
+        .seen()
+        .first()
+        .and_then(thinking_of)
+        .and_then(|config| config.thinking_budget);
+    assert!(budget.is_some_and(|tokens| tokens > 1024), "{budget:?}");
+}
+
+/// gem's bare number is a budget; a setting the listed model does not take
+/// is refused with the ones it does; an unlisted model takes any setting.
+#[test]
+fn thinking_reads_budgets_and_refuses_what_the_model_lacks() {
+    let budget = Some(Reasoning::Budget { tokens: 1024 });
+    assert_eq!(thinking("gemini-2.5-flash", "1024"), Ok(budget));
+    assert_eq!(thinking("gemini-2.5-flash", "1024 tokens"), Ok(budget));
+    let refused = thinking("gemini-2.5-flash", "max");
+    assert!(
+        refused
+            .as_ref()
+            .is_err_and(|error| error.choices.contains(&"high")),
+        "{refused:?}"
+    );
+    assert_eq!(
+        thinking("gemini-9-unlisted", "high"),
+        Ok(Some(Reasoning::Effort(rig_core::completion::Effort::High)))
     );
 }
