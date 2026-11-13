@@ -52,11 +52,12 @@ pub(crate) fn normalize_tools(body: &mut Value) {
         let mut wire = upgrade(Value::Object(raw.clone()));
         postprocess(&mut wire);
         empty_schemas(&mut wire);
-        let Some(raw) = wire.as_object() else {
+        let Some(raw) = wire.as_object_mut() else {
             continue;
         };
         let candidate = tool.get("strict") != Some(&Value::Bool(false))
-            && !incompatible(&Value::Object(raw.clone()));
+            && !incompatible(&Value::Object(raw.clone()))
+            && !free_form_object(raw);
         let mut raw = raw.clone();
         raw.insert("type".into(), json!("object"));
         if !raw.get("properties").is_some_and(Value::is_object) {
@@ -262,6 +263,21 @@ fn incompatible(value: &Value) -> bool {
         Value::Array(values) => values.iter().any(incompatible),
         _ => false,
     }
+}
+
+/// Whether a schema nested in `schema` is an object with neither `properties` nor
+/// `additionalProperties`. JSON Schema reads it as an open map, which strict mode would pin to `{}`.
+fn free_form_object(schema: &mut Map<String, Value>) -> bool {
+    let mut found = false;
+    schema_children(schema, |child| {
+        if let Value::Object(child) = child {
+            found |= (scalar_type(child) == Some("object")
+                && !child.contains_key("properties")
+                && !child.contains_key("additionalProperties"))
+                || free_form_object(child);
+        }
+    });
+    found
 }
 
 #[derive(Clone, Copy)]

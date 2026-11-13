@@ -298,3 +298,24 @@ fn a_tool_past_the_optional_budget_keeps_its_optional_parameters() {
         Some(&json!({"type":"integer"}))
     );
 }
+
+#[test]
+fn a_free_form_object_parameter_keeps_its_tool_non_strict() {
+    let mut body = json!({"tools":[
+        {"name":"no_arguments", "input_schema":{"type":"object"}},
+        {"name":"set_metadata", "input_schema":{"type":"object",
+            "properties":{"metadata":{"type":"object"}}, "required":["metadata"]}},
+        {"name":"tag_all", "input_schema":{"type":"object",
+            "properties":{"tags":{"type":"array", "items":{"type":"object"}}}}},
+        {"name":"set_point", "input_schema":{"type":"object",
+            "properties":{"point":{"type":"object", "properties":{"x":{"type":"number"}}}}}}
+    ]});
+    normalize_tools(&mut body);
+    let strict = (0..4)
+        .map(|index| body.pointer(&format!("/tools/{index}/strict")).cloned())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        strict,
+        vec![Some(json!(true)), None, None, Some(json!(true))]
+    );
+}

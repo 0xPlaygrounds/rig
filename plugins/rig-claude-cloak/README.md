@@ -286,11 +286,15 @@ for a strict schema only on tools it names `python`, `edit`, `find` and
 it on every tool whose schema can be made strict, unless the tool sets
 `strict: false`, within the API's request-wide limits of 20 strict tools, 24
 optional parameters and 16 union-typed parameters; a tool that would exceed a
-limit is sent without `strict`. OMP instead makes optional parameters past the
-24th required and nullable and keeps the tool strict. A tool whose top-level
-schema omits `additionalProperties` is closed, and once strict the model cannot
-pass extra keys; one that sets `additionalProperties: true` stays open and is
-sent without `strict`. Tool input streaming is sent as the caller set it. The
+limit is sent without `strict`. Tools take the limits in request order, which
+the kernel sorts by name. OMP instead makes optional parameters past the
+24th required and nullable and keeps the tool strict. An object schema that
+declares `properties` and omits `additionalProperties` is closed, and once
+strict the model cannot pass extra keys; one that sets `additionalProperties:
+true` stays open and is sent without `strict`. A nested `{"type": "object"}`
+with neither is a free-form map, so its tool is sent without `strict`; a
+top-level one is a tool with no arguments and may be strict. Tool input
+streaming is sent as the caller set it. The
 `strict_selection`, `optional_24`, `optional_25` and `optional_rollback` schema
 cases and the request comparison's declared projection record these
 differences.
