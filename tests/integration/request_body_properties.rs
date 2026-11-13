@@ -259,7 +259,7 @@ fn encoders() -> Vec<Encoder> {
 /// request of their own, so only their bodies are checked.
 #[cfg_attr(
     not(any(feature = "bedrock", feature = "vertexai", feature = "gemini-grpc")),
-    allow(unused_variables)
+    allow(unused_variables, clippy::ptr_arg)
 )]
 fn companions(out: &mut Vec<Encoder>) {
     #[cfg(feature = "bedrock")]

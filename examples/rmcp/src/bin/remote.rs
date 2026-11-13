@@ -12,11 +12,13 @@ use anyhow::Context;
 use rig::{
     prelude::*,
     providers::openai::{self, OpenAI},
-    tool::{DynamicTool, rmcp::McpConnection},
+    tool::{
+        DynamicTool,
+        rmcp::{McpConnection, client_config},
+    },
 };
 use rmcp::{
     ServiceExt,
-    model::{ClientCapabilities, ClientConfig, Implementation},
     transport::{
         StreamableHttpClientTransport, streamable_http_client::StreamableHttpClientTransportConfig,
     },
@@ -35,12 +37,8 @@ async fn main() -> anyhow::Result<()> {
     if let Ok(token) = std::env::var("MCP_AUTH_TOKEN") {
         config = config.auth_header(token);
     }
-    let client = ClientConfig::new(
-        ClientCapabilities::default(),
-        Implementation::new("rig", env!("CARGO_PKG_VERSION")),
-    );
     let connection = McpConnection::new(
-        client
+        client_config("rig", env!("CARGO_PKG_VERSION"))
             .serve(StreamableHttpClientTransport::from_config(config))
             .await?,
     );
