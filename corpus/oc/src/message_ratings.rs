@@ -516,7 +516,7 @@ fn across_project(agents: &Query<(Entity, &AgentId, &Conversation)>, project: &P
         gathered.add("this session", &id.0, conversation);
     }
     let paths = project.paths.as_deref();
-    let directory = paths.and_then(|paths| paths.working_directory());
+    let directory = paths.and_then(|paths| paths.working_directory().ok().flatten());
     let this = paths.map(|paths| paths.path());
     let mut sessions: Vec<SessionEntry> = home
         .saved_sessions()

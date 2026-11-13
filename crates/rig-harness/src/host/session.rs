@@ -570,7 +570,7 @@ const LOG: &str = "agent.log";
 /// `with`, as the text file `name`; whether it changed. A name mapped to
 /// blank is removed.
 fn map_name(dir: &SessionDir, with: &dyn Rewrite) -> io::Result<bool> {
-    let Some(name) = dir.name() else {
+    let Some(name) = dir.name()? else {
         return Ok(false);
     };
     let mut bytes = name.into_bytes();

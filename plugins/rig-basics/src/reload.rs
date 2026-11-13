@@ -167,8 +167,7 @@ impl LauncherFile {
 
     /// Whether another file is at its path now.
     pub(crate) fn replaced(&self) -> bool {
-        self.started
-            .replaced(&harness_protocol::Stamp::of(&self.path))
+        harness_protocol::Stamp::of(&self.path).is_ok_and(|now| self.started.replaced(&now))
     }
 }
 

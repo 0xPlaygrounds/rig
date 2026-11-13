@@ -1,3 +1,8 @@
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test fixtures write and read files of their own"
+)]
+
 use super::*;
 
 const BUDGET: &str = "rig_basics::budget::BudgetPlugin";
@@ -364,9 +369,11 @@ fn an_edit_refuses_a_link_it_cannot_write_through() {
         .map(|why| why.to_string())
         .unwrap_or_default()
     };
+    // The step that failed names its own file: the lock beside the target.
     let refused = set();
+    let folder = root.join("no-folder");
     assert!(
-        refused.starts_with(&format!("{}: ", missing.display())),
+        refused.starts_with(&format!("open {}/", folder.display())),
         "{refused}"
     );
     assert!(!root.join("no-folder").exists(), "no folder made");

@@ -1,6 +1,6 @@
 #![allow(
     clippy::disallowed_methods,
-    reason = "test fixtures run programs of their own"
+    reason = "test fixtures run programs and touch files of their own"
 )]
 
 use std::os::unix::fs::PermissionsExt;
@@ -22,7 +22,7 @@ fn built(name: &str, body: &str) -> Home {
             fs::create_dir_all(parent).ok();
         }
         fs::write(path, format!("#!/bin/sh\n{script}\n")).ok();
-        fs::set_permissions(path, fs::Permissions::from_mode(0o755)).ok();
+        fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).ok();
     }
     home
 }
@@ -47,7 +47,7 @@ fn a_build_is_staged_with_its_report_and_one_that_cannot_describe_itself_is_reje
                   > \"$RIG_DESCRIBE\"";
     let home = built("staged", report);
     let staged = stage_on(&home, &home.staged(), Staging::Always);
-    let kept = good_report(&home, &home.staged());
+    let kept = good_report(&home, &home.staged()).ok().flatten();
     fs::remove_dir_all(home.root()).ok();
     assert!(staged.is_ok(), "{staged:?}");
     assert!(kept.is_some_and(|report| report.command("stats").is_some()));
@@ -69,6 +69,57 @@ fn a_build_is_staged_with_its_report_and_one_that_cannot_describe_itself_is_reje
     assert_eq!(rejected, stamp);
 }
 
+/// A build that cannot be staged says which step failed on which file,
+/// not only the system's words: here the copy into the bin directory, where
+/// a directory is in the way.
+#[test]
+fn a_build_that_cannot_be_staged_names_the_step_and_the_file() {
+    let report = "printf 'rig-describe 1\\n' > \"$RIG_DESCRIBE\"";
+    let home = built("unstaged", report);
+    let in_the_way = home.bin().join("staged.tmp");
+    fs::create_dir_all(&in_the_way).ok();
+    let staged = stage_on(&home, &home.staged(), Staging::Always).map_err(|why| why.to_string());
+    fs::remove_dir_all(home.root()).ok();
+    let refused = staged.err().unwrap_or_default();
+    let to = format!(" to {}: ", in_the_way.display());
+    assert!(
+        refused.starts_with("copy ") && refused.contains(&to),
+        "{refused}"
+    );
+}
+
+/// A new build is checked against the stamps of the builds already known.
+/// A staged build whose stamp cannot be read, here a symlink loop, fails
+/// the build naming the file and the step. A rejected stamp that cannot be
+/// read, here a directory, is named when telling which build runs, and
+/// staging goes on: it only keeps a crashed build from being retried.
+#[test]
+fn a_known_build_whose_stamp_cannot_be_read_is_named() {
+    let report = "printf 'rig-describe 1\\n' > \"$RIG_DESCRIBE\"";
+    let home = built("unreadable-stamp", report);
+    let staged = home.bin().join("staged-for-session");
+    let rejected = home.rejected();
+    let made = fs::create_dir_all(&rejected);
+    let passed = passed_over(&home, &staged).map_err(|why| why.to_string());
+    let restaged = stage_on(&home, &staged, Staging::OnlyNew).map_err(|why| why.to_string());
+    let restaged = restaged.map(|()| staged.exists());
+    let looped = std::os::unix::fs::symlink(home.staged(), home.staged());
+    let looping = stage_on(&home, &staged, Staging::OnlyNew).map_err(|why| why.to_string());
+    fs::remove_dir_all(home.root()).ok();
+    assert!(made.is_ok() && looped.is_ok());
+    let read = format!("read {}: ", rejected.display());
+    assert!(
+        passed.as_ref().is_err_and(|why| why.starts_with(&read)),
+        "{passed:?}"
+    );
+    assert_eq!(restaged, Ok(true));
+    let look = format!("look at {}: ", home.staged().display());
+    assert!(
+        looping.as_ref().is_err_and(|why| why.starts_with(&look)),
+        "{looping:?}"
+    );
+}
+
 /// A start that builds the build a trial was rejected for stages nothing,
 /// and is said to run the previous build, until a build replaces it.
 #[test]
@@ -77,18 +128,20 @@ fn a_rebuilt_rejected_build_is_passed_over_out_loud() {
                   > \"$RIG_DESCRIBE\"";
     let home = built("passed-over", report);
     let staged = home.bin().join("staged-for-session");
-    let before = passed_over(&home, &staged);
+    let before = passed_over(&home, &staged).ok();
     let recorded = stamp(&artifact(&home)).map(|stamp| fs::write(home.rejected(), stamp));
     let restaged = stage_on(&home, &staged, Staging::OnlyNew).map_err(|why| why.to_string());
-    let after = passed_over(&home, &staged);
-    let retried = stage_on(&home, &staged, Staging::Always).is_ok() && !passed_over(&home, &staged);
+    let after = passed_over(&home, &staged).ok();
+    let retried = stage_on(&home, &staged, Staging::Always).is_ok()
+        && passed_over(&home, &staged).is_ok_and(|passed| !passed);
     // The retried build started, so it is the good build that runs.
-    let promoted = fs::rename(&staged, home.good()).is_ok() && !passed_over(&home, &staged);
+    let promoted = fs::rename(&staged, home.good()).is_ok()
+        && passed_over(&home, &staged).is_ok_and(|passed| !passed);
     fs::remove_dir_all(home.root()).ok();
     assert!(matches!(recorded, Ok(Ok(()))), "{recorded:?}");
     assert_eq!(
         (before, restaged, after, retried, promoted),
-        (false, Ok(()), true, true, true)
+        (Some(false), Ok(()), Some(true), true, true)
     );
 }
 

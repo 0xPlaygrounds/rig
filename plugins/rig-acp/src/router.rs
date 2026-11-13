@@ -379,7 +379,7 @@ impl Router {
         }
         let lock = dir.hold().map_err(internal)?;
         let lock = lock.ok_or_else(|| invalid(format!("session {id} is open in another rig")))?;
-        match dir.working_directory() {
+        match dir.working_directory().map_err(internal)? {
             Some(directory) => runs_in(&id, &directory, cwd)?,
             None => dir.set_working_directory(cwd).map_err(internal)?,
         }
@@ -399,7 +399,12 @@ impl Router {
     /// not the session's.
     fn in_directory(&self, id: &acp::SessionId, cwd: &Path) -> Result<(), Error> {
         let id = SessionId::from_str(&id.0).map_err(invalid)?;
-        match self.home.session(&id).working_directory() {
+        match self
+            .home
+            .session(&id)
+            .working_directory()
+            .map_err(internal)?
+        {
             Some(directory) => runs_in(&id, &directory, cwd),
             None => Ok(()),
         }

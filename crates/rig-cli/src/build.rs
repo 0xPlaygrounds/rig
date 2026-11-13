@@ -12,13 +12,14 @@
 
 use std::collections::BTreeSet;
 use std::fmt;
-use std::fs::{self, File};
+use std::fs::File;
 use std::io::{IsTerminal, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::mpsc;
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
+use rig_harness_protocol::fs;
 use rig_harness_protocol::launch::{Launch, Purpose};
 use rig_harness_protocol::{AgentDescription, Home, RunDir, config, first_errors};
 
@@ -301,7 +302,7 @@ fn terminal_width(launch: &Launch) -> Option<u16> {
     {
         return Some(columns);
     }
-    let tty = File::open("/dev/tty").ok()?;
+    let tty = fs::open(File::options().read(true), "/dev/tty").ok()?;
     let output = launch
         .build_child(Purpose::Stty)
         .arg("size")
@@ -343,10 +344,13 @@ impl BuildLog {
     fn create(home: &Home, output: BuildOutput, shown: Box<dyn Write>) -> Self {
         let path = home.build_log();
         let file = fs::create_dir_all(home.root())
-            .and_then(|()| File::create(&path))
-            .inspect_err(|failure| {
-                eprintln!("warning: could not write {}: {failure}", path.display());
+            .and_then(|()| {
+                fs::open(
+                    File::options().write(true).create(true).truncate(true),
+                    &path,
+                )
             })
+            .inspect_err(|failure| eprintln!("warning: could not keep the build log: {failure}"))
             .ok();
         Self {
             path,
@@ -527,7 +531,9 @@ impl BuildLog {
 /// Copies the built binary to `staged`, keeping its modification time so
 /// the copy carries its [`stamp`], once it described itself: a build that
 /// does not is rejected, and the build fails. A build `rig build` staged
-/// for any launcher that differs from this one is older, so it goes.
+/// for any launcher that differs from this one is older, so it goes. A
+/// good or staged build whose stamp cannot be read fails the build; a
+/// rejected stamp that cannot be read is warned of and counts as none.
 pub fn stage(launch: &Launch, staged: &Path, staging: Staging) -> Result<()> {
     let home = &launch.home();
     let artifact = artifact(home);
@@ -542,14 +548,20 @@ pub fn stage(launch: &Launch, staged: &Path, staging: Staging) -> Result<()> {
         return Ok(());
     }
     let shared = home.staged();
-    if stamp(&shared).is_ok_and(|stamp| stamp != built) {
+    let shared_stamp = stamp_if_any(&shared)?;
+    if shared_stamp.as_ref().is_some_and(|stamp| *stamp != built) {
         fs::remove_file(&shared)?;
     }
-    let known = [home.good(), shared]
-        .iter()
-        .any(|binary| stamp(binary).is_ok_and(|stamp| stamp == built))
-        || fs::read_to_string(home.rejected()).is_ok_and(|rejected| rejected == built);
-    if staging == Staging::OnlyNew && known {
+    let built = Some(built);
+    if staging == Staging::OnlyNew
+        && (stamp_if_any(&home.good())? == built
+            || shared_stamp == built
+            || rejected(home).unwrap_or_else(|why| {
+                // Only a hint against retrying: the build runs as a trial, rolled back if it crashes.
+                eprintln!("warning: a build that crashed at startup may be tried again: {why}");
+                None
+            }) == built)
+    {
         return Ok(());
     }
     let temporary = home.bin().join("staged.tmp");
@@ -564,10 +576,13 @@ pub fn stage(launch: &Launch, staged: &Path, staging: Staging) -> Result<()> {
 /// copy carries its [`stamp`].
 fn copy(from: &Path, to: &Path) -> std::io::Result<()> {
     fs::copy(from, to)?;
-    File::options()
-        .write(true)
-        .open(to)?
-        .set_modified(fs::metadata(from)?.modified()?)
+    let modified = fs::metadata(from)?
+        .modified()
+        .map_err(fs::named("look at", from))?;
+    let copied = fs::open(File::options().write(true), to)?;
+    copied
+        .set_modified(modified)
+        .map_err(fs::named("set the time of", to))
 }
 
 /// Links the build `from` at `to`, a path with no file, else copies it
@@ -615,7 +630,7 @@ const DESCRIBE_TIMEOUT: Duration = Duration::from_secs(10);
 /// [`DESCRIBE_TIMEOUT`].
 pub fn described(launch: &Launch, binary: &Path) -> Result<AgentDescription> {
     let home = &launch.home();
-    if let Some(report) = good_report(home, binary) {
+    if let Some(report) = good_report(home, binary)? {
         return Ok(report);
     }
     let kept = home.described(&stamp(binary)?);
@@ -629,10 +644,18 @@ pub fn described(launch: &Launch, binary: &Path) -> Result<AgentDescription> {
     Ok(AgentDescription::parse(&text))
 }
 
-/// The report kept for the build `binary`, if any.
-pub fn good_report(home: &Home, binary: &Path) -> Option<AgentDescription> {
-    let text = fs::read_to_string(home.described(&stamp(binary).ok()?)).ok()?;
-    Some(AgentDescription::parse(&text))
+/// The report kept for the build `binary`; `None` when there is no such
+/// build or no report for it.
+///
+/// # Errors
+///
+/// When the build's stamp or its report cannot be read, naming the file.
+pub fn good_report(home: &Home, binary: &Path) -> std::io::Result<Option<AgentDescription>> {
+    let Some(stamp) = stamp_if_any(binary)? else {
+        return Ok(None);
+    };
+    let text = fs::optional(fs::read_to_string(home.described(&stamp)))?;
+    Ok(text.map(|text| AgentDescription::parse(&text)))
 }
 
 /// Runs `binary` with [`env::DESCRIBE`] and returns what it wrote, empty
@@ -698,7 +721,7 @@ fn wait_described(mut command: Command, report: &Path, timeout: Duration) -> Res
         .into());
     };
     if status.success() {
-        return Ok(fs::read_to_string(report).unwrap_or_default());
+        return Ok(fs::optional(fs::read_to_string(report))?.unwrap_or_default());
     }
     let mut errors = Vec::new();
     while let Some(left) = deadline.checked_duration_since(Instant::now())
@@ -725,20 +748,44 @@ pub fn reject(home: &Home, trial: &Path) -> Result<()> {
 /// Whether the last build is the one [`reject`] recorded, is not the good
 /// build, and neither `staged` nor the build staged for any launcher
 /// replaces it, so a start runs the previous build instead.
-pub fn passed_over(home: &Home, staged: &Path) -> bool {
-    stamp(&artifact(home)).is_ok_and(|built| {
-        !staged.exists()
-            && !home.staged().exists()
-            && stamp(&home.good()).is_ok_and(|good| good != built)
-            && fs::read_to_string(home.rejected()).is_ok_and(|rejected| rejected == built)
-    })
+///
+/// # Errors
+///
+/// When one of those builds' stamps cannot be read, naming the file.
+pub fn passed_over(home: &Home, staged: &Path) -> std::io::Result<bool> {
+    let Some(built) = stamp_if_any(&artifact(home))? else {
+        return Ok(false);
+    };
+    Ok(stamp_if_any(staged)?.is_none()
+        && stamp_if_any(&home.staged())?.is_none()
+        && stamp_if_any(&home.good())?.is_some_and(|good| good != built)
+        && rejected(home)?.is_some_and(|rejected| rejected == built))
+}
+
+/// The stamp [`reject`] recorded; `None` when none was.
+fn rejected(home: &Home) -> std::io::Result<Option<String>> {
+    fs::optional(fs::read_to_string(home.rejected()))
+}
+
+/// The [`stamp`] of `binary`; `None` when there is no file.
+///
+/// # Errors
+///
+/// When `binary` is there but cannot be looked at, naming it.
+pub fn stamp_if_any(binary: &Path) -> std::io::Result<Option<String>> {
+    fs::optional(stamp(binary))
 }
 
 /// What tells builds apart: the binary's modification time and size.
-pub fn stamp(binary: &Path) -> Result<String> {
+///
+/// # Errors
+///
+/// When `binary` cannot be looked at, naming it.
+pub fn stamp(binary: &Path) -> std::io::Result<String> {
     let metadata = fs::metadata(binary)?;
     let modified = metadata
-        .modified()?
+        .modified()
+        .map_err(fs::named("look at", binary))?
         .duration_since(UNIX_EPOCH)
         .map(|since| since.as_nanos())
         .unwrap_or_default();
@@ -858,11 +905,14 @@ fn package(line: &str) -> Option<(&str, &str)> {
 struct Build(Child);
 
 impl Build {
+    /// Starts `command`; an error names its program.
     fn spawn(mut command: Command) -> std::io::Result<Self> {
+        let program = PathBuf::from(command.get_program());
         #[cfg(unix)]
-        return stop::spawn(&mut command).map(Self);
+        let child = stop::spawn(&mut command);
         #[cfg(not(unix))]
-        command.spawn().map(Self)
+        let child = command.spawn();
+        child.map(Self).map_err(fs::named("start", &program))
     }
 }
 

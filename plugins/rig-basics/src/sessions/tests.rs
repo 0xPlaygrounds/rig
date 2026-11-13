@@ -110,7 +110,7 @@ fn naming_another_session_changes_only_its_title() {
         name: "The parser".to_owned(),
     });
     app.update();
-    assert_eq!(dir.name().as_deref(), Some("The parser"));
+    assert_eq!(dir.name().ok().flatten().as_deref(), Some("The parser"));
     assert_eq!(SessionMeta::read(&*store), Some(before));
     assert_eq!(app.world().resource::<SessionTitle>().name, None);
     let running: SessionId = "2-2".parse().unwrap_or_else(|_| SessionId::generate());
@@ -395,7 +395,12 @@ fn name_refuses_another_saved_sessions_normalized_name_but_accepts_its_own() {
     world.flush();
     assert!(world.resource::<Messages<Recalled>>().is_empty());
     assert_eq!(
-        world.resource::<SessionPaths>().name().as_deref(),
+        world
+            .resource::<SessionPaths>()
+            .name()
+            .ok()
+            .flatten()
+            .as_deref(),
         Some("Own name")
     );
     fs::remove_dir_all(home.root()).ok();
@@ -422,7 +427,12 @@ fn naming_another_session_refuses_the_name_this_session_has() {
     world.flush();
     // Written as it is taken, so no other rig takes it meanwhile.
     assert_eq!(
-        world.resource::<SessionPaths>().name().as_deref(),
+        world
+            .resource::<SessionPaths>()
+            .name()
+            .ok()
+            .flatten()
+            .as_deref(),
         Some("Own name")
     );
     world.trigger(NameSession {
@@ -441,7 +451,7 @@ fn naming_another_session_refuses_the_name_this_session_has() {
             .iter()
             .all(|notice| { notice.text.contains("1-1") && notice.text.contains("Own name") })
     );
-    assert_eq!(dir.name(), None);
+    assert_eq!(dir.name().ok().flatten(), None);
     let current = world.resource::<SessionPaths>().id();
     assert!(current.is_some());
     if let Some(current) = current {
@@ -462,7 +472,7 @@ fn naming_another_session_refuses_the_name_this_session_has() {
     });
     world.flush();
     assert!(world.resource::<Messages<Notice>>().is_empty());
-    assert_eq!(dir.name().as_deref(), Some("Old"));
+    assert_eq!(dir.name().ok().flatten().as_deref(), Some("Old"));
     fs::remove_dir_all(home.root()).ok();
 }
 
@@ -489,7 +499,9 @@ fn resume_runs_the_session_a_name_names() {
     world.flush();
     let exits = world.resource::<Exits>().0.clone();
     let named: Option<SessionId> = "1-1".parse().ok();
-    let kept = named.as_ref().and_then(|id| home.session(id).name());
+    let kept = named
+        .as_ref()
+        .and_then(|id| home.session(id).name().ok().flatten());
     fs::remove_dir_all(home.root()).ok();
     assert_eq!(kept.as_deref(), Some("Parser"));
     assert_eq!(exits, [ExitReason::Switch(named)]);
@@ -508,7 +520,7 @@ fn an_unopened_or_refused_store_keeps_the_session_name_untouched()
         .insert_resource(SessionPaths(dir.clone()))
         .add_plugins((AgentPlugin, SessionsPlugin));
     app.update();
-    if dir.name().as_deref() != Some("preserve this name") {
+    if dir.name().ok().flatten().as_deref() != Some("preserve this name") {
         return Err(std::io::Error::other("unopened store changed session name").into());
     }
     fs::remove_dir_all(home.root())?;
@@ -621,6 +633,6 @@ fn names_given_across_sessions_and_by_plugins_never_share_one() {
     second.update();
     let refused = errors(&mut second);
     assert!(refused.iter().any(|why| why.contains("1-1")), "{refused:?}");
-    assert_eq!(home.session(&two).name(), None);
+    assert_eq!(home.session(&two).name().ok().flatten(), None);
     fs::remove_dir_all(home.root()).ok();
 }

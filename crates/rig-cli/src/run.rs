@@ -34,8 +34,8 @@
 //! answers.
 
 use std::ffi::OsString;
-use std::fs::{self, File};
-use std::io::{ErrorKind, Read, Write};
+use std::fs::File;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -43,6 +43,7 @@ use std::time::Duration;
 
 use rig_harness_protocol::config::SettingsFile;
 use rig_harness_protocol::end::AgentEnd;
+use rig_harness_protocol::fs;
 use rig_harness_protocol::launch::{AbsPath, Agent, Carry, Launch, Purpose};
 use rig_harness_protocol::{
     AgentDescription, DescribedSecret, Home, Invocation, REFUSED_EXIT_CODE, RunDir,
@@ -253,12 +254,22 @@ fn refused(why: &str) -> ExitCode {
 }
 
 /// The report of the build a new session starts with, as kept from its
-/// last build; `None` when it has none. It never builds.
+/// last build; `None` when it has none. It never builds. A report that
+/// cannot be read is warned of on stderr and is `None`, so a start still
+/// builds and `rig help` still answers.
 pub fn last_report(home: &Home) -> Option<AgentDescription> {
-    [home.staged(), home.good()]
-        .into_iter()
-        .find(|binary| binary.exists())
-        .and_then(|binary| build::good_report(home, &binary))
+    let read = || {
+        for binary in [home.staged(), home.good()] {
+            if fs::optional(fs::metadata(&binary))?.is_some() {
+                return build::good_report(home, &binary);
+            }
+        }
+        Ok(None)
+    };
+    read().unwrap_or_else(|why: std::io::Error| {
+        eprintln!("warning: the last build's report cannot be read: {why}");
+        None
+    })
 }
 
 /// Starts the agent of `claimed` with the build `running` holds, again on
@@ -276,7 +287,7 @@ fn run_agent(
     mut running: Running,
 ) -> Result<Ended> {
     let home = &launch.home();
-    let installed = Stamp::of(&launch.launcher);
+    let installed = Stamp::of(&launch.launcher)?;
     // The secrets asked for are kept with the launch, for every restart and
     // a re-exec: asked whenever someone is at the terminal, whatever the
     // front, so a command typed there can be asked too; a piped run passes
@@ -336,7 +347,9 @@ fn run_agent(
         launch.carry.notice = None;
         launch.carry.build_failure = None;
         let mut watch = stop::Watch::start();
-        let mut child = command.spawn()?;
+        let mut child = command
+            .spawn()
+            .map_err(fs::named("start", &running.current.executable))?;
         // A trial becomes the good build as soon as it is ready and the
         // build lock is free, so a launcher killed later (a closed
         // terminal) keeps it. Once the agent exited, the launcher polls for
@@ -386,7 +399,7 @@ fn run_agent(
             ready: started,
             screen: screen.took(run.took_screen()),
             heard: stop::heard().is_some(),
-            replaced: installed.replaced(&Stamp::of(&launch.launcher)),
+            replaced: Stamp::of(&launch.launcher).is_ok_and(|now| installed.replaced(&now)),
             saved: directory.is_saved(),
         };
         let runs = Runs {
@@ -482,7 +495,7 @@ fn run_agent(
                 (claimed, _) = switch(home, claimed, back)?;
                 if claimed.id != session {
                     // Told in the session it went back to, so nothing is kept.
-                    absent(fs::remove_file(run.log()))?;
+                    fs::optional(fs::remove_file(run.log()))?;
                     launch.carry.notice = Some(format!("Could not switch sessions: {why}"));
                     reason = claimed.reason;
                     continue;
@@ -842,7 +855,8 @@ fn resume_command(home: &Home, session: &SessionId, refused: bool) -> Option<Str
     if refused || !directory.is_saved() {
         return None;
     }
-    let name = directory.name().filter(|name| {
+    // A name that cannot be read is left out: the id resumes the session.
+    let name = directory.name().ok().flatten().filter(|name| {
         !name.starts_with('-')
             && !name.chars().any(|c| c.is_control() || is_format(c))
             && name.parse::<SessionId>().is_err()
@@ -885,7 +899,7 @@ fn switch(home: &Home, current: Claimed, target: Start) -> Result<(Claimed, Opti
     match claim(home, target, here.as_deref()) {
         Ok((next, notice)) => {
             current.discard_if_unsaved(home);
-            absent(fs::rename(
+            fs::optional(fs::rename(
                 home.staged_for(&current.id),
                 home.staged_for(&next.id),
             ))?;
@@ -980,11 +994,11 @@ fn claim(home: &Home, start: Start, here: Option<&Path>) -> Result<(Claimed, Opt
     };
     let session = home.session(&id);
     let mut moved = None;
-    let directory = match session.working_directory() {
+    let directory = match session.working_directory()? {
         Some(directory) => Some(directory),
         None => {
             if let Some(here) = here {
-                moved = session.saved_directory().map(|gone| {
+                moved = session.saved_directory()?.map(|gone| {
                     format!(
                         "The session's directory {} is gone, so it runs in {}.",
                         gone.display(),
@@ -1108,14 +1122,6 @@ fn read_secret(input: &mut impl Read) -> std::io::Result<Option<Vec<u8>>> {
     }
 }
 
-/// `result`, with a missing file as `None`.
-fn absent<T>(result: std::io::Result<T>) -> std::io::Result<Option<T>> {
-    match result {
-        Err(failure) if failure.kind() == ErrorKind::NotFound => Ok(None),
-        result => result.map(Some),
-    }
-}
-
 /// Builds before every start, staging for this launcher, its output as
 /// `output` says; cargo does no work when nothing changed. With no good
 /// build yet, the build is staged even if it was rejected before, so each
@@ -1146,11 +1152,13 @@ fn rebuild(
     let staged = home.staged_for(session);
     match build::compile(launch, &staged, staging, output) {
         Ok(()) => {
-            if build::passed_over(home, &staged) {
-                eprintln!(
+            match build::passed_over(home, &staged) {
+                Ok(true) => eprintln!(
                     "The new build stopped during startup before, so the previous build is \
                      running; `rig build` tries it again."
-                );
+                ),
+                Ok(false) => {}
+                Err(why) => eprintln!("warning: which build runs is not known: {why}"),
             }
             Ok(None)
         }
@@ -1226,8 +1234,9 @@ impl Drop for BuildRef {
 /// The builds the launcher of `session` holds in `run` for its next start:
 /// a build staged for it or for any launcher, claimed as a trial, rolling
 /// back to `current` or else the good build; without one, `current`, else
-/// the good build. Call it holding [`locks::hold_build_lock`], so the
-/// claims and the good build it reads are the ones it holds.
+/// the good build. A staged path that is no file, or cannot be looked at
+/// or read, is warned of and passed over. Call it holding [`locks::hold_build_lock`],
+/// so the claims and the good build it reads are the ones it holds.
 fn select(
     launch: &Launch,
     session: &SessionId,
@@ -1235,15 +1244,36 @@ fn select(
     current: Option<BuildRef>,
 ) -> Result<Running> {
     let home = &launch.home();
-    let good = build::stamp(&home.good()).ok();
+    let good = build::stamp_if_any(&home.good())?;
     let held_before = match current {
         Some(current) => Some(current),
         None => hold_good(launch, run)?,
     };
     for staged in [home.staged_for(session), home.staged()] {
+        match fs::optional(fs::metadata(&staged)) {
+            Ok(Some(metadata)) if metadata.is_file() => {
+                // One this launcher cannot read is no build it can start.
+                if let Err(why) = fs::open(File::options().read(true), &staged) {
+                    eprintln!("warning: a staged build is not started: {why}");
+                    continue;
+                }
+            }
+            Ok(None) => continue,
+            Ok(Some(_)) => {
+                eprintln!(
+                    "warning: {} is not a build, so it is not started",
+                    staged.display()
+                );
+                continue;
+            }
+            Err(why) => {
+                eprintln!("warning: a staged build is not started: {why}");
+                continue;
+            }
+        }
         let held = held(run)?;
         // The rename claims the staged build for this launcher alone.
-        if absent(fs::rename(staged, &held))?.is_some() {
+        if fs::optional(fs::rename(staged, &held))?.is_some() {
             let current = BuildRef::new(launch, held, Role::Trial { good });
             return Ok(Running {
                 current,
@@ -1261,7 +1291,10 @@ fn select(
 fn hold_good(launch: &Launch, run: &RunDir) -> Result<Option<BuildRef>> {
     let held = held(run)?;
     let good = launch.home().good();
-    Ok(absent(build::hold(&good, &held))?.map(|()| BuildRef::new(launch, held, Role::Proven)))
+    Ok(
+        fs::optional(build::hold(&good, &held))?
+            .map(|()| BuildRef::new(launch, held, Role::Proven)),
+    )
 }
 
 /// A path in `run` for a build to hold, which no other build of this
@@ -1283,9 +1316,9 @@ fn promote(home: &Home, build: &mut BuildRef) -> Result<bool> {
     let Role::Trial { good } = std::mem::replace(&mut build.role, Role::Proven) else {
         return Ok(true);
     };
-    if build::stamp(&home.good()).ok() == good {
+    if build::stamp_if_any(&home.good())? == good {
         let temporary = home.bin().join("good.tmp");
-        absent(fs::remove_file(&temporary))?;
+        fs::optional(fs::remove_file(&temporary))?;
         build::hold(&build.executable, &temporary)?;
         fs::rename(&temporary, home.good())?;
     }

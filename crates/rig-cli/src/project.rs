@@ -8,12 +8,12 @@
 //! each names the launcher version, so a new launcher rebuilds the agent.
 
 use std::collections::BTreeSet;
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use rig_harness_protocol::Home;
 use rig_harness_protocol::config::toml_edit::{DocumentMut, Item};
 use rig_harness_protocol::config::{BUILT_IN, Extra, Plugins, Source, built_in};
+use rig_harness_protocol::fs;
 
 use super::{LONG_VERSION, Result, VERSION};
 
@@ -152,8 +152,7 @@ pub fn rig_crates(plugins: &Plugins, source: &RigSource) -> Result<BTreeSet<Stri
 /// says why: the operating system's error, or the TOML error.
 pub fn read_manifest(directory: &Path) -> Result<DocumentMut> {
     let path = directory.join("Cargo.toml");
-    let text = fs::read_to_string(&path)
-        .map_err(|error| format!("cannot read {}: {error}", path.display()))?;
+    let text = fs::read_to_string(&path)?;
     Ok((text.parse()).map_err(|error| format!("{} is not TOML: {error}", path.display()))?)
 }
 
@@ -276,10 +275,9 @@ pub fn generate(home: &Home, plugins: &Plugins, source: &RigSource) -> Result<()
                 fs::write(&seed, checkouts)?;
             }
         }
-        RigSource::Registry => match fs::remove_file(&seed) {
-            Err(error) if error.kind() != std::io::ErrorKind::NotFound => return Err(error.into()),
-            _ => {}
-        },
+        RigSource::Registry => {
+            fs::optional(fs::remove_file(&seed))?;
+        }
     }
     Ok(())
 }

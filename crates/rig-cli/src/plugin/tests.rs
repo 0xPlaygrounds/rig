@@ -225,7 +225,7 @@ fn a_plugin_whose_manifest_cannot_be_read_is_refused_with_why() {
         #[cfg(unix)]
         if case == "unreadable" {
             use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(&manifest, fs::Permissions::from_mode(0o000)).ok();
+            fs::set_permissions(&manifest, std::fs::Permissions::from_mode(0o000)).ok();
         }
         // The operating system's own words, unless the file reads (as root).
         let why = match fs::read_to_string(&manifest) {

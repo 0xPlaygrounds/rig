@@ -827,7 +827,10 @@ fn a_rewrite_of_a_stopped_session_reaches_its_scratch_files() {
     let done = rewrite_stopped(&stores, &session, &stopped, by(), &redact());
     assert_eq!(done.map(|done| done.logs.len()), Ok(1));
     assert_eq!(secret_in(stopped.path()), Vec::<PathBuf>::new());
-    assert_eq!(stopped.name().as_deref(), Some("key [REDACTED]"));
+    assert_eq!(
+        stopped.name().ok().flatten().as_deref(),
+        Some("key [REDACTED]")
+    );
     fs::remove_dir_all(home.root()).ok();
 }
 

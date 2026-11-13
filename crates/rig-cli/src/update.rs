@@ -14,7 +14,7 @@
 //! secrets ([`Launch::reexec`]). `/update` in the agent runs `rig update`,
 //! then reloads.
 
-use std::fs;
+use rig_harness_protocol::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 

@@ -325,6 +325,8 @@ fn headless_reload(name: &str, rebuild: Rebuild, replace: bool, json: bool) -> E
         String::new()
     };
     std::fs::write(&build, format!("#!/bin/sh\n{replacing}\nexit 0\n")).ok();
+    let started = harness_protocol::Stamp::of(&installed);
+    assert!(started.is_ok(), "{started:?}");
     let (mut app, wakes) = app_on(&MemoryStore::default());
     app.insert_resource(Invoked {
         args: harness_protocol::Invocation {
@@ -339,7 +341,7 @@ fn headless_reload(name: &str, rebuild: Rebuild, replace: bool, json: bool) -> E
     })
     .insert_resource(LauncherFile::new(
         installed.clone(),
-        harness_protocol::Stamp::of(&installed),
+        started.unwrap_or_else(|_| harness_protocol::Stamp::parse("")),
     ))
     .insert_resource(scripted_models([]))
     .add_plugins((

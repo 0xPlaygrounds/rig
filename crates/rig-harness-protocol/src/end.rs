@@ -21,7 +21,7 @@ use std::io;
 use std::num::NonZeroU8;
 use std::process::ExitStatus;
 
-use crate::{REFUSED_EXIT_CODE, RELOAD_EXIT_CODE, RunDir, SIGNAL_EXIT_CODE, SessionId};
+use crate::{REFUSED_EXIT_CODE, RELOAD_EXIT_CODE, RunDir, SIGNAL_EXIT_CODE, SessionId, fs};
 
 /// The name of the record in the run directory.
 pub(crate) const FILE: &str = "end";
@@ -76,8 +76,8 @@ impl AgentEnd {
     /// When the file cannot be written or renamed.
     pub fn write(&self, run: &RunDir) -> io::Result<()> {
         let written = run.path().join(format!("{FILE}.new"));
-        std::fs::write(&written, self.to_string())?;
-        std::fs::rename(&written, run.path().join(FILE))
+        fs::write(&written, self.to_string())?;
+        fs::rename(&written, run.path().join(FILE))
     }
 
     /// How the agent of `run` that exited with `status` ended: its record
@@ -86,7 +86,7 @@ impl AgentEnd {
     /// as an end is no record: the launcher must still clean up after the
     /// agent and put the terminal back.
     pub fn read(run: &RunDir, status: ExitStatus) -> Self {
-        let recorded = std::fs::read_to_string(run.path().join(FILE))
+        let recorded = fs::read_to_string(run.path().join(FILE))
             .ok()
             .and_then(|text| Self::parse(&text));
         match recorded {

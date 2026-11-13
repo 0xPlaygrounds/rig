@@ -19,8 +19,10 @@
 
 use std::collections::BTreeSet;
 use std::fmt;
-use std::io::{ErrorKind, Write as _};
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
+
+use crate::fs;
 
 pub use toml_edit;
 use toml_edit::{Array, DocumentMut, Item, TableLike, Value};
@@ -263,13 +265,9 @@ impl fmt::Display for Source {
 /// what it is about, so its text is what the user is told.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Error {
-    /// A file that could not be read or written, and why.
-    Io {
-        /// The file.
-        path: PathBuf,
-        /// What failed.
-        message: String,
-    },
+    /// A file that could not be read or written: which, at which step, and
+    /// why, as [`crate::fs`] says.
+    Io(String),
     /// A file that is not TOML, at the line and column of its first error.
     NotToml {
         /// The file.
@@ -296,10 +294,17 @@ pub enum Error {
     },
 }
 
+impl Error {
+    /// A failure of [`crate::fs`], which names its file and step.
+    fn io(failure: std::io::Error) -> Self {
+        Self::Io(failure.to_string())
+    }
+}
+
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Io { path, message } => write!(f, "{}: {message}", path.display()),
+            Self::Io(message) => f.write_str(message),
             Self::NotToml { path, at, message } => {
                 write!(f, "{}: not TOML", path.display())?;
                 if let Some((line, column)) = at {
@@ -342,15 +347,11 @@ impl SettingsFile {
     /// When it cannot be read or is not TOML, naming the file, and the line
     /// and column of the first error.
     pub fn read(path: &Path) -> Result<Self, Error> {
-        match std::fs::read_to_string(path) {
-            Ok(text) => Self::parse(path.to_path_buf(), &text),
-            Err(failure) if failure.kind() == ErrorKind::NotFound => Ok(Self {
+        match fs::optional(fs::read_to_string(path)).map_err(Error::io)? {
+            Some(text) => Self::parse(path.to_path_buf(), &text),
+            None => Ok(Self {
                 path: path.to_path_buf(),
                 document: DocumentMut::new(),
-            }),
-            Err(failure) => Err(Error::Io {
-                path: path.to_path_buf(),
-                message: format!("could not read: {failure}"),
             }),
         }
     }
@@ -750,36 +751,30 @@ pub fn edit<T, E: From<Error>>(
     change: impl FnOnce(&mut SettingsFile) -> Result<(bool, T), E>,
 ) -> Result<(bool, T), E> {
     let target = linked(path)?;
-    let named = |failure: std::io::Error| Error::Io {
-        path: target.clone(),
-        message: failure.to_string(),
-    };
     let (directory, name) = match (target.parent(), target.file_name()) {
         (Some(directory), Some(name)) => (directory, name.to_string_lossy()),
         _ => {
-            return Err(Error::Io {
-                path: path.to_path_buf(),
-                message: "not a file's path".to_owned(),
-            }
-            .into());
+            return Err(Error::Io(format!("{}: not a file's path", path.display())).into());
         }
     };
     // Only the home's own folder is made; a link's folder is the user's.
     if target == path {
-        std::fs::create_dir_all(directory).map_err(named)?;
+        fs::create_dir_all(directory).map_err(Error::io)?;
     }
-    let lock = crate::lock_file(&directory.join(format!(".{name}.lock")), true).map_err(named)?;
-    lock.lock().map_err(named)?;
+    let lock_path = directory.join(format!(".{name}.lock"));
+    let lock = crate::lock_file(&lock_path, true).map_err(Error::io)?;
+    lock.lock()
+        .map_err(|failure| Error::Io(format!("lock {}: {failure}", lock_path.display())))?;
     let mut file = SettingsFile::read(&target)?;
     file.path = path.to_path_buf();
     let (changed, value) = change(&mut file)?;
     if changed {
         let staged = directory.join(format!(".{name}.{}", std::process::id()));
-        let was = std::fs::metadata(&target)
-            .ok()
+        let was = fs::optional(fs::metadata(&target))
+            .map_err(Error::io)?
             .map(|meta| meta.permissions());
         // A crash's leftover, or a link planted here, must not become this copy.
-        std::fs::remove_file(&staged).ok();
+        fs::optional(fs::remove_file(&staged)).map_err(Error::io)?;
         let mut options = std::fs::OpenOptions::new();
         options.write(true).create_new(true);
         // Only a file that exists has a mode to protect; a new one gets the default.
@@ -787,17 +782,18 @@ pub fn edit<T, E: From<Error>>(
         if was.is_some() {
             std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
         }
-        let replaced = options
-            .open(&staged)
+        let replaced = fs::open(&options, &staged)
             .and_then(|mut opened| {
-                opened.write_all(file.document.to_string().as_bytes())?;
+                (opened.write_all(file.document.to_string().as_bytes()))
+                    .map_err(fs::named("write", &staged))?;
                 // A file the user made private stays so.
                 was.map_or(Ok(()), |was| opened.set_permissions(was))
+                    .map_err(fs::named("set permissions of", &staged))
             })
-            .and_then(|()| std::fs::rename(&staged, &target));
+            .and_then(|()| fs::rename(&staged, &target));
         replaced.map_err(|failure| {
-            std::fs::remove_file(&staged).ok();
-            named(failure)
+            fs::remove_file(&staged).ok();
+            Error::io(failure)
         })?;
     }
     Ok((changed, value))
@@ -814,20 +810,17 @@ pub fn edit<T, E: From<Error>>(
 fn linked(path: &Path) -> Result<PathBuf, Error> {
     // Linux's own limit on links followed in one lookup.
     const LINKS: usize = 40;
-    let named = |message: String| Error::Io {
-        path: path.to_path_buf(),
-        message,
-    };
     let mut at = path.to_path_buf();
     for _ in 0..=LINKS {
-        if !std::fs::symlink_metadata(&at).is_ok_and(|meta| meta.file_type().is_symlink()) {
+        if !fs::symlink_metadata(&at).is_ok_and(|meta| meta.file_type().is_symlink()) {
             return Ok(at);
         }
-        let next = std::fs::read_link(&at).map_err(|failure| named(failure.to_string()))?;
+        let next = fs::read_link(&at).map_err(Error::io)?;
         at = at.parent().unwrap_or(Path::new("")).join(next);
     }
-    Err(named(format!(
-        "more than {LINKS} links in a row, or a loop"
+    Err(Error::Io(format!(
+        "{}: more than {LINKS} links in a row, or a loop",
+        path.display()
     )))
 }
 

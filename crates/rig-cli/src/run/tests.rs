@@ -1,6 +1,6 @@
 #![allow(
     clippy::disallowed_methods,
-    reason = "test fixtures run programs of their own"
+    reason = "test fixtures run programs and touch files of their own"
 )]
 
 use rig_harness_protocol::fake_agent::{self, Step};
@@ -311,7 +311,7 @@ fn builds(name: &str, trial: &str, good: &str) -> Home {
     for (path, which, body) in [(home.staged(), "trial", trial), (home.good(), "good", good)] {
         let script = format!("#!/bin/sh\necho {which} >> \"$RIG_HOME/ran\"\n{body}\n");
         fs::write(&path, script).ok();
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).ok();
+        fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).ok();
     }
     home
 }
@@ -368,6 +368,32 @@ fn a_one_shot_run_is_never_run_again_on_the_previous_build() {
     let (code, ran, good) = one_shot(&home);
     assert_eq!(ran, "trial\n");
     assert_eq!((code, good.as_str()), (Some(ExitCode::from(1)), "trial"));
+}
+
+/// A staged build that is a directory, a symlink loop or a file that cannot
+/// be read is no build: the start runs the good build instead of failing on it.
+#[cfg(unix)]
+#[test]
+fn a_staged_file_that_is_no_build_starts_the_good_build() {
+    use std::os::unix::fs::PermissionsExt;
+    for broken in ["directory", "loop", "unreadable"] {
+        let home = builds(&format!("staged-{broken}"), "exit 3", "exit 0");
+        let staged = home.staged();
+        match broken {
+            "directory" => fs::remove_file(&staged).and_then(|()| fs::create_dir_all(&staged)),
+            "loop" => {
+                fs::remove_file(&staged).and_then(|()| std::os::unix::fs::symlink(&staged, &staged))
+            }
+            _ => fs::set_permissions(&staged, std::fs::Permissions::from_mode(0o000)),
+        }
+        .ok();
+        let (code, ran, _) = one_shot(&home);
+        assert_eq!(
+            (code, ran.as_str()),
+            (Some(ExitCode::SUCCESS), "good\n"),
+            "{broken}"
+        );
+    }
 }
 
 /// A start whose settings name a plugin rig does not know, or a local
@@ -547,6 +573,43 @@ const LOG_START: &str = "echo \"$RIG_SESSION $RIG_START $RIG_NOTICE\" >> \"$RIG_
 /// The refusal of a session an older rig saved.
 fn too_old() -> AgentEnd {
     AgentEnd::Refused("too old.".to_owned())
+}
+
+/// A resumed session whose saved directory file cannot be read, here as it
+/// is not text, is refused, naming the file, and the file stays: rig does
+/// not take the read as no directory and move the session to where it was
+/// started.
+#[cfg(unix)]
+#[test]
+fn a_resumed_session_whose_directory_cannot_be_read_is_refused() {
+    let root = std::env::temp_dir().join(format!("rig-unread-dir-{}", std::process::id()));
+    fs::remove_dir_all(&root).ok();
+    let home = Home::at(&root);
+    let here = root.join("here");
+    let unreadable = [0xff, 0xfe, b'\n'];
+    let said = locks::hold_run(&home).and_then(|_run| {
+        let (id, session) = home.new_session()?;
+        session.mark_saved()?;
+        fs::write(session.directory(), unreadable)?;
+        fs::create_dir_all(&here)?;
+        let claimed = claim(&home, Start::Resume(id), Some(&here)).map(|_| ());
+        Ok((
+            claimed.map_err(|failure| failure.to_string()),
+            fs::read(session.directory())?,
+        ))
+    });
+    fs::remove_dir_all(&root).ok();
+    let (claimed, kept) = match said {
+        Ok(said) => said,
+        Err(failure) => (Err(format!("setup: {failure}")), Vec::new()),
+    };
+    assert!(
+        claimed
+            .as_ref()
+            .is_err_and(|failure| failure.contains("/directory: ")),
+        "{claimed:?}"
+    );
+    assert_eq!(kept, unreadable);
 }
 
 /// A `/resume` of a session whose run is refused, such as one an older rig
@@ -1273,7 +1336,7 @@ fn script(path: &Path, body: &str) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
 
     fs::write(path, format!("#!/bin/sh\n{body}\n"))?;
-    fs::set_permissions(path, fs::Permissions::from_mode(0o755))?;
+    fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))?;
     Ok(())
 }
 
@@ -1611,8 +1674,8 @@ fn run_once(
     headless: bool,
 ) -> Result<(Ended, String)> {
     let run = locks::hold_run(home)?;
-    absent(fs::remove_file(home.staged()))?;
-    absent(fs::remove_file(home.root().join("fake-agent-starts")))?;
+    fs::optional(fs::remove_file(home.staged()))?;
+    fs::optional(fs::remove_file(home.root().join("fake-agent-starts")))?;
     fs::write(home.good(), fake_agent::script(starts))?;
     let (claimed, _) = claim(home, start, None)?;
     let running = select(
@@ -1629,7 +1692,7 @@ fn run_once(
         claimed,
         running,
     )?;
-    let started = absent(fs::read_to_string(home.root().join("started")))?;
+    let started = fs::optional(fs::read_to_string(home.root().join("started")))?;
     Ok((ended, started.unwrap_or_default()))
 }
 

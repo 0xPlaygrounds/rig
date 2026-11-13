@@ -1,10 +1,11 @@
 //! The locks launchers sharing one `RIG_HOME` take: the build lock, each
 //! session's launcher lock, and each launcher's run directory.
 
-use std::fs::{self, File, TryLockError};
+use std::fs::{File, TryLockError};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
+use rig_harness_protocol::fs;
 use rig_harness_protocol::{Home, RunDir, SessionDir, is_free, lock_file};
 
 use super::Result;
