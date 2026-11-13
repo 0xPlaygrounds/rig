@@ -1926,7 +1926,7 @@ impl ReplyCallItem<'_, '_> {
     /// ([`ToolResultContext::kept`](rig_core::tool::ToolResultContext::kept)),
     /// or, restored, as its mark kept it.
     fn facts(&self) -> Option<rig_core::tool::ToolResultContext> {
-        let published = self.published.map(|published| published.0.kept());
+        let published = self.published.map(Published::kept);
         published.or_else(|| self.kept.map(|kept| kept.0.clone()))
     }
 }

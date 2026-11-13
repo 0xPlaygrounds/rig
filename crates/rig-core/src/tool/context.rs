@@ -71,13 +71,6 @@ impl std::fmt::Debug for ToolResultContext {
     }
 }
 
-/// The most bytes of JSON a call's published values may take together to
-/// be kept with a conversation ([`ToolResultContext::kept`]): room for the
-/// diff of a large edit, while a value past it, such as the diff of a
-/// rewritten generated file, is left out rather than grow the session by
-/// as much.
-pub const MAX_KEPT_FACTS_BYTES: usize = 256 * 1024;
-
 /// The key [`ToolResultContext::with_at`] keeps its call under.
 const AT: &str = "rig.at";
 
@@ -113,9 +106,10 @@ impl ToolResultContext {
     /// ([`ResultFacts`](crate::conversation::ResultFacts)), for a view to
     /// draw the call from after a resume: the whole old text of each
     /// changed file ([`FileChange::before_text`]) left out, since the hunks
-    /// show the change, and, past
-    /// [`MAX_KEPT_FACTS_BYTES`] of JSON, the largest values left out, so a
-    /// small one such as an exit status stays.
+    /// show the change, and, past `max_bytes` of JSON, the largest values
+    /// left out, so a small one such as an exit status stays. The result
+    /// encodes to at most `max_bytes.max(2)`: an empty map's `{}` is the
+    /// floor, kept for any smaller budget.
     ///
     /// ```
     /// use rig_core::tool::{ExitStatus, FileChange, FilesChanged, ToolContext};
@@ -124,7 +118,7 @@ impl ToolResultContext {
     /// context.insert_result(ExitStatus::Exited(0))?;
     /// let change = FileChange::modified("a.rs", 1, 1).with_before_text("old\n");
     /// context.insert_result(FilesChanged(vec![change]))?;
-    /// let kept = context.result_context().kept();
+    /// let kept = context.result_context().kept(64 * 1024);
     /// assert_eq!(kept.get::<ExitStatus>()?, Some(ExitStatus::Exited(0)));
     /// let changed = kept.get::<FilesChanged>()?.unwrap_or_default();
     /// assert_eq!(changed.0.first().map(|change| change.before_text.is_none()), Some(true));
@@ -133,7 +127,7 @@ impl ToolResultContext {
     ///
     /// [`FileChange::before_text`]: super::FileChange::before_text
     #[must_use]
-    pub fn kept(&self) -> Self {
+    pub fn kept(&self, max_bytes: usize) -> Self {
         let mut kept = self.0.clone();
         if let Ok(Some(mut changed)) = get_slot::<super::FilesChanged>(&kept) {
             for change in &mut changed.0 {
@@ -152,7 +146,7 @@ impl ToolResultContext {
             })
             .collect();
         sized.sort_by_key(|(size, ..)| *size);
-        let mut room = MAX_KEPT_FACTS_BYTES.saturating_sub(2);
+        let mut room = max_bytes.saturating_sub(2);
         let mut fits = BTreeMap::new();
         for (size, key, value) in sized {
             if size <= room {
