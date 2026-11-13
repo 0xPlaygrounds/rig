@@ -11,7 +11,7 @@ const tool=(name,parameters,extra={})=>({name,description:'offline schema parity
 const props=(n,schema)=>Object.fromEntries(Array.from({length:n},(_,i)=>[`p${i}`,structuredClone(schema)]));
 const cases=[];
 const add=(name,tools)=>cases.push({name,tools});
-add('allowlist',[...['python','edit','find','yield','bash','read','custom'].map(n=>tool(n,obj({x:{type:'string'}}))),tool('edit',obj(),{strict:false}),tool('custom',obj(),{strict:true})]);
+add('strict_selection',[...['python','edit','find','yield','bash','read','custom'].map(n=>tool(n,obj({x:{type:'string'}}))),tool('edit',obj(),{strict:false}),tool('custom',obj(),{strict:true})]);
 for(const n of [23,24,25]) add(`optional_${n}`,[tool('python',obj(props(n,{type:'string'}),[])),tool('edit',obj({tail:{type:'string'}},[])),tool('find',obj())]);
 for(const n of [15,16,17]) add(`union_${n}`,[tool('python',obj(props(n,{anyOf:[{type:'string'},{type:'number'}]}))),tool('edit',obj({tail:{anyOf:[{type:'boolean'},{type:'null'}]}})),tool('find',obj())]);
 for(const n of [19,20,21]) add(`strict_tools_${n}`,Array.from({length:n},()=>tool('python',obj())));

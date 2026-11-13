@@ -191,22 +191,12 @@
               "type": "string"
             },
             "p24": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": "string"
             }
           },
-          "required": [
-            "p24"
-          ],
+          "required": [],
           "additionalProperties": false
-        },
-        "strict": true
+        }
       },
       {
         "name": "edit",
@@ -215,19 +205,10 @@
           "type": "object",
           "properties": {
             "tail": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": "string"
             }
           },
-          "required": [
-            "tail"
-          ],
+          "required": [],
           "additionalProperties": false
         },
         "strict": true

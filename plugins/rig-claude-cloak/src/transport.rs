@@ -182,14 +182,7 @@ fn prefix_name(value: &mut Value) {
 
 fn prefix_tools(value: &mut Value) {
     if let Some(tools) = value.get_mut("tools").and_then(Value::as_array_mut) {
-        for tool in tools {
-            if tool.get("name").and_then(Value::as_str) == Some("yield")
-                && tool.get("eager_input_streaming").is_some()
-            {
-                tool["eager_input_streaming"] = false.into();
-            }
-            prefix_name(tool);
-        }
+        tools.iter_mut().for_each(prefix_name);
     }
     if let Some(choice) = value.get_mut("tool_choice") {
         prefix_name(choice);

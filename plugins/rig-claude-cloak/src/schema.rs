@@ -52,14 +52,12 @@ pub(crate) fn normalize_tools(body: &mut Value) {
         let mut wire = upgrade(Value::Object(raw.clone()));
         postprocess(&mut wire);
         empty_schemas(&mut wire);
-        let Some(raw) = wire.as_object() else {
+        let Some(raw) = wire.as_object_mut() else {
             continue;
         };
-        let candidate = matches!(
-            tool.get("name").and_then(Value::as_str),
-            Some("python" | "edit" | "find" | "yield")
-        ) && tool.get("strict") != Some(&Value::Bool(false))
-            && !incompatible(&Value::Object(raw.clone()));
+        let candidate = tool.get("strict") != Some(&Value::Bool(false))
+            && !incompatible(&Value::Object(raw.clone()))
+            && !free_form_object(raw);
         let mut raw = raw.clone();
         raw.insert("type".into(), json!("object"));
         if !raw.get("properties").is_some_and(Value::is_object) {
@@ -78,15 +76,21 @@ pub(crate) fn normalize_tools(body: &mut Value) {
             .unwrap_or_default();
         raw.insert("required".into(), Value::Array(required));
         let mut schema = normalize(Value::Object(raw), true);
-        remove_preserving_order(tool, "strict");
+        let mut strict = false;
         if candidate && strict_count < 20 {
             let mut budget = remaining;
-            if let Some(strict) = strict_schema(schema.clone(), &mut budget) {
-                schema = strict;
+            if let Some(checked) = strict_schema(schema.clone(), &mut budget) {
+                schema = checked;
                 remaining = budget;
                 strict_count += 1;
-                tool.insert("strict".into(), Value::Bool(true));
+                strict = true;
             }
+        }
+        // Inserting keeps a caller's `strict` where it was, so a replayed body is unchanged.
+        if strict {
+            tool.insert("strict".into(), Value::Bool(true));
+        } else {
+            remove_preserving_order(tool, "strict");
         }
         tool.insert("input_schema".into(), schema);
     }
@@ -261,6 +265,21 @@ fn incompatible(value: &Value) -> bool {
     }
 }
 
+/// Whether a schema nested in `schema` is an object with neither `properties` nor
+/// `additionalProperties`. JSON Schema reads it as an open map, which strict mode would pin to `{}`.
+fn free_form_object(schema: &mut Map<String, Value>) -> bool {
+    let mut found = false;
+    schema_children(schema, |child| {
+        if let Value::Object(child) = child {
+            found |= (scalar_type(child) == Some("object")
+                && !child.contains_key("properties")
+                && !child.contains_key("additionalProperties"))
+                || free_form_object(child);
+        }
+    });
+    found
+}
+
 #[derive(Clone, Copy)]
 struct Budget {
     optional: usize,
@@ -270,36 +289,6 @@ struct Budget {
 fn spend_union(budget: &mut Budget) -> Option<()> {
     budget.union = budget.union.checked_sub(1)?;
     Some(())
-}
-
-fn nullable(mut value: Value, budget: &mut Budget) -> Option<Value> {
-    if let Some(schema) = value.as_object_mut() {
-        if schema
-            .get("type")
-            .and_then(Value::as_array)
-            .is_some_and(|types| types.iter().any(|value| value == "null"))
-            || schema
-                .get("anyOf")
-                .and_then(Value::as_array)
-                .is_some_and(|variants| {
-                    variants
-                        .iter()
-                        .any(|value| value.get("type") == Some(&json!("null")))
-                })
-        {
-            return Some(value);
-        }
-        if let Some(Value::Array(variants)) = schema.get_mut("anyOf") {
-            variants.push(json!({"type":"null"}));
-            return Some(value);
-        }
-        if let Some(Value::Array(types)) = schema.get_mut("type") {
-            types.push(json!("null"));
-            return Some(value);
-        }
-    }
-    spend_union(budget)?;
-    Some(json!({"anyOf": [value, {"type":"null"}]}))
 }
 
 fn strict_schema(value: Value, budget: &mut Budget) -> Option<Value> {
@@ -372,12 +361,10 @@ fn strict_schema(value: Value, budget: &mut Budget) -> Option<Value> {
             {
                 *child = normalized;
                 required.push(Value::String(name.clone()));
-            } else if budget.optional > 0 {
-                budget.optional -= 1;
-                *child = normalized;
             } else {
-                *child = nullable(normalized, budget)?;
-                required.push(Value::String(name.clone()));
+                // Past the budget the tool is sent without `strict`, so the parameter stays optional.
+                budget.optional = budget.optional.checked_sub(1)?;
+                *child = normalized;
             }
         }
         schema.insert("required".into(), Value::Array(required));
