@@ -21,7 +21,9 @@ use rig_core::{
     completion::ModelRef,
     effect::{Answered, EffectKind},
     error::{ErrorKind, ErrorReport},
-    message::{AssistantContent, Message, ToolCall, ToolFunction, ToolName},
+    message::{
+        self, AssistantContent, Message, ToolCall, ToolFunction, ToolName, ToolResultContent,
+    },
     telemetry::SpanCombinator,
     tool::Touches,
     wasm_compat::{WasmBoxedFuture, WasmBoxedStream, WasmCompatSend, WasmCompatSync},
@@ -77,13 +79,13 @@ pub(crate) enum Surfaced {
 }
 
 /// Engine output: stream items for forwarding (no bare tool item: only
-/// [`committed_stream_items`] builds [`ProjectedItems`]), a tool call's live
-/// start, or the terminal response.
+/// [`committed_stream_items`] builds [`ProjectedItems`]), what a tool call
+/// reports while its batch runs, or the terminal response.
 pub(crate) enum DriveItem {
     /// A non-tool item, including the streaming surface's final response.
     Surfaced(Surfaced),
-    /// See [`MultiTurnStreamItem::ToolExecutionStarted`](crate::agent::MultiTurnStreamItem::ToolExecutionStarted).
-    Started(ToolCall),
+    /// A call's live start or output item, before its batch commits.
+    Live(LiveTool),
     /// The tool items of what the run committed since the last projection.
     Projected(ProjectedItems),
     /// The run finished: the response the blocking fold returns.
@@ -410,7 +412,7 @@ where
                                 .to_string(),
                         )), break 'outer);
                     };
-                    // Starts are reported only where something forwards them.
+                    // Live items are reported only where something forwards them.
                     let (report, mut reports) = mpsc::unbounded();
                     let settled = {
                         let mut settle = drive_tool_calls(
@@ -426,9 +428,9 @@ where
                         loop {
                             match future::select(&mut settle, reports.next()).await {
                                 Either::Left((settled, _)) => break settled,
-                                Either::Right((Some((call, taken)), _)) => {
-                                    yield Ok(DriveItem::Started(call));
-                                    // The consumer took the start: the call may run.
+                                Either::Right((Some((live, taken)), _)) => {
+                                    yield Ok(DriveItem::Live(live));
+                                    // The consumer took the item: the call goes on.
                                     let _ = taken.send(());
                                 }
                                 Either::Right((None, _)) => break settle.await,
@@ -504,8 +506,9 @@ where
 ///
 /// `chain_tool_span` lets the blocking surface chain spans into its linear
 /// `follows_from` sequence; `is_streaming` is reported to the invalid-call hook.
-/// With `started`, each call that is dispatched reports its start there and
-/// waits until the report is taken, before its hooks and body run.
+/// With `live`, each call that is dispatched reports its start there before
+/// its hooks and body run, then its accepted output items once its outcome
+/// hooks ran, and waits until each report is taken.
 pub(crate) fn drive_tool_calls<'a, F>(
     runner: &'a AgentRunner,
     hook_ctx: &'a HookContext,
@@ -514,7 +517,7 @@ pub(crate) fn drive_tool_calls<'a, F>(
     tool_snapshot: Arc<ToolCatalog>,
     chain_tool_span: F,
     is_streaming: bool,
-    started: Option<StartedSender>,
+    live: Option<LiveSender>,
 ) -> WasmBoxedFuture<'a, Result<Vec<Option<ToolCall>>, PromptError>>
 where
     F: Fn(tracing::Span) -> tracing::Span + WasmCompatSend + 'a,
@@ -571,7 +574,7 @@ where
             )| {
                 let tool_snapshot = &tool_snapshot;
                 let terminating = terminating.clone();
-                let started = started.clone();
+                let live = live.clone();
                 async move {
                     // `None` marks a dropped (never-started) sibling.
                     if terminating.load(std::sync::atomic::Ordering::SeqCst) {
@@ -579,12 +582,18 @@ where
                     }
                     let outcome = match call {
                         Ok(call) => {
-                            if let Some(started) = &started {
-                                report_start(started, call.tool_call()).await;
+                            let tool_call = call.tool_call();
+                            if let Some(live) = &live {
+                                report(live, LiveTool::Started(tool_call.clone())).await;
                             }
-                            run_single_tool(runner, hook_ctx, tool_snapshot, call.tool_call())
-                                .await
-                                .map(|outcome| (call.answer(outcome.result), outcome.executed))
+                            let outcome =
+                                run_single_tool(runner, hook_ctx, tool_snapshot, tool_call).await;
+                            if let (Some(live), Ok(outcome)) = (&live, &outcome) {
+                                for item in output_items(tool_call.answer(&outcome.result)) {
+                                    report(live, item).await;
+                                }
+                            }
+                            outcome.map(|outcome| (call.answer(outcome.result), outcome.executed))
                         }
                         Err((call, context)) => {
                             let action = runner
@@ -688,17 +697,69 @@ where
     })
 }
 
-/// Where [`drive_tool_calls`] reports each call it dispatches: the call, and
-/// the signal that the report was taken.
-pub(crate) type StartedSender = mpsc::UnboundedSender<(ToolCall, oneshot::Sender<()>)>;
+/// What a call reports while its batch runs.
+pub(crate) enum LiveTool {
+    /// See [`MultiTurnStreamItem::ToolExecutionStarted`](crate::agent::MultiTurnStreamItem::ToolExecutionStarted).
+    Started(ToolCall),
+    /// See [`MultiTurnStreamItem::ToolResultItem`](crate::agent::MultiTurnStreamItem::ToolResultItem).
+    Output {
+        tool_result: message::ToolResult,
+        index: usize,
+        count: usize,
+    },
+}
 
-/// Report that `call` starts and wait until the report is taken. A report
-/// nobody receives holds nothing back.
-async fn report_start(started: &StartedSender, call: &ToolCall) {
+/// Where [`drive_tool_calls`] reports what its calls do live: the report,
+/// and the signal that it was taken.
+pub(crate) type LiveSender = mpsc::UnboundedSender<(LiveTool, oneshot::Sender<()>)>;
+
+/// Report `live` and wait until the report is taken. A report nobody
+/// receives holds nothing back.
+async fn report(sender: &LiveSender, live: LiveTool) {
     let (taken, wait) = oneshot::channel();
-    if started.unbounded_send((call.clone(), taken)).is_ok() {
+    if sender.unbounded_send((live, taken)).is_ok() {
         let _ = wait.await;
     }
+}
+
+/// The output items of `result`: one per element when its content is exactly
+/// one JSON array, else one holding all its content.
+fn output_items(result: message::ToolResult) -> Vec<LiveTool> {
+    let message::ToolResult {
+        call,
+        name,
+        content,
+        is_error,
+    } = result;
+    let items: Vec<Vec<ToolResultContent>> = match <[ToolResultContent; 1]>::try_from(content) {
+        Ok(
+            [
+                ToolResultContent::Json {
+                    value: serde_json::Value::Array(elements),
+                },
+            ],
+        ) => elements
+            .into_iter()
+            .map(|value| vec![ToolResultContent::Json { value }])
+            .collect(),
+        Ok(one) => vec![Vec::from(one)],
+        Err(content) => vec![content],
+    };
+    let count = items.len();
+    items
+        .into_iter()
+        .enumerate()
+        .map(|(index, content)| LiveTool::Output {
+            tool_result: message::ToolResult {
+                call: call.clone(),
+                name: name.clone(),
+                content,
+                is_error,
+            },
+            index,
+            count,
+        })
+        .collect()
 }
 
 /// Whether call `index` waits for an earlier unsettled call of its batch,
