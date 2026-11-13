@@ -380,9 +380,7 @@ impl Wire for Chat {
             Mode::Unary => Framing::Whole,
             Mode::Streaming => Framing::Ndjson,
         };
-        Ok(Encoded::new(request, framing)
-            .with_route(Some(CHAT_PATH))
-            .with_projection(ChatDecoder::project))
+        Ok(Encoded::new(request, framing))
     }
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {

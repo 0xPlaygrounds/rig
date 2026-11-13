@@ -899,13 +899,12 @@ pub(super) fn replayed(wire: &Chat, turn: crate::message::AssistantMessage) -> s
 }
 
 /// A gateway that reports usage on the choice rather than the top level
-/// still has its usage observed: the decoder accepts `choices[0].usage` for
-/// `Finish`, and the driver observes that `Finish` usage, so the
-/// observation sees the same counts.
+/// still has its usage read: the decoder accepts `choices[0].usage` for
+/// `Finish`.
 #[tokio::test]
-async fn per_choice_usage_is_observed_as_the_decoder_reads_it() {
+async fn per_choice_usage_is_read() {
     let payload = r#"{"id":"c","model":"m","choices":[{"index":0,"delta":{},"finish_reason":"stop","usage":{"prompt_tokens":3,"completion_tokens":4,"total_tokens":7}}]}"#;
-    let (observed, usage) = crate::driver::tests::observed_usage(
+    let usage = crate::driver::tests::reply_usage(
         wire(),
         MockStreamingClient {
             sse_bytes: Bytes::from(format!("data: {payload}\n\ndata: [DONE]\n\n")),
@@ -913,12 +912,11 @@ async fn per_choice_usage_is_observed_as_the_decoder_reads_it() {
         Mode::Streaming,
     )
     .await;
-    let counts: Vec<(Option<u64>, Option<u64>)> = observed
-        .iter()
-        .map(|usage| (usage.input_tokens, usage.output_tokens))
-        .collect();
-    assert_eq!(counts, [(Some(3), Some(4))], "per-choice usage is observed");
-    assert_eq!(observed, [crate::wire::AdapterUsage::from(&usage)]);
+    assert_eq!(
+        (usage.input_tokens, usage.output_tokens),
+        (Some(3), Some(4)),
+        "per-choice usage is read"
+    );
 }
 
 /// A whole reply must hold a choice, and its choice a message.

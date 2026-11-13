@@ -701,13 +701,13 @@ mod terminal_emission {
         }
     }
 
-    /// A gateway that zeroes the input on the terminal `message_delta` has
-    /// the `message_start` count observed, as the response reports it: the
-    /// observation is the decoder's end, not each frame's raw snapshot.
+    /// A gateway that zeroes the input on the terminal `message_delta` keeps
+    /// the `message_start` count: the usage is the decoder's end, not each
+    /// frame's raw snapshot.
     #[tokio::test]
-    async fn a_zeroed_terminal_input_is_observed_as_the_response_reports_it() {
+    async fn a_zeroed_terminal_input_keeps_the_start_count() {
         const ZEROED_DELTA: &str = r#"{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":0,"output_tokens":3}}"#;
-        let (observed, usage) = crate::driver::tests::observed_usage(
+        let usage = crate::driver::tests::reply_usage(
             AnthropicConfig::new("test-key").completion(CLAUDE_SONNET_4_6),
             MockStreamingClient {
                 sse_bytes: sse(&[
@@ -722,7 +722,6 @@ mod terminal_emission {
         )
         .await;
         assert_eq!(usage.input_tokens, Some(5));
-        assert_eq!(observed, [crate::wire::AdapterUsage::from(&usage)]);
     }
 
     /// The first error a 200 stream carrying `frames` yields, with
@@ -784,88 +783,6 @@ mod terminal_emission {
     }
 }
 
-/// The Messages projection, driven through [`crate::driver`].
-///
-/// The projector rides on the wire's [`crate::wire::Encoded`], and the HTTP
-/// transport calls it on every raw payload — the rejection body included — so
-/// these cells exercise the wire and the driver together rather than the
-/// projector in isolation. That is the only way the *closure* facts
-/// (`Started`, `Response`, `Finished`) are observable at all: they belong to
-/// the attempt, not to the payload.
-mod projection {
-
-    use std::sync::Arc;
-
-    use crate::completion::CompletionRequest;
-    use crate::observe::{
-        Action, AdapterContext, AdapterEnding, AdapterErrorBoundary, AdapterErrorEnvelope,
-        AdapterEvent, ObservationLog, Subject,
-    };
-    use crate::providers::anthropic::wire::{AnthropicConfig, Messages};
-    use crate::test_utils::RecordingHttpClient;
-
-    fn adapter_events(log: &ObservationLog) -> Vec<AdapterEvent> {
-        log.trace()
-            .observations
-            .iter()
-            .filter_map(|o| match &o.action {
-                Action::Adapter { observation } => Some(observation.event.clone()),
-                _ => None,
-            })
-            .collect()
-    }
-
-    fn context(log: &Arc<ObservationLog>) -> AdapterContext {
-        AdapterContext::new(log.clone(), Subject::default(), "call")
-    }
-
-    fn wire() -> Messages {
-        AnthropicConfig::new("test-key").completion("claude-test")
-    }
-
-    fn request() -> CompletionRequest {
-        CompletionRequest::new("hello").max_tokens(64)
-    }
-
-    /// A rejected Messages call: the envelope's type and message, and the
-    /// closure with the one funnel's classification.
-    #[tokio::test]
-    async fn messages_rejection_projects_the_envelope() {
-        let http = RecordingHttpClient::with_error(
-            http::StatusCode::SERVICE_UNAVAILABLE,
-            r#"{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"#,
-        );
-        let log = Arc::new(ObservationLog::default());
-        let error = crate::driver::Model::new(wire(), http.clone())
-            .call_observed(request(), context(&log))
-            .await
-            .expect_err("the transport rejects the call");
-        assert!(error.is_retryable());
-        let events = adapter_events(&log);
-        assert!(
-            matches!(&events[0], AdapterEvent::Started { method, route } if method == "POST" && route == "/v1/messages")
-        );
-        assert!(events.contains(&AdapterEvent::Response { status: 503 }));
-        assert!(events.contains(&AdapterEvent::ErrorEnvelope {
-            error: AdapterErrorEnvelope {
-                code: None,
-                status: Some("overloaded_error".into()),
-                message: Some("Overloaded".into()),
-            }
-        }));
-        assert_eq!(
-            events.last(),
-            Some(&AdapterEvent::Finished {
-                ending: AdapterEnding::Error {
-                    boundary: AdapterErrorBoundary::ProviderResponse,
-                    kind: "provider_response".into(),
-                    status: Some(503),
-                    retryable: true,
-                }
-            })
-        );
-    }
-}
 /// One sample per known Messages event: a new event fails here until it
 /// has a sample.
 #[test]

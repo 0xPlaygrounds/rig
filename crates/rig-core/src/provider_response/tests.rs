@@ -608,10 +608,10 @@ fn a_deserialized_record_re_derives_its_verdict_from_the_body() {
     assert_eq!(back, reply);
 }
 
-/// The located error as JSON: nested errors under `error`, an error event
-/// as itself.
+/// The error a body carries, as JSON: nested errors under `error`, an
+/// error event as itself.
 #[test]
-fn the_envelope_json_is_the_located_error() {
+fn the_envelope_json_is_the_error_the_body_carries() {
     use serde_json::json;
     for (body, error) in [
         (

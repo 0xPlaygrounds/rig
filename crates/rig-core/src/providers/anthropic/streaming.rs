@@ -20,13 +20,10 @@ use crate::completion::{FinishReason, token_sum};
 use crate::error::ProviderError;
 use crate::json_utils::Lenient;
 use crate::message::{CallId, DocumentRange, Source, SourceLocation, ToolName};
-use crate::observe::ObservedError;
 use crate::operation::{Block, CallFragment, Completion, Finish};
 use crate::providers::internal::set_fields;
 use crate::providers::internal::wire;
-use crate::wire::{
-    AdapterVerdict, Decoder, Flow, ObservationSink, Out, WireCitation, WireEvent, WireFrame,
-};
+use crate::wire::{Decoder, Flow, Out, WireCitation, WireEvent, WireFrame};
 
 /// Recognized Messages event tags; any other tag classifies as unknown.
 /// `message` is the whole message a unary reply is.
@@ -733,36 +730,6 @@ impl<'id> Decoder<'id, Completion> for MessagesDecoder {
             _ => {}
         }
         Ok(Flow::More)
-    }
-}
-
-impl MessagesDecoder {
-    /// Messages metadata projected before normalization can discard it: the
-    /// stop reason, the model, the message id and any error envelope, on the
-    /// unary reply and on the stream's `message_start`, `message_delta` and
-    /// `error` events.
-    pub(crate) fn project(payload: &[u8], sink: &mut ObservationSink<'_>) {
-        let Ok(payload) = serde_json::from_slice::<Value>(payload) else {
-            return;
-        };
-        let fields = payload
-            .get("message")
-            .filter(|m| m.is_object())
-            .unwrap_or(&payload);
-        let stop_reason = fields
-            .str("stop_reason")
-            .or_else(|| payload.at("/delta/stop_reason").and_then(Value::as_str));
-        let verdict = AdapterVerdict {
-            finish_reason: stop_reason.map(|reason| sink.scrub(reason)),
-            block_reason: None,
-            detail: None,
-            model: fields.str("model").map(|model| sink.scrub(model)),
-        };
-        let response_id = fields.str("id").map(|id| sink.scrub(id));
-        sink.provider(verdict, response_id);
-        if let Some(error) = ObservedError::of(&payload) {
-            error.emit(sink);
-        }
     }
 }
 

@@ -1392,9 +1392,9 @@ impl CompletionRequest {
     /// `String` and is not checked. A tool result holding one empty text
     /// block is not empty.
     ///
-    /// [`Model::call`](crate::driver::Model::call),
-    /// [`Model::stream`](crate::driver::Model::stream) and their `_observed`
-    /// twins run it before encoding, so it covers
+    /// [`Model::call`](crate::driver::Model::call)
+    /// and [`Model::stream`](crate::driver::Model::stream) run it before
+    /// encoding, so it covers
     /// [`DynModel`](crate::DynModel), every model a handler serves and the
     /// agent runtimes built on them. The OpenAI Responses websocket session
     /// sends without the driver and runs it on each send. Code that encodes

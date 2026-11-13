@@ -337,9 +337,6 @@ impl Chained {
         for scope in dispatch.scopes() {
             inner = inner.with_scope(scope);
         }
-        if let Some(context) = dispatch.adapter_context() {
-            inner = inner.with_adapter_context(context);
-        }
         let kind = EffectKind::Completion { request, stream };
         match self.inner.handle(kind, inner).await {
             Reply::Outcome(Err(report)) => Err(report),

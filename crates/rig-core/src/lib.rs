@@ -63,7 +63,6 @@ pub mod json_utils;
 pub mod loaders;
 pub mod markers;
 pub mod model;
-pub mod observe;
 pub mod operation;
 pub mod prelude;
 pub(crate) mod provider_response;

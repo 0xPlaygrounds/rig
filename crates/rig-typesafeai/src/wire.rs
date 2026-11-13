@@ -191,8 +191,7 @@ impl Wire for JevConfig {
             .header(http::header::AUTHORIZATION, authorization)
             .body(Body::Bytes(serde_json::to_vec(&body)?))?;
         Ok(Encoded::new(request, Framing::Whole)
-            .with_request_id_header(Some("x-typesafe-request-id"))
-            .with_route(Some("/v1/systemone")))
+            .with_request_id_header(Some("x-typesafe-request-id")))
     }
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {

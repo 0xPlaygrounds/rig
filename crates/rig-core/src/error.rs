@@ -18,7 +18,6 @@ use serde::{Deserialize, Serialize};
 use crate::{
     completion::UnsupportedOption,
     http_client,
-    observe::AdapterErrorBoundary,
     provider_response::ProviderResponseError,
     tool::{ToolErrorKind, ToolExecutionError},
     vector_store::VectorStoreError,
@@ -559,19 +558,6 @@ impl ProviderError {
     /// The wire form of this error.
     pub fn report(&self) -> ErrorReport {
         ErrorReport::from(self)
-    }
-
-    /// Which boundary produced this error, by its classification.
-    pub(crate) fn boundary(&self) -> AdapterErrorBoundary {
-        match (self, self.kind()) {
-            (Self::Http(error), _) => AdapterErrorBoundary::from_http(error),
-            (Self::Stalled(_), _) => AdapterErrorBoundary::Transport,
-            (_, ErrorKind::Json | ErrorKind::Response) => AdapterErrorBoundary::Decode,
-            (_, ErrorKind::Provider | ErrorKind::ProviderResponse) => {
-                AdapterErrorBoundary::ProviderResponse
-            }
-            _ => AdapterErrorBoundary::Request,
-        }
     }
 
     fn map_response(

@@ -646,10 +646,10 @@ pub struct Prepared {
 impl Messages {
     /// Encode `request` as [`Wire::encode`] does, with `envelope` building
     /// the HTTP request in place of `POST /v1/messages` with an API key.
-    /// The framing, request-id header and projection stay this wire's, so
-    /// a platform that serves the Messages API at another address, with
-    /// other credentials or another body envelope, reads replies as this
-    /// wire does.
+    /// The framing and request-id header stay this wire's, so a platform
+    /// that serves the Messages API at another address, with other
+    /// credentials or another body envelope, reads replies as this wire
+    /// does.
     ///
     /// # Errors
     ///
@@ -691,8 +691,7 @@ impl Messages {
                 Mode::Streaming => Framing::Sse,
             },
         )
-        .with_request_id_header(self.provider.dialect.request_id_header)
-        .with_projection(MessagesDecoder::project))
+        .with_request_id_header(self.provider.dialect.request_id_header))
     }
 }
 

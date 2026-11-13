@@ -4,7 +4,6 @@ mod completion;
 mod embeddings;
 pub mod history;
 pub mod history_conformance;
-pub mod observations;
 #[cfg(test)]
 pub(crate) mod provider_extensions;
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
