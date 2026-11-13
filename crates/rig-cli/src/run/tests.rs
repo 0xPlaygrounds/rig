@@ -2145,3 +2145,184 @@ fn a_screen_taken_before_a_restart_stays_taken_until_handed_over() {
     assert!(!screen.hand_over());
     assert!(!screen.took(false));
 }
+
+/// A signal that ends the launcher while it asks for a secret, here after
+/// a reload whose front took the screen, puts the terminal back before the
+/// launcher ends by that signal; a closed terminal (SIGHUP, and every write
+/// failing) still ends it by the signal. The test runs itself again as the
+/// launcher, to signal it at the prompt and read its stderr.
+#[cfg(unix)]
+#[test]
+fn a_signal_at_a_secret_prompt_puts_the_terminal_back_and_ends_the_launcher() {
+    const PROBE: &str = "RIG_SECRET_SIGNAL_PROBE";
+    if std::env::var_os(PROBE).is_some() {
+        // The first start takes the screen, stages a build that asks for a
+        // secret, and reloads; the restart asks for it.
+        let home = builds("secret-signal", "", "");
+        let ended = (|| -> Result<Ended> {
+            fs::remove_file(home.staged())?;
+            let asks = home.bin().join("asks");
+            script(
+                &asks,
+                "[ -n \"$RIG_DESCRIBE\" ] || exit 0
+printf 'rig-describe 1\\nsecret\\tcrypt\\tPassphrase\\n' > \"$RIG_DESCRIBE\"",
+            )?;
+            let stage = format!("mv '{}' '{}'", asks.display(), home.staged().display());
+            let starts: &[&[Step]] = &[&[
+                Step::Ready,
+                Step::Screen,
+                sh(&stage),
+                Step::End(AgentEnd::Reload),
+            ]];
+            fs::write(home.good(), fake_agent::script(starts))?;
+            let run = locks::hold_run(&home)?;
+            let (claimed, _) = claim(&home, Start::New, None)?;
+            let mut launch = at(&home, Path::new(NO_LAUNCHER))?;
+            launch.terminal = true;
+            let running = select(&launch, &claimed.id, run.dir(), None)?;
+            run_agent(
+                &mut launch,
+                run.dir(),
+                &Invocation::default(),
+                false,
+                claimed,
+                running,
+            )
+        })();
+        fs::remove_dir_all(home.root()).ok();
+        // As `run` closes, and as `main` says an error `run` returns
+        // before it ends by a heard signal.
+        let restore = match ended {
+            Ok(ended) => ended.restore,
+            Err(failure) => {
+                eprintln!("error: {failure}");
+                return;
+            }
+        };
+        let close = move || {
+            if restore {
+                restore_terminal(None);
+            }
+        };
+        match stop::heard() {
+            None => close(),
+            Some(_) => stop::bounded(close),
+        }
+        stop::end_as_heard();
+        return;
+    }
+    let restored = signalled_at_prompt(PROBE, libc::SIGTERM, Stderr::Read);
+    let restored = restored.map_err(|failure| failure.to_string());
+    let put_back = restored.as_ref().is_ok_and(|(said, signal)| {
+        said.split_once(SECRET_PROMPT)
+            .is_some_and(|(_, after)| after.contains("\x1b[?1049l"))
+            && *signal == Some(libc::SIGTERM)
+    });
+    assert!(put_back, "{restored:?}");
+    let hung_up = signalled_at_prompt(PROBE, libc::SIGHUP, Stderr::Closed);
+    let hung_up = hung_up.map_err(|failure| failure.to_string());
+    assert!(
+        matches!(&hung_up, Ok((_, Some(libc::SIGHUP)))),
+        "{hung_up:?}"
+    );
+    let paused = signalled_at_prompt(PROBE, libc::SIGTERM, Stderr::Full);
+    let paused = paused.map_err(|failure| failure.to_string());
+    assert!(
+        matches!(&paused, Ok((_, Some(libc::SIGTERM)))),
+        "{paused:?}"
+    );
+}
+
+/// The prompt of the secret the probe of
+/// [`a_signal_at_a_secret_prompt_puts_the_terminal_back_and_ends_the_launcher`]
+/// asks for.
+#[cfg(unix)]
+const SECRET_PROMPT: &str = "Passphrase (crypt): ";
+
+/// What becomes of the probe's stderr once it shows the prompt.
+#[cfg(unix)]
+#[derive(Clone, Copy, PartialEq)]
+enum Stderr {
+    /// Read to its end.
+    Read,
+    /// Closed, so every write fails, as on a closed terminal.
+    Closed,
+    /// Filled and never read, so every write blocks, as on a terminal
+    /// whose output is paused (Ctrl+S).
+    Full,
+}
+
+/// Runs that test's probe (`probe`) as a launcher, sends it `signal` as
+/// it waits at the prompt, its stderr then as `stderr` says, and returns
+/// what it wrote to stderr and the signal that ended it.
+#[cfg(unix)]
+fn signalled_at_prompt(
+    probe: &str,
+    signal: libc::c_int,
+    stderr: Stderr,
+) -> std::io::Result<(String, Option<i32>)> {
+    use std::io::BufRead;
+    use std::os::unix::process::ExitStatusExt;
+
+    let name =
+        "run::tests::a_signal_at_a_secret_prompt_puts_the_terminal_back_and_ends_the_launcher";
+    let (output, written) = std::io::pipe()?;
+    let filler = (stderr == Stderr::Full)
+        .then(|| written.try_clone())
+        .transpose()?;
+    let launcher = Command::new(std::env::current_exe()?)
+        .args(["--exact", name, "--test-threads", "1", "--nocapture"])
+        .env(probe, "1")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(written)
+        .spawn()?;
+    let pid = libc::pid_t::try_from(launcher.id()).unwrap_or_default();
+    // A launcher that never ends is killed, so the test fails instead. The
+    // kill and the reaping share a lock, and `Child::kill` sends nothing
+    // once the launcher was reaped, so no other process's pid is killed.
+    let launcher = std::sync::Arc::new(std::sync::Mutex::new(launcher));
+    let watched = std::sync::Arc::clone(&launcher);
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_secs(60));
+        if let Ok(mut launcher) = watched.lock() {
+            launcher.kill().ok();
+        }
+    });
+    let mut said = Vec::new();
+    let mut output = std::io::BufReader::new(output);
+    // The prompt ends with no newline: read up to its last byte.
+    while !String::from_utf8_lossy(&said).contains(SECRET_PROMPT) {
+        if output.read_until(b' ', &mut said)? == 0 {
+            break;
+        }
+    }
+    let kept = (stderr != Stderr::Closed).then_some(output);
+    // Writes until the pipe is full, and ends once its reader is gone.
+    if let Some(mut filler) = filler {
+        std::thread::spawn(move || while filler.write_all(&[0; 4096]).is_ok() {});
+    }
+    // Signalled as it waits for the answer.
+    std::thread::sleep(Duration::from_millis(300));
+    // SAFETY: `kill` takes plain integers; the launcher is not reaped yet.
+    unsafe { libc::kill(pid, signal) };
+    let kept = match kept {
+        Some(mut output) if stderr == Stderr::Read => {
+            output.read_to_end(&mut said)?;
+            None
+        }
+        kept => kept,
+    };
+    let status = loop {
+        let exited = launcher
+            .lock()
+            .map_err(|_| std::io::Error::other("the watchdog panicked"))?
+            .try_wait()?;
+        if let Some(status) = exited {
+            break status;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    drop(kept);
+    Ok((String::from_utf8_lossy(&said).into_owned(), status.signal()))
+}

@@ -1085,16 +1085,28 @@ impl Drop for TypeAhead {
 }
 
 /// Asks on the terminal for `secret`, without echo, and returns the
-/// answer; `None` when the user pressed Ctrl+C. The terminal reads byte by
-/// byte with its signals off, so Ctrl+C arrives as a byte and the mode is
-/// given back, echo included, whatever the answer.
+/// answer; `None` when the user pressed Ctrl+C or, on unix, a signal that
+/// ends the launcher came while it waited ([`stop::heard`]). The terminal
+/// reads byte by byte with its signals off, so Ctrl+C arrives as a byte,
+/// and the mode is given back, echo included, whatever the answer. After a
+/// signal it writes nothing more: the terminal may be closed or paused, and
+/// the launcher's closing output is bounded ([`stop::bounded`]).
 fn ask_secret(launch: &Launch, secret: &DescribedSecret) -> Result<Option<String>> {
     let mut stderr = std::io::stderr();
     write!(stderr, "{} ({}): ", secret.help, secret.name)?;
     stderr.flush()?;
+    #[cfg(unix)]
+    let (watch, mut input) = (stop::Watch::start(), stop::Stdin);
+    #[cfg(not(unix))]
+    let mut input = std::io::stdin().lock();
     let mode = TypeAhead::set(launch, &["-echo", "-icanon", "-isig"]);
-    let answer = read_secret(&mut std::io::stdin().lock());
+    let answer = read_secret(&mut input);
     drop(mode);
+    #[cfg(unix)]
+    drop(watch);
+    if stop::heard().is_some() {
+        return Ok(None);
+    }
     writeln!(stderr)?;
     Ok(answer?.map(|bytes| String::from_utf8_lossy(&bytes).into_owned()))
 }
