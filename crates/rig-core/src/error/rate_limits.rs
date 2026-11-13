@@ -23,7 +23,7 @@
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use super::retry::hinted_wait;
+use super::retry::{NANOS, billionths, hinted_wait, nanoseconds};
 
 /// The `(limit, remaining, reset)` headers of a request allowance; the
 /// first pair present wins.
@@ -91,9 +91,11 @@ impl RateLimits {
     ///
     /// An allowance needs both a limit and a remainder whose values start
     /// with a whole number (`100` of `100;w=60`). Its reset may be seconds
-    /// (`34`), a Unix time in seconds or milliseconds, a Go duration
-    /// (`6m0s`, `20ms`), an RFC 3339 date (`2026-01-01T00:00:00Z`) or an
-    /// HTTP date; a reset already past is zero, and any other form is none.
+    /// (`34`, `1.5`), a Unix time in seconds or milliseconds, a value that
+    /// starts with a Go duration (`6m0s`, `20ms`, `1h1us`), an RFC 3339 date
+    /// (`2026-01-01T00:00:00Z`) or an HTTP date
+    /// (`Thu, 01 Jan 2026 00:00:34 GMT`). A reset already past is zero; any
+    /// other form is none.
     pub fn from_headers(headers: &http::HeaderMap, now: SystemTime) -> Self {
         Self {
             requests: allowance(headers, &REQUESTS, now),
@@ -125,31 +127,50 @@ fn leading_number(text: &str) -> Option<u64> {
 
 /// How long after `now` the reset `text` names comes.
 fn reset_in(text: &str, now: SystemTime) -> Option<Duration> {
-    if let Ok(number) = text.parse::<f64>() {
+    if let Some(number) = billionths(text) {
         // Numbers this large are Unix times, not waits: no window lasts 30 years.
-        let at = if number > 1e12 {
-            number / 1000.0
-        } else if number > 1e9 {
+        let at = if number > 1_000_000_000_000 * NANOS {
+            number / 1000
+        } else if number > 1_000_000_000 * NANOS {
             number
         } else {
-            return Duration::try_from_secs_f64(number.max(0.0)).ok();
+            return nanoseconds(number);
         };
-        let at = UNIX_EPOCH.checked_add(Duration::try_from_secs_f64(at).ok()?)?;
-        return Some(at.duration_since(now).unwrap_or_default());
+        return until(at, now);
     }
     if let Some(wait) = hinted_wait(text) {
         return Some(wait);
     }
-    let at = rfc3339(text).or_else(|| httpdate::parse_http_date(text).ok())?;
-    Some(at.duration_since(now).unwrap_or_default())
+    let at = match rfc3339(text) {
+        Some(at) => at,
+        None => since_epoch(httpdate::parse_http_date(text).ok()?)?,
+    };
+    until(at, now)
 }
 
-/// The instant an RFC 3339 date names: `2026-01-01T00:00:00Z`, with an
-/// optional fraction of a second and a `Z` or `+hh:mm` offset.
-fn rfc3339(text: &str) -> Option<SystemTime> {
+/// The wait from `now` until `at`, in nanoseconds since the Unix epoch;
+/// zero once it has passed.
+fn until(at: i128, now: SystemTime) -> Option<Duration> {
+    nanoseconds(at.checked_sub(since_epoch(now)?)?)
+}
+
+/// `time` in nanoseconds since the Unix epoch, negative before it.
+fn since_epoch(time: SystemTime) -> Option<i128> {
+    match time.duration_since(UNIX_EPOCH) {
+        Ok(after) => i128::try_from(after.as_nanos()).ok(),
+        Err(before) => i128::try_from(before.duration().as_nanos())
+            .ok()
+            .map(|n| -n),
+    }
+}
+
+/// The instant an RFC 3339 date names, in nanoseconds since the Unix epoch:
+/// `2026-01-01T00:00:00Z`, with an optional fraction of a second (digits
+/// past the ninth dropped) and a `Z` or `+hh:mm` offset.
+fn rfc3339(text: &str) -> Option<i128> {
     let (date, time) = text.split_once(['T', 't', ' '])?;
     let mut date = date.split('-');
-    let year: i64 = digits(date.next()?, 4)?;
+    let year = digits(date.next()?, 4)?;
     let month = digits(date.next()?, 2)?;
     let day = digits(date.next()?, 2)?;
     let (clock, offset) = match time.strip_suffix(['Z', 'z']) {
@@ -158,11 +179,18 @@ fn rfc3339(text: &str) -> Option<SystemTime> {
             let (clock, offset) = time.split_at_checked(time.rfind(['+', '-'])?)?;
             let sign = if offset.starts_with('-') { -1 } else { 1 };
             let (hours, minutes) = offset.get(1..)?.split_once(':')?;
-            let minutes = digits(hours, 2)? * 60 + digits(minutes, 2)?;
-            (clock, sign * minutes * 60)
+            let (hours, minutes) = (digits(hours, 2)?, digits(minutes, 2)?);
+            if hours > 23 || minutes > 59 {
+                return None;
+            }
+            (clock, sign * (hours * 3600 + minutes * 60))
         }
     };
-    let (clock, fraction) = clock.split_once('.').unwrap_or((clock, "0"));
+    let (clock, fraction) = match clock.split_once('.') {
+        Some((clock, fraction)) if !fraction.is_empty() => (clock, format!("0.{fraction}")),
+        Some(_) => return None,
+        None => (clock, "0".to_owned()),
+    };
     let mut clock = clock.split(':');
     let hour = digits(clock.next()?, 2)?;
     let minute = digits(clock.next()?, 2)?;
@@ -172,10 +200,10 @@ fn rfc3339(text: &str) -> Option<SystemTime> {
     if !valid || hour > 23 || minute > 59 || second > 60 {
         return None;
     }
-    let fraction: f64 = format!("0.{fraction}").parse().ok()?;
     let seconds = days * 86_400 + hour * 3600 + minute * 60 + second - offset;
-    let whole = Duration::from_secs(u64::try_from(seconds).ok()?);
-    UNIX_EPOCH.checked_add(whole + Duration::try_from_secs_f64(fraction).ok()?)
+    i128::from(seconds)
+        .checked_mul(NANOS)?
+        .checked_add(billionths(&fraction)?)
 }
 
 /// `text` as a number of exactly `width` ASCII digits.

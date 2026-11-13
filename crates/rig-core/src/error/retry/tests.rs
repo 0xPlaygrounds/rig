@@ -66,15 +66,18 @@ fn a_body_hint_in_minutes_or_hours_names_the_wait() {
         ),
         ("Please try again in 1.5 s.", Duration::from_millis(1500)),
         ("Please try again in .5s.", Duration::from_millis(500)),
+        ("Please try again in 1h1us.", Duration::new(3600, 1_000)),
+        (
+            "Please try again in 250\u{b5}s.",
+            Duration::from_micros(250),
+        ),
+        ("Please try again in 40ns.", Duration::from_nanos(40)),
         (
             "Please try again in 3s 2 tokens left.",
             Duration::from_secs(3),
         ),
     ] {
-        // Within a microsecond, as the parts are summed in floating point.
-        let read = report(message).retry_after(now);
-        let near = read.is_some_and(|read| read.abs_diff(wait) < Duration::from_micros(1));
-        assert!(near, "{message}: {read:?}");
+        assert_eq!(report(message).retry_after(now), Some(wait), "{message}");
     }
     for message in [
         "try again in 2 minutes",

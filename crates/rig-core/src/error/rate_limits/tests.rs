@@ -124,6 +124,23 @@ fn each_reset_form_is_a_wait_from_the_reply() {
         ("2026-01-01T24:00:00Z", None),
         ("2026-01-01T00:00:00", None),
         ("soon", None),
+        // A fraction is plain digits, cut at the nanosecond.
+        ("2026-01-01T00:00:00.18446744073709549568e20Z", None),
+        ("2026-01-01T00:00:34.Z", None),
+        (
+            "2026-01-01T00:00:34.1234567899Z",
+            Some(Duration::new(34, 123_456_789)),
+        ),
+        ("1969-12-31T23:59:59Z", Some(Duration::ZERO)),
+        ("2026-01-01T00:00:34+99:99", None),
+        ("2026-01-01T00:00:34+24:00", None),
+        ("1h1us", Some(Duration::new(3600, 1_000))),
+        ("1500us", Some(Duration::from_micros(1500))),
+        ("3ns", Some(Duration::from_nanos(3))),
+        ("34s, roughly", Some(Duration::from_secs(34))),
+        ("99999999999999999999999999h", None),
+        ("1e3", None),
+        ("-3", None),
     ] {
         let pairs = [
             ("ratelimit-limit", "10"),
@@ -133,6 +150,19 @@ fn each_reset_form_is_a_wait_from_the_reply() {
         let read = RateLimits::from_headers(&headers(&pairs), now).requests;
         assert_eq!(read.map(|read| read.resets_in), Some(wait), "{reset}");
     }
+}
+
+#[test]
+fn a_unix_time_reset_is_exact_to_the_nanosecond() {
+    let now = at(NEW_YEAR) + Duration::from_nanos(1);
+    let pairs = [
+        ("ratelimit-limit", "10"),
+        ("ratelimit-remaining", "5"),
+        ("ratelimit-reset", "1767225634"),
+    ];
+    let read = RateLimits::from_headers(&headers(&pairs), now).requests;
+    let wait = Duration::from_secs(34) - Duration::from_nanos(1);
+    assert_eq!(read.map(|read| read.resets_in), Some(Some(wait)));
 }
 
 #[test]
