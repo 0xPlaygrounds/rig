@@ -16,6 +16,7 @@
 
 use std::ops::Range;
 
+use rig_basics::compaction::CODING_PROMPTS;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::CompletionRequest;
 use rig_harness::rig_core::conversation::{Aside, AsideId, Entry};
@@ -76,7 +77,7 @@ const FOLD_SUMMARIZER: Summarizer = Summarizer {
              ## What was done\n- ...\n\n## Files changed\n- [path, or \"(none)\"]\n\n\
              ## Decisions\n- **[Decision]**: [Why]",
         ),
-        ..SummaryPrompts::DEFAULT
+        ..CODING_PROMPTS
     },
     limits: SummaryLimits::DEFAULT,
 };

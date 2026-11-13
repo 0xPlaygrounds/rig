@@ -14,7 +14,8 @@
 use std::borrow::Cow;
 
 use rig_basics::compaction::{
-    CompactionDefault, CompactionPlugin, Summarizing, plan, summarized_prefix, summary_state,
+    CODING_PROMPTS, CompactionDefault, CompactionPlugin, Summarizing, plan, summarized_prefix,
+    summary_state,
 };
 use rig_core::catalog::ModelSpec;
 use rig_core::completion::{CompletionRequest, Message};
@@ -69,7 +70,7 @@ const TEMPLATE: SummaryPrompts = SummaryPrompts {
          1. [What is unanswered or comes next, in order.]\n\n\
          Keep exact paths, names, commands and error messages.",
     ),
-    ..SummaryPrompts::DEFAULT
+    ..CODING_PROMPTS
 };
 
 /// Restructures `rig_basics::compaction`'s compactions; adds `rig_basics::compaction` unless
