@@ -5,7 +5,7 @@ use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::harness_protocol::{Home, Invocation, SessionId};
 use rig_harness::rig_core::catalog::Catalog;
 use rig_harness_test_support::{
-    Ended, app_in, first_agent, log_ended, reply, run_until, scratch_home, scripted_models,
+    Ended, Offline, app_in, first_agent, log_ended, reply, run_until, scratch_home, scripted_models,
 };
 
 use super::defaults::DefaultsPlugin;
@@ -681,6 +681,164 @@ fn the_model_picker_opens_on_the_agents_model_and_says_it_is_current() {
         current.count()
     });
     assert_eq!(marked, Some(1));
+}
+
+/// The catalog's own models, each refusing HTTP but Claude Sonnet 4.5,
+/// which takes a reasoning budget and no effort level, answered by `model`.
+fn sonnet(model: &MockCompletionModel) -> Models {
+    use rig_core::catalog::{Connector, ModelSpec, Transport};
+    use rig_core::http_client::DynHttpClient;
+    use rig_core::operation::Completion;
+    use rig_core::providers::registry::ProviderId;
+    use rig_core::serve::ErasedHandler;
+    use rig_core::serve::adapters::ModelAdapter;
+
+    let mut connector = Connector::new(Catalog::builtin().clone());
+    connector.wrap_http(|_| DynHttpClient::new(Offline));
+    let model = model.clone();
+    if let Some(anthropic) = ProviderId::catalog("anthropic") {
+        connector.provide(
+            anthropic,
+            move |spec: &ModelSpec, _: &Catalog, _: &Transport| {
+                let model = ModelAdapter::<Completion>::new(spec.reference(), model.clone());
+                Ok(ErasedHandler::new(model))
+            },
+        );
+    }
+    Models(connector)
+}
+
+/// `[model]` naming Claude Sonnet 4.5.
+const SONNET: &str = "[model]\ndefault = \"anthropic/claude-sonnet-4-5\"\n";
+
+#[test]
+fn an_effort_level_in_settings_is_its_budget_on_a_model_that_takes_a_budget() {
+    use rig_harness::rig_core::completion::Reasoning;
+
+    let model = MockCompletionModel::from_stream_turns([reply("hi")]);
+    let saved = format!("{SONNET}effort = \"high\"\n");
+    let (app, _, _, agent) = remembering(
+        "defaults-budget-level",
+        &model,
+        (None, Some(&saved)),
+        |app| {
+            app.insert_resource(sonnet(&model));
+            tell(app);
+        },
+    );
+    assert_eq!(model_of(&app, agent), Some("anthropic/claude-sonnet-4-5"));
+    let high = ReasoningSetting(Some(Reasoning::Budget { tokens: 16384 }));
+    assert_eq!(app.world().get::<ReasoningSetting>(agent), Some(&high));
+    let told = &app.world().resource::<Told>().0;
+    assert!(
+        !told.iter().any(|text| text.contains("Reasoning")),
+        "{told:?}"
+    );
+}
+
+/// An app on Claude Sonnet 4.5 from `[model]`, answering `turns` times,
+/// whose notices are [`Told`].
+fn on_sonnet(name: &str, turns: usize) -> (App, Receiver<()>, Home, Entity) {
+    let model = MockCompletionModel::from_stream_turns((0..turns).map(|_| reply("hi")));
+    remembering(name, &model, (None, Some(SONNET)), |app| {
+        app.insert_resource(sonnet(&model));
+        tell(app);
+    })
+}
+
+#[test]
+fn an_effort_in_settings_the_model_does_not_take_is_reset_out_loud() {
+    let model = MockCompletionModel::from_stream_turns([reply("hi")]);
+    let written = format!("{SONNET}effort = \"xhigh\"\n");
+    let (app, _, home, agent) = remembering(
+        "defaults-budget-xhigh",
+        &model,
+        (None, Some(&written)),
+        |app| {
+            app.insert_resource(sonnet(&model));
+            tell(app);
+        },
+    );
+    assert_eq!(
+        app.world().get::<ReasoningSetting>(agent),
+        Some(&ReasoningSetting(None))
+    );
+    let told = &app.world().resource::<Told>().0;
+    let reset = told.iter().filter(|text| {
+        text.starts_with("Reasoning reset to default: the reasoning settings are default, off, low")
+            && text.ends_with("not `xhigh`.")
+    });
+    assert_eq!(reset.count(), 1, "{told:?}");
+    assert_eq!(saved(&home), written, "the file is left as written");
+}
+
+#[test]
+fn an_effort_level_picked_on_a_budget_model_is_saved_by_its_name() {
+    let (mut app, wakes, home, agent) = on_sonnet("defaults-budget-picked", 1);
+    run(&mut app, agent, "effort high");
+    ask(&mut app, &wakes, agent, "Hello.");
+    assert_eq!(saved(&home), format!("{SONNET}effort = \"high\"\n"));
+}
+
+#[test]
+fn an_effort_picked_is_kept_by_its_name_on_the_next_model() {
+    use rig_harness::rig_core::completion::{Effort, Reasoning};
+
+    // Fable 5 takes levels only; Sonnet 4.6 takes levels and budgets.
+    for next in ["anthropic/claude-fable-5", "anthropic/claude-sonnet-4-6"] {
+        let (mut app, wakes, home, agent) = on_sonnet("defaults-budget-switched", 2);
+        run(&mut app, agent, "effort high");
+        ask(&mut app, &wakes, agent, "Hello.");
+        run(&mut app, agent, &format!("model {next}"));
+        app.update();
+        let high = ReasoningSetting(Some(Reasoning::Effort(Effort::High)));
+        assert_eq!(
+            app.world().get::<ReasoningSetting>(agent),
+            Some(&high),
+            "{next}"
+        );
+        ask(&mut app, &wakes, agent, "Again.");
+        let saved_now = format!("[model]\ndefault = \"{next}\"\neffort = \"high\"\n");
+        assert_eq!(saved(&home), saved_now);
+        let told = &app.world().resource::<Told>().0;
+        assert!(!told.iter().any(|text| text.contains("reset")), "{told:?}");
+    }
+}
+
+#[test]
+fn an_effort_that_refuses_the_run_is_not_also_reset() {
+    let model = MockCompletionModel::from_stream_turns([reply("hi")]);
+    for typo in ["hihg", "HIGHH", "4096 token"] {
+        let written = format!("{SONNET}effort = \"{typo}\"\n");
+        let (app, _, _, _) = remembering(
+            "defaults-budget-typo",
+            &model,
+            (None, Some(&written)),
+            |app| {
+                app.insert_resource(sonnet(&model));
+                tell(app);
+            },
+        );
+        let told = &app.world().resource::<Told>().0;
+        assert!(!told.iter().any(|text| text.contains("reset")), "{told:?}");
+    }
+}
+
+#[test]
+fn an_effort_in_tokens_is_taken_and_saved() {
+    use rig_harness::rig_core::completion::Reasoning;
+
+    let (mut app, wakes, home, agent) = on_sonnet("defaults-budget-tokens", 1);
+    run(&mut app, agent, "effort 4096 tokens");
+    let told = &app.world().resource::<Told>().0;
+    assert!(
+        !told.iter().any(|text| text.contains("reasoning settings")),
+        "{told:?}"
+    );
+    let budget = ReasoningSetting(Some(Reasoning::Budget { tokens: 4096 }));
+    assert_eq!(app.world().get::<ReasoningSetting>(agent), Some(&budget));
+    ask(&mut app, &wakes, agent, "Hello.");
+    assert_eq!(saved(&home), format!("{SONNET}effort = \"4096 tokens\"\n"));
 }
 
 #[test]

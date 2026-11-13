@@ -2,7 +2,6 @@
 //! sends, and how the choice is connected. The catalog and how its models
 //! are reached are rig-core's [`Connector`].
 
-use std::fmt;
 use std::sync::Arc;
 
 use bevy_ecs::prelude::*;
@@ -77,8 +76,11 @@ pub struct ModelRefused(pub String);
 impl ModelChoice {
     /// The model and reasoning setting of an agent spawned by an agent with
     /// `parent`'s: `model`, a reference to a catalog model that calls tools,
-    /// when given, else the parent's; the reasoning setting named `effort`
-    /// when given, else the parent's with the parent's model.
+    /// when given, else the parent's; the reasoning setting `effort` names
+    /// for that model ([`ReasoningSupport::parse`]) when given, else the
+    /// parent's with the parent's model.
+    ///
+    /// [`ReasoningSupport::parse`]: rig_core::catalog::ReasoningSupport::parse
     pub fn inherit(
         models: &Connector,
         parent: (Option<&ModelChoice>, ReasoningSetting),
@@ -100,14 +102,10 @@ impl ModelChoice {
             None => parent.0.cloned(),
         };
         let effort = match (asked(effort), &model) {
-            (Some(name), Some(model)) => {
+            (Some(text), Some(model)) => {
                 let spec = resolve(&model.0).map_err(|why| why.to_string())?;
-                let named = spec.reasoning.named(name);
-                ReasoningSetting(
-                    named
-                        .map_err(|why| format!("{}: {why}", spec.display_name))?
-                        .reasoning,
-                )
+                let parsed = spec.reasoning.parse(text);
+                ReasoningSetting(parsed.map_err(|why| format!("{}: {why}", spec.display_name))?)
             }
             _ if model.is_some() && model.as_ref() == parent.0 => parent.1,
             _ => ReasoningSetting::default(),
@@ -137,19 +135,6 @@ pub struct Connection {
 #[component(immutable)]
 #[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
 pub struct ReasoningSetting(pub Option<Reasoning>);
-
-/// `default`, `off`, the level's word, or `1024 tokens`.
-impl fmt::Display for ReasoningSetting {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.0 {
-            None => f.write_str("default"),
-            Some(Reasoning::Off) => f.write_str("off"),
-            Some(Reasoning::Effort(level)) => f.write_str(level.as_str()),
-            Some(Reasoning::Budget { tokens }) => write!(f, "{tokens} tokens"),
-            Some(_) => f.write_str("custom"),
-        }
-    }
-}
 
 /// Who made a model or reasoning choice, which says whether it outlives
 /// the run.
@@ -202,19 +187,29 @@ pub struct ChoiceTaken {
 
 /// Chooses the agent's model: a catalog model that connects replaces the
 /// agent's [`ModelChoice`], which [`connect`] connects, and is
-/// [`ChoiceTaken`]; an unknown one, or another one that does not connect,
+/// [`ChoiceTaken`]. A connected agent keeps its reasoning setting by the
+/// name its model gives it, read again by the new model ([`carried`]). An
+/// unknown one, or another one that does not connect,
 /// such as one with no key, keeps it and its connection, with an error
 /// notice naming the closest models or why, and the one kept. The agent's
 /// own model, chosen again when it no longer connects, is refused as
 /// [`connect`] refuses it.
 pub(crate) fn on_set_model(
     set: On<SetModel>,
-    agents: Query<(Has<ActiveTurn>, Option<&ModelChoice>), With<Agent>>,
+    agents: Query<
+        (
+            Has<ActiveTurn>,
+            Option<&ModelChoice>,
+            Option<&Connection>,
+            Option<&ReasoningSetting>,
+        ),
+        With<Agent>,
+    >,
     models: Res<Models>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Ok((busy, current)) = agents.get(set.entity) else {
+    let Ok((busy, current, connected, effort)) = agents.get(set.entity) else {
         return;
     };
     if busy {
@@ -225,8 +220,23 @@ pub(crate) fn on_set_model(
         Ok(found) => {
             let model = ModelChoice(found.spec.reference());
             match models.connect(&model.0) {
-                Ok(_) => {
-                    commands.entity(set.entity).insert(model.clone());
+                Ok(connection) => {
+                    let mut agent = commands.entity(set.entity);
+                    match connected {
+                        // One insert, so `check_effort` never sees the old
+                        // setting with the new model.
+                        Some(old) if old.spec.reference() != model.0 => {
+                            let effort = effort.copied().unwrap_or_default();
+                            let effort = carried(&old.spec, effort, &connection.spec);
+                            notices.write(Notice::info(set.entity, switched(&connection)));
+                            agent
+                                .insert((model.clone(), connection, effort))
+                                .remove::<ModelRefused>();
+                        }
+                        _ => {
+                            agent.insert(model.clone());
+                        }
+                    }
                     commands.trigger(ChoiceTaken {
                         entity: set.entity,
                         kind: set.kind,
@@ -280,8 +290,7 @@ pub(crate) fn connect(
     match models.connect(&choice.0) {
         Ok(connection) => {
             if connected.is_some() {
-                let model = format!("Model: {} ({}).", connection.spec.display_name, choice.0);
-                notices.write(Notice::info(agent, model));
+                notices.write(Notice::info(agent, switched(&connection)));
             }
             commands
                 .entity(agent)
@@ -297,6 +306,21 @@ pub(crate) fn connect(
             notices.write(Notice::error(agent, why));
         }
     }
+}
+
+/// The notice that an agent now uses the model of `connection`.
+fn switched(connection: &Connection) -> String {
+    let spec = &connection.spec;
+    format!("Model: {} ({}).", spec.display_name, spec.reference())
+}
+
+/// `effort`, set on the model `from`, for the model `to`: by the name
+/// `from` gives it, so a budget `from` calls `high` is `to`'s `high`. Kept
+/// as it is when `to` takes no setting by that name; [`check_effort`] then
+/// resets it out loud.
+fn carried(from: &ModelSpec, effort: ReasoningSetting, to: &ModelSpec) -> ReasoningSetting {
+    let name = from.reasoning.name_of(effort.0);
+    to.reasoning.parse(&name).map_or(effort, ReasoningSetting)
 }
 
 /// Connects each agent whose [`ModelChoice`] is not connected once the
@@ -387,7 +411,10 @@ pub(crate) fn on_set_reasoning(
             });
             notices.write(Notice::info(
                 set.entity,
-                format!("Reasoning: {}.", set.effort),
+                format!(
+                    "Reasoning: {}.",
+                    connection.spec.reasoning.name_of(set.effort.0)
+                ),
             ));
         }
         Some(refusal) => {

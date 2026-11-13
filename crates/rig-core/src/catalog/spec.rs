@@ -674,12 +674,21 @@ impl ReasoningChoice {
 
 /// A reasoning setting a model does not take, and the ones it does.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
-#[error("the reasoning settings are {}, not `{name}`", choices.join(", "))]
+#[error("the reasoning settings are {}{}, not `{name}`", choices.join(", "), tokens(budget))]
 pub struct UnknownReasoning {
-    /// The name asked for.
+    /// The text asked for.
     pub name: String,
     /// The names of the model's [`ReasoningSupport::choices`].
     pub choices: Vec<&'static str>,
+    /// The reasoning-token budgets the model takes, if it takes one.
+    pub budget: Option<RangeInclusive<u32>>,
+}
+
+/// `budget` as the last of the settings an [`UnknownReasoning`] lists.
+fn tokens(budget: &Option<RangeInclusive<u32>>) -> String {
+    budget.as_ref().map_or_else(String::new, |range| {
+        format!(", or {} to {} tokens", range.start(), range.end())
+    })
 }
 
 /// Token budgets for the named levels on a model that takes a budget
@@ -749,10 +758,61 @@ impl ReasoningSupport {
             .iter()
             .find(|choice| choice.name == name)
             .copied()
-            .ok_or_else(|| UnknownReasoning {
-                name: name.to_owned(),
-                choices: choices.iter().map(|choice| choice.name).collect(),
-            })
+            .ok_or_else(|| self.unknown(name, &choices))
+    }
+
+    /// The setting `text` names for this model, `None` for the provider
+    /// default: a name of [`Self::choices`], so `high` is a budget on a model
+    /// that takes a budget and no levels; or else `off`, a level's word or
+    /// `<n> tokens` that the model takes ([`Self::refusal`]). Surrounding
+    /// spaces are ignored. [`Self::name_of`] prints what this reads back.
+    ///
+    /// # Errors
+    ///
+    /// [`UnknownReasoning`] with the settings there are, when the model
+    /// takes no setting named `text`.
+    pub fn parse(&self, text: &str) -> Result<Option<Reasoning>, UnknownReasoning> {
+        let text = text.trim();
+        let choices = self.choices();
+        if let Some(choice) = choices.iter().find(|choice| choice.name == text) {
+            return Ok(choice.reasoning);
+        }
+        match read(text) {
+            Some(Some(reasoning)) if self.refusal(&reasoning).is_none() => Ok(Some(reasoning)),
+            _ => Err(self.unknown(text, &choices)),
+        }
+    }
+
+    /// The text [`Self::parse`] reads back as `setting` on this model: the
+    /// name of the first of [`Self::choices`] that is `setting`, or else
+    /// `off`, the level's word or `<n> tokens`.
+    pub fn name_of(&self, setting: Option<Reasoning>) -> String {
+        let choices = self.choices();
+        match choices.iter().find(|choice| choice.reasoning == setting) {
+            Some(choice) => choice.name.to_owned(),
+            None => match setting {
+                None => "default".to_owned(),
+                Some(Reasoning::Off) => "off".to_owned(),
+                Some(Reasoning::Effort(level)) => level.as_str().to_owned(),
+                Some(Reasoning::Budget { tokens }) => format!("{tokens} tokens"),
+            },
+        }
+    }
+
+    /// Whether `text` could name a setting on some model: `default`, `off`,
+    /// a level's word or `<n> tokens`. For checking a setting written before
+    /// its model is known; [`Self::parse`] reads it once it is.
+    pub fn reads(text: &str) -> bool {
+        read(text.trim()).is_some()
+    }
+
+    /// `text` refused, with the settings there are.
+    fn unknown(&self, text: &str, choices: &[ReasoningChoice]) -> UnknownReasoning {
+        UnknownReasoning {
+            name: text.to_owned(),
+            choices: choices.iter().map(|choice| choice.name).collect(),
+            budget: self.budget().cloned(),
+        }
     }
 
     /// Whether the model reasons at all.
@@ -842,6 +902,25 @@ impl ReasoningSupport {
             },
         }
     }
+}
+
+/// The setting `text` spells whatever the model: `Some(None)` for
+/// `default`, else `off`, a level's word or `<n> tokens`.
+fn read(text: &str) -> Option<Option<Reasoning>> {
+    let reasoning = match text {
+        "default" => return Some(None),
+        "off" => Reasoning::Off,
+        _ => match text.strip_suffix(" tokens") {
+            Some(tokens) => Reasoning::Budget {
+                tokens: tokens.trim().parse().ok()?,
+            },
+            None => {
+                let word = serde::de::value::StrDeserializer::<serde::de::value::Error>::new(text);
+                Reasoning::Effort(Effort::deserialize(word).ok()?)
+            }
+        },
+    };
+    Some(Some(reasoning))
 }
 
 impl CacheSupport {

@@ -7,7 +7,7 @@ use rig_tui::{
 };
 
 use super::pick::catalog;
-use super::{ModelItem, ModelLabel};
+use super::{ModelItem, ModelLabel, effort_name};
 
 /// Where the model is: always shown.
 const MODEL: StatusItem = StatusItem::new("model", Side::Left, 30, u8::MAX);
@@ -79,6 +79,7 @@ fn show(
         Option<&ModelChoice>,
         Option<&ModelLabel>,
         &ReasoningSetting,
+        Option<&Connection>,
         &mut StatusItems,
     )>,
     changed: Query<
@@ -87,12 +88,13 @@ fn show(
             Changed<ModelChoice>,
             Changed<ReasoningSetting>,
             Changed<ModelLabel>,
+            Changed<Connection>,
         )>,
     >,
     mut unlabeled: RemovedComponents<ModelLabel>,
 ) {
     for agent in changed.iter().chain(unlabeled.read()) {
-        let Ok((model, label, effort, mut items)) = agents.get_mut(agent) else {
+        let Ok((model, label, &effort, connection, mut items)) = agents.get_mut(agent) else {
             continue;
         };
         let model = match (label, model) {
@@ -101,6 +103,7 @@ fn show(
             (None, None) => "no model: /model picks one",
         };
         items.show(MODEL.says(model, Tone::Bold));
+        let effort = effort_name(connection, effort);
         items.show(REASONING.says(format!("reasoning {effort}"), Tone::Dim));
     }
 }

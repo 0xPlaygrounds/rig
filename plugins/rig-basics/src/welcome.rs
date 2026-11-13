@@ -13,13 +13,13 @@
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use rig_ecs::agent::Conversation;
-use rig_ecs::model::{ModelChoice, ReasoningSetting};
+use rig_ecs::model::{Connection, ModelChoice, ReasoningSetting};
 use rig_harness::main_agent::{MainAgentQuery, main_agent};
 use rig_harness::rig_core::conversation::{Aside, AsideId, Author};
 use rig_harness::services::ProjectRoot;
 use serde::{Deserialize, Serialize};
 
-use crate::models::ModelLabel;
+use crate::models::{ModelLabel, effort_name};
 
 /// The welcome aside's kind.
 pub const WELCOME: &str = "rig.welcome";
@@ -63,6 +63,7 @@ fn welcome(
         Option<&ModelChoice>,
         Option<&ModelLabel>,
         Option<&ReasoningSetting>,
+        Option<&Connection>,
     )>,
     root: Option<Res<ProjectRoot>>,
     mut placed: Local<Option<AsideId>>,
@@ -70,7 +71,8 @@ fn welcome(
     let Some(agent) = main_agent(&agents) else {
         return;
     };
-    let Ok((mut conversation, model, label, reasoning)) = conversations.get_mut(agent) else {
+    let Ok((mut conversation, model, label, reasoning, connection)) = conversations.get_mut(agent)
+    else {
         return;
     };
     let says = Welcome {
@@ -78,7 +80,7 @@ fn welcome(
         model: label
             .map(|label| label.0.clone())
             .or_else(|| model.map(|model| model.0.clone())),
-        reasoning: reasoning.copied().unwrap_or_default().to_string(),
+        reasoning: effort_name(connection, reasoning.copied().unwrap_or_default()),
         directory: root.map(|root| shown(&root.0)).unwrap_or_default(),
     };
     let value = serde_json::to_value(&says).unwrap_or_default();

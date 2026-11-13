@@ -139,3 +139,38 @@ fn a_prompt_ends_as_its_last_turn_did_and_a_plugins_stop_is_no_cancel() {
     assert_eq!(stop(false, None), Some(acp::StopReason::EndTurn));
     assert!(stop_reason(false, Some(&TurnOutcome::Failed("why".to_owned()))).is_err());
 }
+
+#[test]
+fn a_reasoning_budget_set_by_hand_is_shown_as_itself() {
+    use bevy_ecs::system::RunSystemOnce;
+    use rig_harness::rig_core::catalog::{Catalog, Connector};
+    use rig_harness::rig_core::completion::Reasoning;
+
+    let mut world = World::new();
+    world.insert_resource(Models(Connector::new(Catalog::builtin().clone())));
+    // The current value of the reasoning option, and the values offered.
+    let mut shown = |tokens| {
+        let agent = world
+            .spawn((
+                ModelChoice("anthropic/claude-sonnet-4-5".to_owned()),
+                ReasoningSetting(Some(Reasoning::Budget { tokens })),
+            ))
+            .id();
+        let options = world.run_system_once(move |options: options::Options| options.of(agent));
+        let options = serde_json::to_value(options.unwrap_or_default()).unwrap_or_default();
+        let reasoning = options.get(1).cloned().unwrap_or_default();
+        let current = reasoning.get("currentValue").cloned().unwrap_or_default();
+        let offered = reasoning
+            .get("options")
+            .and_then(|offered| offered.as_array());
+        let values = offered.into_iter().flatten();
+        let values = values.filter_map(|offered| offered.get("value")?.as_str());
+        (current, values.map(str::to_owned).collect::<Vec<_>>())
+    };
+    let (current, values) = shown(4096);
+    assert_eq!(current, "4096 tokens", "{values:?}");
+    assert_eq!(values.last().map(String::as_str), Some("4096 tokens"));
+    let (current, values) = shown(16384);
+    assert_eq!(current, "high");
+    assert_eq!(values, ["default", "off", "low", "medium", "high"]);
+}
