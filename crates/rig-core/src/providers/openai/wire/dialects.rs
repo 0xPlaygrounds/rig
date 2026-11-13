@@ -61,7 +61,9 @@ pub const AZURE: Dialect = Dialect {
         // Verifying a credential without deploying and spending tokens is
         // not offered.
         verify_path: "",
-        transcription_path: "/audio/translations",
+        // Speech to text. `/audio/translations` is the separate translation
+        // endpoint: it always returns English and reads no `language` or `prompt`.
+        transcription_path: "/audio/transcriptions",
         embedding: EmbeddingQuirks {
             // The deployment is in the URL, so the body carries no model.
             sends_model_field: false,
