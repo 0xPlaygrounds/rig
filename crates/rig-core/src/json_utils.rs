@@ -354,7 +354,23 @@ fn repair_json(text: &str) -> String {
                 repaired.push(c);
             }
             '\\' => match chars.peek() {
-                Some('"' | '\\' | '/' | 'b' | 'f' | 'n' | 'r' | 't' | 'u') => {
+                Some('"' | '\\' | '/' | 'b' | 'f' | 'n' | 'r' | 't') => {
+                    repaired.push(c);
+                    if let Some(next) = chars.next() {
+                        repaired.push(next);
+                    }
+                }
+                Some('u') => {
+                    // A `\u` escape needs four hex digits; anything else is a
+                    // literal, so the backslash is doubled, as for any other
+                    // invalid escape. Fewer than four at the text's end may be
+                    // a fragment cut mid-escape, left to `without_partial_escape`.
+                    let digits: Vec<char> = chars.clone().skip(1).take(4).collect();
+                    let cut_mid_escape =
+                        digits.len() < 4 && digits.iter().all(char::is_ascii_hexdigit);
+                    if !cut_mid_escape && digits.iter().any(|digit| !digit.is_ascii_hexdigit()) {
+                        repaired.push(c);
+                    }
                     repaired.push(c);
                     if let Some(next) = chars.next() {
                         repaired.push(next);
