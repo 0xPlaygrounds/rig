@@ -218,7 +218,7 @@ fn private_storage_roundtrip_atomic_replacement_and_exclusive_lock() -> anyhow::
 }
 
 /// A credential file others may read is narrowed to the owner and read; one
-/// behind a symlink is refused.
+/// behind a symlink, or a directory that is a symlink, is refused.
 #[test]
 fn storage_narrows_a_shared_file_and_rejects_symlinks() -> anyhow::Result<()> {
     let root = tempfile::tempdir()?;
@@ -231,6 +231,36 @@ fn storage_narrows_a_shared_file_and_rejects_symlinks() -> anyhow::Result<()> {
     fs::remove_file(&path)?;
     std::os::unix::fs::symlink(root.path().join("missing"), &path)?;
     anyhow::ensure!(matches!(saved(&dir), Err(AuthError::UnsafeStorage)));
+    let linked = root.path().join("linked");
+    std::os::unix::fs::symlink(&dir, &linked)?;
+    anyhow::ensure!(matches!(
+        private_dir(&linked),
+        Err(AuthError::UnsafeStorage)
+    ));
+    Ok(())
+}
+
+/// A credential directory others may write, or one behind a symlink, is
+/// refused before any credential in it is read, replaced or deleted.
+#[test]
+fn storage_rejects_a_shared_or_linked_directory() -> anyhow::Result<()> {
+    let root = tempfile::tempdir()?;
+    let home = root.path().join("shared");
+    let dir = home.join("anthropic-oauth");
+    seed(&dir, &credentials())?;
+    fs::set_permissions(&dir, fs::Permissions::from_mode(0o777))?;
+    anyhow::ensure!(matches!(signed_in(&home), Err(AuthError::UnsafeStorage)));
+    anyhow::ensure!(matches!(logout(&home), Err(AuthError::UnsafeStorage)));
+    anyhow::ensure!(dir.join("credentials.json").exists());
+
+    let linked = root.path().join("linked");
+    fs::create_dir(&linked)?;
+    let target = root.path().join("target");
+    seed(&target, &credentials())?;
+    std::os::unix::fs::symlink(&target, linked.join("anthropic-oauth"))?;
+    anyhow::ensure!(matches!(signed_in(&linked), Err(AuthError::UnsafeStorage)));
+    anyhow::ensure!(matches!(logout(&linked), Err(AuthError::UnsafeStorage)));
+    anyhow::ensure!(target.join("credentials.json").exists());
     Ok(())
 }
 

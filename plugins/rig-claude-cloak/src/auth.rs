@@ -9,7 +9,9 @@ use rig_harness::rig_tools::process::{self, Process};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
-    path::Path,
+    fs,
+    os::unix::fs::{DirBuilderExt, PermissionsExt},
+    path::{Path, PathBuf},
     process::Stdio,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -100,9 +102,38 @@ fn now() -> Result<u64, AuthError> {
 /// plugin's directory.
 const KEY: &str = "credentials";
 
-/// This plugin's directory under the agent's home.
-fn directory(home: &Path) -> std::path::PathBuf {
-    home.join("anthropic-oauth")
+/// This plugin's directory in the agent's home.
+const DIRECTORY: &str = "anthropic-oauth";
+
+/// This plugin's directory under the agent's home, created private when
+/// missing.
+fn directory(home: &Path) -> Result<PathBuf, AuthError> {
+    let path = home.join(DIRECTORY);
+    private_dir(&path)?;
+    Ok(path)
+}
+
+fn private_dir(path: &Path) -> Result<(), AuthError> {
+    match fs::DirBuilder::new().mode(0o700).create(path) {
+        Ok(()) => (),
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => (),
+        Err(_) => return Err(AuthError::Storage),
+    }
+    checked_dir(path)
+}
+
+/// Refuses a credential directory that is a symlink or that others may
+/// access, since they could replace the credential or lock files in it. A
+/// missing directory is `NotLoggedIn`.
+fn checked_dir(path: &Path) -> Result<(), AuthError> {
+    let metadata = fs::symlink_metadata(path).map_err(|e| match e.kind() {
+        std::io::ErrorKind::NotFound => AuthError::NotLoggedIn,
+        _ => AuthError::Storage,
+    })?;
+    if !metadata.is_dir() || metadata.permissions().mode() & 0o077 != 0 {
+        return Err(AuthError::UnsafeStorage);
+    }
+    Ok(())
 }
 
 /// The store's refusal as this plugin reports it: a lock held past the wait
@@ -509,7 +540,7 @@ pub async fn login(home: &Path) -> Result<(), AuthError> {
     let code = receive_code(&listener, ipv6.as_ref(), &state).await?;
     let client = OAuthClient::production()?;
     exchange_code(
-        &directory(home),
+        &directory(home)?,
         &client,
         &code,
         &state,
@@ -538,7 +569,7 @@ async fn exchange_code(
 
 /// Returns a matching token and account UUID under one refresh lock. Never starts login.
 pub async fn credentials_for_request(home: &Path) -> Result<(String, Option<String>), AuthError> {
-    credentials_in(&directory(home), &OAuthClient::production()?).await
+    credentials_in(&directory(home)?, &OAuthClient::production()?).await
 }
 
 async fn credentials_in(
@@ -567,7 +598,9 @@ async fn credentials_in(
 /// reads them, which may still need a refresh: what makes this plugin's
 /// models usable; else why not.
 pub fn signed_in(home: &Path) -> Result<(), AuthError> {
-    let store = FileTokenStore::new(directory(home));
+    let dir = home.join(DIRECTORY);
+    checked_dir(&dir)?;
+    let store = FileTokenStore::new(dir);
     // The store's file reads never wait, so this completes on first poll.
     match bevy_tasks::block_on(store.load(KEY)).map_err(storage)? {
         Some(_) => Ok(()),
@@ -578,7 +611,7 @@ pub fn signed_in(home: &Path) -> Result<(), AuthError> {
 /// Deletes local credentials. Fails at once if a login's save or a refresh
 /// is currently active.
 pub fn logout(home: &Path) -> Result<(), AuthError> {
-    logout_in(&directory(home))
+    logout_in(&directory(home)?)
 }
 
 fn logout_in(dir: &Path) -> Result<(), AuthError> {
