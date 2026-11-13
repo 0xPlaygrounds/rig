@@ -751,6 +751,35 @@ fn a_restated_call_starts_with_its_name() {
     );
 }
 
+/// Restating a finished reply states its calls as the reply holds them,
+/// two that share an id included, so a caller running the calls from the
+/// events files each result under an id the reply contains.
+#[test]
+fn a_restated_reply_keeps_a_repeated_call_id() {
+    let call = |x| {
+        AssistantContent::ToolCall(ToolCall::from_wire(
+            "call_1",
+            crate::message::ToolFunction::new(name("add"), json!({ "x": x })),
+        ))
+    };
+    let response = CompletionResponse::new(
+        vec![call(1), call(2)],
+        Usage::default(),
+        crate::message::Origin::new("test", "test", "test"),
+        Value::Null,
+    );
+    let items = events_of(&response).expect("restates");
+    let transcript = StreamRecord::from_items(items).expect("a valid sequence");
+    let ended: Vec<_> = transcript
+        .events()
+        .filter_map(|event| match event {
+            StreamEvent::End { content, .. } => Some(content.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(ended, response.choice);
+}
+
 /// A call keeps the first name it is given, so a later fragment naming
 /// another tool cannot end a call its start named differently.
 #[test]

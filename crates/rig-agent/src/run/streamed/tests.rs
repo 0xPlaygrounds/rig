@@ -3,7 +3,7 @@ use super::super::response::PromptError;
 use super::super::{AgentRun, AgentRunStep, PendingToolCall, ToolAnswer};
 use super::*;
 use rig_core::completion::{CompletionResponse, Usage};
-use rig_core::message::ToolFunction;
+use rig_core::message::{CallId, ToolFunction};
 use rig_core::streaming::StreamRecord;
 use serde_json::json;
 
@@ -277,6 +277,26 @@ fn an_ignored_call_stays_out_of_the_turn_after_a_checkpoint() {
         serde_json::from_str(&serde_json::to_string(&asm).unwrap()).unwrap();
     let turn = asm.finish(&response(vec![AssistantContent::ToolCall(multiply)]));
     assert!(turn.choice.is_empty(), "{:?}", turn.choice);
+}
+
+/// An ignored call leaves out only itself when a peer shares its id.
+#[test]
+fn an_ignored_call_leaves_a_peer_with_its_id_in_the_turn() {
+    let multiply = tool_call("dup", "multiply");
+    let add = tool_call("dup", "add");
+    let stream = items([call(0, &multiply), call(1, &add)]);
+    let mut asm = assembler();
+    surface_invalid(&mut asm, &stream[..3]);
+    assert!(
+        asm.resolve_pending_invalid(&StreamedResolution::Ignored)
+            .is_none()
+    );
+    ingest_all(&mut asm, &stream[3..]);
+    let turn = asm.finish(&response(vec![
+        AssistantContent::ToolCall(multiply),
+        AssistantContent::ToolCall(add.clone()),
+    ]));
+    assert_eq!(turn.choice, vec![AssistantContent::ToolCall(add)]);
 }
 
 /// Nothing is ingested while an invalid call awaits its resolution.

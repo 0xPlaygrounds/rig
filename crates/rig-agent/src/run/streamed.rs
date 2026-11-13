@@ -17,8 +17,9 @@ use serde::{Deserialize, Serialize};
 
 use rig_core::completion::{FinishReason, Message};
 use rig_core::error::ProviderError;
-use rig_core::message::{AssistantContent, AssistantMessage, CallId, ToolCall, ToolName};
+use rig_core::message::{AssistantContent, AssistantMessage, ToolCall, ToolName};
 use rig_core::streaming::{Item, PartKind, StreamEvent};
+use rig_core::tool::feedback::{not_executed, tool_result_message};
 
 use super::policy::TurnPolicy;
 
@@ -73,33 +74,56 @@ impl PartialStreamedTurn {
     /// end never does. `None` when the turn has produced no representable
     /// content.
     pub fn assistant_message(&self, current_tool_call: Option<ToolCall>) -> Option<Message> {
-        let mut calls: Vec<ToolCall> = self
-            .pending_tool_calls
-            .iter()
-            .cloned()
-            .chain(current_tool_call)
-            .collect();
-        let mut content: Vec<AssistantContent> = self
-            .content
-            .iter()
-            .filter_map(|part| match part {
-                AssistantContent::ToolCall(call) => {
-                    let at = calls.iter().position(|kept| kept.id == call.id)?;
-                    let mut kept = calls.remove(at);
-                    kept.native.clone_from(&call.native);
-                    Some(AssistantContent::ToolCall(kept))
-                }
-                part => (!part.is_blank()).then(|| part.clone()),
-            })
-            .collect();
-        content.extend(calls.into_iter().map(|mut call| {
-            call.native = None;
-            AssistantContent::ToolCall(call)
-        }));
+        let (content, _) = self.content_with(current_tool_call);
         if content.is_empty() {
             return None;
         }
         Some(Message::Assistant(self.head.clone().with_content(content)))
+    }
+
+    /// The content of [`Self::assistant_message`], and the position in it
+    /// of `current_tool_call`. Each call part takes the first call still
+    /// unmatched with its id, so calls sharing an id pair in arrival order.
+    fn content_with(
+        &self,
+        current_tool_call: Option<ToolCall>,
+    ) -> (Vec<AssistantContent>, Option<usize>) {
+        let current_slot = self.pending_tool_calls.len();
+        let mut calls: Vec<(usize, ToolCall)> = self
+            .pending_tool_calls
+            .iter()
+            .cloned()
+            .chain(current_tool_call)
+            .enumerate()
+            .collect();
+        let mut content = Vec::new();
+        let mut current = None;
+        let mut push_call = |content: &mut Vec<AssistantContent>,
+                             (slot, call): (usize, ToolCall)| {
+            if slot == current_slot {
+                current = Some(content.len());
+            }
+            content.push(AssistantContent::ToolCall(call));
+        };
+        for part in &self.content {
+            match part {
+                AssistantContent::ToolCall(call) => {
+                    let Some(at) = calls.iter().position(|(_, kept)| kept.id == call.id) else {
+                        continue;
+                    };
+                    let (slot, mut kept) = calls.remove(at);
+                    kept.native.clone_from(&call.native);
+                    push_call(&mut content, (slot, kept));
+                }
+                part if !part.is_blank() => content.push(part.clone()),
+                _ => {}
+            }
+        }
+        for (slot, mut call) in calls {
+            call.native = None;
+            push_call(&mut content, (slot, call));
+        }
+        (content, current)
     }
 
     /// Rollback messages for a retried or skipped streamed turn: the partial
@@ -110,19 +134,25 @@ impl PartialStreamedTurn {
         invalid_tool_call: ToolCall,
         feedback: String,
     ) -> Option<(Message, Message)> {
-        // Preserve call IDs so synthetic results correlate with their diagnostic calls.
-        let assistant_message = self.assistant_message(Some(invalid_tool_call.clone()))?;
-        let Message::Assistant(turn) = &assistant_message else {
-            return None;
-        };
-        let user_message = Message::User {
-            content: rig_core::tool::feedback::invalid_call_feedback(
-                &turn.content,
-                &invalid_tool_call.id,
-                &feedback,
-            ),
-        };
-        Some((assistant_message, user_message))
+        // Answered by position, since a peer may share the invalid call's id.
+        let (content, invalid_at) = self.content_with(Some(invalid_tool_call));
+        let results = content
+            .iter()
+            .enumerate()
+            .filter_map(|(at, part)| match part {
+                AssistantContent::ToolCall(call) if Some(at) == invalid_at => {
+                    Some(tool_result_message(
+                        call.id.clone(),
+                        call.function.name.clone(),
+                        feedback.clone(),
+                    ))
+                }
+                AssistantContent::ToolCall(call) => Some(not_executed(call)),
+                _ => None,
+            })
+            .collect();
+        let assistant_message = Message::Assistant(self.head.clone().with_content(content));
+        Some((assistant_message, Message::User { content: results }))
     }
 }
 
@@ -204,6 +234,15 @@ struct PendingInvalid {
     tool_call: ToolCall,
 }
 
+/// A tool call that ended this turn and was settled without abandoning it.
+#[derive(Clone, Serialize, Deserialize)]
+struct EndedCall {
+    /// The call as validated, with a repaired name.
+    call: ToolCall,
+    /// Whether a [`StreamedResolution::Ignored`] dropped it.
+    ignored: bool,
+}
+
 /// Serializable accumulator for one streamed turn. Persisted state requires the
 /// same library version; it does not itself resume a provider connection.
 /// Drivers must resolve pending invalid calls before ingesting more events.
@@ -214,14 +253,11 @@ pub struct StreamedTurnAssembler {
     /// Tool calls still streaming, by the part's position.
     #[serde(default)]
     open_calls: BTreeMap<usize, OpenCall>,
-    pending_tool_calls: Vec<ToolCall>,
+    /// The calls that ended, in the order they ended. The stream's
+    /// response still carries ignored calls and original names;
+    /// [`Self::resolved`] applies these to it.
+    ended_calls: Vec<EndedCall>,
     pending_invalid: Option<PendingInvalid>,
-    /// Calls an [`StreamedResolution::Ignored`] dropped: the stream's
-    /// response still carries them, and [`Self::finish`] leaves them out.
-    ignored_calls: Vec<CallId>,
-    /// Calls a [`StreamedResolution::Repaired`] renamed, applied to the
-    /// stream's response at [`Self::finish`].
-    repaired_calls: Vec<(CallId, ToolName)>,
     /// Replayed assistant blocks excluded from assembly this turn (see
     /// [`unknown_payload_loses_assistant_content`]): counted per item,
     /// surfaced as one warning when the guard drops.
@@ -256,10 +292,8 @@ impl StreamedTurnAssembler {
         Self {
             policy,
             open_calls: BTreeMap::new(),
-            pending_tool_calls: Vec::new(),
+            ended_calls: Vec::new(),
             pending_invalid: None,
-            ignored_calls: Vec::new(),
-            repaired_calls: Vec::new(),
             excluded_assistant_content: ExclusionCount::default(),
         }
     }
@@ -348,7 +382,10 @@ impl StreamedTurnAssembler {
                         Some(tool_call.function.arguments_json()),
                     ));
                 }
-                self.pending_tool_calls.push(tool_call.clone());
+                self.ended_calls.push(EndedCall {
+                    call: tool_call.clone(),
+                    ignored: false,
+                });
                 Ok(StreamedTurnEvent::EmitToolCall {
                     call: tool_call.clone(),
                 })
@@ -372,16 +409,20 @@ impl StreamedTurnAssembler {
         match resolution {
             StreamedResolution::Repaired { tool_name } => {
                 if let Ok(tool_name) = ToolName::new(tool_name.clone()) {
-                    self.repaired_calls
-                        .push((tool_call.id.clone(), tool_name.clone()));
                     tool_call.function.name = tool_name;
                 }
-                self.pending_tool_calls.push(tool_call.clone());
+                self.ended_calls.push(EndedCall {
+                    call: tool_call.clone(),
+                    ignored: false,
+                });
                 Some(StreamedTurnEvent::EmitToolCall { call: tool_call })
             }
             StreamedResolution::TurnAbandoned => None,
             StreamedResolution::Ignored => {
-                self.ignored_calls.push(tool_call.id);
+                self.ended_calls.push(EndedCall {
+                    call: tool_call,
+                    ignored: true,
+                });
                 None
             }
         }
@@ -396,8 +437,13 @@ impl StreamedTurnAssembler {
     ) -> PartialStreamedTurn {
         PartialStreamedTurn {
             head: partial.continued(Vec::new()),
-            content: partial.choice.clone(),
-            pending_tool_calls: self.pending_tool_calls.clone(),
+            content: self.resolved(&partial.choice),
+            pending_tool_calls: self
+                .ended_calls
+                .iter()
+                .filter(|ended| !ended.ignored)
+                .map(|ended| ended.call.clone())
+                .collect(),
         }
     }
 
@@ -405,33 +451,37 @@ impl StreamedTurnAssembler {
     /// into: its choice in start order, with the calls this turn ignored
     /// left out and the ones it repaired renamed.
     pub fn finish(self, response: &rig_core::completion::CompletionResponse) -> StreamedTurn {
-        let choice = response
-            .choice
-            .iter()
-            .filter(|content| match content {
-                AssistantContent::ToolCall(call) => !self.ignored_calls.contains(&call.id),
-                _ => true,
-            })
-            .cloned()
-            .map(|content| match content {
-                AssistantContent::ToolCall(mut call) => {
-                    if let Some((_, name)) =
-                        self.repaired_calls.iter().find(|(id, _)| *id == call.id)
-                    {
-                        call.function.name = name.clone();
-                    }
-                    AssistantContent::ToolCall(call)
-                }
-                other => other,
-            })
-            .collect();
-
         StreamedTurn {
             head: response.head(),
-            choice,
+            choice: self.resolved(&response.choice),
             policy: self.policy,
             finish_reason: response.finish_reason(),
         }
+    }
+
+    /// `choice` with the calls this turn ignored left out and the ones it
+    /// repaired renamed. Each call part takes the first ended call still
+    /// unmatched with its id, so calls sharing an id pair in the order they
+    /// ended, which is the order a reply restated whole lists them in.
+    fn resolved(&self, choice: &[AssistantContent]) -> Vec<AssistantContent> {
+        let mut ended: Vec<&EndedCall> = self.ended_calls.iter().collect();
+        choice
+            .iter()
+            .filter_map(|content| {
+                let AssistantContent::ToolCall(call) = content else {
+                    return Some(content.clone());
+                };
+                let Some(at) = ended.iter().position(|ended| ended.call.id == call.id) else {
+                    return Some(content.clone());
+                };
+                let ended = ended.remove(at);
+                (!ended.ignored).then(|| {
+                    let mut call = call.clone();
+                    call.function.name.clone_from(&ended.call.function.name);
+                    AssistantContent::ToolCall(call)
+                })
+            })
+            .collect()
     }
 
     /// Park resolution on `tool_call` and surface it to the caller as an
