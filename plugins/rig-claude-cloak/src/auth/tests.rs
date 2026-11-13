@@ -1,4 +1,8 @@
 use super::*;
+use rig_harness::rig_core::providers::chatgpt::auth::StoreLock;
+use std::fs::{self, OpenOptions};
+use std::io::Write;
+use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 
 mod http;
 mod off_runtime;
@@ -80,6 +84,22 @@ async fn a_slow_opener_never_takes_its_browser_with_it() -> anyhow::Result<()> {
     anyhow::ensure!(matches!(opened, Err(AuthError::Browser)));
     anyhow::ensure!(alive, "the browser died with its opener");
     Ok(())
+}
+
+/// Saves `credentials` in `dir` as the plugin does.
+fn seed(dir: &Path, credentials: &Credentials) -> Result<(), AuthError> {
+    bevy_tasks::block_on(save(&FileTokenStore::new(dir), credentials))
+}
+
+/// The credentials saved in `dir`, read as the plugin reads them.
+fn saved(dir: &Path) -> Result<Credentials, AuthError> {
+    bevy_tasks::block_on(load(&FileTokenStore::new(dir)))
+}
+
+/// The credential lock in `dir`, refused at once as busy when held.
+fn hold(dir: &Path) -> Result<StoreLock, AuthError> {
+    let store = FileTokenStore::new(dir).with_lock_wait(Duration::ZERO);
+    bevy_tasks::block_on(store.lock(KEY)).map_err(storage)
 }
 
 fn credentials() -> Credentials {
@@ -176,45 +196,71 @@ fn refresh_can_retain_refresh_token_but_login_requires_one() -> anyhow::Result<(
 
 #[test]
 fn private_storage_roundtrip_atomic_replacement_and_exclusive_lock() -> anyhow::Result<()> {
-    let root = (tempfile::tempdir())?;
+    let root = tempfile::tempdir()?;
     let dir = root.path().join("oauth");
-    (private_dir(&dir))?;
-    let guard = (lock(&dir))?;
-    anyhow::ensure!(matches!(lock(&dir), Err(AuthError::Busy)));
-    (save(&dir, &credentials()))?;
-    let mut value = (load(&dir))?;
-    anyhow::ensure!((value.access_token) == ("old-access"));
+    let guard = hold(&dir)?;
+    anyhow::ensure!(matches!(hold(&dir), Err(AuthError::Busy)));
+    anyhow::ensure!(matches!(logout_in(&dir), Err(AuthError::Busy)));
+    seed(&dir, &credentials())?;
+    let mut value = saved(&dir)?;
+    anyhow::ensure!(value.access_token == "old-access");
     value.access_token = "replacement".into();
-    (save(&dir, &value))?;
-    anyhow::ensure!(((load(&dir))?.access_token) == ("replacement"));
-    let mode = (fs::metadata(dir.join("credentials.json")))?
+    seed(&dir, &value)?;
+    anyhow::ensure!(saved(&dir)?.access_token == "replacement");
+    let mode = fs::metadata(dir.join("credentials.json"))?
         .permissions()
         .mode();
-    anyhow::ensure!((mode & 0o777) == (0o600));
-    anyhow::ensure!(((fs::metadata(&dir))?.permissions().mode() & 0o777) == (0o700));
+    anyhow::ensure!(mode & 0o777 == 0o600);
+    anyhow::ensure!(fs::metadata(&dir)?.permissions().mode() & 0o777 == 0o700);
     drop(guard);
-    let _guard = (lock(&dir))?;
+    let _guard = hold(&dir)?;
     Ok(())
 }
 
+/// A credential file others may read is narrowed to the owner and read; one
+/// behind a symlink, or a directory that is a symlink, is refused.
 #[test]
-fn storage_rejects_permissive_files_and_symlinks() -> anyhow::Result<()> {
-    let root = (tempfile::tempdir())?;
+fn storage_narrows_a_shared_file_and_rejects_symlinks() -> anyhow::Result<()> {
+    let root = tempfile::tempdir()?;
     let dir = root.path().join("oauth");
-    (private_dir(&dir))?;
-    (save(&dir, &credentials()))?;
+    seed(&dir, &credentials())?;
     let path = dir.join("credentials.json");
-    (fs::set_permissions(&path, fs::Permissions::from_mode(0o644)))?;
-    anyhow::ensure!(matches!(load(&dir), Err(AuthError::UnsafeStorage)));
-    (fs::remove_file(&path))?;
-    (std::os::unix::fs::symlink(root.path().join("missing"), &path))?;
-    anyhow::ensure!(matches!(load(&dir), Err(AuthError::UnsafeStorage)));
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o644))?;
+    anyhow::ensure!(saved(&dir)?.access_token == "old-access");
+    anyhow::ensure!(fs::metadata(&path)?.permissions().mode() & 0o777 == 0o600);
+    fs::remove_file(&path)?;
+    std::os::unix::fs::symlink(root.path().join("missing"), &path)?;
+    anyhow::ensure!(matches!(saved(&dir), Err(AuthError::UnsafeStorage)));
     let linked = root.path().join("linked");
-    (std::os::unix::fs::symlink(&dir, &linked))?;
+    std::os::unix::fs::symlink(&dir, &linked)?;
     anyhow::ensure!(matches!(
         private_dir(&linked),
         Err(AuthError::UnsafeStorage)
     ));
+    Ok(())
+}
+
+/// A credential directory others may write, or one behind a symlink, is
+/// refused before any credential in it is read, replaced or deleted.
+#[test]
+fn storage_rejects_a_shared_or_linked_directory() -> anyhow::Result<()> {
+    let root = tempfile::tempdir()?;
+    let home = root.path().join("shared");
+    let dir = home.join("anthropic-oauth");
+    seed(&dir, &credentials())?;
+    fs::set_permissions(&dir, fs::Permissions::from_mode(0o777))?;
+    anyhow::ensure!(matches!(signed_in(&home), Err(AuthError::UnsafeStorage)));
+    anyhow::ensure!(matches!(logout(&home), Err(AuthError::UnsafeStorage)));
+    anyhow::ensure!(dir.join("credentials.json").exists());
+
+    let linked = root.path().join("linked");
+    fs::create_dir(&linked)?;
+    let target = root.path().join("target");
+    seed(&target, &credentials())?;
+    std::os::unix::fs::symlink(&target, linked.join("anthropic-oauth"))?;
+    anyhow::ensure!(matches!(signed_in(&linked), Err(AuthError::UnsafeStorage)));
+    anyhow::ensure!(matches!(logout(&linked), Err(AuthError::UnsafeStorage)));
+    anyhow::ensure!(target.join("credentials.json").exists());
     Ok(())
 }
 
@@ -365,4 +411,113 @@ fn only_a_held_lock_the_network_and_retried_statuses_are_transient() -> anyhow::
         anyhow::ensure!(error.is_transient() == transient, "{error}");
     }
     Ok(())
+}
+
+/// A login saved before the plugin kept its credentials through rig-core's
+/// file store is read as it is: no new login.
+#[test]
+fn a_login_saved_by_the_previous_storage_code_is_read_without_a_new_login() -> anyhow::Result<()> {
+    let home = tempfile::tempdir()?;
+    let dir = home.path().join("anthropic-oauth");
+    fs::DirBuilder::new().mode(0o700).create(&dir)?;
+    let expires_at = now()? + 3600;
+    // The bytes and modes the previous `save` wrote, beside its lock file.
+    let saved = format!(
+        r#"{{"access_token":"fake-access","refresh_token":"fake-refresh","expires_at":{expires_at},"account_id":"fake-account","org_id":null}}"#
+    );
+    for (name, text) in [("credentials.json", saved.as_str()), ("lock", "")] {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(dir.join(name))?;
+        file.write_all(text.as_bytes())?;
+    }
+    signed_in(home.path())?;
+    let client = OAuthClient::production()?;
+    let result = bevy_tasks::block_on(credentials_in(&dir, &client))?;
+    anyhow::ensure!(result == ("fake-access".into(), Some("fake-account".into())));
+    Ok(())
+}
+
+/// Where the login that `a_login_waiting_in_the_browser_leaves_the_credentials_free`
+/// runs in a copy of itself keeps its credentials.
+#[cfg(target_os = "linux")]
+const LOGIN_HOME: &str = "RIG_CLOAK_TEST_LOGIN_HOME";
+
+/// A login waiting for the user in the browser holds nothing another rig
+/// needs: a request there reads the saved credentials at once. The login
+/// runs in a copy of this test, its browser a script that only reports the
+/// URL it was given.
+#[cfg(target_os = "linux")]
+#[test]
+#[allow(clippy::disallowed_methods, reason = "test fixtures")]
+fn a_login_waiting_in_the_browser_leaves_the_credentials_free() -> anyhow::Result<()> {
+    if let Some(home) = std::env::var_os(LOGIN_HOME) {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?;
+        runtime.block_on(login(Path::new(&home)))?;
+        return Ok(());
+    }
+    let root = tempfile::tempdir()?;
+    let home = root.path().join("home");
+    let dir = home.join("anthropic-oauth");
+    fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(&dir)?;
+    let mut value = credentials();
+    value.expires_at = now()? + 3600;
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(dir.join("credentials.json"))?;
+    file.write_all(&serde_json::to_vec(&value)?)?;
+    let bin = root.path().join("bin");
+    fs::create_dir(&bin)?;
+    let opened = root.path().join("opened");
+    let opener = bin.join("xdg-open");
+    fs::write(
+        &opener,
+        format!("#!/bin/sh\necho \"$1\" > '{}'\n", opened.display()),
+    )?;
+    fs::set_permissions(&opener, fs::Permissions::from_mode(0o700))?;
+    let path = std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(
+        &std::env::var_os("PATH").unwrap_or_default(),
+    )))?;
+    let name = "auth::tests::a_login_waiting_in_the_browser_leaves_the_credentials_free";
+    let mut child = std::process::Command::new(std::env::current_exe()?)
+        .args(["--exact", name, "--test-threads", "1"])
+        .env(LOGIN_HOME, &home)
+        .env("PATH", path)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()?;
+    let waited = (|| {
+        let started = std::time::Instant::now();
+        while !opened.exists() {
+            anyhow::ensure!(
+                started.elapsed() < Duration::from_secs(20),
+                "the login never opened the browser"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let client = OAuthClient::production()?;
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?;
+        let result = runtime.block_on(async {
+            tokio::time::timeout(Duration::from_secs(10), credentials_in(&dir, &client)).await
+        });
+        let Ok(result) = result else {
+            anyhow::bail!("the request waited on the login's browser");
+        };
+        anyhow::ensure!(result? == ("old-access".into(), Some("old-account".into())));
+        Ok(())
+    })();
+    child.kill().ok();
+    child.wait().ok();
+    waited
 }

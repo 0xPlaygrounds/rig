@@ -69,11 +69,11 @@ fn the_models_are_usable_only_once_logged_in() -> anyhow::Result<()> {
     let credentials = stored.join("credentials.json");
     std::fs::write(&credentials, "{}")?;
     std::fs::set_permissions(&credentials, std::fs::Permissions::from_mode(0o644))?;
-    // A file others may read is not one a request reads.
-    anyhow::ensure!(usable(&app).iter().all(|usable| !usable));
-    std::fs::set_permissions(&credentials, std::fs::Permissions::from_mode(0o600))?;
+    // A file others may read is narrowed to the owner, as a request reads it.
     let after = usable(&app);
     anyhow::ensure!(after.iter().any(|usable| *usable), "{after:?}");
+    let mode = std::fs::metadata(&credentials)?.permissions().mode() & 0o777;
+    anyhow::ensure!(mode == 0o600, "file mode {mode:o}");
     Ok(())
 }
 

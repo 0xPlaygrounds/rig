@@ -1,17 +1,16 @@
 //! Browser OAuth and private, refreshable Anthropic credentials.
 
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use fs2::FileExt;
 use rand::RngCore;
 use rig_harness::harness_protocol::without_secrets;
-use rig_harness::rig_core::error::retryable_status;
+use rig_harness::rig_core::error::{BoxError, retryable_status};
+use rig_harness::rig_core::providers::chatgpt::auth::{FileStoreError, FileTokenStore, TokenStore};
 use rig_harness::rig_tools::process::{self, Process};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
-    fs::{self, File, OpenOptions},
-    io::{Read, Write},
-    os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt},
+    fs,
+    os::unix::fs::{DirBuilderExt, PermissionsExt},
     path::{Path, PathBuf},
     process::Stdio,
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -99,116 +98,72 @@ fn now() -> Result<u64, AuthError> {
         .map_err(|_| AuthError::Storage)
 }
 
+/// The record the credentials are kept under, `credentials.json` in this
+/// plugin's directory.
+const KEY: &str = "credentials";
+
+/// This plugin's directory in the agent's home.
+const DIRECTORY: &str = "anthropic-oauth";
+
+/// This plugin's directory under the agent's home, created private when
+/// missing.
+fn directory(home: &Path) -> Result<PathBuf, AuthError> {
+    let path = home.join(DIRECTORY);
+    private_dir(&path)?;
+    Ok(path)
+}
+
 fn private_dir(path: &Path) -> Result<(), AuthError> {
     match fs::DirBuilder::new().mode(0o700).create(path) {
         Ok(()) => (),
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => (),
         Err(_) => return Err(AuthError::Storage),
     }
-    let metadata = fs::symlink_metadata(path).map_err(|_| AuthError::Storage)?;
+    checked_dir(path)
+}
+
+/// Refuses a credential directory that is a symlink or that others may
+/// access, since they could replace the credential or lock files in it. A
+/// missing directory is `NotLoggedIn`.
+fn checked_dir(path: &Path) -> Result<(), AuthError> {
+    let metadata = fs::symlink_metadata(path).map_err(|e| match e.kind() {
+        std::io::ErrorKind::NotFound => AuthError::NotLoggedIn,
+        _ => AuthError::Storage,
+    })?;
     if !metadata.is_dir() || metadata.permissions().mode() & 0o077 != 0 {
         return Err(AuthError::UnsafeStorage);
     }
     Ok(())
 }
 
-/// This plugin's directory under the agent's home.
-fn directory(home: &Path) -> Result<PathBuf, AuthError> {
-    // The parent is the existing agent home; only this plugin's directory is managed here.
-    let path = home.join("anthropic-oauth");
-    private_dir(&path)?;
-    Ok(path)
-}
-
-fn validate_file(path: &Path) -> Result<(), AuthError> {
-    let metadata = fs::symlink_metadata(path).map_err(|e| {
-        if e.kind() == std::io::ErrorKind::NotFound {
-            AuthError::NotLoggedIn
-        } else {
-            AuthError::Storage
-        }
-    })?;
-    if !metadata.is_file() || metadata.permissions().mode() & 0o077 != 0 {
-        return Err(AuthError::UnsafeStorage);
+/// The store's refusal as this plugin reports it: a lock held past the wait
+/// is busy, and a file the store will not read is unsafe.
+fn storage(error: BoxError) -> AuthError {
+    match error.downcast_ref::<FileStoreError>() {
+        Some(FileStoreError::Busy { .. }) => AuthError::Busy,
+        Some(FileStoreError::TooLarge { .. }) => AuthError::InvalidCredentials,
+        Some(_) => AuthError::UnsafeStorage,
+        None => AuthError::Storage,
     }
-    Ok(())
 }
 
-fn lock(dir: &Path) -> Result<File, AuthError> {
-    let path = dir.join("lock");
-    match OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .open(&path)
-    {
-        Ok(_) => (),
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => (),
-        Err(_) => return Err(AuthError::Storage),
-    }
-    validate_file(&path)?;
-    let file = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(path)
-        .map_err(|_| AuthError::Storage)?;
-    file.try_lock_exclusive().map_err(|e| {
-        if e.kind() == std::io::ErrorKind::WouldBlock {
-            AuthError::Busy
-        } else {
-            AuthError::Storage
-        }
-    })?;
-    Ok(file)
-}
-
-async fn wait_lock(dir: &Path) -> Result<File, AuthError> {
-    tokio::time::timeout(Duration::from_secs(60), async {
-        loop {
-            match lock(dir) {
-                Err(AuthError::Busy) => tokio::time::sleep(Duration::from_millis(50)).await,
-                result => return result,
-            }
-        }
-    })
-    .await
-    .map_err(|_| AuthError::Busy)?
-}
-
-fn load(dir: &Path) -> Result<Credentials, AuthError> {
-    let path = dir.join("credentials.json");
-    validate_file(&path)?;
-    let mut data = Vec::new();
-    File::open(path)
-        .map_err(|_| AuthError::Storage)?
-        .take(65537)
-        .read_to_end(&mut data)
-        .map_err(|_| AuthError::Storage)?;
-    if data.len() > 65536 {
-        return Err(AuthError::InvalidCredentials);
-    }
+async fn load(store: &FileTokenStore) -> Result<Credentials, AuthError> {
+    let record = store
+        .load(KEY)
+        .await
+        .map_err(storage)?
+        .ok_or(AuthError::NotLoggedIn)?;
     let credentials: Credentials =
-        serde_json::from_slice(&data).map_err(|_| AuthError::InvalidCredentials)?;
+        serde_json::from_str(&record).map_err(|_| AuthError::InvalidCredentials)?;
     if credentials.access_token.is_empty() || credentials.refresh_token.is_empty() {
         return Err(AuthError::InvalidCredentials);
     }
     Ok(credentials)
 }
 
-fn save(dir: &Path, credentials: &Credentials) -> Result<(), AuthError> {
-    let mut file = tempfile::NamedTempFile::new_in(dir).map_err(|_| AuthError::Storage)?;
-    file.as_file()
-        .set_permissions(fs::Permissions::from_mode(0o600))
-        .map_err(|_| AuthError::Storage)?;
-    let data = serde_json::to_vec(credentials).map_err(|_| AuthError::Storage)?;
-    file.write_all(&data).map_err(|_| AuthError::Storage)?;
-    file.as_file().sync_all().map_err(|_| AuthError::Storage)?;
-    file.persist(dir.join("credentials.json"))
-        .map_err(|_| AuthError::Storage)?;
-    File::open(dir)
-        .and_then(|f| f.sync_all())
-        .map_err(|_| AuthError::Storage)?;
-    Ok(())
+async fn save(store: &FileTokenStore, credentials: &Credentials) -> Result<(), AuthError> {
+    let record = serde_json::to_string(credentials).map_err(|_| AuthError::Storage)?;
+    store.save(KEY, &record).await.map_err(storage)
 }
 
 fn client() -> Result<reqwest::Client, AuthError> {
@@ -360,17 +315,17 @@ async fn fill_account(client: &OAuthClient, credentials: &mut Credentials, login
 }
 
 async fn save_and_fill_account(
-    dir: &Path,
+    store: &FileTokenStore,
     client: &OAuthClient,
     credentials: &mut Credentials,
     login: bool,
 ) -> Result<(), AuthError> {
     // Persist rotated tokens before optional network I/O can be cancelled.
-    save(dir, credentials)?;
+    save(store, credentials).await?;
     let identity = (credentials.account_id.clone(), credentials.org_id.clone());
     fill_account(client, credentials, login).await;
     if identity != (credentials.account_id.clone(), credentials.org_id.clone()) {
-        save(dir, credentials)?;
+        save(store, credentials).await?;
     }
     Ok(())
 }
@@ -566,10 +521,10 @@ async fn open_browser(opener: std::process::Command, wait: Duration) -> Result<(
     }
 }
 
-/// Opens a browser for an explicit PKCE login and stores credentials privately.
+/// Opens a browser for an explicit PKCE login and stores credentials
+/// privately. The credentials are held only while the new ones are saved,
+/// not while the user is in the browser.
 pub async fn login(home: &Path) -> Result<(), AuthError> {
-    let dir = directory(home)?;
-    let _lock = lock(&dir)?;
     let (listener, ipv6) = callback_listeners(54545).await?;
     let redirect = format!(
         "http://localhost:{}/callback",
@@ -584,7 +539,15 @@ pub async fn login(home: &Path) -> Result<(), AuthError> {
     open_browser(browser_command(&url), Duration::from_secs(15)).await?;
     let code = receive_code(&listener, ipv6.as_ref(), &state).await?;
     let client = OAuthClient::production()?;
-    exchange_code(&dir, &client, &code, &state, &verifier, &redirect).await?;
+    exchange_code(
+        &directory(home)?,
+        &client,
+        &code,
+        &state,
+        &verifier,
+        &redirect,
+    )
+    .await?;
     Ok(())
 }
 
@@ -598,14 +561,15 @@ async fn exchange_code(
 ) -> Result<Credentials, AuthError> {
     let response = exchange(client, serde_json::json!({"grant_type":"authorization_code", "client_id":CLIENT_ID, "code":code, "state":state, "code_verifier":verifier, "redirect_uri":redirect}), false).await?;
     let mut credentials = merge(response, None, now()?)?;
-    save_and_fill_account(dir, client, &mut credentials, true).await?;
+    let store = FileTokenStore::new(dir);
+    let _lock = store.lock(KEY).await.map_err(storage)?;
+    save_and_fill_account(&store, client, &mut credentials, true).await?;
     Ok(credentials)
 }
 
 /// Returns a matching token and account UUID under one refresh lock. Never starts login.
 pub async fn credentials_for_request(home: &Path) -> Result<(String, Option<String>), AuthError> {
-    let dir = directory(home)?;
-    credentials_in(&dir, &OAuthClient::production()?).await
+    credentials_in(&directory(home)?, &OAuthClient::production()?).await
 }
 
 async fn credentials_in(
@@ -615,41 +579,48 @@ async fn credentials_in(
     // Model calls can be polled by Bevy without a Tokio reactor. Bind both
     // refresh I/O and lock-wait timers on every poll, as Rig's HTTP transport does.
     rig_http::runtime::bind(async {
-        let _lock = wait_lock(dir).await?;
-        let credentials = load(dir)?;
+        let store = FileTokenStore::new(dir);
+        let _lock = store.lock(KEY).await.map_err(storage)?;
+        let credentials = load(&store).await?;
         if credentials.expires_at > now()? {
             return Ok((credentials.access_token, credentials.account_id));
         }
         let response = exchange(client, serde_json::json!({"grant_type":"refresh_token", "client_id":CLIENT_ID, "refresh_token":credentials.refresh_token}), true).await?;
         let mut credentials = merge(response, Some(credentials), now()?)?;
-        save_and_fill_account(dir, client, &mut credentials, false).await?;
+        save_and_fill_account(&store, client, &mut credentials, false).await?;
         Ok((credentials.access_token, credentials.account_id))
     })
     .map_err(|_| AuthError::Runtime)?
     .await
 }
 
-/// Whether `home` holds the credentials a login saved, as a request reads
-/// them (a private file, not a link), which may still need a refresh: what
-/// makes this plugin's models usable; else why not.
+/// Whether `home` holds the credentials a login saved, read as a request
+/// reads them, which may still need a refresh: what makes this plugin's
+/// models usable; else why not.
 pub fn signed_in(home: &Path) -> Result<(), AuthError> {
-    validate_file(&home.join("anthropic-oauth").join("credentials.json"))
+    let dir = home.join(DIRECTORY);
+    checked_dir(&dir)?;
+    let store = FileTokenStore::new(dir);
+    // The store's file reads never wait, so this completes on first poll.
+    match bevy_tasks::block_on(store.load(KEY)).map_err(storage)? {
+        Some(_) => Ok(()),
+        None => Err(AuthError::NotLoggedIn),
+    }
 }
 
-/// Deletes local credentials. Fails if login or refresh is currently active.
+/// Deletes local credentials. Fails at once if a login's save or a refresh
+/// is currently active.
 pub fn logout(home: &Path) -> Result<(), AuthError> {
     logout_in(&directory(home)?)
 }
 
 fn logout_in(dir: &Path) -> Result<(), AuthError> {
-    let _lock = lock(dir)?;
-    match fs::remove_file(dir.join("credentials.json")) {
-        Ok(()) => File::open(dir)
-            .and_then(|f| f.sync_all())
-            .map_err(|_| AuthError::Storage),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(_) => Err(AuthError::Storage),
-    }
+    let store = FileTokenStore::new(dir).with_lock_wait(Duration::ZERO);
+    // A zero wait never sleeps, so this completes on first poll.
+    bevy_tasks::block_on(async {
+        let _lock = store.lock(KEY).await.map_err(storage)?;
+        store.delete(KEY).await.map_err(storage)
+    })
 }
 
 #[cfg(test)]

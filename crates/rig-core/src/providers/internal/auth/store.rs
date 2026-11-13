@@ -145,10 +145,10 @@ impl TokenStore for MemoryTokenStore {
 }
 
 /// A [`TokenStore`] keeping each record in `<dir>/<key>.json`, written whole
-/// or not at all (a temporary file renamed over it), and held across
-/// processes with a file lock on `<dir>/<key>.lock`. On Unix the files, and
-/// the directories it creates for them, are readable by the owner alone.
-/// Native only.
+/// or not at all (a temporary file renamed over it, and on Unix the
+/// directory synced after), and held across processes with a file lock on
+/// `<dir>/<key>.lock`. On Unix the files, and the directories it creates for
+/// them, are readable by the owner alone. Native only.
 ///
 /// [`load`](TokenStore::load) refuses a record that is a symlink or not a
 /// regular file, or is over 64 KiB, with a [`FileStoreError`]. On Unix, when
@@ -158,13 +158,27 @@ impl TokenStore for MemoryTokenStore {
 #[derive(Debug, Clone)]
 pub struct FileTokenStore {
     dir: std::path::PathBuf,
+    lock_wait: std::time::Duration,
 }
 
 #[cfg(not(target_family = "wasm"))]
 impl FileTokenStore {
     /// A store over the files in `dir`, created when first written.
     pub fn new(dir: impl Into<std::path::PathBuf>) -> Self {
-        Self { dir: dir.into() }
+        Self {
+            dir: dir.into(),
+            lock_wait: LOCK_WAIT,
+        }
+    }
+
+    /// This store, with [`lock`](TokenStore::lock) waiting at most `wait`
+    /// for another holder instead of two minutes. A zero wait refuses a held
+    /// lock at once.
+    pub fn with_lock_wait(self, wait: std::time::Duration) -> Self {
+        Self {
+            lock_wait: wait,
+            ..self
+        }
     }
 
     /// The file the record under `key` is kept in.
@@ -189,16 +203,20 @@ impl TokenStore for FileTokenStore {
 
     fn delete<'a>(&'a self, key: &'a str) -> WasmBoxedFuture<'a, Result<(), BoxError>> {
         Box::pin(async move {
-            match std::fs::remove_file(self.path(key)) {
-                Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error.into()),
-                _ => Ok(()),
+            let path = self.path(key);
+            match std::fs::remove_file(&path) {
+                Ok(()) => Ok(sync_parent(&path)?),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                Err(error) => Err(error.into()),
             }
         })
     }
 
     /// Takes the file lock on `<dir>/<key>.lock`, waiting while another
-    /// holder has it, for at most two minutes. A process that dies lets go
-    /// of it.
+    /// holder has it, for at most two minutes unless
+    /// [`with_lock_wait`](FileTokenStore::with_lock_wait) set another wait,
+    /// then refusing with [`FileStoreError::Busy`]. A process that dies lets
+    /// go of it.
     fn lock<'a>(&'a self, key: &'a str) -> WasmBoxedFuture<'a, Result<StoreLock, BoxError>> {
         Box::pin(async move {
             let path = self.dir.join(format!("{key}.lock"));
@@ -212,15 +230,16 @@ impl TokenStore for FileTokenStore {
             loop {
                 match file.try_lock() {
                     Ok(()) => return Ok(StoreLock::new(file)),
-                    Err(std::fs::TryLockError::WouldBlock) if started.elapsed() < LOCK_WAIT => {
+                    Err(std::fs::TryLockError::WouldBlock)
+                        if started.elapsed() < self.lock_wait =>
+                    {
                         crate::wasm_compat::sleep(std::time::Duration::from_millis(50)).await;
                     }
                     Err(std::fs::TryLockError::WouldBlock) => {
-                        return Err(format!(
-                            "another process has held {} for {} seconds",
-                            path.display(),
-                            LOCK_WAIT.as_secs()
-                        )
+                        return Err(FileStoreError::Busy {
+                            path,
+                            waited: self.lock_wait,
+                        }
                         .into());
                     }
                     Err(std::fs::TryLockError::Error(error)) => return Err(error.into()),
@@ -230,8 +249,8 @@ impl TokenStore for FileTokenStore {
     }
 }
 
-/// Why [`FileTokenStore::load`](TokenStore::load) refused a credential
-/// file. It reaches the caller inside the store's boxed error.
+/// Why a [`FileTokenStore`] refused to read a credential file or take its
+/// lock. It reaches the caller inside the store's boxed error.
 #[cfg(not(target_family = "wasm"))]
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
@@ -260,6 +279,15 @@ pub enum FileStoreError {
         /// Why the permissions could not be changed.
         #[source]
         source: std::io::Error,
+    },
+    /// Another holder, in this process or another, still held the lock when
+    /// the wait ran out. Trying again later may succeed.
+    #[error("another holder kept {} locked for {waited:?}", path.display())]
+    Busy {
+        /// The lock file.
+        path: std::path::PathBuf,
+        /// How long the lock was waited for.
+        waited: std::time::Duration,
     },
 }
 
@@ -324,8 +352,8 @@ fn read_private(path: &std::path::Path) -> Result<Option<String>, BoxError> {
     Ok(Some(String::from_utf8(record)?))
 }
 
-/// How long [`FileTokenStore::lock`] waits for another holder: far longer
-/// than a refresh's one request takes.
+/// How long [`FileTokenStore::lock`] waits for another holder by default:
+/// far longer than a refresh's one request takes.
 #[cfg(not(target_family = "wasm"))]
 const LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(120);
 
@@ -344,8 +372,9 @@ fn create_private_dir(path: &std::path::Path) -> Result<(), std::io::Error> {
 
 /// Writes a credential file whole or not at all, creating the directories
 /// above it: the bytes go to a fresh temporary file beside it, which is
-/// synced and renamed over it, so a crash or a reader at the same moment
-/// never sees half a credential. On Unix the directories it creates are
+/// synced and renamed over it, and on Unix the directory is synced so the
+/// rename survives a crash, so a crash or a reader at the same moment never
+/// sees half a credential. On Unix the directories it creates are
 /// 0700, and the file is created 0600, or narrowed to 0600 before anything
 /// is written to it.
 #[cfg(not(target_family = "wasm"))]
@@ -378,7 +407,22 @@ fn write_private(path: &std::path::Path, bytes: &[u8]) -> Result<(), std::io::Er
     if written.is_err() {
         std::fs::remove_file(&temp).ok();
     }
-    written
+    written?;
+    sync_parent(path)
+}
+
+/// Syncs the directory holding `path`, so a rename or removal in it
+/// survives a crash. Windows cannot open a directory to sync it, so there
+/// this does nothing.
+#[cfg(not(target_family = "wasm"))]
+fn sync_parent(path: &std::path::Path) -> Result<(), std::io::Error> {
+    #[cfg(unix)]
+    if let Some(parent) = path.parent() {
+        std::fs::File::open(parent)?.sync_all()?;
+    }
+    #[cfg(not(unix))]
+    let _ = path;
+    Ok(())
 }
 
 /// The JSON record under `key`, or `T::default()` when there is none.

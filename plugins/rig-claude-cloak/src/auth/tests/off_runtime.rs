@@ -6,7 +6,7 @@ fn cached_credentials_work_without_a_tokio_runtime() -> anyhow::Result<()> {
     let dir = tempfile::tempdir()?;
     let mut value = credentials();
     value.expires_at = now()? + 3600;
-    save(dir.path(), &value)?;
+    seed(dir.path(), &value)?;
     let client = OAuthClient::production()?;
 
     anyhow::ensure!(tokio::runtime::Handle::try_current().is_err());
@@ -20,8 +20,8 @@ fn lock_wait_timer_works_without_a_tokio_runtime() -> anyhow::Result<()> {
     let dir = tempfile::tempdir()?;
     let mut value = credentials();
     value.expires_at = now()? + 3600;
-    save(dir.path(), &value)?;
-    let guard = lock(dir.path())?;
+    seed(dir.path(), &value)?;
+    let guard = hold(dir.path())?;
     let release = std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(100));
         drop(guard);
@@ -40,7 +40,7 @@ fn lock_wait_timer_works_without_a_tokio_runtime() -> anyhow::Result<()> {
 #[test]
 fn expired_credentials_refresh_and_reload_without_a_tokio_runtime() -> anyhow::Result<()> {
     let dir = tempfile::tempdir()?;
-    save(dir.path(), &credentials())?;
+    seed(dir.path(), &credentials())?;
     let listener = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))?;
     let address = listener.local_addr()?;
     let server = std::thread::spawn(move || -> anyhow::Result<()> {
@@ -118,7 +118,7 @@ fn expired_credentials_refresh_and_reload_without_a_tokio_runtime() -> anyhow::R
         .join()
         .map_err(|_| anyhow::anyhow!("OAuth server thread panicked"))??;
     anyhow::ensure!(result == ("rotated-access".into(), Some("rotated-account".into())));
-    let stored = load(dir.path())?;
+    let stored = saved(dir.path())?;
     anyhow::ensure!(stored.refresh_token == "rotated-refresh");
     anyhow::ensure!(stored.expires_at > now()?);
     anyhow::ensure!(bevy_tasks::block_on(credentials_in(dir.path(), &client))? == result);
