@@ -137,6 +137,27 @@ fn closest<'a>(
     close.into_iter().map(|(_, candidate)| candidate).collect()
 }
 
+/// The name in `names` closest to `word` by [`edit_distance`], if within a
+/// quarter of `word`'s length (at least one edit), so a typo finds its name
+/// and a different word (`output` for `input`) finds none. Ties go to the
+/// name that sorts first.
+///
+/// ```
+/// use rig_core::catalog::closest_name;
+///
+/// assert_eq!(closest_name("raed", ["read", "write"]), Some("read"));
+/// assert_eq!(closest_name("output", ["input"]), None);
+/// ```
+pub fn closest_name<'a>(word: &str, names: impl IntoIterator<Item = &'a str>) -> Option<&'a str> {
+    let limit = (word.chars().count() / 4).max(1);
+    names
+        .into_iter()
+        .map(|name| (edit_distance(word, name), name))
+        .filter(|(distance, _)| *distance <= limit)
+        .min()
+        .map(|(_, name)| name)
+}
+
 /// The edit distance between `a` and `b`, by character: insertions,
 /// deletions, substitutions and swaps of two adjacent characters each count
 /// one (optimal string alignment), so `inptu` is one edit from `input`.

@@ -39,7 +39,7 @@ use bevy_app::OnAppExitSystems;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemParam;
-use rig_core::catalog::edit_distance;
+use rig_core::catalog::closest_name;
 use rig_ecs::StopTurnsOnExit;
 use rig_ecs::agent::{RunTools, TurnOf};
 use rig_ecs::inbox::Incoming;
@@ -356,7 +356,9 @@ impl Tools {
         let tools = if unknown.len() == 1 { "tool" } else { "tools" };
         let meant: Option<Vec<String>> = unknown
             .iter()
-            .map(|name| closest(name, &registered).map(|close| format!("`{close}`")))
+            .map(|name| {
+                closest_name(name, registered.iter().copied()).map(|close| format!("`{close}`"))
+            })
             .collect();
         let hint = match (meant, registered.is_empty()) {
             (Some(meant), _) => format!("did you mean {}?", meant.join(", ")),
@@ -365,18 +367,6 @@ impl Tools {
         };
         Some(format!("--tools: unknown {tools} {names}; {hint}"))
     }
-}
-
-/// The name of `names` closest to `name`, within a quarter of its length
-/// (at least one edit), so a typo finds its name and another word none, as
-/// the model catalog suggests.
-pub(crate) fn closest<'a>(name: &str, names: &[&'a str]) -> Option<&'a str> {
-    let limit = (name.chars().count() / 4).max(1);
-    let distances = names
-        .iter()
-        .map(|close| (edit_distance(name, close), *close));
-    let close = distances.filter(|(distance, _)| *distance <= limit).min();
-    close.map(|(_, close)| close)
 }
 
 /// Once no [`Starting`] is left, checks the names `--tools` gives against
