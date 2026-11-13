@@ -7,7 +7,7 @@ use async_channel::Sender;
 
 use bevy_tasks::futures_lite::stream;
 use bevy_tasks::{IoTaskPool, TaskPool};
-use rig_core::completion::{CompletionResponse, Message, Usage};
+use rig_core::completion::{CompletionResponse, Effort, Message, Usage};
 use rig_core::message::{AssistantContent, Origin as Made, Text};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::harness_protocol::Invocation;
@@ -244,6 +244,42 @@ fn a_failed_headless_run_names_the_unanswered_message() {
     );
     // There is no input to send it again from.
     assert!(!stderr.contains("back in the input"), "{stderr}");
+}
+
+#[test]
+fn a_reasoning_effort_the_model_cannot_take_is_reset_on_stderr_and_answered() {
+    let model = answering(&["done"]);
+    let lines = Lines::default();
+    let invoked = Invocation {
+        print: Some("go".to_owned()),
+        ..Invocation::default()
+    };
+    let (mut app, _) = noting(&MemoryStore::default(), invoked);
+    // The scripted model does not reason; the effort comes with it, as
+    // `[model] effort` does.
+    let high = ReasoningSetting(Some(Effort::High.into()));
+    app.insert_resource(scripted_models([(MODEL, &model)]))
+        .insert_resource(Printed::to(lines.clone()))
+        .add_plugins((ExitPlugin, PrintPlugin))
+        .add_observer(move |added: On<Add<Connection>>, mut commands: Commands| {
+            commands.entity(added.entity).insert(high);
+        });
+    app.finish();
+    app.cleanup();
+    run_until(&mut app, |_| false);
+    assert_eq!(app.should_exit(), Some(AppExit::Success));
+    let bytes = lines
+        .0
+        .lock()
+        .map(|lines| lines.clone())
+        .unwrap_or_default();
+    let stderr = String::from_utf8_lossy(&bytes);
+    assert!(
+        stderr
+            .lines()
+            .any(|line| line.starts_with("rig: Reasoning reset to default: `reasoning`")),
+        "{stderr}"
+    );
 }
 
 #[test]

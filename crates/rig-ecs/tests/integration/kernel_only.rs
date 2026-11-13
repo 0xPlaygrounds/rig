@@ -12,6 +12,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc::{Receiver, channel};
 use std::time::{Duration, Instant};
 
+use bevy_ecs::message::Messages;
 use bevy_time::{Time, TimeUpdateStrategy, Virtual};
 use rig_core::ProviderResponseError;
 use rig_core::catalog::Catalog;
@@ -908,4 +909,34 @@ fn a_higher_unavailable_call_limit_lets_the_turn_go_on() {
     let ended = app.world().resource::<Ended>().0.last().cloned();
     assert!(matches!(ended, Some(TurnOutcome::Answered(_))), "{ended:?}");
     assert_eq!(model.request_count(), 5);
+}
+
+/// Ollama's catalog entry says qwen3 reasons, but its wire takes effort
+/// levels only: a budget set with it, as settings do, is reset with a
+/// warning before any turn, not refused by every call.
+#[test]
+fn a_budget_the_models_route_refuses_is_reset_with_a_warning() {
+    let (mut app, _wakes) = kernel(&MemoryStore::default());
+    let connection = app.world().resource::<Models>().connect("ollama/qwen3");
+    assert_eq!(connection.as_ref().err(), None);
+    let Ok(connection) = connection else { return };
+    let budget = ReasoningSetting(Some(Reasoning::Budget { tokens: 1024 }));
+    let agent = spawn_root(app.world_mut())
+        .insert((connection, budget))
+        .id();
+    app.world_mut().flush();
+    assert_eq!(
+        app.world().get::<ReasoningSetting>(agent),
+        Some(&ReasoningSetting(None))
+    );
+    let notices = app.world().resource::<Messages<Notice>>();
+    let warned: Vec<_> = notices
+        .iter_current_update_messages()
+        .filter(|notice| notice.level == NoticeLevel::Warn)
+        .map(|notice| notice.text.as_str())
+        .collect();
+    assert!(
+        matches!(warned.as_slice(), [text] if text.starts_with("Reasoning reset to default: `reasoning` is not supported by ollama model `qwen3`")),
+        "{warned:?}"
+    );
 }
