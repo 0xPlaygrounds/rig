@@ -327,22 +327,10 @@ fn escape_html(text: &str) -> String {
     escaped
 }
 
-/// Asks the desktop to open `url` in the default browser, without waiting
-/// and without writing to the terminal. The opener inherits no `RIG_SECRET_*`
-/// variable. Returns whether it started.
+/// Asks the desktop to open `url` in the default browser through
+/// [`browser_command`], without waiting. Returns whether it started.
 pub(super) fn open_browser(url: &str) -> bool {
-    let mut command = opener(url);
-    command
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
-    // A literal because rig-core cannot depend on rig-harness-protocol, which owns this prefix.
-    for (name, _) in std::env::vars_os() {
-        if name.as_encoded_bytes().starts_with(b"RIG_SECRET_") {
-            command.env_remove(name);
-        }
-    }
-    let Ok(mut child) = command.spawn() else {
+    let Ok(mut child) = browser_command(url).spawn() else {
         return false;
     };
     // Reap the opener when it exits.
@@ -355,15 +343,28 @@ pub(super) fn open_browser(url: &str) -> bool {
     true
 }
 
+/// The command that asks the desktop to open `url` in the default browser:
+/// `open` on macOS, `start` through `cmd` on Windows, `xdg-open` elsewhere.
+/// It has no standard input, and its output is discarded so it does not
+/// write to the terminal. Native only.
+pub fn browser_command(url: &str) -> Command {
+    let mut command = platform_command(url);
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    command
+}
+
 #[cfg(target_os = "macos")]
-fn opener(url: &str) -> Command {
+fn platform_command(url: &str) -> Command {
     let mut command = Command::new("open");
     command.arg(url);
     command
 }
 
 #[cfg(windows)]
-fn opener(url: &str) -> Command {
+fn platform_command(url: &str) -> Command {
     use std::os::windows::process::CommandExt;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     let mut command = Command::new("cmd");
@@ -375,7 +376,7 @@ fn opener(url: &str) -> Command {
 }
 
 #[cfg(not(any(target_os = "macos", windows)))]
-fn opener(url: &str) -> Command {
+fn platform_command(url: &str) -> Command {
     let mut command = Command::new("xdg-open");
     command.arg(url);
     command

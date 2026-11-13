@@ -18,6 +18,8 @@ pub use crate::providers::internal::auth::{FileStoreError, FileTokenStore};
 
 #[cfg(not(target_family = "wasm"))]
 mod native;
+#[cfg(not(target_family = "wasm"))]
+pub use native::browser_command;
 
 /// The key the sign-in is kept under in the store.
 #[cfg(not(target_family = "wasm"))]
@@ -90,9 +92,12 @@ impl fmt::Debug for AuthSource {
 }
 
 /// Signs in to ChatGPT and keeps the stored credential fresh. Clones share
-/// the store and the refresh lock.
+/// the store, the refresh lock and the browser opener.
 #[derive(Clone)]
-pub struct Authenticator(Shell<AuthSource>);
+pub struct Authenticator(
+    Shell<AuthSource>,
+    #[cfg(not(target_family = "wasm"))] native::BrowserOpener,
+);
 
 impl fmt::Debug for Authenticator {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -114,12 +119,11 @@ impl Authenticator {
         device_code_handler: DeviceCodeHandler,
         allow_device_flow: bool,
     ) -> Self {
-        Self(Shell::new(
-            source,
-            store,
-            device_code_handler,
-            allow_device_flow,
-        ))
+        Self(
+            Shell::new(source, store, device_code_handler, allow_device_flow),
+            #[cfg(not(target_family = "wasm"))]
+            native::BrowserOpener::default(),
+        )
     }
 
     /// Forget the credential held in memory, so the next request reads the
