@@ -49,7 +49,7 @@ use rig_harness::host::cli::Cli;
 use rig_harness::host::pipes::{Limited, TooLarge};
 use rig_harness::prelude::*;
 use rig_harness::rig_tools::process::{self, Process};
-use rig_rmcp::{McpConnection, McpTool};
+use rig_rmcp::{McpClientError, McpConnection, McpTool};
 use rmcp::model::{ClientConfig, Tool as McpDefinition};
 use rmcp::service::{ClientInitializeError, NotificationContext, RoleClient};
 use rmcp::transport::StreamableHttpClientTransport;
@@ -732,7 +732,6 @@ impl Start {
     /// [`Start::run`]'s connection. Every list of its tools is asked for
     /// here, one at a time, so no older list replaces a newer one.
     async fn connection(&self, outbox: &Outbox, refused: &Refused) -> Result<(), String> {
-        let limit = self.limit.as_secs();
         let (changed, changes) = async_channel::bounded(1);
         let opened = async {
             let (connection, child) = self.open(outbox, Listener(changed), refused).await?;
@@ -743,7 +742,7 @@ impl Start {
             // the lists that follow.
             let mut tools = Vec::new();
             for _ in 0..GRACE_LISTS {
-                tools = list(&connection, &changes).await?;
+                tools = list(&connection, &changes, self.limit).await?;
                 tokio::time::sleep(CHANGE_GRACE).await;
                 if changes.is_empty() {
                     break;
@@ -753,7 +752,7 @@ impl Start {
         };
         let (connection, tools, child) = tokio::time::timeout(self.limit, opened)
             .await
-            .map_err(|_| format!("no answer within {limit} s (`[mcp] connect_timeout_secs`)"))??;
+            .map_err(|_| no_answer(self.limit))??;
         outbox
             .send(ServerEvent::Connected(connection.clone(), tools))
             .await;
@@ -768,12 +767,9 @@ impl Start {
             }
             // Each list is bounded too, so one left unanswered never holds
             // back the next change.
-            let listed = tokio::time::timeout(self.limit, list(&connection, &changes)).await;
-            match listed
-                .map_err(|_| format!("no answer within {limit} s (`[mcp] connect_timeout_secs`)"))
-            {
-                Ok(Ok(tools)) => outbox.send(ServerEvent::Listed(tools)).await,
-                Ok(Err(error)) | Err(error) => outbox.send(ServerEvent::Unlisted(error)).await,
+            match list(&connection, &changes, self.limit).await {
+                Ok(tools) => outbox.send(ServerEvent::Listed(tools)).await,
+                Err(error) => outbox.send(ServerEvent::Unlisted(error)).await,
             }
         }
         // A stdio server's process group is killed as it is dropped.
@@ -848,25 +844,31 @@ impl Start {
     }
 }
 
-/// The server's tools, none for a server that offers none (it says so as
-/// it starts); a change said while they are listed waits in `changes`.
+/// The server's tools, within `limit`; a change said while they are listed
+/// waits in `changes`.
 async fn list(
     connection: &McpConnection,
     changes: &Receiver<()>,
+    limit: Duration,
 ) -> Result<Vec<McpDefinition>, String> {
     changes.try_recv().ok();
-    let offers = connection
-        .peer()
-        .peer_info()
-        .is_some_and(|info| info.capabilities.tools.is_some());
-    if !offers {
-        return Ok(Vec::new());
-    }
     connection
-        .peer()
-        .list_all_tools()
+        .list_tools(limit)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(|error| match error {
+            McpClientError::Timeout(_) => no_answer(limit),
+            // rmcp's own words, without rig-rmcp's "MCP request failed" prefix.
+            McpClientError::Request(error) => error.to_string(),
+            other => other.to_string(),
+        })
+}
+
+/// Why a server's answer was given up on after `limit`.
+fn no_answer(limit: Duration) -> String {
+    format!(
+        "no answer within {} s (`[mcp] connect_timeout_secs`)",
+        limit.as_secs()
+    )
 }
 
 /// Whether a configured header carries a credential: `Authorization`,

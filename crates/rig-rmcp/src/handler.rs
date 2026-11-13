@@ -204,7 +204,8 @@ where
     /// The connection stays open while the returned [`McpConnection`] or a
     /// clone of it is held. When the server sends
     /// `notifications/tools/list_changed`, this handler re-fetches and
-    /// re-registers tools into the sink.
+    /// re-registers tools into the sink. A server whose handshake declared no
+    /// tools connects with none.
     ///
     /// # Errors
     ///
