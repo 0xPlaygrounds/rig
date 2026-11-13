@@ -177,7 +177,7 @@ does. Print mode prints the URL or code, and `rig -p "/login chatgpt"` signs in
 without the terminal view. Esc or a second `/login` cancels a sign-in that waits.
 The pages the browser lands on tell you to return to rig; an app built on
 rig's harness names itself there with `[login] app_name = "..."` in
-`settings.toml` (an empty name is refused).
+`settings.toml` (an empty or blank name is refused).
 
 Once signed in, `/model` lists the plan's models as `chatgpt/...`, marked
 "(ChatGPT plan)": those ChatGPT says your account may use, asked once per run
