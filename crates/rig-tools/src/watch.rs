@@ -512,7 +512,9 @@ impl Armed {
         let Ok(now) = identity(&self.target) else {
             return true;
         };
-        if now == self.at {
+        // While arming failed, nothing hears changes, so a target gone
+        // since is as unwatched as one that never went.
+        if now == self.at && self.retry.is_none() {
             return false;
         }
         if self.retry.is_some_and(|(next, _)| Instant::now() < next) {
