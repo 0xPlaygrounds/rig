@@ -226,3 +226,37 @@ fn the_item_follows_the_providers_limits_and_the_model() {
     assert_eq!(requests(&seen_throttled), 4);
     assert_eq!(requests(&seen_silent), 1);
 }
+
+#[test]
+fn a_reset_too_far_for_the_clock_reads_as_no_reset() {
+    let mut headers = HeaderMap::new();
+    for (name, value) in [
+        ("x-ratelimit-limit-requests", "50"),
+        ("x-ratelimit-remaining-requests", "42"),
+        ("x-ratelimit-reset-requests", "18446744073709549568s"),
+    ] {
+        if let Ok(value) = value.parse() {
+            headers.insert(name, value);
+        }
+    }
+    let read = RateLimits::from_headers(&headers, SystemTime::now()).requests;
+    assert!(read.is_some_and(|read| read.resets_in.is_some()));
+    // An hour into the session, the reset no longer fits on the clock.
+    let now = Duration::from_secs(3600);
+    let requests = read.map(|read| Allowance::at(read, now));
+    assert_eq!(requests.and_then(|requests| requests.resets), None);
+    let quota = Quota {
+        provider: "openai".to_owned(),
+        key: String::new(),
+        requests,
+        tokens: None,
+        received: now,
+        limited: None,
+    };
+    assert_eq!(quota.says(now).as_deref(), Some("req 42/50"));
+}
+
+#[test]
+fn the_longest_wait_is_shown_without_overflow() {
+    assert_eq!(wait(Duration::MAX), "5124095576030431h");
+}

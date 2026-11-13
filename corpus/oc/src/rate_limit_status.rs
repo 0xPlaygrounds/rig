@@ -181,12 +181,13 @@ impl Quotas {
 }
 
 impl Allowance {
-    /// `read`, from a reply that came at `now`, its reset counted from then.
+    /// `read`, from a reply that came at `now`, its reset counted from then;
+    /// a reset too far off for the clock to hold is none.
     fn at(read: error::Allowance, now: Duration) -> Self {
         Self {
             remaining: read.remaining,
             limit: read.limit,
-            resets: read.resets_in.map(|wait| now + wait),
+            resets: read.resets_in.and_then(|wait| now.checked_add(wait)),
         }
     }
 }
@@ -334,7 +335,9 @@ fn count(n: u64) -> String {
 
 /// `34s`, `6m`, `1m30s`, `2h5m`, rounded up to the second.
 fn wait(left: Duration) -> String {
-    let seconds = left.as_secs() + u64::from(left.subsec_nanos() > 0);
+    let seconds = left
+        .as_secs()
+        .saturating_add(u64::from(left.subsec_nanos() > 0));
     let (hours, minutes, seconds) = (seconds / 3600, seconds / 60 % 60, seconds % 60);
     match (hours, minutes, seconds) {
         (0, 0, s) => format!("{s}s"),
@@ -365,7 +368,10 @@ fn read_reply(
         .as_ref()
         .err()
         .filter(|report| report.http_status == Some(429))
-        .map(|report| report.retry_after(SystemTime::now()).map(|wait| now + wait));
+        .map(|report| {
+            let wait = report.retry_after(SystemTime::now());
+            wait.and_then(|wait| now.checked_add(wait))
+        });
     let key = reading.as_ref().map(|reading| reading.key.clone());
     let limits = reading.map(|reading| reading.limits);
     let limits = limits.filter(|limits| limits.requests.is_some() || limits.tokens.is_some());

@@ -76,7 +76,8 @@ pub struct Allowance {
     /// Requests or tokens left in this window.
     pub remaining: u64,
     /// How long after the reply the window resets, when the reply said so
-    /// in a form that could be read.
+    /// in a form that could be read. It may be as long as a [`Duration`]
+    /// holds, so add it to a clock with `checked_add`.
     pub resets_in: Option<Duration>,
 }
 
