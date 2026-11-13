@@ -31,9 +31,11 @@ If a saved session selected an `anthropic-oauth/*` entry, select the correspondi
 `claude-cloak/*` entry after reloading. Existing credentials remain usable; the
 credential directory is unchanged.
 
-Login uses browser OAuth PKCE and a state-checked loopback callback, preferring
-port 54545 and falling back to an OS-assigned port. It uses `xdg-open` on Linux
-and `/usr/bin/open` on macOS. Browser-open and callback waits are bounded.
+Login uses browser OAuth PKCE and rig-core's state-checked loopback callback on
+`localhost`, preferring port 54545 and falling back to an OS-assigned port. It
+uses `xdg-open` on Linux and `/usr/bin/open` on macOS. The browser waits up to 15
+seconds to open and the callback up to five minutes; the page the browser lands
+on says whether the login finished.
 There is no manual code-paste or headless flow. This plugin never imports
 OMP's credentials.
 
