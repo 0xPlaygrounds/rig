@@ -132,7 +132,8 @@ pub(super) const NANOS: i128 = 1_000_000_000;
 /// The wait `text` starts with, as Go writes a duration: numbers each
 /// followed by `h`, `m`, `s`, `ms`, `us`, `µs` or `ns` (`6m0s`, `1h2m3.5s`,
 /// `20ms`, `.5s`). A space may part the first number from its unit
-/// (`1.5 s`). Summed in whole nanoseconds, so it is exact.
+/// (`1.5 s`). Each part is rounded to the nearest nanosecond (half up)
+/// after its unit is applied, then summed.
 pub(super) fn hinted_wait(text: &str) -> Option<Duration> {
     let mut rest = text;
     let mut total: Option<i128> = None;
@@ -144,7 +145,6 @@ pub(super) fn hinted_wait(text: &str) -> Option<Duration> {
         let end = rest
             .find(|c: char| !(c.is_ascii_digit() || c == '.'))
             .unwrap_or(rest.len());
-        let amount = billionths(rest.get(..end)?)?;
         let unit = rest.get(end..)?;
         let unit = if total.is_none() {
             unit.trim_start()
@@ -164,30 +164,26 @@ pub(super) fn hinted_wait(text: &str) -> Option<Duration> {
             "ns" => 1,
             _ => return None,
         };
-        let part = amount.checked_mul(scale)? / NANOS;
+        let part = decimal_nanos(rest.get(..end)?, scale)?;
         total = Some(total.unwrap_or(0).checked_add(part)?);
         rest = unit.get(unit_end..)?;
     }
 }
 
-/// A plain decimal (`34`, `1.5`, `.5`) in billionths, the digits past the
-/// ninth decimal dropped; `None` for anything else, such as a sign or an
-/// exponent.
-pub(super) fn billionths(text: &str) -> Option<i128> {
+/// A plain decimal (`34`, `1.5`, `.5`) of a unit `unit` nanoseconds long,
+/// in nanoseconds rounded half up; `None` for anything else, such as a
+/// sign or an exponent, or more than 24 digits.
+pub(super) fn decimal_nanos(text: &str, unit: i128) -> Option<i128> {
     let (whole, fraction) = text.split_once('.').unwrap_or((text, ""));
+    let count = whole.len() + fraction.len();
     let digits = |part: &str| part.bytes().all(|b| b.is_ascii_digit());
-    if whole.len() + fraction.len() == 0 || !digits(whole) || !digits(fraction) {
+    if !(1..=24).contains(&count) || !digits(whole) || !digits(fraction) {
         return None;
     }
-    let whole: i128 = if whole.is_empty() {
-        0
-    } else {
-        whole.parse().ok()?
-    };
-    let fraction = format!("{:0<9}", fraction.get(..9).unwrap_or(fraction));
-    whole
-        .checked_mul(NANOS)?
-        .checked_add(fraction.parse().ok()?)
+    let mantissa: i128 = format!("{whole}{fraction}").parse().ok()?;
+    let scale = 10_i128.checked_pow(u32::try_from(fraction.len()).ok()?)?;
+    let doubled = mantissa.checked_mul(unit)?.checked_mul(2)?;
+    Some(doubled.checked_add(scale)? / scale.checked_mul(2)?)
 }
 
 /// `nanos` as a duration, zero when negative.

@@ -23,7 +23,7 @@
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use super::retry::{NANOS, billionths, hinted_wait, nanoseconds};
+use super::retry::{NANOS, decimal_nanos, hinted_wait, nanoseconds};
 
 /// The `(limit, remaining, reset)` headers of a request allowance; the
 /// first pair present wins.
@@ -127,10 +127,10 @@ fn leading_number(text: &str) -> Option<u64> {
 
 /// How long after `now` the reset `text` names comes.
 fn reset_in(text: &str, now: SystemTime) -> Option<Duration> {
-    if let Some(number) = billionths(text) {
+    if let Some(number) = decimal_nanos(text, NANOS) {
         // Numbers this large are Unix times, not waits: no window lasts 30 years.
         let at = if number > 1_000_000_000_000 * NANOS {
-            number / 1000
+            decimal_nanos(text, 1_000_000)?
         } else if number > 1_000_000_000 * NANOS {
             number
         } else {
@@ -166,7 +166,7 @@ fn since_epoch(time: SystemTime) -> Option<i128> {
 
 /// The instant an RFC 3339 date names, in nanoseconds since the Unix epoch:
 /// `2026-01-01T00:00:00Z`, with an optional fraction of a second (digits
-/// past the ninth dropped) and a `Z` or `+hh:mm` offset.
+/// past the ninth dropped, not rounded) and a `Z` or `+hh:mm` offset.
 fn rfc3339(text: &str) -> Option<i128> {
     let (date, time) = text.split_once(['T', 't', ' '])?;
     let mut date = date.split('-');
@@ -186,11 +186,14 @@ fn rfc3339(text: &str) -> Option<i128> {
             (clock, sign * (hours * 3600 + minutes * 60))
         }
     };
-    let (clock, fraction) = match clock.split_once('.') {
-        Some((clock, fraction)) if !fraction.is_empty() => (clock, format!("0.{fraction}")),
-        Some(_) => return None,
-        None => (clock, "0".to_owned()),
-    };
+    let (clock, fraction) = clock.split_once('.').unwrap_or((clock, "0"));
+    if fraction.is_empty() || !fraction.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    // Digits past the nanosecond are dropped, as chrono does.
+    let fraction: i128 = format!("{:0<9}", fraction.get(..9).unwrap_or(fraction))
+        .parse()
+        .ok()?;
     let mut clock = clock.split(':');
     let hour = digits(clock.next()?, 2)?;
     let minute = digits(clock.next()?, 2)?;
@@ -203,7 +206,7 @@ fn rfc3339(text: &str) -> Option<i128> {
     let seconds = days * 86_400 + hour * 3600 + minute * 60 + second - offset;
     i128::from(seconds)
         .checked_mul(NANOS)?
-        .checked_add(billionths(&fraction)?)
+        .checked_add(fraction)
 }
 
 /// `text` as a number of exactly `width` ASCII digits.

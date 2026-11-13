@@ -73,6 +73,14 @@ fn a_body_hint_in_minutes_or_hours_names_the_wait() {
         ),
         ("Please try again in 40ns.", Duration::from_nanos(40)),
         (
+            "Please try again in 0.0000000001h.",
+            Duration::from_nanos(360),
+        ),
+        (
+            "Please try again in 0.0000000006s.",
+            Duration::from_nanos(1),
+        ),
+        (
             "Please try again in 3s 2 tokens left.",
             Duration::from_secs(3),
         ),

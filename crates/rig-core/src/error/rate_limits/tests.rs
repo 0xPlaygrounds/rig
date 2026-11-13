@@ -137,6 +137,13 @@ fn each_reset_form_is_a_wait_from_the_reply() {
         ("1h1us", Some(Duration::new(3600, 1_000))),
         ("1500us", Some(Duration::from_micros(1500))),
         ("3ns", Some(Duration::from_nanos(3))),
+        // A unit applies before rounding to the nanosecond, half up.
+        ("0.0000000001h", Some(Duration::from_nanos(360))),
+        ("0.0000000005h", Some(Duration::from_nanos(1800))),
+        ("0.0000000006s", Some(Duration::from_nanos(1))),
+        ("0.0000000004s", Some(Duration::ZERO)),
+        ("0.0000000005", Some(Duration::from_nanos(1))),
+        ("1767225634.0000000006", Some(Duration::new(34, 1))),
         ("34s, roughly", Some(Duration::from_secs(34))),
         ("99999999999999999999999999h", None),
         ("1e3", None),
