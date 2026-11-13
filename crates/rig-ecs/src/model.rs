@@ -8,7 +8,8 @@ use std::sync::Arc;
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
 use rig_core::catalog::{Connector, ModelSpec};
-use rig_core::completion::Reasoning;
+use rig_core::completion::{CompletionRequest, Reasoning, UnsupportedOption};
+use rig_core::effect::EffectKind;
 use serde::{Deserialize, Serialize};
 
 use super::agent::{ActiveTurn, Agent, Notice};
@@ -316,8 +317,28 @@ pub(crate) fn reconnect(
     }
 }
 
+impl Connection {
+    /// Why this model cannot take `effort`: its catalog entry refuses it
+    /// ([`ModelSpec::validate`]), or its route does, as the handler's check
+    /// says with nothing sent. `None` when it takes it.
+    fn refuses(&self, effort: Option<Reasoning>) -> Option<UnsupportedOption> {
+        let options = self.spec.default_options(effort);
+        if let Err(refusal) = self.spec.validate(&options) {
+            return Some(refusal);
+        }
+        let kind = EffectKind::Completion {
+            request: CompletionRequest::new("").options(options).into(),
+            stream: true,
+        };
+        let refused = self.handler.0.check(&kind);
+        refused
+            .into_iter()
+            .find(|refusal| refusal.option == "reasoning")
+    }
+}
+
 /// Resets a reasoning setting the agent's model does not take, whichever
-/// of the two was inserted last.
+/// of the two was inserted last, with a warning.
 pub(crate) fn check_effort(
     inserted: On<Insert<(Connection, ReasoningSetting)>>,
     agents: Query<(&Connection, &ReasoningSetting)>,
@@ -325,12 +346,12 @@ pub(crate) fn check_effort(
     mut notices: MessageWriter<Notice>,
 ) {
     let agent = inserted.entity;
-    let Ok((Connection { spec, .. }, effort)) = agents.get(agent) else {
+    let Ok((connection, effort)) = agents.get(agent) else {
         return;
     };
-    if let Err(refusal) = spec.validate(&spec.default_options(effort.0)) {
+    if let Some(refusal) = connection.refuses(effort.0) {
         commands.entity(agent).insert(ReasoningSetting(None));
-        notices.write(Notice::info(
+        notices.write(Notice::warn(
             agent,
             format!("Reasoning reset to default: {refusal}."),
         ));
@@ -356,9 +377,8 @@ pub(crate) fn on_set_reasoning(
         notices.write(Notice::no_model(set.entity));
         return;
     };
-    let spec = &connection.spec;
-    match spec.validate(&spec.default_options(set.effort.0)) {
-        Ok(()) => {
+    match connection.refuses(set.effort.0) {
+        None => {
             commands.entity(set.entity).insert(set.effort);
             commands.trigger(ChoiceTaken {
                 entity: set.entity,
@@ -370,7 +390,7 @@ pub(crate) fn on_set_reasoning(
                 format!("Reasoning: {}.", set.effort),
             ));
         }
-        Err(refusal) => {
+        Some(refusal) => {
             notices.write(Notice::error(set.entity, format!("{refusal}.")));
         }
     }
