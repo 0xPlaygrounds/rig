@@ -561,58 +561,61 @@ async fn a_refused_revocation_still_deletes_the_record() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Runs itself again with a dummy secret and a fake desktop opener on
-/// `PATH`, so this process's environment stays as it was.
-#[cfg(unix)]
-#[test]
-fn browser_opener_gets_no_secret() -> anyhow::Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-
-    const PROBE: &str = "RIG_SECRET_PROBE";
-    const NAME: &str = "providers::chatgpt::auth::native::tests::browser_opener_gets_no_secret";
-    if std::env::var_os(PROBE).is_some() {
-        anyhow::ensure!(
-            super::browser::open_browser("http://127.0.0.1:1/"),
-            "the opener did not start"
-        );
-        return Ok(());
-    }
-    let dir = assert_fs::TempDir::new()?;
-    let name = if cfg!(target_os = "macos") {
-        "open"
-    } else {
-        "xdg-open"
-    };
-    let opener = dir.path().join(name);
-    std::fs::write(
-        &opener,
-        "#!/bin/sh\nenv > \"$OPENER_ENV.part\"\nmv \"$OPENER_ENV.part\" \"$OPENER_ENV\"\n",
-    )?;
-    std::fs::set_permissions(&opener, std::fs::Permissions::from_mode(0o755))?;
-    let path = std::env::var_os("PATH").unwrap_or_default();
-    let path = std::env::join_paths(
-        std::iter::once(dir.path().to_owned()).chain(std::env::split_paths(&path)),
-    )?;
-    let recorded = dir.path().join("env");
-    let output = std::process::Command::new(std::env::current_exe()?)
-        .args(["--exact", NAME, "--test-threads", "1"])
-        .env(PROBE, "hunter2")
-        .env("PATH", path)
-        .env("OPENER_ENV", &recorded)
-        .output()?;
+/// The opener plays the browser: it denies the sign-in on the page it was
+/// given, so the sign-in ends without a token exchange.
+#[tokio::test]
+async fn a_supplied_browser_opener_is_called_with_the_sign_in_page() -> anyhow::Result<()> {
+    let opened = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+    let seen = opened.clone();
+    let auth = stored(&Arc::new(MemoryTokenStore::default())).with_browser_opener(move |url| {
+        if let Ok(mut seen) = seen.lock() {
+            seen.push(url.to_owned());
+        }
+        let Some(denied) = denied_callback(url) else {
+            return false;
+        };
+        std::thread::spawn(move || {
+            if let Ok(mut stream) = std::net::TcpStream::connect(denied.0) {
+                use std::io::{Read, Write};
+                write!(
+                    stream,
+                    "GET {} HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
+                    denied.1
+                )
+                .ok();
+                stream.read_to_end(&mut Vec::new()).ok();
+            }
+        });
+        true
+    });
+    let mut prompted = None;
+    let signed_in = auth
+        .sign_in_with_browser(&RecordingHttpClient::new(""), |page| prompted = Some(page))
+        .await;
     anyhow::ensure!(
-        output.status.success() && String::from_utf8_lossy(&output.stdout).contains("1 passed"),
-        "the run with a secret failed: {output:?}"
+        matches!(&signed_in, Err(AuthError::Message(why)) if why.contains("access_denied")),
+        "{signed_in:?}"
     );
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
-    while !recorded.exists() {
-        anyhow::ensure!(
-            std::time::Instant::now() < deadline,
-            "the fake opener recorded nothing"
-        );
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    }
-    let environment = std::fs::read_to_string(&recorded)?;
-    anyhow::ensure!(!environment.contains(PROBE), "the opener inherited {PROBE}");
+    let page = prompted.ok_or_else(|| anyhow::anyhow!("no prompt"))?;
+    anyhow::ensure!(page.browser_launched);
+    let opened = opened
+        .lock()
+        .map_err(|_| anyhow::anyhow!("poisoned"))?
+        .clone();
+    anyhow::ensure!(opened == [page.authorize_url], "{opened:?}");
     Ok(())
+}
+
+/// The callback's address and the request a browser makes on it when the
+/// user denies the sign-in on `authorize_url`.
+fn denied_callback(authorize_url: &str) -> Option<(std::net::SocketAddr, String)> {
+    let url = url::Url::parse(authorize_url).ok()?;
+    let pairs: std::collections::HashMap<_, _> = url.query_pairs().into_owned().collect();
+    let redirect = url::Url::parse(pairs.get("redirect_uri")?).ok()?;
+    let address = redirect.socket_addrs(|| None).ok()?.into_iter().next()?;
+    let state = pairs.get("state")?;
+    Some((
+        address,
+        format!("{}?error=access_denied&state={state}", redirect.path()),
+    ))
 }

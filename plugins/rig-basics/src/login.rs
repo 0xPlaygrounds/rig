@@ -9,7 +9,8 @@
 //! - The ChatGPT sign-in runs on the IO pool: in the browser, which it
 //!   opens and whose URL it shows as a notice, or with a device code when
 //!   no browser can be assumed (no graphical session, or SSH), when the
-//!   callback ports are taken, or with `--device`.
+//!   callback ports are taken, or with `--device`. The browser starts
+//!   without the plugins' secrets in its environment.
 //! - `/logout` lets the user pick what to remove of what `/login` stored,
 //!   or takes its name. Signing out of ChatGPT asks OpenAI to revoke the
 //!   credential's tokens, then deletes it, whether or not OpenAI
@@ -35,7 +36,7 @@ use rig_core::providers::chatgpt::{
     self,
     auth::{
         AuthError, AuthSource, Authenticator, DeviceCodeHandler, DeviceCodePrompt, FileTokenStore,
-        SignInMethod, SignInPrompt, SignedOut,
+        SignInMethod, SignInPrompt, SignedOut, browser_command,
     },
 };
 use rig_core::providers::registry::ConnectError;
@@ -47,6 +48,8 @@ use rig_ecs::model::{ChoiceKind, Connection, ModelChoice, Models, SetModel};
 use rig_ecs::requests::RequestOf;
 use rig_ecs::tasks::{Done, PollTasks, Running, Wake};
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
+use rig_harness::harness_protocol::without_secrets;
+use rig_tools::process::{NON_INTERACTIVE, Process};
 
 /// The provider `/login` signs in to: the ChatGPT plan, the catalog's
 /// `chatgpt` vendor, which is also what `/login` and `/logout` take for it.
@@ -76,7 +79,8 @@ impl Plugin for LoginPlugin {
             store,
             DeviceCodeHandler::default(),
             false,
-        );
+        )
+        .with_browser_opener(open_browser);
         let offered = Arc::new(Offered::default());
         let session = Session {
             auth,
@@ -292,6 +296,33 @@ async fn sign_in_flow(
         })
         .await;
     SignInEnded(signed_in.map(drop).map_err(|error| error.to_string()))
+}
+
+/// Asks the desktop to open the sign-in page `url` without waiting, and
+/// without the plugins' secrets in the opener's environment, so the
+/// browser never inherits one. The opener is handed over as it starts, so
+/// the browser it starts stays as rig goes on or exits. Returns whether
+/// the opener started.
+fn open_browser(url: &str) -> bool {
+    let mut command = browser_command(url);
+    // A browser it starts outlives rig with the user's own editor and pager.
+    for (name, _) in NON_INTERACTIVE {
+        match std::env::var_os(name) {
+            Some(value) => command.env(name, value),
+            None => command.env_remove(name),
+        };
+    }
+    without_secrets(&mut command);
+    let Ok(mut opener) = Process::start_with_stdio(command) else {
+        return false;
+    };
+    opener.release();
+    // Reap the opener when it exits.
+    std::thread::Builder::new()
+        .name("browser-opener".into())
+        .spawn(move || opener.wait_for(std::time::Duration::MAX).ok())
+        .ok();
+    true
 }
 
 /// The line after a sign-in prompt.

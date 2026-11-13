@@ -9,7 +9,7 @@ use crate::json_utils::Lenient;
 use crate::providers::internal::auth::{
     load_record, request, save_record, send_bytes, send_json, token_expired,
 };
-use crate::wasm_compat::WasmCompatSend;
+use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use base64::Engine;
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use bytes::Bytes;
@@ -17,6 +17,8 @@ use http::Method;
 use serde::{Deserialize, Serialize};
 
 mod browser;
+
+pub use browser::browser_command;
 
 const CHATGPT_AUTH_BASE: &str = "https://auth.openai.com";
 const CHATGPT_DEVICE_CODE_URL: &str = "https://auth.openai.com/api/accounts/deviceauth/usercode";
@@ -76,6 +78,17 @@ enum RefreshTokensError {
     Auth(AuthError),
 }
 
+/// What a browser sign-in calls to open its page: [`browser_command`]
+/// unless the caller supplied its own.
+#[derive(Clone)]
+pub(super) struct BrowserOpener(std::sync::Arc<dyn Fn(&str) -> bool + Send + Sync>);
+
+impl Default for BrowserOpener {
+    fn default() -> Self {
+        Self(std::sync::Arc::new(browser::open_browser))
+    }
+}
+
 impl SignInMethod {
     /// The browser when one opened here would reach the user and
     /// `device_asked` is false: not over SSH, and on Linux and the BSDs
@@ -96,6 +109,20 @@ impl SignInMethod {
 }
 
 impl Authenticator {
+    /// This authenticator opening a browser sign-in's page with `opener`,
+    /// which gets the page's URL and returns whether a browser started. By
+    /// default the page opens through [`browser_command`]; a caller
+    /// supplies its own to control the opener's environment or to open
+    /// pages some other way. Native only.
+    #[must_use]
+    pub fn with_browser_opener(
+        mut self,
+        opener: impl Fn(&str) -> bool + WasmCompatSend + WasmCompatSync + 'static,
+    ) -> Self {
+        self.1 = BrowserOpener(std::sync::Arc::new(opener));
+        self
+    }
+
     pub(super) async fn auth_context_oauth<H>(&self, http: &H) -> Result<AuthContext, AuthError>
     where
         H: HttpClientExt,
@@ -195,9 +222,10 @@ impl Authenticator {
 
     /// Sign in again in the browser, whatever is cached: an authorization
     /// code with PKCE, returned to a one-shot listener on `127.0.0.1` port
-    /// 1455, or 1457 when that is taken. The default browser is opened on
-    /// the sign-in page and `prompt` receives its URL, for the user to open
-    /// when the browser did not. The credential is kept in the token store.
+    /// 1455, or 1457 when that is taken. The browser opener
+    /// ([`Self::with_browser_opener`]) is given the sign-in page, and
+    /// `prompt` receives its URL, for the user to open when the browser did
+    /// not. The credential is kept in the token store.
     /// Native only.
     ///
     /// When both ports are taken, fails with [`AuthError::Io`] of kind
@@ -225,7 +253,7 @@ impl Authenticator {
             state,
             std::time::Instant::now() + BROWSER_SIGN_IN_TIMEOUT,
         )?;
-        let browser_launched = browser::open_browser(&authorize_url);
+        let browser_launched = (self.1.0)(&authorize_url);
         prompt(BrowserSignInPrompt {
             authorize_url,
             browser_launched,
