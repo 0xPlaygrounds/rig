@@ -504,7 +504,8 @@ impl wire::Responses {
                 .collect(),
             calls: Default::default(),
         };
-        let stateless = codex || layers.param("store") == Some(&json!(false));
+        let store = self.store.map(Value::Bool);
+        let stateless = codex || layers.param("store").or(store.as_ref()) == Some(&json!(false));
         let caller = match layers.claim("input") {
             None | Some(Value::Null) => Vec::new(),
             Some(Value::Array(items)) => items,
@@ -610,6 +611,7 @@ impl wire::Responses {
 
         Ok(crate::providers::internal::set_fields([
             ("model", Some(Value::String(model))),
+            ("store", store),
             ("input", Some(Value::Array(sent))),
             ("instructions", instructions.map(Value::from)),
             (

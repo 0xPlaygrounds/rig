@@ -30,6 +30,10 @@ pub struct Responses {
     pub tools: Vec<ResponsesToolDefinition>,
     /// Whether Rig-generated tools request OpenAI's strict validation.
     pub strict_tools: bool,
+    /// The `store` every request from this wire sends unless the request
+    /// sets its own. `None` sends none, so the provider's default applies.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub store: Option<bool>,
     /// Where this wire puts Rig's system instructions. Defaults to the
     /// dialect's placement.
     pub system_instructions: SystemInstructionsPlacement,
@@ -48,6 +52,7 @@ impl Responses {
             provider,
             model: model.into(),
             tools: Vec::new(),
+            store: None,
             facts: ModelFacts::default(),
         }
     }
@@ -62,6 +67,15 @@ impl Responses {
     /// Sanitize function schemas for strict mode and send `strict: true`.
     pub fn with_strict_tools(mut self) -> Self {
         self.strict_tools = true;
+        self
+    }
+
+    /// Send `store` on every request from this wire. A request that sets
+    /// `store` in its provider options or `additional_params` sends its own.
+    /// With `false`, every request replays prior reasoning by its ciphertext
+    /// rather than by stored item id.
+    pub fn with_store(mut self, store: bool) -> Self {
+        self.store = Some(store);
         self
     }
 

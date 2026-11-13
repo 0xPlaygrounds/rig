@@ -330,6 +330,10 @@ fn a_stateless_request_sends_no_reasoning_it_cannot_resolve() {
         .expect("the call goes back");
     assert!(call.get("id").is_none(), "{call}");
     assert_eq!(call["call_id"], "call_1");
+    assert_eq!(
+        continued_on(&wire().with_store(false), &response, json!({})),
+        input
+    );
 
     let stored = continued_on(&wire(), &response, json!({}));
     assert_eq!(stored[1]["id"], "rs_1", "{stored:?}");
