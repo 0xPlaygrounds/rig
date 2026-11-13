@@ -169,6 +169,10 @@ pub struct StreamedTurn {
     pub policy: TurnPolicy,
     /// Provider-reported terminal reason for this turn, when available.
     pub finish_reason: Option<FinishReason>,
+    /// The ids of the calls the reply was cut off in the middle of
+    /// ([`CompletionResponse::cut_off_calls`](rig_core::completion::CompletionResponse::cut_off_calls)).
+    /// Each is answered as cut off and never run.
+    pub cut_off: Vec<CallId>,
 }
 
 /// Resolution a driver must apply to a mid-stream invalid tool call.
@@ -456,6 +460,10 @@ impl StreamedTurnAssembler {
             choice: self.resolved(&response.choice),
             policy: self.policy,
             finish_reason: response.finish_reason(),
+            cut_off: response
+                .cut_off_calls()
+                .map(|call| call.id.clone())
+                .collect(),
         }
     }
 

@@ -40,7 +40,9 @@ use rig_core::error::ProviderError;
 
 use rig_core::conversation::Aside;
 use rig_core::conversation::pairing::{PairingError, validate};
-use rig_core::message::{AssistantContent, AssistantMessage, ToolCall, ToolName, UserContent};
+use rig_core::message::{
+    AssistantContent, AssistantMessage, CallId, ToolCall, ToolName, UserContent,
+};
 use rig_core::tool::feedback::{
     invalid_arguments_feedback, not_executed, tool_result_message, tool_result_output,
 };
@@ -261,6 +263,9 @@ struct TurnState {
     /// Kept until the turn's calls are answered, so an invalid-call context
     /// raised in the tool step reports the policy the turn was judged by.
     policy: TurnPolicy,
+    /// The ids of the calls the reply was
+    /// [cut off](CompletionResponse::cut_off_calls) in the middle of.
+    cut_off: Vec<CallId>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -354,7 +359,7 @@ pub struct AgentRun {
 }
 
 /// The [`AgentRun`] envelope format this crate writes and reads.
-pub const RUN_FORMAT: u32 = 5;
+pub const RUN_FORMAT: u32 = 6;
 
 /// Deserialize the envelope's `format`, refusing any other than
 /// [`RUN_FORMAT`] by name so a run persisted by another rig is never loaded
@@ -900,6 +905,7 @@ impl AgentRun {
                     has_tool_calls,
                     mut skipped,
                     policy,
+                    cut_off,
                 } = turn_state;
                 // A failed turn runs no tool and finalizes no output; reasoning
                 // alone is not an answer. A failed turn's calls never run, and
@@ -1019,6 +1025,7 @@ impl AgentRun {
                             AssistantContent::ToolCall(tool_call) => Some(ToolSlot::classify(
                                 tool_call.clone(),
                                 skipped.remove(&index),
+                                cut_off.contains(&tool_call.id),
                             )),
                             _ => None,
                         })
@@ -1172,13 +1179,15 @@ impl AgentRun {
 
     /// Park an accepted model turn in [`RunState::AwaitingAdvance`]. Both the
     /// non-streamed (`advance_resolution`) and streamed (`streamed_turn`)
-    /// ingestion paths converge here, differing only in the `skipped` map.
+    /// ingestion paths converge here, differing only in the `skipped` map
+    /// and the `cut_off` call ids, which only a streamed reply marks.
     fn finalize_turn(
         &mut self,
         head: AssistantMessage,
         items: Vec<AssistantContent>,
         has_tool_calls: bool,
         skipped: BTreeMap<usize, UserContent>,
+        cut_off: Vec<CallId>,
         policy: TurnPolicy,
     ) {
         self.state = RunState::AwaitingAdvance(TurnState {
@@ -1187,6 +1196,7 @@ impl AgentRun {
             has_tool_calls,
             skipped,
             policy,
+            cut_off,
         });
     }
 
@@ -1571,7 +1581,7 @@ impl AgentRun {
             }
         }
 
-        self.finalize_turn(head, items, has_tool_calls, skipped, policy);
+        self.finalize_turn(head, items, has_tool_calls, skipped, Vec::new(), policy);
         Ok(ModelTurnOutcome::Continue {
             response_hook_suppressed: recovered,
         })
@@ -1736,6 +1746,7 @@ impl AgentRun {
             turn.choice,
             has_tool_calls,
             BTreeMap::new(),
+            turn.cut_off,
             turn.policy,
         );
         Ok(())

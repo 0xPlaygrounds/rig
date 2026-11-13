@@ -1505,7 +1505,8 @@ fn a_provider_error_retry_still_pins_and_intercepts_the_output_tool() {
 
 /// Every older envelope is refused by name rather than resumed with its
 /// fields dropped: format 3 kept in-flight flags beside the state, format 4
-/// was the last before the memory path went.
+/// was the last before the memory path went, format 5 parked a turn without
+/// the calls its reply was cut off in.
 #[test]
 fn an_older_format_run_is_refused_by_name() {
     let run = AgentRun::new("go");
