@@ -288,8 +288,9 @@ it on every tool whose schema can be made strict, unless the tool sets
 optional parameters and 16 union-typed parameters; a tool that would exceed a
 limit is sent without `strict`. OMP instead makes optional parameters past the
 24th required and nullable and keeps the tool strict. A tool whose top-level
-schema allows additional properties is closed, and once strict the model cannot
-pass extra keys. Tool input streaming is sent as the caller set it. The
+schema omits `additionalProperties` is closed, and once strict the model cannot
+pass extra keys; one that sets `additionalProperties: true` stays open and is
+sent without `strict`. Tool input streaming is sent as the caller set it. The
 `strict_selection`, `optional_24`, `optional_25` and `optional_rollback` schema
 cases and the request comparison's declared projection record these
 differences.
