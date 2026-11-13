@@ -442,6 +442,7 @@ fn a_login_saved_by_the_previous_storage_code_is_read_without_a_new_login() -> a
 
 /// Where the login that `a_login_waiting_in_the_browser_leaves_the_credentials_free`
 /// runs in a copy of itself keeps its credentials.
+#[cfg(target_os = "linux")]
 const LOGIN_HOME: &str = "RIG_CLOAK_TEST_LOGIN_HOME";
 
 /// A login waiting for the user in the browser holds nothing another rig
