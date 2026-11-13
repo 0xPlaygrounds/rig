@@ -163,6 +163,13 @@ fn a_change_no_store_observes_skips_the_service_suite() {
     );
 }
 
+/// The launcher's process tests run on macOS whenever the launcher changes.
+#[test]
+fn a_launcher_change_runs_the_process_tests() {
+    assert!(planned(&["crates/rig-cli/src/run.rs"]).contains_key("process-tests"));
+    assert!(!planned(&["crates/rig-qdrant/src/lib.rs"]).contains_key("process-tests"));
+}
+
 #[test]
 fn the_plan_round_trips_through_its_ci_encoding() {
     let plan = planned(&["crates/rig-qdrant/src/lib.rs"]);

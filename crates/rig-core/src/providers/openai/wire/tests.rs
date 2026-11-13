@@ -102,13 +102,17 @@ fn a_gateway_configuration_round_trips_without_its_credential() {
     assert_eq!(restored.provider.dialect, chatgpt);
 }
 
-/// The endpoint template a wire's encoded request declares.
+/// The completion endpoint a wire's encoded request is sent to.
 fn route_of(wire: &OpenAiWire) -> Option<&'static str> {
     use crate::wire::Wire as _;
     let request = crate::completion::CompletionRequest::new("hi");
-    wire.encode(request, crate::wire::Mode::Unary)
-        .expect("the request encodes")
-        .route
+    let encoded = wire
+        .encode(request, crate::wire::Mode::Unary)
+        .expect("the request encodes");
+    let path = encoded.request.uri().path();
+    ["/responses", "/chat/completions"]
+        .into_iter()
+        .find(|endpoint| path.ends_with(endpoint))
 }
 
 /// The default completion wire is the dialect's flagship route, and it is

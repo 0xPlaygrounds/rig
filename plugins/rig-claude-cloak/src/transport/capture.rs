@@ -314,6 +314,22 @@ fn current_profile_projection(
             .entry("display")
             .or_insert_with(|| "updates".into());
     }
+    // OMP asks for a strict schema only on tools it names and buffers its `yield` tool's input.
+    // Rig asks for one on every compatible tool, which is every tool here, and keeps streaming.
+    if !current && let Some(tools) = value.get_mut("tools").and_then(Value::as_array_mut) {
+        for tool in tools.iter_mut().filter_map(Value::as_object_mut) {
+            if tool.get("eager_input_streaming") == Some(&Value::Bool(false)) {
+                tool.insert("eager_input_streaming".into(), true.into());
+            }
+            if !tool.contains_key("strict") {
+                let cache = remove_preserving_order(tool, "cache_control");
+                tool.insert("strict".into(), true.into());
+                if let Some(cache) = cache {
+                    tool.insert("cache_control".into(), cache);
+                }
+            }
+        }
+    }
     js_json(&value).map_err(Into::into)
 }
 

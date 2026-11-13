@@ -128,9 +128,6 @@ fn with_body(payload: &Encoded, bytes: Vec<u8>) -> Result<Encoded, ProviderError
         framing: payload.framing,
         request_id_header: payload.request_id_header,
         relaxed_content_type: payload.relaxed_content_type,
-        route: payload.route,
-        project: payload.project,
-        analysis_only: payload.analysis_only,
     })
 }
 
@@ -164,7 +161,6 @@ where
         };
         let exchange = Exchange {
             mode: Mode::Unary,
-            observation: None,
             extensions: http::Extensions::new(),
         };
         let opened = match self

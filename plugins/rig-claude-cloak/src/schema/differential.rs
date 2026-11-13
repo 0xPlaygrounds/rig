@@ -29,7 +29,7 @@ macro_rules! omp_case {
     };
 }
 
-omp_case!(allowlist);
+omp_case!(strict_selection);
 omp_case!(optional_23);
 omp_case!(optional_24);
 omp_case!(optional_25);

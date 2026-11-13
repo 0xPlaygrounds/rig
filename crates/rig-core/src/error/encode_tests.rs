@@ -34,11 +34,6 @@ fn failure<T>(result: Result<T, EncodeError>) -> ProviderError {
 /// fails to compile when `ProviderError` gains a variant, so a new variant
 /// has to be placed on one side of the rule.
 fn assert_request_building(case: &str, error: &ProviderError) {
-    assert_eq!(
-        error.boundary(),
-        AdapterErrorBoundary::Request,
-        "{case}: {error}"
-    );
     assert!(!error.is_retryable(), "{case}: {error}");
     assert_eq!(error.report().kind, ErrorKind::Request, "{case}: {error}");
     match error {

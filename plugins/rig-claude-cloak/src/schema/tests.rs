@@ -42,19 +42,22 @@ fn preserves_supported_constraints_and_open_maps() {
 }
 
 #[test]
-fn strict_allowlist_and_incompatible_shapes() {
+fn strict_is_chosen_by_shape_and_opt_out() {
     let mut body = json!({"tools":[
         {"name":"yield", "input_schema":{"type":"object", "properties":{"value":{"type":"string"}}}},
         {"name":"bash", "input_schema":{"type":"object"}},
         {"name":"edit", "strict":false, "input_schema":{"type":"object"}},
         {"name":"find", "input_schema":{"type":"object", "properties":{"value":{"oneOf":[{"type":"string"}]}}}},
-        {"name":"python", "input_schema":{"type":"object", "additionalProperties":true}}
+        {"name":"open", "input_schema":{"type":"object", "properties":{"map":{"type":"object", "additionalProperties":{"type":"string"}}}}}
     ]});
     normalize_tools(&mut body);
-    assert_eq!(body.pointer("/tools/0/strict"), Some(&json!(true)));
-    for index in 1..5 {
-        assert_eq!(body.pointer(&format!("/tools/{index}/strict")), None);
-    }
+    let strict = (0..5)
+        .map(|index| body.pointer(&format!("/tools/{index}/strict")).cloned())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        strict,
+        vec![Some(json!(true)), Some(json!(true)), None, None, None]
+    );
 }
 
 #[test]
@@ -88,17 +91,15 @@ fn optional_budget_is_request_wide_and_failed_plans_do_not_spend_it() {
     ]});
     normalize_tools(&mut body);
     assert_eq!(body.pointer("/tools/0/strict"), None);
+    assert_eq!(body.pointer("/tools/1/strict"), None);
     assert_eq!(
         body.pointer("/tools/1/input_schema/required"),
-        Some(&json!(["p24"]))
+        Some(&json!([]))
     );
-    assert_eq!(
-        body.pointer("/tools/1/input_schema/properties/p24"),
-        Some(&json!({"anyOf":[{"type":"string"},{"type":"null"}]}))
-    );
+    assert_eq!(body.pointer("/tools/2/strict"), Some(&json!(true)));
     assert_eq!(
         body.pointer("/tools/2/input_schema/required"),
-        Some(&json!(["next"]))
+        Some(&json!([]))
     );
 }
 
@@ -136,14 +137,14 @@ fn postprocess_matches_wire_scalar_and_empty_schema_rules() {
 
 #[test]
 fn normalization_preserves_schema_shaped_literal_instances() -> anyhow::Result<()> {
-    for name in ["bash", "yield"] {
+    for strict in [false, true] {
         for literal in [json!({"enum":[1,2]}), json!({"properties":{"x":{}}})] {
             let examples = json!([literal]);
             let description = format!(
                 "examples\n\n{{examples: {}}}",
                 serde_json::to_string(&examples)?
             );
-            let mut body = json!({"tools":[{"name":name,"input_schema":{
+            let mut body = json!({"tools":[{"name":"probe","strict":strict,"input_schema":{
                 "type":"object",
                 "properties":{
                     "constant":{"type":"object","const":literal},
@@ -170,7 +171,7 @@ fn normalization_preserves_schema_shaped_literal_instances() -> anyhow::Result<(
                     body.pointer(&format!(
                         "/tools/0/input_schema/properties/{property}/{keyword}"
                     )) == Some(&expected),
-                    "{name}: {keyword} must preserve literal instance data"
+                    "strict {strict}: {keyword} must preserve literal instance data"
                 );
             }
             anyhow::ensure!(
@@ -241,4 +242,80 @@ fn root_combinators_spill_but_nested_anyof_remains() {
         Some(&json!("{anyOf: [{\"required\":[\"x\"]}]}"))
     );
     assert!(schema.pointer("/properties/x/anyOf").is_some());
+}
+
+#[test]
+fn every_compatible_rig_tool_is_strict() {
+    use rig_harness::rig_core::tool::Tool;
+    use rig_harness::rig_tools::{Delete, Edit, List, Read, Search, Shell, Write};
+    fn entry<T: Tool>(tool: &T) -> Value {
+        json!({"name": T::NAME, "input_schema": tool.parameters()})
+    }
+    let mut body = json!({"tools": [
+        entry(&Read::default()),
+        entry(&Shell::default()),
+        entry(&Edit::default()),
+        entry(&Write::default()),
+        entry(&List::default()),
+        entry(&Search::default()),
+        entry(&Delete::default()),
+    ]});
+    normalize_tools(&mut body);
+    let tools = body
+        .get("tools")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let not_strict = tools
+        .iter()
+        .filter(|tool| tool.get("strict") != Some(&json!(true)))
+        .filter_map(|tool| tool.get("name").and_then(Value::as_str))
+        .collect::<Vec<_>>();
+    assert_eq!(tools.len(), 7);
+    assert_eq!(not_strict, Vec::<&str>::new());
+}
+
+#[test]
+fn a_tool_past_the_optional_budget_keeps_its_optional_parameters() {
+    let pages = (0..24)
+        .map(|index| (format!("p{index}"), json!({"type":"integer"})))
+        .collect::<Map<_, _>>();
+    let mut body = json!({"tools":[
+        {"name":"first", "input_schema":{"type":"object", "properties":pages}},
+        {"name":"list_issues", "input_schema":{"type":"object",
+            "properties":{"repo":{"type":"string"}, "per_page":{"type":"integer"}},
+            "required":["repo"]}}
+    ]});
+    normalize_tools(&mut body);
+    assert_eq!(body.pointer("/tools/0/strict"), Some(&json!(true)));
+    assert_eq!(body.pointer("/tools/1/strict"), None);
+    assert_eq!(
+        body.pointer("/tools/1/input_schema/required"),
+        Some(&json!(["repo"]))
+    );
+    assert_eq!(
+        body.pointer("/tools/1/input_schema/properties/per_page"),
+        Some(&json!({"type":"integer"}))
+    );
+}
+
+#[test]
+fn a_free_form_object_parameter_keeps_its_tool_non_strict() {
+    let mut body = json!({"tools":[
+        {"name":"no_arguments", "input_schema":{"type":"object"}},
+        {"name":"set_metadata", "input_schema":{"type":"object",
+            "properties":{"metadata":{"type":"object"}}, "required":["metadata"]}},
+        {"name":"tag_all", "input_schema":{"type":"object",
+            "properties":{"tags":{"type":"array", "items":{"type":"object"}}}}},
+        {"name":"set_point", "input_schema":{"type":"object",
+            "properties":{"point":{"type":"object", "properties":{"x":{"type":"number"}}}}}}
+    ]});
+    normalize_tools(&mut body);
+    let strict = (0..4)
+        .map(|index| body.pointer(&format!("/tools/{index}/strict")).cloned())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        strict,
+        vec![Some(json!(true)), None, None, Some(json!(true))]
+    );
 }

@@ -204,22 +204,12 @@
               "type": "string"
             },
             "p1": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": "string"
             }
           },
-          "required": [
-            "p1"
-          ],
+          "required": [],
           "additionalProperties": false
-        },
-        "strict": true
+        }
       },
       {
         "name": "find",
@@ -228,19 +218,10 @@
           "type": "object",
           "properties": {
             "last": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": "string"
             }
           },
-          "required": [
-            "last"
-          ],
+          "required": [],
           "additionalProperties": false
         },
         "strict": true

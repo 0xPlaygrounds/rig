@@ -19,28 +19,11 @@
 # variants — but naming them is not licence to raw-parse, so the serde wall
 # scans it like any other file and every parse below is argued here. Four of
 # the five are `classify`'s own work; the fifth reads a sub-payload of a
-# frame the classifier already returned as `Known`. The sixth is the wire's
-# observation projection, argued with its two siblings in the section below.
+# frame the classifier already returned as `Known`.
 providers/openai/wire/chat.rs | serde_json::from_str::<Value>(&data) | `classify` reads a frame the shared classifier called `Corrupt` (a duplicate `object` or `choices` key) once more, only to find the in-band error envelope, which outranks every other reading of a frame; anything else stays `Corrupt`.
 # A chat chunk's `delta.reasoning_details` is deliberately typed
 # `Vec<serde_json::Value>`: the entries are a gateway extension, so an entry
 # shape this build does not model must not fail the chunk that carries it.
-
-# --- the observation projections, folded into their decoders ---------------
-# `Decoder::project` is a read-only side channel onto the observation trace.
-# It runs on a payload the driver has ALREADY framed and already classified,
-# it returns nothing, and its whole failure mode is emitting no fact: the
-# frame's fate was decided by `classify` and is identical whether the
-# projection parsed the payload or not. That is why each of these parses is
-# a bare `let Ok(..) else { return }` rather than a `Corrupt` verdict — a
-# projection that could reject a frame would be a second classifier. These
-# three parses (four sites) moved here when the `observation.rs` modules
-# were folded into the decoders that were their only callers.
-providers/anthropic/streaming.rs | serde_json::from_slice::<Value>(payload) | `MessagesDecoder::project` reads the stop reason, model, message id, usage and error envelope off a payload the driver already framed and classified, through the decoder's own lenient usage reader; a failed parse emits no observation and leaves the frame's verdict exactly as `classify` set it.
-providers/cohere/streaming.rs | serde_json::from_slice::<Value>(payload) | `ChatDecoder::project` reads the finish reason, reply id and usage off a payload the driver already framed and classified; a failed parse emits no observation and leaves the frame's verdict exactly as `classify` set it.
-providers/gemini/streaming.rs | let Ok(reply) = serde_json::from_slice::<Value>(payload) else { | `GenerateContentDecoder::project` reads the already framed and classified payload as `Value` for the observation projection; every field is read leniently and a payload that is not JSON emits nothing, so the frame keeps the fate `classify` gave it.
-providers/ollama/streaming.rs | let Ok(record) = serde_json::from_slice::<Value>(payload) else { | `ChatDecoder::project` reads the already framed and classified record as `Value` for the observation projection; every field is read leniently and a payload that is not JSON emits nothing, so the frame keeps the fate `classify` gave it.
-providers/openai/wire/chat.rs | serde_json::from_slice::<Value>(payload) | `ChatDecoder::project` reads the verdict, model, response id, usage and error envelope off an already-framed, already-classified payload — `[DONE]` is not JSON and simply projects nothing — so a failed decode emits no observation and triages no frame.
 
 # --- openai modality wire: whole replies that have no frames ----------------
 providers/openai/wire/modality.rs | #[serde(untagged)] | `ImagesReplyImage` is the reply-side union of the two forms two dialects put under the `images` key (Hyperbolic `{"image": "<base64>"}`, Venice the bare base64); the image route answers with one whole reply and has no frames, so no inbound frame policy is decided here.

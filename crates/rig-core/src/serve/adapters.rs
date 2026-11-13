@@ -75,23 +75,15 @@ impl<Op: Operation> ModelAdapter<Op> {
     }
 
     /// How the model sends for `dispatch` under `handler`: its HTTP request
-    /// carries the [`Serving`], observed under `observation`.
-    fn sending(
-        &self,
-        handler: HandlerKey,
-        dispatch: &Dispatch,
-        observation: Option<crate::observe::AdapterContext>,
-    ) -> Sending {
+    /// carries the [`Serving`].
+    fn sending(&self, handler: HandlerKey, dispatch: &Dispatch) -> Sending {
         let mut extensions = http::Extensions::new();
         extensions.insert(Serving {
             effect: dispatch.id(),
             handler,
             provider: self.model.spec().map(|spec| spec.provider),
         });
-        Sending {
-            observation,
-            extensions,
-        }
+        Sending { extensions }
     }
 }
 
@@ -187,11 +179,7 @@ impl Serve for ModelAdapter<Completion> {
 
     async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
         let model = &self.model;
-        let sending = self.sending(
-            crate::effect::model_key(self.label.as_str()),
-            &dispatch,
-            dispatch.adapter_context(),
-        );
+        let sending = self.sending(crate::effect::model_key(self.label.as_str()), &dispatch);
         match kind {
             EffectKind::Completion {
                 request,
@@ -239,11 +227,7 @@ impl Serve for ModelAdapter<Embedding> {
 
     async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
         let model = &self.model;
-        let sending = self.sending(
-            crate::effect::embed_key(self.label.as_str()),
-            &dispatch,
-            None,
-        );
+        let sending = self.sending(crate::effect::embed_key(self.label.as_str()), &dispatch);
         match kind {
             EffectKind::Embed {
                 inputs: EmbedInputs::Texts(texts),
@@ -288,11 +272,7 @@ impl Serve for ModelAdapter<Rerank> {
 
     async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
         let model = &self.model;
-        let sending = self.sending(
-            crate::effect::rerank_key(self.label.as_str()),
-            &dispatch,
-            None,
-        );
+        let sending = self.sending(crate::effect::rerank_key(self.label.as_str()), &dispatch);
         match kind {
             EffectKind::Rerank { request } => Reply::Outcome(
                 model

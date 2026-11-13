@@ -22,10 +22,7 @@ use crate::json_utils::Lenient;
 use crate::message::{CallId, Source, SourceLocation, ToolName};
 use crate::operation::{Block, CallFragment, Completion, Finish};
 use crate::providers::internal::wire;
-use crate::wire::{
-    AdapterVerdict, Decoder, Flow, ObservationSink, Out, SpanUnit, WireCitation, WireEvent,
-    WireFrame, WireSpan,
-};
+use crate::wire::{Decoder, Flow, Out, SpanUnit, WireCitation, WireEvent, WireFrame, WireSpan};
 
 /// The stream's event tags; any other tag classifies as unknown.
 const KNOWN_EVENT_TYPES: &[&str] = &[
@@ -574,26 +571,6 @@ impl<'id> Decoder<'id, Completion> for ChatDecoder {
             _ => {}
         }
         Ok(Flow::More)
-    }
-}
-
-impl ChatDecoder {
-    /// Native chat metadata projected before normalization can discard it:
-    /// the finish reason and the reply id, on the unary reply
-    /// and on the stream's `message-start` and `message-end` events.
-    pub(crate) fn project(payload: &[u8], sink: &mut ObservationSink<'_>) {
-        let Ok(payload) = serde_json::from_slice::<Value>(payload) else {
-            return;
-        };
-        let end = payload.get("delta").unwrap_or(&payload);
-        let verdict = AdapterVerdict {
-            finish_reason: end.str("finish_reason").map(|reason| sink.scrub(reason)),
-            block_reason: None,
-            detail: None,
-            model: None,
-        };
-        let response_id = payload.str("id").map(|id| sink.scrub(id));
-        sink.provider(verdict, response_id);
     }
 }
 

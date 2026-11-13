@@ -594,7 +594,6 @@ fn lock<T>(value: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 /// An effect's identity, requested delivery mode, and driver-provided scopes.
 /// Reply transport and cancellation remain owned by the driver.
 pub struct Dispatch {
-    adapter_context: Option<crate::observe::AdapterContext>,
     id: EffectId,
     streaming: bool,
     scopes: Vec<Arc<dyn std::any::Any + Send + Sync>>,
@@ -611,7 +610,6 @@ impl Dispatch {
         Self {
             id,
             streaming,
-            adapter_context: None,
             scopes: Vec::new(),
             observer: None,
             serving: Arc::default(),
@@ -674,20 +672,6 @@ impl Dispatch {
         self.with_observer(Box::new(observer))
     }
 
-    /// Supply provider context for this invocation independently of request data.
-    ///
-    /// It survives forwarding through layers. Reuse an operation context only
-    /// for attempts of that same logical call.
-    pub fn with_adapter_context(mut self, context: crate::observe::AdapterContext) -> Self {
-        self.adapter_context = Some(context);
-        self
-    }
-
-    /// Provider observation context forwarded across handler layers.
-    pub fn adapter_context(&self) -> Option<crate::observe::AdapterContext> {
-        self.adapter_context.clone()
-    }
-
     pub(crate) fn patched(&mut self, kind: &EffectKind) {
         if let Some(slot) = &self.observer
             && let Some(seen) = lock(slot).as_mut()
@@ -710,7 +694,6 @@ impl Dispatch {
         Self {
             id: self.id,
             streaming: self.streaming,
-            adapter_context: self.adapter_context.clone(),
             scopes: self.scopes.clone(),
             observer: observer.map(|seen| Arc::new(Mutex::new(Some(seen)))),
             serving: Arc::default(),
