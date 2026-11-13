@@ -129,7 +129,7 @@ fn seconds(secs: f64) -> Option<Duration> {
 /// The wait `text` starts with, as Go writes a duration: numbers each
 /// followed by `h`, `m`, `s` or `ms` (`6m0s`, `1h2m3.5s`, `20ms`, `.5s`).
 /// A space may part the first number from its unit (`1.5 s`).
-fn hinted_wait(text: &str) -> Option<Duration> {
+pub(super) fn hinted_wait(text: &str) -> Option<Duration> {
     let mut rest = text;
     let mut total = None;
     loop {
