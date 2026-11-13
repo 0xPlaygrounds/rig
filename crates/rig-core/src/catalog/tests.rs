@@ -438,6 +438,17 @@ fn edit_distance_counts_single_character_edits() {
 }
 
 #[test]
+fn closest_name_finds_a_typo_and_not_another_word() {
+    assert_eq!(
+        lookup::closest_name("inptu", ["output", "input"]),
+        Some("input")
+    );
+    assert_eq!(lookup::closest_name("output", ["input"]), None);
+    // A short word still allows one edit; a tie goes to the name sorting first.
+    assert_eq!(lookup::closest_name("ab", ["ac", "aa"]), Some("aa"));
+}
+
+#[test]
 fn catalog_only_providers_have_entries_and_no_preset() {
     let catalog = models_dev(SAMPLE).expect("parses");
     let bedrock = spec(&catalog, "aws_bedrock", "us.anthropic.claude-x-v1:0");

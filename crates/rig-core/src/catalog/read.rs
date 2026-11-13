@@ -7,7 +7,7 @@ use std::fmt;
 use serde::Deserialize;
 use serde_json::value::RawValue;
 
-use super::lookup::{self, edit_distance};
+use super::lookup::{self, closest_name};
 use super::row::{Row, known_fields};
 use super::{Catalog, CatalogError, KEYS, vendor_of};
 use crate::providers::registry::{Format, ProviderId};
@@ -168,7 +168,7 @@ impl Catalog {
         let mut catalog = Catalog::default();
         for (key, section) in &sections {
             let Some(provider) = ProviderId::catalog(vendor_of(key)) else {
-                let suggestion = closest(key, vendor_keys());
+                let suggestion = closest_name(key, vendor_keys());
                 error(key.clone(), OverrideErrorKind::UnknownVendor { suggestion });
                 continue;
             };
@@ -177,7 +177,7 @@ impl Catalog {
                 continue;
             };
             for field in section.keys().filter(|field| *field != "models") {
-                let suggestion = closest(field, ["models"]);
+                let suggestion = closest_name(field, ["models"]);
                 error(
                     format!("{key}.{field}"),
                     OverrideErrorKind::UnknownField { suggestion },
@@ -369,7 +369,7 @@ fn unknown_fields(
         if let Some(known) = &known
             && !known.contains(&key.as_str())
         {
-            report(at.join("."), closest(key, known.iter().copied()));
+            report(at.join("."), closest_name(key, known.iter().copied()));
             continue;
         }
         if let Ok(inner) = serde_json::from_str::<Entries<'_>>(value.get()) {
@@ -391,19 +391,6 @@ fn unknown_fields(
 /// models.dev keys that name one.
 fn vendor_keys() -> impl Iterator<Item = &'static str> {
     ProviderId::catalog_vendors().chain(KEYS.iter().map(|(models_dev, _)| *models_dev))
-}
-
-/// The candidate closest to `word` by edit distance, if within a quarter of
-/// its length (at least one edit), so a typo finds its key and a different
-/// word (`output` for `input`) finds none.
-fn closest(word: &str, candidates: impl IntoIterator<Item = &'static str>) -> Option<&'static str> {
-    let limit = (word.chars().count() / 4).max(1);
-    candidates
-        .into_iter()
-        .map(|candidate| (edit_distance(word, candidate), candidate))
-        .filter(|(distance, _)| *distance <= limit)
-        .min()
-        .map(|(_, candidate)| candidate)
 }
 
 /// The id `base` lists for `provider`'s vendor that `id` most likely means:

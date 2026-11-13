@@ -41,13 +41,13 @@ use std::path::{Path, PathBuf};
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_log::warn;
+use rig_core::catalog::closest_name;
 use rig_ecs::agent::Notice;
 use rig_harness_protocol::config::SettingsFile;
 use serde::de::DeserializeOwned;
 
 use crate::describe::described_settings;
 use crate::host::cli::Cli;
-use crate::run::closest;
 use crate::services::RigHome;
 
 /// A settings file's tables, and what was wrong with it. Each problem
@@ -200,7 +200,7 @@ impl Settings {
         let unread =
             (self.tables.keys()).filter(|table| *table != "plugins" && !self.read.contains(*table));
         unread
-            .map(|table| match closest(table, &read) {
+            .map(|table| match closest_name(table, read.iter().copied()) {
                 Some(meant) => Notice::error(
                     None,
                     format!(
