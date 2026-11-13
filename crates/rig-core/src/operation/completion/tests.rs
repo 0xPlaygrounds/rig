@@ -193,7 +193,7 @@ fn a_restated_response_streams_the_same_blocks() {
         out.finish(1)
     });
     let original = response(decoded);
-    let events = events_of(&original).expect("restates");
+    let events = events_of(&original);
     let transcript = StreamRecord::from_items(events.clone()).expect("a valid sequence");
     let ended: Vec<_> = transcript
         .events()
@@ -311,7 +311,7 @@ fn a_reply_records_where_each_item_keeps_its_blob() {
     };
     let streamed = ended(events(&decoded));
     let response = response(decoded);
-    let restated = events_of(&response).expect("restates");
+    let restated = events_of(&response);
     let restated = StreamRecord::from_items(restated).expect("a valid sequence");
     let restated = ended(restated.events().cloned().collect());
     let signed = ["a", "b", "", "c"].map(|sig| Some(sig.to_owned()).filter(|sig| !sig.is_empty()));
@@ -742,7 +742,7 @@ fn a_restated_call_starts_with_its_name() {
         crate::message::Origin::new("test", "test", "test"),
         Value::Null,
     );
-    let items = events_of(&response).expect("restates");
+    let items = events_of(&response);
     let transcript = StreamRecord::from_items(items).expect("a valid sequence");
     let events: Vec<StreamEvent> = transcript.events().cloned().collect();
     assert_eq!(
@@ -778,7 +778,7 @@ fn a_restated_malformed_call_carries_its_arguments_as_sent() {
         crate::message::Origin::new("test", "test", "test"),
         Value::Null,
     );
-    let items = events_of(&response).expect("restates");
+    let items = events_of(&response);
     let transcript = StreamRecord::from_items(items).expect("a valid sequence");
     let restated: Vec<StreamEvent> = transcript.events().cloned().collect();
     assert_eq!(
@@ -805,7 +805,7 @@ fn a_restated_call_with_no_argument_text_carries_no_arguments() {
         crate::message::Origin::new("test", "test", "test"),
         Value::Null,
     );
-    let items = events_of(&response).expect("restates");
+    let items = events_of(&response);
     let transcript = StreamRecord::from_items(items).expect("a valid sequence");
     let events: Vec<StreamEvent> = transcript.events().cloned().collect();
     assert_eq!(shape(&events), ["0:start:add", "0:end"]);
@@ -828,7 +828,7 @@ fn a_restated_reply_keeps_a_repeated_call_id() {
         crate::message::Origin::new("test", "test", "test"),
         Value::Null,
     );
-    let items = events_of(&response).expect("restates");
+    let items = events_of(&response);
     let transcript = StreamRecord::from_items(items).expect("a valid sequence");
     let ended: Vec<_> = transcript
         .events()
@@ -893,6 +893,34 @@ fn a_placeholder_null_never_replaced_streams_the_ended_arguments() {
     assert_eq!(shape(&events), ["0:start:noop", "0:args:{}", "0:end"]);
     let (streamed, ended) = streamed_and_final(&events, 0);
     assert_eq!(serde_json::from_str::<Value>(&streamed).ok(), Some(ended));
+}
+
+/// A call cut off inside what could still be a placeholder `null` streams
+/// the text the model sent when it ends, as the same call restated does.
+#[test]
+fn a_call_cut_off_inside_a_placeholder_streams_the_text_sent() {
+    let decoded = write(|out| {
+        out.fragment(
+            Some(0),
+            CallFragment {
+                id: Some("call_1"),
+                name: Some("noop"),
+                arguments: Some("nu"),
+            },
+        )?;
+        Ok(())
+    });
+    let streamed = events(&decoded);
+    assert_eq!(shape(&streamed), ["0:start:noop", "0:args:nu", "0:end"]);
+    let restated = events_of(&response(decoded));
+    let restated: Vec<StreamEvent> = restated
+        .into_iter()
+        .filter_map(|item| match item {
+            Item::Event(event) => Some(event),
+            Item::Unknown(_) => None,
+        })
+        .collect();
+    assert_eq!(restated, streamed);
 }
 
 /// Restating an item with no text of its own changes nothing.

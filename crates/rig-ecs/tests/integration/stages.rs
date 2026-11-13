@@ -5455,3 +5455,127 @@ fn a_held_call_goes_to_the_model_it_was_adapted_for() {
     // It goes where Fit measured it: the model it was adapted for.
     assert_eq!((first.request_count(), second.request_count()), (1, 0));
 }
+
+/// A reply holding a call whose arguments were cut off, a call whose
+/// stream stopped before any argument text, and text.
+fn malformed_reply() -> Option<Arc<rig_core::completion::CompletionResponse>> {
+    let add = ToolName::new("add").ok()?;
+    let cut_off = ToolFunction::parse(add.clone(), r#"{"a": 1"#);
+    let empty = ToolFunction {
+        invalid_arguments: Some(String::new()),
+        ..ToolFunction::parse(add, "")
+    };
+    let call = |id: &str, function| {
+        let id = rig_core::message::CallId::from_wire(id);
+        AssistantContent::ToolCall(rig_core::message::ToolCall::new(id, function))
+    };
+    let choice = vec![
+        call("cut", cut_off),
+        call("empty", empty),
+        AssistantContent::text("and some text"),
+    ];
+    let origin = rig_core::completion::message::Origin::new("test.api", "test", "model");
+    Some(Arc::new(rig_core::completion::CompletionResponse::new(
+        choice,
+        rig_core::completion::Usage::default(),
+        origin,
+        serde_json::Value::Null,
+    )))
+}
+
+/// A model that answers its first call with [`malformed_reply`] whole, not
+/// as a stream, and every later one with text.
+struct AnswersWhole(std::sync::atomic::AtomicBool);
+
+impl Serve for AnswersWhole {
+    type Family = Dynamic;
+
+    fn descriptor(&self) -> HandlerDescriptor {
+        HandlerDescriptor {
+            key: HandlerKey::from("answers-whole"),
+            family: FamilyDescriptor::Custom {
+                kind: "test:answers-whole".into(),
+            },
+            layers: Vec::new(),
+        }
+    }
+
+    async fn serve(&self, _: EffectKind, _: Dispatch) -> Reply {
+        let first = !self.0.swap(true, std::sync::atomic::Ordering::Relaxed);
+        let reply = if let Some(reply) = malformed_reply().filter(|_| first) {
+            reply
+        } else {
+            let origin = rig_core::completion::message::Origin::new("test.api", "test", "model");
+            Arc::new(rig_core::completion::CompletionResponse::new(
+                vec![AssistantContent::text("done")],
+                rig_core::completion::Usage::default(),
+                origin,
+                serde_json::Value::Null,
+            ))
+        };
+        Reply::Outcome(Ok(rig_core::effect::Answered::Completion(reply)))
+    }
+}
+
+/// Answers the first turn call in Gate with [`malformed_reply`], as a
+/// plugin standing in for the model does: nothing streams.
+fn answer_malformed_in_place(
+    mut calls: Query<&mut Decision, (With<TurnCall>, ReadyToStart)>,
+    mut answered: Local<bool>,
+) {
+    for mut decision in &mut calls {
+        if !std::mem::replace(&mut *answered, true)
+            && let Some(reply) = malformed_reply()
+        {
+            let reply = rig_core::effect::Answered::Completion(reply);
+            decision.decide(Decider::plugin("test"), Outcome(Ok(reply)));
+        }
+    }
+}
+
+/// The events the first model call of a run wrote, in order.
+fn first_call_events(app: &mut App, agent: Entity) -> Vec<StreamEvent> {
+    let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(app, done), "{:?}", notices(app));
+    for _ in 0..3 {
+        app.update();
+    }
+    let said = conversation(app, agent);
+    assert!(said.len() > 2, "the turn went on past the reply: {said:?}");
+    let seen = &app.world().resource::<Streams>().events;
+    let first = seen.first().map(|(call, _)| *call);
+    let events = seen.iter().filter(|(call, _)| Some(*call) == first);
+    events.map(|(_, event)| event.clone()).collect()
+}
+
+/// The same reply, holding malformed calls, writes the same events when a
+/// handler answers with it whole and when a plugin puts it in place.
+#[test]
+fn a_reply_a_plugin_puts_in_place_writes_the_events_a_handlers_whole_reply_does() {
+    let model = MockCompletionModel::from_stream_turns([answer("done")]);
+    let mut handled = reading_app(|| {});
+    let agent = agent_on(&mut handled, &model);
+    if let Some(mut connection) = handled.world_mut().get_mut::<Connection>(agent) {
+        let whole = AnswersWhole(std::sync::atomic::AtomicBool::new(false));
+        connection.handler = Handler(ErasedHandler::new(whole));
+    }
+    let from_handler = first_call_events(&mut handled, agent);
+
+    let mut placed = reading_app(answer_malformed_in_place.in_set(Stage::Gate));
+    let agent = agent_on(&mut placed, &model);
+    let in_place = first_call_events(&mut placed, agent);
+
+    assert_eq!(in_place, from_handler);
+    let arguments: Vec<&str> = from_handler
+        .iter()
+        .filter_map(|event| match event {
+            StreamEvent::Arguments { json, .. } => Some(json.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(arguments, [r#"{"a": 1"#]);
+    let ends = from_handler
+        .iter()
+        .filter(|event| matches!(event, StreamEvent::End { .. }));
+    assert_eq!(ends.count(), 3, "{from_handler:?}");
+}

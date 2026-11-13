@@ -48,7 +48,7 @@ use rig_core::message::{
 };
 use rig_core::now_ms;
 use rig_core::serve::{Reply, stream_truncated};
-use rig_core::streaming::{Item, Part, PartKind, Relayed, StreamEvent};
+use rig_core::streaming::{Item, Part, Relayed, StreamEvent};
 use rig_core::tool::{ToolErrorKind, ToolExecutionError, ToolResult, Touches, feedback};
 use rig_memory::{Anchor, is_output_notes};
 use web_time::Instant;
@@ -1484,16 +1484,16 @@ pub(crate) fn write_unstreamed(
 }
 
 /// The events a stream of `reply` would have written: each part of its
-/// `choice`, at its own position, as [`part_events`] writes it.
+/// `choice`, whole, at its own position.
 fn reply_events(reply: &CompletionResponse) -> Vec<StreamEvent> {
     let parts = (0..).zip(&reply.choice);
     parts
-        .flat_map(|(at, content)| part_events(Part::new(at), content))
+        .flat_map(|(at, content)| StreamEvent::whole(Part::new(at), content))
         .collect()
 }
 
-/// The text parts of `reply` that are not empty, as [`part_events`] writes
-/// them, at the positions from `after` on, past the parts that streamed.
+/// The text parts of `reply` that are not empty, whole, at the positions
+/// from `after` on, past the parts that streamed.
 fn text_events(reply: &CompletionResponse, after: u32) -> Vec<StreamEvent> {
     let texts = reply
         .choice
@@ -1501,49 +1501,8 @@ fn text_events(reply: &CompletionResponse, after: u32) -> Vec<StreamEvent> {
         .filter(|content| matches!(content, AssistantContent::Text(text) if !text.text.is_empty()));
     (after..)
         .zip(texts)
-        .flat_map(|(at, content)| part_events(Part::new(at), content))
+        .flat_map(|(at, content)| StreamEvent::whole(Part::new(at), content))
         .collect()
-}
-
-/// `content` as a stream writes it at `part`: its start, its whole text,
-/// reasoning or argument JSON as one fragment (none when empty), and its
-/// end. A kind no stream carries yet writes nothing, leaving a gap.
-fn part_events(part: Part, content: &AssistantContent) -> Vec<StreamEvent> {
-    let (kind, name, grown) = match content {
-        AssistantContent::Text(text) => (
-            PartKind::Text,
-            None,
-            (!text.text.is_empty()).then(|| StreamEvent::Text {
-                part,
-                text: text.text.clone(),
-            }),
-        ),
-        AssistantContent::Reasoning(reasoning) => (
-            PartKind::Reasoning,
-            None,
-            (!reasoning.text.is_empty()).then(|| StreamEvent::Reasoning {
-                part,
-                text: reasoning.text.clone(),
-            }),
-        ),
-        AssistantContent::ToolCall(call) => {
-            let function = &call.function;
-            let json = function.invalid_arguments.clone().unwrap_or_else(|| {
-                serde_json::Value::Object(function.arguments.clone()).to_string()
-            });
-            let grown = (!json.is_empty()).then_some(StreamEvent::Arguments { part, json });
-            (PartKind::ToolCall, Some(function.name.clone()), grown)
-        }
-        AssistantContent::Image(_) => (PartKind::Image, None, None),
-        AssistantContent::Opaque(_) => (PartKind::Opaque, None, None),
-        _ => return Vec::new(),
-    };
-    let start = StreamEvent::Start { part, kind, name };
-    let end = StreamEvent::End {
-        part,
-        content: content.clone(),
-    };
-    [start].into_iter().chain(grown).chain([end]).collect()
 }
 
 /// Puts the [`RetryPolicy`]'s [`RetryVerdict`] on each model call whose
