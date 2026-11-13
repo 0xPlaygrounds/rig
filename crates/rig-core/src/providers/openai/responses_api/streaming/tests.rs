@@ -1836,3 +1836,33 @@ fn a_reported_cost_is_its_total_in_usd() {
     assert_eq!(usage(json!({ "cost": null })), None);
     assert_eq!(usage(json!({})), None);
 }
+
+/// A call the provider states `incomplete` in a reply that completes is
+/// not a cut-off call: the reply's end says no limit cut it. It stays a
+/// call with what its arguments state, and the turn is not a failure.
+#[test]
+fn an_incomplete_call_in_a_completed_reply_is_not_unfinished() {
+    let call = json!({
+        "type": "function_call",
+        "id": "fc_1",
+        "call_id": "call_1",
+        "name": "add",
+        "arguments": "{\"x\":481",
+        "status": "incomplete"
+    });
+    let mut response = sample_response("completed");
+    response["output"] = json!([call]);
+    let events = [
+        item_done(0, 1, call.clone()),
+        json!({"type": "response.completed", "sequence_number": 2, "response": response}),
+    ];
+    let response = decode(Mode::Streaming, frames(&events));
+    assert_eq!(
+        response.unfinished_calls().count(),
+        0,
+        "{:?}",
+        response.choice
+    );
+    assert!(!response.stop().is_failure(), "{:?}", response.stop());
+    assert_eq!(response.tool_calls().count(), 1, "{:?}", response.choice);
+}

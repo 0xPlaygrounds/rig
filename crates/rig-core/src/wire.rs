@@ -588,8 +588,9 @@ impl<'id, Op: Operation> Out<'id, Op> {
     /// writer: nothing is written after the end.
     pub fn end(self, end: Op::End) -> Flow {
         let mut shared = self.lock();
-        <Op::Emit as reply::Closing<Op>>::close(&mut shared);
+        // Recorded first: what closes the open parts may read how it ended.
         shared.end = Some(end);
+        <Op::Emit as reply::Closing<Op>>::close(&mut shared);
         Flow::Ended(Ended(()))
     }
 

@@ -187,8 +187,14 @@ impl Operation for Completion {
 
 impl crate::wire::reply::Closing<Completion> for Assembled {
     fn close(shared: &mut Shared<Completion>) {
-        let Shared { fold, items, .. } = shared;
-        fold.close_open(items);
+        let Shared {
+            fold, items, end, ..
+        } = shared;
+        let cut = end
+            .as_ref()
+            .and_then(|end| end.reason.as_ref())
+            .is_some_and(crate::completion::FinishReason::truncated_output);
+        fold.close_open(items, cut);
     }
 }
 
@@ -735,7 +741,7 @@ impl ReplyFold {
             self.held.push((index, draft));
             return Ok(());
         }
-        self.settle(items, index, draft, closing)
+        self.settle(items, index, draft, (closing, false))
     }
 
     /// Make the closed `draft` at `index` a block of the reply.
@@ -744,7 +750,7 @@ impl ReplyFold {
         items: &mut Items,
         index: usize,
         draft: Draft,
-        closing: Closing,
+        (closing, unfinished): (Closing, bool),
     ) -> Result<(), ProviderError> {
         self.ended.insert(index, draft.part.index());
         let Draft {
@@ -808,7 +814,7 @@ impl ReplyFold {
                 };
                 let function = arguments.function(name);
                 let (id, item) = self.distinct_call_id(id, item);
-                if closing == Closing::Incomplete {
+                if unfinished {
                     self.unfinished.push(id.clone());
                 }
                 let call = ToolCall::new(id, function);
@@ -1011,21 +1017,24 @@ impl ReplyFold {
     }
 
     /// Close every item still open when the provider ends the reply, and
-    /// end the calls held as unfinished, all in the order they opened. The
-    /// block a boundary-less wire was streaming is complete; any other item
-    /// was never stated complete, so its block has no native. Calls keep
-    /// what their arguments state.
-    pub(crate) fn close_open(&mut self, items: &mut Items) {
-        let mut closing: Vec<(usize, Draft, Closing)> = std::mem::take(&mut self.held)
+    /// end the calls held, all in the order they opened. The block a
+    /// boundary-less wire was streaming is complete; any other item was
+    /// never stated complete, so its block has no native. Calls keep what
+    /// their arguments state. A call still open is unfinished; a held call
+    /// is unfinished only when the reply was `cut` (its finish truncated
+    /// the output), since a finish that did not cut it leaves it a call
+    /// the provider sent as it is.
+    pub(crate) fn close_open(&mut self, items: &mut Items, cut: bool) {
+        let mut closing: Vec<(usize, Draft, (Closing, bool))> = std::mem::take(&mut self.held)
             .into_iter()
-            .map(|(index, draft)| (index, draft, Closing::Incomplete))
+            .map(|(index, draft)| (index, draft, (Closing::Incomplete, cut)))
             .collect();
         for (index, draft) in std::mem::take(&mut self.open) {
             let complete = self.run.take_if(|run| *run == index).is_some();
             let how = if complete {
-                Closing::Complete
+                (Closing::Complete, false)
             } else {
-                Closing::Incomplete
+                (Closing::Incomplete, true)
             };
             closing.push((index, draft, how));
         }

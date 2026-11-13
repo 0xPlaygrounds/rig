@@ -2153,6 +2153,58 @@ fn a_call_cut_before_its_arguments_never_runs() {
     }
 }
 
+/// A call whose stream index another call takes over, in a reply that ends
+/// with `tool_calls` on DeepSeek's chat wire: no limit cut it, so the turn
+/// goes on, the call that took the index runs, and the first is answered as
+/// malformed.
+#[test]
+fn a_call_after_a_takeover_in_a_finished_reply_runs() {
+    let chunk = |delta: serde_json::Value, finish: Option<&str>| {
+        serde_json::json!({"id": "c", "object": "chat.completion.chunk", "model": "m",
+            "choices": [{"index": 0, "delta": delta, "finish_reason": finish}]})
+    };
+    let sse = |chunks: Vec<serde_json::Value>| {
+        let mut body: String = chunks
+            .iter()
+            .map(|chunk| format!("data: {chunk}\n\n"))
+            .collect();
+        body.push_str("data: [DONE]\n\n");
+        rig_core::test_utils::MockHttpResponse::success_typed(body, "text/event-stream")
+    };
+    let calls = sse(vec![
+        chunk(
+            serde_json::json!({"role": "assistant", "tool_calls": [{"index": 0, "id": "call_1",
+                "type": "function", "function": {"name": "shell", "arguments": "{\"command\": \"ec"}}]}),
+            None,
+        ),
+        chunk(
+            serde_json::json!({"tool_calls": [{"index": 0, "id": "call_2", "type": "function",
+                "function": {"name": "ping", "arguments": "{}"}}]}),
+            None,
+        ),
+        chunk(serde_json::json!({}), Some("tool_calls")),
+    ]);
+    let done = sse(vec![chunk(
+        serde_json::json!({"role": "assistant", "content": "done"}),
+        Some("stop"),
+    )]);
+    let (mut app, wakes) = start(&MemoryStore::default());
+    let ping = Ping::default();
+    app.add_tool(ping.clone());
+    let http = rig_core::test_utils::SequencedHttpClient::new([calls, done]);
+    let deepseek = &rig_core::providers::openai::wire::DEEPSEEK;
+    let agent = on_responses(&mut app, (deepseek, "deepseek-v4-flash"), 1_000_000, &http);
+    assert!(agent.is_some(), "an agent on the DeepSeek chat wire");
+    let Some(agent) = agent else { return };
+    ask(&mut app, &wakes, agent);
+    assert_eq!(answer(&app).as_deref(), Some("done"));
+    assert_eq!(
+        ping.0.load(Ordering::SeqCst),
+        1,
+        "the call that took the index runs"
+    );
+}
+
 #[test]
 fn an_interrupt_during_the_summary_cancels_the_compaction() {
     let (mut app, wakes) = start(&MemoryStore::default());

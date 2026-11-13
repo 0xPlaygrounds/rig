@@ -333,6 +333,48 @@ fn a_call_the_limit_cut_is_an_unfinished_call() {
     }
 }
 
+/// A call whose stream index another call takes over before its arguments
+/// are whole, in a reply that ends with `tool_calls`: no limit cut it, so
+/// it is not unfinished and the turn goes on. It keeps what its arguments
+/// state, and the call that took the index is whole.
+#[test]
+fn a_call_taken_over_in_a_finished_reply_is_not_unfinished() {
+    let wire = wire(&DEEPSEEK, "deepseek-v4-flash");
+    let frames = vec![
+        chunk(
+            json!({"role": "assistant", "tool_calls": [{"index": 0, "id": "call_1",
+                "type": "function", "function": {"name": "write_file",
+                    "arguments": "{\"path\":\"a.txt\",\"con"}}]}),
+            None,
+        ),
+        chunk(
+            json!({"tool_calls": [{"index": 0, "id": "call_2", "type": "function",
+                "function": {"name": "count", "arguments": "{\"n\":2}"}}]}),
+            None,
+        ),
+        chunk(json!({}), Some("tool_calls")),
+        WireFrame::Text("[DONE]".to_owned()),
+    ];
+    let reply = decode(&wire, Mode::Streaming, frames).expect("the reply decodes");
+    assert_eq!(reply.unfinished_calls().count(), 0, "{:?}", reply.choice);
+    assert!(!reply.stop().is_failure(), "{:?}", reply.stop());
+    let calls: Vec<(String, bool)> = reply
+        .tool_calls()
+        .map(|call| {
+            (
+                call.function.name.to_string(),
+                call.function.invalid_arguments.is_some(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        calls,
+        [("write_file".to_owned(), true), ("count".to_owned(), false)],
+        "{:?}",
+        reply.choice
+    );
+}
+
 /// chatB "accepts_images dead": the text-only models of Z.AI, Moonshot,
 /// MiniMax and MiMo, on their own Chat dialects and through OpenRouter, get
 /// a placeholder for an image, by the rule the Messages wire shares, and

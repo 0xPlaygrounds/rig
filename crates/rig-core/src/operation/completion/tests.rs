@@ -356,27 +356,41 @@ fn a_call_the_reply_ends_in_the_middle_of_is_unfinished() {
 }
 
 /// A call whose index another call takes over before its arguments form a
-/// whole object ends unfinished, so a reply that then stops normally failed.
+/// whole object is unfinished only when the output limit then ends the
+/// reply. A reply that stops normally keeps it as a call with what its
+/// arguments state, and the turn goes on.
 #[test]
-fn a_call_another_takes_the_index_of_mid_arguments_is_unfinished() {
+fn a_call_another_takes_the_index_of_mid_arguments_is_unfinished_only_when_cut() {
     use crate::completion::FinishReason;
     let fragment = |id: &'static str, arguments: &'static str| CallFragment {
         id: Some(id),
         name: Some("write"),
         arguments: Some(arguments),
     };
-    let decoded = write_on_wire(None, stop(FinishReason::ToolCalls), |out| {
-        out.fragment(Some(0), fragment("first", r#"{"path":"a"#))?;
-        out.fragment(Some(0), fragment("second", r#"{"path":"b"}"#))?;
-        out.finish(0)
-    });
-    let reply = response(decoded);
-    let unfinished: Vec<String> = reply
-        .unfinished_calls()
-        .map(|call| call.id.wire().into_owned())
-        .collect();
-    assert_eq!(unfinished, ["first"]);
-    assert!(reply.stop().is_failure());
+    for (reason, cut) in [
+        (FinishReason::Length, true),
+        (FinishReason::ToolCalls, false),
+    ] {
+        let decoded = write_on_wire(None, stop(reason.clone()), |out| {
+            out.fragment(Some(0), fragment("first", r#"{"path":"a"#))?;
+            out.fragment(Some(0), fragment("second", r#"{"path":"b"}"#))?;
+            out.finish(0)
+        });
+        let reply = response(decoded);
+        let unfinished: Vec<String> = reply
+            .unfinished_calls()
+            .map(|call| call.id.wire().into_owned())
+            .collect();
+        let expected: &[&str] = if cut { &["first"] } else { &[] };
+        assert_eq!(unfinished, expected, "{reason:?}");
+        assert!(!reply.stop().is_failure(), "{reason:?}: {:?}", reply.stop());
+        assert_eq!(
+            reply.tool_calls().count(),
+            2,
+            "{reason:?}: {:?}",
+            reply.choice
+        );
+    }
 }
 
 #[test]
