@@ -91,6 +91,7 @@ fn a_models_dev_row_becomes_a_spec() {
     assert_eq!(claude.max_input_tokens, Some(180_000));
     assert_eq!(claude.input_limit(), Some(180_000));
     assert_eq!(claude.max_output_tokens, Some(64_000));
+    assert_eq!(claude.output_limit(), Some(64_000));
     let details = &claude.details;
     assert_eq!(details.description.as_deref(), Some("A model for tests"));
     assert_eq!(details.release_date.as_deref(), Some("2026-01-01"));
@@ -619,6 +620,25 @@ fn a_cache_retention_the_model_does_not_honour_is_refused() {
         model
             .validate(&GenerationOptions::default().cache(CacheRetention::Short))
             .is_ok()
+    );
+}
+
+/// A reply never outgrows the window, so a listed output limit above it
+/// is held to it; with no window known the listed limit stands.
+#[test]
+fn the_output_limit_is_held_to_the_window() {
+    let ollama = ProviderId::catalog("ollama").expect("a known vendor");
+    let spec = ModelSpec::new(ollama, "m").with_max_output_tokens(262_144);
+    assert_eq!(spec.output_limit(), Some(262_144));
+    assert_eq!(
+        spec.with_context_window(131_072).output_limit(),
+        Some(131_072)
+    );
+    assert_eq!(
+        ModelSpec::new(ollama, "m")
+            .with_context_window(8_192)
+            .output_limit(),
+        None
     );
 }
 

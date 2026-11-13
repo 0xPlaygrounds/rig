@@ -1130,7 +1130,7 @@ impl Summarizer {
     /// output limit when that is lower.
     pub fn max_tokens(&self, spec: &ModelSpec) -> u64 {
         let most = self.limits.summary_tokens;
-        spec.max_output_tokens
+        spec.output_limit()
             .map_or(most, |model| most.min(u64::from(model)))
     }
 

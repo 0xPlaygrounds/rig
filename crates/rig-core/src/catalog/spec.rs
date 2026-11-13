@@ -426,6 +426,14 @@ impl ModelSpec {
         }
     }
 
+    /// The most tokens a reply from this model may write: its output limit
+    /// held to its window, as a reply never outgrows the window; `None` when
+    /// the output limit is not known.
+    pub fn output_limit(&self) -> Option<u32> {
+        let window = self.context_window.unwrap_or(u32::MAX);
+        self.max_output_tokens.map(|output| output.min(window))
+    }
+
     /// This spec writing at most `tokens` in one reply.
     pub fn with_max_output_tokens(mut self, tokens: u32) -> Self {
         self.max_output_tokens = Some(tokens);

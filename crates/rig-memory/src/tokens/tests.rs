@@ -128,3 +128,27 @@ fn an_image_costs_about_twelve_hundred_tokens() {
     let counter = HeuristicTokenCounter::default();
     assert_eq!(counter.count_user(&image), ATTACHMENT_TOKENS);
 }
+
+/// A request fits when the input limit holds it and the window leaves
+/// room for the least of its answer it needs.
+#[test]
+fn a_request_fits_only_with_room_for_its_answer() {
+    let openai = rig_core::providers::registry::ProviderId::catalog("openai").expect("a vendor");
+    let spec = ModelSpec::new(openai, "m").with_context_window(128_000);
+    assert!(fits(&spec, 100_000, 64_000, 12_000));
+    // Within the input limit, but under 4k left for a 64k answer.
+    assert!(!fits(&spec, 120_000, 64_000, 12_000));
+    assert!(fits(&spec, 120_000, 64_000, 2_000));
+    assert!(!fits(&spec, 124_000, 64_000, 2_000));
+    assert!(!fits(
+        &spec.clone().with_max_input_tokens(110_000),
+        120_000,
+        64_000,
+        2_000
+    ));
+    assert_eq!(output_room(&spec, 100_000, 64_000), 23_904);
+    assert_eq!(output_room(&spec, 126_000, 64_000), 0);
+    let unknown = ModelSpec::new(openai, "m");
+    assert_eq!(output_room(&unknown, 1_000_000, 64_000), 64_000);
+    assert!(fits(&unknown, 1_000_000, 64_000, 64_000));
+}

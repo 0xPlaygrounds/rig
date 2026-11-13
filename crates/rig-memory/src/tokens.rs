@@ -9,6 +9,7 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io;
 use std::sync::Arc;
 
+use rig_core::catalog::ModelSpec;
 use rig_core::completion::{CompletionRequest, Message, ToolDefinition, Usage};
 use rig_core::conversation::{Conversation, MessageId};
 use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
@@ -310,7 +311,26 @@ pub fn next_request_tokens(
 
 /// Tokens a request leaves free below the window, besides the output it
 /// asks for: a margin for the estimate's error.
-pub const OUTPUT_MARGIN: u64 = 4_096;
+const OUTPUT_MARGIN: u64 = 4_096;
+
+/// The output a request of an estimated `tokens` to `spec` may ask for, at
+/// most `asked`: what the window leaves after the request and a margin for
+/// the estimate's error, or `asked` when the window is not known.
+pub fn output_room(spec: &ModelSpec, tokens: u64, asked: u64) -> u64 {
+    spec.context_window.map_or(asked, |window| {
+        asked.min(u64::from(window).saturating_sub(tokens.saturating_add(OUTPUT_MARGIN)))
+    })
+}
+
+/// Whether a request of an estimated `tokens` to `spec` that asks for
+/// `asked` tokens of output fits: within the model's input limit, with
+/// [`output_room`] for at least `least` of them. A limit not known is taken
+/// to fit.
+pub fn fits(spec: &ModelSpec, tokens: u64, asked: u64, least: u64) -> bool {
+    spec.input_limit()
+        .is_none_or(|limit| tokens <= u64::from(limit))
+        && output_room(spec, tokens, asked) >= least
+}
 
 #[cfg(test)]
 mod tests;
