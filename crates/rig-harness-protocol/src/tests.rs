@@ -5,7 +5,7 @@
 
 use super::{
     AgentDescription, DescribedCommand, DescribedFlag, DescribedSecret, Home, Invocation, Stamp,
-    secret_variable, warnings,
+    is_secret_variable, secret_variable, warnings,
 };
 
 /// Blank text is no warning, and any other text that is not an array of
@@ -766,4 +766,17 @@ fn a_list_with_bytes_that_are_not_text_still_names_its_groups() {
     let id = i32::try_from(job.id()).ok();
     assert_eq!(live, id.map(|id| vec![id]));
     assert!(killed && ended, "killed: {killed}, ended: {ended}");
+}
+
+/// A variable whose name starts with the secret prefix is a secret even
+/// when the rest of its name is not UTF-8, so no child inherits it.
+#[cfg(unix)]
+#[test]
+fn a_secret_name_that_is_not_utf8_is_still_a_secret() {
+    use std::ffi::OsStr;
+    use std::os::unix::ffi::OsStrExt;
+
+    assert!(is_secret_variable(OsStr::from_bytes(b"RIG_SECRET_\xff")));
+    assert!(is_secret_variable(OsStr::new("RIG_SECRET_CRYPT")));
+    assert!(!is_secret_variable(OsStr::from_bytes(b"RIG_\xffSECRET_")));
 }

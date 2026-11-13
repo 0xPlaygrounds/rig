@@ -13,7 +13,7 @@ pub mod fake_agent;
 pub mod fs;
 pub mod launch;
 
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::fmt;
 #[cfg(unix)]
 use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
@@ -260,11 +260,23 @@ pub fn secret_variable(name: &str) -> String {
 pub fn secret_variables() -> Vec<OsString> {
     std::env::vars_os()
         .map(|(name, _)| name)
-        .filter(|name| {
-            name.to_str()
-                .is_some_and(|name| name.starts_with(env::SECRET_PREFIX))
-        })
+        .filter(|name| is_secret_variable(name))
         .collect()
+}
+
+/// Whether the variable `name` starts with [`env::SECRET_PREFIX`]. On Unix
+/// the bytes are compared, so a name that is not UTF-8 still counts.
+fn is_secret_variable(name: &OsStr) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        name.as_bytes().starts_with(env::SECRET_PREFIX.as_bytes())
+    }
+    #[cfg(not(unix))]
+    {
+        name.to_str()
+            .is_some_and(|name| name.starts_with(env::SECRET_PREFIX))
+    }
 }
 
 /// At most `count` lines of a build's output from the first one that
