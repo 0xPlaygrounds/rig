@@ -200,22 +200,12 @@
           "type": "object",
           "properties": {
             "tail": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "type": "string"
             }
           },
-          "required": [
-            "tail"
-          ],
+          "required": [],
           "additionalProperties": false
-        },
-        "strict": true
+        }
       },
       {
         "name": "find",

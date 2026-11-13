@@ -275,36 +275,6 @@ fn spend_union(budget: &mut Budget) -> Option<()> {
     Some(())
 }
 
-fn nullable(mut value: Value, budget: &mut Budget) -> Option<Value> {
-    if let Some(schema) = value.as_object_mut() {
-        if schema
-            .get("type")
-            .and_then(Value::as_array)
-            .is_some_and(|types| types.iter().any(|value| value == "null"))
-            || schema
-                .get("anyOf")
-                .and_then(Value::as_array)
-                .is_some_and(|variants| {
-                    variants
-                        .iter()
-                        .any(|value| value.get("type") == Some(&json!("null")))
-                })
-        {
-            return Some(value);
-        }
-        if let Some(Value::Array(variants)) = schema.get_mut("anyOf") {
-            variants.push(json!({"type":"null"}));
-            return Some(value);
-        }
-        if let Some(Value::Array(types)) = schema.get_mut("type") {
-            types.push(json!("null"));
-            return Some(value);
-        }
-    }
-    spend_union(budget)?;
-    Some(json!({"anyOf": [value, {"type":"null"}]}))
-}
-
 fn strict_schema(value: Value, budget: &mut Budget) -> Option<Value> {
     let mut schema = match value {
         Value::Object(schema) => schema,
@@ -375,12 +345,10 @@ fn strict_schema(value: Value, budget: &mut Budget) -> Option<Value> {
             {
                 *child = normalized;
                 required.push(Value::String(name.clone()));
-            } else if budget.optional > 0 {
-                budget.optional -= 1;
-                *child = normalized;
             } else {
-                *child = nullable(normalized, budget)?;
-                required.push(Value::String(name.clone()));
+                // Past the budget the tool is sent without `strict`, so the parameter stays optional.
+                budget.optional = budget.optional.checked_sub(1)?;
+                *child = normalized;
             }
         }
         schema.insert("required".into(), Value::Array(required));

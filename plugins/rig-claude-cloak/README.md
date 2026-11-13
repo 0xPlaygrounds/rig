@@ -286,9 +286,13 @@ for a strict schema only on tools it names `python`, `edit`, `find` and
 it on every tool whose schema can be made strict, unless the tool sets
 `strict: false`, within the API's request-wide limits of 20 strict tools, 24
 optional parameters and 16 union-typed parameters; a tool that would exceed a
-limit is sent without `strict`. Tool input streaming is sent as the caller set
-it. The `strict_selection` schema case and the request comparison's declared
-projection record these differences.
+limit is sent without `strict`. OMP instead makes optional parameters past the
+24th required and nullable and keeps the tool strict. A tool whose top-level
+schema allows additional properties is closed, and once strict the model cannot
+pass extra keys. Tool input streaming is sent as the caller set it. The
+`strict_selection`, `optional_24`, `optional_25` and `optional_rollback` schema
+cases and the request comparison's declared projection record these
+differences.
 
 `src/transport/roundtrip.rs` exercises two interleaved streamed tool calls
 through the catalog/handler/transport, then builds a second request from their

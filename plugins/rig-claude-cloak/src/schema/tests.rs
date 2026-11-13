@@ -91,17 +91,15 @@ fn optional_budget_is_request_wide_and_failed_plans_do_not_spend_it() {
     ]});
     normalize_tools(&mut body);
     assert_eq!(body.pointer("/tools/0/strict"), None);
+    assert_eq!(body.pointer("/tools/1/strict"), None);
     assert_eq!(
         body.pointer("/tools/1/input_schema/required"),
-        Some(&json!(["p24"]))
+        Some(&json!([]))
     );
-    assert_eq!(
-        body.pointer("/tools/1/input_schema/properties/p24"),
-        Some(&json!({"anyOf":[{"type":"string"},{"type":"null"}]}))
-    );
+    assert_eq!(body.pointer("/tools/2/strict"), Some(&json!(true)));
     assert_eq!(
         body.pointer("/tools/2/input_schema/required"),
-        Some(&json!(["next"]))
+        Some(&json!([]))
     );
 }
 
@@ -275,4 +273,28 @@ fn every_compatible_rig_tool_is_strict() {
         .collect::<Vec<_>>();
     assert_eq!(tools.len(), 7);
     assert_eq!(not_strict, Vec::<&str>::new());
+}
+
+#[test]
+fn a_tool_past_the_optional_budget_keeps_its_optional_parameters() {
+    let pages = (0..24)
+        .map(|index| (format!("p{index}"), json!({"type":"integer"})))
+        .collect::<Map<_, _>>();
+    let mut body = json!({"tools":[
+        {"name":"first", "input_schema":{"type":"object", "properties":pages}},
+        {"name":"list_issues", "input_schema":{"type":"object",
+            "properties":{"repo":{"type":"string"}, "per_page":{"type":"integer"}},
+            "required":["repo"]}}
+    ]});
+    normalize_tools(&mut body);
+    assert_eq!(body.pointer("/tools/0/strict"), Some(&json!(true)));
+    assert_eq!(body.pointer("/tools/1/strict"), None);
+    assert_eq!(
+        body.pointer("/tools/1/input_schema/required"),
+        Some(&json!(["repo"]))
+    );
+    assert_eq!(
+        body.pointer("/tools/1/input_schema/properties/per_page"),
+        Some(&json!({"type":"integer"}))
+    );
 }
