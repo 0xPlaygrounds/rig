@@ -247,13 +247,11 @@ impl MockTurn {
     }
 }
 
-type MockInvocation = (CompletionRequest, Option<crate::observe::AdapterContext>);
-
 #[derive(Default)]
 struct MockScriptState {
     turns: Mutex<VecDeque<MockTurn>>,
     stream_turns: Mutex<VecDeque<Vec<MockStreamEvent>>>,
-    requests: Mutex<Vec<MockInvocation>>,
+    requests: Mutex<Vec<CompletionRequest>>,
 }
 
 /// The scripted completion wire: its payload is the request, and each frame
@@ -449,20 +447,7 @@ impl MockCompletionModel {
 
     /// Return cloned requests received by this model.
     pub fn requests(&self) -> Vec<CompletionRequest> {
-        self.transport
-            .requests_guard()
-            .iter()
-            .map(|(request, _)| request.clone())
-            .collect()
-    }
-
-    /// Return invocation contexts in the same order as the captured requests.
-    pub fn contexts(&self) -> Vec<Option<crate::observe::AdapterContext>> {
-        self.transport
-            .requests_guard()
-            .iter()
-            .map(|(_, context)| context.clone())
-            .collect()
+        self.transport.requests_guard().clone()
     }
 
     /// Return the number of requests received by this model.
@@ -478,7 +463,7 @@ impl MockCompletionModel {
 }
 
 impl MockRuntime {
-    fn requests_guard(&self) -> MutexGuard<'_, Vec<MockInvocation>> {
+    fn requests_guard(&self) -> MutexGuard<'_, Vec<CompletionRequest>> {
         lock(&self.state.requests)
     }
 }
@@ -493,7 +478,7 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 impl Transport<MockScript> for MockRuntime {
     fn send(&self, request: CompletionRequest, exchange: Exchange) -> Opening<MockFrame> {
         let mode = exchange.mode;
-        self.requests_guard().push((request, exchange.observation));
+        self.requests_guard().push(request);
         match mode {
             // A whole turn is one response, its document the response's
             // `raw`; a scripted failure fails the reply.

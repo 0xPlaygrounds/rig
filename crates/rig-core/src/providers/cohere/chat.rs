@@ -428,10 +428,7 @@ impl Wire for NativeChat {
             Mode::Streaming => Framing::Sse,
             Mode::Unary => Framing::Whole,
         };
-        Ok(Encoded::new(request, framing)
-            .with_request_id_header(Some(REQUEST_ID_HEADER))
-            .with_projection(ChatDecoder::project)
-            .with_route(Some(CHAT_PATH)))
+        Ok(Encoded::new(request, framing).with_request_id_header(Some(REQUEST_ID_HEADER)))
     }
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {

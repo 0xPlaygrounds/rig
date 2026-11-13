@@ -19,9 +19,7 @@ use crate::json_utils::Lenient;
 use crate::message::{CallId, DocumentSourceKind, Image, MediaType, MimeType, ToolName};
 use crate::operation::{Block, Completion, Finish};
 use crate::providers::internal::wire;
-use crate::wire::{
-    AdapterVerdict, Decoder, Flow, ObservationSink, Out, WireCitation, WireEvent, WireFrame,
-};
+use crate::wire::{Decoder, Flow, Out, WireCitation, WireEvent, WireFrame};
 
 /// The recognizability markers of a `streamGenerateContent` chunk: every
 /// genuine frame carries `candidates`, `usageMetadata` and/or
@@ -372,7 +370,7 @@ impl GenerateContentDecoder {
 
     /// Whether `frame` carries a response id and nothing else, a repeated
     /// key included.
-    pub(crate) fn is_analysis_only(frame: &WireFrame) -> bool {
+    fn is_analysis_only(frame: &WireFrame) -> bool {
         #[derive(serde::Deserialize)]
         #[serde(deny_unknown_fields)]
         struct ResponseIdOnly {
@@ -383,31 +381,6 @@ impl GenerateContentDecoder {
             wire::classify_untyped_line::<ResponseIdOnly>(frame.as_str().as_bytes()),
             WireEvent::Known(_)
         )
-    }
-
-    /// Project provider verdicts, response identity, and errors
-    /// before normalization. A field of another type is left out, and a
-    /// payload that is not JSON projects nothing.
-    pub(crate) fn project(payload: &[u8], sink: &mut ObservationSink<'_>) {
-        let Ok(reply) = serde_json::from_slice::<Value>(payload) else {
-            return;
-        };
-        let candidate = reply.arr("candidates").first().unwrap_or(&Value::Null);
-        let scrub = |value: Option<&str>| value.map(|value| sink.scrub(value));
-        let block = reply
-            .at("/promptFeedback/blockReason")
-            .and_then(Value::as_str);
-        let verdict = AdapterVerdict {
-            finish_reason: scrub(candidate.str("finishReason")),
-            block_reason: scrub(block),
-            detail: scrub(candidate.str("finishMessage")),
-            model: scrub(reply.str("modelVersion")),
-        };
-        let response_id = scrub(reply.str("responseId"));
-        sink.provider(verdict, response_id);
-        if let Some(error) = crate::observe::ObservedError::of(&reply) {
-            error.emit(sink);
-        }
     }
 }
 

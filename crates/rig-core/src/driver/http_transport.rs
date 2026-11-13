@@ -1,7 +1,6 @@
 //! The HTTP transport: any [`HttpClientExt`] sends [`Encoded`] requests and
 //! delivers their replies as [`WireFrame`]s. It owns every HTTP concern:
-//! headers, framing, status and content-type checks, request ids and the
-//! observation of the exchange.
+//! headers, framing, status and content-type checks, and request ids.
 
 use bytes::Bytes;
 use futures::StreamExt;
@@ -10,9 +9,8 @@ use super::{Exchange, Opened, Opening, Transport};
 use crate::error::ProviderError;
 use crate::http_client::framing::{Framer, Framing};
 use crate::http_client::{self, HttpClientExt};
-use crate::observe::{AdapterContext, AdapterErrorBoundary, AdapterSlot};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
-use crate::wire::{Body, Encoded, Mode, Projector, Wire, WireFrame};
+use crate::wire::{Body, Encoded, Mode, Wire, WireFrame};
 
 impl<W, H> Transport<W> for H
 where
@@ -25,15 +23,8 @@ where
             framing,
             request_id_header,
             relaxed_content_type,
-            route,
-            project,
-            analysis_only,
         } = payload;
-        let Exchange {
-            mode,
-            observation,
-            extensions,
-        } = exchange;
+        let Exchange { mode, extensions } = exchange;
         request.extensions_mut().extend(extensions);
         // A whole reply has nothing to stream: it is read as a unary one is,
         // so its document is a fact of the reply in both modes.
@@ -44,36 +35,22 @@ where
             ));
         }
         accept_header(&mut request, framing);
-        // Errors need the actual path; observations use the declared
-        // template to group attempts independently of concrete URLs.
-        let path = request.uri().path().to_owned();
-        let declared = route.map_or_else(|| path.clone(), str::to_owned);
         let exchange = HttpExchange {
             framing,
             request_id_header,
             relaxed_content_type,
-            path,
-            observation: observation.map(|context| (context, AdapterSlot::default())),
-            project,
+            path: request.uri().path().to_owned(),
         };
         let http = self.clone();
-        let slot = exchange.slot().cloned();
-        let opening = slot.clone();
         Opening::new(async move {
-            // Unpolled replies must not report transport attempts.
-            exchange.install(&request, &declared);
-            let mut opened = match streamed {
+            Ok(match streamed {
                 Some(framer) => match byte_request(request) {
                     Ok(request) => exchange.streaming(&http, request, framer).await,
                     Err(error) => Opened::failed(error),
                 },
                 None => exchange.unary(&http, request).await,
-            };
-            opened.slot = slot;
-            opened.analysis_only = analysis_only;
-            Ok(opened)
+            })
         })
-        .with_slot(opening)
     }
 }
 
@@ -83,48 +60,24 @@ struct HttpExchange {
     request_id_header: Option<&'static str>,
     relaxed_content_type: bool,
     path: String,
-    observation: Option<(AdapterContext, AdapterSlot)>,
-    project: Option<Projector>,
 }
 
 impl HttpExchange {
-    fn slot(&self) -> Option<&AdapterSlot> {
-        self.observation.as_ref().map(|(_, slot)| slot)
-    }
-
-    fn project(&self, payload: &[u8]) {
-        project(self.slot(), self.project, payload);
-    }
-
-    fn install<B>(&self, request: &http::Request<B>, declared: &str) {
-        if let Some((context, slot)) = &self.observation {
-            slot.install(context.attempt_for(request, declared, self.request_id_header));
-        }
-    }
-
     fn failed(self, error: ProviderError, request_id: Option<String>) -> Opened<WireFrame> {
         Opened::failed(error)
             .with_request_id(request_id)
             .with_route(self.path)
     }
 
-    /// Send a buffered request and frame its whole body. Every frame is
-    /// projected as the driver reads it.
+    /// Send a buffered request and frame its whole body.
     async fn unary<H: HttpClientExt>(
         self,
         http: &H,
         request: http::Request<Body>,
     ) -> Opened<WireFrame> {
-        let sent = match send(http, request, self.request_id_header, self.slot()).await {
+        let sent = match send(http, request, self.request_id_header).await {
             Ok(sent) => sent,
-            Err(error) => {
-                // The reply the failure carries is still the provider's:
-                // project its facts before reporting the ending.
-                if let Some(body) = error.provider_response_body() {
-                    self.project(body.as_bytes());
-                }
-                return self.failed(error, None);
-            }
+            Err(error) => return self.failed(error, None),
         };
         // The status said success, but an SSE framer over a body that is not
         // an event stream yields no frames at all, which would fold to a
@@ -137,20 +90,14 @@ impl HttpExchange {
                 .with_provider_status(Some(sent.status))
                 .with_provider_request_id(sent.provider_request_id.clone())
                 .with_response_headers(Some(sent.headers.clone()));
-            self.project(&sent.body);
             return self.failed(error, sent.provider_request_id);
         }
         // Frame the reply the way a stream is framed: a wire whose unary
-        // reply is an event stream would otherwise hand every projector a
+        // reply is an event stream would otherwise hand its decoder a
         // document it cannot parse.
         let document = serde_json::from_slice(&sent.body).ok();
         let frames = self.framing.split(&sent.body);
-        let slot = self.slot().cloned();
-        let projector = self.project;
-        let frames = futures::stream::iter(frames).map(move |frame| {
-            project(slot.as_ref(), projector, frame.as_bytes());
-            Ok(frame)
-        });
+        let frames = futures::stream::iter(frames.into_iter().map(Ok));
         Opened {
             document,
             ..Opened::new(frames)
@@ -160,9 +107,7 @@ impl HttpExchange {
         }
     }
 
-    /// Open a streamed reply and frame its body as it arrives. Each frame is
-    /// projected only when the driver reads it, and the bytes left unframed
-    /// are recorded when the body ends.
+    /// Open a streamed reply and frame its body as it arrives.
     async fn streaming<H: HttpClientExt>(
         self,
         http: &H,
@@ -190,15 +135,6 @@ impl HttpExchange {
         let response = match response {
             Ok(response) => response,
             Err(error) => {
-                if let Some(slot) = self.slot() {
-                    slot.error_boundary(AdapterErrorBoundary::from_http(&error));
-                    if let Some(status) = error.non_success_status() {
-                        slot.response_with_headers(status, error.non_success_headers());
-                    }
-                    if let Some(body) = error.non_success_body() {
-                        self.project(body.as_bytes());
-                    }
-                }
                 let request_id = error
                     .non_success_headers()
                     .and_then(|headers| request_id_from(headers, self.request_id_header));
@@ -207,27 +143,15 @@ impl HttpExchange {
                 return self.failed(error, request_id);
             }
         };
-        if let Some(slot) = self.slot() {
-            slot.response_with_headers(response.status(), Some(response.headers()));
-        }
         let request_id = request_id_from(response.headers(), self.request_id_header);
         let status = response.status();
         let headers = response.headers().clone();
-        let slot = self.slot().cloned();
-        let Self {
-            path,
-            project: projector,
-            ..
-        } = self;
         let mut body = response.into_body();
         let frames = async_stream::stream! {
             while let Some(chunk) = body.next().await {
                 let chunk = match chunk {
                     Ok(chunk) => chunk,
                     Err(error) => {
-                        if let Some(slot) = &slot {
-                            slot.error_boundary(AdapterErrorBoundary::Transport);
-                        }
                         yield Err(ProviderError::from_transport_error(error));
                         return;
                     }
@@ -236,38 +160,22 @@ impl HttpExchange {
                     let frame = match frame {
                         Ok(frame) => frame,
                         Err(refused) => {
-                            if let Some(slot) = &slot {
-                                slot.error_boundary(AdapterErrorBoundary::Decode);
-                            }
                             let why = format!("the reply sent a frame of {refused}");
                             yield Err(ProviderError::Response(why));
                             return;
                         }
                     };
-                    project(slot.as_ref(), projector, frame.as_bytes());
                     yield Ok(frame);
                 }
             }
-            if let Some(slot) = &slot {
-                slot.unframed(framer.pending());
-            }
             if let Some(frame) = framer.finish() {
-                project(slot.as_ref(), projector, frame.as_bytes());
                 yield Ok(frame);
             }
         };
         Opened::new(frames)
             .with_request_id(request_id)
             .with_http(status, headers)
-            .with_route(path)
-    }
-}
-
-/// Project a payload's observation facts onto the attempt, when the call is
-/// observed and the wire reads any.
-fn project(slot: Option<&AdapterSlot>, project: Option<Projector>, payload: &[u8]) {
-    if let (Some(slot), Some(project)) = (slot, project) {
-        slot.project(|sink| project(payload, sink));
+            .with_route(self.path)
     }
 }
 
@@ -284,7 +192,6 @@ async fn send<H>(
     http: &H,
     request: http::Request<Body>,
     request_id_header: Option<&'static str>,
-    observation: Option<&AdapterSlot>,
 ) -> Result<Sent, ProviderError>
 where
     H: HttpClientExt,
@@ -307,11 +214,6 @@ where
         // response with the id read off its headers and the headers
         // themselves; a response-less failure stays a transport error.
         Err(error) => {
-            if let Some(observation) = observation
-                && let Some(status) = error.non_success_status()
-            {
-                observation.response_with_headers(status, error.non_success_headers());
-            }
             let request_id = error
                 .non_success_headers()
                 .and_then(|headers| request_id_from(headers, request_id_header));
@@ -326,9 +228,6 @@ where
     // error path below can afford them.
     let (parts, body) = response.into_parts();
     let status = parts.status;
-    if let Some(observation) = observation {
-        observation.response_with_headers(status, Some(&parts.headers));
-    }
     let provider_request_id = request_id_from(&parts.headers, request_id_header);
     let body = body.await.map_err(ProviderError::from_transport_error)?;
 

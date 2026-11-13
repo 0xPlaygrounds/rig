@@ -212,9 +212,7 @@ impl Wire for GenerateContent {
             .header("Content-Type", "application/json")
             .body(body.into_body())?;
         // Gemini supplies no transport request-id response header.
-        Ok(Encoded::new(request, framing)
-            .with_projection(super::streaming::GenerateContentDecoder::project)
-            .with_analysis_only(super::streaming::GenerateContentDecoder::is_analysis_only))
+        Ok(Encoded::new(request, framing))
     }
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {

@@ -691,8 +691,7 @@ impl Messages {
                 Mode::Streaming => Framing::Sse,
             },
         )
-        .with_request_id_header(self.provider.dialect.request_id_header)
-        .with_projection(MessagesDecoder::project))
+        .with_request_id_header(self.provider.dialect.request_id_header))
     }
 }
 

@@ -1383,7 +1383,7 @@ fn assert_reasoning_tool_reasoning(
 /// Per-provider wire fixtures for the shared scenario set.
 pub mod fixtures {
     use super::*;
-    use crate::driver::{Model, Transport};
+    use crate::driver::Model;
     use crate::operation::Completion;
     use crate::test_utils::SequencedStreamingHttpClient;
     use crate::wire::Wire;
@@ -1412,56 +1412,6 @@ pub mod fixtures {
         drained
     }
 
-    /// Drive `model` through the observed stream entry and drain it. Every
-    /// wire threads the context it is handed: the trace must show the
-    /// request it sent and how the attempt closed, or the wire has silently
-    /// taken the context-discarding default.
-    pub async fn drain_observed<W, T>(
-        model: &Model<W, T>,
-        request: crate::completion::CompletionRequest,
-    ) -> Result<DrainedStream, ProviderError>
-    where
-        W: Wire<Op = Completion>,
-        T: Transport<W>,
-    {
-        let log = std::sync::Arc::new(crate::observe::ObservationLog::default());
-        let context = crate::observe::AdapterContext::new(
-            log.clone(),
-            crate::observe::Subject::default(),
-            "conformance",
-        );
-        // A stream that fails to open still sent (or failed to send) a
-        // request: the facts are asserted before the error propagates.
-        let drained = match model.stream_observed(request, context) {
-            Ok(stream) => Ok(drain(stream).await),
-            Err(error) => Err(error),
-        };
-        let events: Vec<_> = log
-            .trace()
-            .observations
-            .iter()
-            .filter_map(|o| match &o.action {
-                crate::observe::Action::Adapter { observation } => Some(observation.event.clone()),
-                _ => None,
-            })
-            .collect();
-        assert!(
-            matches!(
-                events.first(),
-                Some(crate::observe::AdapterEvent::Started { .. })
-            ),
-            "the wire must attach the observation context it was handed: {events:?}"
-        );
-        assert!(
-            matches!(
-                events.last(),
-                Some(crate::observe::AdapterEvent::Finished { .. })
-            ),
-            "the attempt must close: {events:?}"
-        );
-        drained
-    }
-
     /// Lower fixture frames onto the byte transport a `SequencedStreamingHttpClient`
     /// replays. Only byte frames are valid here — an event frame in a
     /// byte-driver fixture is a fixture authoring error.
@@ -1480,7 +1430,7 @@ pub mod fixtures {
 
     /// Drive a byte-transport wire over the scripted chunks: bind the
     /// provider's wire to the replaying transport, open the model `bind`
-    /// names, and drain the observed stream.
+    /// names, and drain its stream.
     ///
     /// Every byte-wire conformance driver is this walk; since the wire
     /// unification they differ only in which wire they name, so the walk is
@@ -1495,8 +1445,7 @@ pub mod fixtures {
         WireDriver::new(provider, move |chunks| {
             Box::pin(async move {
                 let model = bind(SequencedStreamingHttpClient::new(byte_chunks(chunks)?));
-                let request = CompletionRequest::new("hello");
-                drain_observed(&model, request).await
+                Ok(drain(model.stream(CompletionRequest::new("hello"))?).await)
             })
         })
     }

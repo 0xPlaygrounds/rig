@@ -2,7 +2,6 @@ use super::*;
 use crate::completion::{AssistantContent, CompletionResponse};
 use crate::driver::{Decoded, feed_frames};
 use crate::streaming::{Item, StreamEvent};
-use crate::wire::AdapterEvent;
 use serde_json::json;
 
 /// `frames` decoded, classifier included, as one native reply.
@@ -445,51 +444,6 @@ fn unknown_and_empty_events_are_skipped() {
         decoder.classify(WireFrame::Text("not json".into())),
         WireEvent::Corrupt(_)
     ));
-}
-
-/// A whole reply projects its usage and finish reason for observation,
-/// through the wire's encoded request and the driver.
-#[tokio::test]
-async fn a_reply_projects_its_metadata() {
-    use crate::observe::{Action, AdapterContext, ObservationLog, Subject};
-    use std::sync::Arc;
-
-    let body = json!({"id": "resp_1", "message": {"content": []}, "finish_reason": "COMPLETE",
-        "usage": usage()});
-    let http = crate::test_utils::RecordingHttpClient::new(body.to_string());
-    let wire = super::super::NativeChat::new(super::super::CohereConfig::new("key"), "command-a");
-    let log = Arc::new(ObservationLog::default());
-    crate::driver::Model::new(wire, http)
-        .call_observed(
-            crate::completion::CompletionRequest::new("hi"),
-            AdapterContext::new(log.clone(), Subject::default(), "call"),
-        )
-        .await
-        .expect("the reply folds");
-    let events: Vec<AdapterEvent> = log
-        .trace()
-        .observations
-        .iter()
-        .filter_map(|o| match &o.action {
-            Action::Adapter { observation } => Some(observation.event.clone()),
-            _ => None,
-        })
-        .collect();
-    assert!(
-        events.iter().any(|event| matches!(event,
-            AdapterEvent::Usage { usage } if usage.input_tokens == Some(1706))),
-        "{events:?}"
-    );
-    assert!(
-        events.iter().any(|event| matches!(event,
-            AdapterEvent::Provider { verdict } if verdict.finish_reason.as_deref() == Some("COMPLETE"))),
-        "{events:?}"
-    );
-    assert!(
-        events.iter().any(|event| matches!(event,
-            AdapterEvent::Started { route, .. } if route == "/v2/chat")),
-        "{events:?}"
-    );
 }
 
 /// A content part of a type rig does not know is kept whole, its deltas
@@ -962,24 +916,6 @@ fn a_streamed_reply_without_a_plan_rebuilds_no_tool_plan() {
         rebuilt(&seeded).pointer("/message/tool_plan"),
         Some(&json!("I will look."))
     );
-}
-
-/// Cohere reports no total, so the observed usage carries none: the
-/// observation is the decoder's normalized `Finish` usage, observed once by
-/// the driver, never the summed total a second parse would invent.
-#[tokio::test]
-async fn the_observed_usage_does_not_invent_a_total() {
-    let body = json!({"id": "r", "message": {"content": []}, "finish_reason": "COMPLETE",
-        "usage": {"tokens": {"input_tokens": 3, "output_tokens": 4}}});
-    let (observed, usage) = crate::driver::tests::observed_usage(
-        super::super::NativeChat::new(super::super::CohereConfig::new("key"), "command-a"),
-        crate::test_utils::RecordingHttpClient::new(body.to_string()),
-        crate::wire::Mode::Unary,
-    )
-    .await;
-    let totals: Vec<Option<u64>> = observed.iter().map(|usage| usage.total_tokens).collect();
-    assert_eq!(totals, [None], "Cohere reports no total_tokens");
-    assert_eq!(observed, [crate::wire::AdapterUsage::from(&usage)]);
 }
 
 /// Counts whose sum passes `u64::MAX` are an error, without a panic or a

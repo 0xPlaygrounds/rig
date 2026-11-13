@@ -32,12 +32,6 @@ use rig_core::error::ErrorKind;
 
 use rig_core::error::ErrorReport;
 
-use rig_core::observe::Action;
-
-use rig_core::observe::AdapterEvent;
-
-use rig_core::observe::ObservationLog;
-
 use rig_core::streaming::{Item, StreamEvent};
 
 use rig_agent::test_utils::SequencedStreamingHttpClient;
@@ -537,21 +531,4 @@ impl Tool for CountedSubtract {
         self.0.0.fetch_add(1, Ordering::SeqCst);
         Subtract.call(context, args).await
     }
-}
-
-/// Every provider-boundary fact, in order.
-pub fn adapter_events(log: &ObservationLog) -> Vec<AdapterEvent> {
-    log.trace()
-        .observations
-        .iter()
-        .filter_map(|observation| match &observation.action {
-            Action::Adapter { observation } => Some(observation.event.clone()),
-            _ => None,
-        })
-        .collect()
-}
-
-/// The whole trace, serialized: what an analysis sink would persist.
-pub fn trace_json(log: &ObservationLog) -> String {
-    serde_json::to_string(&log.trace()).expect("the trace serializes")
 }

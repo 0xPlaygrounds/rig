@@ -22,14 +22,13 @@ use crate::message::{
     DocumentSourceKind as Source, Message, MimeType, ToolCall, ToolResult, ToolResultContent,
     UserContent,
 };
-use crate::observe::ObservedError;
 use crate::operation::{Block, CallFragment, Completion, Finish};
 use crate::providers::internal::object;
 use crate::providers::internal::wire::classify_chat_completions_frame;
 use crate::providers::internal::wire_ids::WireIds;
 use crate::wire::{
-    AdapterVerdict, Capabilities, Decoder, Descriptor, Encoded, Flow, Framing, Mode,
-    ObservationSink, Out, Wire, WireEvent, WireFrame,
+    Capabilities, Decoder, Descriptor, Encoded, Flow, Framing, Mode, Out, Wire, WireEvent,
+    WireFrame,
 };
 use finish::{finish_reason, native_finish_reason, provider_error_envelope};
 
@@ -807,9 +806,7 @@ impl Wire for Chat {
             Mode::Unary => Framing::Whole,
         };
         Ok(Encoded::new(request, framing)
-            .with_request_id_header(self.provider.dialect.request_id_header)
-            .with_projection(ChatDecoder::project)
-            .with_route(Some(quirks.completion_path)))
+            .with_request_id_header(self.provider.dialect.request_id_header))
     }
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
@@ -1923,34 +1920,6 @@ impl ChatDecoder {
             ChatEvent::Whole(frame)
         } else {
             ChatEvent::Chunk(frame)
-        }
-    }
-
-    /// Verdict, model, response id and error envelope, read off a raw
-    /// payload before normalization discards them. The driver calls it for
-    /// the unary reply and for every stream frame.
-    pub(crate) fn project(payload: &[u8], sink: &mut ObservationSink<'_>) {
-        let Ok(payload) = serde_json::from_slice::<Value>(payload) else {
-            return;
-        };
-        // Only the chunk that carries the finish reason is a verdict, so the
-        // model rides with it rather than on each delta.
-        let verdict = match payload
-            .at("/choices/0/finish_reason")
-            .and_then(Value::as_str)
-        {
-            Some(reason) => AdapterVerdict {
-                finish_reason: Some(sink.scrub(reason)),
-                block_reason: None,
-                detail: None,
-                model: payload.str("model").map(|value| sink.scrub(value)),
-            },
-            None => AdapterVerdict::default(),
-        };
-        let response_id = payload.str("id").map(|value| sink.scrub(value));
-        sink.provider(verdict, response_id);
-        if let Some(error) = ObservedError::of(&payload) {
-            error.emit(sink);
         }
     }
 }
