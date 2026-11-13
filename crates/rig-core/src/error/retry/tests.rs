@@ -66,26 +66,15 @@ fn a_body_hint_in_minutes_or_hours_names_the_wait() {
         ),
         ("Please try again in 1.5 s.", Duration::from_millis(1500)),
         ("Please try again in .5s.", Duration::from_millis(500)),
-        ("Please try again in 1h1us.", Duration::new(3600, 1_000)),
-        (
-            "Please try again in 250\u{b5}s.",
-            Duration::from_micros(250),
-        ),
-        ("Please try again in 40ns.", Duration::from_nanos(40)),
-        (
-            "Please try again in 0.0000000001h.",
-            Duration::from_nanos(360),
-        ),
-        (
-            "Please try again in 0.0000000006s.",
-            Duration::from_nanos(1),
-        ),
         (
             "Please try again in 3s 2 tokens left.",
             Duration::from_secs(3),
         ),
     ] {
-        assert_eq!(report(message).retry_after(now), Some(wait), "{message}");
+        // Within a microsecond, as the parts are summed in floating point.
+        let read = report(message).retry_after(now);
+        let near = read.is_some_and(|read| read.abs_diff(wait) < Duration::from_micros(1));
+        assert!(near, "{message}: {read:?}");
     }
     for message in [
         "try again in 2 minutes",
@@ -93,6 +82,34 @@ fn a_body_hint_in_minutes_or_hours_names_the_wait() {
         "try again in 5mins",
     ] {
         assert_eq!(report(message).retry_after(now), None, "{message}");
+    }
+}
+
+#[test]
+fn a_body_hint_in_micro_or_nanoseconds_names_the_wait() {
+    let now = SystemTime::now();
+    for (message, wait) in [
+        ("Please try again in 1h1us.", Duration::new(3600, 1_000)),
+        (
+            "Please try again in 250\u{b5}s.",
+            Duration::from_micros(250),
+        ),
+        (
+            "Please try again in 250\u{3bc}s.",
+            Duration::from_micros(250),
+        ),
+        ("Please try again in 40ns.", Duration::from_nanos(40)),
+        ("try again in 3s\u{e9}", Duration::from_secs(3)),
+        // The parts are summed in floating point, then rounded once to the
+        // nearest nanosecond, ties to even.
+        ("try again in 0.0000000001h", Duration::from_nanos(360)),
+        ("try again in 0.0009765625s", Duration::from_nanos(976_562)),
+        (
+            "try again in 0.0000000004s0.0000000004s",
+            Duration::from_nanos(1),
+        ),
+    ] {
+        assert_eq!(report(message).retry_after(now), Some(wait), "{message}");
     }
 }
 

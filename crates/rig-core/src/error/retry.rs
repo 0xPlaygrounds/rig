@@ -122,29 +122,26 @@ fn says_rate_limit(text: &str) -> bool {
 }
 
 /// `secs` as a duration, when it is a sane one.
-fn seconds(secs: f64) -> Option<Duration> {
+pub(super) fn seconds(secs: f64) -> Option<Duration> {
     Duration::try_from_secs_f64(secs.max(0.0)).ok()
 }
-
-/// Nanoseconds in a second.
-pub(super) const NANOS: i128 = 1_000_000_000;
 
 /// The wait `text` starts with, as Go writes a duration: numbers each
 /// followed by `h`, `m`, `s`, `ms`, `us`, `µs` or `ns` (`6m0s`, `1h2m3.5s`,
 /// `20ms`, `.5s`). A space may part the first number from its unit
-/// (`1.5 s`). Each part is rounded to the nearest nanosecond (half up)
-/// after its unit is applied, then summed.
+/// (`1.5 s`).
 pub(super) fn hinted_wait(text: &str) -> Option<Duration> {
     let mut rest = text;
-    let mut total: Option<i128> = None;
+    let mut total = None;
     loop {
         let digits = rest.strip_prefix('.').unwrap_or(rest);
         if !digits.starts_with(|c: char| c.is_ascii_digit()) {
-            return nanoseconds(total?);
+            return seconds(total?);
         }
         let end = rest
             .find(|c: char| !(c.is_ascii_digit() || c == '.'))
             .unwrap_or(rest.len());
+        let amount: f64 = rest.get(..end)?.parse().ok()?;
         let unit = rest.get(end..)?;
         let unit = if total.is_none() {
             unit.trim_start()
@@ -152,45 +149,21 @@ pub(super) fn hinted_wait(text: &str) -> Option<Duration> {
             unit
         };
         let unit_end = unit
-            .find(|c: char| !c.is_alphabetic())
+            .find(|c: char| !(c.is_ascii_alphabetic() || c == '\u{b5}' || c == '\u{3bc}'))
             .unwrap_or(unit.len());
-        let scale: i128 = match unit.get(..unit_end)? {
-            "h" => 3600 * NANOS,
-            "m" => 60 * NANOS,
-            "s" => NANOS,
-            "ms" => 1_000_000,
+        let scale = match unit.get(..unit_end)? {
+            "h" => 3600.0,
+            "m" => 60.0,
+            "s" => 1.0,
+            "ms" => 0.001,
             // Go writes the micro sign; the Greek mu looks the same.
-            "us" | "\u{b5}s" | "\u{3bc}s" => 1_000,
-            "ns" => 1,
+            "us" | "\u{b5}s" | "\u{3bc}s" => 1e-6,
+            "ns" => 1e-9,
             _ => return None,
         };
-        let part = decimal_nanos(rest.get(..end)?, scale)?;
-        total = Some(total.unwrap_or(0).checked_add(part)?);
+        total = Some(total.unwrap_or(0.0) + amount * scale);
         rest = unit.get(unit_end..)?;
     }
-}
-
-/// A plain decimal (`34`, `1.5`, `.5`) of a unit `unit` nanoseconds long,
-/// in nanoseconds rounded half up; `None` for anything else, such as a
-/// sign or an exponent, or more than 24 digits.
-pub(super) fn decimal_nanos(text: &str, unit: i128) -> Option<i128> {
-    let (whole, fraction) = text.split_once('.').unwrap_or((text, ""));
-    let count = whole.len() + fraction.len();
-    let digits = |part: &str| part.bytes().all(|b| b.is_ascii_digit());
-    if !(1..=24).contains(&count) || !digits(whole) || !digits(fraction) {
-        return None;
-    }
-    let mantissa: i128 = format!("{whole}{fraction}").parse().ok()?;
-    let scale = 10_i128.checked_pow(u32::try_from(fraction.len()).ok()?)?;
-    let doubled = mantissa.checked_mul(unit)?.checked_mul(2)?;
-    Some(doubled.checked_add(scale)? / scale.checked_mul(2)?)
-}
-
-/// `nanos` as a duration, zero when negative.
-pub(super) fn nanoseconds(nanos: i128) -> Option<Duration> {
-    let nanos = nanos.max(0);
-    let secs = u64::try_from(nanos / NANOS).ok()?;
-    Some(Duration::new(secs, u32::try_from(nanos % NANOS).ok()?))
 }
 
 #[cfg(test)]

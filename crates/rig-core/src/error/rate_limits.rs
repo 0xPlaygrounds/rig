@@ -23,7 +23,10 @@
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use super::retry::{NANOS, decimal_nanos, hinted_wait, nanoseconds};
+use super::retry::{hinted_wait, seconds};
+
+/// Nanoseconds in a second.
+const NANOS: i128 = 1_000_000_000;
 
 /// The `(limit, remaining, reset)` headers of a request allowance; the
 /// first pair present wins.
@@ -127,16 +130,17 @@ fn leading_number(text: &str) -> Option<u64> {
 
 /// How long after `now` the reset `text` names comes.
 fn reset_in(text: &str, now: SystemTime) -> Option<Duration> {
-    if let Some(number) = decimal_nanos(text, NANOS) {
+    if plain_decimal(text).is_some() {
+        let number: f64 = text.parse().ok()?;
         // Numbers this large are Unix times, not waits: no window lasts 30 years.
-        let at = if number > 1_000_000_000_000 * NANOS {
-            decimal_nanos(text, 1_000_000)?
-        } else if number > 1_000_000_000 * NANOS {
-            number
+        return if number > 1e12 {
+            unix_wait(text, 1_000_000, now)
+        } else if number > 1e9 {
+            unix_wait(text, NANOS, now)
         } else {
-            return nanoseconds(number);
+            // A wait is read in floating point, as `retry_after` reads one.
+            seconds(number)
         };
-        return until(at, now);
     }
     if let Some(wait) = hinted_wait(text) {
         return Some(wait);
@@ -207,6 +211,44 @@ fn rfc3339(text: &str) -> Option<i128> {
     i128::from(seconds)
         .checked_mul(NANOS)?
         .checked_add(fraction)
+}
+
+/// The wait from `now` until the Unix time `text` names, in units
+/// `unit` nanoseconds long. It is computed exactly and rounded once to the
+/// nearest nanosecond, ties to even; zero once it has passed.
+fn unix_wait(text: &str, unit: i128, now: SystemTime) -> Option<Duration> {
+    let (mantissa, places) = plain_decimal(text)?;
+    let scale = 10_i128.checked_pow(places)?;
+    let now = since_epoch(now)?.checked_mul(scale)?;
+    let left = mantissa.checked_mul(unit)?.checked_sub(now)?;
+    let (whole, part) = (left.div_euclid(scale), left.rem_euclid(scale));
+    let twice = part.checked_mul(2)?;
+    let up = twice > scale || (twice == scale && whole.rem_euclid(2) == 1);
+    nanoseconds(whole.checked_add(i128::from(up))?)
+}
+
+/// The digits of a plain decimal (`34`, `1.5`, `.5`) as one whole number,
+/// and how many of them are decimal places; `None` for anything else, such
+/// as a sign or an exponent, or a number too long to hold.
+fn plain_decimal(text: &str) -> Option<(i128, u32)> {
+    let (whole, fraction) = text.split_once('.').unwrap_or((text, ""));
+    let digits = |part: &str| part.bytes().all(|b| b.is_ascii_digit());
+    if whole.len() + fraction.len() == 0 || !digits(whole) || !digits(fraction) {
+        return None;
+    }
+    let (whole, fraction) = (
+        whole.trim_start_matches('0'),
+        fraction.trim_end_matches('0'),
+    );
+    let mantissa = format!("0{whole}{fraction}").parse().ok()?;
+    Some((mantissa, u32::try_from(fraction.len()).ok()?))
+}
+
+/// `nanos` as a duration, zero when negative.
+fn nanoseconds(nanos: i128) -> Option<Duration> {
+    let nanos = nanos.max(0);
+    let secs = u64::try_from(nanos / NANOS).ok()?;
+    Some(Duration::new(secs, u32::try_from(nanos % NANOS).ok()?))
 }
 
 /// `text` as a number of exactly `width` ASCII digits.

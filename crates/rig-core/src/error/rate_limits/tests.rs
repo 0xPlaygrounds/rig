@@ -137,15 +137,28 @@ fn each_reset_form_is_a_wait_from_the_reply() {
         ("1h1us", Some(Duration::new(3600, 1_000))),
         ("1500us", Some(Duration::from_micros(1500))),
         ("3ns", Some(Duration::from_nanos(3))),
-        // A unit applies before rounding to the nanosecond, half up.
+        // A Go duration is read as `retry_after` reads one: its parts are
+        // summed, then rounded to the nanosecond.
         ("0.0000000001h", Some(Duration::from_nanos(360))),
         ("0.0000000005h", Some(Duration::from_nanos(1800))),
         ("0.0000000006s", Some(Duration::from_nanos(1))),
         ("0.0000000004s", Some(Duration::ZERO)),
-        ("0.0000000005", Some(Duration::from_nanos(1))),
+        ("0.0009765625s", Some(Duration::from_nanos(976_562))),
+        ("0.0000000004s0.0000000004s", Some(Duration::from_nanos(1))),
+        ("1.000000000000000000000000s", Some(Duration::from_secs(1))),
         ("1767225634.0000000006", Some(Duration::new(34, 1))),
         ("34s, roughly", Some(Duration::from_secs(34))),
-        ("99999999999999999999999999h", None),
+        // Too long a wait for a Duration.
+        ("99999999999999999999999h", None),
+        ("999999999999999999999999999h", None),
+        // A Unix time is exact, rounded once to the nanosecond, ties to even.
+        ("1767225634.0000000005", Some(Duration::from_secs(34))),
+        ("1767225634.0000000015", Some(Duration::new(34, 2))),
+        ("1767225634000.0000005", Some(Duration::from_secs(34))),
+        (
+            "1767225634.000000000000000000000000",
+            Some(Duration::from_secs(34)),
+        ),
         ("1e3", None),
         ("-3", None),
     ] {
