@@ -40,6 +40,7 @@ use crate::wire::Secret;
 pub(crate) const OPENAI_DIALECTS: &[&openai::wire::Dialect] = &[
     &openai::wire::OPENAI,
     &openai::wire::AZURE,
+    &openai::wire::CHEAPERINFERENCE,
     &openai::wire::DEEPSEEK,
     &openai::wire::GROQ,
     &openai::wire::HYPERBOLIC,

@@ -74,6 +74,16 @@ pub const AZURE: Dialect = Dialect {
     ..Dialect::gateway(crate::providers::azure::PROVIDER_NAME, "", "AZURE_API_KEY")
 };
 
+/// Cheaper Inference's OpenAI-compatible endpoint.
+pub const CHEAPERINFERENCE: Dialect = Dialect {
+    base_url_env: Some("CHEAPER_INFERENCE_BASE_URL"),
+    ..Dialect::gateway(
+        crate::providers::cheaperinference::PROVIDER_NAME,
+        "https://api.cheaperinference.com/v1",
+        "CHEAPER_INFERENCE_API_KEY",
+    )
+};
+
 /// DeepSeek.
 pub const DEEPSEEK: Dialect = Dialect {
     quirks: Quirks {
