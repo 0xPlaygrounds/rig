@@ -14,9 +14,12 @@ use serde::Deserialize;
 use serde_json::json;
 
 use super::MultiTurnStreamItem;
-use crate::agent::{AgentBuilder, AgentRunner};
+use crate::agent::hook::{AgentHook, HookContext};
+use crate::agent::{AgentBuilder, AgentRunner, InvalidToolCallAction, InvalidToolCallContext};
+use crate::run::OutputMode;
 use crate::test_utils::{MockCompletionModel, MockStreamEvent, mock_final};
 use crate::tool::{Tool, ToolContext, ToolExecutionError};
+use rig_core::structured_output::OUTPUT_TOOL_NAME;
 
 const ID: &str = "call_1";
 
@@ -76,32 +79,51 @@ enum Cut {
 
 const CUTS: [Cut; 3] = [Cut::Midway, Cut::Empty, Cut::Unclosed];
 
-/// A reply that ends at the output limit inside a `write_file` call, then
-/// a reply that answers.
-fn model(cut: Cut) -> MockCompletionModel {
-    let mut cut_turn = vec![MockStreamEvent::tool_call_name_delta(ID, "write_file")];
+/// A reply that ends at the output limit inside a call to `tool`, `cut`
+/// far into its arguments.
+fn cut_turn(tool: &str, cut: Cut) -> Vec<MockStreamEvent> {
+    let mut events = vec![MockStreamEvent::tool_call_name_delta(ID, tool)];
     match cut {
-        Cut::Midway => cut_turn.push(MockStreamEvent::tool_call_arguments_delta(
+        Cut::Midway => events.push(MockStreamEvent::tool_call_arguments_delta(
             ID,
             r#"{"path": "a.rs", "content": "fn ma"#,
         )),
         Cut::Empty => {}
-        Cut::Unclosed => cut_turn.push(MockStreamEvent::tool_call_arguments_delta(
+        Cut::Unclosed => events.push(MockStreamEvent::tool_call_arguments_delta(
             ID,
             r#"{"path": "a.rs", "content": "fn main() {}"}"#,
         )),
     }
-    cut_turn.push(MockStreamEvent::FinalResponse(Finish {
+    events.push(MockStreamEvent::FinalResponse(Finish {
         reason: Some(FinishReason::Length),
         ..mock_final(Usage::default())
     }));
+    events
+}
+
+/// A reply that ends at the output limit inside a `write_file` call, then
+/// a reply that answers.
+fn model(cut: Cut) -> MockCompletionModel {
     MockCompletionModel::from_stream_turns([
-        cut_turn,
+        cut_turn("write_file", cut),
         vec![
             MockStreamEvent::text("split it"),
             MockStreamEvent::final_response_with_default_usage(),
         ],
     ])
+}
+
+/// Stream `runner` to its end: its output or its error as text.
+async fn drive(runner: AgentRunner) -> Result<String, String> {
+    let mut stream = runner.stream();
+    while let Some(item) = stream.next().await {
+        match item {
+            Ok(MultiTurnStreamItem::FinalResponse(response)) => return Ok(response.output()),
+            Ok(_) => {}
+            Err(error) => return Err(error.to_string()),
+        }
+    }
+    Err("no final response".to_owned())
 }
 
 /// Stream the run to its end: its output or its error as text, the
@@ -115,18 +137,7 @@ async fn run(
     let tool = WriteFile::default();
     let ran = tool.0.clone();
     let agent = AgentBuilder::new(model).tool(tool).build();
-    let mut stream = configure(agent.prompt("write a long file").max_turns(5)).stream();
-    let mut outcome = Err("no final response".to_owned());
-    while let Some(item) = stream.next().await {
-        match item {
-            Ok(MultiTurnStreamItem::FinalResponse(response)) => outcome = Ok(response.output()),
-            Ok(_) => {}
-            Err(error) => {
-                outcome = Err(error.to_string());
-                break;
-            }
-        }
-    }
+    let outcome = drive(configure(agent.prompt("write a long file").max_turns(5))).await;
     (outcome, recorded.requests(), ran.load(Ordering::SeqCst))
 }
 
@@ -234,6 +245,113 @@ async fn a_call_a_real_wire_cut_at_the_output_limit_never_runs() {
             matches!(bodies.as_slice(), [_, next]
                 if next.contains("Not run: your reply reached the output limit")),
             "{arguments:?}: {bodies:?}"
+        );
+    }
+}
+
+/// A structured answer whose fields are all optional, so `{}` satisfies it.
+#[derive(Deserialize, schemars::JsonSchema)]
+struct Note {
+    #[serde(default)]
+    _path: Option<String>,
+    #[serde(default)]
+    _content: Option<String>,
+}
+
+/// A cut call to the output tool is never the run's answer, whatever its
+/// arguments: the model reads that its reply reached the limit, and its
+/// next, whole answer is the run's.
+#[tokio::test]
+async fn a_cut_output_tool_call_is_never_the_answer() {
+    for cut in CUTS {
+        let whole = json!({"_path": "a.rs", "_content": "done"});
+        let model = MockCompletionModel::from_stream_turns([
+            cut_turn(OUTPUT_TOOL_NAME, cut),
+            vec![
+                MockStreamEvent::tool_call("call_2", OUTPUT_TOOL_NAME, whole),
+                MockStreamEvent::final_response_with_default_usage(),
+            ],
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model)
+            .tool(WriteFile::default())
+            .output_schema::<Note>()
+            .output_mode(OutputMode::Tool)
+            .build();
+        let outcome = drive(agent.prompt("write a long file").max_turns(5)).await;
+        assert!(
+            outcome
+                .as_deref()
+                .is_ok_and(|output| output.contains("done")),
+            "{cut:?}: the whole answer is the run's: {outcome:?}"
+        );
+        let requests = recorded.requests();
+        let answer = answer(&requests);
+        assert!(
+            answer
+                .as_deref()
+                .is_some_and(|text| text.contains("reached the output limit")),
+            "{cut:?}: the model reads that its reply reached the limit: {answer:?}"
+        );
+    }
+}
+
+/// Records every invalid call it is offered and leaves the decision to the
+/// run.
+#[derive(Clone, Default)]
+struct Offered(Arc<std::sync::Mutex<Vec<String>>>);
+
+impl AgentHook for Offered {
+    async fn on_invalid_tool_call(
+        &self,
+        _ctx: &HookContext,
+        context: &InvalidToolCallContext,
+    ) -> Option<InvalidToolCallAction> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(context.tool_name.clone());
+        None
+    }
+}
+
+/// A cut call naming a tool the turn does not offer is answered as cut
+/// off like any other: it is not offered to the invalid-call hook, and the
+/// run goes on.
+#[tokio::test]
+async fn a_cut_call_to_an_unknown_tool_is_answered_as_cut_off() {
+    for cut in CUTS {
+        let model = MockCompletionModel::from_stream_turns([
+            cut_turn("delete_everything", cut),
+            vec![
+                MockStreamEvent::text("split it"),
+                MockStreamEvent::final_response_with_default_usage(),
+            ],
+        ]);
+        let recorded = model.clone();
+        let offered = Offered::default();
+        let agent = AgentBuilder::new(model).tool(WriteFile::default()).build();
+        let runner = agent
+            .prompt("write a long file")
+            .max_turns(5)
+            .add_hook(offered.clone());
+        let outcome = drive(runner).await;
+        assert_eq!(outcome.as_deref(), Ok("split it"), "{cut:?}");
+        let seen = offered
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        assert!(
+            seen.is_empty(),
+            "{cut:?}: not offered to the hook: {seen:?}"
+        );
+        let answer = answer(&recorded.requests());
+        assert!(
+            answer
+                .as_deref()
+                .is_some_and(|text| text.contains("reached the output limit")),
+            "{cut:?}: {answer:?}"
         );
     }
 }

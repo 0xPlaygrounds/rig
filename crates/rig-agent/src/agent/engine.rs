@@ -735,7 +735,13 @@ impl TurnSource for StreamingTurnSource {
             // A delta hook's stop is the run's: the stream is dropped, cancelling
             // the dispatch in flight before the error surfaces, so the record
             // is the same cancel on every transport.
-            'turn: while let Some(item) = stream.next().await {
+            // The item read ahead to learn whether the stream ended (see the
+            // cut-off check below), then taken before the stream is polled.
+            let mut ahead = None;
+            'turn: while let Some(item) = match ahead.take() {
+                Some(item) => item,
+                None => stream.next().await,
+            } {
                 // A stream error ends the reply. At most one event per item
                 // forwards the item itself, so moving it out of the slot
                 // avoids cloning every streamed fragment.
@@ -905,6 +911,22 @@ impl TurnSource for StreamingTurnSource {
                             }
                         }
                         StreamedTurnEvent::InvalidToolCall(invalid) => {
+                            // A call the reply was cut off in is answered as
+                            // cut off whatever its name, so it is neither
+                            // offered to the hook nor resolved as invalid. The
+                            // reply marks it only at its end, so the stream is
+                            // read one item ahead to learn whether it ended.
+                            let peeked = stream.next().await;
+                            let cut = peeked.is_none()
+                                && stream
+                                    .partial()
+                                    .cut_off_calls()
+                                    .any(|cut| cut.id == invalid.tool_call.id);
+                            ahead = Some(peeked);
+                            if cut {
+                                next = assembler.keep_pending_cut_off();
+                                continue;
+                            }
                             // The rejected call's items stay held: a repair
                             // replays them, and any other resolution drops them.
                             let rejected = match item_slot.as_ref() {
