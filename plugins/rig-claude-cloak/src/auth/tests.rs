@@ -132,28 +132,6 @@ fn pkce_matches_rfc7636_vector_and_omp_authorization_contract() -> anyhow::Resul
 }
 
 #[test]
-fn callback_rejects_wrong_state_path_and_duplicate_parameters() -> anyhow::Result<()> {
-    for target in [
-        "/callback?state=wrong&code=secret",
-        "/wrong?state=expected&code=secret",
-        "/callback?state=expected&state=expected&code=secret",
-        "/callback?state=expected&code=a&code=b",
-        "/callback?state=expected&code=",
-        "https://evil.test/callback?state=expected&code=a",
-    ] {
-        anyhow::ensure!(callback_code(target, "expected").is_none());
-    }
-    anyhow::ensure!(matches!(
-        callback_code("/callback?state=expected&error=access_denied", "expected"),
-        Some(Err(AuthError::Denied))
-    ));
-    anyhow::ensure!(
-        matches!(callback_code("/callback?state=expected&code=abc%2Bdef", "expected"), Some(Ok(code)) if code == "abc+def")
-    );
-    Ok(())
-}
-
-#[test]
 fn refresh_rotates_tokens_preserves_organization_and_applies_skew() -> anyhow::Result<()> {
     let response = TokenResponse {
         access_token: "new-access".into(),
@@ -264,98 +242,159 @@ fn storage_rejects_a_shared_or_linked_directory() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// A browser's request for `target` on `address`, and the page it got.
+fn get(address: std::net::SocketAddr, target: &str) -> anyhow::Result<String> {
+    use std::io::Read;
+    let mut stream = std::net::TcpStream::connect(address)?;
+    write!(stream, "GET {target} HTTP/1.1\r\nHost: localhost\r\n\r\n")?;
+    let mut response = String::new();
+    stream.read_to_string(&mut response)?;
+    Ok(response)
+}
+
+fn port(redirect: &str) -> anyhow::Result<u16> {
+    Url::parse(redirect)?
+        .port()
+        .ok_or_else(|| anyhow::anyhow!("no port in {redirect}"))
+}
+
+/// The redirect address registered with the provider is kept while its
+/// port is free.
+#[test]
+fn the_registered_redirect_is_localhost_callback() -> anyhow::Result<()> {
+    let free = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, CALLBACK_PORT)).is_ok();
+    let listener =
+        loopback(CALLBACK_PORT).listen("expected".into(), Instant::now() + LOGIN_WAIT)?;
+    let redirect = listener.redirect_uri();
+    let port = port(redirect)?;
+    anyhow::ensure!(redirect == format!("http://localhost:{port}/callback"));
+    anyhow::ensure!(!free || port == CALLBACK_PORT, "{redirect}");
+    Ok(())
+}
+
 #[test]
 fn loopback_callback_ignores_invalid_state_and_accepts_valid_code() -> anyhow::Result<()> {
-    let runtime = (tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build())?;
-    runtime.block_on(async {
-        let listener = (TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).await)?;
-        let address = (listener.local_addr())?;
-        let receiver = tokio::spawn(async move { receive_code(&listener, None, "expected").await });
-        for (state, status) in [("wrong", "400"), ("expected", "200")] {
-            let mut stream = (tokio::net::TcpStream::connect(address).await)?;
-            (stream
-                .write_all(
-                    format!(
-                        "GET /callback?state={state}&code=code HTTP/1.1\r\nHost: localhost\r\n\r\n"
-                    )
-                    .as_bytes(),
-                )
-                .await)?;
-            let mut response = String::new();
-            (stream.read_to_string(&mut response).await)?;
-            anyhow::ensure!(response.starts_with(&format!("HTTP/1.1 {status}")));
-            anyhow::ensure!(!response.contains("expected"));
-            anyhow::ensure!(!response.contains("code="));
-        }
-        anyhow::ensure!((((receiver.await)?)?) == ("code"));
-        Ok::<_, anyhow::Error>(())
-    })?;
+    let listener = loopback(0).listen("expected".into(), Instant::now() + LOGIN_WAIT)?;
+    let address = (
+        std::net::Ipv4Addr::LOCALHOST,
+        port(listener.redirect_uri())?,
+    )
+        .into();
+    let stale = get(address, "/callback?state=wrong&code=code")?;
+    anyhow::ensure!(stale.starts_with("HTTP/1.1 400"));
+    let browser = std::thread::spawn(move || get(address, "/callback?state=expected&code=code"));
+    let runtime = tokio::runtime::Builder::new_current_thread().build()?;
+    let received = runtime.block_on(listener.code())?;
+    anyhow::ensure!(received.code() == "code");
+    received.succeeded();
+    let page = browser
+        .join()
+        .map_err(|_| anyhow::anyhow!("browser thread"))??;
+    anyhow::ensure!(page.starts_with("HTTP/1.1 200"));
+    for response in [stale, page] {
+        anyhow::ensure!(!response.contains("expected"));
+        anyhow::ensure!(!response.contains("code="));
+    }
+    Ok(())
+}
+
+/// A callback with this login's state but no single non-empty code is
+/// refused, and the login keeps waiting for the real one.
+#[test]
+fn a_callback_without_a_code_is_refused_and_the_login_keeps_waiting() -> anyhow::Result<()> {
+    let listener = loopback(0).listen("expected".into(), Instant::now() + LOGIN_WAIT)?;
+    let address = (
+        std::net::Ipv4Addr::LOCALHOST,
+        port(listener.redirect_uri())?,
+    )
+        .into();
+    for target in [
+        "/callback?state=expected",
+        "/callback?state=expected&code=",
+        "/callback?state=expected&code=a&code=b",
+    ] {
+        let page = get(address, target)?;
+        anyhow::ensure!(page.starts_with("HTTP/1.1 400"), "{target}: {page}");
+    }
+    let browser = std::thread::spawn(move || get(address, "/callback?state=expected&code=code"));
+    let runtime = tokio::runtime::Builder::new_current_thread().build()?;
+    let received = runtime.block_on(listener.code())?;
+    anyhow::ensure!(received.code() == "code");
+    received.succeeded();
+    let page = browser
+        .join()
+        .map_err(|_| anyhow::anyhow!("browser thread"))??;
+    anyhow::ensure!(page.starts_with("HTTP/1.1 200"));
+    Ok(())
+}
+
+#[test]
+fn a_denied_login_is_denied() -> anyhow::Result<()> {
+    let listener = loopback(0).listen("expected".into(), Instant::now() + LOGIN_WAIT)?;
+    let address = (
+        std::net::Ipv4Addr::LOCALHOST,
+        port(listener.redirect_uri())?,
+    )
+        .into();
+    get(address, "/callback?state=expected&error=access_denied")?;
+    let runtime = tokio::runtime::Builder::new_current_thread().build()?;
+    let ended = runtime.block_on(listener.code()).map_err(listen_error);
+    anyhow::ensure!(matches!(ended, Err(AuthError::Denied)));
     Ok(())
 }
 
 #[test]
 fn callback_accepts_ipv6_when_available() -> anyhow::Result<()> {
-    let runtime = (tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build())?;
-    runtime.block_on(async {
-        let listener = (TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).await)?;
-        let port = (listener.local_addr())?.port();
-        let Ok(ipv6) = TcpListener::bind((std::net::Ipv6Addr::LOCALHOST, port)).await else {
-            return Ok(());
-        };
-        let address = (ipv6.local_addr())?;
-        let receiver =
-            tokio::spawn(async move { receive_code(&listener, Some(&ipv6), "expected").await });
-        let mut stream = (tokio::net::TcpStream::connect(address).await)?;
-        (stream
-            .write_all(
-                b"GET /callback?state=expected&code=ipv6 HTTP/1.1\r\nHost: localhost\r\n\r\n",
-            )
-            .await)?;
-        anyhow::ensure!((((receiver.await)?)?) == ("ipv6"));
-        Ok::<_, anyhow::Error>(())
-    })?;
+    if std::net::TcpListener::bind((std::net::Ipv6Addr::LOCALHOST, 0)).is_err() {
+        return Ok(());
+    }
+    let listener = loopback(0).listen("expected".into(), Instant::now() + LOGIN_WAIT)?;
+    let address = (
+        std::net::Ipv6Addr::LOCALHOST,
+        port(listener.redirect_uri())?,
+    )
+        .into();
+    let browser = std::thread::spawn(move || get(address, "/callback?state=expected&code=ipv6"));
+    let runtime = tokio::runtime::Builder::new_current_thread().build()?;
+    let received = runtime.block_on(listener.code())?;
+    anyhow::ensure!(received.code() == "ipv6");
+    received.succeeded();
+    browser
+        .join()
+        .map_err(|_| anyhow::anyhow!("browser thread"))??;
     Ok(())
 }
 
 #[test]
 fn callback_falls_back_when_only_ipv6_preferred_port_is_occupied() -> anyhow::Result<()> {
-    let runtime = (tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build())?;
-    runtime.block_on(async {
-        let Ok(occupied) = TcpListener::bind((std::net::Ipv6Addr::LOCALHOST, 0)).await else {
-            return Ok(());
-        };
-        let preferred_port = (occupied.local_addr())?.port();
-        let primary = (TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, preferred_port)).await)?;
-        drop(primary);
-        let (listener, ipv6) = (callback_listeners(preferred_port).await)?;
-        let port = (listener.local_addr())?.port();
-        anyhow::ensure!((port) != (preferred_port));
-        let ipv6 = match ipv6 {
-            Some(ipv6) => ipv6,
-            None => anyhow::bail!("IPv6 listener missing despite available IPv6 loopback"),
-        };
-        anyhow::ensure!(((ipv6.local_addr())?.port()) == (port));
-        let released = (TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, preferred_port)).await)?;
-        let address = (ipv6.local_addr())?;
-        let receiver =
-            tokio::spawn(async move { receive_code(&listener, Some(&ipv6), "expected").await });
-        let mut stream = (tokio::net::TcpStream::connect(address).await)?;
-        (stream
-            .write_all(
-                b"GET /callback?state=expected&code=fallback HTTP/1.1\r\nHost: localhost\r\n\r\n",
-            )
-            .await)?;
-        anyhow::ensure!((((receiver.await)?)?) == ("fallback"));
-        drop(released);
-        drop(occupied);
-        Ok::<_, anyhow::Error>(())
-    })?;
+    let Ok(occupied) = std::net::TcpListener::bind((std::net::Ipv6Addr::LOCALHOST, 0)) else {
+        return Ok(());
+    };
+    let preferred_port = occupied.local_addr()?.port();
+    drop(std::net::TcpListener::bind((
+        std::net::Ipv4Addr::LOCALHOST,
+        preferred_port,
+    ))?);
+    let listener =
+        loopback(preferred_port).listen("expected".into(), Instant::now() + LOGIN_WAIT)?;
+    let port = port(listener.redirect_uri())?;
+    anyhow::ensure!(port != preferred_port);
+    // The abandoned preferred port is free again while the login waits.
+    drop(std::net::TcpListener::bind((
+        std::net::Ipv4Addr::LOCALHOST,
+        preferred_port,
+    ))?);
+    let address = (std::net::Ipv6Addr::LOCALHOST, port).into();
+    let browser =
+        std::thread::spawn(move || get(address, "/callback?state=expected&code=fallback"));
+    let runtime = tokio::runtime::Builder::new_current_thread().build()?;
+    let received = runtime.block_on(listener.code())?;
+    anyhow::ensure!(received.code() == "fallback");
+    received.succeeded();
+    browser
+        .join()
+        .map_err(|_| anyhow::anyhow!("browser thread"))??;
+    drop(occupied);
     Ok(())
 }
 

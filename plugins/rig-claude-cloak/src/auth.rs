@@ -5,6 +5,7 @@ use rand::RngCore;
 use rig_harness::harness_protocol::without_secrets;
 use rig_harness::rig_core::error::{BoxError, retryable_status};
 use rig_harness::rig_core::providers::chatgpt::auth::{FileStoreError, FileTokenStore, TokenStore};
+use rig_harness::rig_core::providers::internal::loopback::{Loopback, LoopbackError, LoopbackHost};
 use rig_harness::rig_tools::process::{self, Process};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -13,16 +14,16 @@ use std::{
     os::unix::fs::{DirBuilderExt, PermissionsExt},
     path::{Path, PathBuf},
     process::Stdio,
-    time::{Duration, SystemTime, UNIX_EPOCH},
-};
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    net::TcpListener,
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use url::Url;
 
 const CLIENT_ID: &str = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 const TOKEN_URL: &str = "https://api.anthropic.com/v1/oauth/token";
+/// The callback port registered with the provider.
+const CALLBACK_PORT: u16 = 54545;
+/// How long a login waits for the browser to come back.
+const LOGIN_WAIT: Duration = Duration::from_secs(300);
 const SCOPES: &str = "org:create_api_key user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload";
 
 #[derive(Debug, thiserror::Error)]
@@ -379,96 +380,19 @@ fn authorization_url(redirect: &str, state: &str, verifier: &str) -> Result<Url,
     Ok(url)
 }
 
-fn callback_code(target: &str, state: &str) -> Option<Result<String, AuthError>> {
-    if !target.starts_with("/callback?") {
-        return None;
-    }
-    let url = Url::parse(&format!("http://localhost{target}")).ok()?;
-    let pairs: Vec<_> = url.query_pairs().collect();
-    let states: Vec<_> = pairs.iter().filter(|(k, _)| k == "state").collect();
-    if states.len() != 1 || states.first()?.1 != state {
-        return None;
-    }
-    if pairs.iter().any(|(k, _)| k == "error") {
-        return Some(Err(AuthError::Denied));
-    }
-    let codes: Vec<_> = pairs
-        .iter()
-        .filter(|(k, v)| k == "code" && !v.is_empty())
-        .collect();
-    if codes.len() != 1 {
-        return None;
-    }
-    Some(Ok(codes.first()?.1.to_string()))
+/// The callback registered with the provider: `localhost` on IPv4 and IPv6,
+/// at `port`, or at a port the system picks when that is taken.
+fn loopback(port: u16) -> Loopback {
+    Loopback::new("Claude", LoopbackHost::Localhost, [port, 0], "/callback")
 }
 
-async fn receive_code(
-    listener: &TcpListener,
-    ipv6: Option<&TcpListener>,
-    state: &str,
-) -> Result<String, AuthError> {
-    tokio::time::timeout(Duration::from_secs(300), async {
-        loop {
-            let accepted = if let Some(ipv6) = ipv6 {
-                tokio::select! {
-                    accepted = listener.accept() => accepted,
-                    accepted = ipv6.accept() => accepted,
-                }
-            } else {
-                listener.accept().await
-            };
-            let (mut stream, _) = accepted.map_err(|_| AuthError::Callback)?;
-            let request = tokio::time::timeout(Duration::from_secs(5), async {
-                let mut data = Vec::new();
-                loop {
-                    let mut chunk = [0u8; 1024];
-                    let count = stream.read(&mut chunk).await.ok()?;
-                    if count == 0 { return None; }
-                    data.extend_from_slice(chunk.get(..count)?);
-                    if data.len() > 8192 { return None; }
-                    if data.windows(4).any(|w| w == b"\r\n\r\n") { return String::from_utf8(data).ok(); }
-                }
-            }).await;
-            let result = request.ok().flatten().and_then(|request| {
-                let mut words = request.lines().next()?.split_whitespace();
-                if words.next()? != "GET" { return None; }
-                callback_code(words.next()?, state)
-            });
-            let reply = if result.is_some() { "HTTP/1.1 200 OK\r\nContent-Length: 35\r\nConnection: close\r\nCache-Control: no-store\r\nContent-Type: text/plain\r\n\r\nReturn to Rig to finish OAuth login." } else { "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n" };
-            let _ = tokio::time::timeout(Duration::from_secs(2), stream.write_all(reply.as_bytes())).await;
-            if let Some(result) = result { return result; }
-        }
-    }).await.map_err(|_| AuthError::Timeout)?
-}
-
-async fn callback_listeners(
-    preferred_port: u16,
-) -> Result<(TcpListener, Option<TcpListener>), AuthError> {
-    let mut port = preferred_port;
-    for _ in 0..6 {
-        let listener = match TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).await {
-            Ok(listener) => listener,
-            Err(_) if port != 0 => {
-                port = 0;
-                continue;
-            }
-            Err(_) => return Err(AuthError::Callback),
-        };
-        let bound_port = listener
-            .local_addr()
-            .map_err(|_| AuthError::Callback)?
-            .port();
-        match TcpListener::bind((std::net::Ipv6Addr::LOCALHOST, bound_port)).await {
-            Ok(ipv6) => return Ok((listener, Some(ipv6))),
-            Err(error) if error.kind() == std::io::ErrorKind::AddrInUse => {
-                // localhost can resolve to IPv6 first; never advertise another server's port.
-                drop(listener);
-                port = 0;
-            }
-            Err(_) => return Ok((listener, None)),
-        }
+/// The listener's failure as this plugin reports it.
+fn listen_error(error: LoopbackError) -> AuthError {
+    match error {
+        LoopbackError::TimedOut => AuthError::Timeout,
+        LoopbackError::Refused(_) => AuthError::Denied,
+        _ => AuthError::Callback,
     }
-    Err(AuthError::Callback)
 }
 
 fn browser_command(url: &Url) -> std::process::Command {
@@ -523,32 +447,29 @@ async fn open_browser(opener: std::process::Command, wait: Duration) -> Result<(
 
 /// Opens a browser for an explicit PKCE login and stores credentials
 /// privately. The credentials are held only while the new ones are saved,
-/// not while the user is in the browser.
+/// not while the user is in the browser. The browser's page says how the
+/// login ended.
 pub async fn login(home: &Path) -> Result<(), AuthError> {
-    let (listener, ipv6) = callback_listeners(54545).await?;
-    let redirect = format!(
-        "http://localhost:{}/callback",
-        listener
-            .local_addr()
-            .map_err(|_| AuthError::Callback)?
-            .port()
-    );
-    let verifier = random_verifier();
     let state = random_state();
+    let listener = loopback(CALLBACK_PORT)
+        .listen(state.clone(), Instant::now() + LOGIN_WAIT)
+        .map_err(listen_error)?;
+    let redirect = listener.redirect_uri().to_owned();
+    let verifier = random_verifier();
     let url = authorization_url(&redirect, &state, &verifier)?;
     open_browser(browser_command(&url), Duration::from_secs(15)).await?;
-    let code = receive_code(&listener, ipv6.as_ref(), &state).await?;
-    let client = OAuthClient::production()?;
-    exchange_code(
-        &directory(home)?,
-        &client,
-        &code,
-        &state,
-        &verifier,
-        &redirect,
-    )
-    .await?;
-    Ok(())
+    let received = listener.code().await.map_err(listen_error)?;
+    let exchanged = async {
+        let client = OAuthClient::production()?;
+        let dir = directory(home)?;
+        exchange_code(&dir, &client, received.code(), &state, &verifier, &redirect).await
+    }
+    .await;
+    match &exchanged {
+        Ok(_) => received.succeeded(),
+        Err(error) => received.failed(&error.to_string()),
+    }
+    exchanged.map(drop)
 }
 
 async fn exchange_code(

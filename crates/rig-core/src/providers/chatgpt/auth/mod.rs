@@ -96,7 +96,7 @@ impl fmt::Debug for AuthSource {
 #[derive(Clone)]
 pub struct Authenticator(
     Shell<AuthSource>,
-    #[cfg(not(target_family = "wasm"))] native::BrowserOpener,
+    #[cfg(not(target_family = "wasm"))] native::BrowserSignIn,
 );
 
 impl fmt::Debug for Authenticator {
@@ -122,7 +122,7 @@ impl Authenticator {
         Self(
             Shell::new(source, store, device_code_handler, allow_device_flow),
             #[cfg(not(target_family = "wasm"))]
-            native::BrowserOpener::default(),
+            native::BrowserSignIn::default(),
         )
     }
 
