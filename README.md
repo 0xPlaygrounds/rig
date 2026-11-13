@@ -1,8 +1,8 @@
 <p align="center">
 <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="img/rig-rebranded-logo-white.svg">
-    <source media="(prefers-color-scheme: light)" srcset="img/rig-rebranded-logo-black.svg">
-    <img src="img/rig-rebranded-logo-white.svg" style="width: 40%; height: 40%;" alt="Rig logo">
+    <source media="(prefers-color-scheme: dark)" srcset="img/header-dark.webp">
+    <source media="(prefers-color-scheme: light)" srcset="img/header-light.webp">
+    <img src="img/header-dark.webp" width="312" height="104" alt="Rig logo">
 </picture>
 <br>
 <br>
