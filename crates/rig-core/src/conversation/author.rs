@@ -23,7 +23,8 @@ pub enum AuthorKind {
     Agent,
     /// The plugin named.
     Plugin(String),
-    /// rig itself: the stopped note, restart answers, the kernel's edits.
+    /// The host running the conversation: the stopped note, restart
+    /// answers, its own edits.
     Rig,
 }
 

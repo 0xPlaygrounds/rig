@@ -154,7 +154,7 @@ impl FilesChanged {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FileChange {
     /// The file: an absolute path when the tool knows the directory it ran
-    /// in, as rig-tools' file tools do, else as the call named it.
+    /// in, else as the call named it.
     pub path: String,
     /// What happened to it.
     pub kind: ChangeKind,

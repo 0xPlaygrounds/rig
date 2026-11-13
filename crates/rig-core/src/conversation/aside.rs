@@ -8,12 +8,12 @@ use serde::{Deserialize, Serialize};
 use super::{Author, MessageId, ParseIdError, parse_id};
 
 /// Kept with the conversation, saved and forked with it, never sent to a
-/// model: a plugin's note in the transcript, the kernel's record of a call
+/// model: a plugin's note in the transcript, the host's record of a call
 /// in flight, a plugin's own data. Readers take the kinds they know.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Aside {
     /// What it is, chosen by its author: `"note"` (a transcript
-    /// [`Note`](super::Note)), `"rig.call"` (the kernel's call-in-flight
+    /// [`Note`](super::Note)), `"rig.call"` (the host's call-in-flight
     /// record), a plugin's own kind.
     pub kind: String,
     /// The entry it follows; `None` before the first. While an edit took
