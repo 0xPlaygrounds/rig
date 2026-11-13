@@ -157,7 +157,7 @@ impl Touches {
     pub fn from_annotations(annotations: &ToolAnnotations) -> Self {
         match annotations.read_only() {
             true => Self::Reads(Scope::Anything),
-            false => Self::Writes(Scope::Anything),
+            false => Self::default(),
         }
     }
 
@@ -170,7 +170,7 @@ impl Touches {
     pub fn from_hints(annotations: &ToolAnnotations) -> Self {
         match annotations.read_only() {
             true => Self::Independent,
-            false => Self::Writes(Scope::Anything),
+            false => Self::default(),
         }
     }
 

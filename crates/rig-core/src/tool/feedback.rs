@@ -67,7 +67,7 @@ pub fn unknown_tool_feedback<'a>(name: &str, tools: impl IntoIterator<Item = &'a
 /// What the model reads for its call to `tool` that its reply ended in the
 /// middle of, having reached the output limit after sending `raw` of the
 /// arguments (a response's
-/// [`unfinished_calls`](crate::completion::CompletionResponse::unfinished_calls)):
+/// [`cut_off_calls`](crate::completion::CompletionResponse::cut_off_calls)):
 /// the tool never ran, and sending as much again would be cut off again.
 /// `raw` is echoed up to [`ECHOED_CHARS`].
 pub fn output_limit_feedback(tool: &str, raw: &str) -> String {

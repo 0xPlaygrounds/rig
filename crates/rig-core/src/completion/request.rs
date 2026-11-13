@@ -450,7 +450,8 @@ impl CompletionResponse {
     /// The tool calls the provider ended the reply in the middle of (their
     /// arguments as far as they came), in the order they opened, such as a
     /// call cut by [`FinishReason::Length`]. Empty when every call in
-    /// [`Self::choice`] was finished.
+    /// [`Self::choice`] was finished. The calls to answer as cut off are
+    /// [`cut_off_calls`](Self::cut_off_calls).
     pub fn unfinished_calls(&self) -> impl Iterator<Item = &ToolCall> {
         self.tool_calls()
             .filter(|call| self.unfinished_calls.contains(&call.id))
@@ -459,10 +460,11 @@ impl CompletionResponse {
     /// The calls a host answers as cut off and never runs: the
     /// [`unfinished_calls`](Self::unfinished_calls) of a reply whose finish
     /// reason [truncated its output](FinishReason::truncated_output), the
-    /// output limit or a content filter. Empty for any other finish reason,
-    /// even with unfinished calls, such as a reply the caller stopped
-    /// reading, whose calls are its own to settle. Only a streamed reply
-    /// marks calls unfinished, so a reply that came whole has none.
+    /// output limit or a content filter. Empty for any other finish reason
+    /// or none, even with unfinished calls, such as a reply the caller
+    /// stopped reading, whose calls are its own to settle. Today only a
+    /// streamed reply marks calls unfinished, so a reply that came whole
+    /// has none.
     pub fn cut_off_calls(&self) -> impl Iterator<Item = &ToolCall> {
         let truncated = self
             .finish_reason
