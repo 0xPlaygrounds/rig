@@ -134,7 +134,12 @@ fn builds(id: &str) -> Option<Vec<(String, Features)>> {
             &default,
         ),
         "process-tests" => with(
-            &["rig-tools", "rig-harness", "rig", "rig-harness-protocol"],
+            &[
+                "rig-tools",
+                "rig-harness",
+                "rig-cli",
+                "rig-harness-protocol",
+            ],
             &default,
         ),
         "rig-claude-cloak-tests" => with(&["rig-claude-cloak"], &default),
