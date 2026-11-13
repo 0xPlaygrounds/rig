@@ -991,43 +991,7 @@ impl ReplyFold {
             content => content,
         };
         let part = self.next();
-        let name = match &content {
-            AssistantContent::ToolCall(call) => Some(call.function.name.clone()),
-            _ => None,
-        };
-        emit(
-            items,
-            StreamEvent::Start {
-                part,
-                kind: kind_of(&content),
-                name,
-            },
-        );
-        match &content {
-            AssistantContent::Text(text) if !text.text.is_empty() => emit(
-                items,
-                StreamEvent::Text {
-                    part,
-                    text: text.text.clone(),
-                },
-            ),
-            AssistantContent::Reasoning(reasoning) if !reasoning.text.is_empty() => emit(
-                items,
-                StreamEvent::Reasoning {
-                    part,
-                    text: reasoning.text.clone(),
-                },
-            ),
-            AssistantContent::ToolCall(call) => emit(
-                items,
-                StreamEvent::Arguments {
-                    part,
-                    json: call.function.arguments_json(),
-                },
-            ),
-            _ => {}
-        }
-        emit(items, StreamEvent::End { part, content });
+        write_part(items, part, content);
         Ok(())
     }
 
@@ -1232,6 +1196,47 @@ fn item_of(content: &mut AssistantContent) -> Option<&mut serde_json::Value> {
         AssistantContent::Opaque(opaque) => return Some(&mut opaque.item),
     };
     native.map(|native| &mut native.item)
+}
+
+/// The events of `content` written whole as the part at `part`.
+fn write_part(items: &mut Items, part: Part, content: AssistantContent) {
+    let name = match &content {
+        AssistantContent::ToolCall(call) => Some(call.function.name.clone()),
+        _ => None,
+    };
+    emit(
+        items,
+        StreamEvent::Start {
+            part,
+            kind: kind_of(&content),
+            name,
+        },
+    );
+    match &content {
+        AssistantContent::Text(text) if !text.text.is_empty() => emit(
+            items,
+            StreamEvent::Text {
+                part,
+                text: text.text.clone(),
+            },
+        ),
+        AssistantContent::Reasoning(reasoning) if !reasoning.text.is_empty() => emit(
+            items,
+            StreamEvent::Reasoning {
+                part,
+                text: reasoning.text.clone(),
+            },
+        ),
+        AssistantContent::ToolCall(call) => emit(
+            items,
+            StreamEvent::Arguments {
+                part,
+                json: call.function.arguments_json(),
+            },
+        ),
+        _ => {}
+    }
+    emit(items, StreamEvent::End { part, content });
 }
 
 fn kind_of(content: &AssistantContent) -> PartKind {
@@ -1666,14 +1671,13 @@ impl<'id> Out<'id, Completion> {
 }
 
 /// The events a stream of `response` would have carried: each part whole,
-/// in order.
+/// in order, holding the content the response holds.
 pub(crate) fn events_of(
     response: &CompletionResponse,
 ) -> Result<Vec<Item<StreamEvent>>, ProviderError> {
-    let mut turn = ReplyFold::new(response.origin.clone());
     let mut items = Items::new();
-    for content in &response.choice {
-        turn.write_content(&mut items, content.clone())?;
+    for (index, content) in (0..).zip(&response.choice) {
+        write_part(&mut items, Part::new(index), content.clone());
     }
     items.into_iter().collect()
 }
