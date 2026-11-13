@@ -75,7 +75,8 @@ async fn chat(gem: &Gem, args: &[String], notes: Option<Notes>) -> Result<(), Fa
         .filter(|_| args.first().map(String::as_str) == Some("chat"))
         .unwrap_or("gemini-2.5-flash");
     let thinking = match flag(args, "--thinking") {
-        Some(text) => thinking(model, text)?,
+        // As text: `main` prints its error with `Debug`, which shows a struct.
+        Some(text) => thinking(model, text).map_err(|error| format!("--thinking: {error}"))?,
         None => Some(Reasoning::Budget { tokens: 1024 }),
     };
     let settings = ChatSettings {

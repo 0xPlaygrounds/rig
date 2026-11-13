@@ -549,6 +549,14 @@ fn thinking_reads_budgets_and_refuses_what_the_model_lacks() {
         "{refused:?}"
     );
     assert_eq!(
+        thinking("gemini-2.5-flash", "hgih").map_err(|error| error.to_string()),
+        Err(
+            "the reasoning settings are default, off, low, medium, high, or 0 to 24576 tokens, \
+             not `hgih`"
+                .to_owned()
+        )
+    );
+    assert_eq!(
         thinking("gemini-9-unlisted", "high"),
         Ok(Some(Reasoning::Effort(rig_core::completion::Effort::High)))
     );
