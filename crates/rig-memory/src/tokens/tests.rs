@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use rig_core::completion::{Message, ToolDefinition, Usage};
+use rig_core::completion::{CompletionRequest, Message, ToolDefinition, Usage};
 use rig_core::conversation::Conversation;
 
 use super::*;
@@ -95,6 +95,27 @@ fn the_estimate_counts_tool_schemas_once_and_is_whole_after_a_compaction() {
         next_request_tokens(Some(&anchor), Some(sent), &request),
         request.whole_tokens()
     );
+}
+
+/// A request built to send is estimated as the same request prepared:
+/// its system prompt as its first message, its tools and its messages.
+#[test]
+fn a_request_built_to_send_is_estimated_as_prepared() {
+    let tools = tools();
+    let mut history = Conversation::new();
+    history.push(Message::user("read the file"));
+    history.push(Message::assistant("x".repeat(400)));
+    let prepared = prepared("m", &tools, &history);
+    let mut request = CompletionRequest::new(Message::user("unused"));
+    request.chat_history = std::iter::once(Arc::new(Message::system("You are a coding agent.")))
+        .chain(history.messages().iter().cloned())
+        .collect();
+    request.tools.clone_from(&tools);
+
+    assert_eq!(request_estimate(&request), prepared.whole_tokens());
+    let offered = request_estimate(&request);
+    request.tools.clear();
+    assert!(request_estimate(&request) < offered, "the tools count");
 }
 
 #[test]

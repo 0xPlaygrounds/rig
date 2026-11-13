@@ -2,13 +2,14 @@
 //!
 //! The next request is estimated from the last usage a provider reported
 //! while it still describes the request ([`next_request_tokens`]), and
-//! from the request as a whole otherwise.
+//! from the request as a whole otherwise. [`request_estimate`] estimates a
+//! request built to send.
 
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io;
 use std::sync::Arc;
 
-use rig_core::completion::{Message, ToolDefinition, Usage};
+use rig_core::completion::{CompletionRequest, Message, ToolDefinition, Usage};
 use rig_core::conversation::{Conversation, MessageId};
 use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use serde::{Deserialize, Serialize};
@@ -226,15 +227,36 @@ impl Prepared<'_> {
     /// The estimate of the whole request: its system prompt, tools and
     /// messages, by the default [`HeuristicTokenCounter`].
     pub fn whole_tokens(&self) -> u64 {
-        let counter = HeuristicTokenCounter::default();
-        let prompt = self
-            .prompt
-            .map_or(0, |prompt| counter.count(&Message::system(prompt)));
-        let tools = self.tools.iter().map(|tool| counter.count_tool(tool));
-        let tools = tools.fold(0, usize::saturating_add);
-        let messages = estimate_messages(self.history.messages());
-        (prompt.saturating_add(tools) as u64).saturating_add(messages)
+        estimate_sent(self.prompt, self.tools, self.history.messages())
     }
+}
+
+/// The estimate of a request sent as it is: its messages and tools, by the
+/// default [`HeuristicTokenCounter`]. Its documents are not counted.
+///
+/// ```
+/// use rig_core::completion::{CompletionRequest, Message};
+/// use rig_memory::request_estimate;
+///
+/// let request = CompletionRequest::new(Message::user("12345678"));
+/// assert_eq!(request_estimate(&request), 2 + 4);
+/// ```
+pub fn request_estimate(request: &CompletionRequest) -> u64 {
+    estimate_sent(None, &request.tools, &request.chat_history)
+}
+
+/// The estimated tokens of `prompt`, `tools` and `messages`, by the
+/// default [`HeuristicTokenCounter`].
+fn estimate_sent(
+    prompt: Option<&str>,
+    tools: &[Arc<ToolDefinition>],
+    messages: &[Arc<Message>],
+) -> u64 {
+    let counter = HeuristicTokenCounter::default();
+    let prompt = prompt.map_or(0, |prompt| counter.count(&Message::system(prompt)));
+    let tools = tools.iter().map(|tool| counter.count_tool(tool));
+    let tools = tools.fold(0, usize::saturating_add);
+    (prompt.saturating_add(tools) as u64).saturating_add(estimate_messages(messages))
 }
 
 /// Feeds bytes written to it to a hasher.

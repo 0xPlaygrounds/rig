@@ -91,6 +91,6 @@ pub use store::{
 };
 pub use tokens::{
     ATTACHMENT_TOKENS, Anchor, HeuristicTokenCounter, OUTPUT_MARGIN, Prepared, RequestStart,
-    TokenCounter, next_request_tokens,
+    TokenCounter, next_request_tokens, request_estimate,
 };
 pub use writer::Writer;
