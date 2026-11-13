@@ -1234,8 +1234,8 @@ impl Drop for BuildRef {
 /// The builds the launcher of `session` holds in `run` for its next start:
 /// a build staged for it or for any launcher, claimed as a trial, rolling
 /// back to `current` or else the good build; without one, `current`, else
-/// the good build. A staged path that is no file, or cannot be looked at,
-/// is warned of and passed over. Call it holding [`locks::hold_build_lock`],
+/// the good build. A staged path that is no file, or cannot be looked at
+/// or read, is warned of and passed over. Call it holding [`locks::hold_build_lock`],
 /// so the claims and the good build it reads are the ones it holds.
 fn select(
     launch: &Launch,
@@ -1251,7 +1251,13 @@ fn select(
     };
     for staged in [home.staged_for(session), home.staged()] {
         match fs::optional(fs::metadata(&staged)) {
-            Ok(Some(metadata)) if metadata.is_file() => {}
+            Ok(Some(metadata)) if metadata.is_file() => {
+                // One this launcher cannot read is no build it can start.
+                if let Err(why) = fs::open(File::options().read(true), &staged) {
+                    eprintln!("warning: a staged build is not started: {why}");
+                    continue;
+                }
+            }
             Ok(None) => continue,
             Ok(Some(_)) => {
                 eprintln!(
