@@ -471,6 +471,23 @@ fn every_dialects_listing_and_verify_urls_match_the_recorded_paths() {
     }
 }
 
+/// Azure's speech-to-text route is the transcriptions endpoint, not the
+/// separate translation endpoint.
+#[test]
+fn azure_transcription_url_is_the_transcriptions_endpoint() {
+    let provider = OpenAIConfig::with_key(&AZURE, "k").with_base_url("https://me.openai.azure.com");
+    assert_eq!(
+        provider
+            .modality_uri(
+                "transcription",
+                AZURE.quirks.transcription_path,
+                "whisper-1",
+            )
+            .unwrap(),
+        "https://me.openai.azure.com/openai/deployments/whisper-1/audio/transcriptions?api-version=2024-10-21",
+    );
+}
+
 /// `llama-server` serves its operational routes at the root; the versioned
 /// base URL applies to everything else.
 #[test]
