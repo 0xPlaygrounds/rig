@@ -170,3 +170,101 @@ async fn file_store_lock_waits_for_the_holder() -> anyhow::Result<()> {
     anyhow::ensure!(matches!(taken, Ok(Ok(_))), "the second lock was not taken");
     Ok(())
 }
+
+/// A credential file another tool left readable by others is read, and is
+/// the owner's alone afterwards.
+#[cfg(unix)]
+#[tokio::test]
+async fn file_store_narrows_a_file_readable_by_others() -> anyhow::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = assert_fs::TempDir::new()?;
+    let store = super::FileTokenStore::new(dir.path());
+    let path = store.path("chatgpt");
+    std::fs::write(&path, "{\"a\":1}")?;
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644))?;
+    let loaded = store
+        .load("chatgpt")
+        .await
+        .map_err(anyhow::Error::from_boxed)?;
+    anyhow::ensure!(loaded.as_deref() == Some("{\"a\":1}"), "loaded {loaded:?}");
+    let mode = std::fs::metadata(&path)?.permissions().mode() & 0o777;
+    anyhow::ensure!(mode == 0o600, "file mode {mode:o}");
+    Ok(())
+}
+
+/// The refusal `load("chatgpt")` answers with; an error when it loads.
+async fn refusal(store: &super::FileTokenStore) -> anyhow::Result<crate::error::BoxError> {
+    match store.load("chatgpt").await {
+        Ok(record) => Err(anyhow::anyhow!(
+            "loaded {:?} bytes",
+            record.map(|record| record.len())
+        )),
+        Err(error) => Ok(error),
+    }
+}
+
+/// A credential file behind a symlink is refused, naming the path, and the
+/// file it points at is left as it was.
+#[cfg(unix)]
+#[tokio::test]
+async fn file_store_refuses_a_symlink() -> anyhow::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = assert_fs::TempDir::new()?;
+    let store = super::FileTokenStore::new(dir.path());
+    let target = dir.path().join("elsewhere.json");
+    std::fs::write(&target, "{\"a\":1}")?;
+    std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o644))?;
+    let path = store.path("chatgpt");
+    std::os::unix::fs::symlink(&target, &path)?;
+    let error = refusal(&store).await?;
+    anyhow::ensure!(
+        matches!(
+            error.downcast_ref::<super::FileStoreError>(),
+            Some(super::FileStoreError::NotAFile { path: named }) if *named == path
+        ),
+        "{error:?}"
+    );
+    anyhow::ensure!(error.to_string().contains(&path.display().to_string()));
+    let mode = std::fs::metadata(&target)?.permissions().mode() & 0o777;
+    anyhow::ensure!(mode == 0o644, "target mode {mode:o}");
+    Ok(())
+}
+
+/// A credential file over 64 KiB is refused, naming the path.
+#[tokio::test]
+async fn file_store_refuses_a_file_over_64_kib() -> anyhow::Result<()> {
+    let dir = assert_fs::TempDir::new()?;
+    let store = super::FileTokenStore::new(dir.path());
+    let path = store.path("chatgpt");
+    std::fs::write(&path, "x".repeat(70 * 1024))?;
+    let error = refusal(&store).await?;
+    anyhow::ensure!(
+        matches!(
+            error.downcast_ref::<super::FileStoreError>(),
+            Some(super::FileStoreError::TooLarge { path: named, limit: 65_536 }) if *named == path
+        ),
+        "{error:?}"
+    );
+    Ok(())
+}
+
+/// A credential file over 64 KiB is refused as too large even when the limit
+/// falls inside a multi-byte character.
+#[tokio::test]
+async fn file_store_refuses_a_large_file_split_inside_a_character() -> anyhow::Result<()> {
+    let dir = assert_fs::TempDir::new()?;
+    let store = super::FileTokenStore::new(dir.path());
+    let path = store.path("chatgpt");
+    std::fs::write(&path, format!("{}é", "x".repeat(65_536)))?;
+    let error = refusal(&store).await?;
+    anyhow::ensure!(
+        matches!(
+            error.downcast_ref::<super::FileStoreError>(),
+            Some(super::FileStoreError::TooLarge { path: named, limit: 65_536 }) if *named == path
+        ),
+        "{error:?}"
+    );
+    Ok(())
+}

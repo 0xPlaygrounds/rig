@@ -144,6 +144,40 @@ fn a_saved_key_that_does_not_parse_refuses_the_connect() {
     std::fs::remove_dir_all(home.root()).ok();
 }
 
+/// A saved key behind a symlink refuses the provider's models, naming the
+/// file, instead of connecting with what it points at; one readable by
+/// others connects and is the owner's alone afterwards.
+#[cfg(unix)]
+#[test]
+fn a_saved_key_behind_a_symlink_refuses_and_a_shared_one_is_narrowed() {
+    use std::os::unix::fs::PermissionsExt;
+    let home = scratch_home("rig-login-keys-symlink");
+    let Some(vendor) = unset_vendor(&Models::default()) else {
+        return;
+    };
+    let keys = Keys::at(&home);
+    assert!(keys.save(vendor, "sk-rig-test").is_ok());
+    let path = keys.path(vendor);
+    let elsewhere = home.root().join("elsewhere.json");
+    assert!(std::fs::rename(&path, &elsewhere).is_ok());
+    assert!(std::os::unix::fs::symlink(&elsewhere, &path).is_ok());
+    let linked = status(&login_app(&home), vendor);
+    let shown = path.display().to_string();
+    assert!(
+        matches!(&linked, Some(ModelStatus::Unavailable(why)) if why.contains(&shown)),
+        "{linked:?}"
+    );
+
+    assert!(std::fs::remove_file(&path).is_ok());
+    assert!(std::fs::rename(&elsewhere, &path).is_ok());
+    let widened = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644));
+    assert!(widened.is_ok());
+    assert_eq!(status(&login_app(&home), vendor), Some(ModelStatus::Usable));
+    let mode = std::fs::metadata(&path).map(|meta| meta.permissions().mode() & 0o777);
+    std::fs::remove_dir_all(home.root()).ok();
+    assert_eq!(mode.ok(), Some(0o600));
+}
+
 /// A key directory that cannot be listed refuses the providers' models,
 /// naming the key file, instead of reading as no saved keys.
 #[cfg(unix)]

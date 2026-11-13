@@ -149,6 +149,11 @@ impl TokenStore for MemoryTokenStore {
 /// processes with a file lock on `<dir>/<key>.lock`. On Unix the files, and
 /// the directories it creates for them, are readable by the owner alone.
 /// Native only.
+///
+/// [`load`](TokenStore::load) refuses a record that is a symlink or not a
+/// regular file, or is over 64 KiB, with a [`FileStoreError`]. On Unix, when
+/// group or others have any access to a record, it narrows the record to
+/// owner-only before reading it, and refuses the record when that fails.
 #[cfg(not(target_family = "wasm"))]
 #[derive(Debug, Clone)]
 pub struct FileTokenStore {
@@ -171,13 +176,7 @@ impl FileTokenStore {
 #[cfg(not(target_family = "wasm"))]
 impl TokenStore for FileTokenStore {
     fn load<'a>(&'a self, key: &'a str) -> WasmBoxedFuture<'a, Result<Option<String>, BoxError>> {
-        Box::pin(async move {
-            match std::fs::read_to_string(self.path(key)) {
-                Ok(record) => Ok(Some(record)),
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
-                Err(error) => Err(error.into()),
-            }
-        })
+        Box::pin(async move { read_private(&self.path(key)) })
     }
 
     fn save<'a>(
@@ -229,6 +228,100 @@ impl TokenStore for FileTokenStore {
             }
         })
     }
+}
+
+/// Why [`FileTokenStore::load`](TokenStore::load) refused a credential
+/// file. It reaches the caller inside the store's boxed error.
+#[cfg(not(target_family = "wasm"))]
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum FileStoreError {
+    /// The file is a symlink, a directory, or another kind of file than a
+    /// regular one, or was replaced by one while it was opened.
+    #[error("{} is a symlink or not a regular file; a credential is read only from a regular file", path.display())]
+    NotAFile {
+        /// The credential file.
+        path: std::path::PathBuf,
+    },
+    /// The file holds more than `limit` bytes.
+    #[error("{} is larger than {limit} bytes", path.display())]
+    TooLarge {
+        /// The credential file.
+        path: std::path::PathBuf,
+        /// The most a credential file may hold.
+        limit: u64,
+    },
+    /// Group or others have access to the file and it could not be made
+    /// owner-only, for example because another user owns it.
+    #[error("{} is open to group or others and could not be made owner-only", path.display())]
+    NotNarrowed {
+        /// The credential file.
+        path: std::path::PathBuf,
+        /// Why the permissions could not be changed.
+        #[source]
+        source: std::io::Error,
+    },
+}
+
+/// The most a credential file may hold.
+#[cfg(not(target_family = "wasm"))]
+const RECORD_LIMIT: u64 = 64 * 1024;
+
+/// Reads the credential file at `path`, `None` when there is none. The
+/// checks look at the file that was opened, so it cannot be swapped for a
+/// symlink between the check and the read: on Unix its identity is compared
+/// with the unfollowed path's, and on Windows the open does not follow a
+/// link.
+#[cfg(not(target_family = "wasm"))]
+fn read_private(path: &std::path::Path) -> Result<Option<String>, BoxError> {
+    use std::io::Read;
+
+    let not_a_file = || FileStoreError::NotAFile {
+        path: path.to_owned(),
+    };
+    let linked = match std::fs::symlink_metadata(path) {
+        Ok(linked) => linked,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error.into()),
+    };
+    if !linked.file_type().is_file() {
+        return Err(not_a_file().into());
+    }
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true);
+    // FILE_FLAG_OPEN_REPARSE_POINT: open a symlink itself, which the handle
+    // check below then refuses.
+    #[cfg(windows)]
+    std::os::windows::fs::OpenOptionsExt::custom_flags(&mut options, 0x0020_0000);
+    let file = options.open(path)?;
+    let opened = file.metadata()?;
+    if !opened.is_file() {
+        return Err(not_a_file().into());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        if (opened.dev(), opened.ino()) != (linked.dev(), linked.ino()) {
+            return Err(not_a_file().into());
+        }
+        if opened.mode() & 0o077 != 0 {
+            file.set_permissions(std::fs::Permissions::from_mode(0o600))
+                .map_err(|source| FileStoreError::NotNarrowed {
+                    path: path.to_owned(),
+                    source,
+                })?;
+        }
+    }
+    let mut record = Vec::new();
+    file.take(RECORD_LIMIT + 1).read_to_end(&mut record)?;
+    if record.len() as u64 > RECORD_LIMIT {
+        return Err(FileStoreError::TooLarge {
+            path: path.to_owned(),
+            limit: RECORD_LIMIT,
+        }
+        .into());
+    }
+    Ok(Some(String::from_utf8(record)?))
 }
 
 /// How long [`FileTokenStore::lock`] waits for another holder: far longer
