@@ -784,3 +784,185 @@ async fn a_tool_that_panics_fails_its_call_and_the_run_goes_on() {
         tool_record.outcome
     );
 }
+
+#[derive(Deserialize)]
+struct TagArgs {
+    tag: String,
+}
+
+/// A tool named `NAME` that logs `NAME:tag` and answers `NAME tag`.
+#[derive(Clone)]
+struct Tagged<const SHOUT: bool>(Arc<Mutex<Vec<String>>>);
+
+impl<const SHOUT: bool> Tool for Tagged<SHOUT> {
+    const NAME: &'static str = if SHOUT { "shout" } else { "echo" };
+    type Args = TagArgs;
+    type Output = String;
+    type Error = ToolExecutionError;
+
+    fn description(&self) -> String {
+        "answers with its tag".into()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({"type": "object", "properties": {"tag": {"type": "string"}}, "required": ["tag"]})
+    }
+
+    async fn call(&self, _context: &mut ToolContext, args: TagArgs) -> Result<String, Self::Error> {
+        self.0
+            .lock()
+            .expect("lock")
+            .push(format!("{}:{}", Self::NAME, args.tag));
+        Ok(format!("{} {}", Self::NAME, args.tag))
+    }
+}
+
+fn tagged_call(tool: &str, tag: &str) -> rig_core::message::AssistantContent {
+    rig_core::message::AssistantContent::ToolCall(rig_core::message::ToolCall::from_wire(
+        "dup",
+        rig_core::message::ToolFunction::new(
+            rig_core::message::ToolName::new(tool.to_owned()).expect("tool name"),
+            json!({ "tag": tag }),
+        ),
+    ))
+}
+
+/// Answers the first completion with `first`, whole, and every later one
+/// with text.
+struct WholeReply(Vec<rig_core::message::AssistantContent>);
+
+impl rig_core::serve::Serve for WholeReply {
+    type Family = rig_core::effect::family::Completion;
+
+    fn descriptor(&self) -> rig_core::effect::HandlerDescriptor {
+        rig_core::effect::HandlerDescriptor {
+            key: rig_core::effect::model_key("whole"),
+            family: rig_core::effect::FamilyDescriptor::Completion {
+                model: "whole".into(),
+                capabilities: rig_core::completion::ProviderCapabilities::default(),
+            },
+            layers: Vec::new(),
+        }
+    }
+
+    async fn serve(
+        &self,
+        kind: EffectKind,
+        _: rig_core::serve::Dispatch,
+    ) -> rig_core::serve::Reply {
+        let EffectKind::Completion { request, .. } = kind else {
+            panic!("completions only")
+        };
+        let answered = request
+            .chat_history
+            .iter()
+            .any(|message| matches!(**message, rig_core::message::Message::Assistant(_)));
+        let choice = if answered {
+            vec![rig_core::message::AssistantContent::text("done")]
+        } else {
+            self.0.clone()
+        };
+        rig_core::serve::Reply::Outcome(Ok(rig_core::effect::Answered::Completion(
+            rig_core::completion::CompletionResponse::new(
+                choice,
+                rig_core::completion::Usage::new().total_tokens(1),
+                rig_core::message::Origin::new("whole.api", "whole", ""),
+                serde_json::Value::Null,
+            )
+            .into(),
+        )))
+    }
+}
+
+/// Answers every invalid call with `action`.
+struct Resolve(InvalidToolCallAction);
+
+impl AgentHook for Resolve {
+    async fn on_invalid_tool_call(
+        &self,
+        _: &HookContext,
+        _: &InvalidToolCallContext,
+    ) -> Option<InvalidToolCallAction> {
+        Some(self.0.clone())
+    }
+}
+
+/// Streams one run over a handler answering `choice`, with every invalid
+/// call resolved by `action`: the tools that ran, sorted, and the text of
+/// each tool result the run committed, in order.
+async fn run_streamed(
+    choice: Vec<rig_core::message::AssistantContent>,
+    action: InvalidToolCallAction,
+) -> (Vec<String>, Vec<String>) {
+    let handlers = Handlers::default();
+    handlers
+        .register("model:whole", WholeReply(choice))
+        .expect("register");
+    let ran = Arc::new(Mutex::new(Vec::new()));
+    let agent = AgentBuilder::over_handlers(handlers, "whole", HandlerKey::from("model:whole"))
+        .add_hook(Resolve(action))
+        .tool(Tagged::<false>(ran.clone()))
+        .tool(Tagged::<true>(ran.clone()))
+        .build();
+    let mut stream = agent.prompt("go").max_turns(3).stream();
+    let mut final_response = None;
+    while let Some(item) = within(stream.next()).await {
+        if let rig_agent::agent::MultiTurnStreamItem::FinalResponse(response) =
+            item.expect("the run completes")
+        {
+            final_response = Some(response);
+        }
+    }
+    let response = final_response.expect("a final response");
+    let results = response
+        .messages()
+        .iter()
+        .filter_map(|message| match message {
+            rig_core::message::Message::User { content } => Some(content.iter()),
+            _ => None,
+        })
+        .flatten()
+        .filter_map(|content| match content {
+            rig_core::message::UserContent::ToolResult(result) => Some(
+                result
+                    .content
+                    .iter()
+                    .filter_map(|part| match part {
+                        rig_core::message::ToolResultContent::Text(text) => Some(text.text.clone()),
+                        _ => None,
+                    })
+                    .collect::<String>(),
+            ),
+            _ => None,
+        })
+        .collect();
+    let mut ran = ran.lock().expect("lock").clone();
+    ran.sort();
+    (ran, results)
+}
+
+#[tokio::test]
+async fn a_streamed_invalid_call_sharing_an_id_is_resolved_alone() {
+    use rig_core::tool::feedback::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER as NOT_EXECUTED;
+    let valid_first = || vec![tagged_call("echo", "A"), tagged_call("nosuch", "B")];
+    let invalid_first = || vec![tagged_call("nosuch", "A"), tagged_call("echo", "B")];
+
+    let (ran, results) = run_streamed(valid_first(), InvalidToolCallAction::repair("shout")).await;
+    assert_eq!(ran, strings(&["echo:A", "shout:B"]));
+    assert_eq!(results, strings(&["echo A", "shout B"]));
+
+    let (ran, results) =
+        run_streamed(invalid_first(), InvalidToolCallAction::repair("shout")).await;
+    assert_eq!(ran, strings(&["echo:B", "shout:A"]));
+    assert_eq!(results, strings(&["shout A", "echo B"]));
+
+    let (ran, results) = run_streamed(valid_first(), InvalidToolCallAction::skip("skipped")).await;
+    assert!(ran.is_empty(), "a skip runs no call of the turn: {ran:?}");
+    assert_eq!(results, strings(&[NOT_EXECUTED, "skipped"]));
+
+    let (ran, results) =
+        run_streamed(invalid_first(), InvalidToolCallAction::skip("skipped")).await;
+    assert!(ran.is_empty(), "a skip runs no call of the turn: {ran:?}");
+    // A streamed skip abandons the turn at the invalid call, before its peer.
+    assert_eq!(results, strings(&["skipped"]));
+}
