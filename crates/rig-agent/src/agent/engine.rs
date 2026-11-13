@@ -2,7 +2,7 @@
 //! streaming [`TurnSource`] implementations supply model responses; the engine
 //! applies lifecycle policy and advances the sans-I/O [`AgentRun`].
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::sync::{
     Arc,
     atomic::{AtomicU64, Ordering},
@@ -735,7 +735,14 @@ impl TurnSource for StreamingTurnSource {
             // A delta hook's stop is the run's: the stream is dropped, cancelling
             // the dispatch in flight before the error surfaces, so the record
             // is the same cancel on every transport.
-            'turn: while let Some(item) = stream.next().await {
+            // The items read ahead to learn whether the stream ended (see the
+            // cut-off check below), taken before the stream is polled again.
+            // `None` in it is the stream's end.
+            let mut ahead = VecDeque::new();
+            'turn: while let Some(item) = match ahead.pop_front() {
+                Some(item) => item,
+                None => stream.next().await,
+            } {
                 // A stream error ends the reply. At most one event per item
                 // forwards the item itself, so moving it out of the slot
                 // avoids cloning every streamed fragment.
@@ -905,6 +912,29 @@ impl TurnSource for StreamingTurnSource {
                             }
                         }
                         StreamedTurnEvent::InvalidToolCall(invalid) => {
+                            // A call the reply was cut off in is answered as
+                            // cut off whatever its name, so it is neither
+                            // offered to the hook nor resolved as invalid.
+                            // rig-core ends such a call in the step that ends
+                            // the reply, so the stream is read ahead through
+                            // what has already arrived to learn whether it
+                            // ended: a stream that stalls never holds the
+                            // decision back.
+                            while !matches!(ahead.back(), Some(None)) {
+                                match futures::FutureExt::now_or_never(stream.next()) {
+                                    Some(item) => ahead.push_back(item),
+                                    None => break,
+                                }
+                            }
+                            let cut = matches!(ahead.back(), Some(None))
+                                && stream
+                                    .partial()
+                                    .cut_off_calls()
+                                    .any(|cut| cut.id == invalid.tool_call.id);
+                            if cut {
+                                next = assembler.keep_pending_cut_off();
+                                continue;
+                            }
                             // The rejected call's items stay held: a repair
                             // replays them, and any other resolution drops them.
                             let rejected = match item_slot.as_ref() {

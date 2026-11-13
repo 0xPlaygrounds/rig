@@ -169,6 +169,11 @@ pub struct StreamedTurn {
     pub policy: TurnPolicy,
     /// Provider-reported terminal reason for this turn, when available.
     pub finish_reason: Option<FinishReason>,
+    /// The positions in [`Self::choice`] of the calls the reply was cut off
+    /// in the middle of
+    /// ([`CompletionResponse::cut_off_calls`](rig_core::completion::CompletionResponse::cut_off_calls)).
+    /// Each is answered as cut off and never run, whatever its name.
+    pub cut_off: Vec<usize>,
 }
 
 /// Resolution a driver must apply to a mid-stream invalid tool call.
@@ -428,6 +433,21 @@ impl StreamedTurnAssembler {
         }
     }
 
+    /// Keep the invalid tool call surfaced by the last
+    /// [`StreamedTurnEvent::InvalidToolCall`] in the turn as it is, for a
+    /// call the reply was cut off in (one of its response's
+    /// [`cut_off_calls`](rig_core::completion::CompletionResponse::cut_off_calls)).
+    /// The run answers it as cut off, so it is not resolved as invalid. The
+    /// call is returned to forward like any ended call.
+    pub fn keep_pending_cut_off(&mut self) -> Option<StreamedTurnEvent> {
+        let PendingInvalid { tool_call } = self.pending_invalid.take()?;
+        self.ended_calls.push(EndedCall {
+            call: tool_call.clone(),
+            ignored: false,
+        });
+        Some(StreamedTurnEvent::EmitToolCall { call: tool_call })
+    }
+
     /// Snapshot of the turn so far, for diagnostics and rollback messages:
     /// `partial` is what the stream folded so far
     /// ([`Streamed::partial`](rig_core::streaming::Streamed::partial)).
@@ -451,11 +471,27 @@ impl StreamedTurnAssembler {
     /// into: its choice in start order, with the calls this turn ignored
     /// left out and the ones it repaired renamed.
     pub fn finish(self, response: &rig_core::completion::CompletionResponse) -> StreamedTurn {
+        let choice = self.resolved(&response.choice);
+        // A response names its cut-off calls by id, and a folded reply's
+        // calls have distinct ids, so each id is one position.
+        let cut_off = choice
+            .iter()
+            .enumerate()
+            .filter_map(|(at, content)| match content {
+                AssistantContent::ToolCall(call)
+                    if response.cut_off_calls().any(|cut| cut.id == call.id) =>
+                {
+                    Some(at)
+                }
+                _ => None,
+            })
+            .collect();
         StreamedTurn {
             head: response.head(),
-            choice: self.resolved(&response.choice),
+            choice,
             policy: self.policy,
             finish_reason: response.finish_reason(),
+            cut_off,
         }
     }
 

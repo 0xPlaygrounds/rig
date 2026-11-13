@@ -42,7 +42,8 @@ use rig_core::conversation::Aside;
 use rig_core::conversation::pairing::{PairingError, validate};
 use rig_core::message::{AssistantContent, AssistantMessage, ToolCall, ToolName, UserContent};
 use rig_core::tool::feedback::{
-    invalid_arguments_feedback, not_executed, tool_result_message, tool_result_output,
+    invalid_arguments_feedback, not_executed, output_limit_feedback, tool_result_message,
+    tool_result_output,
 };
 
 use calls::AnswerKind;
@@ -261,6 +262,9 @@ struct TurnState {
     /// Kept until the turn's calls are answered, so an invalid-call context
     /// raised in the tool step reports the policy the turn was judged by.
     policy: TurnPolicy,
+    /// The positions in `items` of the calls the reply was
+    /// [cut off](CompletionResponse::cut_off_calls) in the middle of.
+    cut_off: Vec<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -354,7 +358,7 @@ pub struct AgentRun {
 }
 
 /// The [`AgentRun`] envelope format this crate writes and reads.
-pub const RUN_FORMAT: u32 = 5;
+pub const RUN_FORMAT: u32 = 6;
 
 /// Deserialize the envelope's `format`, refusing any other than
 /// [`RUN_FORMAT`] by name so a run persisted by another rig is never loaded
@@ -900,6 +904,7 @@ impl AgentRun {
                     has_tool_calls,
                     mut skipped,
                     policy,
+                    cut_off,
                 } = turn_state;
                 // A failed turn runs no tool and finalizes no output; reasoning
                 // alone is not an answer. A failed turn's calls never run, and
@@ -920,12 +925,18 @@ impl AgentRun {
                 // sibling calls must not run after finalization.
                 if has_tool_calls
                     && let Some(output_tool_name) = policy.output_tool().map(str::to_owned)
-                    && let Some(tool_call) = items.iter().find_map(|item| match item {
-                        AssistantContent::ToolCall(tc) if tc.function.name == output_tool_name => {
-                            Some(tc)
-                        }
-                        _ => None,
-                    })
+                    && let Some((position, tool_call)) =
+                        items
+                            .iter()
+                            .enumerate()
+                            .find_map(|(position, item)| match item {
+                                AssistantContent::ToolCall(tc)
+                                    if tc.function.name == output_tool_name =>
+                                {
+                                    Some((position, tc))
+                                }
+                                _ => None,
+                            })
                 {
                     let output_tool_calls = items
                         .iter()
@@ -940,6 +951,31 @@ impl AgentRun {
                     let args = tool_call.function.arguments_value();
                     let tool_call_id = tool_call.id.clone();
                     let output = args.to_string();
+
+                    // A call the reply was cut off in is no answer, whatever
+                    // its arguments: the model is told to send less while
+                    // the budget lasts.
+                    if cut_off.contains(&position) {
+                        let raw = tool_call.function.raw_arguments();
+                        if self.can_reprompt_for_output() {
+                            self.history.commit(assistant_message(head, items.clone()));
+                            let feedback = output_limit_feedback(&output_tool_name, &raw);
+                            if let Some(user_message) =
+                                invalid_tool_retry_user_message(&items, &tool_call_id, &feedback)
+                            {
+                                self.history.commit([user_message]);
+                            }
+                            return self.reprompt_for_output();
+                        }
+                        return Err(self.schema_mismatch(
+                            raw,
+                            Some(output_tool_name),
+                            vec![Problem {
+                                at: String::new(),
+                                what: "cut off at the output limit".to_owned(),
+                            }],
+                        ));
+                    }
 
                     // Arguments that are not a JSON object are no answer:
                     // the model is told why while the budget lasts.
@@ -1019,6 +1055,7 @@ impl AgentRun {
                             AssistantContent::ToolCall(tool_call) => Some(ToolSlot::classify(
                                 tool_call.clone(),
                                 skipped.remove(&index),
+                                cut_off.contains(&index),
                             )),
                             _ => None,
                         })
@@ -1172,13 +1209,15 @@ impl AgentRun {
 
     /// Park an accepted model turn in [`RunState::AwaitingAdvance`]. Both the
     /// non-streamed (`advance_resolution`) and streamed (`streamed_turn`)
-    /// ingestion paths converge here, differing only in the `skipped` map.
+    /// ingestion paths converge here, differing only in the `skipped` map
+    /// and the `cut_off` call positions, which only a streamed reply marks.
     fn finalize_turn(
         &mut self,
         head: AssistantMessage,
         items: Vec<AssistantContent>,
         has_tool_calls: bool,
         skipped: BTreeMap<usize, UserContent>,
+        cut_off: Vec<usize>,
         policy: TurnPolicy,
     ) {
         self.state = RunState::AwaitingAdvance(TurnState {
@@ -1187,6 +1226,7 @@ impl AgentRun {
             has_tool_calls,
             skipped,
             policy,
+            cut_off,
         });
     }
 
@@ -1571,7 +1611,7 @@ impl AgentRun {
             }
         }
 
-        self.finalize_turn(head, items, has_tool_calls, skipped, policy);
+        self.finalize_turn(head, items, has_tool_calls, skipped, Vec::new(), policy);
         Ok(ModelTurnOutcome::Continue {
             response_hook_suppressed: recovered,
         })
@@ -1716,11 +1756,15 @@ impl AgentRun {
 
         let has_tool_calls = has_tool_calls(&turn.choice);
 
-        for item in &turn.choice {
+        // A call the reply was cut off in is answered as such whatever its
+        // name, as it never runs.
+        for (position, item) in turn.choice.iter().enumerate() {
             let AssistantContent::ToolCall(tool_call) = item else {
                 continue;
             };
-            if !turn.policy.allows(tool_call.function.name.as_str()) {
+            if !turn.policy.allows(tool_call.function.name.as_str())
+                && !turn.cut_off.contains(&position)
+            {
                 let diagnostic_history =
                     self.owned_history(assistant_turn(turn.head.clone(), turn.choice.clone()));
                 self.state = RunState::Failed;
@@ -1736,6 +1780,7 @@ impl AgentRun {
             turn.choice,
             has_tool_calls,
             BTreeMap::new(),
+            turn.cut_off,
             turn.policy,
         );
         Ok(())

@@ -1,0 +1,626 @@
+//! A streamed reply that reached the output limit inside a tool call leaves
+//! that call cut off. The call never runs, whatever its arguments look like,
+//! and the model reads that its reply reached the limit, so it sends less
+//! rather than the same call again. A cut-off call is not a malformed one.
+
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
+
+use futures::StreamExt;
+use rig_core::completion::{CompletionRequest, FinishReason, Usage};
+use rig_core::message::{Message, ToolResultContent, UserContent};
+use rig_core::operation::Finish;
+use serde::Deserialize;
+use serde_json::json;
+
+use super::MultiTurnStreamItem;
+use crate::agent::hook::{AgentHook, HookContext};
+use crate::agent::{AgentBuilder, AgentRunner, InvalidToolCallAction, InvalidToolCallContext};
+use crate::run::OutputMode;
+use crate::test_utils::{MockCompletionModel, MockStreamEvent, mock_final};
+use crate::tool::{Tool, ToolContext, ToolExecutionError};
+use rig_core::structured_output::OUTPUT_TOOL_NAME;
+
+const ID: &str = "call_1";
+
+/// A file-writing tool whose arguments are all optional, so `{}` is a call
+/// it accepts. It counts the times it ran.
+#[derive(Clone, Default)]
+struct WriteFile(Arc<AtomicU32>);
+
+#[derive(Deserialize)]
+struct WriteArgs {
+    #[serde(default)]
+    _path: Option<String>,
+    #[serde(default)]
+    _content: Option<String>,
+}
+
+impl Tool for WriteFile {
+    const NAME: &'static str = "write_file";
+    type Error = ToolExecutionError;
+    type Args = WriteArgs;
+    type Output = String;
+
+    fn description(&self) -> String {
+        "Write a file".into()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "path": {"type": "string"},
+                "content": {"type": "string"}
+            }
+        })
+    }
+
+    async fn call(
+        &self,
+        _context: &mut ToolContext,
+        _args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
+        self.0.fetch_add(1, Ordering::SeqCst);
+        Ok("written".into())
+    }
+}
+
+/// How far the call got before the reply reached the output limit.
+#[derive(Clone, Copy, Debug)]
+enum Cut {
+    /// Inside the arguments.
+    Midway,
+    /// Before any argument text.
+    Empty,
+    /// After a whole arguments object, the call never closed.
+    Unclosed,
+}
+
+const CUTS: [Cut; 3] = [Cut::Midway, Cut::Empty, Cut::Unclosed];
+
+/// A reply that ends at the output limit inside a call to `tool`, `cut`
+/// far into its arguments.
+fn cut_turn(tool: &str, cut: Cut) -> Vec<MockStreamEvent> {
+    let mut events = vec![MockStreamEvent::tool_call_name_delta(ID, tool)];
+    match cut {
+        Cut::Midway => events.push(MockStreamEvent::tool_call_arguments_delta(
+            ID,
+            r#"{"path": "a.rs", "content": "fn ma"#,
+        )),
+        Cut::Empty => {}
+        Cut::Unclosed => events.push(MockStreamEvent::tool_call_arguments_delta(
+            ID,
+            r#"{"path": "a.rs", "content": "fn main() {}"}"#,
+        )),
+    }
+    events.push(MockStreamEvent::FinalResponse(Finish {
+        reason: Some(FinishReason::Length),
+        ..mock_final(Usage::default())
+    }));
+    events
+}
+
+/// A reply that ends at the output limit inside a `write_file` call, then
+/// a reply that answers.
+fn model(cut: Cut) -> MockCompletionModel {
+    MockCompletionModel::from_stream_turns([
+        cut_turn("write_file", cut),
+        vec![
+            MockStreamEvent::text("split it"),
+            MockStreamEvent::final_response_with_default_usage(),
+        ],
+    ])
+}
+
+/// Stream `runner` to its end: its output or its error as text.
+async fn drive(runner: AgentRunner) -> Result<String, String> {
+    let mut stream = runner.stream();
+    while let Some(item) = stream.next().await {
+        match item {
+            Ok(MultiTurnStreamItem::FinalResponse(response)) => return Ok(response.output()),
+            Ok(_) => {}
+            Err(error) => return Err(error.to_string()),
+        }
+    }
+    Err("no final response".to_owned())
+}
+
+/// Stream the run to its end: its output or its error as text, the
+/// requests the model saw, and how many times the tool ran.
+async fn run(
+    cut: Cut,
+    configure: impl FnOnce(AgentRunner) -> AgentRunner,
+) -> (Result<String, String>, Vec<CompletionRequest>, u32) {
+    let model = model(cut);
+    let recorded = model.clone();
+    let tool = WriteFile::default();
+    let ran = tool.0.clone();
+    let agent = AgentBuilder::new(model).tool(tool).build();
+    let outcome = drive(configure(agent.prompt("write a long file").max_turns(5))).await;
+    (outcome, recorded.requests(), ran.load(Ordering::SeqCst))
+}
+
+/// The text of the result answering the cut-off call in the second request.
+fn answer(requests: &[CompletionRequest]) -> Option<String> {
+    requests
+        .get(1)?
+        .chat_history
+        .iter()
+        .find_map(|message| match &**message {
+            Message::User { content } => content.iter().find_map(|item| match item {
+                UserContent::ToolResult(result) => Some(
+                    result
+                        .content
+                        .iter()
+                        .filter_map(|content| match content {
+                            ToolResultContent::Text(text) => Some(text.text.as_str()),
+                            _ => None,
+                        })
+                        .collect(),
+                ),
+                _ => None,
+            }),
+            Message::System { .. } | Message::Assistant(_) => None,
+        })
+}
+
+#[tokio::test]
+async fn a_call_cut_at_the_output_limit_never_runs_and_is_answered_as_cut_off() {
+    for cut in CUTS {
+        let (outcome, requests, ran) = run(cut, |runner| runner).await;
+        assert_eq!(outcome.as_deref(), Ok("split it"), "{cut:?}");
+        assert_eq!(ran, 0, "{cut:?}: the cut-off call never runs");
+        let answer = answer(&requests);
+        assert!(
+            answer
+                .as_deref()
+                .is_some_and(|text| text.contains("reached the output limit")),
+            "{cut:?}: the model reads that its reply reached the limit: {answer:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_cut_off_call_does_not_use_up_the_malformed_call_allowance() {
+    for cut in CUTS {
+        let (outcome, _, ran) =
+            run(cut, |runner| runner.max_consecutive_malformed_tool_calls(0)).await;
+        assert_eq!(outcome.as_deref(), Ok("split it"), "{cut:?}");
+        assert_eq!(ran, 0, "{cut:?}: the cut-off call never runs");
+    }
+}
+
+/// The same cut on a real wire, DeepSeek's chat stream over a scripted
+/// transport: inside the arguments, and before any came.
+#[tokio::test]
+async fn a_call_a_real_wire_cut_at_the_output_limit_never_runs() {
+    use rig_core::providers::openai::{OpenAIConfig, wire::DEEPSEEK};
+    use rig_core::test_utils::{MockHttpResponse, SequencedHttpClient};
+
+    let sse = |delta: serde_json::Value, finish: &str| {
+        let chunk = json!({"id": "c", "object": "chat.completion.chunk", "model": "m",
+            "choices": [{"index": 0, "delta": delta, "finish_reason": finish}]});
+        MockHttpResponse::success_typed(
+            format!("data: {chunk}\n\ndata: [DONE]\n\n"),
+            "text/event-stream",
+        )
+    };
+    for arguments in [r#"{"path": "a.rs", "content": "fn ma"#, ""] {
+        let cut = sse(
+            json!({"role": "assistant", "tool_calls": [{"index": 0, "id": ID, "type": "function",
+                "function": {"name": "write_file", "arguments": arguments}}]}),
+            "length",
+        );
+        let done = sse(json!({"role": "assistant", "content": "split it"}), "stop");
+        let http = SequencedHttpClient::new([cut, done]);
+        let model = OpenAIConfig::with_key(&DEEPSEEK, "key")
+            .connect(http.clone())
+            .completion("deepseek-v4-flash");
+        let tool = WriteFile::default();
+        let ran = tool.0.clone();
+        let agent = AgentBuilder::new(model).tool(tool).build();
+        let mut stream = agent.prompt("write a long file").max_turns(5).stream();
+        let mut outcome = Err("no final response".to_owned());
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::FinalResponse(response)) => {
+                    outcome = Ok(response.output());
+                }
+                Ok(_) => {}
+                Err(error) => {
+                    outcome = Err(error.to_string());
+                    break;
+                }
+            }
+        }
+        assert_eq!(outcome.as_deref(), Ok("split it"), "{arguments:?}");
+        assert_eq!(ran.load(Ordering::SeqCst), 0, "{arguments:?}: never runs");
+        let bodies: Vec<String> = http
+            .requests()
+            .iter()
+            .map(|request| String::from_utf8_lossy(&request.body).into_owned())
+            .collect();
+        assert!(
+            matches!(bodies.as_slice(), [_, next]
+                if next.contains("Not run: your reply reached the output limit")),
+            "{arguments:?}: {bodies:?}"
+        );
+    }
+}
+
+/// A structured answer whose fields are all optional, so `{}` satisfies it.
+#[derive(Deserialize, schemars::JsonSchema)]
+struct Note {
+    #[serde(default)]
+    _path: Option<String>,
+    #[serde(default)]
+    _content: Option<String>,
+}
+
+/// A cut call to the output tool is never the run's answer, whatever its
+/// arguments: the model reads that its reply reached the limit, and its
+/// next, whole answer is the run's.
+#[tokio::test]
+async fn a_cut_output_tool_call_is_never_the_answer() {
+    for cut in CUTS {
+        let whole = json!({"_path": "a.rs", "_content": "done"});
+        let model = MockCompletionModel::from_stream_turns([
+            cut_turn(OUTPUT_TOOL_NAME, cut),
+            vec![
+                MockStreamEvent::tool_call("call_2", OUTPUT_TOOL_NAME, whole),
+                MockStreamEvent::final_response_with_default_usage(),
+            ],
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model)
+            .tool(WriteFile::default())
+            .output_schema::<Note>()
+            .output_mode(OutputMode::Tool)
+            .build();
+        let outcome = drive(agent.prompt("write a long file").max_turns(5)).await;
+        assert!(
+            outcome
+                .as_deref()
+                .is_ok_and(|output| output.contains("done")),
+            "{cut:?}: the whole answer is the run's: {outcome:?}"
+        );
+        let requests = recorded.requests();
+        let answer = answer(&requests);
+        assert!(
+            answer
+                .as_deref()
+                .is_some_and(|text| text.contains("reached the output limit")),
+            "{cut:?}: the model reads that its reply reached the limit: {answer:?}"
+        );
+    }
+}
+
+/// Records every invalid call it is offered and leaves the decision to the
+/// run.
+#[derive(Clone, Default)]
+struct Offered(Arc<std::sync::Mutex<Vec<String>>>);
+
+impl AgentHook for Offered {
+    async fn on_invalid_tool_call(
+        &self,
+        _ctx: &HookContext,
+        context: &InvalidToolCallContext,
+    ) -> Option<InvalidToolCallAction> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(context.tool_name.clone());
+        None
+    }
+}
+
+/// A cut call naming a tool the turn does not offer is answered as cut
+/// off like any other: it is not offered to the invalid-call hook, and the
+/// run goes on.
+#[tokio::test]
+async fn a_cut_call_to_an_unknown_tool_is_answered_as_cut_off() {
+    for cut in CUTS {
+        let model = MockCompletionModel::from_stream_turns([
+            cut_turn("delete_everything", cut),
+            vec![
+                MockStreamEvent::text("split it"),
+                MockStreamEvent::final_response_with_default_usage(),
+            ],
+        ]);
+        let recorded = model.clone();
+        let offered = Offered::default();
+        let agent = AgentBuilder::new(model).tool(WriteFile::default()).build();
+        let runner = agent
+            .prompt("write a long file")
+            .max_turns(5)
+            .add_hook(offered.clone());
+        let outcome = drive(runner).await;
+        assert_eq!(outcome.as_deref(), Ok("split it"), "{cut:?}");
+        let seen = offered
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        assert!(
+            seen.is_empty(),
+            "{cut:?}: not offered to the hook: {seen:?}"
+        );
+        let answer = answer(&recorded.requests());
+        assert!(
+            answer
+                .as_deref()
+                .is_some_and(|text| text.contains("reached the output limit")),
+            "{cut:?}: {answer:?}"
+        );
+    }
+}
+
+/// Two calls the reply was cut off in, one naming a tool the turn does not
+/// offer, in either order: the reply closes both at its end, and each is
+/// answered as cut off, none offered to the hook, none run.
+#[tokio::test]
+async fn two_cut_calls_with_an_unknown_tool_are_both_answered_as_cut_off() {
+    for tools in [
+        ["delete_everything", "write_file"],
+        ["write_file", "delete_everything"],
+    ] {
+        let mut cut = Vec::new();
+        for (id, tool) in ["call_1", "call_2"].into_iter().zip(tools) {
+            cut.push(MockStreamEvent::tool_call_name_delta(id, tool));
+            cut.push(MockStreamEvent::tool_call_arguments_delta(
+                id,
+                r#"{"path": "a.rs", "content": "fn ma"#,
+            ));
+        }
+        cut.push(MockStreamEvent::FinalResponse(Finish {
+            reason: Some(FinishReason::Length),
+            ..mock_final(Usage::default())
+        }));
+        let model = MockCompletionModel::from_stream_turns([
+            cut,
+            vec![
+                MockStreamEvent::text("split it"),
+                MockStreamEvent::final_response_with_default_usage(),
+            ],
+        ]);
+        let recorded = model.clone();
+        let offered = Offered::default();
+        let tool = WriteFile::default();
+        let ran = tool.0.clone();
+        let agent = AgentBuilder::new(model).tool(tool).build();
+        let runner = agent
+            .prompt("write a long file")
+            .max_turns(5)
+            .add_hook(offered.clone());
+        let outcome = drive(runner).await;
+        assert_eq!(outcome.as_deref(), Ok("split it"), "{tools:?}");
+        assert_eq!(ran.load(Ordering::SeqCst), 0, "{tools:?}: none runs");
+        let seen = offered
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        assert!(
+            seen.is_empty(),
+            "{tools:?}: not offered to the hook: {seen:?}"
+        );
+        let results = recorded
+            .requests()
+            .get(1)
+            .map(|request| serde_json::to_string(&request.chat_history))
+            .and_then(Result::ok)
+            .unwrap_or_default();
+        assert_eq!(
+            results.matches("reached the output limit").count(),
+            2,
+            "{tools:?}: both are answered as cut off: {results}"
+        );
+    }
+}
+
+/// Answers every request with two calls that end, the first to a tool the
+/// turn does not offer, and then sends nothing more, as a provider that
+/// stalls.
+#[derive(Clone)]
+struct StallsAfterTwoCalls;
+
+impl rig_core::driver::Transport<rig_core::test_utils::MockScript> for StallsAfterTwoCalls {
+    fn send(
+        &self,
+        _request: CompletionRequest,
+        _exchange: rig_core::driver::Exchange,
+    ) -> rig_core::driver::Opening<rig_core::test_utils::MockFrame> {
+        let events = [
+            MockStreamEvent::tool_call_name_delta("call_1", "delete_everything"),
+            MockStreamEvent::tool_call_name_delta("call_2", "write_file"),
+            MockStreamEvent::tool_call_arguments_delta("call_1", "{}"),
+            MockStreamEvent::tool_call_arguments_delta("call_2", "{}"),
+            MockStreamEvent::tool_call_end("call_1"),
+            MockStreamEvent::tool_call_end("call_2"),
+        ];
+        let frames = futures::stream::iter(
+            events.map(|event| Ok(rig_core::test_utils::MockFrame::Event(event))),
+        )
+        .chain(futures::stream::pending());
+        rig_core::driver::Opening::ready(rig_core::driver::Opened::new(frames))
+    }
+}
+
+/// A call to an unknown tool that ended is decided at once, though the
+/// reply goes on: checking whether it was cut off reads only what has
+/// already arrived, so a stalled stream after it does not hold the
+/// decision back. With no hook, the run fails on the unknown tool.
+#[tokio::test]
+async fn an_unknown_call_is_decided_without_waiting_on_a_stalled_stream() {
+    let model = rig_core::driver::Model::new(
+        rig_core::test_utils::MockScript::new("stalls"),
+        StallsAfterTwoCalls,
+    );
+    let agent = AgentBuilder::new(model).tool(WriteFile::default()).build();
+    let outcome = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        drive(agent.prompt("write a file").max_turns(5)),
+    )
+    .await;
+    assert!(
+        matches!(&outcome, Ok(Err(error))
+            if error.contains("unknown or disallowed tool `delete_everything`")),
+        "the unknown call is decided while the stream stalls: {outcome:?}"
+    );
+}
+
+/// Two calls to tools the turn does not offer, both open when the reply
+/// reaches the limit, the later with no arguments yet. The reply ends the
+/// later call with the arguments it states, `{}`, before its end, and each
+/// call is still answered as cut off, none offered to the hook.
+#[tokio::test]
+async fn two_cut_unknown_calls_the_later_without_arguments_are_answered_as_cut_off() {
+    for first in [Some("{"), None, Some(r#"{"x":1}"#)] {
+        let mut cut = vec![MockStreamEvent::tool_call_name_delta("call_1", "nope_a")];
+        cut.extend(first.map(|args| MockStreamEvent::tool_call_arguments_delta("call_1", args)));
+        cut.push(MockStreamEvent::tool_call_name_delta("call_2", "nope_b"));
+        cut.push(MockStreamEvent::FinalResponse(Finish {
+            reason: Some(FinishReason::Length),
+            ..mock_final(Usage::default())
+        }));
+        let model = MockCompletionModel::from_stream_turns([
+            cut,
+            vec![
+                MockStreamEvent::text("split it"),
+                MockStreamEvent::final_response_with_default_usage(),
+            ],
+        ]);
+        let recorded = model.clone();
+        let offered = Offered::default();
+        let agent = AgentBuilder::new(model).tool(WriteFile::default()).build();
+        let runner = agent
+            .prompt("write a long file")
+            .max_turns(5)
+            .add_hook(offered.clone());
+        let outcome = drive(runner).await;
+        assert_eq!(outcome.as_deref(), Ok("split it"), "{first:?}");
+        let seen = offered
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        assert!(
+            seen.is_empty(),
+            "{first:?}: not offered to the hook: {seen:?}"
+        );
+        let results = recorded
+            .requests()
+            .get(1)
+            .map(|request| serde_json::to_string(&request.chat_history))
+            .and_then(Result::ok)
+            .unwrap_or_default();
+        assert_eq!(
+            results.matches("reached the output limit").count(),
+            2,
+            "{first:?}: both are answered as cut off: {results}"
+        );
+    }
+}
+
+/// On the Responses API, the provider states a cut call done a frame
+/// before the reply ends. A call to an unknown tool cut there, with the
+/// two frames in separate network reads, is answered as cut off, not
+/// offered to the hook, every time the model sends it.
+#[tokio::test]
+async fn a_responses_call_cut_between_reads_is_answered_as_cut_off() {
+    use rig_core::providers::openai::{OpenAIConfig, wire::OPENAI};
+    use rig_core::test_utils::PacedStreamingClient;
+
+    let paced = PacedStreamingClient {
+        chunks: vec![
+            "event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\",\"object\":\"response\",\"status\":\"in_progress\",\"model\":\"gpt-5.4\",\"output\":[]}}\n\n",
+            "event: response.output_item.added\ndata: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"function_call\",\"id\":\"fc_1\",\"call_id\":\"call_1\",\"name\":\"delete_everything\",\"arguments\":\"\",\"status\":\"in_progress\"}}\n\n",
+            "event: response.function_call_arguments.delta\ndata: {\"type\":\"response.function_call_arguments.delta\",\"output_index\":0,\"item_id\":\"fc_1\",\"delta\":\"{\\\"x\\\":481\"}\n\n",
+            "event: response.output_item.done\ndata: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"type\":\"function_call\",\"id\":\"fc_1\",\"call_id\":\"call_1\",\"name\":\"delete_everything\",\"arguments\":\"{\\\"x\\\":481\",\"status\":\"incomplete\"}}\n\n",
+            "event: response.incomplete\ndata: {\"type\":\"response.incomplete\",\"response\":{\"id\":\"resp_1\",\"object\":\"response\",\"status\":\"incomplete\",\"model\":\"gpt-5.4\",\"incomplete_details\":{\"reason\":\"max_output_tokens\"},\"output\":[{\"type\":\"function_call\",\"id\":\"fc_1\",\"call_id\":\"call_1\",\"name\":\"delete_everything\",\"arguments\":\"{\\\"x\\\":481\",\"status\":\"incomplete\"}]}}\n\n",
+        ],
+        gap: std::time::Duration::from_millis(20),
+    };
+    let model = OpenAIConfig::with_key(&OPENAI, "key")
+        .connect(paced)
+        .completion("gpt-5.4");
+    let offered = Offered::default();
+    let agent = AgentBuilder::new(model).tool(WriteFile::default()).build();
+    let runner = agent
+        .prompt("write a long file")
+        .max_turns(2)
+        .add_hook(offered.clone());
+    let outcome = drive(runner).await;
+    let seen = offered
+        .0
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone();
+    assert!(seen.is_empty(), "not offered to the hook: {seen:?}");
+    // Every reply is the same cut call, so the run ends at its turn limit,
+    // not on an unknown tool.
+    assert!(
+        matches!(&outcome, Err(error) if error.contains("max turns")),
+        "{outcome:?}"
+    );
+}
+
+/// The same two cut calls to unknown tools on a real wire, DeepSeek's chat
+/// stream: the later with no arguments, the earlier with `{` or none.
+#[tokio::test]
+async fn two_cut_unknown_calls_on_a_real_wire_are_answered_as_cut_off() {
+    use rig_core::providers::openai::{OpenAIConfig, wire::DEEPSEEK};
+    use rig_core::test_utils::{MockHttpResponse, SequencedHttpClient};
+
+    let sse = |delta: serde_json::Value, finish: &str| {
+        let chunk = json!({"id": "c", "object": "chat.completion.chunk", "model": "m",
+            "choices": [{"index": 0, "delta": delta, "finish_reason": finish}]});
+        MockHttpResponse::success_typed(
+            format!("data: {chunk}\n\ndata: [DONE]\n\n"),
+            "text/event-stream",
+        )
+    };
+    for first in ["{", ""] {
+        let cut = sse(
+            json!({"role": "assistant", "tool_calls": [
+                {"index": 0, "id": "call_1", "type": "function",
+                    "function": {"name": "nope_a", "arguments": first}},
+                {"index": 1, "id": "call_2", "type": "function",
+                    "function": {"name": "nope_b", "arguments": ""}}]}),
+            "length",
+        );
+        let done = sse(json!({"role": "assistant", "content": "split it"}), "stop");
+        let http = SequencedHttpClient::new([cut, done]);
+        let model = OpenAIConfig::with_key(&DEEPSEEK, "key")
+            .connect(http.clone())
+            .completion("deepseek-v4-flash");
+        let offered = Offered::default();
+        let agent = AgentBuilder::new(model).tool(WriteFile::default()).build();
+        let runner = agent
+            .prompt("write a long file")
+            .max_turns(5)
+            .add_hook(offered.clone());
+        let outcome = drive(runner).await;
+        assert_eq!(outcome.as_deref(), Ok("split it"), "{first:?}");
+        let seen = offered
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        assert!(
+            seen.is_empty(),
+            "{first:?}: not offered to the hook: {seen:?}"
+        );
+        let bodies: Vec<String> = http
+            .requests()
+            .iter()
+            .map(|request| String::from_utf8_lossy(&request.body).into_owned())
+            .collect();
+        assert!(
+            matches!(bodies.as_slice(), [_, next]
+                if next.matches("reached the output limit").count() == 2),
+            "{first:?}: {bodies:?}"
+        );
+    }
+}

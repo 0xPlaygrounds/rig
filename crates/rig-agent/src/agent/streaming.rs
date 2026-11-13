@@ -420,6 +420,8 @@ pub async fn stream_to_stdout(
 }
 
 #[cfg(test)]
+mod cut_off_tool_call_tests;
+#[cfg(test)]
 mod malformed_tool_args_tests;
 #[cfg(test)]
 mod tests;

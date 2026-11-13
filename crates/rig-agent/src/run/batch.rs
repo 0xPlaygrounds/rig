@@ -1,6 +1,7 @@
 //! The tool calls of one assistant turn and the answers fed for them.
 
 use rig_core::message::{Message, ToolCall, UserContent};
+use rig_core::tool::feedback::{output_limit_feedback, tool_result_message};
 use serde::{Deserialize, Serialize};
 
 use super::calls::{ExecCall, MalformedCall, PendingToolCall};
@@ -18,11 +19,26 @@ pub(super) enum ToolSlot {
 
 impl ToolSlot {
     /// The single owner of a call's classification: a preresolved result
-    /// answers it, unparsed arguments make it malformed, and anything else is
-    /// executable.
-    pub(super) fn classify(tool_call: ToolCall, preresolved: Option<UserContent>) -> Self {
+    /// answers it, a call the reply was `cut_off` in the middle of is
+    /// answered as such whatever its arguments, unparsed arguments make it
+    /// malformed, and anything else is executable.
+    pub(super) fn classify(
+        tool_call: ToolCall,
+        preresolved: Option<UserContent>,
+        cut_off: bool,
+    ) -> Self {
         match preresolved {
             Some(content) => Self::Answered(content),
+            None if cut_off => {
+                let function = &tool_call.function;
+                let feedback =
+                    output_limit_feedback(function.name.as_str(), &function.raw_arguments());
+                Self::Answered(tool_result_message(
+                    tool_call.id,
+                    tool_call.function.name,
+                    feedback,
+                ))
+            }
             None if tool_call.function.invalid_arguments.is_some() => Self::Malformed(tool_call),
             None => Self::Execute(tool_call),
         }
