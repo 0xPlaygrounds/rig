@@ -966,6 +966,7 @@ async fn a_streamed_run_reads_back_item_by_item() {
             "toolExecutionCommitted",
             "toolExecutionStarted",
             "toolResult",
+            "toolResultItem",
         ]
     );
     assert_eq!(fragments, r#"{"x": 2, "y": 3}"#);

@@ -293,20 +293,24 @@ async fn agent_stream(model: DynModel<Completion>, stop_after: Option<usize>) ->
                     tool_call.function.name, tool_call.id
                 );
             }
+            Ok(MultiTurnStreamItem::ToolResultItem {
+                tool_result,
+                index,
+                count,
+            }) => {
+                println!(
+                    "output {}/{count} of `{}` ({}): {}",
+                    index + 1,
+                    tool_result.name,
+                    tool_result.call,
+                    render(&tool_result.content)
+                );
+            }
             Ok(MultiTurnStreamItem::ToolResult { tool_result }) => {
-                let content: Vec<String> = tool_result
-                    .content
-                    .iter()
-                    .map(|content| match content {
-                        ToolResultContent::Text(text) => text.text.clone(),
-                        ToolResultContent::Json { value } => value.to_string(),
-                        ToolResultContent::Image(_) => "<image>".to_owned(),
-                    })
-                    .collect();
                 println!(
                     "tool result for {}: {}",
                     tool_result.call,
-                    content.join(" ")
+                    render(&tool_result.content)
                 );
             }
             Ok(MultiTurnStreamItem::FinalResponse(response)) => {
@@ -365,4 +369,17 @@ async fn main() -> Result<()> {
     }
     println!("\nevery call's joined fragments are the arguments its end states");
     Ok(())
+}
+
+/// The tool result content as one line.
+fn render(content: &[ToolResultContent]) -> String {
+    content
+        .iter()
+        .map(|content| match content {
+            ToolResultContent::Text(text) => text.text.clone(),
+            ToolResultContent::Json { value } => value.to_string(),
+            ToolResultContent::Image(_) => "<image>".to_owned(),
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }

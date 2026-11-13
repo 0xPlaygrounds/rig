@@ -13,7 +13,7 @@ use rig_core::{
 };
 
 use crate::{
-    agent::engine::{DriveItem, StreamingTurnSource, Surfaced, drive_agent},
+    agent::engine::{DriveItem, LiveTool, StreamingTurnSource, Surfaced, drive_agent},
     agent::runner::AgentRunner,
     streaming::{Item, StreamEvent},
 };
@@ -82,6 +82,30 @@ pub enum MultiTurnStreamItem {
         /// and result carry.
         tool_call: rig_core::message::ToolCall,
     },
+    /// One item of a tool's **accepted output**, reported as soon as the
+    /// call's outcome hooks accept it, without waiting for the rest of the
+    /// batch. The call goes on only once the stream's consumer has taken the
+    /// item, as for [`ToolExecutionStarted`](Self::ToolExecutionStarted).
+    ///
+    /// An output that is exactly one JSON array is reported one element at a
+    /// time, each as one JSON block (an empty array reports nothing); any
+    /// other output is one item holding all its blocks. Text is never
+    /// reparsed as JSON. Items come in completion order under
+    /// `tool_concurrency`. Every started call that answers reports its items,
+    /// a hook-skipped one included; a call answered by invalid-call recovery
+    /// reports none. An item is not a commit: items stay reported when a
+    /// sibling later fails the batch, and the committed
+    /// [`ToolResult`](Self::ToolResult) still follows a batch that settles.
+    /// Show these for progress; record only the `ToolResult`.
+    ToolResultItem {
+        /// This item's content, with the call id, name and error flag of the
+        /// result the batch commits for the call.
+        tool_result: rig_core::message::ToolResult,
+        /// The item's position in the output, from zero.
+        index: usize,
+        /// How many items the output has.
+        count: usize,
+    },
     /// Confirmation that Rig **executed and committed** a tool call. It is
     /// surfaced together with its `ToolResult` only after the whole batch
     /// settles successfully; the live start is
@@ -104,7 +128,8 @@ pub enum MultiTurnStreamItem {
     /// batch commits and surfaces atomically at every `tool_concurrency`
     /// (including the sequential default): results are surfaced in call order
     /// only after the whole batch settles successfully; a run that terminates
-    /// mid-batch surfaces no successful tool results.
+    /// mid-batch surfaces no successful tool results. The live output is
+    /// [`ToolResultItem`](Self::ToolResultItem).
     ToolResult {
         /// The result; `tool_result.call` is the id of the call it answers.
         tool_result: rig_core::message::ToolResult,
@@ -155,6 +180,23 @@ impl From<Surfaced> for MultiTurnStreamItem {
             Surfaced::CompletionCall(call) => Self::CompletionCall(call),
             Surfaced::ModelTurnRetried { turn } => Self::ModelTurnRetried { turn },
             Surfaced::Final(response) => Self::FinalResponse(response),
+        }
+    }
+}
+
+impl From<LiveTool> for MultiTurnStreamItem {
+    fn from(live: LiveTool) -> Self {
+        match live {
+            LiveTool::Started(tool_call) => Self::ToolExecutionStarted { tool_call },
+            LiveTool::Output {
+                tool_result,
+                index,
+                count,
+            } => Self::ToolResultItem {
+                tool_result,
+                index,
+                count,
+            },
         }
     }
 }
@@ -242,10 +284,7 @@ impl AgentRunner {
         .flat_map(|item| {
             let (head, tools) = match item {
                 Ok(DriveItem::Surfaced(item)) => (Some(Ok(item.into())), None),
-                Ok(DriveItem::Started(tool_call)) => (
-                    Some(Ok(MultiTurnStreamItem::ToolExecutionStarted { tool_call })),
-                    None,
-                ),
+                Ok(DriveItem::Live(live)) => (Some(Ok(live.into())), None),
                 Ok(DriveItem::Projected(items)) => (None, Some(items)),
                 Ok(DriveItem::Done(_)) => (None, None),
                 Err(err) => (Some(Err(err)), None),
@@ -448,5 +487,7 @@ mod cut_off_tool_call_tests;
 mod malformed_tool_args_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tool_result_item_tests;
 #[cfg(test)]
 mod tool_started_tests;
