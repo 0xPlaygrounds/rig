@@ -75,7 +75,8 @@ model to read, and /skill:<name>.";
             on rig_basics::models::ModelsPlugin, "rig-basics", [], None,
                 "/model, /effort and the model picker.";
             on rig_basics::login::LoginPlugin, "rig-basics", [], None,
-                "/login and /logout: the ChatGPT plan, and providers' API keys.";
+                "/login and /logout: the ChatGPT plan, and providers' API keys; [login] app_name in \
+settings.toml names the app the sign-in pages return to.";
             on rig_basics::models::defaults::DefaultsPlugin, "rig-basics", [], None,
                 "The model and reasoning a new session starts with: [model] in settings.toml, \
 which the last choice rewrites.";

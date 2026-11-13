@@ -324,3 +324,58 @@ async fn an_item_reported_before_a_sibling_ends_the_run_stays_reported() {
     assert!(failed, "the hook ends the run");
     assert_eq!((items, results), (2, 0));
 }
+
+/// Lets `wait` finish once the call to `object` was stopped.
+struct StopObjectThenRelease(Arc<Notify>);
+
+impl AgentHook for StopObjectThenRelease {
+    async fn on_dispatch(&self, _: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        match event.tool_name() {
+            Some("object") => {
+                self.0.notify_one();
+                DispatchAction::stop("stop the run")
+            }
+            _ => DispatchAction::proceed(),
+        }
+    }
+}
+
+/// A call already running when a sibling ends the run is drained, and it
+/// reports its output as it finishes; the failed batch commits no result.
+#[tokio::test]
+async fn a_call_running_when_a_sibling_ends_the_run_still_reports_its_output() {
+    let gate = Arc::new(Notify::new());
+    let agent = AgentBuilder::new(calls_model(&["wait", "object"]))
+        .tool(WaitTool {
+            gate: Some(gate.clone()),
+        })
+        .tool(ObjectTool::default())
+        .build();
+    let mut stream = agent
+        .prompt("use tools")
+        .max_turns(3)
+        .tool_concurrency(2)
+        .add_hook(StopObjectThenRelease(gate))
+        .stream();
+
+    let (mut items, mut results, mut failed) = (Vec::new(), 0, false);
+    let drained = tokio::time::timeout(Duration::from_secs(5), async {
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(item) => {
+                    items.extend(seen(&item));
+                    results += usize::from(matches!(item, MultiTurnStreamItem::ToolResult { .. }));
+                }
+                Err(_) => failed = true,
+            }
+        }
+    })
+    .await;
+    assert!(drained.is_ok(), "the stop must release `wait`");
+    assert!(failed, "the hook ends the run");
+    assert_eq!(results, 0);
+    assert_eq!(
+        items,
+        [(id("call_1"), "wait".to_string(), json_block(json!(7)), 0, 1)]
+    );
+}

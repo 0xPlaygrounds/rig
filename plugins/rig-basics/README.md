@@ -15,7 +15,8 @@ rig-harness's public API. Each plugin is its own name in `[plugins]` of
 - `models`: `/model`, `/effort` and the model picker (`ModelsPlugin`), and
   the model a new session starts on (`defaults::DefaultsPlugin`);
 - `login`: `/login` and `/logout` for the ChatGPT plan's models and the
-  providers' API keys (`LoginPlugin`);
+  providers' API keys (`LoginPlugin`), and `[login] app_name`, the app the
+  ChatGPT sign-in pages send the user back to;
 - `session_picker`: the session and conversation lists of `/resume`,
   `/fork` and `/agents` (`SessionPickerPlugin`, which the plugins of those
   commands add, so it is not listed on its own);

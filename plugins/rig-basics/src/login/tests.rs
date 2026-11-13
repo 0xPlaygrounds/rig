@@ -887,3 +887,92 @@ fn the_browser_opener_gets_no_secret() {
     assert!(environment.contains("OPENER_ENV="), "{environment}");
     assert!(!environment.contains(PROBE), "the opener inherited {PROBE}");
 }
+
+/// An app whose `settings.toml` is `settings`, with `/login` added.
+fn with_settings(name: &str, settings: &str) -> App {
+    let home = scratch_home(name);
+    let (mut app, _) = app_in(&home, &SessionId::generate());
+    app.insert_resource(rig_harness::settings::Settings::from_toml(settings))
+        .add_plugins((AgentPlugin, LoginPlugin));
+    app
+}
+
+/// The value of `key` in `url`'s query, with the `:` and `/` of a URL in
+/// it decoded.
+fn query_value(url: &str, key: &str) -> Option<String> {
+    let query = url.split_once('?')?.1;
+    let value = query
+        .split('&')
+        .find_map(|pair| pair.strip_prefix(key)?.strip_prefix('='))?;
+    Some(value.replace("%3A", ":").replace("%2F", "/"))
+}
+
+/// The page the browser lands on when the user denies the sign-in on
+/// `authorize_url`.
+fn denied_page(authorize_url: &str) -> Option<String> {
+    use std::io::{Read, Write};
+
+    let redirect = query_value(authorize_url, "redirect_uri")?;
+    let state = query_value(authorize_url, "state")?;
+    let (address, path) = redirect.strip_prefix("http://")?.split_once('/')?;
+    let mut stream = std::net::TcpStream::connect(address).ok()?;
+    write!(
+        stream,
+        "GET /{path}?error=access_denied&state={state} HTTP/1.1\r\nHost: {address}\r\n\r\n"
+    )
+    .ok()?;
+    let mut page = String::new();
+    stream.read_to_string(&mut page).ok()?;
+    Some(page)
+}
+
+/// `[login] app_name` names the app the ChatGPT sign-in pages send the user
+/// back to. The opener plays the browser and denies the sign-in, so no
+/// token is asked for.
+#[test]
+fn the_sign_in_pages_name_the_app_the_settings_name() {
+    let app = with_settings("login-app-name", "[login]\napp_name = \"Acme & Co\"\n");
+    let problems = app
+        .world()
+        .resource::<rig_harness::settings::Settings>()
+        .problems()
+        .join("\n");
+    assert!(problems.is_empty(), "{problems}");
+    let (landed, page) = std::sync::mpsc::channel();
+    let auth = app
+        .world()
+        .resource::<crate::login::Session>()
+        .auth
+        .clone()
+        .with_browser_opener(move |url| {
+            let url = url.to_owned();
+            let landed = landed.clone();
+            std::thread::spawn(move || landed.send(denied_page(&url)).ok());
+            true
+        });
+    let signed_in = bevy_tasks::block_on(auth.sign_in_with_browser(&Backend::default(), |_| {}));
+    assert!(
+        matches!(&signed_in, Err(AuthError::Message(why)) if why.contains("access_denied")),
+        "{signed_in:?}"
+    );
+    let page = page
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    assert!(page.contains("Return to Acme &amp; Co."), "{page}");
+}
+
+/// An empty `[login] app_name` is refused by name rather than read as
+/// unset.
+#[test]
+fn an_empty_app_name_is_refused() {
+    let app = with_settings("login-empty-app-name", "[login]\napp_name = \" \"\n");
+    let problems = app
+        .world()
+        .resource::<rig_harness::settings::Settings>()
+        .problems()
+        .join("\n");
+    assert!(problems.contains("[login]"), "{problems}");
+    assert!(problems.contains("app_name"), "{problems}");
+}
