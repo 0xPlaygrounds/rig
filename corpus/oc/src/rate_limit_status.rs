@@ -1,10 +1,9 @@
 //! A status item for provider quotas. The plugin wraps the HTTP client every model is reached
 //! through ([`Connector::wrap_http`]) and reads the rate-limit headers of each reply to a model
-//! call (OpenAI's and Groq's `x-ratelimit-*-requests|tokens`, Anthropic's `anthropic-ratelimit-*`,
-//! OpenRouter's `x-ratelimit-*` and the IETF draft's `ratelimit-*`), keyed by the call's effect id
-//! from its [`Serving`]. When the call's [`Outcome`] arrives, its reading becomes the latest
-//! [`Quota`] of the provider it was [`SentTo`] and the key it was sent with; a 429 marks the quota
-//! limited until the wait the provider asked for. The plugin never sends a request of its own.
+//! call with [`RateLimits::from_headers`], keyed by the call's effect id from its [`Serving`].
+//! When the call's [`Outcome`] arrives, its reading becomes the latest [`Quota`] of the provider
+//! it was [`SentTo`] and the key it was sent with; a 429 marks the quota limited until the wait
+//! the provider asked for. The plugin never sends a request of its own.
 //!
 //! Each agent's status item shows its model's provider's latest quota, `req 42/50 · tok 18k/40k ·
 //! resets 34s`, in the tone of the tighter allowance (yellow under 25 % left, red under 5 % or
@@ -14,11 +13,12 @@
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::Connector;
 use rig_harness::rig_core::effect::EffectId;
+use rig_harness::rig_core::error::{self, RateLimits};
 use rig_harness::rig_core::http_client::{
     self, Bytes, DynHttpClient, HeaderMap, HttpClientExt, LazyBody, MultipartForm, Request,
     Response, StreamingResponse,
@@ -29,46 +29,6 @@ use rig_harness::rig_core::wasm_compat::WasmCompatSend;
 // The test drives the status item, which only the terminal view has.
 #[cfg(all(test, feature = "tui"))]
 mod tests;
-
-/// The `(limit, remaining, reset)` headers of a request allowance, in the
-/// formats of the main providers; the first pair present wins.
-const REQUESTS: [[&str; 3]; 4] = [
-    [
-        "x-ratelimit-limit-requests",
-        "x-ratelimit-remaining-requests",
-        "x-ratelimit-reset-requests",
-    ],
-    [
-        "anthropic-ratelimit-requests-limit",
-        "anthropic-ratelimit-requests-remaining",
-        "anthropic-ratelimit-requests-reset",
-    ],
-    [
-        "x-ratelimit-limit",
-        "x-ratelimit-remaining",
-        "x-ratelimit-reset",
-    ],
-    ["ratelimit-limit", "ratelimit-remaining", "ratelimit-reset"],
-];
-
-/// The `(limit, remaining, reset)` headers of a token allowance.
-const TOKENS: [[&str; 3]; 3] = [
-    [
-        "x-ratelimit-limit-tokens",
-        "x-ratelimit-remaining-tokens",
-        "x-ratelimit-reset-tokens",
-    ],
-    [
-        "anthropic-ratelimit-tokens-limit",
-        "anthropic-ratelimit-tokens-remaining",
-        "anthropic-ratelimit-tokens-reset",
-    ],
-    [
-        "anthropic-ratelimit-input-tokens-limit",
-        "anthropic-ratelimit-input-tokens-remaining",
-        "anthropic-ratelimit-input-tokens-reset",
-    ],
-];
 
 /// Shows the focused agent's provider quota in the status line and lists
 /// every provider's with `/quota`.
@@ -220,21 +180,14 @@ impl Quotas {
     }
 }
 
-/// An allowance as its headers say it, its reset counted from the reply.
-#[derive(Clone, Copy, Debug)]
-struct Read {
-    remaining: u64,
-    limit: u64,
-    resets_in: Option<Duration>,
-}
-
-impl Read {
-    /// The allowance, its reset counted from `now`.
-    fn at(self, now: Duration) -> Allowance {
-        Allowance {
-            remaining: self.remaining,
-            limit: self.limit,
-            resets: self.resets_in.map(|wait| now + wait),
+impl Allowance {
+    /// `read`, from a reply that came at `now`, its reset counted from then;
+    /// a reset too far off for the clock to hold is none.
+    fn at(read: error::Allowance, now: Duration) -> Self {
+        Self {
+            remaining: read.remaining,
+            limit: read.limit,
+            resets: read.resets_in.and_then(|wait| now.checked_add(wait)),
         }
     }
 }
@@ -243,8 +196,7 @@ impl Read {
 #[derive(Clone, Debug)]
 struct Reading {
     key: String,
-    requests: Option<Read>,
-    tokens: Option<Read>,
+    limits: RateLimits,
 }
 
 /// The readings of model calls whose outcome has not arrived, by effect
@@ -296,12 +248,8 @@ impl Observing {
             Err(error) => error.non_success_headers(),
         };
         if let (Some(effect), Some(headers)) = (effect, headers) {
-            let now = SystemTime::now();
-            let reading = Reading {
-                key,
-                requests: allowance(headers, &REQUESTS, now),
-                tokens: allowance(headers, &TOKENS, now),
-            };
+            let limits = RateLimits::from_headers(headers, SystemTime::now());
+            let reading = Reading { key, limits };
             self.seen.lock().insert(effect, reading);
         }
         reply
@@ -368,77 +316,6 @@ fn key_of(headers: &HeaderMap) -> String {
     }
 }
 
-/// The first allowance of `names` the headers give both a limit and a
-/// remainder for.
-fn allowance(headers: &HeaderMap, names: &[[&str; 3]], now: SystemTime) -> Option<Read> {
-    let text = |name: &str| headers.get(name)?.to_str().ok().map(str::trim);
-    names.iter().find_map(|[limit, remaining, reset]| {
-        Some(Read {
-            limit: leading_number(text(limit)?)?,
-            remaining: leading_number(text(remaining)?)?,
-            resets_in: text(reset).and_then(|reset| reset_in(reset, now)),
-        })
-    })
-}
-
-/// The whole number a header value starts with: `100` of `100;w=60`.
-fn leading_number(text: &str) -> Option<u64> {
-    let end = text
-        .find(|c: char| !c.is_ascii_digit())
-        .unwrap_or(text.len());
-    text.get(..end)?.parse().ok()
-}
-
-/// How long until a reset a header names, as of `now`: seconds (`34`),
-/// a Unix time in seconds or milliseconds (OpenRouter), a Go duration
-/// (`6m0s`, `20ms`: OpenAI) or a date (`2026-01-01T00:00:00Z`: Anthropic).
-fn reset_in(text: &str, now: SystemTime) -> Option<Duration> {
-    if let Ok(number) = text.parse::<f64>() {
-        let epoch = now.duration_since(UNIX_EPOCH).ok()?.as_secs_f64();
-        let seconds = if number > 1e12 {
-            number / 1000.0 - epoch
-        } else if number > 1e9 {
-            number - epoch
-        } else {
-            number
-        };
-        return Duration::try_from_secs_f64(seconds.max(0.0)).ok();
-    }
-    if let Some(wait) = go_duration(text) {
-        return Some(wait);
-    }
-    let at = chrono::DateTime::parse_from_rfc3339(text)
-        .or_else(|_| chrono::DateTime::parse_from_rfc2822(text))
-        .ok()?;
-    Some(SystemTime::from(at).duration_since(now).unwrap_or_default())
-}
-
-/// A Go duration such as `1h2m3.5s` or `20ms`.
-fn go_duration(text: &str) -> Option<Duration> {
-    let mut rest = text;
-    let mut seconds = 0.0;
-    while !rest.is_empty() {
-        let number = rest.find(|c: char| !(c.is_ascii_digit() || c == '.'))?;
-        let (value, after) = rest.split_at_checked(number)?;
-        let unit = after
-            .find(|c: char| c.is_ascii_digit())
-            .unwrap_or(after.len());
-        let (unit, next) = after.split_at_checked(unit)?;
-        let scale = match unit {
-            "h" => 3600.0,
-            "m" => 60.0,
-            "s" => 1.0,
-            "ms" => 1e-3,
-            "us" | "µs" => 1e-6,
-            "ns" => 1e-9,
-            _ => return None,
-        };
-        seconds += value.parse::<f64>().ok()? * scale;
-        rest = next;
-    }
-    (!text.is_empty()).then(|| Duration::try_from_secs_f64(seconds).ok())?
-}
-
 /// `18k`, `1.5k`, `2M`, `42`.
 fn count(n: u64) -> String {
     let scaled = |unit: f64, suffix: &str| {
@@ -458,7 +335,9 @@ fn count(n: u64) -> String {
 
 /// `34s`, `6m`, `1m30s`, `2h5m`, rounded up to the second.
 fn wait(left: Duration) -> String {
-    let seconds = left.as_secs() + u64::from(left.subsec_nanos() > 0);
+    let seconds = left
+        .as_secs()
+        .saturating_add(u64::from(left.subsec_nanos() > 0));
     let (hours, minutes, seconds) = (seconds / 3600, seconds / 60 % 60, seconds % 60);
     match (hours, minutes, seconds) {
         (0, 0, s) => format!("{s}s"),
@@ -489,10 +368,14 @@ fn read_reply(
         .as_ref()
         .err()
         .filter(|report| report.http_status == Some(429))
-        .map(|report| report.retry_after(SystemTime::now()).map(|wait| now + wait));
+        .map(|report| {
+            let wait = report.retry_after(SystemTime::now());
+            wait.and_then(|wait| now.checked_add(wait))
+        });
     let key = reading.as_ref().map(|reading| reading.key.clone());
-    let reading = reading.filter(|reading| reading.requests.is_some() || reading.tokens.is_some());
-    if reading.is_none() && limited.is_none() {
+    let limits = reading.map(|reading| reading.limits);
+    let limits = limits.filter(|limits| limits.requests.is_some() || limits.tokens.is_some());
+    if limits.is_none() && limited.is_none() {
         if outcome.is_ok() {
             for quota in quotas.0.iter_mut().filter(|q| q.provider == provider) {
                 quota.limited = None;
@@ -504,9 +387,10 @@ fn read_reply(
         return;
     };
     quota.received = now;
-    if let Some(reading) = reading {
-        quota.requests = reading.requests.map(|read| read.at(now)).or(quota.requests);
-        quota.tokens = reading.tokens.map(|read| read.at(now)).or(quota.tokens);
+    if let Some(limits) = limits {
+        let at = |read: Option<error::Allowance>| read.map(|read| Allowance::at(read, now));
+        quota.requests = at(limits.requests).or(quota.requests);
+        quota.tokens = at(limits.tokens).or(quota.tokens);
     }
     quota.limited = limited;
 }

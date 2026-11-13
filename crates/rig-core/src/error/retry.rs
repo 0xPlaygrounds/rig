@@ -122,14 +122,15 @@ fn says_rate_limit(text: &str) -> bool {
 }
 
 /// `secs` as a duration, when it is a sane one.
-fn seconds(secs: f64) -> Option<Duration> {
+pub(super) fn seconds(secs: f64) -> Option<Duration> {
     Duration::try_from_secs_f64(secs.max(0.0)).ok()
 }
 
 /// The wait `text` starts with, as Go writes a duration: numbers each
-/// followed by `h`, `m`, `s` or `ms` (`6m0s`, `1h2m3.5s`, `20ms`, `.5s`).
-/// A space may part the first number from its unit (`1.5 s`).
-fn hinted_wait(text: &str) -> Option<Duration> {
+/// followed by `h`, `m`, `s`, `ms`, `us`, `µs` or `ns` (`6m0s`, `1h2m3.5s`,
+/// `20ms`, `.5s`). A space may part the first number from its unit
+/// (`1.5 s`).
+pub(super) fn hinted_wait(text: &str) -> Option<Duration> {
     let mut rest = text;
     let mut total = None;
     loop {
@@ -147,14 +148,21 @@ fn hinted_wait(text: &str) -> Option<Duration> {
         } else {
             unit
         };
+        // Go writes the micro sign; the Greek mu looks the same.
+        let (micro, unit) = match unit.strip_prefix(['\u{b5}', '\u{3bc}']) {
+            Some(unit) => (true, unit),
+            None => (false, unit),
+        };
         let unit_end = unit
             .find(|c: char| !c.is_ascii_alphabetic())
             .unwrap_or(unit.len());
-        let scale = match unit.get(..unit_end)? {
-            "h" => 3600.0,
-            "m" => 60.0,
-            "s" => 1.0,
-            "ms" => 0.001,
+        let scale = match (micro, unit.get(..unit_end)?) {
+            (false, "h") => 3600.0,
+            (false, "m") => 60.0,
+            (false, "s") => 1.0,
+            (false, "ms") => 0.001,
+            (false, "us") | (true, "s") => 1e-6,
+            (false, "ns") => 1e-9,
             _ => return None,
         };
         total = Some(total.unwrap_or(0.0) + amount * scale);

@@ -23,7 +23,10 @@ use crate::{
     vector_store::VectorStoreError,
 };
 
+mod rate_limits;
 mod retry;
+
+pub use rate_limits::{Allowance, RateLimits};
 
 /// Normalized classification of an [`ErrorReport`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
