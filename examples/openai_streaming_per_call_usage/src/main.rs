@@ -127,7 +127,7 @@ async fn main() -> Result<()> {
                 println!("\n\nmodel requested tool: {}", tool_call.function.name);
             }
             // Rig executed and atomically committed this tool call after its
-            // batch settled. Live start/result observation belongs in hooks.
+            // batch settled. `ToolExecutionStarted` reports the live start.
             MultiTurnStreamItem::ToolExecutionCommitted { tool_call, .. } => {
                 println!("rig committed tool execution: {}", tool_call.function.name);
             }

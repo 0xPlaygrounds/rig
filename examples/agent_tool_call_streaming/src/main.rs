@@ -287,6 +287,12 @@ async fn agent_stream(model: DynModel<Completion>, stop_after: Option<usize>) ->
                     tool_call.function.name, tool_call.id
                 );
             }
+            Ok(MultiTurnStreamItem::ToolExecutionStarted { tool_call }) => {
+                println!(
+                    "started call `{}` ({})",
+                    tool_call.function.name, tool_call.id
+                );
+            }
             Ok(MultiTurnStreamItem::ToolResult { tool_result }) => {
                 let content: Vec<String> = tool_result
                     .content
