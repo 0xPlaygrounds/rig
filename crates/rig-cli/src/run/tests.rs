@@ -2145,3 +2145,105 @@ fn a_screen_taken_before_a_restart_stays_taken_until_handed_over() {
     assert!(!screen.hand_over());
     assert!(!screen.took(false));
 }
+
+/// A signal that ends the launcher while it asks for a secret, here after
+/// a reload whose front took the screen, puts the terminal back before the
+/// launcher ends by that signal. The test runs itself again as the
+/// launcher, to signal it at the prompt and read its stderr.
+#[cfg(unix)]
+#[test]
+fn a_signal_at_a_secret_prompt_puts_the_terminal_back_and_ends_the_launcher() {
+    use std::io::BufRead;
+    use std::os::unix::process::ExitStatusExt;
+
+    const PROBE: &str = "RIG_SECRET_SIGNAL_PROBE";
+    const PROMPT: &str = "Passphrase (crypt): ";
+    if std::env::var_os(PROBE).is_some() {
+        // The first start takes the screen, stages a build that asks for a
+        // secret, and reloads; the restart asks for it.
+        let home = builds("secret-signal", "", "");
+        let ended = (|| -> Result<Ended> {
+            fs::remove_file(home.staged())?;
+            let asks = home.bin().join("asks");
+            script(
+                &asks,
+                "[ -n \"$RIG_DESCRIBE\" ] || exit 0
+printf 'rig-describe 1\\nsecret\\tcrypt\\tPassphrase\\n' > \"$RIG_DESCRIBE\"",
+            )?;
+            let stage = format!("mv '{}' '{}'", asks.display(), home.staged().display());
+            let starts: &[&[Step]] = &[&[
+                Step::Ready,
+                Step::Screen,
+                sh(&stage),
+                Step::End(AgentEnd::Reload),
+            ]];
+            fs::write(home.good(), fake_agent::script(starts))?;
+            let run = locks::hold_run(&home)?;
+            let (claimed, _) = claim(&home, Start::New, None)?;
+            let mut launch = at(&home, Path::new(NO_LAUNCHER))?;
+            launch.terminal = true;
+            let running = select(&launch, &claimed.id, run.dir(), None)?;
+            run_agent(
+                &mut launch,
+                run.dir(),
+                &Invocation::default(),
+                false,
+                claimed,
+                running,
+            )
+        })();
+        fs::remove_dir_all(home.root()).ok();
+        // As `run` closes.
+        match ended {
+            Ok(ended) if ended.restore => restore_terminal(None),
+            Ok(_) => {}
+            Err(failure) => eprintln!("error: {failure}"),
+        }
+        stop::end_as_heard();
+        return;
+    }
+    let name =
+        "run::tests::a_signal_at_a_secret_prompt_puts_the_terminal_back_and_ends_the_launcher";
+    let launcher = std::env::current_exe().and_then(|test| {
+        Command::new(test)
+            .args(["--exact", name, "--test-threads", "1", "--nocapture"])
+            .env(PROBE, "1")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
+    });
+    let ran = launcher.and_then(|mut launcher| {
+        let pid = libc::pid_t::try_from(launcher.id()).unwrap_or_default();
+        // A launcher that never ends is ended, so the test fails instead.
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_secs(60));
+            // SAFETY: `kill` takes plain integers.
+            unsafe { libc::kill(pid, libc::SIGKILL) };
+        });
+        let mut said = Vec::new();
+        if let Some(stderr) = launcher.stderr.take() {
+            let mut stderr = std::io::BufReader::new(stderr);
+            // The prompt ends with no newline: read up to its last byte.
+            while !String::from_utf8_lossy(&said).contains(PROMPT) {
+                if stderr.read_until(b' ', &mut said)? == 0 {
+                    break;
+                }
+            }
+            // Signalled as it waits for the answer.
+            std::thread::sleep(Duration::from_millis(300));
+            // SAFETY: `kill` takes plain integers.
+            unsafe { libc::kill(pid, libc::SIGTERM) };
+            stderr.read_to_end(&mut said)?;
+        }
+        let status = launcher.wait()?;
+        Ok((String::from_utf8_lossy(&said).into_owned(), status.signal()))
+    });
+    let ran = ran.map_err(|failure: std::io::Error| failure.to_string());
+    let restored = ran.as_ref().is_ok_and(|(said, signal)| {
+        said.split_once(PROMPT)
+            .is_some_and(|(_, after)| after.contains("\x1b[?1049l"))
+            && *signal == Some(libc::SIGTERM)
+    });
+    assert!(restored, "{ran:?}");
+}

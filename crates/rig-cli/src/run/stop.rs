@@ -4,13 +4,19 @@
 //! the agent's last lines come before the shell's prompt, and a script's
 //! `wait` returns once the agent is gone. On unix the launcher then ends as
 //! the signal would have ended it ([`end_as_heard`]). A signal the launcher
-//! was started ignoring, as under `nohup`, stays ignored.
+//! was started ignoring, as under `nohup`, stays ignored. While the
+//! launcher asks for a secret, a heard signal ends the wait for input
+//! ([`Stdin`]), so the launcher puts the terminal back and then ends as the
+//! signal would have.
 
 use std::process::Child;
 use std::sync::atomic::{AtomicI32, AtomicUsize, Ordering};
 use std::time::Instant;
 
 use rig_harness_protocol::{CLOSE_WAIT, STOP_WAIT};
+
+#[cfg(unix)]
+use super::POLL;
 
 /// Runs `close`, the launcher's closing output after a signal, for at most
 /// [`CLOSE_WAIT`]: a terminal or pipe whose reader stopped would otherwise
@@ -97,6 +103,27 @@ impl Drop for Watch {
     }
 }
 
+/// The launcher's stdin, unbuffered, read while a [`Watch`] hears the
+/// ending signals: a read waits for input [`POLL`] at a time and fails as
+/// interrupted once a signal was heard. A signal may reach any thread, so
+/// a blocked read is not relied on to be cut short.
+#[cfg(unix)]
+pub(super) struct Stdin;
+
+#[cfg(unix)]
+impl std::io::Read for Stdin {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        loop {
+            if heard().is_some() {
+                return Err(std::io::ErrorKind::Interrupted.into());
+            }
+            if let Some(read) = unix::read_waiting(buf, POLL) {
+                return read;
+            }
+        }
+    }
+}
+
 /// Ends the launcher as the signal heard while the agent ran would have,
 /// after its cleanup; returns when none was, or elsewhere than unix.
 pub(super) fn end_as_heard() {
@@ -163,6 +190,35 @@ mod unix {
             // SAFETY: `kill` takes plain integers.
             unsafe {
                 libc::kill(pid, signal);
+            }
+        }
+    }
+
+    /// Reads stdin into `buf` once it has input; `None` when it has none
+    /// after `wait`, or a signal cut the wait or the read short.
+    pub(super) fn read_waiting(
+        buf: &mut [u8],
+        wait: std::time::Duration,
+    ) -> Option<std::io::Result<usize>> {
+        let mut input = libc::pollfd {
+            fd: libc::STDIN_FILENO,
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        let timeout = libc::c_int::try_from(wait.as_millis()).unwrap_or(libc::c_int::MAX);
+        // SAFETY: `poll` reads and writes the one `pollfd` it is given.
+        let ready = unsafe { libc::poll(&raw mut input, 1, timeout) };
+        if ready == 0 {
+            return None;
+        }
+        // SAFETY: `read` writes at most `buf.len()` bytes into `buf`.
+        let read = (ready > 0)
+            .then(|| unsafe { libc::read(libc::STDIN_FILENO, buf.as_mut_ptr().cast(), buf.len()) });
+        match read {
+            Some(read) if read >= 0 => Some(Ok(usize::try_from(read).unwrap_or_default())),
+            _ => {
+                let failure = std::io::Error::last_os_error();
+                (failure.kind() != std::io::ErrorKind::Interrupted).then_some(Err(failure))
             }
         }
     }
