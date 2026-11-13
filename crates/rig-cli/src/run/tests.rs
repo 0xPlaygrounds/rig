@@ -2255,18 +2255,20 @@ fn signalled_at_prompt(
         .stderr(Stdio::piped())
         .spawn()?;
     let pid = libc::pid_t::try_from(launcher.id()).unwrap_or_default();
-    // A launcher that never ends is killed, so the test fails instead; one
-    // that ended is not, as its pid may be another process's by then.
-    let (ended, wait) = std::sync::mpsc::channel::<()>();
+    let stderr = launcher.stderr.take();
+    // A launcher that never ends is killed, so the test fails instead. The
+    // kill and the reaping share a lock, and `Child::kill` sends nothing
+    // once the launcher was reaped, so no other process's pid is killed.
+    let launcher = std::sync::Arc::new(std::sync::Mutex::new(launcher));
+    let watched = std::sync::Arc::clone(&launcher);
     std::thread::spawn(move || {
-        let timeout = wait.recv_timeout(Duration::from_secs(60));
-        if timeout == Err(std::sync::mpsc::RecvTimeoutError::Timeout) {
-            // SAFETY: `kill` takes plain integers.
-            unsafe { libc::kill(pid, libc::SIGKILL) };
+        std::thread::sleep(Duration::from_secs(60));
+        if let Ok(mut launcher) = watched.lock() {
+            launcher.kill().ok();
         }
     });
     let mut said = Vec::new();
-    if let Some(stderr) = launcher.stderr.take() {
+    if let Some(stderr) = stderr {
         let mut stderr = std::io::BufReader::new(stderr);
         // The prompt ends with no newline: read up to its last byte.
         while !String::from_utf8_lossy(&said).contains(SECRET_PROMPT) {
@@ -2277,16 +2279,21 @@ fn signalled_at_prompt(
         let kept = keep.then_some(stderr);
         // Signalled as it waits for the answer.
         std::thread::sleep(Duration::from_millis(300));
-        // SAFETY: `kill` takes plain integers.
+        // SAFETY: `kill` takes plain integers; the launcher is not reaped yet.
         unsafe { libc::kill(pid, signal) };
         if let Some(mut stderr) = kept {
             stderr.read_to_end(&mut said)?;
         }
     }
-    let status = launcher.wait();
-    ended.send(()).ok();
-    Ok((
-        String::from_utf8_lossy(&said).into_owned(),
-        status?.signal(),
-    ))
+    let status = loop {
+        let exited = launcher
+            .lock()
+            .map_err(|_| std::io::Error::other("the watchdog panicked"))?
+            .try_wait()?;
+        if let Some(status) = exited {
+            break status;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    Ok((String::from_utf8_lossy(&said).into_owned(), status.signal()))
 }
