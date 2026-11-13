@@ -850,6 +850,51 @@ fn an_answer_budget_of_zero_does_not_read() {
         .problems()
         .join("\n");
     assert!(problems.contains("[compaction]"), "{problems}");
+    assert!(problems.contains("answer_tokens"), "{problems}");
+}
+
+/// A misspelt `[compaction]` key is refused by name, with every key that
+/// reads listed, the answer budget among the policy's.
+#[test]
+fn an_unknown_compaction_key_lists_every_key_that_reads() {
+    let (mut app, _wakes) = app_on(&MemoryStore::default());
+    app.insert_resource(rig_harness::settings::Settings::from_toml(
+        "[compaction]\nanswer_token = 2000",
+    ));
+    app.add_plugins(CompactionPlugin);
+    let problems = app
+        .world()
+        .resource::<rig_harness::settings::Settings>()
+        .problems()
+        .join("\n");
+    assert!(
+        problems.contains("unknown field `answer_token`"),
+        "{problems}"
+    );
+    for key in ["`keep_recent`", "`near_window`", "`answer_tokens`"] {
+        assert!(problems.contains(key), "{key}: {problems}");
+    }
+}
+
+/// A set answer budget is what a turn asks for in place of the model's
+/// output limit.
+#[test]
+fn a_set_answer_budget_is_what_a_turn_asks_for() {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    app.world_mut()
+        .resource_mut::<CompactionDefault>()
+        .answer_tokens = NonZeroU64::new(2_000);
+    let model = MockCompletionModel::from_stream_turns(vec![reply("done")]);
+    let agent = agent(&mut app, &model, 1_000_000, read_files(1));
+    if let Some(mut connection) = app.world_mut().get_mut::<Connection>(agent) {
+        let mut spec = connection.spec.as_ref().clone();
+        spec.max_output_tokens = Some(32_000);
+        connection.spec = Arc::new(spec);
+    }
+    ask(&mut app, &wakes, agent);
+    assert_eq!(answer(&app).as_deref(), Some("done"));
+    let asked: Vec<_> = model.requests().iter().map(|it| it.max_tokens).collect();
+    assert_eq!(asked, [Some(2_000)]);
 }
 
 /// The one request a turn on five 15k reads sends, clearing near the
