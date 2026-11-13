@@ -705,7 +705,7 @@ fn thinking_context_default_and_tool_result_false_are_present() -> anyhow::Resul
 }
 
 #[test]
-fn forced_tools_sampling_and_buffered_yield_follow_omp_policy() -> anyhow::Result<()> {
+fn forced_tools_and_sampling_follow_omp_policy_and_tool_streaming_is_kept() -> anyhow::Result<()> {
     let value = shaped(
         json!({"_omp":{"adaptive_only":true},"thinking":{"type":"adaptive"},"tool_choice":{"type":"any"},"temperature":0.2,"top_p":0.5,"top_k":3,"stop_sequences":["a","b","c","d","e"],"tools":[{"name":"yield","eager_input_streaming":true}]}),
     )?;
@@ -721,7 +721,7 @@ fn forced_tools_sampling_and_buffered_yield_follow_omp_policy() -> anyhow::Resul
     anyhow::ensure!((value.pointer("/output_config/effort")) == (Some(&json!("low"))));
     let wire = value.to_string();
     anyhow::ensure!(wire.find("\"tool_choice\"") < wire.find("\"output_config\""));
-    anyhow::ensure!((value.pointer("/tools/0/eager_input_streaming")) == (Some(&json!(false))));
+    anyhow::ensure!((value.pointer("/tools/0/eager_input_streaming")) == (Some(&json!(true))));
     anyhow::ensure!((value.get("stop_sequences")) == (Some(&json!(["a", "b", "c", "d"]))));
     let value = shaped(
         json!({"_omp":{"forced_tools_allowed":false,"sampling_allowed":false},"tool_choice":{"type":"tool","name":"read"},"temperature":0.2}),

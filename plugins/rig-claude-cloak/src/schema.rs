@@ -55,10 +55,7 @@ pub(crate) fn normalize_tools(body: &mut Value) {
         let Some(raw) = wire.as_object() else {
             continue;
         };
-        let candidate = matches!(
-            tool.get("name").and_then(Value::as_str),
-            Some("python" | "edit" | "find" | "yield")
-        ) && tool.get("strict") != Some(&Value::Bool(false))
+        let candidate = tool.get("strict") != Some(&Value::Bool(false))
             && !incompatible(&Value::Object(raw.clone()));
         let mut raw = raw.clone();
         raw.insert("type".into(), json!("object"));
@@ -78,15 +75,21 @@ pub(crate) fn normalize_tools(body: &mut Value) {
             .unwrap_or_default();
         raw.insert("required".into(), Value::Array(required));
         let mut schema = normalize(Value::Object(raw), true);
-        remove_preserving_order(tool, "strict");
+        let mut strict = false;
         if candidate && strict_count < 20 {
             let mut budget = remaining;
-            if let Some(strict) = strict_schema(schema.clone(), &mut budget) {
-                schema = strict;
+            if let Some(checked) = strict_schema(schema.clone(), &mut budget) {
+                schema = checked;
                 remaining = budget;
                 strict_count += 1;
-                tool.insert("strict".into(), Value::Bool(true));
+                strict = true;
             }
+        }
+        // Inserting keeps a caller's `strict` where it was, so a replayed body is unchanged.
+        if strict {
+            tool.insert("strict".into(), Value::Bool(true));
+        } else {
+            remove_preserving_order(tool, "strict");
         }
         tool.insert("input_schema".into(), schema);
     }

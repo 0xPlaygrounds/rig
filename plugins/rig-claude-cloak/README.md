@@ -168,7 +168,8 @@ regression sends the same inputs through Rig's actual provider. It validates
 both the historical checksum and the current checksum, checks current profile
 headers and human fingerprints, then compares the remaining decoded JSON bytes
 and property order. Its declared projection replaces profile billing text,
-adds current thinking display defaults, and removes only the historical
+adds current thinking display defaults, applies Rig's strict selection and
+tool input streaming to the reference tools, and removes only the historical
 `cache_none` identity marker. Original fixture files remain unchanged.
 A separate structural current-TUI control freezes current headers, beta sets
 and thinking settings. Another
@@ -253,8 +254,8 @@ byte equality with OMP. Real TUI comparison and its limits are described in
 The 48 request fixtures cover Sonnet 4.6 and budget-thinking Sonnet 4.5:
 
 - Plain text, absent system prompt and requests above the compression threshold.
-- Custom tools, auto/required/none/named choices, underscored names, the buffered
-  yield tool and tool-result history.
+- Custom tools, auto/required/none/named choices, underscored names, a strict
+  tool and tool-result history.
 - Adaptive and explicit budget thinking with output-token reservation.
 - Disabled, short and long cache retention with multiple conversation turns.
 - Unicode, multi-block text, JSON escapes, numeric schema keys and floats.
@@ -272,12 +273,22 @@ intent before the generic encoder resolves it and is removed before sending.
 Explicit cache points reserve the four-marker budget before automatic anchors
 are added. Invalid marker counts or TTL ordering fail before sending.
 
-The 18 schema cases cover strict allowlists, opt-outs, optional-property
+The 18 schema cases cover strict selection, opt-outs, optional-property
 budgets at 23/24/25, union budgets at 15/16/17, strict-tool limits at 19/20/21,
 failed-candidate budget rollback, references, combinators, enums, constraints
 and legacy schemas. Tests compare normalized schema structure and serialized
 schema property order to OMP output. Tool wrapper streaming/cache fields are
 excluded from these helper-level comparisons, not full-request comparisons.
+
+Rig departs from OMP on purpose in strict selection. OMP asks
+for a strict schema only on tools it names `python`, `edit`, `find` and
+`yield`, and sends its `yield` tool without eager input streaming. Rig asks for
+it on every tool whose schema can be made strict, unless the tool sets
+`strict: false`, within the API's request-wide limits of 20 strict tools, 24
+optional parameters and 16 union-typed parameters; a tool that would exceed a
+limit is sent without `strict`. Tool input streaming is sent as the caller set
+it. The `strict_selection` schema case and the request comparison's declared
+projection record these differences.
 
 `src/transport/roundtrip.rs` exercises two interleaved streamed tool calls
 through the catalog/handler/transport, then builds a second request from their

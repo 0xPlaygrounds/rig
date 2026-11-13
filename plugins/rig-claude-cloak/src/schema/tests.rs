@@ -42,19 +42,22 @@ fn preserves_supported_constraints_and_open_maps() {
 }
 
 #[test]
-fn strict_allowlist_and_incompatible_shapes() {
+fn strict_is_chosen_by_shape_and_opt_out() {
     let mut body = json!({"tools":[
         {"name":"yield", "input_schema":{"type":"object", "properties":{"value":{"type":"string"}}}},
         {"name":"bash", "input_schema":{"type":"object"}},
         {"name":"edit", "strict":false, "input_schema":{"type":"object"}},
         {"name":"find", "input_schema":{"type":"object", "properties":{"value":{"oneOf":[{"type":"string"}]}}}},
-        {"name":"python", "input_schema":{"type":"object", "additionalProperties":true}}
+        {"name":"open", "input_schema":{"type":"object", "properties":{"map":{"type":"object", "additionalProperties":{"type":"string"}}}}}
     ]});
     normalize_tools(&mut body);
-    assert_eq!(body.pointer("/tools/0/strict"), Some(&json!(true)));
-    for index in 1..5 {
-        assert_eq!(body.pointer(&format!("/tools/{index}/strict")), None);
-    }
+    let strict = (0..5)
+        .map(|index| body.pointer(&format!("/tools/{index}/strict")).cloned())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        strict,
+        vec![Some(json!(true)), Some(json!(true)), None, None, None]
+    );
 }
 
 #[test]
@@ -136,14 +139,14 @@ fn postprocess_matches_wire_scalar_and_empty_schema_rules() {
 
 #[test]
 fn normalization_preserves_schema_shaped_literal_instances() -> anyhow::Result<()> {
-    for name in ["bash", "yield"] {
+    for strict in [false, true] {
         for literal in [json!({"enum":[1,2]}), json!({"properties":{"x":{}}})] {
             let examples = json!([literal]);
             let description = format!(
                 "examples\n\n{{examples: {}}}",
                 serde_json::to_string(&examples)?
             );
-            let mut body = json!({"tools":[{"name":name,"input_schema":{
+            let mut body = json!({"tools":[{"name":"probe","strict":strict,"input_schema":{
                 "type":"object",
                 "properties":{
                     "constant":{"type":"object","const":literal},
@@ -170,7 +173,7 @@ fn normalization_preserves_schema_shaped_literal_instances() -> anyhow::Result<(
                     body.pointer(&format!(
                         "/tools/0/input_schema/properties/{property}/{keyword}"
                     )) == Some(&expected),
-                    "{name}: {keyword} must preserve literal instance data"
+                    "strict {strict}: {keyword} must preserve literal instance data"
                 );
             }
             anyhow::ensure!(
@@ -241,4 +244,35 @@ fn root_combinators_spill_but_nested_anyof_remains() {
         Some(&json!("{anyOf: [{\"required\":[\"x\"]}]}"))
     );
     assert!(schema.pointer("/properties/x/anyOf").is_some());
+}
+
+#[test]
+fn every_compatible_rig_tool_is_strict() {
+    use rig_harness::rig_core::tool::Tool;
+    use rig_harness::rig_tools::{Delete, Edit, List, Read, Search, Shell, Write};
+    fn entry<T: Tool>(tool: &T) -> Value {
+        json!({"name": T::NAME, "input_schema": tool.parameters()})
+    }
+    let mut body = json!({"tools": [
+        entry(&Read::default()),
+        entry(&Shell::default()),
+        entry(&Edit::default()),
+        entry(&Write::default()),
+        entry(&List::default()),
+        entry(&Search::default()),
+        entry(&Delete::default()),
+    ]});
+    normalize_tools(&mut body);
+    let tools = body
+        .get("tools")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let not_strict = tools
+        .iter()
+        .filter(|tool| tool.get("strict") != Some(&json!(true)))
+        .filter_map(|tool| tool.get("name").and_then(Value::as_str))
+        .collect::<Vec<_>>();
+    assert_eq!(tools.len(), 7);
+    assert_eq!(not_strict, Vec::<&str>::new());
 }
