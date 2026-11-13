@@ -62,6 +62,9 @@ pub struct AgentRunner<O = ()> {
     /// Typed context cloned freshly for every tool dispatch.
     pub(crate) tool_context: ToolContext,
     pub(crate) concurrency: usize,
+    /// Whether a tool call waits for the earlier calls of its reply it
+    /// conflicts with ([`ordered_by_footprint`](Self::ordered_by_footprint)).
+    pub(crate) ordered: bool,
     pub(crate) error_usage: Option<Arc<Mutex<Usage>>>,
     pub(crate) output: O,
 }
@@ -95,6 +98,7 @@ impl AgentRunner {
             tool_server_handle: agent.tool_server_handle.clone(),
             tool_context: ToolContext::new(),
             concurrency: 1,
+            ordered: false,
             error_usage: None,
             output: (),
         }
@@ -423,6 +427,25 @@ impl<O> AgentRunner<O> {
         self
     }
 
+    /// Order the tool calls of one reply by what each touches, for this run:
+    /// a call waits to start until every earlier call of its reply that it
+    /// conflicts with has settled ([`Touches::must_wait`]), and a waiting
+    /// call holds no [`tool_concurrency`](Self::tool_concurrency) slot, so
+    /// later calls that conflict with nothing unsettled before them start
+    /// beside it. A call's footprint is what its tool says of it
+    /// ([`Tool::footprint`](crate::tool::Tool::footprint)), read from the
+    /// arguments the model sent, so a dispatch hook that rewrites them does
+    /// not change whom the call waits for. A tool that cannot say may change
+    /// anything ([`Touches::default`]). Off by default: calls start in call order
+    /// as slots free up. The setting is not saved with the run.
+    ///
+    /// [`Touches::must_wait`]: rig_core::tool::Touches::must_wait
+    /// [`Touches::default`]: rig_core::tool::Touches::default
+    pub fn ordered_by_footprint(mut self, ordered: bool) -> Self {
+        self.ordered = ordered;
+        self
+    }
+
     /// Set the retry budget for invalid tool-call recovery. Invalid tool-call
     /// retries also consume the total model-call budget.
     pub fn max_invalid_tool_call_retries(mut self, retries: usize) -> Self {
@@ -449,6 +472,7 @@ impl<O> AgentRunner<O> {
             tool_server_handle,
             tool_context,
             concurrency,
+            ordered,
             error_usage,
             output: replaced,
         } = self;
@@ -459,6 +483,7 @@ impl<O> AgentRunner<O> {
             tool_server_handle,
             tool_context,
             concurrency,
+            ordered,
             error_usage,
             output,
         };

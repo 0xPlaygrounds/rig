@@ -18,6 +18,7 @@ use rig_core::{
     error::{ErrorKind, ErrorReport},
     message::{AssistantContent, Message, ToolCall, ToolFunction, ToolName},
     telemetry::SpanCombinator,
+    tool::Touches,
     wasm_compat::{WasmBoxedFuture, WasmBoxedStream, WasmCompatSend, WasmCompatSync},
 };
 
@@ -26,16 +27,17 @@ use super::{
     completion::{PreparedCompletionRequest, build_prepared_completion_request},
     hook::{
         AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, HookStack,
-        InvalidToolCallAction, ModelSelection, ModelSelectionAction, ModelTurnAction,
-        ModelTurnFinished, ObservationAction, OutcomeAction, ReasoningDelta, RunSettled, RunStart,
-        RunStartAction, SettledOutcome, StepEventKind, TextDelta, ToolCallDelta,
+        InvalidToolCallAction, InvalidToolCallContext, ModelSelection, ModelSelectionAction,
+        ModelTurnAction, ModelTurnFinished, ObservationAction, OutcomeAction, ReasoningDelta,
+        RunSettled, RunStart, RunStartAction, SettledOutcome, StepEventKind, TextDelta,
+        ToolCallDelta,
     },
     runner::AgentRunner,
     telemetry::{build_chat_span, new_execute_tool_span},
 };
 use crate::run::{
-    AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, PendingToolCall, ToolAnswer,
-    UnhandledInvalidToolCall,
+    AgentRun, AgentRunStep, ExecCall, MalformedCall, ModelTurn, ModelTurnOutcome, PendingToolCall,
+    ToolAnswer, UnhandledInvalidToolCall,
     response::{CompletionCall, PromptResponse, finalize_output_tool_choice},
     streamed::{StreamedResolution, StreamedTurnAssembler, StreamedTurnEvent},
     transcript::choice_text,
@@ -459,7 +461,9 @@ where
 /// that body ran (a [`ToolExecutionCommitted`](crate::agent::MultiTurnStreamItem::ToolExecutionCommitted)).
 ///
 /// - Every tool runs (sequentially at `tool_concurrency <= 1`, else
-///   concurrently bounded by it), with outcomes collected. A malformed call
+///   concurrently bounded by it), with outcomes collected. Ordered by
+///   footprint, a call starts only once every earlier unsettled call of its
+///   batch it conflicts with has settled. A malformed call
 ///   never runs: its invalid-call hook decides its answer.
 /// - Once the batch drains, each settled call is answered into the run in
 ///   call order, so a stop cancels with the settled results kept (see below).
@@ -524,38 +528,68 @@ where
             // drained so the lowest call-index terminator wins and no task is left
             // detached.
             let terminating = Arc::new(std::sync::atomic::AtomicBool::new(false));
-            let unordered = stream::iter(prepared.into_iter().enumerate())
-                .map(|(index, (call, span))| {
-                    let tool_snapshot = &tool_snapshot;
-                    let terminating = terminating.clone();
-                    async move {
-                        // `None` marks a dropped (never-started) sibling.
-                        if terminating.load(std::sync::atomic::Ordering::SeqCst) {
-                            return (index, None);
-                        }
-                        let outcome = match call {
-                            Ok(call) => {
-                                run_single_tool(runner, hook_ctx, tool_snapshot, call.tool_call())
-                                    .await
-                                    .map(|outcome| (call.answer(outcome.result), outcome.executed))
-                            }
-                            Err((call, context)) => {
-                                let action = runner
-                                    .config
-                                    .hooks
-                                    .on_invalid_tool_call(hook_ctx, &context)
-                                    .await;
-                                Ok((call.answer(action), None))
-                            }
-                        };
-                        (index, Some(outcome))
-                    }
-                    .instrument(span)
+            // Ordered by footprint, each call that runs a tool has one.
+            let footprints: Vec<Option<Touches>> = prepared
+                .iter()
+                .map(|(call, _)| match call {
+                    Ok(call) if runner.ordered => Some(footprint(&tool_snapshot, call.tool_call())),
+                    _ => None,
                 })
-                .buffer_unordered(runner.concurrency.max(1));
-            futures::pin_mut!(unordered);
-
-            while let Some((index, outcome)) = unordered.next().await {
+                .collect();
+            let mut queued: Vec<_> = prepared.into_iter().map(Some).collect();
+            let mut settled = vec![false; call_count];
+            let start = |index: usize,
+                         (call, span): (
+                Result<ExecCall, (MalformedCall, InvalidToolCallContext)>,
+                tracing::Span,
+            )| {
+                let tool_snapshot = &tool_snapshot;
+                let terminating = terminating.clone();
+                async move {
+                    // `None` marks a dropped (never-started) sibling.
+                    if terminating.load(std::sync::atomic::Ordering::SeqCst) {
+                        return (index, None);
+                    }
+                    let outcome = match call {
+                        Ok(call) => {
+                            run_single_tool(runner, hook_ctx, tool_snapshot, call.tool_call())
+                                .await
+                                .map(|outcome| (call.answer(outcome.result), outcome.executed))
+                        }
+                        Err((call, context)) => {
+                            let action = runner
+                                .config
+                                .hooks
+                                .on_invalid_tool_call(hook_ctx, &context)
+                                .await;
+                            Ok((call.answer(action), None))
+                        }
+                    };
+                    (index, Some(outcome))
+                }
+                .instrument(span)
+            };
+            let mut running = stream::FuturesUnordered::new();
+            loop {
+                // Start, in call order, each queued call that waits for no
+                // unsettled call before it, while a slot is free.
+                for index in 0..call_count {
+                    if running.len() >= runner.concurrency.max(1) {
+                        break;
+                    }
+                    if waits(&footprints, &settled, index) {
+                        continue;
+                    }
+                    if let Some(call) = queued.get_mut(index).and_then(Option::take) {
+                        running.push(start(index, call));
+                    }
+                }
+                let Some((index, outcome)) = running.next().await else {
+                    break;
+                };
+                if let Some(slot) = settled.get_mut(index) {
+                    *slot = true;
+                }
                 // A dropped sibling records nothing.
                 let Some(result) = outcome else { continue };
                 match result {
@@ -622,6 +656,33 @@ where
         }
         Ok(executed)
     })
+}
+
+/// Whether call `index` waits for an earlier unsettled call of its batch,
+/// started or not, that it conflicts with. A call without a footprint waits
+/// for nothing and holds nothing back.
+fn waits(footprints: &[Option<Touches>], settled: &[bool], index: usize) -> bool {
+    let earlier = footprints
+        .iter()
+        .zip(settled)
+        .take(index)
+        .filter(|(_, settled)| !**settled)
+        .filter_map(|(footprint, _)| footprint.as_ref());
+    footprints
+        .get(index)
+        .and_then(Option::as_ref)
+        .is_some_and(|footprint| footprint.must_wait(earlier))
+}
+
+/// What `call` may read and change: what its tool says of the arguments the
+/// model sent, else anything ([`Touches::default`]), with `.` and `..`
+/// folded away.
+fn footprint(catalog: &ToolCatalog, call: &ToolCall) -> Touches {
+    catalog
+        .get(call.function.name.as_str())
+        .and_then(|tool| tool.handler().footprint(&EffectKind::from(call)))
+        .unwrap_or_default()
+        .normalized()
 }
 
 /// [`TurnSource`] for the streaming surface: each turn opens a provider stream,

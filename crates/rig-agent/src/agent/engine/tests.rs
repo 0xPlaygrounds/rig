@@ -1658,7 +1658,7 @@ fn tool_result_json_in_history(messages: &[Message], expected: &serde_json::Valu
 }
 
 /// A tool whose first-*called* invocation completes *after* the second, so
-/// `buffer_unordered` yields the results in completion order — yet the
+/// the engine sees the results in completion order — yet the
 /// persisted history stays in call order because each result is written into
 /// its original call-index slot. The first call (in poll/call order) waits on
 /// a gate the second call releases.
@@ -1699,9 +1699,146 @@ impl Tool for OutOfOrderTool {
     }
 }
 
+/// A tool that writes the file at `path` and logs when each call starts
+/// and ends, yielding between the two so a call run beside it can start.
+#[derive(Clone, Default)]
+struct TouchTool {
+    log: Arc<Mutex<Vec<String>>>,
+}
+
+#[derive(Deserialize)]
+struct TouchArgs {
+    id: String,
+    path: String,
+}
+
+impl Tool for TouchTool {
+    const NAME: &'static str = "touch";
+    type Error = MockToolError;
+    type Args = TouchArgs;
+    type Output = String;
+
+    fn description(&self) -> String {
+        "Write the file at `path`.".to_owned()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {"id": {"type": "string"}, "path": {"type": "string"}},
+            "required": ["id", "path"],
+        })
+    }
+
+    fn footprint(&self, args: &Self::Args) -> rig_core::tool::Touches {
+        rig_core::tool::Touches::Writes(rig_core::tool::Scope::Paths(vec![
+            std::path::PathBuf::from(&args.path),
+        ]))
+    }
+
+    async fn call(
+        &self,
+        _context: &mut ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
+        let push = |what: &str| {
+            self.log
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .push(format!("{what} {}", args.id));
+        };
+        push("start");
+        for _ in 0..8 {
+            tokio::task::yield_now().await;
+        }
+        push("end");
+        Ok(args.path.clone())
+    }
+}
+
+/// The start and end log of one reply's `touch` calls, one per path, run at
+/// `tool_concurrency(2)` with ordering by footprint `ordered`.
+async fn touch_log(paths: &[&str], ordered: bool) -> Vec<String> {
+    let calls = paths.iter().enumerate().map(|(index, path)| {
+        let id = (index + 1).to_string();
+        AssistantContent::ToolCall(MessageToolCall::from_wire(
+            format!("tc{id}"),
+            ToolFunction::new(
+                rig_core::message::ToolName::new("touch".to_string()).expect("tool name"),
+                json!({"id": id, "path": path}),
+            ),
+        ))
+    });
+    let model =
+        MockCompletionModel::from_turns([MockTurn::from_contents(calls), MockTurn::text("done")]);
+    let tool = TouchTool::default();
+    tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        AgentBuilder::new(model)
+            .tool(tool.clone())
+            .build()
+            .prompt("go")
+            .max_turns(3)
+            .tool_concurrency(2)
+            .ordered_by_footprint(ordered)
+            .run(),
+    )
+    .await
+    .expect("the run finishes")
+    .expect("the run succeeds");
+    tool.log.lock().expect("log").clone()
+}
+
+/// Ordered by footprint, a call waits for an earlier call of its reply that
+/// writes the same file: the second starts after the first ends.
+#[tokio::test]
+async fn ordered_calls_on_one_file_run_one_after_the_other() {
+    assert_eq!(
+        touch_log(&["/work/a.rs", "/work/a.rs"], true).await,
+        ["start 1", "end 1", "start 2", "end 2"]
+    );
+}
+
+/// Ordered by footprint, calls on different files still run side by side.
+#[tokio::test]
+async fn ordered_calls_on_different_files_overlap() {
+    let log = touch_log(&["/work/a.rs", "/work/b.rs"], true).await;
+    assert_eq!(
+        log.get(..2),
+        Some(&["start 1", "start 2"].map(String::from)[..])
+    );
+}
+
+/// A waiting call holds no slot: at concurrency 2, the third call, on
+/// another file, runs beside the first while the second waits for it.
+#[tokio::test]
+async fn a_waiting_call_lets_a_later_independent_call_start() {
+    let log = touch_log(&["/work/a.rs", "/work/a.rs", "/work/b.rs"], true).await;
+    let at = |entry: &str| log.iter().position(|logged| logged == entry);
+    assert!(
+        ["start 2", "start 3", "end 1"]
+            .iter()
+            .all(|entry| at(entry).is_some()),
+        "{log:?}"
+    );
+    assert!(at("start 3") < at("end 1"), "{log:?}");
+    assert!(at("end 1") < at("start 2"), "{log:?}");
+}
+
+/// With ordering off, as by default, calls on one file run side by side as
+/// before.
+#[tokio::test]
+async fn unordered_calls_on_one_file_overlap() {
+    let log = touch_log(&["/work/a.rs", "/work/a.rs"], false).await;
+    assert_eq!(
+        log.get(..2),
+        Some(&["start 1", "start 2"].map(String::from)[..])
+    );
+}
+
 /// `run()` must persist tool results in tool-call (emission) order even when
-/// tools complete out of order under concurrency — it runs them with
-/// `buffer_unordered` but reindexes each result into its original call-index
+/// tools complete out of order under concurrency — it collects them in
+/// completion order but reindexes each result into its original call-index
 /// slot. (This is what keeps its message history identical to the sequential
 /// streaming driver.)
 #[tokio::test]
