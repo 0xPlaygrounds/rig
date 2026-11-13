@@ -13830,6 +13830,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "retry_transient_failures"
+version = "0.46.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "tokio",
+]
+
+[[package]]
 name = "revision"
 version = "0.30.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

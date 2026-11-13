@@ -506,20 +506,14 @@ impl ProviderError {
 
     /// The preserved reply's headers. `None` means not captured, as for
     /// non-HTTP transports and replies built from only a status and body.
-    /// This example reads the seconds form of `Retry-After`:
+    /// For the wait a provider asked for, use
+    /// [`ErrorReport::retry_after`], which reads every form it sends:
     ///
-    /// ```no_run
+    /// ```
     /// # use rig_core::error::ProviderError;
-    /// # use std::time::Duration;
+    /// # use std::time::{Duration, SystemTime};
     /// fn backoff(error: &ProviderError) -> Option<Duration> {
-    ///     let seconds = error
-    ///         .provider_response_headers()?
-    ///         .get(http::header::RETRY_AFTER)?
-    ///         .to_str()
-    ///         .ok()?
-    ///         .parse()
-    ///         .ok()?;
-    ///     Some(Duration::from_secs(seconds))
+    ///     error.report().retry_after(SystemTime::now())
     /// }
     /// ```
     pub fn provider_response_headers(&self) -> Option<&http::HeaderMap> {

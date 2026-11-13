@@ -103,23 +103,9 @@ impl Error {
     }
 
     /// Returns the failed response's headers, when this error preserved them.
-    ///
-    /// The following example reads the seconds form of `Retry-After`:
-    ///
-    /// ```
-    /// # use rig_http::http_client::Error;
-    /// # use std::time::Duration;
-    /// fn retry_after(error: &Error) -> Option<Duration> {
-    ///     let seconds = error
-    ///         .non_success_headers()?
-    ///         .get(http::header::RETRY_AFTER)?
-    ///         .to_str()
-    ///         .ok()?
-    ///         .parse()
-    ///         .ok()?;
-    ///     Some(Duration::from_secs(seconds))
-    /// }
-    /// ```
+    /// Don't parse `Retry-After` from them by hand: a provider error carries
+    /// these headers into rig-core's `ErrorReport`, whose `retry_after` reads
+    /// every form of the wait a provider asks for.
     ///
     /// Returns `None` for a response-less failure: every non-success error
     /// carries its headers.

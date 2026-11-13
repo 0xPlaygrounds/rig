@@ -1,6 +1,6 @@
-//! What a failed call's report says about retrying it, for a retry policy
-//! such as rig-ecs's: the wait asked for, and whether the request outgrew
-//! the model's context window.
+//! What a failed call's report says about retrying it, for a retry policy:
+//! the wait asked for, and whether the request outgrew the model's context
+//! window.
 
 use std::time::{Duration, SystemTime};
 
