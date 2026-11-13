@@ -68,6 +68,7 @@ Most examples expect provider API keys in the environment (e.g. `OPENAI_API_KEY`
 | `reasoning_loop` | See source. |
 | `request_hook` | Demonstrates observing prompt/response/tool lifecycle events by stacking two `AgentHook`s with `add_hook`. |
 | `reqwest_middleware` | Demonstrates supplying a custom reqwest client with retry middleware. |
+| `retry_transient_failures` | Sends a prompt again after a rate limit or server error, waiting as long as the provider asked. A hook cannot: `ModelTurnAction::Retry` only re-asks after a successful call. `OPENAI_BASE_URL` points it at a local stub. |
 | `rmcp_example` | Connects agents to MCP servers: a local server's tools and resources, and with `--bin remote -- <url>` any hosted streamable HTTP server. |
 | `sentiment_classifier` | Demonstrates the smallest typed extractor for classification. |
 | `transcription` | See source. |
