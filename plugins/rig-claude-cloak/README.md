@@ -38,15 +38,19 @@ There is no manual code-paste or headless flow. This plugin never imports
 OMP's credentials.
 
 Credentials are stored at `$RIG_HOME/anthropic-oauth/credentials.json`, or
-`~/.rig/anthropic-oauth/credentials.json`, in a private directory with mode
-0700 and files with mode 0600. Token writes use atomic replacement. Refresh is
-serialized across processes and preserves refresh tokens omitted by the
-server. Rotated tokens are saved before optional account lookup, so cancelling
-that lookup cannot discard a successful refresh. The token and account identity
-are read as one locked snapshot.
+`~/.rig/anthropic-oauth/credentials.json`, through rig-core's `FileTokenStore`:
+the directory it creates has mode 0700 and the file mode 0600, a file others
+may read is narrowed to 0600 before it is read, and one behind a symlink is
+refused. Token writes use atomic replacement. Refresh is serialized across
+processes with a lock on `credentials.lock` beside it, waited for at most two
+minutes, and preserves refresh tokens omitted by the server. Login holds that
+lock only while it saves, not while the browser is open. Rotated tokens are
+saved before optional account lookup, so cancelling that lookup cannot discard
+a successful refresh. The token and account identity are read as one locked
+snapshot.
 `/claude-cloak logout` deletes local credentials, not the server grant or
-device identity. It refuses while login or refresh owns the credential lock;
-retry after that operation finishes. Already-dispatched requests are not
+device identity. It refuses while a login's save or a refresh holds the
+credential lock; retry after that operation finishes. Already-dispatched requests are not
 cancelled. Authentication errors omit token response bodies and browser URLs.
 
 ## Compatibility and provenance

@@ -268,3 +268,54 @@ async fn file_store_refuses_a_large_file_split_inside_a_character() -> anyhow::R
     );
     Ok(())
 }
+
+/// A lock still held when the wait runs out is refused as busy, naming the
+/// lock file and the wait, so a caller can tell a held lock from a broken
+/// store and try again.
+#[tokio::test]
+async fn file_store_lock_held_past_the_wait_is_busy() -> anyhow::Result<()> {
+    let dir = assert_fs::TempDir::new()?;
+    let store = super::FileTokenStore::new(dir.path());
+    let _held = store
+        .lock("chatgpt")
+        .await
+        .map_err(anyhow::Error::from_boxed)?;
+    let wait = std::time::Duration::from_millis(100);
+    let error = match store.clone().with_lock_wait(wait).lock("chatgpt").await {
+        Ok(_) => anyhow::bail!("a held lock was taken twice"),
+        Err(error) => error,
+    };
+    let path = dir.path().join("chatgpt.lock");
+    anyhow::ensure!(
+        matches!(
+            error.downcast_ref::<super::FileStoreError>(),
+            Some(super::FileStoreError::Busy { path: named, waited }) if *named == path && *waited == wait
+        ),
+        "{error:?}"
+    );
+    Ok(())
+}
+
+/// A store that waits for no one refuses a held lock at once.
+#[tokio::test]
+async fn file_store_lock_without_a_wait_is_refused_at_once() -> anyhow::Result<()> {
+    let dir = assert_fs::TempDir::new()?;
+    let store = super::FileTokenStore::new(dir.path());
+    let _held = store
+        .lock("chatgpt")
+        .await
+        .map_err(anyhow::Error::from_boxed)?;
+    let refused = tokio::time::timeout(
+        std::time::Duration::from_secs(1),
+        store
+            .clone()
+            .with_lock_wait(std::time::Duration::ZERO)
+            .lock("chatgpt"),
+    )
+    .await;
+    anyhow::ensure!(
+        matches!(&refused, Ok(Err(error)) if matches!(error.downcast_ref::<super::FileStoreError>(), Some(super::FileStoreError::Busy { .. }))),
+        "{refused:?}"
+    );
+    Ok(())
+}

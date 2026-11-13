@@ -117,7 +117,7 @@ fn run(future: impl std::future::Future<Output = anyhow::Result<()>>) -> anyhow:
 
 fn seeded() -> anyhow::Result<tempfile::TempDir> {
     let dir = (tempfile::tempdir())?;
-    (save(dir.path(), &credentials()))?;
+    (seed(dir.path(), &credentials()))?;
     Ok(dir)
 }
 
@@ -152,7 +152,7 @@ fn concurrent_refresh_has_one_winner_and_logout_is_busy_until_completion() -> an
                     == (serde_json::json!({"grant_type":"refresh_token", "client_id":CLIENT_ID, "refresh_token":"old-refresh"}))
             );
             anyhow::ensure!(matches!(logout_in(dir.path()), Err(AuthError::Busy)));
-            anyhow::ensure!(((load(dir.path()))?.refresh_token) == ("old-refresh"));
+            anyhow::ensure!(((saved(dir.path()))?.refresh_token) == ("old-refresh"));
             let waiter = credentials_in(dir.path(), &client);
             let release = async {
                 tokio::time::sleep(Duration::from_millis(75)).await;
@@ -170,7 +170,7 @@ fn concurrent_refresh_has_one_winner_and_logout_is_busy_until_completion() -> an
         anyhow::ensure!((second) == ("rotated-access".into(), Some("rotated-account".into())));
         task.await??;
         anyhow::ensure!(requests.recv().await.is_none());
-        let stored = (load(dir.path()))?;
+        let stored = (saved(dir.path()))?;
         anyhow::ensure!((stored.refresh_token) == ("rotated-refresh"));
         anyhow::ensure!((stored.org_id.as_deref()) == (Some("original-org")));
         anyhow::ensure!(((fs::read_dir(dir.path()))?.count()) == (2));
@@ -194,7 +194,6 @@ fn concurrent_refresh_has_one_winner_and_logout_is_busy_until_completion() -> an
 fn login_exchange_sends_pkce_grant_and_recovers_bootstrap_identity() -> anyhow::Result<()> {
     run(async {
         let dir = tempfile::tempdir()?;
-        let _guard = lock(dir.path())?;
         let (client, mut requests, task) = server(vec![
             Reply::json(serde_json::json!({"access_token":"login-access", "refresh_token":"login-refresh", "expires_in":3600})),
             Reply::json(serde_json::json!({"oauth_account":{"account_uuid":"login-account", "organization_uuid":"login-org"}})),
@@ -244,7 +243,7 @@ fn cancellation_during_bootstrap_preserves_tokens_and_releases_lock() -> anyhow:
             let dir = seeded()?;
             let mut old = credentials();
             old.account_id = None;
-            save(dir.path(), &old)?;
+            seed(dir.path(), &old)?;
             let (release, gate) = oneshot::channel();
             let mut bootstrap = Reply::json(serde_json::json!({}));
             bootstrap.gate = Some(gate);
@@ -255,7 +254,6 @@ fn cancellation_during_bootstrap_preserves_tokens_and_releases_lock() -> anyhow:
             {
                 let operation = async {
                     if login {
-                        let _guard = lock(dir.path())?;
                         exchange_code(
                             dir.path(),
                             &client,
@@ -277,15 +275,15 @@ fn cancellation_during_bootstrap_preserves_tokens_and_releases_lock() -> anyhow:
                         requests.recv().await.ok_or_else(|| anyhow::anyhow!("missing grant"))?;
                         let request = requests.recv().await.ok_or_else(|| anyhow::anyhow!("missing bootstrap"))?;
                         anyhow::ensure!(request.head.starts_with("GET /api/claude_cli/bootstrap?"));
-                        anyhow::ensure!(matches!(lock(dir.path()), Err(AuthError::Busy)));
-                        let stored = load(dir.path())?;
+                        anyhow::ensure!(matches!(hold(dir.path()), Err(AuthError::Busy)));
+                        let stored = saved(dir.path())?;
                         anyhow::ensure!(stored.access_token == "rotated-access");
                         anyhow::ensure!(stored.refresh_token == "rotated-refresh");
                         Ok::<_, anyhow::Error>(())
                     } => result?,
                 }
             }
-            let guard = lock(dir.path())?;
+            let guard = hold(dir.path())?;
             drop(guard);
             release
                 .send(())
@@ -306,7 +304,7 @@ fn persistence_errors_abort_refresh_before_bootstrap() -> anyhow::Result<()> {
         let dir = seeded()?;
         let mut old = credentials();
         old.account_id = None;
-        save(dir.path(), &old)?;
+        seed(dir.path(), &old)?;
         let (release, gate) = oneshot::channel();
         let mut reply = Reply::json(
             serde_json::json!({"access_token":"rotated-access", "refresh_token":"rotated-refresh", "expires_in":3600}),
@@ -329,7 +327,7 @@ fn persistence_errors_abort_refresh_before_bootstrap() -> anyhow::Result<()> {
         let (result, sabotaged) = tokio::join!(credentials_in(dir.path(), &client), sabotage);
         sabotaged?;
         anyhow::ensure!(matches!(result, Err(AuthError::Storage)));
-        let _guard = lock(dir.path())?;
+        let _guard = hold(dir.path())?;
         task.await??;
         anyhow::ensure!(requests.recv().await.is_none());
         Ok(())
@@ -343,7 +341,7 @@ fn enrichment_persistence_failure_is_reported_without_losing_rotated_tokens() ->
         let dir = seeded()?;
         let mut old = credentials();
         old.account_id = None;
-        save(dir.path(), &old)?;
+        seed(dir.path(), &old)?;
         let (release, gate) = oneshot::channel();
         let mut bootstrap =
             Reply::json(serde_json::json!({"oauth_account":{"account_uuid":"enriched-account"}}));
@@ -373,10 +371,10 @@ fn enrichment_persistence_failure_is_reported_without_losing_rotated_tokens() ->
         let (result, sabotaged) = tokio::join!(credentials_in(dir.path(), &client), sabotage);
         sabotaged?;
         anyhow::ensure!(matches!(result, Err(AuthError::Storage)));
-        let _guard = lock(dir.path())?;
+        let _guard = hold(dir.path())?;
         fs::remove_dir(dir.path().join("credentials.json"))?;
         fs::rename(backup, dir.path().join("credentials.json"))?;
-        let stored = load(dir.path())?;
+        let stored = saved(dir.path())?;
         anyhow::ensure!(stored.access_token == "rotated-access");
         anyhow::ensure!(stored.refresh_token == "rotated-refresh");
         anyhow::ensure!(stored.account_id.is_none());
@@ -392,7 +390,7 @@ fn bootstrap_failure_is_best_effort_after_successful_refresh() -> anyhow::Result
             let dir = seeded()?;
             let mut old = credentials();
             old.account_id = None;
-            (save(dir.path(), &old))?;
+            (seed(dir.path(), &old))?;
             let (client, _requests, task) = server(vec![
                 Reply::json(serde_json::json!({"access_token":"fresh", "expires_in":3600})),
                 Reply {
@@ -406,7 +404,7 @@ fn bootstrap_failure_is_best_effort_after_successful_refresh() -> anyhow::Result
             anyhow::ensure!(
                 ((credentials_in(dir.path(), &client).await)?) == ("fresh".into(), None)
             );
-            let stored = (load(dir.path()))?;
+            let stored = (saved(dir.path()))?;
             anyhow::ensure!((stored.access_token) == ("fresh"));
             anyhow::ensure!((stored.refresh_token) == ("old-refresh"));
             anyhow::ensure!((stored.org_id.as_deref()) == (Some("original-org")));
@@ -423,7 +421,7 @@ fn missing_refresh_token_and_identity_use_bootstrap_without_organization_drift()
         let dir = seeded()?;
         let mut old = credentials();
         old.account_id = None;
-        (save(dir.path(), &old))?;
+        (seed(dir.path(), &old))?;
         let (client, mut requests, task) = server(vec![
             Reply::json(serde_json::json!({"access_token":"fresh", "expires_in":3600})),
             Reply::json(serde_json::json!({"oauth_account":{"account_uuid":"bootstrap-account", "organization_uuid":"bootstrap-org"}})),
@@ -453,7 +451,7 @@ fn missing_refresh_token_and_identity_use_bootstrap_without_organization_drift()
         ] {
             anyhow::ensure!(headers.contains(expected));
         }
-        let stored = (load(dir.path()))?;
+        let stored = (saved(dir.path()))?;
         anyhow::ensure!((stored.refresh_token) == ("old-refresh"));
         anyhow::ensure!((stored.org_id.as_deref()) == (Some("original-org")));
         task.await??;
@@ -498,7 +496,7 @@ fn failed_refresh_never_replaces_credentials_or_exposes_response_details() -> an
             anyhow::ensure!(!error.to_string().contains("secret-token"));
             anyhow::ensure!(!error.to_string().contains("https://"));
             anyhow::ensure!(((fs::read(dir.path().join("credentials.json")))?) == (before));
-            let _guard = (lock(dir.path()))?;
+            let _guard = (hold(dir.path()))?;
             task.await??;
         }
         Ok(())

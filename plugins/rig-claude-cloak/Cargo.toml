@@ -31,8 +31,6 @@ base64 = { workspace = true }
 rand = "0.9"
 thiserror = { workspace = true }
 url = { workspace = true }
-tempfile = "3"
-fs2 = "0.4"
 xxhash-rust = { version = "0.8", features = ["xxh64"] }
 uuid = { workspace = true, features = ["v4"] }
 flate2 = "1"
@@ -42,3 +40,4 @@ ryu-js = "1"
 anyhow = { workspace = true }
 rig-cassette = { path = "../../crates/rig-cassette", features = ["traffic"] }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+tempfile = "3"
