@@ -434,8 +434,9 @@ impl<O> AgentRunner<O> {
     /// later calls that conflict with nothing unsettled before them start
     /// beside it. A call's footprint is what its tool says of it
     /// ([`Tool::footprint`](crate::tool::Tool::footprint)), read from the
-    /// arguments the model sent; a tool that cannot say may change anything
-    /// ([`Touches::default`]). Off by default: calls start in call order
+    /// arguments the model sent, so a dispatch hook that rewrites them does
+    /// not change whom the call waits for. A tool that cannot say may change
+    /// anything ([`Touches::default`]). Off by default: calls start in call order
     /// as slots free up. The setting is not saved with the run.
     ///
     /// [`Touches::must_wait`]: rig_core::tool::Touches::must_wait
