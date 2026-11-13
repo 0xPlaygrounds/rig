@@ -52,6 +52,40 @@ fn a_body_hint_names_the_wait() {
 }
 
 #[test]
+fn a_body_hint_in_minutes_or_hours_names_the_wait() {
+    let now = SystemTime::now();
+    for (message, wait) in [
+        ("Please try again in 6m0s.", Duration::from_secs(360)),
+        (
+            "Please try again in 1h2m3.5s.",
+            Duration::from_millis(3_723_500),
+        ),
+        (
+            "Please try again in 2m59.56s.",
+            Duration::from_millis(179_560),
+        ),
+        ("Please try again in 1.5 s.", Duration::from_millis(1500)),
+        ("Please try again in .5s.", Duration::from_millis(500)),
+        (
+            "Please try again in 3s 2 tokens left.",
+            Duration::from_secs(3),
+        ),
+    ] {
+        // Within a microsecond, as the parts are summed in floating point.
+        let read = report(message).retry_after(now);
+        let near = read.is_some_and(|read| read.abs_diff(wait) < Duration::from_micros(1));
+        assert!(near, "{message}: {read:?}");
+    }
+    for message in [
+        "try again in 2 minutes",
+        "try again in 6m0x",
+        "try again in 5mins",
+    ] {
+        assert_eq!(report(message).retry_after(now), None, "{message}");
+    }
+}
+
+#[test]
 fn a_retry_after_date_names_the_wait() {
     let mut headers = http::HeaderMap::new();
     headers.insert(

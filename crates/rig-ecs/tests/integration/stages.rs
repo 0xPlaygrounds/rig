@@ -1914,6 +1914,33 @@ fn a_retry_waits_on_a_hold_and_an_interrupt_during_the_wait_sends_nothing() {
     assert_eq!(world.query::<&TurnCall>().iter(world).count(), 0);
 }
 
+/// A 429 asking for a wait past `[retry] max_wait_secs`, in minutes, fails
+/// the turn at once and says why, sending nothing again.
+#[test]
+fn a_rate_limit_asking_for_minutes_fails_the_turn_at_once() {
+    let mut app = app();
+    app.init_resource::<Ended>().add_observer(log_ended);
+    let limited = ProviderResponseError::from_body(
+        r#"{"error": {"code": 429, "message": "Rate limit reached. Please try again in 6m0s."}}"#,
+    );
+    let model = MockCompletionModel::from_stream_turns([
+        vec![MockStreamEvent::Error(MockError::ProviderResponse(limited))],
+        answer("too soon"),
+    ]);
+    agent_on(&mut app, &model);
+    let done = run_until(&mut app, |world| !world.resource::<Ended>().0.is_empty());
+    assert!(done, "{:?}", notices(&app));
+    let why = match ended(&app).as_slice() {
+        [TurnOutcome::Failed(why)] => why.clone(),
+        other => format!("{other:?}"),
+    };
+    assert!(
+        why.contains("Not retrying: the provider asks to wait 360 s"),
+        "{why}"
+    );
+    assert_eq!(model.request_count(), 1);
+}
+
 /// Whether [`refuse_when_asked`] refuses the turns' model calls.
 #[derive(Resource, Default)]
 struct Refusing(bool);
