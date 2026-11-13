@@ -1143,8 +1143,9 @@ fn the_system_watch_tells_what_listing_again_would() {
 
 /// A recursive watch whose system watch cannot be armed, because a folder
 /// under the root cannot be read, still tells the files it can list, and
-/// an edit to one of them.
-#[cfg(unix)]
+/// an edit to one of them. Only inotify refuses such a folder below the
+/// root; FSEvents and the others arm the root alone.
+#[cfg(any(target_os = "linux", target_os = "android"))]
 #[test]
 fn a_watch_the_system_cannot_arm_lists_instead() {
     use std::os::unix::fs::PermissionsExt as _;
@@ -1180,11 +1181,14 @@ fn a_watch_the_system_cannot_arm_lists_instead() {
 }
 
 /// A system watch that cannot be armed is tried again after a wait that
-/// doubles, and is armed once it can be.
-#[cfg(unix)]
+/// doubles, and is armed once it can be. The waits are cut short by
+/// moving the time of the next try, so a slow machine cannot change what
+/// the test sees.
+#[cfg(any(target_os = "linux", target_os = "android"))]
 #[test]
 fn a_watch_that_cannot_be_armed_is_tried_again_later() {
     use std::os::unix::fs::PermissionsExt as _;
+    use std::time::Instant;
     let root = std::env::temp_dir().join(format!("rig-tools-watch-retry-{}", std::process::id()));
     std::fs::remove_dir_all(&root).ok();
     std::fs::create_dir_all(root.join("locked")).ok();
@@ -1203,14 +1207,18 @@ fn a_watch_that_cannot_be_armed_is_tried_again_later() {
         root.clone(),
         notify::RecursiveMode::Recursive,
     );
+    let next_try = |armed: &mut super::Armed, at| {
+        armed.retry = armed.retry.map(|(_, wait)| (at, wait));
+    };
     let first = (armed.follow(), armed.watching());
     let waits = armed.retry.map(|(_, wait)| wait);
-    std::thread::sleep(Duration::from_millis(1100));
+    next_try(&mut armed, Instant::now());
     let second = (armed.follow(), armed.watching());
     let doubled = armed.retry.map(|(_, wait)| wait);
     mode(0o755).ok();
+    next_try(&mut armed, Instant::now() + Duration::from_secs(3600));
     let waiting = (armed.follow(), armed.watching());
-    std::thread::sleep(Duration::from_millis(2100));
+    next_try(&mut armed, Instant::now());
     let after = (armed.follow(), armed.watching(), armed.retry.is_some());
     std::fs::remove_dir_all(&root).ok();
     if refused {
