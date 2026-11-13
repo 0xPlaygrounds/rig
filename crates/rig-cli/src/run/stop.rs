@@ -104,9 +104,11 @@ impl Drop for Watch {
 }
 
 /// The launcher's stdin, unbuffered, read while a [`Watch`] hears the
-/// ending signals: a read waits for input [`POLL`] at a time and fails as
-/// interrupted once a signal was heard. A signal may reach any thread, so
-/// a blocked read is not relied on to be cut short.
+/// ending signals: a read waits for input [`POLL`] at a time and fails
+/// once a signal was heard. A signal may reach any thread, so a blocked
+/// read is not relied on to be cut short. The failure is not
+/// [`ErrorKind::Interrupted`](std::io::ErrorKind::Interrupted), which
+/// readers retry.
 #[cfg(unix)]
 pub(super) struct Stdin;
 
@@ -115,7 +117,7 @@ impl std::io::Read for Stdin {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         loop {
             if heard().is_some() {
-                return Err(std::io::ErrorKind::Interrupted.into());
+                return Err(std::io::Error::other("a signal ends the launcher"));
             }
             if let Some(read) = unix::read_waiting(buf, POLL) {
                 return read;

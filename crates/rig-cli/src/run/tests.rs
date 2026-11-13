@@ -2148,16 +2148,13 @@ fn a_screen_taken_before_a_restart_stays_taken_until_handed_over() {
 
 /// A signal that ends the launcher while it asks for a secret, here after
 /// a reload whose front took the screen, puts the terminal back before the
-/// launcher ends by that signal. The test runs itself again as the
+/// launcher ends by that signal; a closed terminal (SIGHUP, and every write
+/// failing) still ends it by the signal. The test runs itself again as the
 /// launcher, to signal it at the prompt and read its stderr.
 #[cfg(unix)]
 #[test]
 fn a_signal_at_a_secret_prompt_puts_the_terminal_back_and_ends_the_launcher() {
-    use std::io::BufRead;
-    use std::os::unix::process::ExitStatusExt;
-
     const PROBE: &str = "RIG_SECRET_SIGNAL_PROBE";
-    const PROMPT: &str = "Passphrase (crypt): ";
     if std::env::var_os(PROBE).is_some() {
         // The first start takes the screen, stages a build that asks for a
         // secret, and reloads; the restart asks for it.
@@ -2193,57 +2190,103 @@ printf 'rig-describe 1\\nsecret\\tcrypt\\tPassphrase\\n' > \"$RIG_DESCRIBE\"",
             )
         })();
         fs::remove_dir_all(home.root()).ok();
-        // As `run` closes.
-        match ended {
-            Ok(ended) if ended.restore => restore_terminal(None),
-            Ok(_) => {}
-            Err(failure) => eprintln!("error: {failure}"),
+        // As `run` closes, and as `main` says an error `run` returns
+        // before it ends by a heard signal.
+        let restore = match ended {
+            Ok(ended) => ended.restore,
+            Err(failure) => {
+                eprintln!("error: {failure}");
+                return;
+            }
+        };
+        let close = move || {
+            if restore {
+                restore_terminal(None);
+            }
+        };
+        match stop::heard() {
+            None => close(),
+            Some(_) => stop::bounded(close),
         }
         stop::end_as_heard();
         return;
     }
-    let name =
-        "run::tests::a_signal_at_a_secret_prompt_puts_the_terminal_back_and_ends_the_launcher";
-    let launcher = std::env::current_exe().and_then(|test| {
-        Command::new(test)
-            .args(["--exact", name, "--test-threads", "1", "--nocapture"])
-            .env(PROBE, "1")
-            .stdin(Stdio::piped())
-            .stdout(Stdio::null())
-            .stderr(Stdio::piped())
-            .spawn()
-    });
-    let ran = launcher.and_then(|mut launcher| {
-        let pid = libc::pid_t::try_from(launcher.id()).unwrap_or_default();
-        // A launcher that never ends is ended, so the test fails instead.
-        std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_secs(60));
-            // SAFETY: `kill` takes plain integers.
-            unsafe { libc::kill(pid, libc::SIGKILL) };
-        });
-        let mut said = Vec::new();
-        if let Some(stderr) = launcher.stderr.take() {
-            let mut stderr = std::io::BufReader::new(stderr);
-            // The prompt ends with no newline: read up to its last byte.
-            while !String::from_utf8_lossy(&said).contains(PROMPT) {
-                if stderr.read_until(b' ', &mut said)? == 0 {
-                    break;
-                }
-            }
-            // Signalled as it waits for the answer.
-            std::thread::sleep(Duration::from_millis(300));
-            // SAFETY: `kill` takes plain integers.
-            unsafe { libc::kill(pid, libc::SIGTERM) };
-            stderr.read_to_end(&mut said)?;
-        }
-        let status = launcher.wait()?;
-        Ok((String::from_utf8_lossy(&said).into_owned(), status.signal()))
-    });
-    let ran = ran.map_err(|failure: std::io::Error| failure.to_string());
-    let restored = ran.as_ref().is_ok_and(|(said, signal)| {
-        said.split_once(PROMPT)
+    let restored = signalled_at_prompt(PROBE, libc::SIGTERM, true);
+    let restored = restored.map_err(|failure| failure.to_string());
+    let put_back = restored.as_ref().is_ok_and(|(said, signal)| {
+        said.split_once(SECRET_PROMPT)
             .is_some_and(|(_, after)| after.contains("\x1b[?1049l"))
             && *signal == Some(libc::SIGTERM)
     });
-    assert!(restored, "{ran:?}");
+    assert!(put_back, "{restored:?}");
+    let hung_up = signalled_at_prompt(PROBE, libc::SIGHUP, false);
+    let hung_up = hung_up.map_err(|failure| failure.to_string());
+    assert!(
+        matches!(&hung_up, Ok((_, Some(libc::SIGHUP)))),
+        "{hung_up:?}"
+    );
+}
+
+/// The prompt of the secret the probe of
+/// [`a_signal_at_a_secret_prompt_puts_the_terminal_back_and_ends_the_launcher`]
+/// asks for.
+#[cfg(unix)]
+const SECRET_PROMPT: &str = "Passphrase (crypt): ";
+
+/// Runs that test's probe (`probe`) as a launcher, sends it `signal` as
+/// it waits at the prompt, its stderr closed first unless `keep`, and
+/// returns what it wrote to stderr and the signal that ended it.
+#[cfg(unix)]
+fn signalled_at_prompt(
+    probe: &str,
+    signal: libc::c_int,
+    keep: bool,
+) -> std::io::Result<(String, Option<i32>)> {
+    use std::io::BufRead;
+    use std::os::unix::process::ExitStatusExt;
+
+    let name =
+        "run::tests::a_signal_at_a_secret_prompt_puts_the_terminal_back_and_ends_the_launcher";
+    let mut launcher = Command::new(std::env::current_exe()?)
+        .args(["--exact", name, "--test-threads", "1", "--nocapture"])
+        .env(probe, "1")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    let pid = libc::pid_t::try_from(launcher.id()).unwrap_or_default();
+    // A launcher that never ends is killed, so the test fails instead; one
+    // that ended is not, as its pid may be another process's by then.
+    let (ended, wait) = std::sync::mpsc::channel::<()>();
+    std::thread::spawn(move || {
+        let timeout = wait.recv_timeout(Duration::from_secs(60));
+        if timeout == Err(std::sync::mpsc::RecvTimeoutError::Timeout) {
+            // SAFETY: `kill` takes plain integers.
+            unsafe { libc::kill(pid, libc::SIGKILL) };
+        }
+    });
+    let mut said = Vec::new();
+    if let Some(stderr) = launcher.stderr.take() {
+        let mut stderr = std::io::BufReader::new(stderr);
+        // The prompt ends with no newline: read up to its last byte.
+        while !String::from_utf8_lossy(&said).contains(SECRET_PROMPT) {
+            if stderr.read_until(b' ', &mut said)? == 0 {
+                break;
+            }
+        }
+        let kept = keep.then_some(stderr);
+        // Signalled as it waits for the answer.
+        std::thread::sleep(Duration::from_millis(300));
+        // SAFETY: `kill` takes plain integers.
+        unsafe { libc::kill(pid, signal) };
+        if let Some(mut stderr) = kept {
+            stderr.read_to_end(&mut said)?;
+        }
+    }
+    let status = launcher.wait();
+    ended.send(()).ok();
+    Ok((
+        String::from_utf8_lossy(&said).into_owned(),
+        status?.signal(),
+    ))
 }

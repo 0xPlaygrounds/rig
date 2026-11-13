@@ -1086,9 +1086,10 @@ impl Drop for TypeAhead {
 
 /// Asks on the terminal for `secret`, without echo, and returns the
 /// answer; `None` when the user pressed Ctrl+C or, on unix, a signal that
-/// ends the launcher came ([`stop::heard`]). The terminal reads byte by
-/// byte with its signals off, so Ctrl+C arrives as a byte, and the mode is
-/// given back, echo included, whatever the answer.
+/// ends the launcher came ([`stop::heard`]), whatever the terminal then
+/// fails. The terminal reads byte by byte with its signals off, so Ctrl+C
+/// arrives as a byte, and the mode is given back, echo included, whatever
+/// the answer.
 fn ask_secret(launch: &Launch, secret: &DescribedSecret) -> Result<Option<String>> {
     #[cfg(unix)]
     let (watch, mut input) = (stop::Watch::start(), stop::Stdin);
@@ -1096,16 +1097,18 @@ fn ask_secret(launch: &Launch, secret: &DescribedSecret) -> Result<Option<String
     let mut input = std::io::stdin().lock();
     let mode = TypeAhead::set(launch, &["-echo", "-icanon", "-isig"]);
     let mut stderr = std::io::stderr();
-    write!(stderr, "{} ({}): ", secret.help, secret.name)?;
-    stderr.flush()?;
-    let answer = read_secret(&mut input);
+    let answer = write!(stderr, "{} ({}): ", secret.help, secret.name)
+        .and_then(|()| stderr.flush())
+        .and_then(|()| read_secret(&mut input));
     drop(mode);
     #[cfg(unix)]
     drop(watch);
-    writeln!(stderr)?;
+    // A closed terminal sends SIGHUP and then fails every write.
+    let newline = writeln!(stderr);
     if stop::heard().is_some() {
         return Ok(None);
     }
+    newline?;
     Ok(answer?.map(|bytes| String::from_utf8_lossy(&bytes).into_owned()))
 }
 
