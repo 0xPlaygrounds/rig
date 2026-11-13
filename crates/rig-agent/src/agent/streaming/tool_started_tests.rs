@@ -2,7 +2,7 @@
 //! before the call's hooks and body run, with the id its other items carry.
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
 
 use futures::StreamExt;
@@ -57,12 +57,14 @@ impl Tool for WaitTool {
     }
 }
 
-/// A tool named `add` that records whether the consumer had seen a start
-/// item when its body ran.
+/// A tool named `add` that counts its runs and records whether, every time
+/// its body ran, the consumer had taken one more start than there were
+/// earlier runs.
 #[derive(Clone)]
 struct ObservedAdd {
-    seen: Arc<AtomicBool>,
-    seen_when_ran: Arc<AtomicBool>,
+    starts_taken: Arc<AtomicUsize>,
+    runs: Arc<AtomicUsize>,
+    late: Arc<AtomicBool>,
 }
 
 impl Tool for ObservedAdd {
@@ -84,8 +86,10 @@ impl Tool for ObservedAdd {
         _context: &mut ToolContext,
         _args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
-        self.seen_when_ran
-            .store(self.seen.load(Ordering::SeqCst), Ordering::SeqCst);
+        let earlier_runs = self.runs.fetch_add(1, Ordering::SeqCst);
+        if self.starts_taken.load(Ordering::SeqCst) <= earlier_runs {
+            self.late.store(true, Ordering::SeqCst);
+        }
         Ok(0)
     }
 }
@@ -173,33 +177,74 @@ async fn a_call_start_reaches_the_consumer_while_its_sibling_still_runs() {
     );
 }
 
-/// At the default sequential concurrency, a call's start is taken by the
+/// At the default sequential concurrency, each call's start is taken by the
 /// consumer before that call's body runs.
 #[tokio::test]
 async fn a_sequential_call_start_arrives_before_its_body_runs() {
-    let seen = Arc::new(AtomicBool::new(false));
-    let seen_when_ran = Arc::new(AtomicBool::new(false));
+    let tool = ObservedAdd {
+        starts_taken: Arc::new(AtomicUsize::new(0)),
+        runs: Arc::new(AtomicUsize::new(0)),
+        late: Arc::new(AtomicBool::new(false)),
+    };
     let agent = AgentBuilder::new(two_call_model("add", "add"))
-        .tool(ObservedAdd {
-            seen: seen.clone(),
-            seen_when_ran: seen_when_ran.clone(),
-        })
+        .tool(tool.clone())
         .build();
     let mut stream = agent.prompt("use tools").max_turns(3).stream();
 
-    let mut starts = 0;
     while let Some(item) = stream.next().await {
-        let item = item.expect("the run succeeds");
-        if started(&item).is_some() {
-            starts += 1;
-            seen.store(true, Ordering::SeqCst);
+        if started(&item.expect("the run succeeds")).is_some() {
+            tool.starts_taken.fetch_add(1, Ordering::SeqCst);
         }
     }
-    assert_eq!(starts, 2, "every dispatched call reports one start");
+    assert_eq!(tool.starts_taken.load(Ordering::SeqCst), 2);
+    assert_eq!(tool.runs.load(Ordering::SeqCst), 2);
     assert!(
-        seen_when_ran.load(Ordering::SeqCst),
-        "the consumer must have taken the start before the body ran"
+        !tool.late.load(Ordering::SeqCst),
+        "a body ran before the consumer took its start"
     );
+}
+
+struct StopFirstToolCall;
+
+impl AgentHook for StopFirstToolCall {
+    async fn on_dispatch(&self, _: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        match event.tool_args() {
+            Some(args) if args.contains("\"x\":1") => DispatchAction::stop("stop the run"),
+            _ => DispatchAction::proceed(),
+        }
+    }
+}
+
+/// When a call's hook ends the run, the call after it never starts: the run
+/// reports the first call's start only, then fails with no commit or result.
+#[tokio::test]
+async fn a_call_dropped_by_a_sibling_ending_the_run_reports_no_start() {
+    let agent = AgentBuilder::new(two_call_model("add", "add"))
+        .tool(MockAddTool)
+        .build();
+    let mut stream = agent
+        .prompt("use tools")
+        .max_turns(3)
+        .add_hook(StopFirstToolCall)
+        .stream();
+
+    let (mut started_ids, mut settled, mut failed) = (Vec::new(), 0, false);
+    while let Some(item) = stream.next().await {
+        match item {
+            Ok(MultiTurnStreamItem::ToolExecutionStarted { tool_call }) => {
+                started_ids.push(tool_call.id.to_string());
+            }
+            Ok(
+                MultiTurnStreamItem::ToolExecutionCommitted { .. }
+                | MultiTurnStreamItem::ToolResult { .. },
+            ) => settled += 1,
+            Ok(_) => {}
+            Err(_) => failed = true,
+        }
+    }
+    assert!(failed, "the hook ends the run");
+    assert_eq!(started_ids, [CallId::from_wire("call_1").to_string()]);
+    assert_eq!(settled, 0, "a failed batch surfaces no commit or result");
 }
 
 struct SkipEveryToolCall;

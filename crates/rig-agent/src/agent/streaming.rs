@@ -64,8 +64,10 @@ pub enum MultiTurnStreamItem {
         tool_call: rig_core::message::ToolCall,
     },
     /// A tool call **starts**: Rig dispatches it now, before its dispatch
-    /// hooks and its body run. The consumer takes this item before the call
-    /// runs on, so a slow consumer delays the call.
+    /// hooks and its body run. The call goes on only once the stream's
+    /// consumer has taken this item, so a slow consumer delays the call. A
+    /// [`RunEvents`] feed takes it into its buffer, so there the call may run
+    /// before the feed's reader sees it.
     ///
     /// One item per dispatched call, after the turn's
     /// [`ToolCall`](Self::ToolCall) items and before the batch's commits and
