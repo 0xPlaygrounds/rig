@@ -231,7 +231,7 @@ pub const TESTS: &[(&str, &str)] = &[
     ),
     (
         "crates/rig-cassette/tests/providers/anthropic/cassette/malformed_tool_args_matrix.rs",
-        "streaming_malformed_call_is_answered_with_an_error",
+        "streaming_cut_call_is_answered_as_cut_off",
     ),
     (
         "crates/rig-core/src/providers/openai/responses_api/streaming/tests.rs",
