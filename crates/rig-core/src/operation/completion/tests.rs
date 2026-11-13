@@ -1466,3 +1466,36 @@ fn a_wire_that_names_no_replay_target_cannot_prepare_a_request() {
         "{error}"
     );
 }
+
+/// Two calls closed unfinished at one reused wire index are both held
+/// until the reply ends: each ends with it, in the order they opened, and
+/// each is one of the reply's unfinished calls.
+#[test]
+fn calls_closed_unfinished_at_one_index_both_end_with_the_reply() {
+    let decoded = decode_with(ReplyFold::relayed("test"), "test", |reply| {
+        let mut out = reply.out();
+        for (id, arguments) in [("call_a", r#"{"x":"#), ("call_b", r#"{"y":"#)] {
+            out.open(
+                0,
+                Block::Call {
+                    id: CallId::from_wire(id),
+                    name: name("lookup"),
+                },
+                Value::Null,
+            )?;
+            out.push(0, arguments)?;
+            out.close(0)?;
+        }
+        let _ = out.end(Finish {
+            reason: Some(crate::completion::FinishReason::Length),
+            ..Finish::default()
+        });
+        Ok(())
+    });
+    let response = response(decoded);
+    let unfinished: Vec<String> = response
+        .unfinished_calls()
+        .map(|call| call.id.to_string())
+        .collect();
+    assert_eq!(unfinished, ["call_a", "call_b"], "{:?}", response.choice);
+}

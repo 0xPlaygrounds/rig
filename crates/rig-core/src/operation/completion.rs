@@ -257,9 +257,11 @@ pub struct ReplyFold {
     facts: crate::catalog::ModelFacts,
     // The writer.
     open: BTreeMap<usize, Draft>,
-    /// The calls closed as never stated complete, by wire index, held until
-    /// the reply ends so that their ends come with it.
-    held: BTreeMap<usize, Draft>,
+    /// The calls closed as never stated complete, with their wire indices
+    /// (which a later item may reuse), held until the reply ends so that
+    /// their ends come with it. A reply that never ends leaves them out of
+    /// its partial reply, as it does the items still open.
+    held: Vec<(usize, Draft)>,
     /// The position of the block each wire index last closed, whose item
     /// [`Out::edit`] may still amend until the reply ends.
     ended: HashMap<usize, usize>,
@@ -507,7 +509,7 @@ impl ReplyFold {
             origin,
             facts: crate::catalog::ModelFacts::default(),
             open: BTreeMap::new(),
-            held: BTreeMap::new(),
+            held: Vec::new(),
             ended: HashMap::new(),
             next_part: 0,
             call_ids: HashSet::new(),
@@ -730,7 +732,7 @@ impl ReplyFold {
             self.run = None;
         }
         if closing == Closing::Incomplete && matches!(draft.body, Body::Call { .. }) {
-            self.held.insert(index, draft);
+            self.held.push((index, draft));
             return Ok(());
         }
         self.settle(items, index, draft, closing)
@@ -1362,7 +1364,9 @@ impl<'id> Out<'id, Completion> {
     ) -> Result<(), ProviderError> {
         let mut shared = self.lock();
         let Shared { fold, items, .. } = &mut *shared;
-        match fold.open.get_mut(&index).or(fold.held.get_mut(&index)) {
+        // A call held at a reused index is the latest closed there.
+        let held = fold.held.iter_mut().rev().find(|(at, _)| *at == index);
+        match fold.open.get_mut(&index).or(held.map(|(_, draft)| draft)) {
             Some(draft) => {
                 edit(&mut draft.item);
                 Ok(())
