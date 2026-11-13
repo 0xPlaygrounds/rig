@@ -165,7 +165,9 @@ fn apply_defaults(
     let named = invoked.is_some_and(|invoked| invoked.args.model.is_some());
     for agent in &agents {
         let mut agent = commands.entity(agent);
-        if let Some(effort) = &defaults.effort {
+        // A text no model reads has refused the run already ([`effort_word`]).
+        let effort = defaults.effort.as_ref();
+        if let Some(effort) = effort.filter(|effort| ReasoningSupport::reads(effort)) {
             agent.insert(SavedEffort(effort.clone()));
         }
         if !named {

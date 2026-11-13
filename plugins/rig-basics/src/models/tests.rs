@@ -781,6 +781,50 @@ fn an_effort_level_picked_on_a_budget_model_is_saved_by_its_name() {
 }
 
 #[test]
+fn an_effort_picked_is_kept_by_its_name_on_the_next_model() {
+    use rig_harness::rig_core::completion::{Effort, Reasoning};
+
+    // Fable 5 takes levels only; Sonnet 4.6 takes levels and budgets.
+    for next in ["anthropic/claude-fable-5", "anthropic/claude-sonnet-4-6"] {
+        let (mut app, wakes, home, agent) = on_sonnet("defaults-budget-switched", 2);
+        run(&mut app, agent, "effort high");
+        ask(&mut app, &wakes, agent, "Hello.");
+        run(&mut app, agent, &format!("model {next}"));
+        app.update();
+        let high = ReasoningSetting(Some(Reasoning::Effort(Effort::High)));
+        assert_eq!(
+            app.world().get::<ReasoningSetting>(agent),
+            Some(&high),
+            "{next}"
+        );
+        ask(&mut app, &wakes, agent, "Again.");
+        let saved_now = format!("[model]\ndefault = \"{next}\"\neffort = \"high\"\n");
+        assert_eq!(saved(&home), saved_now);
+        let told = &app.world().resource::<Told>().0;
+        assert!(!told.iter().any(|text| text.contains("reset")), "{told:?}");
+    }
+}
+
+#[test]
+fn an_effort_that_refuses_the_run_is_not_also_reset() {
+    let model = MockCompletionModel::from_stream_turns([reply("hi")]);
+    for typo in ["hihg", "HIGHH", "4096 token"] {
+        let written = format!("{SONNET}effort = \"{typo}\"\n");
+        let (app, _, _, _) = remembering(
+            "defaults-budget-typo",
+            &model,
+            (None, Some(&written)),
+            |app| {
+                app.insert_resource(sonnet(&model));
+                tell(app);
+            },
+        );
+        let told = &app.world().resource::<Told>().0;
+        assert!(!told.iter().any(|text| text.contains("reset")), "{told:?}");
+    }
+}
+
+#[test]
 fn an_effort_in_tokens_is_taken_and_saved() {
     use rig_harness::rig_core::completion::Reasoning;
 
