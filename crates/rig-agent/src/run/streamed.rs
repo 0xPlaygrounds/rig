@@ -472,6 +472,8 @@ impl StreamedTurnAssembler {
     /// left out and the ones it repaired renamed.
     pub fn finish(self, response: &rig_core::completion::CompletionResponse) -> StreamedTurn {
         let choice = self.resolved(&response.choice);
+        // A response names its cut-off calls by id, and a folded reply's
+        // calls have distinct ids, so each id is one position.
         let cut_off = choice
             .iter()
             .enumerate()

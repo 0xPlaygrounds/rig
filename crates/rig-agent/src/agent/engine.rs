@@ -2,7 +2,7 @@
 //! streaming [`TurnSource`] implementations supply model responses; the engine
 //! applies lifecycle policy and advances the sans-I/O [`AgentRun`].
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::sync::{
     Arc,
     atomic::{AtomicU64, Ordering},
@@ -735,10 +735,11 @@ impl TurnSource for StreamingTurnSource {
             // A delta hook's stop is the run's: the stream is dropped, cancelling
             // the dispatch in flight before the error surfaces, so the record
             // is the same cancel on every transport.
-            // The item read ahead to learn whether the stream ended (see the
-            // cut-off check below), then taken before the stream is polled.
-            let mut ahead = None;
-            'turn: while let Some(item) = match ahead.take() {
+            // The items read ahead to learn whether the stream ended (see the
+            // cut-off check below), taken before the stream is polled again.
+            // `None` in it is the stream's end.
+            let mut ahead = VecDeque::new();
+            'turn: while let Some(item) = match ahead.pop_front() {
                 Some(item) => item,
                 None => stream.next().await,
             } {
@@ -914,15 +915,19 @@ impl TurnSource for StreamingTurnSource {
                             // A call the reply was cut off in is answered as
                             // cut off whatever its name, so it is neither
                             // offered to the hook nor resolved as invalid. The
-                            // reply marks it only at its end, so the stream is
-                            // read one item ahead to learn whether it ended.
-                            let peeked = stream.next().await;
-                            let cut = peeked.is_none()
+                            // reply marks it only at its end, after the ends of
+                            // the calls it closes, so the stream is read ahead
+                            // past those ends to learn whether it ended.
+                            while let None | Some(Some(Ok(Item::Event(StreamEvent::End { .. })))) =
+                                ahead.back()
+                            {
+                                ahead.push_back(stream.next().await);
+                            }
+                            let cut = matches!(ahead.back(), Some(None))
                                 && stream
                                     .partial()
                                     .cut_off_calls()
                                     .any(|cut| cut.id == invalid.tool_call.id);
-                            ahead = Some(peeked);
                             if cut {
                                 next = assembler.keep_pending_cut_off();
                                 continue;

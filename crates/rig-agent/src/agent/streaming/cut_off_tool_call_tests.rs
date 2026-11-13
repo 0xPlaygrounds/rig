@@ -355,3 +355,66 @@ async fn a_cut_call_to_an_unknown_tool_is_answered_as_cut_off() {
         );
     }
 }
+
+/// Two calls the reply was cut off in, one naming a tool the turn does not
+/// offer, in either order: the reply closes both at its end, and each is
+/// answered as cut off, none offered to the hook, none run.
+#[tokio::test]
+async fn two_cut_calls_with_an_unknown_tool_are_both_answered_as_cut_off() {
+    for tools in [
+        ["delete_everything", "write_file"],
+        ["write_file", "delete_everything"],
+    ] {
+        let mut cut = Vec::new();
+        for (id, tool) in ["call_1", "call_2"].into_iter().zip(tools) {
+            cut.push(MockStreamEvent::tool_call_name_delta(id, tool));
+            cut.push(MockStreamEvent::tool_call_arguments_delta(
+                id,
+                r#"{"path": "a.rs", "content": "fn ma"#,
+            ));
+        }
+        cut.push(MockStreamEvent::FinalResponse(Finish {
+            reason: Some(FinishReason::Length),
+            ..mock_final(Usage::default())
+        }));
+        let model = MockCompletionModel::from_stream_turns([
+            cut,
+            vec![
+                MockStreamEvent::text("split it"),
+                MockStreamEvent::final_response_with_default_usage(),
+            ],
+        ]);
+        let recorded = model.clone();
+        let offered = Offered::default();
+        let tool = WriteFile::default();
+        let ran = tool.0.clone();
+        let agent = AgentBuilder::new(model).tool(tool).build();
+        let runner = agent
+            .prompt("write a long file")
+            .max_turns(5)
+            .add_hook(offered.clone());
+        let outcome = drive(runner).await;
+        assert_eq!(outcome.as_deref(), Ok("split it"), "{tools:?}");
+        assert_eq!(ran.load(Ordering::SeqCst), 0, "{tools:?}: none runs");
+        let seen = offered
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        assert!(
+            seen.is_empty(),
+            "{tools:?}: not offered to the hook: {seen:?}"
+        );
+        let results = recorded
+            .requests()
+            .get(1)
+            .map(|request| serde_json::to_string(&request.chat_history))
+            .and_then(Result::ok)
+            .unwrap_or_default();
+        assert_eq!(
+            results.matches("reached the output limit").count(),
+            2,
+            "{tools:?}: both are answered as cut off: {results}"
+        );
+    }
+}
