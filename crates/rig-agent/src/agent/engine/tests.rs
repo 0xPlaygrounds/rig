@@ -1815,6 +1815,12 @@ async fn ordered_calls_on_different_files_overlap() {
 async fn a_waiting_call_lets_a_later_independent_call_start() {
     let log = touch_log(&["/work/a.rs", "/work/a.rs", "/work/b.rs"], true).await;
     let at = |entry: &str| log.iter().position(|logged| logged == entry);
+    assert!(
+        ["start 2", "start 3", "end 1"]
+            .iter()
+            .all(|entry| at(entry).is_some()),
+        "{log:?}"
+    );
     assert!(at("start 3") < at("end 1"), "{log:?}");
     assert!(at("end 1") < at("start 2"), "{log:?}");
 }
