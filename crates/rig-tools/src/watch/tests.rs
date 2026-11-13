@@ -1178,3 +1178,52 @@ fn a_watch_the_system_cannot_arm_lists_instead() {
         );
     }
 }
+
+/// A system watch that cannot be armed is tried again after a wait that
+/// doubles, and is armed once it can be.
+#[cfg(unix)]
+#[test]
+fn a_watch_that_cannot_be_armed_is_tried_again_later() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let root = std::env::temp_dir().join(format!("rig-tools-watch-retry-{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    std::fs::create_dir_all(root.join("locked")).ok();
+    let locked = root.join("locked");
+    let mode = |mode| std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(mode));
+    mode(0o000).ok();
+    let refused = std::fs::read_dir(&locked).is_err();
+    let watcher = notify::recommended_watcher(|_: notify::Result<notify::Event>| {});
+    let Ok(watcher) = watcher else {
+        mode(0o755).ok();
+        return;
+    };
+    let watcher = Arc::new(std::sync::Mutex::new(watcher));
+    let mut armed = super::Armed::new(
+        Arc::downgrade(&watcher),
+        root.clone(),
+        notify::RecursiveMode::Recursive,
+    );
+    let first = (armed.follow(), armed.watching());
+    let waits = armed.retry.map(|(_, wait)| wait);
+    std::thread::sleep(Duration::from_millis(1100));
+    let second = (armed.follow(), armed.watching());
+    let doubled = armed.retry.map(|(_, wait)| wait);
+    mode(0o755).ok();
+    let waiting = (armed.follow(), armed.watching());
+    std::thread::sleep(Duration::from_millis(2100));
+    let after = (armed.follow(), armed.watching(), armed.retry.is_some());
+    std::fs::remove_dir_all(&root).ok();
+    if refused {
+        assert_eq!(
+            (first, waits, second, doubled, waiting, after),
+            (
+                (true, false),
+                Some(Duration::from_secs(1)),
+                (true, false),
+                Some(Duration::from_secs(2)),
+                (true, false),
+                (true, true, false),
+            )
+        );
+    }
+}
