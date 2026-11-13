@@ -125,6 +125,7 @@ fn kept_facts_are_without_old_text_and_bounded() {
         ExitStatus, FileChange, FileRead, FilesChanged, FilesRead, Hunk, HunkLine, Lines,
         content_hash,
     };
+    const MAX: usize = 256 * 1024;
 
     let mut context = ToolContext::new();
     let read = FileRead::new("/work/a.rs", content_hash(b""));
@@ -145,7 +146,7 @@ fn kept_facts_are_without_old_text_and_bounded() {
         context.insert_result(FilesChanged(vec![change])).is_ok(),
     ];
     assert_eq!(inserted, [true; 3]);
-    let kept = context.result_context().kept();
+    let kept = context.result_context().kept(MAX);
     let paths = kept.get::<FilesRead>().ok().flatten().unwrap_or_default();
     assert_eq!(paths.paths().collect::<Vec<_>>(), ["/work/a.rs"]);
     let changed = kept
@@ -160,9 +161,9 @@ fn kept_facts_are_without_old_text_and_bounded() {
     );
     assert_eq!(change.map(|change| change.hunks.len()), Some(1));
 
-    let huge = FileRead::new("x".repeat(MAX_KEPT_FACTS_BYTES), content_hash(b""));
+    let huge = FileRead::new("x".repeat(MAX), content_hash(b""));
     assert!(context.insert_result(FilesRead(vec![huge])).is_ok());
-    let kept = context.result_context().kept();
+    let kept = context.result_context().kept(MAX);
     assert_eq!(kept.get::<FilesRead>().ok().flatten(), None);
     assert_eq!(
         kept.get::<ExitStatus>().ok().flatten(),
@@ -171,9 +172,9 @@ fn kept_facts_are_without_old_text_and_bounded() {
 
     // At the edge, the key's quotes and the map's braces count too.
     let mut edge = ToolContext::new();
-    let fill = MAX_KEPT_FACTS_BYTES - RequestId::KEY.len() - 2;
+    let fill = MAX - RequestId::KEY.len() - 2;
     assert!(edge.insert_result(RequestId("x".repeat(fill))).is_ok());
-    let kept = edge.result_context().kept();
+    let kept = edge.result_context().kept(MAX);
     let size = serde_json::to_vec(&kept).map_or(usize::MAX, |json| json.len());
-    assert!(size <= MAX_KEPT_FACTS_BYTES, "{size}");
+    assert!(size <= MAX, "{size}");
 }

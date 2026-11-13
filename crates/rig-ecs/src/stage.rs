@@ -447,6 +447,21 @@ pub struct IfStopped(pub Outcome);
 #[derive(Component, Clone, Debug)]
 pub struct Published(pub ToolResultContext);
 
+/// The most bytes of JSON a call's published values may take together to
+/// be kept with a conversation ([`Published::kept`]): room for the diff of
+/// a large edit, while a value past it, such as the diff of a rewritten
+/// generated file, is left out rather than grow the session by as much.
+const MAX_KEPT_FACTS_BYTES: usize = 256 * 1024;
+
+impl Published {
+    /// These values as a conversation keeps them with the call's result
+    /// ([`ToolResultContext::kept`]), in at most [`MAX_KEPT_FACTS_BYTES`]
+    /// of JSON.
+    pub(crate) fn kept(&self) -> ToolResultContext {
+        self.0.kept(MAX_KEPT_FACTS_BYTES)
+    }
+}
+
 /// Keeps the effect it names where it is: not started, or not settled. Any
 /// entity can be a hold; despawn it, or remove this, to release it. Holds
 /// add up: releasing one never releases another's, and every release wakes
