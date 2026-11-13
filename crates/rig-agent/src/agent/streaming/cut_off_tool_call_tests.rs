@@ -418,3 +418,54 @@ async fn two_cut_calls_with_an_unknown_tool_are_both_answered_as_cut_off() {
         );
     }
 }
+
+/// Answers every request with two calls that end, the first to a tool the
+/// turn does not offer, and then sends nothing more, as a provider that
+/// stalls.
+#[derive(Clone)]
+struct StallsAfterTwoCalls;
+
+impl rig_core::driver::Transport<rig_core::test_utils::MockScript> for StallsAfterTwoCalls {
+    fn send(
+        &self,
+        _request: CompletionRequest,
+        _exchange: rig_core::driver::Exchange,
+    ) -> rig_core::driver::Opening<rig_core::test_utils::MockFrame> {
+        let events = [
+            MockStreamEvent::tool_call_name_delta("call_1", "delete_everything"),
+            MockStreamEvent::tool_call_name_delta("call_2", "write_file"),
+            MockStreamEvent::tool_call_arguments_delta("call_1", "{}"),
+            MockStreamEvent::tool_call_arguments_delta("call_2", "{}"),
+            MockStreamEvent::tool_call_end("call_1"),
+            MockStreamEvent::tool_call_end("call_2"),
+        ];
+        let frames = futures::stream::iter(
+            events.map(|event| Ok(rig_core::test_utils::MockFrame::Event(event))),
+        )
+        .chain(futures::stream::pending());
+        rig_core::driver::Opening::ready(rig_core::driver::Opened::new(frames))
+    }
+}
+
+/// A call to an unknown tool that ended is decided at once, though the
+/// reply goes on: checking whether it was cut off reads only what has
+/// already arrived, so a stalled stream after it does not hold the
+/// decision back. With no hook, the run fails on the unknown tool.
+#[tokio::test]
+async fn an_unknown_call_is_decided_without_waiting_on_a_stalled_stream() {
+    let model = rig_core::driver::Model::new(
+        rig_core::test_utils::MockScript::new("stalls"),
+        StallsAfterTwoCalls,
+    );
+    let agent = AgentBuilder::new(model).tool(WriteFile::default()).build();
+    let outcome = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        drive(agent.prompt("write a file").max_turns(5)),
+    )
+    .await;
+    assert!(
+        matches!(&outcome, Ok(Err(error))
+            if error.contains("unknown or disallowed tool `delete_everything`")),
+        "the unknown call is decided while the stream stalls: {outcome:?}"
+    );
+}

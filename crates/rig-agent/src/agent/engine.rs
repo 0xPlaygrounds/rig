@@ -915,13 +915,18 @@ impl TurnSource for StreamingTurnSource {
                             // A call the reply was cut off in is answered as
                             // cut off whatever its name, so it is neither
                             // offered to the hook nor resolved as invalid. The
-                            // reply marks it only at its end, after the ends of
-                            // the calls it closes, so the stream is read ahead
-                            // past those ends to learn whether it ended.
+                            // reply marks it only at its end, which rig-core
+                            // queues with the ends of the calls it closes, so
+                            // the stream is read ahead past those ends, taking
+                            // only what has arrived: a stream that stalls never
+                            // holds the decision back.
                             while let None | Some(Some(Ok(Item::Event(StreamEvent::End { .. })))) =
                                 ahead.back()
                             {
-                                ahead.push_back(stream.next().await);
+                                match futures::FutureExt::now_or_never(stream.next()) {
+                                    Some(item) => ahead.push_back(item),
+                                    None => break,
+                                }
                             }
                             let cut = matches!(ahead.back(), Some(None))
                                 && stream
