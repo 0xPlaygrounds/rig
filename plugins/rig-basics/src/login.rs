@@ -22,6 +22,9 @@
 //!   refresh never overwrites a newer sign-in. The file is replaced whole.
 //! - The plan's models are those the backend lists for the signed-in
 //!   account, asked once per run when first needed.
+//! - `[login] app_name` in `settings.toml` names the app the browser
+//!   sign-in pages send the user back to; they say `rig` without it. An
+//!   empty name refuses the run.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -42,6 +45,8 @@ use rig_core::providers::chatgpt::{
 use rig_core::providers::registry::ConnectError;
 use rig_core::serve::ErasedHandler;
 use rig_harness::services::RigHome;
+use rig_harness::settings::AppSettingsExt;
+use serde::Deserialize;
 
 use rig_ecs::agent::{ActiveTurn, Agent, Notice};
 use rig_ecs::model::{ChoiceKind, Connection, ModelChoice, Models, SetModel};
@@ -74,13 +79,22 @@ impl Plugin for LoginPlugin {
         // calls refresh it once. It never starts a sign-in on its own.
         let store = FileTokenStore::new(RigHome::of(app.world()).auth());
         let file = store.path(PROVIDER);
-        let auth = Authenticator::new(
+        let mut auth = Authenticator::new(
             AuthSource::OAuth,
             store,
             DeviceCodeHandler::default(),
             false,
         )
         .with_browser_opener(open_browser);
+        let settings = app.add_setting::<LoginSettings>("login");
+        if let Some(AppName(name)) = settings
+            .world()
+            .resource::<LoginSettings>()
+            .app_name
+            .clone()
+        {
+            auth = auth.with_app_name(name);
+        }
         let offered = Arc::new(Offered::default());
         let session = Session {
             auth,
@@ -111,6 +125,30 @@ impl Plugin for LoginPlugin {
         .add_observer(on_signed_in)
         .add_observer(on_signed_out)
         .add_observer(say_cancelled);
+    }
+}
+
+/// `[login]` in `settings.toml`.
+#[derive(Resource, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+struct LoginSettings {
+    /// The app the browser sign-in pages send the user back to.
+    app_name: Option<AppName>,
+}
+
+/// An app's name: not empty or blank.
+#[derive(Deserialize, Clone)]
+#[serde(try_from = "String")]
+struct AppName(String);
+
+impl TryFrom<String> for AppName {
+    type Error = &'static str;
+
+    fn try_from(name: String) -> Result<Self, Self::Error> {
+        if name.trim().is_empty() {
+            return Err("an app name must not be empty");
+        }
+        Ok(Self(name))
     }
 }
 

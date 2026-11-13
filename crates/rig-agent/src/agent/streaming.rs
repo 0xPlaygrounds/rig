@@ -95,7 +95,8 @@ pub enum MultiTurnStreamItem {
     /// them by `tool_result.call`. Every started call that answers reports its items,
     /// a hook-skipped one included; a call answered by invalid-call recovery
     /// reports none. An item is not a commit: items stay reported when a
-    /// sibling later fails the batch, and the committed
+    /// sibling later fails the batch, a call already running when a sibling
+    /// fails still reports its items as it finishes, and the committed
     /// [`ToolResult`](Self::ToolResult) still follows a batch that settles.
     /// Show these for progress; record only the `ToolResult`.
     ToolResultItem {

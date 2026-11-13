@@ -125,6 +125,7 @@ that `#[tokio::main]` uses, and anyhow
 
 - 20+ model providers and 10+ vector stores, each under one interface
 - Agents with tools, multi-turn streaming and typed hooks
+- Live tool output in streamed runs: a returned JSON array arrives one element at a time, any other output at once
 - Completion, embedding, transcription, audio and image generation
 - [GenAI semantic conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/) for OpenTelemetry
 - Recording and replay of an agent's effects ([`rig-cassette`](crates/rig-cassette/README.md))

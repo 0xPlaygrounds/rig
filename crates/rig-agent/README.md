@@ -229,6 +229,19 @@ exposes safe kind-level feedback to the model by default. Explicit
 `with_model_output` only for deliberately model-visible feedback. Inbound
 context and host-only result metadata belong in `ToolContext`, not model output.
 
+Streamed runs report each tool call as it starts (`ToolExecutionStarted`)
+and its accepted output as soon as its outcome hooks accept it
+(`ToolResultItem`), without waiting for the rest of the batch. A returned
+top-level JSON array is reported one element at a time, with a zero-based
+`index` and the total `count`; any other output is one item, multimodal blocks
+together, and an empty array reports nothing. Text is never reparsed as JSON.
+Items reflect outcome-hook rewrites and carry the call ID. They are not a
+commit: items already reported stay reported when a sibling fails the batch,
+and a sibling already running when that happens still reports its items as it
+finishes. `ToolExecutionCommitted` and the aggregate `ToolResult` keep atomic
+batch semantics and call order. Use `ToolResultItem` for live progress and
+`ToolResult` for history; do not record both as tool results.
+
 Tool registries publish changes to every attached handler table. Generated tool
 keys use `<owner>/tool:<name>#<generation>`, and a request catalog runs the
 registration it advertised even after the registry replaced it. Explicit keys
