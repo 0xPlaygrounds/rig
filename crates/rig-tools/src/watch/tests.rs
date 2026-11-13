@@ -1180,6 +1180,53 @@ fn a_watch_the_system_cannot_arm_lists_instead() {
     }
 }
 
+/// A watch listing every second because its system watch cannot be armed
+/// tells the files of a root moved away as removed, at the next listing,
+/// and those of one put back in its place as made.
+#[cfg(any(target_os = "linux", target_os = "android"))]
+#[test]
+fn an_unarmed_watch_tells_a_root_moved_away_and_back() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let base = std::env::temp_dir().join(format!("rig-tools-watch-gone-{}", std::process::id()));
+    std::fs::remove_dir_all(&base).ok();
+    std::fs::create_dir_all(base.join("root/locked")).ok();
+    let base = std::fs::canonicalize(&base).unwrap_or(base);
+    let (root, away) = (base.join("root"), base.join("away"));
+    let file = root.join("a.txt");
+    std::fs::write(&file, "one").ok();
+    let locked = root.join("locked");
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).ok();
+    // Whoever may read it anyway (root) arms the watch.
+    let refused = std::fs::read_dir(&locked).is_err();
+    let watch = Arc::new(Local).watch(&root, true, Listing::Visible);
+    let told_all = watch.map(|watch| {
+        let events = events(watch);
+        let wait = Duration::from_millis(1500);
+        let started = told(&events, wait);
+        std::fs::rename(&root, &away).ok();
+        let gone = told(&events, wait);
+        std::fs::create_dir(&root).ok();
+        std::fs::write(&file, "two").ok();
+        (started, gone, told(&events, wait))
+    });
+    let unlock = |dir: &Path| {
+        std::fs::set_permissions(dir.join("locked"), std::fs::Permissions::from_mode(0o755))
+    };
+    unlock(&root).ok();
+    unlock(&away).ok();
+    std::fs::remove_dir_all(&base).ok();
+    if refused {
+        assert_eq!(
+            told_all.ok(),
+            Some((
+                vec![("snapshot", vec![file.clone()])],
+                vec![("changed", vec![file.clone()])],
+                vec![("changed", vec![file])],
+            ))
+        );
+    }
+}
+
 /// A system watch that cannot be armed is tried again after a wait that
 /// doubles, and is armed once it can be. The waits are cut short by
 /// moving the time of the next try, so a slow machine cannot change what
