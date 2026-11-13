@@ -252,7 +252,9 @@ fn audited_handler_with_root_ttl(
         .map_err(|_| "HTTP client initialization failed")?;
     let client = DynHttpClient::new(OAuthTransport {
         inner: DynHttpClient::new(Audit {
-            inner: DynHttpClient::new(rig_reqwest::ReqwestClient::from(client)),
+            inner: DynHttpClient::new(Gzip(DynHttpClient::new(rig_reqwest::ReqwestClient::from(
+                client,
+            )))),
             records: records.clone(),
             root_ttl_attempts,
         }),
@@ -268,12 +270,7 @@ fn audited_handler_with_root_ttl(
     app.add_plugins(crate::ClaudeCloakPlugin);
     let catalog = app.world().resource::<Models>().0.catalog();
     let spec = catalog.resolve(MODEL)?;
-    Ok(crate::connect_with_client(
-        spec.spec,
-        catalog,
-        &crate::Transport::default(),
-        client,
-    )?)
+    Ok(crate::connect_with_client(spec.spec, catalog, client)?)
 }
 
 async fn probes() -> ProbeResult<()> {

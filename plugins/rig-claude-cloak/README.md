@@ -138,6 +138,8 @@ attestation. Gzip starts at 4096 UTF-16 units after attestation and is disabled
 with proxy or custom-CA environment configuration. Proxy captures therefore
 verify uncompressed application requests, not native TLS or gzip equivalence.
 Different DEFLATE implementations can produce different compressed bytes.
+HTTP wrappers added to the model connector, such as the traffic log, run after
+this rewrite and before gzip, so they see the request as sent, uncompressed.
 Custom tool names receive OMP's `_` prefix on the wire; the handler removes
 one prefix from streamed and completed replies before Rig dispatches tools.
 

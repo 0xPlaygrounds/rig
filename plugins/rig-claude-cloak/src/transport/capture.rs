@@ -362,13 +362,13 @@ async fn capture_requests(root: &str) -> Result<Vec<Value>, Box<dyn std::error::
         });
         let capture = Arc::new(Mutex::new(None));
         let client = DynHttpClient::new(OAuthTransport {
-            inner: DynHttpClient::new(tests::Rerouted {
+            inner: DynHttpClient::new(Gzip(DynHttpClient::new(tests::Rerouted {
                 inner: DynHttpClient::new(rig_reqwest::ReqwestClient::from(reqwest::Client::new())),
                 by: LocalSender {
                     uri,
                     capture: capture.clone(),
                 },
-            }),
+            }))),
             home: Default::default(),
             device: std::fs::read_to_string(format!("{root}/home/.omp/install-id"))?
                 .trim()
@@ -409,8 +409,7 @@ async fn capture_requests(root: &str) -> Result<Vec<Value>, Box<dyn std::error::
             .or_else(|| fixtures.get("model").unwrap_or(&Value::Null).as_str())
             .ok_or("model")?;
         let spec = catalog.resolve(&format!("claude-cloak/{model}"))?;
-        let handler =
-            crate::connect_with_client(spec.spec, catalog, &crate::Transport::default(), client)?;
+        let handler = crate::connect_with_client(spec.spec, catalog, client)?;
         let request = request(fixture)?.max_tokens(
             fixture
                 .get("maxTokens")

@@ -421,8 +421,7 @@ async fn generic_provider_explicit_cache_points_fit_final_wire_budget() -> anyho
         app.add_plugins(crate::ClaudeCloakPlugin);
         let catalog = app.world().resource::<Models>().0.catalog();
         let spec = catalog.resolve("claude-cloak/claude-sonnet-4-6")?;
-        let handler =
-            crate::connect_with_client(spec.spec, catalog, &crate::Transport::default(), client)?;
+        let handler = crate::connect_with_client(spec.spec, catalog, client)?;
         let mut request = CompletionRequest::new("first")
             .max_tokens(32)
             .cache(CacheRetention::Long)
@@ -514,8 +513,7 @@ async fn generic_provider_preserves_explicit_raw_cache_override() -> anyhow::Res
         app.add_plugins(crate::ClaudeCloakPlugin);
         let catalog = app.world().resource::<Models>().0.catalog();
         let spec = catalog.resolve("claude-cloak/claude-sonnet-4-6")?;
-        let handler =
-            crate::connect_with_client(spec.spec, catalog, &crate::Transport::default(), client)?;
+        let handler = crate::connect_with_client(spec.spec, catalog, client)?;
         let control = json!({"type":"ephemeral","ttl":ttl});
         let mut request = CompletionRequest::new("synthetic")
             .max_tokens(16)
@@ -784,18 +782,18 @@ async fn compression_and_session_header_follow_shaped_request() -> anyhow::Resul
             .and_then(|v| v.to_str().ok()))
             == (Some("saved-session"))
     );
+    // The rewrite leaves the body as JSON; compression nearest the network gzips it.
+    anyhow::ensure!(!prepared.headers().contains_key("content-encoding"));
+    anyhow::ensure!(prepared.body() == &expected);
+    let wire = compressed(prepared, false)?;
+    anyhow::ensure!(
+        wire.headers()
+            .get("content-encoding")
+            .and_then(|v| v.to_str().ok())
+            == Some("gzip")
+    );
     let mut decoded = Vec::new();
-    match prepared
-        .headers()
-        .get("content-encoding")
-        .and_then(|v| v.to_str().ok())
-    {
-        Some("gzip") => {
-            flate2::read::GzDecoder::new(prepared.body().as_ref()).read_to_end(&mut decoded)?;
-        }
-        None => decoded.extend_from_slice(prepared.body()),
-        Some(_) => anyhow::bail!("unexpected compression"),
-    }
+    flate2::read::GzDecoder::new(wire.body().as_ref()).read_to_end(&mut decoded)?;
     anyhow::ensure!((decoded) == (expected));
     Ok(())
 }
@@ -864,7 +862,7 @@ fn a_turn_without_a_login_fails_after_one_attempt_that_sends_nothing() -> anyhow
     app.update();
     let catalog = app.world().resource::<Models>().0.catalog();
     let spec = catalog.resolve("claude-cloak/claude-haiku-5-5")?.shared();
-    let handler = crate::connect_with_client(&spec, catalog, &crate::Transport::default(), client)?;
+    let handler = crate::connect_with_client(&spec, catalog, client)?;
     let world = app.world_mut();
     let agent = world
         .query_filtered::<Entity, With<Agent>>()

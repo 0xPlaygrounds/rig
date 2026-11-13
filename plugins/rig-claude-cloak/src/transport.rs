@@ -3,6 +3,7 @@
 //! saved session identity use a process-local session id.
 
 use rig_harness::rig_core::{
+    catalog::Transport,
     http_client::{
         self, Bytes, DynHttpClient, HeaderValue, HttpClientExt, LazyBody, MultipartForm, Request,
         Response, StreamingResponse, Uri,
@@ -76,13 +77,18 @@ fn platform() -> (&'static str, &'static str) {
     (os, arch)
 }
 
-pub(crate) fn new(home: PathBuf) -> Result<DynHttpClient, Error> {
+/// The client the plugin's models are reached through: the request rewrite
+/// outermost, then `wrappers` (such as a traffic log), which see the request
+/// as it is sent, then compression nearest the network, so a wrapper reads
+/// the body as JSON.
+pub(crate) fn new(home: PathBuf, wrappers: &Transport) -> Result<DynHttpClient, Error> {
     static SESSION: OnceLock<String> = OnceLock::new();
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .build()?;
+    let network = DynHttpClient::new(rig_reqwest::ReqwestClient::from(client));
     Ok(DynHttpClient::new(OAuthTransport {
-        inner: DynHttpClient::new(rig_reqwest::ReqwestClient::from(client)),
+        inner: wrappers.wrap(DynHttpClient::new(Gzip(network))),
         #[cfg(test)]
         credentials: None,
         #[cfg(test)]
@@ -1030,35 +1036,26 @@ impl OAuthTransport {
             .map_err(http_client::Error::permanent)?;
         bearer.set_sensitive(true);
         headers.insert("authorization", bearer);
-        let custom_network = [
-            "HTTPS_PROXY",
-            "https_proxy",
-            "HTTP_PROXY",
-            "http_proxy",
-            "ALL_PROXY",
-            "all_proxy",
-            "SSL_CERT_FILE",
-            "SSL_CERT_DIR",
-            "NODE_EXTRA_CA_CERTS",
-        ]
-        .into_iter()
-        .any(|key| std::env::var_os(key).is_some_and(|value| !value.is_empty()));
-        if compress_request(req.body(), custom_network) {
-            let mut encoder = flate2::GzBuilder::new()
-                .operating_system(3)
-                .write(Vec::new(), flate2::Compression::new(6));
-            encoder
-                .write_all(req.body())
-                .map_err(http_client::Error::permanent)?;
-            *req.body_mut() = encoder
-                .finish()
-                .map_err(http_client::Error::permanent)?
-                .into();
-            req.headers_mut()
-                .insert("content-encoding", HeaderValue::from_static("gzip"));
-        }
         Ok(req)
     }
+}
+
+/// Whether the environment routes requests through a proxy or custom
+/// certificates, where the subscriber client sends bodies uncompressed.
+fn custom_network() -> bool {
+    [
+        "HTTPS_PROXY",
+        "https_proxy",
+        "HTTP_PROXY",
+        "http_proxy",
+        "ALL_PROXY",
+        "all_proxy",
+        "SSL_CERT_FILE",
+        "SSL_CERT_DIR",
+        "NODE_EXTRA_CA_CERTS",
+    ]
+    .into_iter()
+    .any(|key| std::env::var_os(key).is_some_and(|value| !value.is_empty()))
 }
 
 fn compress_request(bytes: &[u8], custom_network: bool) -> bool {
@@ -1066,6 +1063,70 @@ fn compress_request(bytes: &[u8], custom_network: bool) -> bool {
         && std::str::from_utf8(bytes).is_ok_and(|text| {
             text.encode_utf16().take(profile::GZIP_THRESHOLD).count() == profile::GZIP_THRESHOLD
         })
+}
+
+/// `req` with its body gzipped, as the subscriber client sends it, when the
+/// body reaches the threshold and the network is not custom.
+#[allow(clippy::result_large_err)]
+fn compressed(
+    mut req: Request<Bytes>,
+    custom_network: bool,
+) -> http_client::Result<Request<Bytes>> {
+    if compress_request(req.body(), custom_network) {
+        let mut encoder = flate2::GzBuilder::new()
+            .operating_system(3)
+            .write(Vec::new(), flate2::Compression::new(6));
+        encoder
+            .write_all(req.body())
+            .map_err(http_client::Error::permanent)?;
+        *req.body_mut() = encoder
+            .finish()
+            .map_err(http_client::Error::permanent)?
+            .into();
+        req.headers_mut()
+            .insert("content-encoding", HeaderValue::from_static("gzip"));
+    }
+    Ok(req)
+}
+
+/// The client nearest the network: compresses each request body as the
+/// subscriber client does, below every wrapper.
+#[derive(Clone)]
+struct Gzip(DynHttpClient);
+
+impl HttpClientExt for Gzip {
+    fn send<T, U>(
+        &self,
+        req: Request<T>,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+    where
+        T: Into<Bytes> + WasmCompatSend,
+        U: From<Bytes> + WasmCompatSend + 'static,
+    {
+        let inner = self.0.clone();
+        let req = compressed(req.map(Into::into), custom_network());
+        async move { inner.send(req?).await }
+    }
+    #[allow(clippy::manual_async_fn)]
+    fn send_multipart<U>(
+        &self,
+        _req: Request<MultipartForm>,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+    where
+        U: From<Bytes> + WasmCompatSend + 'static,
+    {
+        async { Err(http_client::Error::permanent(Error::Multipart)) }
+    }
+    fn send_streaming<T>(
+        &self,
+        req: Request<T>,
+    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
+    where
+        T: Into<Bytes> + WasmCompatSend,
+    {
+        let req = compressed(req.map(Into::into), custom_network());
+        async move { self.0.send_streaming(req?).await }
+    }
 }
 
 impl HttpClientExt for OAuthTransport {

@@ -40,4 +40,5 @@ ryu-js = "1"
 
 [dev-dependencies]
 anyhow = { workspace = true }
+rig-cassette = { path = "../../crates/rig-cassette", features = ["traffic"] }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

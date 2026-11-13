@@ -14118,6 +14118,7 @@ dependencies = [
  "fs2",
  "rand 0.9.4",
  "reqwest 0.13.5",
+ "rig-cassette",
  "rig-harness",
  "rig-harness-test-support",
  "rig-http",
