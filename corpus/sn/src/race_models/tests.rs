@@ -132,6 +132,11 @@ fn probed(
 
 /// An app whose agent uses `race-fast`, raced over `over`.
 fn race(models: Models, over: &[&str]) -> (App, Receiver<()>, Entity) {
+    race_offering(models, over, "Probe.")
+}
+
+/// [`race`], its `probe` tool described as `probe`.
+fn race_offering(models: Models, over: &[&str], probe: &str) -> (App, Receiver<()>, Entity) {
     let mut races = RaceModels::default();
     let over = over.iter().map(|member| (*member).to_owned()).collect();
     races.models.insert("race-fast".to_owned(), over);
@@ -140,7 +145,7 @@ fn race(models: Models, over: &[&str]) -> (App, Receiver<()>, Entity) {
     app.insert_resource(models)
         .insert_resource(races)
         .add_plugins((AgentPlugin, SessionLogPlugin, UsagePlugin, RaceModelsPlugin))
-        .add_open_tool("probe", "Probe.", ToolOptions::default(), probed)
+        .add_open_tool("probe", probe, ToolOptions::default(), probed)
         .init_resource::<Probes>()
         .init_resource::<Ended>()
         .init_resource::<Notices>()
@@ -260,6 +265,24 @@ fn the_faster_member_answers_and_the_slower_are_cancelled_but_paid_for() {
     let tally = tally(app.world());
     assert_eq!(tally.members.get(B).map(|b| b.wins), Some(2));
     assert_eq!(tally.cancelled, 4);
+}
+
+#[test]
+fn a_cancelled_request_is_estimated_with_the_tools_it_offered() {
+    let a = MockCompletionModel::from_stream_turns([reply("from A")]);
+    let b = MockCompletionModel::from_stream_turns([reply("from B")]);
+    let models = members([(A, &a, vec![Wait::Never]), (B, &b, vec![Wait::Now])]);
+    // A 4,000-token tool description, far above the messages' count.
+    let (mut app, wakes, agent) = race_offering(models, &[A, B], &"word ".repeat(3_200));
+    ask(&mut app, &wakes, agent, "Go.", |world| {
+        tally(world).cancelled == 1
+    });
+
+    let session = &app.world().resource::<SessionUsage>().0;
+    let spent_a = session.models.get(A).cloned().unwrap_or_default();
+    assert_eq!(spent_a.calls, 1, "{session:?}");
+    let input = spent_a.tokens.input_tokens.unwrap_or_default();
+    assert!(input > 4_000, "A's estimated input: {input}");
 }
 
 /// The race model's tally.

@@ -83,6 +83,34 @@ fn a_request_near_the_window_drops_the_oldest_turns_with_no_model_call() {
     );
 }
 
+#[derive(serde::Deserialize, schemars::JsonSchema)]
+struct NoArgs {}
+
+#[test]
+fn the_tools_a_request_offers_count_toward_the_window() {
+    let model =
+        MockCompletionModel::from_stream_turns((1..=3).map(|turn| reply(&format!("A{turn}"))));
+    // The messages fit the window; with the tool's 5,000-token description
+    // every request is over it.
+    let (mut app, wakes, agent) = start(&model, 2_000, "[compaction]\nlimits = { reserve = 0 }");
+    let description = "word ".repeat(4_000);
+    app.add_open_tool(
+        "lookup",
+        &description,
+        ToolOptions::default(),
+        |_: On<ToolCalled<NoArgs>>| {},
+    );
+    for question in ["Q1", "Q2", "Q3"] {
+        say(&mut app, &wakes, agent, question);
+    }
+    assert!(
+        sent(&model)
+            .iter()
+            .all(|request| request.contains("lookup"))
+    );
+    assert_eq!(texts(&app, agent), owned(&["Q2", "A2", "Q3", "A3"]));
+}
+
 #[test]
 fn compact_drops_the_oldest_turns_now() {
     let model =
