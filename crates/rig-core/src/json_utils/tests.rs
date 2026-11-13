@@ -91,6 +91,22 @@ mod partial_arguments {
     }
 
     #[test]
+    fn invalid_u_escapes_are_repaired_like_any_other_invalid_escape() {
+        for (text, expected) in [
+            // A Windows path with single backslashes: `\u` starts no valid
+            // escape, so the backslash is doubled and the path survives.
+            (
+                r#"{"path": "C:\users\me", "ok": 1}"#,
+                json!({"path": "C:\\users\\me", "ok": 1}),
+            ),
+            (r#"{"a": "x\uzz", "b": 1}"#, json!({"a": "x\\uzz", "b": 1})),
+            (r#"{"a": "\u"}"#, json!({"a": "\\u"})),
+        ] {
+            assert_eq!(parsed(text), expected, "{text}");
+        }
+    }
+
+    #[test]
     fn numbers_and_literals_cut_short_are_dropped_until_valid() {
         for (text, expected) in [
             (r#"{"n": 1"#, json!({"n": 1})),
