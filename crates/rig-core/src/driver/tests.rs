@@ -2,9 +2,9 @@
 //!
 //! These are the tests that used to live per provider or in
 //! `http_client/sse/tests.rs`: the non-success funnel's four cells, the
-//! connect-error-is-the-only-item rule, paging,
-//! and the property the whole model exists for — a unary reply and a
-//! streamed reply of the same content fold to the same response.
+//! connect-error-is-the-only-item rule, paging, and the property the whole
+//! model exists for: a unary reply and a streamed reply of the same content
+//! fold to the same response.
 
 use bytes::Bytes;
 use futures::StreamExt;

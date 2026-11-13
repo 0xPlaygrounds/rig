@@ -1,4 +1,4 @@
-//! Responses endpoint encoding and observation for configured OpenAI dialects.
+//! Responses endpoint encoding for configured OpenAI dialects.
 //!
 //! ```
 //! use rig_core::providers::openai::OpenAI;
