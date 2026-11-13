@@ -11,7 +11,7 @@
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::Conversation as Chat;
-use rig_harness::rig_memory::{CompactionPolicy, estimate_tokens};
+use rig_harness::rig_memory::{CompactionPolicy, request_estimate};
 use serde::{Deserialize, Deserializer};
 
 /// Who this plugin is, in the conversation's changes.
@@ -60,10 +60,7 @@ fn near_the_window(
             continue;
         };
         let (connection, request) = (&adapted.0, adapted.sent(&model));
-        let used = last
-            .context()
-            .unwrap_or(0)
-            .max(estimate_tokens(&request.chat_history));
+        let used = last.context().unwrap_or(0).max(request_estimate(&request));
         if !policy.0.over_threshold(used, &connection.spec) {
             continue;
         }

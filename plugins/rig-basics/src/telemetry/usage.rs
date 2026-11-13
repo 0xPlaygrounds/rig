@@ -35,7 +35,7 @@ use rig_core::error::ErrorKind;
 use rig_core::streaming::StreamEvent;
 use rig_ecs::session_log::Reset;
 use rig_harness::prelude::*;
-use rig_memory::{HeuristicTokenCounter, TokenCounter};
+use rig_memory::{HeuristicTokenCounter, TokenCounter, request_estimate};
 use serde::{Deserialize, Serialize};
 
 use crate::sessions::agents::{AgentColumn, ColumnOf};
@@ -330,20 +330,13 @@ fn record_usage<E: EventPattern<Event: EntityEvent>, F: QueryFilter>(
 /// About what `request` sends, and the output `streamed`, as rig-memory's
 /// heuristic counts them, with no cost.
 fn estimate(request: &CompletionRequest, streamed: Option<&Streamed>) -> Usage {
-    let counter = HeuristicTokenCounter::default();
-    let messages = request
-        .chat_history
-        .iter()
-        .map(|message| counter.count(message));
-    let tools = request.tools.iter().map(|tool| counter.count_tool(tool));
-    let input = messages.chain(tools).fold(0, usize::saturating_add);
+    let input = request_estimate(request);
     let output = streamed
         .filter(|Streamed(text)| !text.is_empty())
         .map_or(0, |Streamed(text)| {
-            counter.count(&Message::assistant(text.clone()))
+            let output = HeuristicTokenCounter::default().count(&Message::assistant(text.clone()));
+            u64::try_from(output).unwrap_or(u64::MAX)
         });
-    let tokens = |count: usize| u64::try_from(count).unwrap_or(u64::MAX);
-    let (input, output) = (tokens(input), tokens(output));
     Usage::new()
         .input_tokens(input)
         .output_tokens(output)

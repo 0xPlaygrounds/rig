@@ -31,7 +31,7 @@ use rig_core::providers::registry::{ConnectError, ProviderId};
 use rig_core::serve::ErasedHandler;
 use rig_harness::prelude::*;
 use rig_harness::rig_ecs::effects::Handler;
-use rig_memory::{HeuristicTokenCounter, TokenCounter};
+use rig_memory::request_estimate;
 use serde::{Deserialize, Serialize};
 
 /// The file under `RIG_HOME`.
@@ -384,11 +384,7 @@ fn claim_at_once(_: On<Add<StreamTiming>>, mut commands: Commands) {
 /// its input tokens estimated, at its model's list price.
 fn estimate(request: &ModelRequest, sent: Option<&SentTo>) -> Option<CallUsage> {
     let SentTo(connection) = sent?;
-    let counter = HeuristicTokenCounter::default();
-    let tokens = (request.request.chat_history.iter())
-        .map(|message| counter.count(message))
-        .sum::<usize>();
-    let tokens = u64::try_from(tokens).unwrap_or(u64::MAX);
+    let tokens = request_estimate(&request.request);
     let mut usage = Usage::new();
     usage.input_tokens = Some(tokens);
     usage.output_tokens = Some(0);
