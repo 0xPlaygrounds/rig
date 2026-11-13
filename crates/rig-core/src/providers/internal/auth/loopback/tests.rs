@@ -96,7 +96,8 @@ fn callback_parsing_checks_the_state_first() -> anyhow::Result<()> {
         parse("/cb?error=access_denied&error_description=No+thanks&state=s1")
             == Callback::Failed("the browser sign-in returned access_denied (No thanks)".into())
     );
-    anyhow::ensure!(matches!(parse("/cb?state=s1&code="), Callback::Failed(_)));
+    anyhow::ensure!(parse("/cb?state=s1&code=") == Callback::NoCode);
+    anyhow::ensure!(parse("/cb?state=s1") == Callback::NoCode);
     anyhow::ensure!(parse("/favicon.ico") == Callback::Other);
     anyhow::ensure!(parse("/cb/x?code=a&state=s1") == Callback::Other);
     anyhow::ensure!(parse("https://evil.test/cb?state=s1&code=a") == Callback::Other);
@@ -112,10 +113,7 @@ fn a_repeated_state_or_code_is_refused() -> anyhow::Result<()> {
     let parse = |target: &str| parse_callback(&format!("GET {target} HTTP/1.1"), "/cb", "s1");
     anyhow::ensure!(parse("/cb?state=s1&state=s1&code=c") == Callback::StateMismatch);
     anyhow::ensure!(parse("/cb?state=other&state=s1&code=c") == Callback::StateMismatch);
-    anyhow::ensure!(matches!(
-        parse("/cb?state=s1&code=a&code=b"),
-        Callback::Failed(_)
-    ));
+    anyhow::ensure!(parse("/cb?state=s1&code=a&code=b") == Callback::NoCode);
     Ok(())
 }
 

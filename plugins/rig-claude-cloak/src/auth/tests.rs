@@ -298,6 +298,36 @@ fn loopback_callback_ignores_invalid_state_and_accepts_valid_code() -> anyhow::R
     Ok(())
 }
 
+/// A callback with this login's state but no single non-empty code is
+/// refused, and the login keeps waiting for the real one.
+#[test]
+fn a_callback_without_a_code_is_refused_and_the_login_keeps_waiting() -> anyhow::Result<()> {
+    let listener = loopback(0).listen("expected".into(), Instant::now() + LOGIN_WAIT)?;
+    let address = (
+        std::net::Ipv4Addr::LOCALHOST,
+        port(listener.redirect_uri())?,
+    )
+        .into();
+    for target in [
+        "/callback?state=expected",
+        "/callback?state=expected&code=",
+        "/callback?state=expected&code=a&code=b",
+    ] {
+        let page = get(address, target)?;
+        anyhow::ensure!(page.starts_with("HTTP/1.1 400"), "{target}: {page}");
+    }
+    let browser = std::thread::spawn(move || get(address, "/callback?state=expected&code=code"));
+    let runtime = tokio::runtime::Builder::new_current_thread().build()?;
+    let received = runtime.block_on(listener.code())?;
+    anyhow::ensure!(received.code() == "code");
+    received.succeeded();
+    let page = browser
+        .join()
+        .map_err(|_| anyhow::anyhow!("browser thread"))??;
+    anyhow::ensure!(page.starts_with("HTTP/1.1 200"));
+    Ok(())
+}
+
 #[test]
 fn a_denied_login_is_denied() -> anyhow::Result<()> {
     let listener = loopback(0).listen("expected".into(), Instant::now() + LOGIN_WAIT)?;

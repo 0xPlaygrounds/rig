@@ -256,12 +256,14 @@ enum Callback {
     Failed(String),
     /// A callback whose state is not this sign-in's, such as a stale tab.
     StateMismatch,
+    /// This sign-in's callback without exactly one non-empty code.
+    NoCode,
     /// Anything else, such as `/favicon.ico`.
     Other,
 }
 
 /// Reads the request line of a request to the listener, whose callback is
-/// on `path`. A repeated state is a mismatch and a repeated code a failure,
+/// on `path`. A repeated state is a mismatch and a repeated code no code,
 /// so no copy is picked over another.
 fn parse_callback(request_line: &str, path: &str, expected_state: &str) -> Callback {
     let mut parts = request_line.split_whitespace();
@@ -293,10 +295,7 @@ fn parse_callback(request_line: &str, path: &str, expected_state: &str) -> Callb
     }
     match code.as_slice() {
         [code] if !code.is_empty() => Callback::Code(code.clone()),
-        [] | [_] => Callback::Failed("the browser sign-in returned no authorization code".into()),
-        _ => {
-            Callback::Failed("the browser sign-in returned more than one authorization code".into())
-        }
+        _ => Callback::NoCode,
     }
 }
 
@@ -351,6 +350,7 @@ impl Serving {
                 Callback::StateMismatch => {
                     respond(&mut stream, "400 Bad Request", &pages.state_mismatch())
                 }
+                Callback::NoCode => respond(&mut stream, "400 Bad Request", &pages.no_code()),
                 Callback::Failed(message) => {
                     respond(&mut stream, "200 OK", &pages.failed(&message));
                     break Err(LoopbackError::Refused(message));
@@ -457,6 +457,16 @@ impl Pages {
             "Sign-in not recognised",
             &format!(
                 "This sign-in link is not the one {app} is waiting for. Start it again from {app}."
+            ),
+        )
+    }
+
+    fn no_code(&self) -> String {
+        let app = &self.app;
+        page(
+            "No sign-in code",
+            &format!(
+                "This page brought back no sign-in code. {app} is still waiting: finish signing in from the provider's page."
             ),
         )
     }
