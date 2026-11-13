@@ -281,6 +281,7 @@ crossterm = "0.29"
 # net of the allocation counter (`AllocProfiler`).
 divan = "0.1.15"
 ctrlc = "3.4.4"
+csv = "1"
 dotenvy = "0.15"
 epub = "2.1.6"
 # 4.5: the `hf-hub-*` feature split rig-fastembed forwards.
@@ -513,6 +514,7 @@ vertexai = ["dep:rig-vertexai"]
 audio = ["rig-core/audio", "rig-agent?/audio"]
 image = ["rig-core/image", "rig-agent?/image"]
 derive = ["dep:rig-derive", "rig-core/derive", "rig-agent?/derive"]
+csv = ["rig-core/csv"]
 pdf = ["rig-core/pdf"]
 epub = ["rig-core/epub"]
 rmcp = ["dep:rig-rmcp"]

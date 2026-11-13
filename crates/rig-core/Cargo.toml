@@ -28,6 +28,7 @@ doctest = true
 async-stream = { workspace = true }
 base64 = { workspace = true }
 bytes = { workspace = true }
+csv = { workspace = true, optional = true }
 epub = { workspace = true, optional = true }
 futures = { workspace = true }
 glob = { workspace = true }
@@ -109,6 +110,7 @@ audio = []
 image = []
 derive = ["dep:rig-derive"]
 test-utils = ["rig-http/test-utils", "dep:tracing-subscriber"]
+csv = ["dep:csv"]
 pdf = ["dep:lopdf"]
 epub = ["dep:epub", "dep:quick-xml"]
 # The transport-agnostic websocket contract (`ws_client`) and the provider
