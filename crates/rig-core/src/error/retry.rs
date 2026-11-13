@@ -148,17 +148,21 @@ pub(super) fn hinted_wait(text: &str) -> Option<Duration> {
         } else {
             unit
         };
+        // Go writes the micro sign; the Greek mu looks the same.
+        let (micro, unit) = match unit.strip_prefix(['\u{b5}', '\u{3bc}']) {
+            Some(unit) => (true, unit),
+            None => (false, unit),
+        };
         let unit_end = unit
-            .find(|c: char| !(c.is_ascii_alphabetic() || c == '\u{b5}' || c == '\u{3bc}'))
+            .find(|c: char| !c.is_ascii_alphabetic())
             .unwrap_or(unit.len());
-        let scale = match unit.get(..unit_end)? {
-            "h" => 3600.0,
-            "m" => 60.0,
-            "s" => 1.0,
-            "ms" => 0.001,
-            // Go writes the micro sign; the Greek mu looks the same.
-            "us" | "\u{b5}s" | "\u{3bc}s" => 1e-6,
-            "ns" => 1e-9,
+        let scale = match (micro, unit.get(..unit_end)?) {
+            (false, "h") => 3600.0,
+            (false, "m") => 60.0,
+            (false, "s") => 1.0,
+            (false, "ms") => 0.001,
+            (false, "us") | (true, "s") => 1e-6,
+            (false, "ns") => 1e-9,
             _ => return None,
         };
         total = Some(total.unwrap_or(0.0) + amount * scale);

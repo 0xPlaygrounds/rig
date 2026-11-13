@@ -215,34 +215,36 @@ fn rfc3339(text: &str) -> Option<i128> {
 }
 
 /// The wait from `now` until the Unix time `text` names, in units
-/// `unit` nanoseconds long. It is computed exactly and rounded once to the
-/// nearest nanosecond, ties to even; zero once it has passed.
+/// `unit` nanoseconds long. It is computed exactly from the kept digits and
+/// rounded once to the nearest nanosecond, ties to even; zero once it has
+/// passed.
 fn unix_wait(text: &str, unit: i128, now: SystemTime) -> Option<Duration> {
-    let (mantissa, places) = plain_decimal(text)?;
+    let (whole, fraction, places) = plain_decimal(text)?;
+    let whole = whole.checked_mul(unit)?.checked_sub(since_epoch(now)?)?;
     let scale = 10_i128.checked_pow(places)?;
-    let now = since_epoch(now)?.checked_mul(scale)?;
-    let left = mantissa.checked_mul(unit)?.checked_sub(now)?;
-    let (whole, part) = (left.div_euclid(scale), left.rem_euclid(scale));
-    let twice = part.checked_mul(2)?;
-    let up = twice > scale || (twice == scale && whole.rem_euclid(2) == 1);
-    nanoseconds(whole.checked_add(i128::from(up))?)
+    let fraction = fraction.checked_mul(unit)?;
+    let left = whole.checked_add(fraction.div_euclid(scale))?;
+    let twice = fraction.rem_euclid(scale).checked_mul(2)?;
+    let up = twice > scale || (twice == scale && left.rem_euclid(2) == 1);
+    nanoseconds(left.checked_add(i128::from(up))?)
 }
 
-/// The digits of a plain decimal (`34`, `1.5`, `.5`) as one whole number,
-/// and how many of them are decimal places; `None` for anything else, such
-/// as a sign or an exponent, or a number too long to hold.
-fn plain_decimal(text: &str) -> Option<(i128, u32)> {
+/// A plain decimal (`34`, `1.5`, `.5`) as its whole part, its fraction's
+/// digits as a whole number and how many decimal places they are. Digits
+/// past the eighteenth decimal place are dropped. `None` for anything else,
+/// such as a sign or an exponent, or a whole part too large for an `i128`.
+fn plain_decimal(text: &str) -> Option<(i128, i128, u32)> {
     let (whole, fraction) = text.split_once('.').unwrap_or((text, ""));
     let digits = |part: &str| part.bytes().all(|b| b.is_ascii_digit());
     if whole.len() + fraction.len() == 0 || !digits(whole) || !digits(fraction) {
         return None;
     }
-    let (whole, fraction) = (
-        whole.trim_start_matches('0'),
-        fraction.trim_end_matches('0'),
-    );
-    let mantissa = format!("0{whole}{fraction}").parse().ok()?;
-    Some((mantissa, u32::try_from(fraction.len()).ok()?))
+    let fraction = fraction.get(..18).unwrap_or(fraction);
+    Some((
+        format!("0{whole}").parse().ok()?,
+        format!("0{fraction}").parse().ok()?,
+        u32::try_from(fraction.len()).ok()?,
+    ))
 }
 
 /// `nanos` as a duration, zero when negative.

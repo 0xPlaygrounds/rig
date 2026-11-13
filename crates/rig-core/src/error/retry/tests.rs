@@ -100,6 +100,8 @@ fn a_body_hint_in_micro_or_nanoseconds_names_the_wait() {
         ),
         ("Please try again in 40ns.", Duration::from_nanos(40)),
         ("try again in 3s\u{e9}", Duration::from_secs(3)),
+        ("try again in 3s\u{b5}", Duration::from_secs(3)),
+        ("try again in 3s\u{3bc}", Duration::from_secs(3)),
         // The parts are summed in floating point, then rounded once to the
         // nearest nanosecond, ties to even.
         ("try again in 0.0000000001h", Duration::from_nanos(360)),

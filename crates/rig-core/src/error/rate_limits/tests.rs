@@ -159,6 +159,19 @@ fn each_reset_form_is_a_wait_from_the_reply() {
             "1767225634.000000000000000000000000",
             Some(Duration::from_secs(34)),
         ),
+        // Fraction digits past the eighteenth are dropped, not refused.
+        (
+            "1767225634.00000000000000000001",
+            Some(Duration::from_secs(34)),
+        ),
+        (
+            "0.1111111111111111111111111111111111111111",
+            Some(Duration::from_nanos(111_111_111)),
+        ),
+        (
+            "2.00000000000000000000000000000000000001",
+            Some(Duration::from_secs(2)),
+        ),
         ("1e3", None),
         ("-3", None),
     ] {
