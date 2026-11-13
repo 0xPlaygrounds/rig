@@ -721,3 +721,66 @@ async fn run_settled_fires_once_before_the_error_on_every_surface() {
         "stream(): settled before the error was yielded"
     );
 }
+
+/// A tool whose body panics.
+struct Boom;
+
+impl Tool for Boom {
+    const NAME: &'static str = "boom";
+    type Args = serde_json::Value;
+    type Output = String;
+    type Error = ToolExecutionError;
+
+    fn description(&self) -> String {
+        "panics".into()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({"type": "object", "properties": {}})
+    }
+
+    async fn call(
+        &self,
+        _context: &mut ToolContext,
+        _args: serde_json::Value,
+    ) -> Result<String, Self::Error> {
+        panic!("boom")
+    }
+}
+
+#[tokio::test]
+async fn a_tool_that_panics_fails_its_call_and_the_run_goes_on() {
+    let model = MockCompletionModel::from_turns([
+        MockTurn::tool_call("tc-1", "boom", json!({})),
+        MockTurn::text("recovered"),
+    ]);
+    let records = rig_core::serve::RecordBuffer::new();
+    let agent = AgentBuilder::new(model.clone())
+        .tool(Boom)
+        .record_to(records.clone())
+        .build();
+    let response = within(agent.prompt("go").max_turns(3).run())
+        .await
+        .expect("a panicking tool does not fail the run");
+    assert_eq!(response.output(), "recovered");
+
+    let requests = model.requests();
+    let second = serde_json::to_string(requests.get(1).expect("a second request")).expect("json");
+    assert!(
+        second.contains("panicked: boom"),
+        "the model reads the panic: {second}"
+    );
+    let tool_record = records
+        .records()
+        .into_iter()
+        .find(|record| matches!(record.kind, EffectKind::ToolCall { .. }))
+        .expect("the tool call is recorded");
+    assert!(
+        matches!(
+            &tool_record.outcome,
+            Err(report) if report.kind == ErrorKind::Internal && report.message == "panicked: boom"
+        ),
+        "the record holds the panic, not a cancellation: {:?}",
+        tool_record.outcome
+    );
+}
