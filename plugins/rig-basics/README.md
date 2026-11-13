@@ -21,8 +21,9 @@ rig-harness's public API. Each plugin is its own name in `[plugins]` of
   commands add, so it is not listed on its own);
 - `sessions`: `/new`, `/resume` and `/name` (`SessionsPlugin`), and `/fork`,
   `/agents` and rewind (`agents::AgentsPlugin`);
-- `compaction`: summarizing a conversation near the model's window, and
-  `/compact` (`CompactionPlugin`);
+- `compaction`: summarizing a conversation near the model's window with the
+  coding agent's summary prompts (`CODING_PROMPTS`), and `/compact`
+  (`CompactionPlugin`);
 - `telemetry`: what model calls cost and `/usage` (`usage::UsagePlugin`),
   the effect log (`effect_log::EffectLogPlugin`), and warnings and errors
   as data (`diagnostics::DiagnosticsPlugin`);

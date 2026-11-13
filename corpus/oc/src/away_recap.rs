@@ -11,6 +11,7 @@
 //! takes longer than `[recap] timeout` shows nothing and leaves one line in the log.
 
 use bevy_log::warn;
+use rig_basics::compaction::CODING_PROMPTS;
 use rig_harness::prelude::*;
 use rig_harness::rig_memory::recent::{TokenBudget, view};
 use rig_harness::rig_memory::{CompactReason, Summarizer, SummaryLimits, SummaryPrompts};
@@ -57,7 +58,7 @@ const PROMPTS: SummaryPrompts = SummaryPrompts {
          - <up to 5 bullets of what was done, naming the files changed>\n\
          Pending: <what was left open, or what the user asked last>",
     ),
-    ..SummaryPrompts::DEFAULT
+    ..CODING_PROMPTS
 };
 
 /// Adds the recap, its `/recap` command and its card in the terminal view.

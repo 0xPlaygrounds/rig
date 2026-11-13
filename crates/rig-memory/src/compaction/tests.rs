@@ -160,12 +160,12 @@ fn texts(request: &CompletionRequest) -> Vec<(&'static str, String)> {
         .collect()
 }
 
-/// A summary of its own sends rig's instructions, the user's focus among
-/// them, as its system prompt, and the conversation and earlier summary
+/// A summary of its own sends the host's instructions, the user's focus
+/// among them, as its system prompt, and the conversation and earlier summary
 /// alone as the user's message, so the summary tells them apart. Asked in
 /// place or not, it is told to write each value once, as it is now.
 #[test]
-fn a_summary_request_keeps_rigs_words_out_of_the_users_message() {
+fn a_summary_request_keeps_the_hosts_words_out_of_the_users_message() {
     let asked = CompactReason::Asked {
         focus: "keep the sums".to_owned(),
     };
@@ -193,11 +193,32 @@ fn a_summary_request_keeps_rigs_words_out_of_the_users_message() {
     );
     let in_place = Summarizer::DEFAULT.instruction("", 1_000);
     assert!(
-        in_place.contains(update.as_ref()) && in_place.contains("from rig"),
+        in_place.contains(update.as_ref()) && in_place.contains("not from the user"),
         "{in_place}"
     );
     let format = &SummaryPrompts::DEFAULT.format;
     assert!(!format.contains("earlier summary") && !in_place.contains("word for word"));
+}
+
+/// The default prompts serve any host: none names a coding agent or rig,
+/// so a host's own words come from its own prompts.
+#[test]
+fn the_default_prompts_name_no_host() {
+    let SummaryPrompts {
+        system,
+        initial,
+        update,
+        format,
+        in_place,
+        notes,
+    } = SummaryPrompts::DEFAULT;
+    for prompt in [system, initial, update, format, in_place, notes] {
+        let lower = prompt.to_lowercase();
+        let names_rig = lower
+            .split(|c: char| !c.is_alphanumeric())
+            .any(|word| word == "rig");
+        assert!(!names_rig && !lower.contains("coding agent"), "{prompt}");
+    }
 }
 
 /// A summary of its own reads at least an eighth of a small model's input

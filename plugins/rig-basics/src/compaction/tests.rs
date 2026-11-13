@@ -2407,8 +2407,9 @@ fn the_compaction_notice_says_it_or_they_by_how_many_messages_were_kept() {
 }
 
 /// `[compaction]` in settings sets only the fields it names over the
-/// built-in default, which tracks the built-in file tools; there is no
-/// other source of policy, and no command to change it.
+/// built-in default, which tracks the built-in file tools and summarizes
+/// with [`CODING_PROMPTS`]; there is no other source of policy, and no
+/// command to change it.
 #[test]
 fn settings_set_only_what_they_name() {
     let (mut app, _wakes) = app_on(&MemoryStore::default());
@@ -2429,6 +2430,17 @@ fn settings_set_only_what_they_name() {
     );
     assert_eq!(default.tracked, built_in.tracked);
     assert_eq!(default.tracked.len(), 3);
+    assert_eq!(default.summarizer.prompts, CODING_PROMPTS);
+    let (mut app, _wakes) = app_on(&MemoryStore::default());
+    app.insert_resource(rig_harness::settings::Settings::from_toml(
+        "[compaction.prompts]\nsystem = \"Summarize.\"",
+    ));
+    app.add_plugins(CompactionPlugin);
+    let prompts = &app.world().resource::<CompactionDefault>().policy;
+    let prompts = &prompts.summarizer.prompts;
+    assert_eq!(prompts.system, "Summarize.");
+    assert_eq!(prompts.in_place, CODING_PROMPTS.in_place);
+    assert_eq!(prompts.format, CODING_PROMPTS.format);
     let (mut app, _wakes) = app_on(&MemoryStore::default());
     app.insert_resource(rig_harness::settings::Settings::from_toml(
         "[compaction]\ntracked = []",

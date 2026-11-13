@@ -13,6 +13,7 @@
 
 use std::borrow::Cow;
 
+use rig_basics::compaction::CODING_PROMPTS;
 use rig_harness::prelude::*;
 use rig_memory::{CompactReason, Summarizer, SummaryLimits, SummaryPrompts};
 use rig_tui::MainInput;
@@ -37,7 +38,7 @@ const BRIEF_WRITER: Summarizer = Summarizer {
         initial: Cow::Borrowed(ASK),
         update: Cow::Borrowed(ASK),
         format: Cow::Borrowed(FORMAT),
-        ..SummaryPrompts::DEFAULT
+        ..CODING_PROMPTS
     },
     limits: SummaryLimits {
         summary_tokens: BRIEF_TOKENS,
