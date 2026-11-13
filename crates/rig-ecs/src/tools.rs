@@ -19,9 +19,7 @@ use rig_core::message::{ToolCall, ToolName};
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ToolAdapter;
 use rig_core::tool::feedback::{arguments_refusal, unknown_tool_feedback};
-use rig_core::tool::{
-    Scope, Tool, ToolErrorKind, Touches, args_schema, decode_args, tool_definition,
-};
+use rig_core::tool::{Tool, ToolErrorKind, Touches, args_schema, decode_args, tool_definition};
 use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -205,17 +203,12 @@ pub struct ToolCalled<A: Send + Sync + 'static> {
 /// settled ([`Waiting`](super::stage::Waiting)). On a plugin's own effect,
 /// what it may change: one that may change something does not start once
 /// the session can no longer be saved, as a tool call that may does not.
-#[derive(Component, Reflect, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+/// Its default is [`Touches::default`]: a tool that does not say may
+/// change anything.
+#[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[reflect(opaque, Component, Clone, Debug, Default, PartialEq)]
 #[serde(transparent)]
 pub struct Footprint(pub Touches);
-
-impl Default for Footprint {
-    /// May change anything, right for any tool that does not say.
-    fn default() -> Self {
-        Self(Touches::Writes(Scope::Anything))
-    }
-}
 
 /// A [`Footprint`] that stands. On a tool registered with a
 /// [`ToolOptions::footprint`]: that footprint is each of its calls',
@@ -304,7 +297,7 @@ impl AppToolsExt for App {
         };
         let definition = ToolDefinition::new(tool_name, description, args_schema::<A>());
         let serves = Serves::Open(open::<A>);
-        let changes = Touches::Writes(Scope::Anything);
+        let changes = Touches::default();
         if let Some(tool) = register_tool(world, definition, serves, options, changes) {
             world.entity_mut(tool).observe(observer);
         }
