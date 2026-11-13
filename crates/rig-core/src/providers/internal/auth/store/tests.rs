@@ -249,3 +249,22 @@ async fn file_store_refuses_a_file_over_64_kib() -> anyhow::Result<()> {
     );
     Ok(())
 }
+
+/// A credential file over 64 KiB is refused as too large even when the limit
+/// falls inside a multi-byte character.
+#[tokio::test]
+async fn file_store_refuses_a_large_file_split_inside_a_character() -> anyhow::Result<()> {
+    let dir = assert_fs::TempDir::new()?;
+    let store = super::FileTokenStore::new(dir.path());
+    let path = store.path("chatgpt");
+    std::fs::write(&path, format!("{}é", "x".repeat(65_536)))?;
+    let error = refusal(&store).await?;
+    anyhow::ensure!(
+        matches!(
+            error.downcast_ref::<super::FileStoreError>(),
+            Some(super::FileStoreError::TooLarge { path: named, limit: 65_536 }) if *named == path
+        ),
+        "{error:?}"
+    );
+    Ok(())
+}

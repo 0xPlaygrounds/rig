@@ -151,8 +151,9 @@ impl TokenStore for MemoryTokenStore {
 /// Native only.
 ///
 /// [`load`](TokenStore::load) refuses a record that is a symlink or not a
-/// regular file, or is over 64 KiB, with a [`FileStoreError`]. On Unix it
-/// narrows a record group or others can read to owner-only before reading it.
+/// regular file, or is over 64 KiB, with a [`FileStoreError`]. On Unix, when
+/// group or others have any access to a record, it narrows the record to
+/// owner-only before reading it, and refuses the record when that fails.
 #[cfg(not(target_family = "wasm"))]
 #[derive(Debug, Clone)]
 pub struct FileTokenStore {
@@ -237,7 +238,7 @@ impl TokenStore for FileTokenStore {
 pub enum FileStoreError {
     /// The file is a symlink, a directory, or another kind of file than a
     /// regular one, or was replaced by one while it was opened.
-    #[error("{} is not a regular file; a credential is not read through a symlink", path.display())]
+    #[error("{} is a symlink or not a regular file; a credential is read only from a regular file", path.display())]
     NotAFile {
         /// The credential file.
         path: std::path::PathBuf,
@@ -250,9 +251,9 @@ pub enum FileStoreError {
         /// The most a credential file may hold.
         limit: u64,
     },
-    /// Group or others can read the file and it could not be made
-    /// owner-only.
-    #[error("{} is readable by others and could not be made owner-only", path.display())]
+    /// Group or others have access to the file and it could not be made
+    /// owner-only, for example because another user owns it.
+    #[error("{} is open to group or others and could not be made owner-only", path.display())]
     NotNarrowed {
         /// The credential file.
         path: std::path::PathBuf,
@@ -267,9 +268,10 @@ pub enum FileStoreError {
 const RECORD_LIMIT: u64 = 64 * 1024;
 
 /// Reads the credential file at `path`, `None` when there is none. The
-/// checks look at the file that was opened: its identity is compared with
-/// the unfollowed path's, so it cannot be swapped for a symlink between the
-/// check and the read.
+/// checks look at the file that was opened, so it cannot be swapped for a
+/// symlink between the check and the read: on Unix its identity is compared
+/// with the unfollowed path's, and on Windows the open does not follow a
+/// link.
 #[cfg(not(target_family = "wasm"))]
 fn read_private(path: &std::path::Path) -> Result<Option<String>, BoxError> {
     use std::io::Read;
@@ -285,7 +287,13 @@ fn read_private(path: &std::path::Path) -> Result<Option<String>, BoxError> {
     if !linked.file_type().is_file() {
         return Err(not_a_file().into());
     }
-    let file = std::fs::File::open(path)?;
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true);
+    // FILE_FLAG_OPEN_REPARSE_POINT: open a symlink itself, which the handle
+    // check below then refuses.
+    #[cfg(windows)]
+    std::os::windows::fs::OpenOptionsExt::custom_flags(&mut options, 0x0020_0000);
+    let file = options.open(path)?;
     let opened = file.metadata()?;
     if !opened.is_file() {
         return Err(not_a_file().into());
@@ -304,8 +312,8 @@ fn read_private(path: &std::path::Path) -> Result<Option<String>, BoxError> {
                 })?;
         }
     }
-    let mut record = String::new();
-    file.take(RECORD_LIMIT + 1).read_to_string(&mut record)?;
+    let mut record = Vec::new();
+    file.take(RECORD_LIMIT + 1).read_to_end(&mut record)?;
     if record.len() as u64 > RECORD_LIMIT {
         return Err(FileStoreError::TooLarge {
             path: path.to_owned(),
@@ -313,7 +321,7 @@ fn read_private(path: &std::path::Path) -> Result<Option<String>, BoxError> {
         }
         .into());
     }
-    Ok(Some(record))
+    Ok(Some(String::from_utf8(record)?))
 }
 
 /// How long [`FileTokenStore::lock`] waits for another holder: far longer
