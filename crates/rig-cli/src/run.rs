@@ -326,12 +326,11 @@ fn run_agent(
         run.clear_messages()?;
         // Only the first start of a claim runs elsewhere than it was, and
         // only the run's starts until one is ready warn of a 0.46 home.
-        let moved = claimed.moved.take();
         let unwarned = (!launch.carry.warned)
             .then_some(&legacy)
             .into_iter()
             .flatten();
-        launch.carry.warnings = moved.into_iter().chain(unwarned.cloned()).collect();
+        launch.carry.warnings = claimed.moved.iter().chain(unwarned).cloned().collect();
         launch.carry.session = Some(session.clone());
         launch.carry.reason = Some(reason);
         let args = invocation.to_args();
@@ -343,13 +342,29 @@ fn run_agent(
             version: LONG_VERSION,
             launcher: Some(installed),
         });
-        // Only the first start follows the notice and the failed build.
+        let mut watch = stop::Watch::start();
+        let mut child = match command.spawn() {
+            Ok(child) => child,
+            Err(why) => {
+                let why = fs::named("start", &running.current.executable)(why);
+                // Only a trial has a previous build. One that cannot be
+                // started at all gives way to it, whose own secrets are
+                // asked at the top of the loop.
+                let Some(previous) = running.previous.take() else {
+                    return Err(why.into());
+                };
+                eprintln!(
+                    "warning: the new build cannot be started, so the previous build runs: {why}"
+                );
+                running.current = previous;
+                continue;
+            }
+        };
+        // Only the first start follows the notice, the failed build and a
+        // moved session.
+        claimed.moved = None;
         launch.carry.notice = None;
         launch.carry.build_failure = None;
-        let mut watch = stop::Watch::start();
-        let mut child = command
-            .spawn()
-            .map_err(fs::named("start", &running.current.executable))?;
         // A trial becomes the good build as soon as it is ready and the
         // build lock is free, so a launcher killed later (a closed
         // terminal) keeps it. Once the agent exited, the launcher polls for
