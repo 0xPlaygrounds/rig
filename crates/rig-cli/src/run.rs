@@ -347,7 +347,9 @@ fn run_agent(
         launch.carry.notice = None;
         launch.carry.build_failure = None;
         let mut watch = stop::Watch::start();
-        let mut child = command.spawn()?;
+        let mut child = command
+            .spawn()
+            .map_err(fs::named("start", &running.current.executable))?;
         // A trial becomes the good build as soon as it is ready and the
         // build lock is free, so a launcher killed later (a closed
         // terminal) keeps it. Once the agent exited, the launcher polls for
@@ -1232,8 +1234,9 @@ impl Drop for BuildRef {
 /// The builds the launcher of `session` holds in `run` for its next start:
 /// a build staged for it or for any launcher, claimed as a trial, rolling
 /// back to `current` or else the good build; without one, `current`, else
-/// the good build. Call it holding [`locks::hold_build_lock`], so the
-/// claims and the good build it reads are the ones it holds.
+/// the good build. A staged path that is no file, or cannot be looked at,
+/// is warned of and passed over. Call it holding [`locks::hold_build_lock`],
+/// so the claims and the good build it reads are the ones it holds.
 fn select(
     launch: &Launch,
     session: &SessionId,
@@ -1247,6 +1250,21 @@ fn select(
         None => hold_good(launch, run)?,
     };
     for staged in [home.staged_for(session), home.staged()] {
+        match fs::optional(fs::metadata(&staged)) {
+            Ok(Some(metadata)) if metadata.is_file() => {}
+            Ok(None) => continue,
+            Ok(Some(_)) => {
+                eprintln!(
+                    "warning: {} is not a build, so it is not started",
+                    staged.display()
+                );
+                continue;
+            }
+            Err(why) => {
+                eprintln!("warning: a staged build is not started: {why}");
+                continue;
+            }
+        }
         let held = held(run)?;
         // The rename claims the staged build for this launcher alone.
         if fs::optional(fs::rename(staged, &held))?.is_some() {

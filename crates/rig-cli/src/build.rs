@@ -905,11 +905,14 @@ fn package(line: &str) -> Option<(&str, &str)> {
 struct Build(Child);
 
 impl Build {
+    /// Starts `command`; an error names its program.
     fn spawn(mut command: Command) -> std::io::Result<Self> {
+        let program = PathBuf::from(command.get_program());
         #[cfg(unix)]
-        return stop::spawn(&mut command).map(Self);
+        let child = stop::spawn(&mut command);
         #[cfg(not(unix))]
-        command.spawn().map(Self)
+        let child = command.spawn();
+        child.map(Self).map_err(fs::named("start", &program))
     }
 }
 
