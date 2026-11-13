@@ -149,8 +149,9 @@ impl StreamEvent {
     /// The events a stream writes for `content` arriving whole as the part
     /// at `part`: its start, its text, reasoning or argument text as one
     /// fragment, and its end holding `content`. Empty text writes no
-    /// fragment. A call's fragment is the argument text the model sent
-    /// ([`ToolFunction::raw_arguments`](crate::message::ToolFunction::raw_arguments)).
+    /// fragment. A call's fragment is its
+    /// [`raw_arguments`](crate::message::ToolFunction::raw_arguments): the
+    /// text the model sent when it was not an object, else the object.
     ///
     /// ```
     /// use rig_core::message::AssistantContent;
