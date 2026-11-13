@@ -1637,9 +1637,9 @@ for good, with the agents it spawned.
 
 **Compaction** (`rig_basics::compaction`) splices its summary, by
 `summary_author()`, in place of what it summarized (`summary_in(&change)`
-tells that splice apart). Its policy comes only from `[compaction]` in
-`settings.toml` (`CompactionDefault`). Other compaction is a plugin listed in
-its place, not an extension of it: rig's
+tells that splice apart). Its policy, and the answer budget of every turn,
+come only from `[compaction]` in `settings.toml` (`CompactionDefault`). Other
+compaction is a plugin listed in its place, not an extension of it: rig's
 `corpus/ct/src/keep_last_compaction.rs` drops the oldest turns instead, on
 public API alone. A request that does not fit takes one recovery path, carried
 through retries (`Recovering`): old tool outputs cleared, then compacted, then

@@ -135,7 +135,7 @@ fn keep_newest_turns(
             let mut state = summary_state(conversation);
             state.track(
                 messages.get(from..upto).unwrap_or_default(),
-                &default.0.tracked,
+                &default.policy.tracked,
             );
             *summarizing = Summarizing {
                 reason: summarizing.reason.clone(),

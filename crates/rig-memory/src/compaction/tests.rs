@@ -341,6 +341,16 @@ fn a_policy_reads_from_a_table_keeping_what_it_does_not_name() {
     assert!(serde_json::from_value::<CompactionPolicy>(serde_json::json!({"keep": 1})).is_err());
 }
 
+/// How long a turn's answer may be is not compaction's: a policy table
+/// naming `answer_tokens` is refused as an unknown key.
+#[test]
+fn a_policy_table_has_no_answer_budget() {
+    let refused =
+        serde_json::from_value::<CompactionPolicy>(serde_json::json!({"answer_tokens": 8000}));
+    let error = refused.map(|_| ()).expect_err("an unknown key");
+    assert!(error.to_string().contains("answer_tokens"), "{error}");
+}
+
 #[test]
 fn a_summary_takes_the_place_of_what_it_summarized_by_id() {
     let big = "x".repeat(4_000);

@@ -109,7 +109,7 @@ fn rewrites_are_logged_restored_and_undone() {
     // It keeps the newest 20 estimated tokens: the last two turns.
     app.world_mut()
         .resource_mut::<CompactionDefault>()
-        .0
+        .policy
         .keep_asked = 20;
     app.world_mut().trigger(RunCommand::new(agent, "compact"));
     run_until(&mut app, &wakes, |world| {

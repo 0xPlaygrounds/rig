@@ -26,9 +26,9 @@
 //! text in [`ReviewSystems::Act`], where a reviewer may hold the call, edit
 //! the text, or set it to `None` to cancel. Every compaction keeps what it
 //! replaced ([`Compacted`](rig_memory::Compacted)), and [`Uncompact`]
-//! restores the newest one with its message ids. [`CompactionDefault`] and
-//! `[compaction]` in settings are the policy; other compaction is a plugin
-//! that replaces this one.
+//! restores the newest one with its message ids. [`CompactionDefault`],
+//! read from `[compaction]` in settings, holds the policy and the answer
+//! budget of every turn; other compaction is a plugin that replaces this one.
 
 use std::num::NonZeroU64;
 use std::sync::Arc;
@@ -112,32 +112,68 @@ impl Plugin for CompactionPlugin {
     }
 }
 
-/// The compaction policy of every agent: rig-memory's default, tracking
-/// the files the built-in file tools read and changed, with `[compaction]`
-/// from `settings.toml` over it (each key a field of the
-/// [`CompactionPolicy`] table, so `keep_recent = 1000` keeps the rest). A
-/// plugin whose tool reads or changes files tracks its argument by adding
-/// a [`TrackArgument`] to its `tracked` in `build` or `finish`, after this
-/// plugin's.
+/// The compaction policy of every agent and the answer budget of its
+/// turns: rig-memory's default policy, tracking the files the built-in file
+/// tools read and changed, with `[compaction]` from `settings.toml` over it
+/// (each key a field of the [`CompactionPolicy`] table, or
+/// `answer_tokens`, so `keep_recent = 1000` keeps the rest). A plugin whose
+/// tool reads or changes files tracks its argument by adding a
+/// [`TrackArgument`] to its policy's `tracked` in `build` or `finish`,
+/// after this plugin's.
 #[derive(Resource, Clone, Debug, PartialEq)]
-pub struct CompactionDefault(pub CompactionPolicy);
+pub struct CompactionDefault {
+    /// How every agent's conversation is compacted.
+    pub policy: CompactionPolicy,
+    /// The most tokens a turn's answer may take, besides its thinking,
+    /// unless its request names its own (held to the model's output
+    /// limit); `None` takes the model's output limit, or the server's
+    /// default when the catalog does not know it. Either way within the
+    /// room the window leaves. 0 does not read.
+    pub answer_tokens: Option<NonZeroU64>,
+}
 
 impl Default for CompactionDefault {
     /// The built-in default.
     fn default() -> Self {
-        Self(CompactionPolicy {
-            tracked: TRACKED.to_vec(),
-            ..CompactionPolicy::default()
-        })
+        Self {
+            policy: CompactionPolicy {
+                tracked: TRACKED.to_vec(),
+                ..CompactionPolicy::default()
+            },
+            answer_tokens: None,
+        }
     }
 }
 
 impl<'de> Deserialize<'de> for CompactionDefault {
     /// `[compaction]` over the built-in default: a table without `tracked`
     /// tracks the built-in file tools. A value that does not fit is named
-    /// by its key's path, such as `limits.summary_tokens`.
+    /// by its key's path, such as `limits.summary_tokens`, and an unknown
+    /// key by the list of keys that read.
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let table = serde_json::Map::deserialize(deserializer)?;
+        let mut table = serde_json::Map::deserialize(deserializer)?;
+        let policy_keys = struct_fields::<CompactionPolicy>();
+        let known = |key: &str| key == ANSWER_TOKENS || policy_keys.contains(&key);
+        if let Some(key) = table.keys().find(|key| !known(key)) {
+            let expected = policy_keys
+                .iter()
+                .chain([&ANSWER_TOKENS])
+                .map(|key| format!("`{key}`"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            return Err(serde::de::Error::custom(format_args!(
+                "{key}: unknown field `{key}`, expected one of {expected}"
+            )));
+        }
+        let answer_tokens = table
+            .get(ANSWER_TOKENS)
+            .cloned()
+            .map(serde_json::from_value)
+            .transpose()
+            .map_err(|failure| {
+                serde::de::Error::custom(format_args!("{ANSWER_TOKENS}: {failure}"))
+            })?;
+        table.retain(|key, _| key != ANSWER_TOKENS);
         let tracks = table.contains_key("tracked");
         let policy = serde_path_to_error::deserialize(serde_json::Value::Object(table));
         let mut policy: CompactionPolicy = policy.map_err(|failure| {
@@ -150,7 +186,53 @@ impl<'de> Deserialize<'de> for CompactionDefault {
         if !tracks {
             policy.tracked = TRACKED.to_vec();
         }
-        Ok(Self(policy))
+        Ok(Self {
+            policy,
+            answer_tokens,
+        })
+    }
+}
+
+/// The `[compaction]` key of [`CompactionDefault::answer_tokens`].
+const ANSWER_TOKENS: &str = "answer_tokens";
+
+/// The keys `T`'s serde form reads as a table.
+fn struct_fields<T: serde::de::DeserializeOwned>() -> &'static [&'static str] {
+    let mut fields: &'static [&'static str] = &[];
+    // The deserializer only records the field list and then fails, so the
+    // error is expected.
+    let _ = T::deserialize(FieldNames(&mut fields));
+    fields
+}
+
+/// A deserializer that records the field names a struct asks for.
+struct FieldNames<'a>(&'a mut &'static [&'static str]);
+
+impl<'de> Deserializer<'de> for FieldNames<'_> {
+    type Error = serde::de::value::Error;
+
+    fn deserialize_any<V: serde::de::Visitor<'de>>(self, _: V) -> Result<V::Value, Self::Error> {
+        Err(serde::de::Error::custom(
+            "only a struct's field names are read",
+        ))
+    }
+
+    fn deserialize_struct<V: serde::de::Visitor<'de>>(
+        self,
+        _: &'static str,
+        fields: &'static [&'static str],
+        _: V,
+    ) -> Result<V::Value, Self::Error> {
+        *self.0 = fields;
+        Err(serde::de::Error::custom(
+            "only a struct's field names are read",
+        ))
+    }
+
+    serde::forward_to_deserialize_any! {
+        bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str string
+        bytes byte_buf option unit unit_struct newtype_struct seq tuple
+        tuple_struct map enum identifier ignored_any
     }
 }
 
@@ -867,7 +949,7 @@ fn on_compact(
         focus: compact.focus.clone(),
     };
     let spec = &connection.spec;
-    let Some(summarizing) = cut(compacting.conversation, &default.0, reason, spec) else {
+    let Some(summarizing) = cut(compacting.conversation, &default.policy, reason, spec) else {
         notices.write(Notice::info(agent, "Nothing to compact yet."));
         return;
     };
@@ -985,7 +1067,7 @@ const LEAST_SHARE: u64 = 16;
 
 /// The explicit output limit, within the model's own, as one past it is
 /// refused (a request moved to a smaller model keeps its first model's), or
-/// else `answer` ([`CompactionPolicy::answer_tokens`]), else the model's
+/// else `answer` ([`CompactionDefault::answer_tokens`]), else the model's
 /// output limit within its window, plus thinking
 /// ([`with_thinking`]); `None`, for the server's default, when none of them
 /// is known.
@@ -1101,7 +1183,7 @@ fn compact_near_the_window(
         let asked = output_budget(
             &model.request,
             spec,
-            default.0.answer_tokens.map(NonZeroU64::get),
+            default.answer_tokens.map(NonZeroU64::get),
         );
         let answer = asked.unwrap_or(LEAST_OUTPUT);
         // A sixteenth of the answer, with the whole thinking budget, when
@@ -1122,7 +1204,7 @@ fn compact_near_the_window(
         // No room, or room cut to no more than the thinking budget, is room
         // for no answer.
         let over = |used| {
-            default.0.over_threshold(used, spec)
+            default.policy.over_threshold(used, spec)
                 || asked.is_some_and(|asked| {
                     let room = room(spec, asked, used);
                     room == 0 || (room < asked && room <= thinking(&model.request))
@@ -1133,7 +1215,7 @@ fn compact_near_the_window(
                 &mut model,
                 spec,
                 used,
-                default.0.answer_tokens.map(NonZeroU64::get),
+                default.answer_tokens.map(NonZeroU64::get),
             ) {
                 notices.write(Notice::warn(agent, lowered));
             }
@@ -1142,7 +1224,7 @@ fn compact_near_the_window(
         }
         let measured = Measure::of(&model, spec, prompt, used);
         let scale = measured.scale;
-        let policy = &near_the_window(&default.0, scale, spec);
+        let policy = &near_the_window(&default.policy, scale, spec);
         let conversation = &compacting.conversation;
         let plan = policy.clearing.plan(conversation);
         let after = used.saturating_sub(scaled(plan.cleared.tokens as u64, scale));
@@ -1219,7 +1301,7 @@ fn compact_near_the_window(
                             Some(false) => format!(
                                 "notes on them would not fit, and nothing older is left to \
                                  summarize{}",
-                                kept_as_set(&default.0)
+                                kept_as_set(&default.policy)
                             ),
                             None => "notes on them cannot be asked".to_owned(),
                         }
@@ -1255,7 +1337,7 @@ fn compact_near_the_window(
             &mut model,
             spec,
             used,
-            default.0.answer_tokens.map(NonZeroU64::get),
+            default.answer_tokens.map(NonZeroU64::get),
         ) {
             notices.write(Notice::warn(agent, lowered));
         }
@@ -1347,7 +1429,7 @@ fn recover_from_overflow(
         let Ok(mut compacting) = agents.get_mut(agent) else {
             continue;
         };
-        let (policy, spec) = (&default.0, &*connection.spec);
+        let (policy, spec) = (&default.policy, &*connection.spec);
         let conversation = &compacting.conversation;
         let plan = policy.clearing.plan(conversation);
         let clears = step.is_none() && plan.cleared.results > 0;
@@ -1528,7 +1610,7 @@ fn ask_in_place(
         let used = measure(&model, spec, prompt, (last, sent.map(|sent| sent.0))).0;
         let measured = Measure::of(&model, spec, prompt, used);
         let route = model.connection.clone();
-        let policy = &default.0;
+        let policy = &default.policy;
         let ask = (
             &policy.summarizer,
             Asking::Summary(
