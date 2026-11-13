@@ -247,6 +247,8 @@ pub(crate) fn token_expired(expires_at: Option<i64>, skew_seconds: i64) -> bool 
     expires_at.is_none_or(|exp| now >= exp - skew_seconds)
 }
 
+#[cfg(not(target_family = "wasm"))]
+pub mod loopback;
 mod store;
 
 #[cfg(not(target_family = "wasm"))]

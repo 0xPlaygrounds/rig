@@ -9,6 +9,7 @@ use crate::json_utils::Lenient;
 use crate::providers::internal::auth::{
     load_record, request, save_record, send_bytes, send_json, token_expired,
 };
+use crate::providers::internal::loopback::LoopbackError;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use base64::Engine;
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
@@ -78,14 +79,20 @@ enum RefreshTokensError {
     Auth(AuthError),
 }
 
-/// What a browser sign-in calls to open its page: [`browser_command`]
-/// unless the caller supplied its own.
+/// How a browser sign-in opens its page, [`browser_command`] unless the
+/// caller supplied its own opener, and the app its pages name.
 #[derive(Clone)]
-pub(super) struct BrowserOpener(std::sync::Arc<dyn Fn(&str) -> bool + Send + Sync>);
+pub(super) struct BrowserSignIn {
+    opener: std::sync::Arc<dyn Fn(&str) -> bool + Send + Sync>,
+    app: String,
+}
 
-impl Default for BrowserOpener {
+impl Default for BrowserSignIn {
     fn default() -> Self {
-        Self(std::sync::Arc::new(browser::open_browser))
+        Self {
+            opener: std::sync::Arc::new(browser::open_browser),
+            app: "rig".into(),
+        }
     }
 }
 
@@ -119,7 +126,15 @@ impl Authenticator {
         mut self,
         opener: impl Fn(&str) -> bool + WasmCompatSend + WasmCompatSync + 'static,
     ) -> Self {
-        self.1 = BrowserOpener(std::sync::Arc::new(opener));
+        self.1.opener = std::sync::Arc::new(opener);
+        self
+    }
+
+    /// This authenticator's browser sign-in pages telling the user to
+    /// return to `app`, `rig` by default. Native only.
+    #[must_use]
+    pub fn with_app_name(mut self, app: impl Into<String>) -> Self {
+        self.1.app = app.into();
         self
     }
 
@@ -225,7 +240,8 @@ impl Authenticator {
     /// 1455, or 1457 when that is taken. The browser opener
     /// ([`Self::with_browser_opener`]) is given the sign-in page, and
     /// `prompt` receives its URL, for the user to open when the browser did
-    /// not. The credential is kept in the token store.
+    /// not. The page the browser returns to names the app set by
+    /// [`Self::with_app_name`]. The credential is kept in the token store.
     /// Native only.
     ///
     /// When both ports are taken, fails with [`AuthError::Io`] of kind
@@ -242,34 +258,30 @@ impl Authenticator {
         H: HttpClientExt,
         F: FnOnce(BrowserSignInPrompt) + WasmCompatSend,
     {
-        let (listener, port) = browser::bind()?;
-        let redirect_uri = browser::redirect_uri(port);
-        let pkce = browser::Pkce::generate();
         let state = browser::random_token(2);
+        let listener = browser::loopback(&self.1.app)
+            .listen(
+                state.clone(),
+                std::time::Instant::now() + BROWSER_SIGN_IN_TIMEOUT,
+            )
+            .map_err(listen_error)?;
+        let redirect_uri = listener.redirect_uri().to_owned();
+        let pkce = browser::Pkce::generate();
         let authorize_url =
             browser::authorize_url(&redirect_uri, &pkce.challenge, &state, &originator());
-        let callback = browser::spawn_listener(
-            listener,
-            state,
-            std::time::Instant::now() + BROWSER_SIGN_IN_TIMEOUT,
-        )?;
-        let browser_launched = (self.1.0)(&authorize_url);
+        let browser_launched = (self.1.opener)(&authorize_url);
         prompt(BrowserSignInPrompt {
             authorize_url,
             browser_launched,
         });
 
-        let received = callback.await.map_err(|_| {
-            AuthError::Message("the sign-in listener stopped unexpectedly".into())
-        })??;
+        let received = listener.code().await.map_err(listen_error)?;
         let exchanged =
-            exchange_authorization_code(http, &received.code, &pkce.verifier, &redirect_uri).await;
-        received.finish(
-            exchanged
-                .as_ref()
-                .map(|_| ())
-                .map_err(|error| error.to_string()),
-        );
+            exchange_authorization_code(http, received.code(), &pkce.verifier, &redirect_uri).await;
+        match &exchanged {
+            Ok(_) => received.succeeded(),
+            Err(error) => received.failed(&error.to_string()),
+        }
         let fresh = exchanged?;
         let _held = self.0.hold(STORE_KEY).await?;
         self.keep(fresh).await
@@ -471,6 +483,15 @@ impl Authenticator {
             message: format_refresh_error(status, oauth_error.as_ref(), &body),
             source: reply,
         }))
+    }
+}
+
+/// The listener's failure as this module reports it: a port it could not
+/// bind as [`AuthError::Io`], so [`Authenticator::sign_in`] can fall back.
+fn listen_error(error: LoopbackError) -> AuthError {
+    match error {
+        LoopbackError::Bind(error) | LoopbackError::Io(error) => AuthError::Io(error),
+        other => AuthError::Message(other.to_string()),
     }
 }
 

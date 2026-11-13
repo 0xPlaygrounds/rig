@@ -350,20 +350,17 @@ async fn a_failing_store_fails_the_request() {
 }
 
 mod browser_sign_in {
-    use super::super::AuthError;
-    use super::super::browser::{
-        CALLBACK_PATH, Callback, Received, authorize_url, parse_callback, pkce_challenge,
-        random_token, redirect_uri, spawn_listener,
-    };
-    use futures::channel::oneshot;
+    use super::super::browser::{authorize_url, pkce_challenge, random_token};
     use std::collections::HashMap;
-    use std::io::{Read, Write};
-    use std::net::{Ipv4Addr, TcpListener, TcpStream};
-    use std::time::{Duration, Instant};
 
     #[test]
     fn authorize_url_carries_pkce_state_and_the_registered_redirect() {
-        let url = authorize_url(&redirect_uri(1455), "challenge-123", "state-456", "rig");
+        let url = authorize_url(
+            "http://127.0.0.1:1455/auth/callback",
+            "challenge-123",
+            "state-456",
+            "rig",
+        );
         let parsed = url::Url::parse(&url).expect("authorize url parses");
         assert_eq!(
             format!("{}{}", parsed.origin().ascii_serialization(), parsed.path()),
@@ -390,89 +387,6 @@ mod browser_sign_in {
         let verifier = random_token(4);
         assert_eq!(verifier.len(), 86, "64 bytes in unpadded base64");
         assert_ne!(verifier, random_token(4));
-    }
-
-    #[test]
-    fn callback_parsing_checks_the_state_first() {
-        let line = |target: &str| format!("GET {target} HTTP/1.1");
-        assert_eq!(
-            parse_callback(&line("/auth/callback?code=abc%2B1&state=s1"), "s1"),
-            Callback::Code("abc+1".into())
-        );
-        assert_eq!(
-            parse_callback(&line("/auth/callback?code=abc&state=other"), "s1"),
-            Callback::StateMismatch
-        );
-        assert_eq!(
-            parse_callback(&line("/auth/callback?code=abc"), "s1"),
-            Callback::StateMismatch
-        );
-        assert_eq!(
-            parse_callback(
-                &line("/auth/callback?error=access_denied&error_description=No+thanks&state=s1"),
-                "s1"
-            ),
-            Callback::Failed("the browser sign-in returned access_denied (No thanks)".into())
-        );
-        assert!(matches!(
-            parse_callback(&line("/auth/callback?state=s1&code="), "s1"),
-            Callback::Failed(_)
-        ));
-        assert_eq!(parse_callback(&line("/favicon.ico"), "s1"), Callback::Other);
-        assert_eq!(
-            parse_callback(&line("/auth/callback/x?code=a&state=s1"), "s1"),
-            Callback::Other
-        );
-        assert_eq!(
-            parse_callback("POST /auth/callback?code=a&state=s1 HTTP/1.1", "s1"),
-            Callback::Other
-        );
-    }
-
-    fn get(port: u16, target: &str) -> String {
-        let mut stream = TcpStream::connect((Ipv4Addr::LOCALHOST, port)).expect("connect");
-        write!(stream, "GET {target} HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n").expect("write");
-        let mut response = String::new();
-        stream.read_to_string(&mut response).expect("read");
-        response
-    }
-
-    /// A listener for state `s1` on a free port, and its port.
-    fn listen() -> (u16, oneshot::Receiver<Result<Received, AuthError>>) {
-        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).expect("bind");
-        let port = listener.local_addr().expect("addr").port();
-        let deadline = Instant::now() + Duration::from_secs(30);
-        let callback = spawn_listener(listener, "s1".into(), deadline).expect("spawn");
-        (port, callback)
-    }
-
-    #[tokio::test]
-    async fn listener_ignores_other_requests_and_reports_the_outcome_page() {
-        let (port, callback) = listen();
-
-        assert!(get(port, "/favicon.ico").starts_with("HTTP/1.1 404"));
-        let stale = format!("{CALLBACK_PATH}?code=c&state=stale");
-        assert!(get(port, &stale).starts_with("HTTP/1.1 400"));
-
-        let browser = std::thread::spawn(move || get(port, "/auth/callback?code=c1&state=s1"));
-        let received = callback.await.expect("listener alive").expect("code");
-        assert_eq!(received.code, "c1");
-        received.finish(Ok(()));
-        let page = browser.join().expect("browser thread");
-        assert!(page.starts_with("HTTP/1.1 200"), "{page}");
-        assert!(page.contains("Signed in to ChatGPT"), "{page}");
-    }
-
-    #[test]
-    fn dropping_the_waiter_closes_the_listener() {
-        let (port, callback) = listen();
-        drop(callback);
-
-        let deadline = Instant::now() + Duration::from_secs(5);
-        while TcpListener::bind((Ipv4Addr::LOCALHOST, port)).is_err() {
-            assert!(Instant::now() < deadline, "listener still holds the port");
-            std::thread::sleep(Duration::from_millis(20));
-        }
     }
 }
 
@@ -562,32 +476,39 @@ async fn a_refused_revocation_still_deletes_the_record() -> anyhow::Result<()> {
 }
 
 /// The opener plays the browser: it denies the sign-in on the page it was
-/// given, so the sign-in ends without a token exchange.
+/// given, so the sign-in ends without a token exchange, and the page it
+/// lands on names the app.
 #[tokio::test]
 async fn a_supplied_browser_opener_is_called_with_the_sign_in_page() -> anyhow::Result<()> {
     let opened = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
     let seen = opened.clone();
-    let auth = stored(&Arc::new(MemoryTokenStore::default())).with_browser_opener(move |url| {
-        if let Ok(mut seen) = seen.lock() {
-            seen.push(url.to_owned());
-        }
-        let Some(denied) = denied_callback(url) else {
-            return false;
-        };
-        std::thread::spawn(move || {
-            if let Ok(mut stream) = std::net::TcpStream::connect(denied.0) {
-                use std::io::{Read, Write};
-                write!(
-                    stream,
-                    "GET {} HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
-                    denied.1
-                )
-                .ok();
-                stream.read_to_end(&mut Vec::new()).ok();
+    let (landed, page_shown) = std::sync::mpsc::channel();
+    let auth = stored(&Arc::new(MemoryTokenStore::default()))
+        .with_app_name("Example & Co")
+        .with_browser_opener(move |url| {
+            if let Ok(mut seen) = seen.lock() {
+                seen.push(url.to_owned());
             }
+            let Some(denied) = denied_callback(url) else {
+                return false;
+            };
+            let landed = landed.clone();
+            std::thread::spawn(move || {
+                if let Ok(mut stream) = std::net::TcpStream::connect(denied.0) {
+                    use std::io::{Read, Write};
+                    write!(
+                        stream,
+                        "GET {} HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
+                        denied.1
+                    )
+                    .ok();
+                    let mut page = String::new();
+                    stream.read_to_string(&mut page).ok();
+                    landed.send(page).ok();
+                }
+            });
+            true
         });
-        true
-    });
     let mut prompted = None;
     let signed_in = auth
         .sign_in_with_browser(&RecordingHttpClient::new(""), |page| prompted = Some(page))
@@ -603,6 +524,8 @@ async fn a_supplied_browser_opener_is_called_with_the_sign_in_page() -> anyhow::
         .map_err(|_| anyhow::anyhow!("poisoned"))?
         .clone();
     anyhow::ensure!(opened == [page.authorize_url], "{opened:?}");
+    let landed = page_shown.recv_timeout(std::time::Duration::from_secs(10))?;
+    anyhow::ensure!(landed.contains("Return to Example &amp; Co."), "{landed}");
     Ok(())
 }
 
