@@ -918,3 +918,105 @@ fn a_stream_the_driver_cannot_send_is_a_request_failure() {
 }
 
 // ── request validation ─────────────────────────────────────────────────
+
+// ── unfinished calls ───────────────────────────────────────────────────
+
+/// The ids of the calls whose `End` was read before the stream said how
+/// the reply ended, and the ids of the reply's unfinished calls, for a
+/// reply on `wire` whose frames `chunks` each arrive in a read of their
+/// own.
+async fn calls_ended_before_the_end<W>(
+    wire: W,
+    chunks: Vec<&'static str>,
+) -> (Vec<CallId>, Vec<CallId>)
+where
+    W: Wire<Op = Completion, Payload = crate::wire::Encoded, Frame = WireFrame> + 'static,
+{
+    let paced = PacedStreamingClient {
+        chunks,
+        gap: std::time::Duration::from_millis(5),
+    };
+    let mut stream = Model::new(wire, paced)
+        .stream(prompt())
+        .expect("the stream opens");
+    let mut early = Vec::new();
+    while let Some(item) = stream.next().await {
+        if let Ok(crate::streaming::Item::Event(crate::streaming::StreamEvent::End {
+            content: crate::message::AssistantContent::ToolCall(call),
+            ..
+        })) = item
+            && stream.partial().finish_reason().is_none()
+        {
+            early.push(call.id);
+        }
+    }
+    let unfinished = stream
+        .partial()
+        .unfinished_calls()
+        .map(|call| call.id.clone())
+        .collect();
+    (early, unfinished)
+}
+
+/// On every wire, an unfinished call's end comes with the reply's end:
+/// whoever reads the call's end can read how the reply ended, though each
+/// frame arrives in a read of its own. Responses states a cut call done
+/// (`status: incomplete`) a frame before the reply ends; Anthropic and Chat
+/// leave it to the reply's end.
+#[tokio::test]
+async fn an_unfinished_calls_end_comes_with_the_replys_end() {
+    use crate::providers::anthropic::AnthropicConfig;
+    use crate::providers::openai::wire::{OPENAI, OpenAIConfig};
+
+    let responses = vec![
+        "event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\",\"object\":\"response\",\"status\":\"in_progress\",\"model\":\"gpt-5.4\",\"output\":[]}}\n\n",
+        "event: response.output_item.added\ndata: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"function_call\",\"id\":\"fc_1\",\"call_id\":\"call_1\",\"name\":\"add\",\"arguments\":\"\",\"status\":\"in_progress\"}}\n\n",
+        "event: response.function_call_arguments.delta\ndata: {\"type\":\"response.function_call_arguments.delta\",\"output_index\":0,\"item_id\":\"fc_1\",\"delta\":\"{\\\"x\\\":481\"}\n\n",
+        "event: response.output_item.done\ndata: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"type\":\"function_call\",\"id\":\"fc_1\",\"call_id\":\"call_1\",\"name\":\"add\",\"arguments\":\"{\\\"x\\\":481\",\"status\":\"incomplete\"}}\n\n",
+        "event: response.incomplete\ndata: {\"type\":\"response.incomplete\",\"response\":{\"id\":\"resp_1\",\"object\":\"response\",\"status\":\"incomplete\",\"model\":\"gpt-5.4\",\"incomplete_details\":{\"reason\":\"max_output_tokens\"},\"output\":[{\"type\":\"function_call\",\"id\":\"fc_1\",\"call_id\":\"call_1\",\"name\":\"add\",\"arguments\":\"{\\\"x\\\":481\",\"status\":\"incomplete\"}]}}\n\n",
+    ];
+    let anthropic = vec![
+        "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-sonnet-4-6\",\"content\":[],\"stop_reason\":null,\"usage\":{\"input_tokens\":3,\"output_tokens\":1}}}\n\n",
+        "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"add\",\"input\":{}}}\n\n",
+        "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"x\\\":481\"}}\n\n",
+        "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"max_tokens\"},\"usage\":{\"output_tokens\":16}}\n\n",
+        "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+    ];
+    let chat = vec![
+        "data: {\"id\":\"c\",\"object\":\"chat.completion.chunk\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"add\",\"arguments\":\"{\\\"x\\\":481\"}}]},\"finish_reason\":null}]}\n\n",
+        "data: {\"id\":\"c\",\"object\":\"chat.completion.chunk\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"length\"}]}\n\n",
+        "data: [DONE]\n\n",
+    ];
+    let cases = [
+        (
+            "responses",
+            calls_ended_before_the_end(
+                OpenAIConfig::with_key(&OPENAI, "key").responses("gpt-5.4"),
+                responses,
+            )
+            .await,
+        ),
+        (
+            "anthropic",
+            calls_ended_before_the_end(
+                AnthropicConfig::new("key").completion("claude-sonnet-4-6"),
+                anthropic,
+            )
+            .await,
+        ),
+        (
+            "chat",
+            calls_ended_before_the_end(OpenAIConfig::with_key(&OPENAI, "key").chat("m"), chat)
+                .await,
+        ),
+    ];
+    for (wire, (early, unfinished)) in cases {
+        assert_eq!(unfinished.len(), 1, "{wire}: the cut call is unfinished");
+        let early_unfinished: Vec<&CallId> =
+            early.iter().filter(|id| unfinished.contains(id)).collect();
+        assert!(
+            early_unfinished.is_empty(),
+            "{wire}: an unfinished call ended before the reply did: {early_unfinished:?}"
+        );
+    }
+}

@@ -355,6 +355,44 @@ fn a_call_the_reply_ends_in_the_middle_of_is_unfinished() {
     assert_eq!(response(whole).unfinished_calls().count(), 0);
 }
 
+/// A call whose index another call takes over before its arguments form a
+/// whole object is unfinished only when the output limit then ends the
+/// reply. A reply that stops normally keeps it as a call with what its
+/// arguments state, and the turn goes on.
+#[test]
+fn a_call_another_takes_the_index_of_mid_arguments_is_unfinished_only_when_cut() {
+    use crate::completion::FinishReason;
+    let fragment = |id: &'static str, arguments: &'static str| CallFragment {
+        id: Some(id),
+        name: Some("write"),
+        arguments: Some(arguments),
+    };
+    for (reason, cut) in [
+        (FinishReason::Length, true),
+        (FinishReason::ToolCalls, false),
+    ] {
+        let decoded = write_on_wire(None, stop(reason.clone()), |out| {
+            out.fragment(Some(0), fragment("first", r#"{"path":"a"#))?;
+            out.fragment(Some(0), fragment("second", r#"{"path":"b"}"#))?;
+            out.finish(0)
+        });
+        let reply = response(decoded);
+        let unfinished: Vec<String> = reply
+            .unfinished_calls()
+            .map(|call| call.id.wire().into_owned())
+            .collect();
+        let expected: &[&str] = if cut { &["first"] } else { &[] };
+        assert_eq!(unfinished, expected, "{reason:?}");
+        assert!(!reply.stop().is_failure(), "{reason:?}: {:?}", reply.stop());
+        assert_eq!(
+            reply.tool_calls().count(),
+            2,
+            "{reason:?}: {:?}",
+            reply.choice
+        );
+    }
+}
+
 #[test]
 fn a_call_sent_without_an_id_keeps_its_item_only_where_the_item_has_an_id_slot() {
     use crate::completion::FinishReason;
@@ -1441,4 +1479,37 @@ fn a_wire_that_names_no_replay_target_cannot_prepare_a_request() {
         error.to_string().contains("`bare` names no replay target"),
         "{error}"
     );
+}
+
+/// Two calls closed unfinished at one reused wire index are both held
+/// until the reply ends: each ends with it, in the order they opened, and
+/// each is one of the reply's unfinished calls.
+#[test]
+fn calls_closed_unfinished_at_one_index_both_end_with_the_reply() {
+    let decoded = decode_with(ReplyFold::relayed("test"), "test", |reply| {
+        let mut out = reply.out();
+        for (id, arguments) in [("call_a", r#"{"x":"#), ("call_b", r#"{"y":"#)] {
+            out.open(
+                0,
+                Block::Call {
+                    id: CallId::from_wire(id),
+                    name: name("lookup"),
+                },
+                Value::Null,
+            )?;
+            out.push(0, arguments)?;
+            out.close(0)?;
+        }
+        let _ = out.end(Finish {
+            reason: Some(crate::completion::FinishReason::Length),
+            ..Finish::default()
+        });
+        Ok(())
+    });
+    let response = response(decoded);
+    let unfinished: Vec<String> = response
+        .unfinished_calls()
+        .map(|call| call.id.to_string())
+        .collect();
+    assert_eq!(unfinished, ["call_a", "call_b"], "{:?}", response.choice);
 }

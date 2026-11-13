@@ -453,7 +453,8 @@ async fn refusal_content_part_frames_are_no_ops_and_refusal_text_streams() {
 /// The `max_output_tokens`-mid-tool-call shape: `arguments_delta` frames
 /// stream partial JSON and the done item restates the same truncated bytes.
 /// Whether or not fragments preceded the restatement, the call keeps what
-/// its arguments state, with the text they arrived as.
+/// its arguments state, with the text they arrived as. It ends with the
+/// reply, which the output limit ended.
 #[test]
 fn a_cut_off_call_keeps_what_its_arguments_state() {
     let delta = json!({
@@ -476,7 +477,11 @@ fn a_cut_off_call_keeps_what_its_arguments_state() {
             "status": "incomplete"
         },
     });
-    for events in [vec![delta, done.clone()], vec![done]] {
+    let mut response = sample_response("incomplete");
+    response["incomplete_details"] = json!({"reason": "max_output_tokens"});
+    response["output"] = json!([done["item"]]);
+    let end = json!({"type": "response.incomplete", "sequence_number": 3, "response": response});
+    for events in [vec![delta, done.clone(), end.clone()], vec![done, end]] {
         let decoded = decoded_body(&body_of(&events));
         let calls: Vec<_> = decoded
             .ended()
@@ -1830,4 +1835,34 @@ fn a_reported_cost_is_its_total_in_usd() {
     );
     assert_eq!(usage(json!({ "cost": null })), None);
     assert_eq!(usage(json!({})), None);
+}
+
+/// A call the provider states `incomplete` in a reply that completes is
+/// not a cut-off call: the reply's end says no limit cut it. It stays a
+/// call with what its arguments state, and the turn is not a failure.
+#[test]
+fn an_incomplete_call_in_a_completed_reply_is_not_unfinished() {
+    let call = json!({
+        "type": "function_call",
+        "id": "fc_1",
+        "call_id": "call_1",
+        "name": "add",
+        "arguments": "{\"x\":481",
+        "status": "incomplete"
+    });
+    let mut response = sample_response("completed");
+    response["output"] = json!([call]);
+    let events = [
+        item_done(0, 1, call.clone()),
+        json!({"type": "response.completed", "sequence_number": 2, "response": response}),
+    ];
+    let response = decode(Mode::Streaming, frames(&events));
+    assert_eq!(
+        response.unfinished_calls().count(),
+        0,
+        "{:?}",
+        response.choice
+    );
+    assert!(!response.stop().is_failure(), "{:?}", response.stop());
+    assert_eq!(response.tool_calls().count(), 1, "{:?}", response.choice);
 }

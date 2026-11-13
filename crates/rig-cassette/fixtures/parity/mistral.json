@@ -656,17 +656,7 @@
           "id": "28MDcpEFf",
           "name": "file_report",
           "arguments": {},
-          "native": {
-            "item": {
-              "function": {
-                "arguments": "",
-                "name": "file_report"
-              },
-              "id": "28MDcpEFf",
-              "type": "function"
-            },
-            "fingerprint": "f803e9b79a60d643"
-          }
+          "native": null
         }
       }
     ],

@@ -1985,6 +1985,206 @@ fn a_call_cut_off_by_the_output_limit_is_answered_so() {
     );
 }
 
+/// A reply on a real wire, DeepSeek's chat stream, that the output limit
+/// cut in the middle of a call's arguments: the decoder closes the call
+/// unfinished, so it is answered as cut off and never run.
+#[test]
+fn a_call_a_real_wire_cut_at_the_output_limit_is_answered_so() {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    app.add_tool(rig_tools::Read::default());
+    let chunk = |delta: serde_json::Value, finish: Option<&str>| {
+        serde_json::json!({"id": "c", "object": "chat.completion.chunk", "model": "m",
+            "choices": [{"index": 0, "delta": delta, "finish_reason": finish}]})
+    };
+    let sse = |chunks: Vec<serde_json::Value>| {
+        let mut body: String = chunks
+            .iter()
+            .map(|chunk| format!("data: {chunk}\n\n"))
+            .collect();
+        body.push_str("data: [DONE]\n\n");
+        rig_core::test_utils::MockHttpResponse::success_typed(body, "text/event-stream")
+    };
+    let cut = chunk(
+        serde_json::json!({"role": "assistant", "tool_calls": [{"index": 0, "id": "call_1",
+            "type": "function", "function": {"name": "read", "arguments": "{\"path\": \"Cargo.to"}}]}),
+        Some("length"),
+    );
+    let done = chunk(
+        serde_json::json!({"role": "assistant", "content": "done"}),
+        Some("stop"),
+    );
+    let http = rig_core::test_utils::SequencedHttpClient::new([sse(vec![cut]), sse(vec![done])]);
+    let deepseek = &rig_core::providers::openai::wire::DEEPSEEK;
+    let agent = on_responses(&mut app, (deepseek, "deepseek-v4-flash"), 1_000_000, &http);
+    assert!(agent.is_some(), "an agent on the DeepSeek chat wire");
+    let Some(agent) = agent else { return };
+    ask(&mut app, &wakes, agent);
+    assert_eq!(answer(&app).as_deref(), Some("done"));
+    let bodies = bodies(&http);
+    assert!(
+        matches!(bodies.as_slice(), [_, next]
+            if next.contains("Not run: your reply reached the output limit before `read`")),
+        "{bodies:?}"
+    );
+}
+
+/// A tool of the test that takes no arguments and counts its runs.
+#[derive(Clone, Default)]
+struct Ping(Arc<AtomicUsize>);
+
+impl Tool for Ping {
+    const NAME: &'static str = "ping";
+    type Args = serde_json::Value;
+    type Output = String;
+    type Error = ToolExecutionError;
+
+    fn description(&self) -> String {
+        "Ping.".to_owned()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        serde_json::json!({"type": "object", "properties": {}})
+    }
+
+    async fn call(
+        &self,
+        _: &mut ToolContext,
+        _: serde_json::Value,
+    ) -> Result<String, ToolExecutionError> {
+        self.0.fetch_add(1, Ordering::SeqCst);
+        Ok("pong".to_owned())
+    }
+}
+
+/// A reply the output limit cut right after it named a no-argument tool,
+/// its argument text still blank, on the Responses wire (the provider marks
+/// the item incomplete) and on a chat wire: the tool never runs, and the
+/// model reads that its reply reached the limit.
+#[test]
+fn a_call_cut_before_its_arguments_never_runs() {
+    let sse = |events: Vec<(&str, serde_json::Value)>| {
+        let body: String = events
+            .iter()
+            .map(|(event, data)| format!("event: {event}\ndata: {data}\n\n"))
+            .collect();
+        rig_core::test_utils::MockHttpResponse::success_typed(body, "text/event-stream")
+    };
+    let item = serde_json::json!({"type": "function_call", "id": "fc_1", "call_id": "call_1",
+        "name": "ping", "arguments": "", "status": "incomplete"});
+    let responses = sse(vec![
+        (
+            "response.output_item.done",
+            serde_json::json!({"type": "response.output_item.done", "output_index": 0,
+                "item": item}),
+        ),
+        (
+            "response.incomplete",
+            serde_json::json!({"type": "response.incomplete", "response": {"id": "resp_1",
+                "object": "response", "status": "incomplete", "model": "gpt-5.4",
+                "incomplete_details": {"reason": "max_output_tokens"}, "output": [item]}}),
+        ),
+    ]);
+    let chat = |delta: serde_json::Value, finish: &str| {
+        let chunk = serde_json::json!({"id": "c", "object": "chat.completion.chunk",
+            "model": "m", "choices": [{"index": 0, "delta": delta, "finish_reason": finish}]});
+        let body = format!("data: {chunk}\n\ndata: [DONE]\n\n");
+        rig_core::test_utils::MockHttpResponse::success_typed(body, "text/event-stream")
+    };
+    let chat_cut = chat(
+        serde_json::json!({"role": "assistant", "tool_calls": [{"index": 0, "id": "call_1",
+            "type": "function", "function": {"name": "ping", "arguments": ""}}]}),
+        "length",
+    );
+    let chat_done = chat(
+        serde_json::json!({"role": "assistant", "content": "done"}),
+        "stop",
+    );
+    for (dialect, model, cut, done) in [
+        (
+            &rig_core::providers::openai::wire::OPENAI,
+            "gpt-5.4",
+            responses,
+            streamed(reasoned(2, "done"), None),
+        ),
+        (
+            &rig_core::providers::openai::wire::DEEPSEEK,
+            "deepseek-v4-flash",
+            chat_cut,
+            chat_done,
+        ),
+    ] {
+        let (mut app, wakes) = start(&MemoryStore::default());
+        let ping = Ping::default();
+        app.add_tool(ping.clone());
+        let http = rig_core::test_utils::SequencedHttpClient::new([cut, done]);
+        let agent = on_responses(&mut app, (dialect, model), 1_000_000, &http);
+        assert!(agent.is_some(), "an agent on {}", dialect.name);
+        let Some(agent) = agent else { return };
+        ask(&mut app, &wakes, agent);
+        assert_eq!(answer(&app).as_deref(), Some("done"), "{}", dialect.name);
+        assert_eq!(ping.0.load(Ordering::SeqCst), 0, "{}", dialect.name);
+        let bodies = bodies(&http);
+        assert!(
+            matches!(bodies.as_slice(), [_, next]
+                if next.contains("Not run: your reply reached the output limit before `ping`")),
+            "{}: {bodies:?}",
+            dialect.name
+        );
+    }
+}
+
+/// A call whose stream index another call takes over, in a reply that ends
+/// with `tool_calls` on DeepSeek's chat wire: no limit cut it, so the turn
+/// goes on, the call that took the index runs, and the first is answered as
+/// malformed.
+#[test]
+fn a_call_after_a_takeover_in_a_finished_reply_runs() {
+    let chunk = |delta: serde_json::Value, finish: Option<&str>| {
+        serde_json::json!({"id": "c", "object": "chat.completion.chunk", "model": "m",
+            "choices": [{"index": 0, "delta": delta, "finish_reason": finish}]})
+    };
+    let sse = |chunks: Vec<serde_json::Value>| {
+        let mut body: String = chunks
+            .iter()
+            .map(|chunk| format!("data: {chunk}\n\n"))
+            .collect();
+        body.push_str("data: [DONE]\n\n");
+        rig_core::test_utils::MockHttpResponse::success_typed(body, "text/event-stream")
+    };
+    let calls = sse(vec![
+        chunk(
+            serde_json::json!({"role": "assistant", "tool_calls": [{"index": 0, "id": "call_1",
+                "type": "function", "function": {"name": "shell", "arguments": "{\"command\": \"ec"}}]}),
+            None,
+        ),
+        chunk(
+            serde_json::json!({"tool_calls": [{"index": 0, "id": "call_2", "type": "function",
+                "function": {"name": "ping", "arguments": "{}"}}]}),
+            None,
+        ),
+        chunk(serde_json::json!({}), Some("tool_calls")),
+    ]);
+    let done = sse(vec![chunk(
+        serde_json::json!({"role": "assistant", "content": "done"}),
+        Some("stop"),
+    )]);
+    let (mut app, wakes) = start(&MemoryStore::default());
+    let ping = Ping::default();
+    app.add_tool(ping.clone());
+    let http = rig_core::test_utils::SequencedHttpClient::new([calls, done]);
+    let deepseek = &rig_core::providers::openai::wire::DEEPSEEK;
+    let agent = on_responses(&mut app, (deepseek, "deepseek-v4-flash"), 1_000_000, &http);
+    assert!(agent.is_some(), "an agent on the DeepSeek chat wire");
+    let Some(agent) = agent else { return };
+    ask(&mut app, &wakes, agent);
+    assert_eq!(answer(&app).as_deref(), Some("done"));
+    assert_eq!(
+        ping.0.load(Ordering::SeqCst),
+        1,
+        "the call that took the index runs"
+    );
+}
+
 #[test]
 fn an_interrupt_during_the_summary_cancels_the_compaction() {
     let (mut app, wakes) = start(&MemoryStore::default());
