@@ -7,11 +7,11 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::hash::{DefaultHasher, Hash, Hasher};
 
-#[cfg(not(target_family = "wasm"))]
-pub use crate::providers::internal::auth::FileTokenStore;
 pub use crate::providers::internal::auth::{
     DeviceCodeHandler, DeviceCodePrompt, MemoryTokenStore, StoreLock, TokenStore,
 };
+#[cfg(not(target_family = "wasm"))]
+pub use crate::providers::internal::auth::{FileStoreError, FileTokenStore};
 
 #[cfg(not(target_family = "wasm"))]
 mod native;

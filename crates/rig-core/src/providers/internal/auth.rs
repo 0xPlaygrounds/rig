@@ -250,6 +250,6 @@ pub(crate) fn token_expired(expires_at: Option<i64>, skew_seconds: i64) -> bool 
 mod store;
 
 #[cfg(not(target_family = "wasm"))]
-pub use store::FileTokenStore;
+pub use store::{FileStoreError, FileTokenStore};
 pub use store::{MemoryTokenStore, StoreLock, TokenStore};
 pub(crate) use store::{load_record, save_record};

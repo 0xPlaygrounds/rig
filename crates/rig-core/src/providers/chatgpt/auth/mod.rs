@@ -10,11 +10,11 @@
 use crate::http_client::HttpClientExt;
 use std::fmt;
 
-#[cfg(not(target_family = "wasm"))]
-pub use crate::providers::internal::auth::FileTokenStore;
 pub use crate::providers::internal::auth::{
     DeviceCodeHandler, DeviceCodePrompt, MemoryTokenStore, StoreLock, TokenStore,
 };
+#[cfg(not(target_family = "wasm"))]
+pub use crate::providers::internal::auth::{FileStoreError, FileTokenStore};
 
 #[cfg(not(target_family = "wasm"))]
 mod native;

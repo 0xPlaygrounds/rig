@@ -81,16 +81,18 @@ impl Keys {
     }
 
     /// `vendor`'s saved key, `None` with no file; an error naming the file
-    /// when it exists but cannot be read or parsed.
+    /// when it exists but cannot be read or parsed, or the store refuses it
+    /// (a symlink, or too large).
     pub(crate) fn load(&self, vendor: &str) -> Result<Option<String>, ConnectError> {
         let path = self.path(vendor);
         let unreadable = |why: &dyn std::fmt::Display| {
             let path = path.display();
             ConnectError::Provider(format!("{UNREADABLE} {path}: {why}"))
         };
-        let record = match std::fs::read_to_string(&path) {
-            Err(why) if why.kind() == ErrorKind::NotFound => return Ok(None),
-            record => record.map_err(|why| unreadable(&why))?,
+        let record = match bevy_tasks::block_on(self.store.load(vendor)) {
+            Ok(Some(record)) => record,
+            Ok(None) => return Ok(None),
+            Err(why) => return Err(unreadable(&why)),
         };
         // serde's message may quote the file, which holds the key.
         let saved: Saved = serde_json::from_str(&record).map_err(|why| {
