@@ -413,6 +413,37 @@ async fn three_turn_tool_session_replays_rs_ids_across_turns() {
     .await;
 }
 
+/// The call the recorded `max_output_tokens` cut leaves with item status
+/// `incomplete` is the reply's unfinished call, so a host answers it as cut
+/// off instead of running it.
+#[tokio::test]
+async fn incomplete_mid_tool_call_is_cut_off() {
+    with_openai_cassette(
+        "streaming_grammar/incomplete_mid_tool_call",
+        |client| async move {
+            let model = client.openai.completion(openai::GPT_5_6);
+            let request = CompletionRequest::new(
+                "Add 48151.62342 and 27182.81828 using the add tool. You must call the tool.",
+            )
+            .tool(rig::tool::tool_definition(&Adder))
+            .tool_choice(rig::message::ToolChoice::Required)
+            .max_tokens(16)
+            .reasoning(Effort::Low);
+            let run = drain_stream(model.stream(request).expect("stream should start")).await;
+            let response = run.response.expect("the stream ends with a response");
+
+            let calls: Vec<_> = response.tool_calls().map(|call| &call.id).collect();
+            let cut: Vec<_> = response.cut_off_calls().map(|call| &call.id).collect();
+            assert_eq!(calls.len(), 1, "the recorded turn holds one call");
+            assert_eq!(
+                cut, calls,
+                "the call the provider left incomplete is cut off"
+            );
+        },
+    )
+    .await;
+}
+
 /// `response.incomplete` cut mid-tool-call: forced tool use with a minimal
 /// `max_output_tokens` budget. The stream must still terminate cleanly with a
 /// `Length` finish, and any tool call that did surface must carry object

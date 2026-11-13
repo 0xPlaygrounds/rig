@@ -355,6 +355,30 @@ fn a_call_the_reply_ends_in_the_middle_of_is_unfinished() {
     assert_eq!(response(whole).unfinished_calls().count(), 0);
 }
 
+/// A call whose index another call takes over before its arguments form a
+/// whole object ends unfinished, so a reply that then stops normally failed.
+#[test]
+fn a_call_another_takes_the_index_of_mid_arguments_is_unfinished() {
+    use crate::completion::FinishReason;
+    let fragment = |id: &'static str, arguments: &'static str| CallFragment {
+        id: Some(id),
+        name: Some("write"),
+        arguments: Some(arguments),
+    };
+    let decoded = write_on_wire(None, stop(FinishReason::ToolCalls), |out| {
+        out.fragment(Some(0), fragment("first", r#"{"path":"a"#))?;
+        out.fragment(Some(0), fragment("second", r#"{"path":"b"}"#))?;
+        out.finish(0)
+    });
+    let reply = response(decoded);
+    let unfinished: Vec<String> = reply
+        .unfinished_calls()
+        .map(|call| call.id.wire().into_owned())
+        .collect();
+    assert_eq!(unfinished, ["first"]);
+    assert!(reply.stop().is_failure());
+}
+
 #[test]
 fn a_call_sent_without_an_id_keeps_its_item_only_where_the_item_has_an_id_slot() {
     use crate::completion::FinishReason;

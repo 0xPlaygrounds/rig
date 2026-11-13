@@ -602,7 +602,8 @@ impl ResponsesDecoder {
     }
 
     /// The item at `slot` is done: it merges into what streamed and becomes
-    /// the block's native.
+    /// the block's native. A call the item states `incomplete`, as one the
+    /// output limit cut, closes as never stated complete.
     fn done(
         &mut self,
         slot: usize,
@@ -619,6 +620,7 @@ impl ResponsesDecoder {
         let at = done.at;
         let mut item = item;
         let mut nameless = false;
+        let incomplete = done.kind == Kind::Call && item.str("status") == Some("incomplete");
         match done.kind {
             Kind::Call => {
                 nameless = !done.titled && item.str("name").is_none_or(str::is_empty);
@@ -665,10 +667,14 @@ impl ResponsesDecoder {
             self.held.push(at);
             return Ok(());
         }
-        out.finish(at)?;
+        if incomplete {
+            out.close(at)?;
+        } else {
+            out.finish(at)?;
+        }
         // The writer drops a call with no name, so the reasoning it held
         // has no item to go with.
-        self.release(!nameless, out)
+        self.release(!nameless && !incomplete, out)
     }
 
     /// Write one output-item event into the reply.
