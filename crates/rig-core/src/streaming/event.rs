@@ -145,6 +145,76 @@ impl StreamEvent {
             Self::End { .. } => "End",
         }
     }
+
+    /// The events a stream writes for `content` arriving whole as the part
+    /// at `part`: its start, its text, reasoning or argument text as one
+    /// fragment, and its end holding `content`. Empty text writes no
+    /// fragment. A call's fragment is the argument text the model sent
+    /// ([`ToolFunction::raw_arguments`](crate::message::ToolFunction::raw_arguments)).
+    ///
+    /// ```
+    /// use rig_core::message::AssistantContent;
+    /// use rig_core::streaming::{Part, StreamEvent};
+    ///
+    /// let events = StreamEvent::whole(Part::new(0), &AssistantContent::text("Hi"));
+    /// let names: Vec<_> = events.iter().map(StreamEvent::name).collect();
+    /// assert_eq!(names, ["Start", "Text", "End"]);
+    /// ```
+    pub fn whole(part: Part, content: &AssistantContent) -> Vec<Self> {
+        let name = match content {
+            AssistantContent::ToolCall(call) => Some(call.function.name.clone()),
+            _ => None,
+        };
+        let start = Self::Start {
+            part,
+            kind: PartKind::of(content),
+            name,
+        };
+        let end = Self::End {
+            part,
+            content: content.clone(),
+        };
+        [start]
+            .into_iter()
+            .chain(Self::fragment(part, content))
+            .chain([end])
+            .collect()
+    }
+
+    /// `content`'s whole text, reasoning or argument text as one fragment
+    /// of `part`, or `None` when it is empty or `content` has none.
+    pub(crate) fn fragment(part: Part, content: &AssistantContent) -> Option<Self> {
+        match content {
+            AssistantContent::Text(text) if !text.text.is_empty() => Some(Self::Text {
+                part,
+                text: text.text.clone(),
+            }),
+            AssistantContent::Reasoning(reasoning) if !reasoning.text.is_empty() => {
+                Some(Self::Reasoning {
+                    part,
+                    text: reasoning.text.clone(),
+                })
+            }
+            AssistantContent::ToolCall(call) => {
+                let json = call.function.raw_arguments();
+                (!json.is_empty()).then_some(Self::Arguments { part, json })
+            }
+            _ => None,
+        }
+    }
+}
+
+impl PartKind {
+    /// The kind of part that holds `content`.
+    pub(crate) const fn of(content: &AssistantContent) -> Self {
+        match content {
+            AssistantContent::Text(_) => Self::Text,
+            AssistantContent::Reasoning(_) => Self::Reasoning,
+            AssistantContent::ToolCall(_) => Self::ToolCall,
+            AssistantContent::Image(_) => Self::Image,
+            AssistantContent::Opaque(_) => Self::Opaque,
+        }
+    }
 }
 
 /// One item of a stream: an event of the operation, or a payload the

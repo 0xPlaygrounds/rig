@@ -501,13 +501,11 @@ impl Reply {
             Self::Stream(stream) => stream,
             Self::Outcome(outcome) => Box::pin(futures::stream::iter(match outcome {
                 Ok(Answered::Completion(response)) => {
-                    match crate::operation::completion::events_of(&response) {
-                        Ok(items) => std::iter::once(Ok(Relayed::Origin(response.origin.clone())))
-                            .chain(items.into_iter().map(|item| Ok(Relayed::Item(item))))
-                            .chain(std::iter::once(Ok(Relayed::Done(response))))
-                            .collect(),
-                        Err(error) => vec![Err(ErrorReport::from(&error))],
-                    }
+                    let items = crate::operation::completion::events_of(&response);
+                    std::iter::once(Ok(Relayed::Origin(response.origin.clone())))
+                        .chain(items.into_iter().map(|item| Ok(Relayed::Item(item))))
+                        .chain(std::iter::once(Ok(Relayed::Done(response))))
+                        .collect()
                 }
                 Ok(other) => vec![Err(wrong_stream_answer(&other))],
                 Err(report) => vec![Err(report)],

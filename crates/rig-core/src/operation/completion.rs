@@ -794,14 +794,16 @@ impl ReplyFold {
                 };
                 let function = arguments.function(name);
                 let (id, item) = self.distinct_call_id(id, item);
-                // A call that streamed no text (none arrived, or only a
-                // placeholder `null`) states the arguments it ends with.
-                if arguments.streamed == 0 {
-                    let json = serde_json::Value::Object(function.arguments.clone()).to_string();
-                    emit(items, StreamEvent::Arguments { part, json });
-                }
                 let call = ToolCall::new(id.clone(), function);
                 let content = self.with_item(AssistantContent::ToolCall(call), item);
+                // A call that streamed no text (none arrived, or only a
+                // prefix of a placeholder `null`) states the arguments it
+                // ends with, as a whole call would.
+                if arguments.streamed == 0
+                    && let Some(fragment) = StreamEvent::fragment(part, &content)
+                {
+                    emit(items, fragment);
+                }
                 emit(items, StreamEvent::End { part, content });
                 return Ok(Some(id));
             }
@@ -811,7 +813,7 @@ impl ReplyFold {
                 items,
                 StreamEvent::Start {
                     part,
-                    kind: kind_of(&content),
+                    kind: PartKind::of(&content),
                     name: None,
                 },
             );
@@ -985,8 +987,9 @@ impl ReplyFold {
             }
             content => content,
         };
-        let part = self.next();
-        write_part(items, part, content);
+        for event in StreamEvent::whole(self.next(), &content) {
+            emit(items, event);
+        }
         Ok(())
     }
 
@@ -1191,57 +1194,6 @@ fn item_of(content: &mut AssistantContent) -> Option<&mut serde_json::Value> {
         AssistantContent::Opaque(opaque) => return Some(&mut opaque.item),
     };
     native.map(|native| &mut native.item)
-}
-
-/// The events of `content` written whole as the part at `part`. A call's
-/// arguments are the text the model sent, none when it sent no text.
-fn write_part(items: &mut Items, part: Part, content: AssistantContent) {
-    let name = match &content {
-        AssistantContent::ToolCall(call) => Some(call.function.name.clone()),
-        _ => None,
-    };
-    emit(
-        items,
-        StreamEvent::Start {
-            part,
-            kind: kind_of(&content),
-            name,
-        },
-    );
-    match &content {
-        AssistantContent::Text(text) if !text.text.is_empty() => emit(
-            items,
-            StreamEvent::Text {
-                part,
-                text: text.text.clone(),
-            },
-        ),
-        AssistantContent::Reasoning(reasoning) if !reasoning.text.is_empty() => emit(
-            items,
-            StreamEvent::Reasoning {
-                part,
-                text: reasoning.text.clone(),
-            },
-        ),
-        AssistantContent::ToolCall(call) => {
-            let json = call.function.raw_arguments();
-            if !json.is_empty() {
-                emit(items, StreamEvent::Arguments { part, json });
-            }
-        }
-        _ => {}
-    }
-    emit(items, StreamEvent::End { part, content });
-}
-
-fn kind_of(content: &AssistantContent) -> PartKind {
-    match content {
-        AssistantContent::Text(_) => PartKind::Text,
-        AssistantContent::Reasoning(_) => PartKind::Reasoning,
-        AssistantContent::ToolCall(_) => PartKind::ToolCall,
-        AssistantContent::Image(_) => PartKind::Image,
-        AssistantContent::Opaque(_) => PartKind::Opaque,
-    }
 }
 
 pub(crate) type Items = std::collections::VecDeque<Result<Item<StreamEvent>, ProviderError>>;
@@ -1667,14 +1619,10 @@ impl<'id> Out<'id, Completion> {
 
 /// The events a stream of `response` would have carried: each part whole,
 /// in order, holding the content the response holds.
-pub(crate) fn events_of(
-    response: &CompletionResponse,
-) -> Result<Vec<Item<StreamEvent>>, ProviderError> {
-    let mut items = Items::new();
-    for (index, content) in (0..).zip(&response.choice) {
-        write_part(&mut items, Part::new(index), content.clone());
-    }
-    items.into_iter().collect()
+pub(crate) fn events_of(response: &CompletionResponse) -> Vec<Item<StreamEvent>> {
+    let parts = (0..).zip(&response.choice);
+    let events = parts.flat_map(|(at, content)| StreamEvent::whole(Part::new(at), content));
+    events.map(Item::Event).collect()
 }
 
 #[cfg(test)]
