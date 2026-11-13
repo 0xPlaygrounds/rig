@@ -739,9 +739,9 @@ pub fn set_text(table: &mut dyn TableLike, key: &str, value: &str) -> bool {
 /// edit at a time, under a lock beside the file; the file is read again
 /// under it and replaced whole, so a reader never sees half of it. A
 /// symlinked file is written where its links lead, made there when missing,
-/// and the links stay. The new file is synced before it replaces the old and
-/// the folder after, so a power loss leaves one or the other. Nothing is
-/// written when `change` fails or changes nothing. Returns whether it wrote.
+/// and the links stay. The new file is synced before it replaces the old,
+/// and the folder after where the system allows it. Nothing is written when
+/// `change` fails or changes nothing. Returns whether it wrote.
 ///
 /// # Errors
 ///
@@ -798,8 +798,9 @@ pub fn edit<T, E: From<Error>>(
             Error::io(failure)
         })?;
         // The rename lasts a power loss once the folder is synced; best
-        // effort, as not every system can open a folder to sync it.
-        fs::open(std::fs::OpenOptions::new().read(true), directory)
+        // effort, as not every system can open a folder to sync it. The
+        // `.` turns a bare file name's empty folder into the current one.
+        fs::open(std::fs::OpenOptions::new().read(true), directory.join("."))
             .and_then(|folder| folder.sync_all())
             .ok();
     }
