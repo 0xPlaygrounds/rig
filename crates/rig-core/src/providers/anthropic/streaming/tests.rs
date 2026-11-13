@@ -951,6 +951,30 @@ fn a_stop_reason_states_every_open_block_complete() {
     assert!(unfinished.stop().is_failure(), "{:?}", unfinished.stop());
 }
 
+/// A call the output limit cut before its `content_block_stop` is one of
+/// the reply's unfinished calls, whatever its input: none yet, or a whole
+/// object whose block never closed.
+#[test]
+fn a_call_left_open_at_max_tokens_is_unfinished() {
+    for input in [None, Some("{\"x\":1}")] {
+        let mut frames = reply(Vec::new(), "max_tokens");
+        let end = frames.pop().expect("the message_delta");
+        frames.push(json!({"type": "content_block_start", "index": 0,
+            "content_block": {"type": "tool_use", "id": "toolu_a", "name": "f", "input": {}}}));
+        frames.extend(input.map(|input| {
+            json!({"type": "content_block_delta", "index": 0,
+                "delta": {"type": "input_json_delta", "partial_json": input}})
+        }));
+        frames.push(end);
+        let cut = streamed(&frames).expect("the reply folds");
+        let unfinished: Vec<String> = cut
+            .unfinished_calls()
+            .map(|call| call.id.to_string())
+            .collect();
+        assert_eq!(unfinished, ["toolu_a"], "{input:?}: {:?}", cut.choice);
+    }
+}
+
 /// A gateway that skips `content_block_start` (seen on Anthropic-format
 /// dialects) still streams the block: its first delta opens it.
 #[test]

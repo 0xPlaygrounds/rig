@@ -453,7 +453,8 @@ async fn refusal_content_part_frames_are_no_ops_and_refusal_text_streams() {
 /// The `max_output_tokens`-mid-tool-call shape: `arguments_delta` frames
 /// stream partial JSON and the done item restates the same truncated bytes.
 /// Whether or not fragments preceded the restatement, the call keeps what
-/// its arguments state, with the text they arrived as.
+/// its arguments state, with the text they arrived as. It ends with the
+/// reply, which the output limit ended.
 #[test]
 fn a_cut_off_call_keeps_what_its_arguments_state() {
     let delta = json!({
@@ -476,7 +477,11 @@ fn a_cut_off_call_keeps_what_its_arguments_state() {
             "status": "incomplete"
         },
     });
-    for events in [vec![delta, done.clone()], vec![done]] {
+    let mut response = sample_response("incomplete");
+    response["incomplete_details"] = json!({"reason": "max_output_tokens"});
+    response["output"] = json!([done["item"]]);
+    let end = json!({"type": "response.incomplete", "sequence_number": 3, "response": response});
+    for events in [vec![delta, done.clone(), end.clone()], vec![done, end]] {
         let decoded = decoded_body(&body_of(&events));
         let calls: Vec<_> = decoded
             .ended()

@@ -551,9 +551,10 @@ impl MessagesDecoder {
     }
 
     /// End the reply with Anthropic's terminal record. Every block still
-    /// open is complete, but a call whose input is not JSON yet: the end of
-    /// the reply closes it unfinished. The container the reply ran in is a
-    /// last opaque block.
+    /// open is complete, but a call whose input is not JSON yet, and any
+    /// call of a reply the output limit cut, whose `content_block_stop`
+    /// never came: the end of the reply closes it unfinished. The container
+    /// the reply ran in is a last opaque block.
     fn end(
         &mut self,
         usage: &Counts,
@@ -561,13 +562,17 @@ impl MessagesDecoder {
         details: Option<&Value>,
         mut out: Out<'_, Completion>,
     ) -> Result<Flow, ProviderError> {
+        let (reason, error) = stop_reason.map_or((None, None), |reason| finish_of(reason, details));
+        let cut = reason.as_ref().is_some_and(FinishReason::truncated_output);
         let open: Vec<usize> = self
             .open
             .iter()
             .filter(|(_, (kind, json))| {
                 *kind != Kind::Call
-                    || json.is_empty()
-                    || crate::json_utils::parse_tool_arguments(json).is_ok_and(|v| v.is_object())
+                    || !cut
+                        && (json.is_empty()
+                            || crate::json_utils::parse_tool_arguments(json)
+                                .is_ok_and(|v| v.is_object()))
             })
             .map(|(index, _)| *index)
             .collect();
@@ -579,7 +584,6 @@ impl MessagesDecoder {
             let item = json!({ "type": "container", "container": container });
             out.whole(index, Block::Opaque { replay: true }, item, "")?;
         }
-        let (reason, error) = stop_reason.map_or((None, None), |reason| finish_of(reason, details));
         let mut counted = usage.usage()?;
         if self.cache_ttl_pricing {
             counted.cost = out

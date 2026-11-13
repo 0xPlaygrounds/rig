@@ -257,6 +257,9 @@ pub struct ReplyFold {
     facts: crate::catalog::ModelFacts,
     // The writer.
     open: BTreeMap<usize, Draft>,
+    /// The calls closed as never stated complete, by wire index, held until
+    /// the reply ends so that their ends come with it.
+    held: BTreeMap<usize, Draft>,
     /// The position of the block each wire index last closed, whose item
     /// [`Out::edit`] may still amend until the reply ends.
     ended: HashMap<usize, usize>,
@@ -504,6 +507,7 @@ impl ReplyFold {
             origin,
             facts: crate::catalog::ModelFacts::default(),
             open: BTreeMap::new(),
+            held: BTreeMap::new(),
             ended: HashMap::new(),
             next_part: 0,
             call_ids: HashSet::new(),
@@ -709,7 +713,9 @@ impl ReplyFold {
     /// Close the item at `index`: its block becomes visible, holding the
     /// provider's item as its native when `closing` says it is complete. A
     /// call the provider never stated complete is one of the reply's
-    /// unfinished calls, whichever path closed it.
+    /// unfinished calls, whichever path closed it, and is held until the
+    /// reply ends ([`Self::close_open`]): its end comes in the same step as
+    /// the reply's, so whoever reads the call's end can read the reply's.
     fn close_item(
         &mut self,
         items: &mut Items,
@@ -723,6 +729,21 @@ impl ReplyFold {
         if self.run == Some(index) {
             self.run = None;
         }
+        if closing == Closing::Incomplete && matches!(draft.body, Body::Call { .. }) {
+            self.held.insert(index, draft);
+            return Ok(());
+        }
+        self.settle(items, index, draft, closing)
+    }
+
+    /// Make the closed `draft` at `index` a block of the reply.
+    fn settle(
+        &mut self,
+        items: &mut Items,
+        index: usize,
+        draft: Draft,
+        closing: Closing,
+    ) -> Result<(), ProviderError> {
         self.ended.insert(index, draft.part.index());
         let Draft {
             part,
@@ -987,24 +1008,30 @@ impl ReplyFold {
         Ok(())
     }
 
-    /// Close every item still open when the provider ends the reply, in the
-    /// order they opened. The block a boundary-less wire was streaming is
-    /// complete; any other item was never stated complete, so its block has
-    /// no native. Calls keep what their arguments state.
+    /// Close every item still open when the provider ends the reply, and
+    /// end the calls held as unfinished, all in the order they opened. The
+    /// block a boundary-less wire was streaming is complete; any other item
+    /// was never stated complete, so its block has no native. Calls keep
+    /// what their arguments state.
     pub(crate) fn close_open(&mut self, items: &mut Items) {
-        let mut open: Vec<(Part, usize)> = self
-            .open
-            .iter()
-            .map(|(index, draft)| (draft.part, *index))
+        let mut closing: Vec<(usize, Draft, Closing)> = std::mem::take(&mut self.held)
+            .into_iter()
+            .map(|(index, draft)| (index, draft, Closing::Incomplete))
             .collect();
-        open.sort();
-        for (_, index) in open {
-            let closing = if self.run == Some(index) {
+        for (index, draft) in std::mem::take(&mut self.open) {
+            let complete = self.run.take_if(|run| *run == index).is_some();
+            let how = if complete {
                 Closing::Complete
             } else {
                 Closing::Incomplete
             };
-            if let Err(error) = self.close_item(items, index, closing) {
+            closing.push((index, draft, how));
+        }
+        closing.sort_by_key(|(_, draft, _)| draft.part);
+        for (index, mut draft, how) in closing {
+            // A call streams what it has not yet, as when it closes.
+            stream_call(items, &mut draft);
+            if let Err(error) = self.settle(items, index, draft, how) {
                 items.push_back(Err(error));
             }
         }
@@ -1335,7 +1362,7 @@ impl<'id> Out<'id, Completion> {
     ) -> Result<(), ProviderError> {
         let mut shared = self.lock();
         let Shared { fold, items, .. } = &mut *shared;
-        match fold.open.get_mut(&index) {
+        match fold.open.get_mut(&index).or(fold.held.get_mut(&index)) {
             Some(draft) => {
                 edit(&mut draft.item);
                 Ok(())
