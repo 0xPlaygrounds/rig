@@ -20,7 +20,7 @@ impl ErrorReport {
     /// The wait the provider asked for, as of `now`: the `retry-after-ms`
     /// header (OpenAI), else `retry-after` in seconds or as an HTTP date,
     /// else a hint in the body: Gemini's `"retryDelay": "2s"` or OpenAI's
-    /// "try again in 1.5s".
+    /// "try again in 1.5s" or "try again in 6m0s".
     pub fn retry_after(&self, now: SystemTime) -> Option<Duration> {
         let header = |name: &str| {
             self.provider_response_headers()
@@ -126,20 +126,38 @@ fn seconds(secs: f64) -> Option<Duration> {
     Duration::try_from_secs_f64(secs.max(0.0)).ok()
 }
 
-/// The wait `text` starts with: a number and `ms` or `s`.
+/// The wait `text` starts with, as Go writes a duration: numbers each
+/// followed by `h`, `m`, `s` or `ms` (`6m0s`, `1h2m3.5s`, `20ms`). A space
+/// may part the first number from its unit (`1.5 s`).
 fn hinted_wait(text: &str) -> Option<Duration> {
-    let end = text
-        .find(|c: char| !(c.is_ascii_digit() || c == '.'))
-        .unwrap_or(text.len());
-    let amount: f64 = text.get(..end)?.parse().ok()?;
-    let unit = text.get(end..)?.trim_start();
-    let unit_end = unit
-        .find(|c: char| !c.is_ascii_alphanumeric())
-        .unwrap_or(unit.len());
-    match unit.get(..unit_end)? {
-        "ms" => seconds(amount / 1000.0),
-        "s" => seconds(amount),
-        _ => None,
+    let mut rest = text;
+    let mut total = None;
+    loop {
+        if !rest.starts_with(|c: char| c.is_ascii_digit()) {
+            return seconds(total?);
+        }
+        let end = rest
+            .find(|c: char| !(c.is_ascii_digit() || c == '.'))
+            .unwrap_or(rest.len());
+        let amount: f64 = rest.get(..end)?.parse().ok()?;
+        let unit = rest.get(end..)?;
+        let unit = if total.is_none() {
+            unit.trim_start()
+        } else {
+            unit
+        };
+        let unit_end = unit
+            .find(|c: char| !c.is_ascii_alphabetic())
+            .unwrap_or(unit.len());
+        let scale = match unit.get(..unit_end)? {
+            "h" => 3600.0,
+            "m" => 60.0,
+            "s" => 1.0,
+            "ms" => 0.001,
+            _ => return None,
+        };
+        total = Some(total.unwrap_or(0.0) + amount * scale);
+        rest = unit.get(unit_end..)?;
     }
 }
 

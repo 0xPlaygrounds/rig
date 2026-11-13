@@ -58,3 +58,14 @@ fn the_default_is_four_retries_and_a_minute_and_a_set_policy_goes_further() {
         Verdict::Retry(Duration::from_secs(7200))
     );
 }
+
+/// A wait asked for in minutes gives up at once rather than retrying on
+/// the policy's own backoff.
+#[test]
+fn a_wait_asked_in_minutes_past_the_limit_gives_up_at_once() {
+    let asked = report("Rate limit reached. Please try again in 6m0s.").with_retryable(true);
+    assert!(matches!(
+        RetryPolicy::DEFAULT.verdict(&asked, 0, SystemTime::now()),
+        Verdict::GaveUp(why) if why.contains("asks to wait 360 s")
+    ));
+}
