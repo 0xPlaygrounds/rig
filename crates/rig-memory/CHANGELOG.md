@@ -6,6 +6,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.47.0](https://github.com/0xPlaygrounds/rig/compare/rig-memory-v0.46.0...rig-memory-v0.47.0) - 2026-11-14
+
+### Added
+
+- *(rig-ecs)* [**breaking**] the kernel owns the last save and the persistence barrier ([#3268](https://github.com/0xPlaygrounds/rig/pull/3268)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Fixed
+
+- *(rig-memory, corpus)* one estimate of the tokens a request sends, tools included ([#3295](https://github.com/0xPlaygrounds/rig/pull/3295)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(memory)* list files in folders whose names end in .rig-part ([#3244](https://github.com/0xPlaygrounds/rig/pull/3244)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(ecs)* notes written beside cleared tool outputs stay with their results ([#3169](https://github.com/0xPlaygrounds/rig/pull/3169)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(memory)* [**breaking**] undo restores only what a compaction replaced in this conversation, and read_conversation returns failed blob reads ([#3095](https://github.com/0xPlaygrounds/rig/pull/3095)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(memory)* compaction cuts, concurrent DirFiles writes, masked blob errors and Session::save retries ([#3046](https://github.com/0xPlaygrounds/rig/pull/3046)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(tools,memory)* [**breaking**] a confined write never leaves its base, and a stale session save is refused ([#2999](https://github.com/0xPlaygrounds/rig/pull/2999)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] every limit on asked work is a settings.toml key with a sensible default, and rig says what it changes ([#2995](https://github.com/0xPlaygrounds/rig/pull/2995)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2995
+- *(ecs)* [**breaking**] a call is known by its reply and place; every stop goes through one owner ([#2985](https://github.com/0xPlaygrounds/rig/pull/2985)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(compaction)* [**breaking**] rewrite the summary, and never clear an output without notes or a same-bytes re-read ([#2975](https://github.com/0xPlaygrounds/rig/pull/2975)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(session)* [**breaking**] resume draws what live drew; an empty session is not kept ([#2964](https://github.com/0xPlaygrounds/rig/pull/2964)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(harness)* [**breaking**] one current agent per session; a fork says what it copies ([#2967](https://github.com/0xPlaygrounds/rig/pull/2967)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(ecs)* [**breaking**] a stopped turn keeps what streamed, and a stop is never an error ([#2966](https://github.com/0xPlaygrounds/rig/pull/2966)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Other
+
+- *(rig-core, rig-memory)* [**breaking**] the output limit is a catalog fact and the room left is rig-memory's ([#3306](https://github.com/0xPlaygrounds/rig/pull/3306)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-memory, rig-basics)* [**breaking**] the coding agent's summary prompts live in its plugin ([#3292](https://github.com/0xPlaygrounds/rig/pull/3292)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-memory, rig-basics)* [**breaking**] answer_tokens is the compaction plugin's setting, not the policy's ([#3290](https://github.com/0xPlaygrounds/rig/pull/3290)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-core, rig-memory)* base-crate docs stop naming the agent's crates ([#3301](https://github.com/0xPlaygrounds/rig/pull/3301)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] remove duplicated tests, dead code and doc bloat across the workspace ([#3202](https://github.com/0xPlaygrounds/rig/pull/3202)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #3202
+- *(deps)* update rmcp, bevy, base64, signal-hook, testcontainers, surrealdb, similar, sha2 and syn ([#3089](https://github.com/0xPlaygrounds/rig/pull/3089)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(sqlite,postgres,memory)* crate docs name feature-gated items without linking them ([#3044](https://github.com/0xPlaygrounds/rig/pull/3044)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] PRs run what the change can break, one test binary per crate, one required check ([#3014](https://github.com/0xPlaygrounds/rig/pull/3014)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #3014
+- *(redact)* [**breaking**] redaction is one optional plugin; secrets become placeholders a tool call can still use ([#2990](https://github.com/0xPlaygrounds/rig/pull/2990)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
 ## [0.46.0](https://github.com/0xPlaygrounds/rig/compare/v0.45.0...v0.46.0) - 2026-10-31
 
 ### Added

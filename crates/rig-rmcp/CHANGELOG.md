@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.47.0](https://github.com/0xPlaygrounds/rig/compare/rig-rmcp-v0.46.0...rig-rmcp-v0.47.0) - 2026-11-14
+
+### Fixed
+
+- *(rig-rmcp)* a server that declares no tools is not asked for them ([#3296](https://github.com/0xPlaygrounds/rig/pull/3296)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-rmcp)* client_config offers the released MCP protocol; examples and docs use it ([#3289](https://github.com/0xPlaygrounds/rig/pull/3289)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Other
+
+- [**breaking**] remove duplicated tests, dead code and doc bloat across the workspace ([#3202](https://github.com/0xPlaygrounds/rig/pull/3202)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #3202
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
 ## [0.45.0](https://github.com/0xPlaygrounds/rig/compare/rig-rmcp-v0.44.0...rig-rmcp-v0.45.0) - 2026-10-19
 
 ### Added

@@ -19,7 +19,7 @@ path = "src/main.rs"
 doc = false
 
 [dependencies]
-rig-harness-protocol = { path = "../rig-harness-protocol", version = "0.46.0" }
+rig-harness-protocol = { path = "../rig-harness-protocol", version = "0.47.0" }
 
 # It kills its cargo's process group when it is told to end, and passes an
 # ending signal on to its agent and waits for it.
