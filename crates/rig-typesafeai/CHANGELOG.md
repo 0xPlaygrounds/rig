@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.47.0](https://github.com/0xPlaygrounds/rig/compare/rig-typesafeai-v0.46.0...rig-typesafeai-v0.47.0) - 2026-11-14
+
+### Added
+
+- *(typesafeai)* set a loaded JevConfig's token ([#3180](https://github.com/0xPlaygrounds/rig/pull/3180)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(typesafeai)* send OpenRouter provider preferences from JevConfig ([#3118](https://github.com/0xPlaygrounds/rig/pull/3118)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Fixed
+
+- *(typesafeai)* choice labels decode into string newtypes ([#3237](https://github.com/0xPlaygrounds/rig/pull/3237)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(typesafeai)* [**breaking**] a stored JevConfig with an unknown key fails to load ([#3130](https://github.com/0xPlaygrounds/rig/pull/3130)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(openrouter)* a stored provider preference with an unknown key fails to load ([#3127](https://github.com/0xPlaygrounds/rig/pull/3127)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Other
+
+- *(rig-core)* [**breaking**] remove provider observations, which nothing produces ([#3302](https://github.com/0xPlaygrounds/rig/pull/3302)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
 ## [0.45.0](https://github.com/0xPlaygrounds/rig/compare/rig-typesafeai-v0.44.0...rig-typesafeai-v0.45.0) - 2026-10-19
 
 ### Fixed

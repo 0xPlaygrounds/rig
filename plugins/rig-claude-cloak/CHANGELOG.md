@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.47.0](https://github.com/0xPlaygrounds/rig/compare/rig-claude-cloak-v0.46.0...rig-claude-cloak-v0.47.0) - 2026-11-14
+
+### Added
+
+- *(rig-core)* a public loopback sign-in listener, used by the ChatGPT flow and the Claude plugin ([#3308](https://github.com/0xPlaygrounds/rig/pull/3308)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(harness,cli,mcp-client)* [**breaking**] one settings file, plugins from the home list, full trust in projects, and the launcher in its own crate ([#3005](https://github.com/0xPlaygrounds/rig/pull/3005)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Fixed
+
+- *(rig-claude-cloak)* strict tool schemas are chosen by shape, not by another program's tool names ([#3293](https://github.com/0xPlaygrounds/rig/pull/3293)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-claude-cloak)* transport wrappers see the request the plugin sends, not the one it was handed ([#3280](https://github.com/0xPlaygrounds/rig/pull/3280)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(claude-cloak)* start the login browser without rig's secrets ([#3135](https://github.com/0xPlaygrounds/rig/pull/3135)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(ecs)* [**breaking**] one spawn path for agents, with no depth limit, and requests owned by what made them ([#2991](https://github.com/0xPlaygrounds/rig/pull/2991)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(models)* [**breaking**] /model lists only models you can use now; a model that doesn't connect is refused and the current one stays ([#2983](https://github.com/0xPlaygrounds/rig/pull/2983)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(models)* [**breaking**] only an explicit choice becomes the default; /model offers only models that answer ([#2973](https://github.com/0xPlaygrounds/rig/pull/2973)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(tools)* [**breaking**] every child process has one owner, enforced by a lint ([#2970](https://github.com/0xPlaygrounds/rig/pull/2970)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(http)* [**breaking**] an error keeps its retry class from where it was made ([#2969](https://github.com/0xPlaygrounds/rig/pull/2969)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Other
+
+- *(rig-claude-cloak)* credentials are kept through rig-core's FileTokenStore ([#3305](https://github.com/0xPlaygrounds/rig/pull/3305)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] remove duplicated tests, dead code and doc bloat across the workspace ([#3202](https://github.com/0xPlaygrounds/rig/pull/3202)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #3202
+- *(deps)* update rmcp, bevy, base64, signal-hook, testcontainers, surrealdb, similar, sha2 and syn ([#3089](https://github.com/0xPlaygrounds/rig/pull/3089)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
 ## [0.46.0](https://github.com/0xPlaygrounds/rig/compare/v0.45.0...v0.46.0) - 2026-10-31
 
 ### Added

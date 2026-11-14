@@ -6,6 +6,64 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.47.0](https://github.com/0xPlaygrounds/rig/compare/rig-harness-v0.46.0...rig-harness-v0.47.0) - 2026-11-14
+
+### Added
+
+- *(rig-ecs)* [**breaking**] the kernel owns the last save and the persistence barrier ([#3268](https://github.com/0xPlaygrounds/rig/pull/3268)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-ecs)* [**breaking**] write a reply that did not stream as stream deltas ([#3264](https://github.com/0xPlaygrounds/rig/pull/3264)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-cli)* warn once per start of a 0.46 home's plugins.toml and defaults.json ([#3239](https://github.com/0xPlaygrounds/rig/pull/3239)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(tools,basics)* [**breaking**] remove the unused move tool and the checkpoint plugin ([#3048](https://github.com/0xPlaygrounds/rig/pull/3048)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(harness,cli,mcp-client)* [**breaking**] one settings file, plugins from the home list, full trust in projects, and the launcher in its own crate ([#3005](https://github.com/0xPlaygrounds/rig/pull/3005)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(usage,helpers,budget)* [**breaking**] one agent tree's spend is counted, and an opt-in budget holds ([#2994](https://github.com/0xPlaygrounds/rig/pull/2994)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Fixed
+
+- *(rig-harness)* move a process-group list a reload cannot read aside instead of writing over it ([#3263](https://github.com/0xPlaygrounds/rig/pull/3263)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-harness)* [**breaking**] check a front-only plugin's settings while describing ([#3273](https://github.com/0xPlaygrounds/rig/pull/3273)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-harness)* [**breaking**] a shell registered per call starts its commands as Processes say ([#3269](https://github.com/0xPlaygrounds/rig/pull/3269)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-harness)* keep each launcher warning whole when it holds a line break ([#3258](https://github.com/0xPlaygrounds/rig/pull/3258)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-cli)* `rig plugin check --build` refuses settings a start would refuse ([#3253](https://github.com/0xPlaygrounds/rig/pull/3253)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(harness)* keep prompt history and run logs private to the user ([#3164](https://github.com/0xPlaygrounds/rig/pull/3164)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(harness)* never discard a session whose agent logs hold a conversation ([#3143](https://github.com/0xPlaygrounds/rig/pull/3143)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-harness,rig-basics,rig-acp)* one answer rule for every front, and the JSON front refuses a lost answer ([#3140](https://github.com/0xPlaygrounds/rig/pull/3140)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(harness)* create session directories private to the user ([#3137](https://github.com/0xPlaygrounds/rig/pull/3137)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] every limit on asked work is a settings.toml key with a sensible default, and rig says what it changes ([#2995](https://github.com/0xPlaygrounds/rig/pull/2995)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2995
+- *(redact)* a notice is redacted between the stages, before any front reads it ([#2993](https://github.com/0xPlaygrounds/rig/pull/2993)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(ecs)* [**breaking**] one spawn path for agents, with no depth limit, and requests owned by what made them ([#2991](https://github.com/0xPlaygrounds/rig/pull/2991)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(print,acp)* [**breaking**] --json names a call by its place (protocol v 2); ACP shows a result the same live and loaded ([#2988](https://github.com/0xPlaygrounds/rig/pull/2988)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(ecs)* [**breaking**] a call is known by its reply and place; every stop goes through one owner ([#2985](https://github.com/0xPlaygrounds/rig/pull/2985)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(tools)* [**breaking**] --tools limits only the run it is given to ([#2984](https://github.com/0xPlaygrounds/rig/pull/2984)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(io)* [**breaking**] input and output are bounded; a stop is never blocked by output ([#2974](https://github.com/0xPlaygrounds/rig/pull/2974)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(models)* [**breaking**] only an explicit choice becomes the default; /model offers only models that answer ([#2973](https://github.com/0xPlaygrounds/rig/pull/2973)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(tools)* [**breaking**] every child process has one owner, enforced by a lint ([#2970](https://github.com/0xPlaygrounds/rig/pull/2970)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(compaction)* [**breaking**] rewrite the summary, and never clear an output without notes or a same-bytes re-read ([#2975](https://github.com/0xPlaygrounds/rig/pull/2975)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(harness)* [**breaking**] one run contract for every front; unknown input is refused out loud ([#2972](https://github.com/0xPlaygrounds/rig/pull/2972)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(tools)* [**breaking**] an @ reference attaches exactly the file that was picked ([#2962](https://github.com/0xPlaygrounds/rig/pull/2962)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(session)* [**breaking**] resume draws what live drew; an empty session is not kept ([#2964](https://github.com/0xPlaygrounds/rig/pull/2964)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(harness)* [**breaking**] one current agent per session; a fork says what it copies ([#2967](https://github.com/0xPlaygrounds/rig/pull/2967)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(tools)* [**breaking**] tool results show what they found ([#2965](https://github.com/0xPlaygrounds/rig/pull/2965)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(ecs)* [**breaking**] a stopped turn keeps what streamed, and a stop is never an error ([#2966](https://github.com/0xPlaygrounds/rig/pull/2966)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Other
+
+- *(rig-core, rig-harness)* one closest-name rule, public beside edit_distance ([#3311](https://github.com/0xPlaygrounds/rig/pull/3311)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-memory, rig-basics)* [**breaking**] answer_tokens is the compaction plugin's setting, not the policy's ([#3290](https://github.com/0xPlaygrounds/rig/pull/3290)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-harness-protocol)* [**breaking**] file errors name the path and step; only NotFound is absent ([#3275](https://github.com/0xPlaygrounds/rig/pull/3275)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-harness-protocol)* [**breaking**] one AgentEnd record says how the agent ended ([#3274](https://github.com/0xPlaygrounds/rig/pull/3274)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-tools)* [**breaking**] one listing rule for both watch backends, and typed watch events ([#3270](https://github.com/0xPlaygrounds/rig/pull/3270)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig)* an install line that works, a quick start, how to update, and what is per home ([#3217](https://github.com/0xPlaygrounds/rig/pull/3217)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] remove duplicated tests, dead code and doc bloat across the workspace ([#3202](https://github.com/0xPlaygrounds/rig/pull/3202)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #3202
+- *(harness)* a session delete does not hold the session's lock ([#3165](https://github.com/0xPlaygrounds/rig/pull/3165)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(tools)* confinement on another machine compares path text and cannot see links there ([#3163](https://github.com/0xPlaygrounds/rig/pull/3163)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- drop build edges nothing uses ([#3144](https://github.com/0xPlaygrounds/rig/pull/3144)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #3144
+- *(deps)* update rmcp, bevy, base64, signal-hook, testcontainers, surrealdb, similar, sha2 and syn ([#3089](https://github.com/0xPlaygrounds/rig/pull/3089)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(harness)* [**breaking**] one project root for settings, MCP, AGENTS.md, skills and plugin data ([#3000](https://github.com/0xPlaygrounds/rig/pull/3000)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(redact)* [**breaking**] redaction is one optional plugin; secrets become placeholders a tool call can still use ([#2990](https://github.com/0xPlaygrounds/rig/pull/2990)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
 ## [0.46.0](https://github.com/0xPlaygrounds/rig/compare/v0.45.0...v0.46.0) - 2026-10-31
 
 ### Added
