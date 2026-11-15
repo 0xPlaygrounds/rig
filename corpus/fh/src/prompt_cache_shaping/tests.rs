@@ -39,6 +39,7 @@ fn on_the_wire(request: &CompletionRequest) -> Value {
         model: "claude-sonnet-4-6".to_owned(),
         default_max_tokens: Some(1024),
         prompt_caching: false,
+        cache_retention: None,
         static_prefix_cache_ttl: None,
         strict_tools: false,
         tool_input_streaming: Default::default(),

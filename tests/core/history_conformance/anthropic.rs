@@ -158,6 +158,7 @@ impl HistoryFixture for MessagesHistory {
                 .dialect
                 .default_max_tokens(&rig_core::catalog::ModelFacts::default(), model),
             prompt_caching: false,
+            cache_retention: None,
             static_prefix_cache_ttl: None,
             strict_tools: false,
             tool_input_streaming: self.dialect.quirks.tool_input_streaming,
