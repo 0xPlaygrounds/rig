@@ -271,9 +271,15 @@ fn fork_now(
             .collect(),
     );
     // The source's context figure measures the fork's conversation only
-    // when the fork has all of it.
+    // when the fork has the source's conversation as it is now: the same
+    // entries, not only as many.
     let whole = world.get::<Conversation>(from).is_some_and(|conversation| {
-        conversation.messages().len() == copy.conversation.messages().len()
+        let entries = |of: &rig_core::conversation::Conversation| {
+            (of.entries())
+                .map(|entry| (entry.id, entry.made, entry.message.clone()))
+                .collect::<Vec<_>>()
+        };
+        entries(conversation) == entries(&copy.conversation)
     });
     let measured = world.get::<LastUsage>(from).filter(|_| whole).cloned();
     let key = CacheKey(CacheKey::of(world.get::<CacheKey>(from), &id).to_owned());

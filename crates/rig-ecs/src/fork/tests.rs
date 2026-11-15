@@ -7,10 +7,13 @@ use rig_memory::{MemoryStore, Store};
 
 use super::{AgentForked, ForkAgent, ForkError, ForkResult, ForkedFrom};
 use crate::AgentPlugin;
-use crate::agent::{Agent, AgentId, CacheKey, Conversation, SystemPrompt, ToolAccess};
-use crate::session_log::tests::push_message;
+use crate::agent::{
+    Agent, AgentId, CacheKey, ContextStale, Conversation, LastUsage, SystemPrompt, ToolAccess,
+};
+use crate::session_log::tests::{edit, push_message};
 use crate::session_log::{Never, ReflectSaved, Reset, SessionLogPlugin, SessionStore};
 use crate::spawn::spawn_root;
+use rig_core::conversation::Author;
 
 /// The forks made, in order.
 #[derive(Resource, Default)]
@@ -276,4 +279,65 @@ fn a_fork_copies_resets_or_leaves_out_each_saved_component_as_its_type_says() {
     // Restored, it has the duty every agent requires, not the source's.
     let restored = (forked.0, forked.1, Some(Duty(0)), forked.3);
     assert_eq!(read(again.world(), fork), restored);
+}
+
+/// A fork has its source's context figure only when it holds the source's
+/// conversation as it is: one cut before a compaction, with as many
+/// messages as the source has now, is stale.
+#[test]
+fn a_fork_keeps_the_context_figure_only_of_the_conversation_it_measured() {
+    let store = MemoryStore::default();
+    let mut app = app(&store);
+    let source = spawn_root(app.world_mut()).id();
+    let texts = ["one?", "one.", "two?", "two.", "three?", "three."];
+    for (at, text) in texts.into_iter().enumerate() {
+        let message = if at % 2 == 0 {
+            Message::user(text)
+        } else {
+            Message::assistant(text)
+        };
+        push_message(app.world_mut(), source, message);
+    }
+    app.update();
+    let before = app
+        .world()
+        .get::<Conversation>(source)
+        .and_then(|conversation| conversation.id(3));
+    // A compaction, then a turn: four messages again, others.
+    edit(app.world_mut(), source, |conversation| {
+        conversation.splice(
+            ..5,
+            [Message::user("A summary.").into()],
+            Author::plugin("c"),
+        );
+    });
+    for message in [Message::user("four?"), Message::assistant("four.")] {
+        push_message(app.world_mut(), source, message);
+    }
+    let measured = LastUsage(Some(rig_memory::Anchor {
+        usage: rig_core::completion::Usage::new().input_tokens(40),
+        through: rig_core::conversation::MessageId::default(),
+    }));
+    app.world_mut().entity_mut(source).insert(measured);
+    app.update();
+    for through in [before, None] {
+        app.world_mut().spawn(ForkAgent::new(source, through));
+        app.update();
+    }
+    let forks: Vec<Entity> = app
+        .world()
+        .resource::<Forks>()
+        .0
+        .iter()
+        .map(|f| f.fork)
+        .collect();
+    assert_eq!(forks.len(), 2);
+    let world = app.world();
+    let figure = |fork: &Entity| {
+        let count = world.get::<Conversation>(*fork).map(|c| c.messages().len());
+        let context = world.get::<LastUsage>(*fork).and_then(LastUsage::context);
+        (count, context, world.get::<ContextStale>(*fork).is_some())
+    };
+    let seen: Vec<_> = forks.iter().map(figure).collect();
+    assert_eq!(seen, [(Some(4), None, true), (Some(4), Some(40), false)]);
 }
