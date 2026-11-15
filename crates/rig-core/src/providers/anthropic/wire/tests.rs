@@ -9,10 +9,8 @@ use super::*;
 use crate::wire::Operation;
 use crate::wire::secret::tests::a_config_reloads_without_its_credential;
 
-/// Default selection is local to the wire; cache marker shapes are covered by cassettes.
 #[test]
 fn a_wire_cache_retention_defaults_requests_but_a_request_can_override_it() {
-    use crate::completion::CacheRetention;
     use crate::test_utils::json_body;
     use serde_json::json;
 
@@ -44,15 +42,19 @@ fn a_wire_cache_retention_defaults_requests_but_a_request_can_override_it() {
                 None,
             ),
             (
-                CompletionRequest::new("hello")
-                    .additional_params(json!({"cache_control": {"type": "ephemeral", "ttl": "5m"}})),
+                CompletionRequest::new("hello").additional_params(
+                    json!({"cache_control": {"type": "ephemeral", "ttl": "5m"}}),
+                ),
                 Some(json!({"type": "ephemeral", "ttl": "5m"})),
             ),
         ] {
             let encoded = restored
                 .encode(request, mode)
                 .unwrap_or_else(|error| panic!("{error}"));
-            assert_eq!(json_body(&encoded.request).get("cache_control"), expected.as_ref());
+            assert_eq!(
+                json_body(&encoded.request).get("cache_control"),
+                expected.as_ref()
+            );
         }
     }
 }

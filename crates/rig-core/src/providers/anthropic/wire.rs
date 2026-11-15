@@ -13,7 +13,7 @@
 use crate::catalog::ModelFacts;
 use crate::client::env::{self, EnvError};
 use crate::completion::options::FinalBody;
-use crate::completion::{CompletionRequest, ProviderCapabilities};
+use crate::completion::{CacheRetention, CompletionRequest, ProviderCapabilities};
 use crate::error::EncodeError;
 use crate::operation::Completion;
 use crate::providers::internal::{credential_header, named_dialect};
@@ -442,6 +442,7 @@ impl AnthropicConfig {
             provider: self.clone(),
             model,
             prompt_caching: false,
+            cache_retention: None,
             static_prefix_cache_ttl: None,
             strict_tools: false,
             tool_input_streaming: self.dialect.quirks.tool_input_streaming,
@@ -519,6 +520,9 @@ pub struct Messages {
     /// [`cache`](crate::completion::GenerationOptions::cache) sets the
     /// top-level marker and its TTL.
     pub prompt_caching: bool,
+    /// The cache retention used when the request does not specify one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_retention: Option<CacheRetention>,
     /// TTL for the static prefix (tools + system), independent of the
     /// conversation tail. `None` inherits the top-level TTL.
     pub static_prefix_cache_ttl: Option<CacheTtl>,
@@ -559,6 +563,15 @@ impl Messages {
     /// Existing tool markers are preserved and count toward the four-breakpoint budget.
     pub fn with_prompt_caching(mut self) -> Self {
         self.prompt_caching = true;
+        self
+    }
+
+    /// Default request-wide cache retention. A request's
+    /// [`cache`](crate::completion::GenerationOptions::cache) overrides it.
+    /// The same dialect-specific mapping and cache marker validation apply
+    /// as for a per-request setting.
+    pub fn with_cache_retention(mut self, retention: CacheRetention) -> Self {
+        self.cache_retention = Some(retention);
         self
     }
 
@@ -656,10 +669,11 @@ impl Messages {
     /// When the request does not encode, or `envelope` fails.
     pub fn encode_with(
         &self,
-        request: CompletionRequest,
+        mut request: CompletionRequest,
         mode: Mode,
         envelope: impl FnOnce(Prepared) -> Result<http::Request<Body>, EncodeError>,
     ) -> Result<Encoded, EncodeError> {
+        request.options.cache = request.options.cache.or(self.cache_retention);
         let model = request.model.clone().unwrap_or_else(|| self.model.clone());
         let fine_grained = !request.tools.is_empty()
             && self.tool_input_streaming == ToolInputStreaming::BetaHeader;
