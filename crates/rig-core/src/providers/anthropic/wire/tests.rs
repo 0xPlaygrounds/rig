@@ -15,7 +15,7 @@ fn a_wire_thinking_display_defaults_active_thinking_but_a_request_can_override_i
     use crate::test_utils::json_body;
     use serde_json::json;
 
-    let wire = AnthropicConfig::new("sk-test").completion("claude-opus-5-5");
+    let wire = AnthropicConfig::new("sk-test").completion("claude-sonnet-4-6");
     for display in [
         ThinkingDisplay::Summarized,
         ThinkingDisplay::Omitted,
