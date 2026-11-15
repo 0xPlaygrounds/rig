@@ -194,6 +194,8 @@ pub enum ResponsesContract {
     /// Always-streamed Codex responses with optional content-type and envelope fields.
     /// Requests omit sampling controls, storage, metadata, and structured output.
     Codex,
+    /// Official ChatGPT plan usage: stateless, streamed Responses with namespaced tools.
+    Siwc,
 }
 
 /// What a dialect's Responses endpoint is: where it lives, where the system

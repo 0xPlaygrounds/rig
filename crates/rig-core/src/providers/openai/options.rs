@@ -1263,6 +1263,7 @@ pub(crate) fn responses_options(
     let is = |other: &super::wire::Dialect| dialect.name == other.name;
     match dialect.quirks.responses.contract {
         ResponsesContract::Codex => codex(fields),
+        ResponsesContract::Siwc => siwc(fields),
         ResponsesContract::Xai => xai_responses(facts, model, fields),
         ResponsesContract::OpenAi if is(&OPENAI) => openai_responses(facts, model, fields),
         ResponsesContract::OpenAi if is(&OPENROUTER) => openrouter_responses(facts, model, fields),
@@ -1284,6 +1285,20 @@ pub(crate) fn responses_options(
 /// `reasoning` on the Responses API, as `reasoning.effort`.
 fn reasoning_object(effort: &str) -> Mapping {
     send("reasoning", json!({"effort": effort}))
+}
+
+fn siwc(fields: OptionFields<'_>) -> OptionMap {
+    let mut options = refuse_all(fields, "not supported by the SIWC integration");
+    options.reasoning = Mapping::of(fields.reasoning, |reasoning| match reasoning {
+        Reasoning::Off => reasoning_object("none"),
+        Reasoning::Effort(effort) => reasoning_object(effort.as_str()),
+        Reasoning::Budget { .. } => {
+            Mapping::unsupported("SIWC takes reasoning effort, not a budget")
+        }
+    });
+    options.verbosity = Mapping::of(fields.verbosity, text_verbosity);
+    options.parallel_tool_calls = Mapping::of(fields.parallel_tool_calls, send_parallel);
+    options
 }
 
 fn no_seed(seed: Option<u64>) -> Mapping {

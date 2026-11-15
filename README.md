@@ -67,6 +67,12 @@ async fn main() -> anyhow::Result<()> {
 }
 ```
 
+For Sign in with ChatGPT inference, use
+`rig::providers::chatgpt::siwc::from_env()` with `CHATGPT_SIWC_ACCESS_TOKEN`.
+Your application must obtain and refresh the token through
+[OpenAI's sign-in flow](https://developers.openai.com/siwc/token-sharing-open-source/sign-in).
+This library integration leaves the coding agent's `/login` unchanged.
+
 Rig puts over 20 model providers and a dozen vector stores behind one
 interface. It has agents with tools, streaming and typed hooks. It covers
 completion, embedding, transcription, audio and image models and follows the

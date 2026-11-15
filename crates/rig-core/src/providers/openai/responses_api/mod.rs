@@ -421,8 +421,12 @@ impl wire::Responses {
         request: &completion::CompletionRequest,
         delivery: Delivery,
     ) -> Result<FinalBody, EncodeError> {
-        let codex =
-            self.provider.dialect.quirks.responses.contract == wire::ResponsesContract::Codex;
+        let contract = self.provider.dialect.quirks.responses.contract;
+        if contract == wire::ResponsesContract::Siwc && delivery == Delivery::WebSocket {
+            return Err(EncodeError::request(
+                "The SIWC integration supports HTTP/SSE only",
+            ));
+        }
         let mut rewrites = Vec::new();
         match delivery {
             Delivery::Http(Mode::Streaming) => rewrites.push(Rewrite::Stream(true)),
@@ -431,12 +435,17 @@ impl wire::Responses {
         if delivery == Delivery::WebSocket {
             rewrites.push(Rewrite::NoBackground);
         }
-        if codex {
-            rewrites.push(Rewrite::CodexStore);
+        match contract {
+            wire::ResponsesContract::Codex => rewrites.push(Rewrite::CodexStore),
+            wire::ResponsesContract::Siwc => rewrites.push(Rewrite::Siwc),
+            wire::ResponsesContract::OpenAi | wire::ResponsesContract::Xai => {}
         }
         // Reasoning replays without stored state only with its ciphertext.
         if self.provider.dialect.quirks.responses.reasoning_ciphertext {
-            rewrites.push(Rewrite::ReasoningCiphertext(codex));
+            rewrites.push(Rewrite::ReasoningCiphertext(matches!(
+                contract,
+                wire::ResponsesContract::Codex | wire::ResponsesContract::Siwc
+            )));
         }
         // The fields that stay the same turn to turn first, then the
         // conversation, then the output cap, which one call may change: a
@@ -447,7 +456,7 @@ impl wire::Responses {
         let body = request_params(
             self,
             request,
-            |layers| self.base(request, codex, layers),
+            |layers| self.base(request, layers),
             RawAt::Top,
             &rewrites,
         )?;
@@ -467,9 +476,10 @@ impl wire::Responses {
     fn base(
         &self,
         request: &completion::CompletionRequest,
-        codex: bool,
         layers: &mut BaseInput<'_>,
     ) -> Result<Map<String, Value>, EncodeError> {
+        let contract = self.provider.dialect.quirks.responses.contract;
+        let codex = contract == wire::ResponsesContract::Codex;
         let model = request.model.clone().unwrap_or_else(|| self.model.clone());
         let mut tools: Vec<ResponsesToolDefinition> = request
             .tools
@@ -503,7 +513,9 @@ impl wire::Responses {
             calls: Default::default(),
         };
         let store = self.store.map(Value::Bool);
-        let stateless = codex || layers.param("store").or(store.as_ref()) == Some(&json!(false));
+        let stateless = codex
+            || contract == wire::ResponsesContract::Siwc
+            || layers.param("store").or(store.as_ref()) == Some(&json!(false));
         let caller = match layers.claim("input") {
             None | Some(Value::Null) => Vec::new(),
             Some(Value::Array(items)) => items,

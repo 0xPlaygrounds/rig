@@ -3,6 +3,7 @@
 //! [`from_env`] reads an exchanged access token from the environment. To sign
 //! in through [`auth`], serve a catalog model with an [`auth::Authenticator`]
 //! as a [`SignedInModel`](crate::client::signed_in::SignedInModel).
+//! Use [`siwc`] for caller-managed tokens issued through OpenAI's Sign in with ChatGPT flow.
 //!
 //! ```no_run
 //! use rig_core::providers::chatgpt;
@@ -16,6 +17,7 @@
 
 pub mod auth;
 pub mod extension;
+pub mod siwc;
 
 use crate::providers::openai::responses_api::SystemInstructionsPlacement;
 use crate::providers::openai::wire::{
