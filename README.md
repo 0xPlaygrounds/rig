@@ -123,6 +123,12 @@ The example also needs tokio, with the `macros` and `rt-multi-thread` features
 that `#[tokio::main]` uses, and anyhow
 (`cargo add tokio --features macros,rt-multi-thread` and `cargo add anyhow`).
 
+For Sign in with ChatGPT inference, use
+`rig::providers::chatgpt::siwc::from_env()` with `CHATGPT_SIWC_ACCESS_TOKEN`.
+Your application must obtain and refresh the token through
+[OpenAI's sign-in flow](https://developers.openai.com/siwc/token-sharing-open-source/sign-in).
+This library integration leaves the coding agent's `/login` unchanged.
+
 - 20+ model providers and 10+ vector stores, each under one interface
 - Agents with tools, multi-turn streaming and typed hooks
 - Live tool output in streamed runs: a returned JSON array arrives one element at a time, any other output at once

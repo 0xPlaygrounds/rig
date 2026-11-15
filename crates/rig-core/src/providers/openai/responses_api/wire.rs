@@ -139,12 +139,11 @@ impl Wire for Responses {
         mode: Mode,
     ) -> Result<Encoded, EncodeError> {
         let quirks = &self.provider.dialect.quirks.responses;
-        // The codex gateway only ever answers with an event stream, and
-        // names no content type on it. It is asked for one whatever the
-        // caller wanted: the reply is framed the same way either way, and
-        // the driver folds it.
-        let codex = quirks.contract == ResponsesContract::Codex;
-        let streaming = matches!(mode, Mode::Streaming) || codex;
+        let streaming = matches!(mode, Mode::Streaming)
+            || matches!(
+                quirks.contract,
+                ResponsesContract::Codex | ResponsesContract::Siwc
+            );
         let builder = self.provider.completion_headers(
             &request,
             http::Request::post(self.provider.uri(quirks.path, None)),
@@ -171,7 +170,8 @@ impl Wire for Responses {
         };
         let encoded = Encoded::new(request, framing)
             .with_request_id_header(self.provider.dialect.request_id_header);
-        Ok(if codex {
+        // The Codex gateway may omit the event stream's content type.
+        Ok(if quirks.contract == ResponsesContract::Codex {
             encoded.with_relaxed_content_type()
         } else {
             encoded
@@ -334,11 +334,12 @@ fn reads_images(facts: &ModelFacts, contract: ResponsesContract, model: &str) ->
             model,
             crate::providers::xai::reads_images,
         ),
-        ResponsesContract::OpenAi | ResponsesContract::Codex => facts.reads_images_or(
-            crate::providers::openai::wire::OPENAI.name,
-            model,
-            crate::providers::openai::reads_images,
-        ),
+        ResponsesContract::OpenAi | ResponsesContract::Codex | ResponsesContract::Siwc => facts
+            .reads_images_or(
+                crate::providers::openai::wire::OPENAI.name,
+                model,
+                crate::providers::openai::reads_images,
+            ),
     }
 }
 
