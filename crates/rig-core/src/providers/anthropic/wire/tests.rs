@@ -9,6 +9,54 @@ use super::*;
 use crate::wire::Operation;
 use crate::wire::secret::tests::a_config_reloads_without_its_credential;
 
+/// Default selection is local to the wire; cache marker shapes are covered by cassettes.
+#[test]
+fn a_wire_cache_retention_defaults_requests_but_a_request_can_override_it() {
+    use crate::completion::CacheRetention;
+    use crate::test_utils::json_body;
+    use serde_json::json;
+
+    let wire = AnthropicConfig::new("sk-test").completion("claude-haiku-4-5");
+    let serialized = serde_json::to_value(&wire).unwrap_or_else(|error| panic!("{error}"));
+    assert!(serialized.get("cache_retention").is_none());
+    let restored: Messages =
+        serde_json::from_value(serialized).unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(restored.cache_retention, None);
+
+    let wire = wire.with_cache_retention(CacheRetention::Long);
+    let serialized = serde_json::to_value(&wire).unwrap_or_else(|error| panic!("{error}"));
+    let restored: Messages =
+        serde_json::from_value(serialized).unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(restored.cache_retention, Some(CacheRetention::Long));
+
+    for mode in [Mode::Unary, Mode::Streaming] {
+        for (request, expected) in [
+            (
+                CompletionRequest::new("hello"),
+                Some(json!({"type": "ephemeral", "ttl": "1h"})),
+            ),
+            (
+                CompletionRequest::new("hello").cache(CacheRetention::Short),
+                Some(json!({"type": "ephemeral"})),
+            ),
+            (
+                CompletionRequest::new("hello").cache(CacheRetention::None),
+                None,
+            ),
+            (
+                CompletionRequest::new("hello")
+                    .additional_params(json!({"cache_control": {"type": "ephemeral", "ttl": "5m"}})),
+                Some(json!({"type": "ephemeral", "ttl": "5m"})),
+            ),
+        ] {
+            let encoded = restored
+                .encode(request, mode)
+                .unwrap_or_else(|error| panic!("{error}"));
+            assert_eq!(json_body(&encoded.request).get("cache_control"), expected.as_ref());
+        }
+    }
+}
+
 #[test]
 fn binding_beta_follows_the_final_request_field() {
     use serde_json::json;
