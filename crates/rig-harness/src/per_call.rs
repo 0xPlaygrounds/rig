@@ -68,6 +68,11 @@ pub struct CallPlace {
     /// ([`Scratch::spill`]). `None` from [`PerCallTools::place`]; the
     /// harness sets it for a call it runs.
     pub spill: Option<Spill>,
+    /// Whether `workspace` keeps the call's writes from the files, as an
+    /// overlay does for a call previewed: the file tools then note what
+    /// the call reads and writes in a [`fork`](rig_tools::Seen::fork) of
+    /// their `Seen`, so what it wrote there is not taken as on disk.
+    pub overlaid: bool,
 }
 
 /// A tool built anew for each call, for where the call works.
@@ -88,29 +93,34 @@ impl From<CallPlace> for Root {
     }
 }
 
-/// The file tools work in the place's workspace, from its base, keeping
-/// the fields named from the tool as registered.
+/// The file tools work in the place's workspace, from its base, noting
+/// what they see where the place says, else as registered.
 macro_rules! file_tools_per_call {
-    ($($tool:ty { $($keep:ident),* }),*) => {$(
+    ($($tool:ty),*; seen) => {$(
         impl PerCallTool for $tool {
             fn at(&self, place: CallPlace) -> Self {
                 Self {
+                    seen: if place.overlaid {
+                        self.seen.fork()
+                    } else {
+                        self.seen.clone()
+                    },
                     root: place.into(),
-                    $($keep: self.$keep.clone(),)*
                 }
+            }
+        }
+    )*};
+    ($($tool:ty),*) => {$(
+        impl PerCallTool for $tool {
+            fn at(&self, place: CallPlace) -> Self {
+                Self { root: place.into() }
             }
         }
     )*};
 }
 
-file_tools_per_call!(
-    Read { seen },
-    Edit { seen },
-    Write { seen },
-    Search {},
-    List {},
-    Delete {}
-);
+file_tools_per_call!(Read, Edit, Write; seen);
+file_tools_per_call!(Search, List, Delete);
 
 /// [`Shell`] registered per call, starting each command as the app's
 /// [`Processes`] say when it starts: under their wrapper and without a
@@ -405,6 +415,7 @@ impl PerCallTools<'_, '_> {
             live: None,
             filter: None,
             spill: None,
+            overlaid: false,
         }
     }
 

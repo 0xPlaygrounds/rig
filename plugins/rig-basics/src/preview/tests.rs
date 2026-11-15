@@ -5,7 +5,7 @@ use rig_core::effect::{Answered as EffectOutcome, EffectId};
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::message::{ToolFunction, ToolName};
 use rig_core::tool::ChangeKind;
-use rig_tools::Write;
+use rig_tools::{Seen, Write};
 
 use super::{Preview, PreviewPlugin, Previewed};
 use rig_harness::per_call::AppPerCallExt;
@@ -73,4 +73,65 @@ fn a_previewed_write_lists_the_file_it_would_create_and_leaves_the_disk_alone() 
     );
     assert!(!dir.join("new.txt").exists());
     std::fs::remove_dir_all(&dir).ok();
+}
+
+/// A gate that asks for a preview of every call and lets it run once it is
+/// previewed.
+fn preview_then_allow(
+    calls: Query<(Entity, Option<&Previewed>), (ToolCalls, ReadyToStart)>,
+    mut commands: Commands,
+) {
+    for (call, previewed) in &calls {
+        if previewed.is_none() {
+            commands.entity(call).insert(Preview);
+        }
+    }
+}
+
+/// What a preview of a write notes as seen stays with the preview: the
+/// write of a file read then runs for real, and replaces it.
+#[test]
+fn a_previewed_write_of_a_file_read_then_writes_it() {
+    let exe = std::env::current_exe().unwrap_or_default();
+    let dir = exe.with_file_name(format!("preview-read-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).ok();
+    let file = dir.join("old.txt");
+    std::fs::write(&file, "old\n").ok();
+    let seen = Seen::default();
+    seen.saw_whole(&file, "old\n");
+    let mut app = App::new();
+    app.add_plugins((TaskPoolPlugin::default(), AgentPlugin, PreviewPlugin))
+        .insert_resource(ProjectRoot(dir.clone()))
+        .add_tool_per_call(
+            Write {
+                seen,
+                ..Write::default()
+            },
+            ToolOptions::default(),
+        )
+        .add_systems(AgentPass, preview_then_allow.in_set(Stage::Gate));
+    app.finish();
+    app.update();
+    let world = app.world_mut();
+    let agent = spawn_root(world).id();
+    let args = serde_json::json!({ "path": "old.txt", "content": "new\n" });
+    let Ok(name) = ToolName::new("write") else {
+        return;
+    };
+    let call = ToolCall::from_wire("w1", ToolFunction::new(name, args));
+    let parent = Effect::with_parent_id(Some(EffectId::from_raw(1)));
+    let call = world
+        .spawn((ToolRequest { call }, parent, ForAgent(agent)))
+        .id();
+    let started = Instant::now();
+    while app.world().get::<Outcome>(call).is_none() && started.elapsed() < Duration::from_secs(5) {
+        app.update();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let previewed = app.world().get::<Previewed>(call).map(|it| it.0.is_ok());
+    let outcome = app.world().get::<Outcome>(call).map(|it| format!("{it:?}"));
+    let text = std::fs::read_to_string(&file).ok();
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(previewed, Some(true));
+    assert_eq!(text.as_deref(), Some("new\n"), "{outcome:?}");
 }

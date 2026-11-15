@@ -11,8 +11,8 @@
 //! ([`add_tool_per_call`](rig_harness::per_call::AppPerCallExt::add_tool_per_call))
 //! can be previewed, as [`PerCallTools`] builds its call on the overlay;
 //! another gets `Previewed(Err(..))`. The tool runs for
-//! real on the overlay: it reads every file, its writes stay in the overlay,
-//! and it cannot start a process (so `shell` cannot be previewed). What it
+//! real on the overlay ([`CallPlace::overlaid`]): it reads every file, its
+//! writes stay in the overlay, and it cannot start a process (so `shell` cannot be previewed). What it
 //! does other than through its [`CallPlace`](rig_harness::per_call::CallPlace)'s workspace, such as a network
 //! request, it does in the preview too. The plugin guide's
 //! [gating section](rig_harness::plugin_guide#gating-and-reviewing-tool-calls) has
@@ -34,7 +34,7 @@ use rig_ecs::prelude::{
 };
 use rig_tools::overlay::Overlay;
 
-use rig_harness::per_call::PerCallTools;
+use rig_harness::per_call::{CallPlace, PerCallTools};
 use rig_harness::services::ProjectRoot;
 use rig_harness::workspace::ProjectWorkspace;
 
@@ -110,7 +110,10 @@ fn preview(
 ) {
     for (call, request, agent) in &calls {
         let overlay = Arc::new(Overlay::new(workspace.0.clone()));
-        let place = tools.place(agent.map(|agent| agent.0), overlay.clone());
+        let place = CallPlace {
+            overlaid: true,
+            ..tools.place(agent.map(|agent| agent.0), overlay.clone())
+        };
         let name = request.call.function.name.as_str();
         let Some(CallHandler(Handler(handler))) = tools.build(name, place) else {
             let report = ErrorReport::new(
