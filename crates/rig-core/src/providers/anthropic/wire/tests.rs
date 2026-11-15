@@ -9,6 +9,39 @@ use super::*;
 use crate::wire::Operation;
 use crate::wire::secret::tests::a_config_reloads_without_its_credential;
 
+/// This tests caller-side schema preparation, not a gateway's acceptance of the request.
+#[test]
+fn callers_can_prepare_claude_tool_schemas_for_a_responses_gateway() {
+    use crate::completion::ToolDefinition;
+    use crate::providers::anthropic::completion::nest_root_combinators;
+    use crate::providers::openai::responses_api::Responses;
+    use crate::providers::openai::wire::{OPENROUTER, OpenAIConfig};
+    use crate::test_utils::json_body;
+    use serde_json::json;
+
+    let mut schema = json!({"oneOf": [{"required": ["a"]}, {"required": ["b"]}]});
+    nest_root_combinators(&mut schema);
+    let expected = json!({"type": "object", "not": {"not": {
+        "oneOf": [{"required": ["a"]}, {"required": ["b"]}]
+    }}});
+    assert_eq!(schema, expected);
+    let wire = Responses::new(
+        OpenAIConfig::with_key(&OPENROUTER, "sk-test"),
+        "anthropic/claude-sonnet-4.6",
+    );
+    let tool = ToolDefinition::new(
+        "t".parse().unwrap_or_else(|error| panic!("{error}")),
+        "Choose a or b",
+        schema,
+    );
+    for mode in [Mode::Unary, Mode::Streaming] {
+        let encoded = wire
+            .encode(CompletionRequest::new("hello").tool(tool.clone()), mode)
+            .unwrap_or_else(|error| panic!("{error}"));
+        assert_eq!(json_body(&encoded.request).pointer("/tools/0/parameters"), Some(&expected));
+    }
+}
+
 #[test]
 fn binding_beta_follows_the_final_request_field() {
     use serde_json::json;
