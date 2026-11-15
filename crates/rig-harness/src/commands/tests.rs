@@ -206,7 +206,10 @@ fn a_command_another_runs_refuses_the_line_typed() {
     world.flush();
     assert!(world.resource::<Ran>().0.is_empty());
     let recalled: Vec<_> = world.resource_mut::<Messages<Recalled>>().drain().collect();
-    let lines: Vec<_> = recalled.iter().map(|recalled| recalled.text.as_str()).collect();
+    let lines: Vec<_> = recalled
+        .iter()
+        .map(|recalled| recalled.text.as_str())
+        .collect();
     assert_eq!(lines, ["/relay nothing PELICAN", "/relay zzz"]);
     assert!(recalled.iter().all(|recalled| recalled.why.is_some()));
 }

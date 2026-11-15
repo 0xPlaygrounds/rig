@@ -519,7 +519,8 @@ fn a_fork_starts_with_no_calls_and_the_context_it_copied() {
     connection.spec = Arc::new((*connection.spec).clone().with_context_window(2_000));
     let source = spawn_root(app.world_mut()).insert(connection).id();
     for (said, turns) in [("hello", 1), ("more", 2)] {
-        app.world_mut().trigger(Deliver::new(source, said, DeliveryMode::Steer));
+        app.world_mut()
+            .trigger(Deliver::new(source, said, DeliveryMode::Steer));
         run_until(&mut app, &wakes, |world| {
             world.resource::<Ended>().0.len() == turns
         });

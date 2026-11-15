@@ -861,24 +861,26 @@ fn bevy_pins<'a>(crates: impl IntoIterator<Item = &'a Path>) -> Vec<String> {
     let mut pins = Vec::new();
     for directory in crates {
         let file = directory.join("Cargo.toml");
-        let (Ok(text), Ok(manifest)) = (
-            fs::read_to_string(&file),
-            project::read_manifest(directory),
-        ) else {
+        let (Ok(text), Ok(manifest)) =
+            (fs::read_to_string(&file), project::read_manifest(directory))
+        else {
             continue;
         };
-        let targets = (manifest.get("target").and_then(config::toml_edit::Item::as_table_like))
-            .into_iter()
-            .flat_map(|targets| targets.iter().map(|(_, target)| target.get("dependencies")));
+        let targets = (manifest
+            .get("target")
+            .and_then(config::toml_edit::Item::as_table_like))
+        .into_iter()
+        .flat_map(|targets| targets.iter().map(|(_, target)| target.get("dependencies")));
         let tables = [manifest.get("dependencies")]
             .into_iter()
             .chain(targets)
             .flatten()
             .filter_map(config::toml_edit::Item::as_table_like);
         for (name, item) in tables.flat_map(|table| table.iter()) {
-            let wanted = item
-                .as_str()
-                .or_else(|| item.get("version").and_then(config::toml_edit::Item::as_str));
+            let wanted = item.as_str().or_else(|| {
+                item.get("version")
+                    .and_then(config::toml_edit::Item::as_str)
+            });
             let refused = wanted.and_then(takes_bevy) == Some(false);
             let written = text.lines().enumerate().find(|(_, line)| {
                 let line = line.trim_start();

@@ -506,7 +506,10 @@ fn with_approval_a_project_server_waits_for_approve_and_a_changed_one_is_asked_a
     let state = status(app.world_mut(), "stub").map(|status| status.state);
     assert_eq!(state, Some(McpState::Held));
     let refused = &app.world().resource::<Collected<Recalled>>().0;
-    let lines: Vec<_> = refused.iter().map(|recalled| recalled.text.as_str()).collect();
+    let lines: Vec<_> = refused
+        .iter()
+        .map(|recalled| recalled.text.as_str())
+        .collect();
     assert_eq!(lines, ["/mcp approve stub --user"]);
 
     mcp(&mut app, agent, "approve stub");

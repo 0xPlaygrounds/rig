@@ -12,6 +12,7 @@
 //! options its plugins add (`rig help` lists them).
 
 mod build;
+mod legacy;
 mod locks;
 mod plugin;
 mod project;

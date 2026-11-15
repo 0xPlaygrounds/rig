@@ -1616,8 +1616,9 @@ fn a_reload_on_the_new_launcher_starts_as_a_reload() {
         let launcher = home.root().join("launcher").join("rig");
         fs::create_dir_all(home.root().join("launcher"))?;
         fs::write(&launcher, "old")?;
+        // One line per start: a warning's line breaks become spaces.
         let log = || {
-            sh("echo \"$RIG_START|$RIG_NOTICE|$RIG_WARNING|$RIG_SECRET_TYPED\" >> \"$RIG_HOME/started\"")
+            sh("echo \"$RIG_START|$RIG_NOTICE|$(printf %s \"$RIG_WARNING\" | tr '\\n' ' ')|$RIG_SECRET_TYPED\" >> \"$RIG_HOME/started\"")
         };
         let agent = fake_agent::script(&[
             &[
@@ -1662,9 +1663,10 @@ fn a_reload_on_the_new_launcher_starts_as_a_reload() {
         .collect();
     assert_eq!(lines.len(), 2, "{started:?}");
     assert!(
-        lines.first().is_some_and(
-            |first| first.starts_with("resumed|Resumed the session.|[\"rig no longer reads ")
-        ),
+        lines.first().is_some_and(|first| {
+            first.starts_with("resumed|Resumed the session.|[")
+                && first.contains("rig no longer reads ")
+        }),
         "{lines:?}"
     );
     assert!(

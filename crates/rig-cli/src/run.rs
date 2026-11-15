@@ -41,7 +41,6 @@ use std::process::{Command, ExitCode, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
-use rig_harness_protocol::config::SettingsFile;
 use rig_harness_protocol::end::AgentEnd;
 use rig_harness_protocol::fs;
 use rig_harness_protocol::launch::{AbsPath, Agent, Carry, Launch, Purpose};
@@ -212,33 +211,6 @@ fn carry_on(
     }
 }
 
-/// A warning for each file rig 0.46 kept in `home` that rig no longer
-/// reads, when its `settings.toml` has no table for what the file held:
-/// `plugins.toml` without `[plugins]`, `defaults.json` without `[model]`.
-/// The files are never changed. A `settings.toml` rig cannot read refuses
-/// the start before this.
-fn legacy_warnings(home: &Home) -> Vec<String> {
-    let settings = home.settings();
-    let Ok(file) = SettingsFile::read(&settings) else {
-        return Vec::new();
-    };
-    [
-        ("plugins.toml", "plugin list", "plugins"),
-        ("defaults.json", "model and effort", "model"),
-    ]
-    .into_iter()
-    .filter(|(old, _, table)| home.root().join(old).exists() && !file.document.contains_key(table))
-    .map(|(old, what, table)| {
-        format!(
-            "rig no longer reads {}. Move its {what} to [{table}] in {} (see MIGRATING.md). \
-             The file was not changed.",
-            home.root().join(old).display(),
-            settings.display(),
-        )
-    })
-    .collect()
-}
-
 /// The session `--resume` names, by id or name ([`Home::find`]), or a new
 /// one without it.
 fn start_of(home: &Home, resume: Option<&str>) -> std::result::Result<Start, String> {
@@ -305,7 +277,7 @@ fn run_agent(
         ..invocation.clone()
     };
     let mut invocation: &Invocation = invocation;
-    let legacy = legacy_warnings(home);
+    let legacy = super::legacy::warnings(home);
     loop {
         let session = claimed.id.clone();
         let directory = home.session(&session);

@@ -71,6 +71,9 @@ pub fn run(launch: &Launch, args: &[&str]) -> Result<ExitCode> {
         print!("{USAGE}");
         return Ok(ExitCode::SUCCESS);
     }
+    for warning in super::legacy::warnings(home) {
+        eprintln!("warning: {warning}");
+    }
     match args {
         ["new", name] => new(home, name, source),
         ["list"] => list(home),
