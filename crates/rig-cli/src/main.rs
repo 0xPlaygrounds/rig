@@ -12,6 +12,7 @@
 //! options its plugins add (`rig help` lists them).
 
 mod build;
+mod legacy;
 mod locks;
 mod plugin;
 mod project;
@@ -26,6 +27,15 @@ use rig_harness_protocol::{AgentDescription, Home, INVOCATION_USAGE, REFUSED_EXI
 use run::last_report;
 
 pub use rig_harness_protocol::{BEVY_VERSION, VERSION};
+
+/// The Bevy requirement a plugin writes, such as `0.20`: [`BEVY_VERSION`]'s
+/// major and minor, which cargo unifies with the agent's exact Bevy, so a
+/// Bevy patch release does not break the plugin.
+pub fn bevy_range() -> &'static str {
+    BEVY_VERSION
+        .rsplit_once('.')
+        .map_or(BEVY_VERSION, |(range, _)| range)
+}
 
 /// What `rig --version` prints after `rig`: [`VERSION`], with the commit
 /// when the launcher is built in a rig checkout (`build.rs`). The agent

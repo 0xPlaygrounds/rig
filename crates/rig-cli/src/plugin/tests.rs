@@ -175,12 +175,14 @@ fn the_scaffold_depends_on_the_rig_version_and_patches_a_checkout() {
     // its derives name as the manifest lists them.
     let lib = lib_rs("viz", "VizPlugin");
     assert!(lib.contains("#[derive(Component, Reflect, Default)]\n#[reflect(Component, Saved)]"));
+    // Bevy's major and minor, which cargo unifies with the agent's exact
+    // Bevy, so a Bevy patch release does not break the plugin.
     for krate in ["bevy_ecs", "bevy_reflect"] {
         assert!(local.contains(&format!(
-            "\n{krate} = {{ version = \"={}\", default-features = false }}\n",
-            super::super::BEVY_VERSION
+            "\n{krate} = {{ version = \"0.20\", default-features = false }}\n"
         )));
     }
+    assert!(!local.contains("exactly"));
     // The rig crates it uses through rig-harness, and nothing else.
     let patched: Vec<&str> = local
         .split("[patch.crates-io]\n")

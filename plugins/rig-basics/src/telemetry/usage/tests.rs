@@ -498,11 +498,12 @@ fn the_meter_shows_unknown_until_the_stale_marker_is_removed() {
     assert_eq!(context(app.world()).as_deref(), Some("ctx 500/2.0k (25%)"));
 }
 
-/// A fork's meter starts afresh: no calls of its own, and its context
+/// A fork's meter starts afresh with no calls of its own. A fork of the
+/// whole conversation has its source's context, and one cut earlier has it
 /// unknown until its first reply, in the status line and in `/usage`.
 #[cfg(feature = "tui")]
 #[test]
-fn a_fork_starts_with_no_calls_and_an_unknown_context() {
+fn a_fork_starts_with_no_calls_and_the_context_it_copied() {
     // Every agent has a status line, as in the terminal view.
     let (mut app, wakes) = app_on(&MemoryStore::default());
     app.add_plugins((AgentPlugin, SessionLogPlugin, UsagePlugin))
@@ -511,17 +512,19 @@ fn a_fork_starts_with_no_calls_and_an_unknown_context() {
         .add_observer(log_ended);
     app.finish();
     app.update();
-    let model = MockCompletionModel::from_stream_turns([reply("hi")]);
+    let model = MockCompletionModel::from_stream_turns([reply("hi"), reply("again")]);
     let Some(mut connection) = connect(&model) else {
         return;
     };
     connection.spec = Arc::new((*connection.spec).clone().with_context_window(2_000));
-    let world = app.world_mut();
-    let source = spawn_root(world).insert(connection).id();
-    world.trigger(Deliver::new(source, "hello", DeliveryMode::Steer));
-    run_until(&mut app, &wakes, |world| {
-        world.resource::<Ended>().0.len() == 1
-    });
+    let source = spawn_root(app.world_mut()).insert(connection).id();
+    for (said, turns) in [("hello", 1), ("more", 2)] {
+        app.world_mut()
+            .trigger(Deliver::new(source, said, DeliveryMode::Steer));
+        run_until(&mut app, &wakes, |world| {
+            world.resource::<Ended>().0.len() == turns
+        });
+    }
     let usage = rig_core::completion::Usage::new()
         .input_tokens(400)
         .output_tokens(100);
@@ -550,7 +553,10 @@ fn a_fork_starts_with_no_calls_and_an_unknown_context() {
         context(app.world(), source).as_deref(),
         Some("ctx 500/2.0k (25%)")
     );
-    assert_eq!(context(app.world(), fork).as_deref(), Some("ctx ?/2.0k"));
+    assert_eq!(
+        context(app.world(), fork).as_deref(),
+        Some("ctx 500/2.0k (25%)")
+    );
     let calls = app
         .world()
         .get::<AgentUsage>(fork)
@@ -562,6 +568,27 @@ fn a_fork_starts_with_no_calls_and_an_unknown_context() {
     world.flush();
     let shown = notices(world).join("\n");
     assert!(shown.contains("This agent: no model call yet."), "{shown}");
+    assert!(!shown.contains("Context: unknown"), "{shown}");
+
+    // Cut after the first turn, the fork's context is unknown.
+    let first = app
+        .world()
+        .get::<Conversation>(source)
+        .and_then(|conversation| conversation.id(1));
+    app.world_mut()
+        .spawn(rig_ecs::fork::ForkAgent::new(source, first));
+    app.update();
+    let world = app.world_mut();
+    let mut forks = world.query_filtered::<Entity, With<rig_ecs::fork::ForkedFrom>>();
+    let cut = forks.iter(world).find(|other| *other != fork);
+    assert!(cut.is_some(), "a second fork is made");
+    let Some(cut) = cut else { return };
+    assert_eq!(context(app.world(), cut).as_deref(), Some("ctx ?/2.0k"));
+    let world = app.world_mut();
+    notices(world);
+    world.trigger(RunCommand::new(cut, "usage".to_owned()));
+    world.flush();
+    let shown = notices(world).join("\n");
     assert!(
         shown.contains("Context: unknown until the next reply."),
         "{shown}"

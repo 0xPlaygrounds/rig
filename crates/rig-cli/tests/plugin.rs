@@ -90,6 +90,30 @@ fn a_fresh_home_lists_the_defaults_with_what_they_add_and_writes_nothing() {
     assert!(result.is_ok(), "{result:?}");
 }
 
+#[test]
+fn every_plugin_command_warns_of_a_0_46_plugin_list_with_the_commands_that_move_it() {
+    let result = (|| -> anyhow::Result<()> {
+        let root = assert_fs::TempDir::new()?;
+        let home = root.path().join("home");
+        fs::create_dir_all(&home)?;
+        let old =
+            "[[plugin]]\ncrate = \"rig-mcp-client\"\nplugin = \"rig_mcp_client::McpPlugin\"\n";
+        fs::write(home.join("plugins.toml"), old)?;
+        for args in [&["list"][..], &["check"]] {
+            let output = plugin(&home, args)?;
+            let said = String::from_utf8(output.stderr)?;
+            anyhow::ensure!(
+                said.contains("rig no longer reads")
+                    && said.contains("  rig plugin enable rig_mcp_client::McpPlugin\n"),
+                "{args:?}: {said}"
+            );
+        }
+        anyhow::ensure!(fs::read_to_string(home.join("plugins.toml"))? == old);
+        Ok(())
+    })();
+    assert!(result.is_ok(), "{result:?}");
+}
+
 /// Writes the shell script `body` to `path` as an executable.
 #[cfg(unix)]
 fn script(path: &Path, body: &str) -> std::io::Result<()> {

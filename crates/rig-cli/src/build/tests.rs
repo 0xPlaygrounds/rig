@@ -640,3 +640,149 @@ fn a_crlf_split_between_two_reads_is_not_erased() {
     fs::remove_dir_all(home.root()).ok();
     assert_eq!(shown.text(), "one\r\ntwo\r\x1b[Kthree\n");
 }
+
+/// Bevy's own crates, as the agent project's lock lists them.
+fn bevy() -> BTreeSet<String> {
+    ["bevy", "bevy_app", "bevy_ecs", "bevy_reflect"]
+        .map(str::to_owned)
+        .into()
+}
+
+/// Writes `manifest` as the `Cargo.toml` of `dir`.
+fn manifest_at(dir: &Path, manifest: &str) {
+    fs::create_dir_all(dir).ok();
+    fs::write(dir.join("Cargo.toml"), manifest).ok();
+}
+
+#[test]
+fn a_plugins_bevy_requirement_the_agents_bevy_does_not_meet_is_named_with_its_table_and_line() {
+    let root = std::env::temp_dir().join(format!("rig-bevy-pins-{}", std::process::id()));
+    fs::remove_dir_all(&root).ok();
+    let dirs = [
+        "old",
+        "ranged",
+        "table",
+        "target",
+        "renamed",
+        "workspace/member",
+    ]
+    .map(|name| root.join(name));
+    let [old, ranged, table, target, renamed, member] = &dirs;
+    manifest_at(
+        old,
+        "[package]\nname = \"old\"\n\n[dependencies]\nrig-harness = \"0.46.0\"\n\
+         bevy_ecs = { version = \"=0.20.0\", default-features = false }\n\
+         bevy_reflect = { version = \"=0.20.0\", default-features = false }\n",
+    );
+    // Met, or not Bevy's own: a crate of Bevy's ecosystem at its own version.
+    manifest_at(
+        ranged,
+        "[package]\nname = \"ranged\"\n\n[dependencies]\n\
+         bevy_ecs = { version = \"0.20\", default-features = false }\n\
+         bevy_reflect = \"=0.20.1\"\nbevy_app = \"~0.20.0\"\nbevy_egui = \"0.33\"\n\n\
+         [dev-dependencies]\nbevy = \"=0.19.0\"\n",
+    );
+    manifest_at(
+        table,
+        "[package]\nname = \"table\"\n\n[dependencies.bevy_app]\nversion = \"0.19\"\n",
+    );
+    // A met requirement first, the pin in a target's table after it.
+    manifest_at(
+        target,
+        "[package]\nname = \"target\"\n\n[dependencies]\nbevy_ecs = \"0.20\"\n\n\
+         [target.'cfg(unix)'.dependencies]\nbevy_ecs = \"=0.20.0\"\n",
+    );
+    manifest_at(
+        renamed,
+        "[package]\nname = \"renamed\"\n\n[dependencies]\n\
+         ecs = { package = \"bevy_ecs\", version = \"=0.20.0\" }\n",
+    );
+    manifest_at(
+        &root.join("workspace"),
+        "[workspace]\nmembers = [\"member\"]\n\n[workspace.dependencies]\n\
+         bevy_reflect = \"=0.20.0\"\n",
+    );
+    manifest_at(
+        member,
+        "[package]\nname = \"member\"\n\n[dependencies]\nbevy_reflect = { workspace = true }\n",
+    );
+    let pins = bevy_pins(dirs.iter().map(PathBuf::as_path), &bevy());
+    let file = |dir: &Path| dir.join("Cargo.toml").display().to_string();
+    assert_eq!(
+        pins,
+        [
+            format!(
+                "{}:6: [dependencies] bevy_ecs = {{ version = \"=0.20.0\", default-features = false }}",
+                file(old)
+            ),
+            format!(
+                "{}:7: [dependencies] bevy_reflect = {{ version = \"=0.20.0\", default-features = false }}",
+                file(old)
+            ),
+            format!(
+                "{}:5: [dependencies.bevy_app] version = \"0.19\"",
+                file(table)
+            ),
+            format!(
+                "{}:8: [target.'cfg(unix)'.dependencies] bevy_ecs = \"=0.20.0\"",
+                file(target)
+            ),
+            format!(
+                "{}:5: [dependencies] ecs = {{ package = \"bevy_ecs\", version = \"=0.20.0\" }}",
+                file(renamed)
+            ),
+            format!(
+                "{}:5: [workspace.dependencies] bevy_reflect = \"=0.20.0\"",
+                file(&root.join("workspace"))
+            ),
+        ]
+    );
+    fs::remove_dir_all(&root).ok();
+}
+
+/// Bevy's own crates are the ones a plugin names, and each `bevy_*` crate
+/// the lock has at its `bevy_ecs`'s version, whatever that is: a home
+/// upgraded from 0.46 still has 0.20.0 there, and a first build none.
+#[test]
+fn bevys_own_crates_are_named_and_read_from_the_lock_at_any_bevy_version() {
+    let lock = "version = 4\n\n[[package]]\nname = \"bevy_ecs\"\nversion = \"0.20.0\"\n\n\
+                [[package]]\nname = \"bevy_render\"\nversion = \"0.20.0\"\n\n\
+                [[package]]\nname = \"bevy_egui\"\nversion = \"0.33.0\"\n\n\
+                [[package]]\nname = \"serde\"\nversion = \"0.20.0\"\n";
+    let named = ["bevy", "bevy_app", "bevy_ecs", "bevy_reflect"].map(str::to_owned);
+    let mut upgraded = BTreeSet::from(named.clone());
+    upgraded.insert("bevy_render".to_owned());
+    assert_eq!(bevy_crates(lock), upgraded);
+    assert_eq!(bevy_crates(""), BTreeSet::from(named));
+}
+
+/// A member names its workspace with `[package] workspace`, a sibling
+/// directory here, before any directory above it.
+#[test]
+fn an_inherited_bevy_pin_is_found_in_the_workspace_the_package_names() {
+    let root = std::env::temp_dir().join(format!("rig-bevy-ws-{}", std::process::id()));
+    fs::remove_dir_all(&root).ok();
+    let (ws, member) = (root.join("ws"), root.join("member"));
+    manifest_at(
+        &root,
+        "[workspace]\n\n[workspace.dependencies]\nbevy_ecs = \"0.20\"\n",
+    );
+    manifest_at(
+        &ws,
+        "[workspace]\nmembers = [\"../member\"]\n\n[workspace.dependencies]\nbevy_ecs = \"=0.20.0\"\n",
+    );
+    manifest_at(
+        &member,
+        "[package]\nname = \"member\"\nworkspace = \"../ws\"\n\n[dependencies]\n\
+         bevy_ecs.workspace = true\n",
+    );
+    let pins = bevy_pins([member.as_path()], &bevy());
+    fs::remove_dir_all(&root).ok();
+    assert_eq!(
+        pins,
+        [format!(
+            "{}:5: [workspace.dependencies] bevy_ecs = \"=0.20.0\"",
+            ws.join("Cargo.toml").display()
+        )]
+    );
+}

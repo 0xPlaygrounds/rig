@@ -181,7 +181,8 @@ fn a_restored_session_has_its_saved_components_and_resources_and_the_messages_it
     let notices = world.resource::<Messages<Notice>>();
     let mut cursor = notices.get_cursor();
     let mut texts = cursor.read(notices).map(|notice| notice.text.as_str());
-    assert!(texts.any(|text| text.contains("a_plugin::Gone")));
+    // A value no plugin of this build saves is no notice.
+    assert!(!texts.any(|text| text.contains("a_plugin::Gone")));
     let kept = agent.and_then(|agent| world.get::<Conversation>(agent));
     let kept = kept.map(|conversation| conversation.messages().to_vec());
     assert_eq!(kept, live);
@@ -1776,6 +1777,31 @@ fn a_saved_value_that_no_longer_reads_is_skipped_and_replaced_at_the_next_save()
         .agent("main")
         .and_then(|main| main.saved.get(path).cloned());
     assert_eq!(now, serde_json::to_value(&changed).ok());
+}
+
+/// A saved value of a type no plugin of this build saves, such as one of a
+/// plugin turned off, is no notice: it stays in the session, for a build
+/// that saves it again.
+#[test]
+fn a_saved_value_no_plugin_saves_is_kept_without_a_notice() {
+    let key = "gone_plugin::Shown";
+    let store = session_holding(key, serde_json::json!("seven"));
+    let mut app = app(&store);
+    let notices = app.world().resource::<Messages<Notice>>();
+    let mut cursor = notices.get_cursor();
+    let texts: Vec<_> = cursor.read(notices).map(|notice| &notice.text).collect();
+    assert!(texts.iter().all(|text| !text.contains(key)), "{texts:?}");
+    if let Some(agent) = first_agent(&mut app) {
+        app.world_mut()
+            .entity_mut(agent)
+            .insert(Labelled::default());
+    }
+    app.update();
+    let session = rig_memory::Session::read(&store).unwrap_or_default();
+    let kept = session
+        .agent("main")
+        .and_then(|main| main.saved.get(key).cloned());
+    assert_eq!(kept, Some(serde_json::json!("seven")));
 }
 
 /// The goal of a plugin, saved under its stable key.

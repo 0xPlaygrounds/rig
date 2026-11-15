@@ -13,7 +13,8 @@
 //! unknown command, or an error notice about the agent, such as one
 //! refusing arguments, refuses the line: it comes back whole as
 //! [`Recalled`] with the reason, in place of that notice, so nothing typed
-//! is lost.
+//! is lost. A command another command runs refuses that one's line, so what
+//! comes back is what was typed.
 //!
 //! ```
 //! use rig_harness::prelude::*;
@@ -254,8 +255,11 @@ fn on_run_command(run: On<RunCommand>, mut commands: Commands) {
 }
 
 /// Runs `line` for `agent`, sent as `mode`, keeping the notices written
-/// meanwhile apart, and recalls it when refused.
+/// meanwhile apart, and recalls it when refused. A line another command
+/// runs is refused with an error notice instead, which refuses that
+/// command's line, so the line recalled is the one typed.
 fn run_command(world: &mut World, agent: Entity, line: String, mode: DeliveryMode) {
+    let outer = world.contains_resource::<CommandRuns>();
     let typed = line.trim();
     let (name, args) = typed.split_once(char::is_whitespace).unwrap_or((typed, ""));
     let args = args.trim();
@@ -273,7 +277,6 @@ fn run_command(world: &mut World, agent: Entity, line: String, mode: DeliveryMod
                 mode,
             };
             // A command a command runs leaves the outer one's mark.
-            let outer = world.contains_resource::<CommandRuns>();
             world.insert_resource(CommandRuns);
             let ran = match kind {
                 Args::None => run::<NoArgs>(world, system, args),
@@ -297,7 +300,12 @@ fn run_command(world: &mut World, agent: Entity, line: String, mode: DeliveryMod
             refusals
         }
     };
-    if !refusals.is_empty() {
+    if refusals.is_empty() {
+        return;
+    }
+    if outer {
+        world.write_message(Notice::error(agent, refusals.join(" ")));
+    } else {
         world.write_message(Recalled {
             agent,
             text: format!("/{line}"),

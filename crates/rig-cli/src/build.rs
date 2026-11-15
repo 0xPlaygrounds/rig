@@ -19,6 +19,7 @@ use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::mpsc;
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
+use rig_harness_protocol::config::toml_edit::{Item, TableLike};
 use rig_harness_protocol::fs;
 use rig_harness_protocol::launch::{Launch, Purpose};
 use rig_harness_protocol::{AgentDescription, Home, RunDir, config, first_errors};
@@ -802,7 +803,26 @@ fn check_bevy(
     rig_version: &str,
     log: &mut BuildLog,
 ) -> Result<()> {
-    let packages = tree(launch, &[], log)?;
+    let packages = tree(launch, &[], log).map_err(|failure| {
+        let local = plugins.extras_on().filter_map(|extra| match &extra.source {
+            config::Source::Path(path) => Some(path.as_path()),
+            _ => None,
+        });
+        let lock = fs::read_to_string(launch.home().project().join("Cargo.lock"));
+        let pins = bevy_pins(local, &bevy_crates(&lock.unwrap_or_default()));
+        if pins.is_empty() {
+            return failure;
+        }
+        format!(
+            "{failure}: a plugin asks for a Bevy that is not this agent's {BEVY_VERSION}:\n  \
+             {}\nWrite its Bevy requirements as \"{range}\", such as `bevy_ecs = {{ version = \
+             \"{range}\", default-features = false }}`, or remove it from [[plugins.extra]] in \
+             settings.toml.",
+            pins.join("\n  "),
+            range = super::bevy_range(),
+        )
+        .into()
+    })?;
     check_rig(&packages, rig_crates, rig_version)?;
     let Some((bevy, version)) = packages.iter().find_map(|line| {
         let (name, version) = package(line)?;
@@ -820,16 +840,234 @@ fn check_bevy(
         Some(plugin) => format!(
             "plugin `{name}` uses Bevy {version}, but this rig agent is built on Bevy \
              {BEVY_VERSION}. A Bevy plugin only works with the exact Bevy version of its app. \
-             Change {name}'s bevy dependencies to `={BEVY_VERSION}` (with default-features = \
-             false), or remove it from [[plugins.extra]] in settings.toml.",
-            name = plugin
+             Change {name}'s bevy dependencies to \"{range}\" (with default-features = false), \
+             which cargo builds with the agent's Bevy, or remove it from [[plugins.extra]] in \
+             settings.toml.",
+            name = plugin,
+            range = super::bevy_range(),
         ),
         None => format!(
             "the agent project pulls in Bevy {version}, but this rig agent is built on Bevy \
-             {BEVY_VERSION}. Every Bevy crate must use exactly {BEVY_VERSION}."
+             {BEVY_VERSION}. Every Bevy crate must take {BEVY_VERSION}, as \"{}\" does.",
+            super::bevy_range()
         ),
     }
     .into())
+}
+
+/// Each requirement of one of Bevy's own crates (`bevy`, a crate named in
+/// the [`bevy_crates`] of the agent's lock) that the crates in `crates`
+/// build with and [`BEVY_VERSION`] does not meet, as `<its Cargo.toml>:<line>:
+/// [<its table>] <the line>`: of their dependencies and build dependencies,
+/// for every target, a renamed one by its `package`, and an inherited one
+/// (`workspace = true`) where its workspace writes it. Requirements are read
+/// in the forms `=V`, `^V`, `~V` and `V`; another form, or a manifest that
+/// does not read, is left to cargo's own message.
+fn bevy_pins<'a>(
+    crates: impl IntoIterator<Item = &'a Path>,
+    bevy: &BTreeSet<String>,
+) -> Vec<String> {
+    let mut pins = Vec::new();
+    for directory in crates {
+        let Some(manifest) = Manifest::read(directory) else {
+            continue;
+        };
+        for (table, dependencies) in manifest.dependency_tables() {
+            for (key, item) in dependencies.iter() {
+                let pin = if item.get("workspace").and_then(Item::as_bool) == Some(true) {
+                    workspace_dependency(&manifest, directory, key).and_then(|(workspace, item)| {
+                        workspace.refused("workspace.dependencies", key, &item, bevy)
+                    })
+                } else {
+                    manifest.refused(&table, key, item, bevy)
+                };
+                pins.extend(pin);
+            }
+        }
+    }
+    pins
+}
+
+/// Bevy's own crates, which [`bevy_pins`] reads: those a plugin names
+/// ([`NAMED_BEVY`]), and each `bevy_*` crate the Cargo.lock `lock` has at
+/// the version it has `bevy_ecs` at, whichever that is, as a home upgraded
+/// from an older rig keeps its old lock until a resolution succeeds.
+fn bevy_crates(lock: &str) -> BTreeSet<String> {
+    let lock = lock.parse::<config::toml_edit::DocumentMut>().ok();
+    let packages: Vec<(&str, &str)> = lock
+        .as_ref()
+        .and_then(|lock| lock.get("package"))
+        .and_then(Item::as_array_of_tables)
+        .into_iter()
+        .flat_map(|packages| packages.iter())
+        .filter_map(|package| {
+            let name = package.get("name").and_then(Item::as_str)?;
+            Some((name, package.get("version").and_then(Item::as_str)?))
+        })
+        .collect();
+    let bevy = packages.iter().find(|(name, _)| *name == "bevy_ecs");
+    let locked = (packages.iter())
+        .filter(|(name, version)| {
+            name.starts_with("bevy_") && bevy.is_some_and(|(_, bevy)| bevy == version)
+        })
+        .map(|(name, _)| *name);
+    NAMED_BEVY
+        .into_iter()
+        .chain(locked)
+        .map(str::to_owned)
+        .collect()
+}
+
+/// The Bevy crates a plugin names: `bevy`, and those `rig plugin new`
+/// writes or its comments name.
+const NAMED_BEVY: [&str; 4] = ["bevy", "bevy_app", "bevy_ecs", "bevy_reflect"];
+
+/// A crate's `Cargo.toml`, parsed with where each value is written.
+struct Manifest {
+    file: PathBuf,
+    text: String,
+    document: config::toml_edit::Document<String>,
+}
+
+impl Manifest {
+    /// The `Cargo.toml` of `directory`; `None` when it does not read.
+    fn read(directory: &Path) -> Option<Self> {
+        let file = directory.join("Cargo.toml");
+        let text = fs::read_to_string(&file).ok()?;
+        let document = config::toml_edit::Document::parse(text.clone()).ok()?;
+        Some(Self {
+            file,
+            text,
+            document,
+        })
+    }
+
+    /// Its dependency and build-dependency tables, every target's too,
+    /// each with its name as a header writes it.
+    fn dependency_tables(&self) -> Vec<(String, &dyn TableLike)> {
+        let kinds = ["dependencies", "build-dependencies"];
+        let mut tables: Vec<(String, &dyn TableLike)> = (kinds.iter())
+            .filter_map(|kind| Some((kind.to_string(), self.document.get(kind)?.as_table_like()?)))
+            .collect();
+        let targets = self.document.get("target").and_then(Item::as_table_like);
+        for (target, item) in targets.into_iter().flat_map(|targets| targets.iter()) {
+            for kind in kinds {
+                if let Some(table) = item.get(kind).and_then(Item::as_table_like) {
+                    tables.push((format!("target.{}.{kind}", quoted_key(target)), table));
+                }
+            }
+        }
+        tables
+    }
+
+    /// The requirement `item` of `key` in `table` writes, as
+    /// `<file>:<line>: [<table>] <the line>`, when it is of one of `bevy`
+    /// (by its `package`, else `key`) and [`BEVY_VERSION`] does not meet
+    /// it; `None` otherwise, or in a form not read.
+    fn refused(
+        &self,
+        table: &str,
+        key: &str,
+        item: &Item,
+        bevy: &BTreeSet<String>,
+    ) -> Option<String> {
+        let package = item.get("package").and_then(Item::as_str).unwrap_or(key);
+        if !bevy.contains(package) {
+            return None;
+        }
+        let (version, table) = match item.as_str() {
+            Some(_) => (item, table.to_owned()),
+            None if item.is_table() => (item.get("version")?, format!("{table}.{key}")),
+            None => (item.get("version")?, table.to_owned()),
+        };
+        if takes_bevy(version.as_str()?)? {
+            return None;
+        }
+        let at = version.span()?.start;
+        let line = self.text.get(..at)?.matches('\n').count();
+        let written = self.text.lines().nth(line)?.trim();
+        Some(format!(
+            "{}:{}: [{table}] {written}",
+            self.file.display(),
+            line + 1
+        ))
+    }
+}
+
+/// `key` as a dotted header writes it: quoted when it is not bare.
+fn quoted_key(key: &str) -> String {
+    let bare = key
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+    if bare {
+        key.to_owned()
+    } else {
+        format!("'{key}'")
+    }
+}
+
+/// `path` with each `..` taking out the component before it, as a
+/// manifest's relative path reads it.
+fn lexical(path: &Path) -> PathBuf {
+    let mut clean = PathBuf::new();
+    for component in path.components() {
+        match component {
+            std::path::Component::ParentDir if clean.pop() => {}
+            component => clean.push(component),
+        }
+    }
+    clean
+}
+
+/// The `[workspace.dependencies]` entry of `key` in the workspace of
+/// `manifest`, the manifest of `directory`, with the workspace's manifest:
+/// the one its `[package] workspace` path names, else the nearest at or
+/// above `directory` with a `[workspace]`.
+fn workspace_dependency(
+    manifest: &Manifest,
+    directory: &Path,
+    key: &str,
+) -> Option<(Manifest, Item)> {
+    let named = (manifest.document.get("package"))
+        .and_then(|package| package.get("workspace"))
+        .and_then(Item::as_str);
+    let workspace = match named {
+        Some(path) => Manifest::read(&lexical(&directory.join(path)))?,
+        None => directory
+            .ancestors()
+            .filter_map(Manifest::read)
+            .find(|manifest| manifest.document.get("workspace").is_some())?,
+    };
+    let item = workspace
+        .document
+        .get("workspace")?
+        .get("dependencies")?
+        .get(key)?
+        .clone();
+    Some((workspace, item))
+}
+
+/// Whether the requirement `wanted` takes [`BEVY_VERSION`], cargo's way
+/// for a `0.x` version: `=V` that version, `^V`, `~V` and `V` that minor at
+/// `V` or above; `None` for another form.
+fn takes_bevy(wanted: &str) -> Option<bool> {
+    let numbers = |version: &str| {
+        (version.trim().split('.'))
+            .map(|number| number.parse::<u64>().ok())
+            .collect::<Option<Vec<u64>>>()
+    };
+    let wanted = wanted.trim();
+    let (exact, version) = match wanted.strip_prefix('=') {
+        Some(version) => (true, version),
+        None => (false, wanted.trim_start_matches(['^', '~'])),
+    };
+    let (wanted, have) = (numbers(version)?, numbers(BEVY_VERSION)?);
+    let prefix = |length: usize| have.get(..length.min(have.len())) == wanted.get(..length);
+    Some(if exact {
+        prefix(wanted.len())
+    } else {
+        prefix(wanted.len().min(2)) && wanted <= have
+    })
 }
 
 /// Fails, in plain words, when a plugin pulls in a second copy of one of
