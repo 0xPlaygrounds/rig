@@ -336,6 +336,15 @@ fn base(
         .is_none()
         .then(|| container(&history))
         .flatten();
+    let thinking = match input
+        .param("thinking")
+        .and_then(|thinking| thinking.str("type"))
+    {
+        Some("adaptive" | "enabled") => wire
+            .thinking_display
+            .map(|display| json!({ "display": display })),
+        _ => None,
+    };
     Ok(set_fields([
         ("model", Some(json!(model))),
         ("messages", Some(Value::Array(messages))),
@@ -354,6 +363,7 @@ fn base(
         ),
         ("tools", has_tools.then_some(Value::Array(tools))),
         ("output_config", output_config),
+        ("thinking", thinking),
         ("container", container.map(Value::String)),
     ]))
 }

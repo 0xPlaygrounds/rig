@@ -16,18 +16,12 @@ fn a_wire_thinking_display_defaults_active_thinking_but_a_request_can_override_i
     use serde_json::json;
 
     let wire = AnthropicConfig::new("sk-test").completion("claude-opus-5-5");
-    let saved = serde_json::to_value(&wire).unwrap_or_else(|error| panic!("{error}"));
-    assert!(saved.get("thinking_display").is_none());
-    let restored: Messages =
-        serde_json::from_value(saved).unwrap_or_else(|error| panic!("{error}"));
-    assert_eq!(restored.thinking_display, None);
-
-    for display in [ThinkingDisplay::Summarized, ThinkingDisplay::Omitted, ThinkingDisplay::Updates] {
+    for display in [
+        ThinkingDisplay::Summarized,
+        ThinkingDisplay::Omitted,
+        ThinkingDisplay::Updates,
+    ] {
         let wire = wire.clone().with_thinking_display(display);
-        let saved = serde_json::to_value(&wire).unwrap_or_else(|error| panic!("{error}"));
-        let restored: Messages =
-            serde_json::from_value(saved).unwrap_or_else(|error| panic!("{error}"));
-        assert_eq!(restored.thinking_display, Some(display));
         for mode in [Mode::Unary, Mode::Streaming] {
             for (request, expected) in [
                 (
@@ -35,30 +29,38 @@ fn a_wire_thinking_display_defaults_active_thinking_but_a_request_can_override_i
                     Some(json!({"type": "adaptive", "display": display})),
                 ),
                 (
-                    CompletionRequest::new("hello").reasoning(Effort::High)
+                    CompletionRequest::new("hello")
+                        .reasoning(Effort::High)
                         .additional_params(json!({"thinking": {"display": "summarized"}})),
                     Some(json!({"type": "adaptive", "display": "summarized"})),
                 ),
                 (
-                    CompletionRequest::new("hello")
-                        .additional_params(json!({"thinking": {"type": "enabled", "budget_tokens": 1024}})),
+                    CompletionRequest::new("hello").additional_params(
+                        json!({"thinking": {"type": "enabled", "budget_tokens": 1024}}),
+                    ),
                     Some(json!({"type": "enabled", "budget_tokens": 1024, "display": display})),
                 ),
                 (
-                    CompletionRequest::new("hello").reasoning(Reasoning::Off)
+                    CompletionRequest::new("hello")
+                        .reasoning(Reasoning::Off)
                         .model("claude-sonnet-4-6"),
                     Some(json!({"type": "disabled"})),
                 ),
                 (
-                    CompletionRequest::new("hello").reasoning(Reasoning::Off)
+                    CompletionRequest::new("hello")
+                        .reasoning(Reasoning::Off)
                         .model("claude-sonnet-5-5"),
                     Some(json!({"type": "between_tools"})),
                 ),
                 (CompletionRequest::new("hello"), None),
             ] {
-                let encoded = restored.encode(request, mode)
+                let encoded = wire
+                    .encode(request, mode)
                     .unwrap_or_else(|error| panic!("{error}"));
-                assert_eq!(json_body(&encoded.request).get("thinking"), expected.as_ref());
+                assert_eq!(
+                    json_body(&encoded.request).get("thinking"),
+                    expected.as_ref()
+                );
             }
         }
     }
@@ -128,12 +130,22 @@ fn a_serialized_provider_never_carries_its_key() {
         &provider.api_key
     });
 
-    let wire = provider.completion("claude-haiku-4-5");
+    let saved = serde_json::to_value(provider.completion("claude-haiku-4-5"))
+        .unwrap_or_else(|error| panic!("{error}"));
+    assert!(saved.get("thinking_display").is_none());
+    let restored: Messages =
+        serde_json::from_value(saved).unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(restored.thinking_display, None);
+
+    let wire = provider
+        .completion("claude-haiku-4-5")
+        .with_thinking_display(ThinkingDisplay::Omitted);
     let json = serde_json::to_string(&wire).expect("the wire serializes");
     assert!(!json.contains("sk-live-do-not-leak"));
     let restored: Messages = serde_json::from_str(&json).expect("the wire round-trips");
     assert_eq!(restored.model, "claude-haiku-4-5");
     assert_eq!(restored.provider.dialect, ANTHROPIC);
+    assert_eq!(restored.thinking_display, Some(ThinkingDisplay::Omitted));
     assert!(restored.provider.api_key.is_empty());
 }
 
