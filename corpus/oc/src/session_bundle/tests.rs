@@ -10,7 +10,7 @@ use rig_harness::host::exit::ExitPlugin;
 use rig_harness::load;
 use rig_harness_test_support::{
     Collected, Ended, ToolOutputs, app_in, calls, collect, commit_message, deliver, log_ended,
-    log_tool_outputs, reply, run_until, scratch_home, scripted_models,
+    log_tool_outputs, reply, rewrites, run_until, scratch_home, scripted_models,
 };
 use serde_json::json;
 
@@ -112,11 +112,7 @@ fn a_bundle_moves_a_session_to_another_checkout() {
     // Project A: two turns edit `src/lib.rs`, a helper subagent answers,
     // and the counter plugin saves 3.
     let model = MockCompletionModel::from_stream_turns([
-        calls(
-            "w1",
-            "write",
-            json!({ "path": path_a, "content": "pub fn edited() {}\n" }),
-        ),
+        rewrites("w1", &path_a, "pub fn edited() {}\n"),
         reply("Edited."),
         calls("w2", "write", json!({ "path": path_a, "content": edited })),
         reply("Edited again."),
