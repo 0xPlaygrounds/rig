@@ -279,9 +279,7 @@ impl CompletionScope<StreamingTurnSource> {
             return Err(PromptError::Report(no_answer()));
         };
         span.record_token_usage(&response.usage);
-        let (usage, identity, raw) = (response.usage, response.identity(), response.raw.clone());
-        let call =
-            run.record_streamed_completion_call(usage, identity, response.finish_reason(), raw)?;
+        let call = run.record_streamed_completion_response(response)?;
         Ok((response, call))
     }
 }
