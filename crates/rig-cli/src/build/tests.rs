@@ -640,3 +640,49 @@ fn a_crlf_split_between_two_reads_is_not_erased() {
     fs::remove_dir_all(home.root()).ok();
     assert_eq!(shown.text(), "one\r\ntwo\r\x1b[Kthree\n");
 }
+
+#[test]
+fn a_plugins_bevy_requirement_the_agents_bevy_does_not_meet_is_named_with_its_line() {
+    let root = std::env::temp_dir().join(format!("rig-bevy-pins-{}", std::process::id()));
+    fs::remove_dir_all(&root).ok();
+    let (old, ranged, table) = (root.join("old"), root.join("ranged"), root.join("table"));
+    let manifests = [
+        (
+            &old,
+            "[package]\nname = \"old\"\n\n[dependencies]\nrig-harness = \"0.46.0\"\n\
+             bevy_ecs = { version = \"=0.20.0\", default-features = false }\n\
+             bevy_reflect = { version = \"=0.20.0\", default-features = false }\n",
+        ),
+        (
+            &ranged,
+            "[package]\nname = \"ranged\"\n\n[dependencies]\n\
+             bevy_ecs = { version = \"0.20\", default-features = false }\n\
+             bevy_reflect = \"=0.20.1\"\nbevy_app = \"~0.20.0\"\n",
+        ),
+        (
+            &table,
+            "[package]\nname = \"table\"\n\n[dependencies.bevy_app]\nversion = \"0.19\"\n",
+        ),
+    ];
+    for (dir, manifest) in manifests {
+        fs::create_dir_all(dir).ok();
+        fs::write(dir.join("Cargo.toml"), manifest).ok();
+    }
+    let pins = bevy_pins([old.as_path(), ranged.as_path(), table.as_path()]);
+    let file = |dir: &Path| dir.join("Cargo.toml").display().to_string();
+    assert_eq!(
+        pins,
+        [
+            format!(
+                "{}:6: bevy_ecs = {{ version = \"=0.20.0\", default-features = false }}",
+                file(&old)
+            ),
+            format!(
+                "{}:7: bevy_reflect = {{ version = \"=0.20.0\", default-features = false }}",
+                file(&old)
+            ),
+            format!("{}:4: [dependencies.bevy_app]", file(&table)),
+        ]
+    );
+    fs::remove_dir_all(&root).ok();
+}

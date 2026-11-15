@@ -406,21 +406,19 @@ fn manifest(name: &str, rig_version: &str, source: &RigSource) -> String {
          # `rig_tui::ratatui`), what agents do from rig-basics. Add rig-basics with\n\
          # `default-features = false` unless this plugin draws in the terminal view:\n\
          # its default `tui` feature builds rig-tui. The agent builds every plugin\n\
-         # with its own rig crates. A Bevy crate, such as `bevy` for a window, must\n\
-         # be at exactly ={}.\n\
+         # with its own rig crates. A Bevy crate, such as `bevy` for a window, takes\n\
+         # \"{bevy}\" too: cargo builds it with the agent's Bevy.\n\
          rig-harness = \"{rig_version}\"\n\
          # Bevy's derives (`Component`, `Resource`, `Message`, `SystemSet`, `Reflect`)\n\
          # name the crate they expand to from this file, so those are direct dependencies.\n\
-         bevy_ecs = {{ version = \"={}\", default-features = false }}\n\
-         bevy_reflect = {{ version = \"={}\", default-features = false }}\n\
+         bevy_ecs = {{ version = \"{bevy}\", default-features = false }}\n\
+         bevy_reflect = {{ version = \"{bevy}\", default-features = false }}\n\
          # A tool's arguments, and its parameters derived from them.\n\
          schemars = \"1\"\n\
          serde = {{ version = \"1\", features = [\"derive\"] }}\n\
          serde_json = \"1\"\n",
         quoted(name),
-        super::BEVY_VERSION,
-        super::BEVY_VERSION,
-        super::BEVY_VERSION,
+        bevy = super::bevy_range(),
     );
     if let RigSource::Local(checkout) = source {
         text.push_str(
