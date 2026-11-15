@@ -118,9 +118,13 @@ fn search(id: &str) -> MockTurn {
 async fn main() -> Result<()> {
     // A $0.002 cap against three $0.0014 calls: the second books $0.0028,
     // crossing the cap, so the third call never goes out.
-    let model = MockCompletionModel::from_turns([search("s1"), search("s2"), MockTurn::text("done")]);
+    let model =
+        MockCompletionModel::from_turns([search("s1"), search("s2"), MockTurn::text("done")]);
     let budget = DollarBudget::new(0.002)?;
-    let agent = AgentBuilder::new(model).tool(Search).add_hook(budget).build();
+    let agent = AgentBuilder::new(model)
+        .tool(Search)
+        .add_hook(budget)
+        .build();
     match agent.prompt("keep researching").max_turns(5).await {
         Ok(answer) => println!("answered: {answer}"),
         Err(error) => println!("stopped: {error}"),
