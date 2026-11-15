@@ -500,10 +500,14 @@ fn with_approval_a_project_server_waits_for_approve_and_a_changed_one_is_asked_a
         format!("stub (project): not approved; /mcp approve stub starts it as written: {whole}");
     let told = notices(app.world());
     assert!(told.iter().any(|text| text == &listed), "{told:?}");
-    // A word after the name is refused, and nothing is approved.
+    // A word after the name is refused, the line coming back as typed, and
+    // nothing is approved.
     mcp(&mut app, agent, "approve stub --user");
     let state = status(app.world_mut(), "stub").map(|status| status.state);
     assert_eq!(state, Some(McpState::Held));
+    let refused = &app.world().resource::<Collected<Recalled>>().0;
+    let lines: Vec<_> = refused.iter().map(|recalled| recalled.text.as_str()).collect();
+    assert_eq!(lines, ["/mcp approve stub --user"]);
 
     mcp(&mut app, agent, "approve stub");
     let approved = format!("Approved `stub` as written: {whole}.");

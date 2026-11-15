@@ -41,12 +41,12 @@ impl Plugin for McpApprovalPlugin {
             .add_observer(hold_unapproved)
             .add_command(
                 "mcp-approve",
-                "Start a project's MCP server as written: `/mcp approve <name>`",
+                "Start a project's MCP server as written: `/mcp-approve <name>`",
                 approve,
             )
             .add_command(
                 "mcp-deny",
-                "Stop asking about a project's MCP server: `/mcp deny <name>`",
+                "Stop asking about a project's MCP server: `/mcp-deny <name>`",
                 deny,
             );
     }

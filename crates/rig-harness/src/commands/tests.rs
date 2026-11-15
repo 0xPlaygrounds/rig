@@ -181,3 +181,32 @@ fn a_command_declares_its_input_and_refuses_extra_text_before_running() {
     );
     assert!(world.resource::<Messages<Recalled>>().is_empty());
 }
+
+#[test]
+fn a_command_another_runs_refuses_the_line_typed() {
+    let (mut app, agent) = app();
+    app.init_resource::<Ran>()
+        .add_command(
+            "nothing",
+            "Takes no text",
+            |In(args): In<NoArgs>, mut ran: ResMut<Ran>| {
+                ran.0.push((args.agent, args.mode));
+            },
+        )
+        .add_command(
+            "relay",
+            "Runs /<first word> with the rest",
+            |In(args): In<CommandArgs>, mut commands: Commands| {
+                commands.trigger(RunCommand::new(args.agent, args.args));
+            },
+        );
+    let world = app.world_mut();
+    world.trigger(RunCommand::new(agent, "relay nothing PELICAN"));
+    world.trigger(RunCommand::new(agent, "relay zzz"));
+    world.flush();
+    assert!(world.resource::<Ran>().0.is_empty());
+    let recalled: Vec<_> = world.resource_mut::<Messages<Recalled>>().drain().collect();
+    let lines: Vec<_> = recalled.iter().map(|recalled| recalled.text.as_str()).collect();
+    assert_eq!(lines, ["/relay nothing PELICAN", "/relay zzz"]);
+    assert!(recalled.iter().all(|recalled| recalled.why.is_some()));
+}
