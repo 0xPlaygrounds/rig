@@ -597,12 +597,14 @@ impl Workspace for Remote {
         self.written(path, &script, bytes).map(drop)
     }
 
-    /// One script: a copy of the file is made beside it and hashed there,
-    /// then filled with `bytes` and moved over the file, once it holds all
-    /// of them, when the hash is `held`, or sent back when it is not. A machine with neither
-    /// `sha256sum` nor `shasum` always sends it back. With no `held`, a
-    /// file there is sent back, and else a new one is written as
-    /// [`write`](Workspace::write) writes it.
+    /// One script. With a `held`, the file is hashed, and only while the
+    /// hash is `held` is a copy made beside it (for its permissions),
+    /// filled with `bytes` and, once it holds all of them and the file is
+    /// hashed `held` again, moved over it; otherwise the file is sent back.
+    /// A machine with neither `sha256sum` nor `shasum` always sends it
+    /// back. With no `held`, a new file is filled beside the name and
+    /// linked to it (`ln`), which never replaces a file that appeared
+    /// meanwhile; a file there is sent back.
     fn write_if(
         &self,
         path: &Path,
@@ -613,13 +615,14 @@ impl Workspace for Remote {
         let Some(held) = held else {
             let script = format!(
                 "p={}; [ -L \"$p\" ] && {{ readlink -- \"$p\" >&2; exit {A_LINK}; }}; \
-                 if [ -e \"$p\" ]; then [ -f \"$p\" ] || exit {NOT_A_FILE}; \
-                 wc -c < \"$p\" && head -c {MAX_FILE_BYTES} -- \"$p\"; exit; fi; \
-                 d=$(dirname -- \"$p\"); \
+                 back() {{ [ -f \"$p\" ] || exit {NOT_A_FILE}; \
+                 wc -c < \"$p\" && head -c {MAX_FILE_BYTES} -- \"$p\"; }}; \
+                 [ -e \"$p\" ] && {{ back; exit; }}; d=$(dirname -- \"$p\"); \
                  mkdir -p -- \"$d\" && t=$(mktemp \"$d/.rig-write.XXXXXX\") || exit 1; \
                  chmod \"$(printf %o $((0666 & ~$(umask))))\" \"$t\" && \
-                 cat > \"$t\" && [ $(wc -c < \"$t\") -eq {size} ] && mv -f -- \"$t\" \"$p\" && echo = || \
-                 {{ rm -f -- \"$t\"; exit 1; }}",
+                 cat > \"$t\" && [ $(wc -c < \"$t\") -eq {size} ] || {{ rm -f -- \"$t\"; exit 1; }}; \
+                 if ln -- \"$t\" \"$p\" 2>/dev/null; then rm -f -- \"$t\"; echo =; \
+                 else rm -f -- \"$t\"; [ -e \"$p\" ] || exit 1; back; fi",
                 quote_path(path)
             );
             return compared(&self.written(path, &script, bytes)?);
@@ -628,13 +631,15 @@ impl Workspace for Remote {
             "p={}; [ -L \"$p\" ] && {{ readlink -- \"$p\" >&2; exit {A_LINK}; }}; \
              [ -f \"$p\" ] || {{ [ -e \"$p\" ] && exit {NOT_A_FILE}; exit {NOT_FOUND}; }}; \
              [ -w \"$p\" ] || exit {READ_ONLY}; \
+             held() {{ h=$({{ sha256sum || shasum -a 256; }} < \"$p\" 2>/dev/null); \
+             [ \"${{h%% *}}\" = {} ]; }}; \
+             back() {{ wc -c < \"$p\" && head -c {MAX_FILE_BYTES} -- \"$p\"; }}; \
+             held || {{ back; exit; }}; \
              t=$(mktemp \"$(dirname -- \"$p\")/.rig-write.XXXXXX\") || exit 1; \
-             cp -p -- \"$p\" \"$t\" || {{ rm -f -- \"$t\"; exit 1; }}; \
-             h=$({{ sha256sum || shasum -a 256; }} < \"$t\" 2>/dev/null); \
-             if [ \"${{h%% *}}\" = {} ]; then \
-             cat > \"$t\" && [ $(wc -c < \"$t\") -eq {size} ] && mv -f -- \"$t\" \"$p\" && echo = || \
+             cp -p -- \"$p\" \"$t\" && cat > \"$t\" && [ $(wc -c < \"$t\") -eq {size} ] || \
              {{ rm -f -- \"$t\"; exit 1; }}; \
-             else wc -c < \"$t\" && head -c {MAX_FILE_BYTES} -- \"$t\"; s=$?; rm -f -- \"$t\"; exit $s; fi",
+             if held; then mv -f -- \"$t\" \"$p\" && echo = || {{ rm -f -- \"$t\"; exit 1; }}; \
+             else rm -f -- \"$t\"; back; fi",
             quote_path(path),
             quote(&held.0)
         );
@@ -1010,7 +1015,6 @@ impl Workspace for Hosts {
     }
 }
 
-/// `bytes` split at its first `\n`: the line before it, as text, and
 /// What a [`write_if`](Workspace::write_if) script answered, `out`: `=`
 /// when it wrote, else the file's size on a line and its bytes.
 fn compared(out: &[u8]) -> io::Result<Option<Contents>> {
@@ -1026,6 +1030,7 @@ fn compared(out: &[u8]) -> io::Result<Option<Contents>> {
     }))
 }
 
+/// `bytes` split at its first `\n`: the line before it, as text, and
 /// what follows.
 fn split_line(bytes: &[u8]) -> Option<(String, &[u8])> {
     let newline = bytes.iter().position(|&byte| byte == b'\n')?;

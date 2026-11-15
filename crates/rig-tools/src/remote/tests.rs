@@ -372,6 +372,68 @@ fn a_write_there_replaces_only_what_was_read() {
     assert_eq!(wrote_text.as_deref(), Some("fn new() {}\n"));
 }
 
+/// A write there never replaces a file that changed between its check
+/// and the moment it is put in place: here `mktemp`, which runs between
+/// them for a write's temporary file, writes the user's text to
+/// `raced.rs`. A new file is refused and
+/// the user's kept, as is a file read before.
+#[cfg(unix)]
+#[test]
+fn a_write_there_keeps_a_file_that_changed_meanwhile() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let dir = scratch("raced");
+    let home = dir.join("home");
+    let bin = home.join("bin");
+    std::fs::create_dir_all(&bin).ok();
+    let shim = bin.join("mktemp");
+    std::fs::write(
+        &shim,
+        "#!/bin/sh\ncase \"$1\" in *.rig-write.*) printf 'user\\n' > \"$HOME/strata/src/raced.rs\";; esac\n\
+         PATH=${PATH#*:} exec mktemp \"$@\"\n",
+    )
+    .ok();
+    std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755)).ok();
+    let racing = vec![
+        "sh".to_owned(),
+        "-c".to_owned(),
+        "cd \"$0\" && PATH=\"$0/bin:$PATH\" HOME=\"$0\" exec sh -c \"$1\"".to_owned(),
+        home.display().to_string(),
+    ];
+    let bench = Remote::new("bench", racing, Launcher::default);
+    let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
+    let seen = crate::Seen::default();
+    let read = Read {
+        root: Root::from(workspace.clone()),
+        seen: seen.clone(),
+    };
+    let write = crate::Write {
+        root: Root::from(workspace),
+        seen,
+    };
+    let file = "bench:~/strata/src/raced.rs";
+    let on_disk = home.join("strata/src/raced.rs");
+    let (created, _) = call(&write, crate::WriteArgs::new(file, "fn new() {}\n"));
+    let created_text = std::fs::read_to_string(&on_disk).ok();
+    std::fs::write(&on_disk, "fn old() {}\n").ok();
+    let (shown, _) = call(&read, ReadArgs::new(file));
+    let (replaced, _) = call(&write, crate::WriteArgs::new(file, "fn new() {}\n"));
+    let replaced_text = std::fs::read_to_string(&on_disk).ok();
+    std::fs::remove_dir_all(&dir).ok();
+    let said = |result: Result<String, rig_core::tool::ToolExecutionError>| {
+        result.map_err(|error| error.to_string())
+    };
+    assert!(shown.is_ok());
+    assert!(said(created).is_err(), "a file that appeared was replaced");
+    assert!(
+        said(replaced).is_err_and(|why| why.contains("changed since")),
+        "a file that changed was replaced"
+    );
+    assert_eq!(
+        (created_text.as_deref(), replaced_text.as_deref()),
+        (Some("user\n"), Some("user\n"))
+    );
+}
+
 /// [`transport`], first appending to `log` how many bytes each call sent
 /// back.
 fn metered(home: &Path, log: &Path) -> Vec<String> {

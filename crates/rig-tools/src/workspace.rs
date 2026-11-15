@@ -15,7 +15,7 @@ use ignore::WalkBuilder;
 use ignore::overrides::OverrideBuilder;
 use rig_core::tool::{ContentHash, ToolExecutionError, content_hash};
 
-use crate::fs::{Previous, io_error, real_path, write_atomic};
+use crate::fs::{Previous, io_error, real_path, write_atomic, write_atomic_if, write_new};
 use crate::process::{Launcher, Process, Spawn};
 pub use crate::watch::{Watch, WatchEvent};
 use crate::{MAX_BYTES, MAX_FILE_BYTES, shell_path};
@@ -99,11 +99,13 @@ pub trait Workspace: Send + Sync + fmt::Debug + 'static {
     /// instead, as [`read`](Self::read) with a limit of [`MAX_FILE_BYTES`]
     /// reads it; with a `held`, no file there is a
     /// [`NotFound`](ErrorKind::NotFound) error. What a tool that writes
-    /// over text seen before, or only a new file, writes with; a workspace
-    /// where each call costs a round trip, such as a remote one, checks and
-    /// writes in one.
+    /// over text seen before, or only a new file, writes with.
     ///
-    /// By default it reads, then writes.
+    /// By default it reads, then writes, so a file changed between the two
+    /// is replaced. [`Local`] and a remote workspace create a new file in a
+    /// step that never replaces one ([`write_new`](crate::fs::write_new)),
+    /// and check the text again just before replacing it
+    /// ([`write_atomic_if`](crate::fs::write_atomic_if)).
     fn write_if(
         &self,
         path: &Path,
@@ -652,6 +654,28 @@ impl Workspace for Local {
 
     fn write(&self, path: &Path, bytes: &[u8]) -> io::Result<()> {
         write_atomic(path, bytes)
+    }
+
+    fn write_if(
+        &self,
+        path: &Path,
+        bytes: &[u8],
+        held: Option<&ContentHash>,
+    ) -> io::Result<Option<Contents>> {
+        let wrote = match held {
+            None => match write_new(path, bytes) {
+                Err(error) if error.kind() == ErrorKind::AlreadyExists => false,
+                created => created.map(|()| true)?,
+            },
+            Some(held) => write_atomic_if(path, bytes, || {
+                let now = self.read(path, MAX_FILE_BYTES)?;
+                Ok(now.size <= MAX_FILE_BYTES && content_hash(&now.bytes) == *held)
+            })?,
+        };
+        if wrote {
+            return Ok(None);
+        }
+        self.read(path, MAX_FILE_BYTES).map(Some)
     }
 
     fn remove(&self, path: &Path) -> io::Result<()> {

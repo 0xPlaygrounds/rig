@@ -272,3 +272,38 @@ fn a_private_file_is_never_staged_readable() {
     assert_eq!(mode(&new).ok(), mode(&default).ok());
     std::fs::remove_dir_all(dir.parent().unwrap_or(&dir)).ok();
 }
+
+/// A new file is created only while no file has its name: one that
+/// appears after the temporary file was written, just before it is put in
+/// place, is kept and the creation fails, leaving no temporary file. A
+/// replace whose check finds the file changed writes nothing.
+#[test]
+fn a_new_file_never_replaces_one_that_appeared() {
+    let dir = scratch("create-new");
+    let path = dir.join("a.txt");
+    let raced = super::publish(&path, b"model\n", |temporary, target| {
+        std::fs::write(target, "user\n")?;
+        super::link_new(temporary, target)
+    });
+    assert_eq!(
+        raced.map_err(|error| error.kind()),
+        Err(std::io::ErrorKind::AlreadyExists)
+    );
+    assert_eq!(
+        std::fs::read_to_string(&path).ok().as_deref(),
+        Some("user\n")
+    );
+    let created = super::write_new(&dir.join("b.txt"), b"new\n");
+    assert!(created.is_ok(), "{created:?}");
+    let stale = super::write_atomic_if(&path, b"model\n", || Ok(false));
+    assert!(matches!(stale, Ok(false)), "{stale:?}");
+    assert_eq!(
+        std::fs::read_to_string(&path).ok().as_deref(),
+        Some("user\n")
+    );
+    let left: Vec<_> = std::fs::read_dir(&dir)
+        .map(|entries| entries.flatten().map(|entry| entry.file_name()).collect())
+        .unwrap_or_default();
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(left.len(), 3, "{left:?}");
+}

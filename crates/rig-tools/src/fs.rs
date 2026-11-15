@@ -80,6 +80,57 @@ pub fn read_prefix(path: &Path, cap: usize) -> io::Result<Prefix> {
 /// text) and makes this process the file's owner. A crash between create
 /// and rename can leave a `.name.<pid>-<n>.tmp` beside the file.
 pub fn write_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
+    publish(path, contents, |temporary, target| {
+        fs::rename(temporary, target).map(|()| true)
+    })
+    .map(drop)
+}
+
+/// [`write_atomic`], but only while the file still holds what `still`
+/// checks for, asked once the new text is in place beside it, just
+/// before the rename: `false`, and nothing written, when it does not. A
+/// save landing between that check and the rename is still replaced; no
+/// portable call compares and replaces a file in one step.
+pub fn write_atomic_if(
+    path: &Path,
+    contents: &[u8],
+    still: impl FnOnce() -> io::Result<bool>,
+) -> io::Result<bool> {
+    publish(path, contents, |temporary, target| {
+        if !still()? {
+            return Ok(false);
+        }
+        fs::rename(temporary, target).map(|()| true)
+    })
+}
+
+/// Creates the file at `path` with `contents` as [`write_atomic`] writes
+/// it, but only while there is no file there: the temporary file is
+/// linked to its name, which fails with an
+/// [`AlreadyExists`](ErrorKind::AlreadyExists) error, the file there kept,
+/// when one appeared at any moment before.
+pub fn write_new(path: &Path, contents: &[u8]) -> io::Result<()> {
+    publish(path, contents, link_new).map(drop)
+}
+
+/// Gives the file `temporary` the name `target` only while no file has
+/// it, then drops the temporary name.
+fn link_new(temporary: &Path, target: &Path) -> io::Result<bool> {
+    fs::hard_link(temporary, target)?;
+    // The file is made; a temporary name left behind is only clutter.
+    fs::remove_file(temporary).ok();
+    Ok(true)
+}
+
+/// Writes `contents` to a temporary file beside `path`'s target, as
+/// [`write_atomic`] says, then hands it and the target to `place`, which
+/// puts it there and says whether it did; the temporary file is removed
+/// when it did not.
+fn publish(
+    path: &Path,
+    contents: &[u8],
+    place: impl FnOnce(&Path, &Path) -> io::Result<bool>,
+) -> io::Result<bool> {
     let target = real_path(path);
     let permissions = match fs::symlink_metadata(&target) {
         Ok(meta) if !meta.is_file() => {
@@ -121,11 +172,12 @@ pub fn write_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
         if let Some(permissions) = permissions {
             file.set_permissions(permissions)?;
         }
-        fs::rename(&temporary, &target)
+        place(&temporary, &target)
     });
-    written.inspect_err(|_| {
+    if !matches!(written, Ok(true)) {
         fs::remove_file(&temporary).ok();
-    })
+    }
+    written
 }
 
 /// A temporary file's path beside `target`, whose file name is `name`:
