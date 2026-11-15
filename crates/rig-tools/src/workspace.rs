@@ -103,9 +103,9 @@ pub trait Workspace: Send + Sync + fmt::Debug + 'static {
     ///
     /// By default it reads, then writes, so a file changed between the two
     /// is replaced. [`Local`] and a remote workspace create a new file in a
-    /// step that never replaces one ([`write_new`](crate::fs::write_new)),
+    /// step that never replaces one ([`write_new`]),
     /// and check the text again just before replacing it
-    /// ([`write_atomic_if`](crate::fs::write_atomic_if)).
+    /// ([`write_atomic_if`]).
     fn write_if(
         &self,
         path: &Path,
