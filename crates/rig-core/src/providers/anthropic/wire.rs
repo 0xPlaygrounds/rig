@@ -594,7 +594,7 @@ impl Messages {
     ///
     /// One-hour markers must precede five-minute markers. A five-minute
     /// prefix under a request with
-    /// [`CacheRetention::Long`](crate::completion::CacheRetention::Long) fails
+    /// [`CacheRetention::Long`] fails
     /// during encoding.
     /// Each marker must meet the model's minimum cacheable prompt length.
     pub fn with_static_prefix_cache_ttl(mut self, ttl: CacheTtl) -> Self {
