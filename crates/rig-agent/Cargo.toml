@@ -38,6 +38,7 @@ tracing-futures = { workspace = true, features = ["futures-03"] }
 [dev-dependencies]
 rig-reqwest = { path = "../rig-reqwest", version = "0.46.0" }
 anyhow = { workspace = true }
+llm-budget = "0.3"
 # `cargo test -p rig-agent` needs rig-core's mock models even when the
 # `test-utils` feature is not requested explicitly.
 rig-core = { path = "../rig-core", features = ["reqwest", "test-utils"] }
