@@ -92,20 +92,6 @@ pub trait Workspace: Send + Sync + fmt::Debug + 'static {
     /// anything but a regular file (see [`write_atomic`]).
     fn write(&self, path: &Path, bytes: &[u8]) -> io::Result<()>;
 
-    /// [`write`](Self::write)s `bytes` to `path` and says what the file
-    /// held before, as [`read`](Self::read) with `limit` reads it: a
-    /// [`NotFound`](ErrorKind::NotFound) error when there was no file, the
-    /// file's own when it could not be read. What a tool that writes a
-    /// file diffs against; a workspace where each call costs a round trip,
-    /// such as a remote one, does both in one.
-    ///
-    /// By default it reads, then writes.
-    fn replace(&self, path: &Path, bytes: &[u8], limit: u64) -> io::Result<io::Result<Contents>> {
-        let before = self.read(path, limit);
-        self.write(path, bytes)?;
-        Ok(before)
-    }
-
     /// [`write`](Self::write)s `bytes` to `path` only while it is the
     /// regular file holding the text whose [`content_hash`] is `held`, or,
     /// with no `held`, while there is no file there: `None` when it wrote.

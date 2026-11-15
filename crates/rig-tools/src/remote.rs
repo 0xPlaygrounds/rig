@@ -577,43 +577,24 @@ impl Workspace for Remote {
         read
     }
 
-    /// [`replace`](Workspace::replace)s it, sending back nothing of what
-    /// it held.
-    fn write(&self, path: &Path, bytes: &[u8]) -> io::Result<()> {
-        self.replace(path, bytes, 0).map(drop)
-    }
-
     /// Writes a temporary file beside it and moves it over the file only
     /// once it holds all of `bytes`, so a lost connection or a stopped call
     /// never leaves it half written, keeping an existing file's
-    /// permissions; the copy the temporary file starts as is what is sent
-    /// back, in the same call.
-    fn replace(&self, path: &Path, bytes: &[u8], limit: u64) -> io::Result<io::Result<Contents>> {
+    /// permissions.
+    fn write(&self, path: &Path, bytes: &[u8]) -> io::Result<()> {
         let size = bytes.len();
         let script = format!(
             "p={}; [ -L \"$p\" ] && {{ readlink -- \"$p\" >&2; exit {A_LINK}; }}; \
              if [ -e \"$p\" ]; then [ -f \"$p\" ] || exit {NOT_A_FILE}; \
              [ -w \"$p\" ] || exit {READ_ONLY}; fi; d=$(dirname -- \"$p\"); \
              mkdir -p -- \"$d\" && t=$(mktemp \"$d/.rig-write.XXXXXX\") || exit 1; \
-             if [ -e \"$p\" ]; then cp -p -- \"$p\" \"$t\" && wc -c < \"$t\" && \
-             head -c {limit} -- \"$t\"; \
+             if [ -e \"$p\" ]; then cp -p -- \"$p\" \"$t\"; \
              else chmod \"$(printf %o $((0666 & ~$(umask))))\" \"$t\"; fi && \
              cat > \"$t\" && [ $(wc -c < \"$t\") -eq {size} ] && mv -f -- \"$t\" \"$p\" || \
              {{ rm -f -- \"$t\"; exit 1; }}",
             quote_path(path)
         );
-        let out = self.written(path, &script, bytes)?;
-        Ok(match split_line(&out) {
-            None => Err(ErrorKind::NotFound.into()),
-            Some((size, bytes)) => size
-                .trim()
-                .parse()
-                .map(|size| Contents {
-                    bytes: bytes.to_vec(),
-                    size,
-                })
-                .map_err(io::Error::other),
-        })
+        self.written(path, &script, bytes).map(drop)
     }
 
     /// One script: a copy of the file is made beside it and hashed there,
@@ -621,7 +602,7 @@ impl Workspace for Remote {
     /// of them, when the hash is `held`, or sent back when it is not. A machine with neither
     /// `sha256sum` nor `shasum` always sends it back. With no `held`, a
     /// file there is sent back, and else a new one is written as
-    /// [`replace`](Workspace::replace) writes it.
+    /// [`write`](Workspace::write) writes it.
     fn write_if(
         &self,
         path: &Path,
@@ -940,13 +921,6 @@ impl Workspace for Hosts {
         match self.route(path) {
             Some((remote, path)) => remote.write(&path, bytes),
             None => self.inner.write(path, bytes),
-        }
-    }
-
-    fn replace(&self, path: &Path, bytes: &[u8], limit: u64) -> io::Result<io::Result<Contents>> {
-        match self.route(path) {
-            Some((remote, path)) => remote.replace(&path, bytes, limit),
-            None => self.inner.replace(path, bytes, limit),
         }
     }
 
