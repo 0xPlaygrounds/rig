@@ -27,13 +27,7 @@ pub fn warnings(home: &Home) -> Vec<String> {
     if lacks("plugins")
         && let Some(text) = read(&plugins)
     {
-        let mut moves = plugin_moves(&text, &settings);
-        if moves.is_empty() {
-            moves.push(format!(
-                "  Add an empty [plugins] table to {}: the list was rig's defaults.",
-                settings.display()
-            ));
-        }
+        let moves = plugin_moves(&text, &settings);
         warnings.push(warning(
             &plugins,
             "plugin list",
@@ -95,13 +89,27 @@ impl Entry {
 }
 
 /// The lines that rebuild the plugin list `text` in `settings`: a
+/// `[[plugins.extra]]` table for each crate of another source, a
 /// `rig plugin enable` or `disable` for each of rig's plugins it turns on or
-/// off against today's default, a `[[plugins.extra]]` table for each crate
-/// of another source, with a `disable` for one it lists off, and a line for
-/// each of rig's plugins that is gone. A plugin of rig's it does not name
-/// keeps its default.
+/// off against today's default (with the approval plugin beside MCP on, as
+/// v0.46.0's MCP plugin asked before a project's server ran), a `disable`
+/// for a crate of its own it lists off, and a line for each of rig's plugins
+/// that is gone. A plugin of rig's it does not name keeps its default. When
+/// nothing is to be added, the step that ends the warning: an empty table.
 fn plugin_moves(text: &str, settings: &Path) -> Vec<String> {
-    let entries = entries(text);
+    let empty = format!(
+        "  Add an empty [plugins] table to {}: the list was rig's defaults.",
+        settings.display()
+    );
+    let entries = match entries(text) {
+        Ok(entries) => entries,
+        Err(why) => {
+            return vec![format!(
+                "  It is not TOML ({why}), so its plugins are not listed here. {}",
+                empty.trim_start()
+            )];
+        }
+    };
     let mut commands = Vec::new();
     let mut gone = Vec::new();
     let mut tables = Vec::new();
@@ -116,6 +124,12 @@ fn plugin_moves(text: &str, settings: &Path) -> Vec<String> {
             Some(rigs) if rigs.on != entry.on => {
                 let verb = if entry.on { "enable" } else { "disable" };
                 commands.push(format!("  rig plugin {verb} {plugin}"));
+                if entry.on
+                    && plugin == MCP
+                    && built_in(MCP_APPROVAL).is_some_and(|approval| !approval.on)
+                {
+                    commands.push(format!("  rig plugin enable {MCP_APPROVAL}"));
+                }
             }
             Some(_) => {}
             None if own => {
@@ -143,42 +157,75 @@ fn plugin_moves(text: &str, settings: &Path) -> Vec<String> {
         ));
         moves.extend(tables);
     }
+    if moves.is_empty() && commands.is_empty() {
+        moves.push(empty);
+    }
     moves.extend(commands);
     moves.extend(gone);
     moves
 }
 
-/// The `[[plugin]]` tables of `text`, in file order. One that is off has
-/// its `[[plugin]]` line and the key lines right after it each behind `#`.
-fn entries(text: &str) -> Vec<Entry> {
-    let mut entries: Vec<Entry> = Vec::new();
-    let mut open = false;
-    for line in text.lines() {
-        let line = line.trim();
-        let (on, bare) = match line.strip_prefix('#') {
-            Some(commented) => (false, commented.trim()),
-            None => (true, line),
-        };
-        if bare == "[[plugin]]" {
-            entries.push(Entry {
-                on,
-                keys: Vec::new(),
-            });
-            open = true;
+/// rig's MCP plugin, and the plugin that asks before a project's server
+/// runs, which v0.46.0's MCP plugin did itself.
+const MCP: &str = "rig_mcp_client::McpPlugin";
+const MCP_APPROVAL: &str = "rig_mcp_client::approval::McpApprovalPlugin";
+
+/// The `[[plugin]]` tables of `text`, as v0.46.0 read them: each table of
+/// the TOML, on, then each one commented out, off, whose `[[plugin]]` line
+/// and the key lines right after it are each behind `#`.
+///
+/// # Errors
+///
+/// When `text` is not TOML, with why.
+fn entries(text: &str) -> Result<Vec<Entry>, String> {
+    let live = text
+        .parse::<toml_edit::DocumentMut>()
+        .map_err(|why| why.message().to_owned())?;
+    let tables = live
+        .get("plugin")
+        .and_then(toml_edit::Item::as_array_of_tables);
+    let mut entries: Vec<Entry> = (tables.into_iter().flat_map(|tables| tables.iter()))
+        .map(|table| Entry {
+            on: true,
+            keys: keys(table),
+        })
+        .collect();
+    let commented = |line: &str| line.trim_start().strip_prefix('#').map(str::to_owned);
+    let lines: Vec<&str> = text.lines().collect();
+    for (at, line) in lines.iter().enumerate() {
+        if commented(line).is_none_or(|rest| rest.trim() != "[[plugin]]") {
             continue;
         }
-        let key = bare.split_once('=').and_then(|(key, value)| {
-            let value = value.trim().parse::<toml_edit::Value>().ok()?;
-            Some((key.trim().to_owned(), value.as_str()?.to_owned()))
-        });
-        match (open, entries.last_mut(), key) {
-            (true, Some(entry), Some(key)) if entry.on == on && KEYS.contains(&key.0.as_str()) => {
-                entry.keys.push(key);
-            }
-            _ => open = false,
+        let mut table = String::new();
+        for line in lines.iter().skip(at + 1) {
+            let Some(key) = commented(line).filter(|rest| {
+                let parsed = rest.parse::<toml_edit::DocumentMut>().ok();
+                parsed.is_some_and(|line| {
+                    let keys = keys(line.as_table());
+                    keys.len() == 1 && line.as_table().len() == 1
+                })
+            }) else {
+                break;
+            };
+            table.push_str(&key);
+            table.push('\n');
+        }
+        if let Ok(table) = table.parse::<toml_edit::DocumentMut>() {
+            entries.push(Entry {
+                on: false,
+                keys: keys(table.as_table()),
+            });
         }
     }
-    entries
+    Ok(entries)
+}
+
+/// The keys of a `[[plugin]]` table v0.46.0 took, with their text.
+fn keys(table: &toml_edit::Table) -> Vec<(String, String)> {
+    (table.iter())
+        .filter(|(key, _)| KEYS.contains(key))
+        .filter_map(|(key, item)| Some((key.to_owned(), item.as_str()?.to_owned())))
+        .collect()
 }
 
 /// The keys a `[[plugin]]` table of `plugins.toml` held.
