@@ -24,7 +24,7 @@ use rig_core::conversation::MessageId;
 use rig_memory::SessionError;
 use serde::{Deserialize, Serialize};
 
-use super::agent::{Agent, AgentId, CacheKey, ContextStale, Conversation};
+use super::agent::{Agent, AgentId, CacheKey, ContextStale, Conversation, LastUsage};
 use super::model::Connection;
 use super::requests::RequestOf;
 use super::restore::SavedKeys;
@@ -36,7 +36,8 @@ use super::session_log::{Fork, ReflectSaved, SessionLog, save_conversation};
 /// message that asked for a turn is at no boundary, so a fork through it
 /// ends just before it. The fork has `agent`'s saved components as their
 /// fork rules say ([`ReflectSaved`]), its connection and prompt cache
-/// ([`CacheKey`]), a [`ForkedFrom`], and no parent. Its context is
+/// ([`CacheKey`]), a [`ForkedFrom`], and no parent. A fork of `agent`'s
+/// whole conversation has its [`LastUsage`]; one cut earlier is
 /// [`ContextStale`] until its first reply. The kernel makes it as the pass
 /// enters [`Stage::Arrive`](super::stage::Stage::Arrive), after `agent`'s
 /// unsaved changes are saved, announces it ([`AgentForked`]), inserts the
@@ -269,6 +270,12 @@ fn fork_now(
             .chain(older.into_iter().flatten())
             .collect(),
     );
+    // The source's context figure measures the fork's conversation only
+    // when the fork has all of it.
+    let whole = world.get::<Conversation>(from).is_some_and(|conversation| {
+        conversation.messages().len() == copy.conversation.messages().len()
+    });
+    let measured = world.get::<LastUsage>(from).filter(|_| whole).cloned();
     let key = CacheKey(CacheKey::of(world.get::<CacheKey>(from), &id).to_owned());
     let connection = world.get::<Connection>(from).cloned();
     let conversation = Conversation(copy.conversation);
@@ -278,10 +285,6 @@ fn fork_now(
         component.insert(&mut spawned, value.as_ref(), &registry);
     }
     spawned.insert((key, lineage));
-    // No reply of the fork measured the conversation it starts with.
-    if !empty {
-        spawned.insert(ContextStale {});
-    }
     if let Some(connection) = connection {
         spawned.insert(connection);
     }
@@ -289,6 +292,16 @@ fn fork_now(
     // required one.
     for rule in resets.into_iter().chain(removals) {
         rule(&mut spawned);
+    }
+    match measured {
+        Some(measured) => {
+            spawned.insert(measured);
+        }
+        // No reply measured the conversation it starts with.
+        None if !empty => {
+            spawned.insert(ContextStale {});
+        }
+        None => {}
     }
     let fork = spawned.id();
     // A value the copied log holds that the source has no more is gone in

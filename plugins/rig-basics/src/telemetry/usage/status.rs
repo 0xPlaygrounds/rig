@@ -89,8 +89,7 @@ fn show_meter(
         items.show(CACHE.says(text(cache), Tone::Dim));
         items.show(COST.says(text(spent.cost_label()), Tone::Dim));
         // A fork has a context before its first call.
-        let context = context.filter(|_| shown || stale).unwrap_or_default();
-        items.show(CONTEXT.says(context, tone));
+        items.show(CONTEXT.says(context.unwrap_or_default(), tone));
     }
 }
 

@@ -227,8 +227,9 @@ impl From<conversation::Conversation> for Conversation {
 /// The usage of the agent's last model reply that reported its tokens,
 /// with the last entry of the conversation it counts (rig-memory's
 /// [`Anchor`]), `None` before one did. Only the kernel writes it, from
-/// what the provider reported. Saved with the session; a fork starts
-/// without one, as its next request is its own.
+/// what the provider reported. Saved with the session; a fork has it only
+/// when it has the whole conversation it measures
+/// ([`ForkAgent`](super::fork::ForkAgent)).
 #[derive(Component, Reflect, Clone, Copy, Debug, Default, Serialize, Deserialize)]
 #[reflect(
     opaque,
@@ -257,8 +258,8 @@ impl LastUsage {
 }
 
 /// The agent's [`LastUsage`] no longer counts its conversation after a
-/// compaction summarized, cleared or restored part of it, or on a fork,
-/// whose conversation no reply of its own measured. The kernel removes
+/// compaction summarized, cleared or restored part of it, or on a fork cut
+/// before its source's end, whose conversation no reply measured. The kernel removes
 /// this marker when a reply reports a new context figure. Saved with the session.
 #[derive(Component, Reflect, Clone, Copy, Debug, Default, Serialize, Deserialize)]
 #[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
