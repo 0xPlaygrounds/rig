@@ -4,22 +4,24 @@
 //! they did to the result, which stays a success: "(formatted with rustfmt)" and the changed
 //! lines as they now read, a formatter's failure (the file is then put back as written), or the
 //! linter's diagnostics. The call settles only once they are done, so a later `read` sees the
-//! formatted file.
+//! formatted file. The formatted text counts as seen ([`SeenFiles`]) when the file held what
+//! the tool left, so the model's next `write` of it goes through.
 
 use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
+use rig_basics::coding_tools::SeenFiles;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::{Answered, EffectId, EffectKind};
 use rig_harness::rig_core::error::ErrorReport;
 use rig_harness::rig_core::serve::{AfterServe, BeforeServe, Intercept};
-use rig_harness::rig_core::tool::{ExitStatus, ToolOutput};
+use rig_harness::rig_core::tool::{ExitStatus, ToolOutput, content_hash};
 use rig_harness::rig_ecs::effects::Handler;
 use rig_tools::fs::write_atomic;
 use rig_tools::process::Launcher;
 use rig_tools::workspace::{Local, Workspace};
-use rig_tools::{Edit, Shell, ShellArgs, ShellRun, Write};
+use rig_tools::{Edit, Seen, Shell, ShellArgs, ShellRun, Write};
 use serde::Deserialize;
 
 /// A formatted region of fewer lines than this is shown in the result.
@@ -89,6 +91,7 @@ impl Plugin for FormatOnWritePlugin {
     fn build(&self, app: &mut App) {
         app.add_setting::<FormatOnWrite>("format_on_write")
             .init_resource::<Processes>()
+            .init_resource::<SeenFiles>()
             .configure_sets(AgentPass, FormatOnWriteSystems.in_set(PrepareSystems::Edit))
             .add_systems(AgentPass, format_after.in_set(FormatOnWriteSystems));
     }
@@ -101,7 +104,7 @@ fn format_after(
     mut calls: Query<(&ToolRequest, &ForAgent, &mut CallHandler), (ToolCalls, Added<Admitted>)>,
     dirs: Query<&WorkDir>,
     config: Res<FormatOnWrite>,
-    processes: Res<Processes>,
+    (processes, seen): (Res<Processes>, Res<SeenFiles>),
 ) {
     for (request, &ForAgent(agent), mut handler) in &mut calls {
         let name = request.call.function.name.as_str();
@@ -109,6 +112,7 @@ fn format_after(
             let layer = Formatting {
                 config: config.clone(),
                 launcher: processes.launcher(),
+                seen: seen.0.clone(),
                 base: dirs.get(agent).ok().map(|WorkDir(dir)| dir.clone()),
             };
             handler.0 = Handler(handler.0.0.clone().layered(layer));
@@ -120,6 +124,8 @@ fn format_after(
 struct Formatting {
     config: FormatOnWrite,
     launcher: Launcher,
+    /// The files the coding tools saw, where the formatted text is noted.
+    seen: Seen,
     /// Where the tool resolved a relative path from: the agent's
     /// `WorkDir`, else the process's directory.
     base: Option<PathBuf>,
@@ -198,7 +204,13 @@ impl Formatting {
         let name = program(formatter);
         let why = match self.run(formatter, path).await {
             Ok(ran) if ran.status.success() => match read(path).await {
-                Some(after) => return formatted(name, &before, &after),
+                Some(after) => {
+                    let held = content_hash(before.as_bytes());
+                    if self.seen.hash(path).is_some_and(|hash| hash == held) {
+                        self.seen.saw_whole(path, &after);
+                    }
+                    return formatted(name, &before, &after);
+                }
                 None => "it left no file to read".to_owned(),
             },
             Ok(ran) => ran.output,
