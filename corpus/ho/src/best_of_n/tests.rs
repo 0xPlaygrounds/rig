@@ -3,10 +3,11 @@ use std::process::Command;
 
 use rig_basics::coding_tools::{ReadTool, WriteTool};
 use rig_core::test_utils::MockCompletionModel;
+use serde_json::json;
 
 use super::*;
 use rig_harness_test_support::{
-    Collected, MemoryStore, app_on, collect, reply, rewrites, run_until, scripted_models,
+    Collected, MemoryStore, app_on, calls, collect, reply, rewrites, run_until, scripted_models,
 };
 
 /// What `file.txt` in the project held as the apply started.
@@ -59,7 +60,12 @@ fn the_passing_candidate_is_applied_and_the_worktrees_go() {
     // Candidate 1 first tries the project's own file, from its worktree
     // `.rig/best-of/<id>/1`.
     let one = MockCompletionModel::from_stream_turns([
-        write("../../../../file.txt", "escaped\n"),
+        // A bare write: confinement refuses it before any read could.
+        calls(
+            "w1",
+            "write",
+            json!({ "path": "../../../../file.txt", "content": "escaped\n" }),
+        ),
         write("file.txt", "wrong\n"),
         reply("wrote wrong"),
     ]);

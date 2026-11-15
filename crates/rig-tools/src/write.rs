@@ -11,9 +11,10 @@ use rig_core::tool::{
 use schemars::JsonSchema;
 use serde::Deserialize;
 
+use crate::attach::is_image_path;
 use crate::fs::{Previous, io_error};
 use crate::workspace::Root;
-use crate::workspace::Workspace;
+use crate::workspace::{Contents, Workspace};
 use crate::{MAX_FILE_BYTES, Seen, blocking};
 
 /// Writes a whole file, creating its parent directories. An existing file
@@ -130,17 +131,36 @@ fn write(
     };
     match workspace.write_if(resolved, bytes, held.as_ref()) {
         Ok(None) => Ok(before),
-        Ok(Some(_)) if held.is_none() => Err(unseen(asked, "was not read")),
-        Ok(Some(_)) => Err(unseen(asked, CHANGED)),
+        Ok(Some(now)) => Err(refused(asked, resolved, &now, held.is_some())),
         // Gone since it was seen: nothing is lost by writing it anew.
         Err(error) if error.kind() == ErrorKind::NotFound && held.is_some() => {
             match workspace.write_if(resolved, bytes, None).map_err(failed)? {
                 None => Ok(None),
-                Some(_) => Err(unseen(asked, CHANGED)),
+                Some(now) => Err(refused(asked, resolved, &now, true)),
             }
         }
         Err(error) => Err(failed(error)),
     }
+}
+
+/// Why a write of `asked`, at `resolved`, which holds `now` and was
+/// `seen` before, wrote nothing: the file changed since or was not read,
+/// or it is a file `read` does not show as text, which a read would not
+/// help with.
+fn refused(asked: &str, resolved: &Path, now: &Contents, seen: bool) -> ToolExecutionError {
+    let what = if is_image_path(resolved) {
+        "an image".to_owned()
+    } else if now.size > MAX_FILE_BYTES {
+        format!("larger than {} MB", MAX_FILE_BYTES / (1024 * 1024))
+    } else if std::str::from_utf8(&now.bytes).is_err() {
+        "not UTF-8 text".to_owned()
+    } else {
+        return unseen(asked, if seen { CHANGED } else { "was not read" });
+    };
+    ToolExecutionError::invalid_args(format!(
+        "`{asked}` exists and is {what}, which `read` does not show as text, so nothing was \
+         written: to replace it, remove it with `rm` in `shell`, then write it again"
+    ))
 }
 
 /// Why a write of a file that changed since it was seen wrote nothing.

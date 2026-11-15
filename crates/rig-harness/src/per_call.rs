@@ -373,7 +373,10 @@ impl<T: PerCallTool> BuildAt for T {
 /// let overlay = Arc::new(Overlay::new(project));
 /// let on = overlay.clone();
 /// let ran = app.world_mut().run_system_once(move |tools: PerCallTools| {
-///     let place = tools.place(Some(agent), on.clone());
+///     let place = CallPlace {
+///         overlaid: true,
+///         ..tools.place(Some(agent), on.clone())
+///     };
 ///     let (base, confine) = (place.base.clone(), place.confine);
 ///     let quiet = place.live.is_none() && place.spill.is_none();
 ///     let missing = tools.build("read", tools.place(None, on.clone()));

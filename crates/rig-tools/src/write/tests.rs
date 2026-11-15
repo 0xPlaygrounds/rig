@@ -147,7 +147,9 @@ fn a_write_never_replaces_text_the_model_has_not_seen() {
     std::fs::write(&path, original).ok();
     let unread = write(&path, models);
     assert!(
-        unread.as_ref().is_err_and(|why| why.contains("read it")),
+        unread
+            .as_ref()
+            .is_err_and(|why| why.contains("was not read")),
         "{unread:?}"
     );
     assert_eq!(on_disk(&path).as_deref(), Some(original));
@@ -168,4 +170,29 @@ fn a_write_never_replaces_text_the_model_has_not_seen() {
     assert_eq!(fresh, Ok(format!("Replaced {path}, which had 5 lines.")));
     assert_eq!(on_disk(&path).as_deref(), Some(models));
     std::fs::remove_dir_all(dir).ok();
+}
+
+/// A write over a file `read` cannot show as text, such as a binary one,
+/// says so and how to replace it, rather than asking for a read that
+/// would not help; nothing is written.
+#[test]
+fn a_write_over_a_binary_file_says_how_to_replace_it() {
+    let write_tool = Write::default();
+    let dir = std::env::temp_dir().join(format!("rig-tools-binary-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).ok();
+    let path = dir.join("blob.bin");
+    std::fs::write(&path, [0xff_u8, 0xfe, 0x00, 0x01]).ok();
+    let mut context = ToolContext::new();
+    let args = WriteArgs::new(path.to_string_lossy(), "text\n");
+    let wrote = futures::executor::block_on(Tool::call(&write_tool, &mut context, args))
+        .map_err(|error| error.to_string());
+    let kept = std::fs::read(&path).ok();
+    std::fs::remove_dir_all(&dir).ok();
+    assert!(
+        wrote
+            .as_ref()
+            .is_err_and(|why| why.contains("not UTF-8 text") && why.contains("`shell`")),
+        "{wrote:?}"
+    );
+    assert_eq!(kept, Some(vec![0xff, 0xfe, 0x00, 0x01]));
 }
