@@ -149,7 +149,7 @@ fn a_write_never_replaces_text_the_model_has_not_seen() {
     assert!(
         unread
             .as_ref()
-            .is_err_and(|why| why.contains("was not read")),
+            .is_err_and(|why| why.contains("has not been read by you")),
         "{unread:?}"
     );
     assert_eq!(on_disk(&path).as_deref(), Some(original));

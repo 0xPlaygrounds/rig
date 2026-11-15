@@ -155,7 +155,7 @@ fn refused(asked: &str, resolved: &Path, now: &Contents, seen: bool) -> ToolExec
     } else if std::str::from_utf8(&now.bytes).is_err() {
         "not UTF-8 text".to_owned()
     } else {
-        return unseen(asked, if seen { CHANGED } else { "was not read" });
+        return unseen(asked, if seen { CHANGED } else { NOT_READ });
     };
     ToolExecutionError::invalid_args(format!(
         "`{asked}` exists and is {what}, which `read` does not show as text, so nothing was \
@@ -164,7 +164,11 @@ fn refused(asked: &str, resolved: &Path, now: &Contents, seen: bool) -> ToolExec
 }
 
 /// Why a write of a file that changed since it was seen wrote nothing.
-const CHANGED: &str = "changed since it was last read or written";
+const CHANGED: &str = "changed since you last read or wrote it";
+
+/// Why a write of a file not seen before wrote nothing: what is seen is
+/// each agent's own, and is not kept across a restart.
+const NOT_READ: &str = "has not been read by you since rig started";
 
 /// Why a write of the existing file `path`, which `why`, wrote nothing.
 fn unseen(path: &str, why: &str) -> ToolExecutionError {

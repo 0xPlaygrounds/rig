@@ -353,7 +353,7 @@ fn a_write_there_replaces_only_what_was_read() {
     };
     assert!(shown.is_ok() && again.is_ok());
     assert!(
-        said(unread).is_err_and(|why| why.contains("was not read")),
+        said(unread).is_err_and(|why| why.contains("has not been read by you")),
         "an unread file was replaced"
     );
     assert!(

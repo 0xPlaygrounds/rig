@@ -5,7 +5,7 @@ use rig_core::effect::{Answered as EffectOutcome, EffectId};
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::message::{ToolFunction, ToolName};
 use rig_core::tool::ChangeKind;
-use rig_tools::{Seen, Write};
+use rig_tools::Write;
 
 use super::{Preview, PreviewPlugin, Previewed};
 use rig_harness::per_call::AppPerCallExt;
@@ -97,23 +97,18 @@ fn a_previewed_write_of_a_file_read_then_writes_it() {
     std::fs::create_dir_all(&dir).ok();
     let file = dir.join("old.txt");
     std::fs::write(&file, "old\n").ok();
-    let seen = Seen::default();
-    seen.saw_whole(&file, "old\n");
     let mut app = App::new();
     app.add_plugins((TaskPoolPlugin::default(), AgentPlugin, PreviewPlugin))
         .insert_resource(ProjectRoot(dir.clone()))
-        .add_tool_per_call(
-            Write {
-                seen,
-                ..Write::default()
-            },
-            ToolOptions::default(),
-        )
+        .add_tool_per_call(Write::default(), ToolOptions::default())
         .add_systems(AgentPass, preview_then_allow.in_set(Stage::Gate));
     app.finish();
     app.update();
     let world = app.world_mut();
     let agent = spawn_root(world).id();
+    if let Some(FilesSeen(seen)) = world.get::<FilesSeen>(agent) {
+        seen.saw_whole(&file, "old\n");
+    }
     let args = serde_json::json!({ "path": "old.txt", "content": "new\n" });
     let Ok(name) = ToolName::new("write") else {
         return;
