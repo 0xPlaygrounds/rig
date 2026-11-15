@@ -641,48 +641,112 @@ fn a_crlf_split_between_two_reads_is_not_erased() {
     assert_eq!(shown.text(), "one\r\ntwo\r\x1b[Kthree\n");
 }
 
+/// Bevy's own crates, as the agent project's lock lists them.
+fn bevy() -> BTreeSet<String> {
+    ["bevy", "bevy_app", "bevy_ecs", "bevy_reflect"]
+        .map(str::to_owned)
+        .into()
+}
+
+/// Writes `manifest` as the `Cargo.toml` of `dir`.
+fn manifest_at(dir: &Path, manifest: &str) {
+    fs::create_dir_all(dir).ok();
+    fs::write(dir.join("Cargo.toml"), manifest).ok();
+}
+
 #[test]
-fn a_plugins_bevy_requirement_the_agents_bevy_does_not_meet_is_named_with_its_line() {
+fn a_plugins_bevy_requirement_the_agents_bevy_does_not_meet_is_named_with_its_table_and_line() {
     let root = std::env::temp_dir().join(format!("rig-bevy-pins-{}", std::process::id()));
     fs::remove_dir_all(&root).ok();
-    let (old, ranged, table) = (root.join("old"), root.join("ranged"), root.join("table"));
-    let manifests = [
-        (
-            &old,
-            "[package]\nname = \"old\"\n\n[dependencies]\nrig-harness = \"0.46.0\"\n\
-             bevy_ecs = { version = \"=0.20.0\", default-features = false }\n\
-             bevy_reflect = { version = \"=0.20.0\", default-features = false }\n",
-        ),
-        (
-            &ranged,
-            "[package]\nname = \"ranged\"\n\n[dependencies]\n\
-             bevy_ecs = { version = \"0.20\", default-features = false }\n\
-             bevy_reflect = \"=0.20.1\"\nbevy_app = \"~0.20.0\"\n",
-        ),
-        (
-            &table,
-            "[package]\nname = \"table\"\n\n[dependencies.bevy_app]\nversion = \"0.19\"\n",
-        ),
-    ];
-    for (dir, manifest) in manifests {
-        fs::create_dir_all(dir).ok();
-        fs::write(dir.join("Cargo.toml"), manifest).ok();
-    }
-    let pins = bevy_pins([old.as_path(), ranged.as_path(), table.as_path()]);
+    let dirs = [
+        "old",
+        "ranged",
+        "table",
+        "target",
+        "renamed",
+        "workspace/member",
+    ]
+    .map(|name| root.join(name));
+    let [old, ranged, table, target, renamed, member] = &dirs;
+    manifest_at(
+        old,
+        "[package]\nname = \"old\"\n\n[dependencies]\nrig-harness = \"0.46.0\"\n\
+         bevy_ecs = { version = \"=0.20.0\", default-features = false }\n\
+         bevy_reflect = { version = \"=0.20.0\", default-features = false }\n",
+    );
+    // Met, or not Bevy's own: a crate of Bevy's ecosystem at its own version.
+    manifest_at(
+        ranged,
+        "[package]\nname = \"ranged\"\n\n[dependencies]\n\
+         bevy_ecs = { version = \"0.20\", default-features = false }\n\
+         bevy_reflect = \"=0.20.1\"\nbevy_app = \"~0.20.0\"\nbevy_egui = \"0.33\"\n\n\
+         [dev-dependencies]\nbevy = \"=0.19.0\"\n",
+    );
+    manifest_at(
+        table,
+        "[package]\nname = \"table\"\n\n[dependencies.bevy_app]\nversion = \"0.19\"\n",
+    );
+    // A met requirement first, the pin in a target's table after it.
+    manifest_at(
+        target,
+        "[package]\nname = \"target\"\n\n[dependencies]\nbevy_ecs = \"0.20\"\n\n\
+         [target.'cfg(unix)'.dependencies]\nbevy_ecs = \"=0.20.0\"\n",
+    );
+    manifest_at(
+        renamed,
+        "[package]\nname = \"renamed\"\n\n[dependencies]\n\
+         ecs = { package = \"bevy_ecs\", version = \"=0.20.0\" }\n",
+    );
+    manifest_at(
+        &root.join("workspace"),
+        "[workspace]\nmembers = [\"member\"]\n\n[workspace.dependencies]\n\
+         bevy_reflect = \"=0.20.0\"\n",
+    );
+    manifest_at(
+        member,
+        "[package]\nname = \"member\"\n\n[dependencies]\nbevy_reflect = { workspace = true }\n",
+    );
+    let pins = bevy_pins(dirs.iter().map(PathBuf::as_path), &bevy());
     let file = |dir: &Path| dir.join("Cargo.toml").display().to_string();
     assert_eq!(
         pins,
         [
             format!(
-                "{}:6: bevy_ecs = {{ version = \"=0.20.0\", default-features = false }}",
-                file(&old)
+                "{}:6: [dependencies] bevy_ecs = {{ version = \"=0.20.0\", default-features = false }}",
+                file(old)
             ),
             format!(
-                "{}:7: bevy_reflect = {{ version = \"=0.20.0\", default-features = false }}",
-                file(&old)
+                "{}:7: [dependencies] bevy_reflect = {{ version = \"=0.20.0\", default-features = false }}",
+                file(old)
             ),
-            format!("{}:4: [dependencies.bevy_app]", file(&table)),
+            format!(
+                "{}:5: [dependencies.bevy_app] version = \"0.19\"",
+                file(table)
+            ),
+            format!(
+                "{}:8: [target.'cfg(unix)'.dependencies] bevy_ecs = \"=0.20.0\"",
+                file(target)
+            ),
+            format!(
+                "{}:5: [dependencies] ecs = {{ package = \"bevy_ecs\", version = \"=0.20.0\" }}",
+                file(renamed)
+            ),
+            format!(
+                "{}:5: [workspace.dependencies] bevy_reflect = \"=0.20.0\"",
+                file(&root.join("workspace"))
+            ),
         ]
     );
     fs::remove_dir_all(&root).ok();
+}
+
+/// Bevy's own crates are those the lock has at the agent's Bevy version.
+#[test]
+fn bevys_own_crates_are_read_from_the_lock() {
+    let lock = format!(
+        "version = 4\n\n[[package]]\nname = \"bevy_ecs\"\nversion = \"{BEVY_VERSION}\"\n\n\
+         [[package]]\nname = \"bevy_egui\"\nversion = \"0.33.0\"\n\n\
+         [[package]]\nname = \"serde\"\nversion = \"{BEVY_VERSION}\"\n"
+    );
+    assert_eq!(bevy_crates(&lock), BTreeSet::from(["bevy_ecs".to_owned()]));
 }
