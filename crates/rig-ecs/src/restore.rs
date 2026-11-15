@@ -42,7 +42,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use bevy_ecs::prelude::*;
 use bevy_ecs::reflect::{AppTypeRegistry, ReflectComponent};
-use bevy_log::warn;
+use bevy_log::{info, warn};
 use bevy_reflect::prelude::ReflectDefault;
 use bevy_reflect::serde::TypedReflectDeserializer;
 use bevy_reflect::{Reflect, ReflectFromReflect, TypeRegistration, TypeRegistry};
@@ -351,8 +351,9 @@ pub struct Restored;
 /// one [`open_session`] read, or, when only a [`SessionStore`] was
 /// inserted, the one this opens; a session it refuses is not restored nor
 /// logged to, with a notice. A saved value that does not load is skipped
-/// with a notice, and its next save replaces it; what reading repaired is
-/// shown as a notice too.
+/// with a notice, and its next save replaces it; one of a type no plugin of
+/// this build saves stays in the session for a build that does, which only
+/// the log says. What reading repaired is shown as a notice too.
 pub(crate) fn restore_session(world: &mut World) {
     let session = match world.remove_resource::<Opened>() {
         Some(Opened(session)) => session,
@@ -391,21 +392,26 @@ pub(crate) fn restore_session(world: &mut World) {
     let registry = registry.unwrap_or_default();
     let registry = registry.read();
     let reader = SavedReader::new(world);
-    let skipped = |what: &str, key: &str, failure: String| {
-        let skipped =
-            format!("Skipped saved {what} `{key}`: {failure}; its next save replaces it.");
-        Notice::error(None, skipped)
+    let skipped = |what: &str, key: &str, unread: Unread| match unread {
+        Unread::Unsaved => {
+            info!("kept saved {what} `{key}` unread: no plugin saves it in this build");
+            None
+        }
+        Unread::Failed(failure) => Some(Notice::error(
+            None,
+            format!("Skipped saved {what} `{key}`: {failure}; its next save replaces it."),
+        )),
     };
     for (key, value) in &state {
         let restored = reader
             .read(&registry, key, value)
             .and_then(|(component, value)| {
-                let mut resource = resource_entity(world, component)?;
+                let mut resource = resource_entity(world, component).map_err(Unread::Failed)?;
                 component.insert(&mut resource, value.as_partial_reflect(), &registry);
                 Ok(())
             });
-        if let Err(failure) = restored {
-            notices.push(skipped("resource", key, failure));
+        if let Err(unread) = restored {
+            notices.extend(skipped("resource", key, unread));
         }
     }
     let mut entities = HashMap::new();
@@ -417,7 +423,7 @@ pub(crate) fn restore_session(world: &mut World) {
         for (key, value) in &agent.saved {
             match reader.read(&registry, key, value) {
                 Ok(value) => read.push(value),
-                Err(failure) => notices.push(skipped("component", key, failure)),
+                Err(unread) => notices.extend(skipped("component", key, unread)),
             }
         }
         let mut spawned = world.spawn((Name::new("agent"), Agent::new(), id.clone(), conversation));
@@ -548,16 +554,16 @@ impl SavedReader {
     ///
     /// # Errors
     ///
-    /// Why it is not read: it no longer fits its type, or no plugin saves
-    /// its type.
+    /// Why it is not read ([`Unread`]).
     pub(crate) fn read<'r>(
         &self,
         registry: &'r TypeRegistry,
         key: &str,
         saved: &Value,
-    ) -> Result<(&'r ReflectComponent, Box<dyn Reflect>), String> {
+    ) -> Result<(&'r ReflectComponent, Box<dyn Reflect>), Unread> {
         let (registration, component) = saved_type(self.path(key), registry)?;
-        Ok((component, reflected(registration, saved, registry)?))
+        let value = reflected(registration, saved, registry).map_err(Unread::Failed)?;
+        Ok((component, value))
     }
 
     /// The type path of the values saved under `key`.
@@ -581,18 +587,28 @@ fn reflected(
         .ok_or_else(|| "its saved value no longer fits".to_owned())
 }
 
+/// Why a saved value is not restored.
+#[derive(Debug)]
+pub(crate) enum Unread {
+    /// No plugin of this build saves its type, such as one turned off.
+    Unsaved,
+    /// It does not load as its type, with why.
+    Failed(String),
+}
+
 /// The registration of the saved component of the type path
 /// `path`, with the reflection that inserts and removes it.
 pub(crate) fn saved_type<'r>(
     path: &str,
     registry: &'r TypeRegistry,
-) -> Result<(&'r TypeRegistration, &'r ReflectComponent), String> {
+) -> Result<(&'r TypeRegistration, &'r ReflectComponent), Unread> {
     let registration = registry
         .get_with_type_path(path)
         .filter(|registration| registration.data::<ReflectSaved>().is_some())
-        .ok_or("no plugin saves it in this build")?;
+        .ok_or(Unread::Unsaved)?;
     let component = registration.data::<ReflectComponent>();
-    let component = component.ok_or("it is not a reflected component")?;
+    let component =
+        component.ok_or_else(|| Unread::Failed("it is not a reflected component".to_owned()))?;
     Ok((registration, component))
 }
 
