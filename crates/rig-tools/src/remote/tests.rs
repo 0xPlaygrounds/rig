@@ -313,6 +313,65 @@ fn each_file_operation_is_one_transport_call() {
     );
 }
 
+/// A write there over a file the model never read, or one changed since
+/// it read it, is refused in one transport call and leaves the file as it
+/// was; after a read, the write goes through.
+#[test]
+fn a_write_there_replaces_only_what_was_read() {
+    let dir = scratch("unseen");
+    let home = dir.join("home");
+    let log = dir.join("calls.log");
+    let on_disk = home.join("strata/src/lib.rs");
+    std::fs::write(&on_disk, "fn old() {}\n").ok();
+    let bench = Remote::new("bench", counted(&home, &log), Launcher::default);
+    let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
+    let seen = crate::Seen::default();
+    let read = Read {
+        root: Root::from(workspace.clone()),
+        seen: seen.clone(),
+    };
+    let write = crate::Write {
+        root: Root::from(workspace),
+        seen,
+    };
+    let file = "bench:~/strata/src/lib.rs";
+    let (unread, _) = call(&write, crate::WriteArgs::new(file, "fn new() {}\n"));
+    let unread_calls = calls(&log);
+    let unread_text = std::fs::read_to_string(&on_disk).ok();
+    let (shown, _) = call(&read, ReadArgs::new(file));
+    std::fs::write(&on_disk, "fn users() {}\n").ok();
+    calls(&log);
+    let (stale, _) = call(&write, crate::WriteArgs::new(file, "fn new() {}\n"));
+    let stale_calls = calls(&log);
+    let stale_text = std::fs::read_to_string(&on_disk).ok();
+    let (again, _) = call(&read, ReadArgs::new(file));
+    let (wrote, _) = call(&write, crate::WriteArgs::new(file, "fn new() {}\n"));
+    let wrote_text = std::fs::read_to_string(&on_disk).ok();
+    std::fs::remove_dir_all(&dir).ok();
+    let said = |result: Result<String, rig_core::tool::ToolExecutionError>| {
+        result.map_err(|error| error.to_string())
+    };
+    assert!(shown.is_ok() && again.is_ok());
+    assert!(
+        said(unread).is_err_and(|why| why.contains("was not read")),
+        "an unread file was replaced"
+    );
+    assert!(
+        said(stale).is_err_and(|why| why.contains("changed since")),
+        "a changed file was replaced"
+    );
+    assert_eq!(
+        (unread_text.as_deref(), stale_text.as_deref()),
+        (Some("fn old() {}\n"), Some("fn users() {}\n"))
+    );
+    assert_eq!((unread_calls, stale_calls), (1, 1));
+    assert_eq!(
+        said(wrote).ok().as_deref(),
+        Some("Replaced bench:~/strata/src/lib.rs, which had 1 line.")
+    );
+    assert_eq!(wrote_text.as_deref(), Some("fn new() {}\n"));
+}
+
 /// [`transport`], first appending to `log` how many bytes each call sent
 /// back.
 fn metered(home: &Path, log: &Path) -> Vec<String> {

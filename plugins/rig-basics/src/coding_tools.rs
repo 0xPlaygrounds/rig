@@ -48,9 +48,10 @@ pub mod remote;
 /// under it, in the terminal view's look and in `-p`'s line for the call.
 pub(crate) const COMMAND_INDENT: &str = "    ";
 
-/// The files `read` showed and `edit` left, which [`ReadTool`] and
-/// [`EditTool`] share, so an edit whose text is not found asks for a new
-/// read only of a file that changed since one.
+/// The files `read` showed and `edit` and `write` left, which [`ReadTool`],
+/// [`EditTool`] and [`WriteTool`] share, so an edit whose text is not found
+/// asks for a new read only of a file that changed since one, and a write
+/// replaces only a file read as it is now. Every agent of the app shares it.
 #[derive(Resource, Clone, Debug, Default)]
 pub struct SeenFiles(pub Seen);
 

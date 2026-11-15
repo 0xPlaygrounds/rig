@@ -106,23 +106,34 @@ pub trait Workspace: Send + Sync + fmt::Debug + 'static {
         Ok(before)
     }
 
-    /// [`write`](Self::write)s `bytes` to the regular file `path` only
-    /// while it holds the text whose [`content_hash`] is `held`: `None`
-    /// when it did. Otherwise nothing is written and it says what the file
-    /// holds instead, as [`read`](Self::read) with a limit of
-    /// [`MAX_FILE_BYTES`] reads it. What an edit made from text seen
-    /// before writes with; a workspace where each call costs a round trip,
-    /// such as a remote one, checks and writes in one.
+    /// [`write`](Self::write)s `bytes` to `path` only while it is the
+    /// regular file holding the text whose [`content_hash`] is `held`, or,
+    /// with no `held`, while there is no file there: `None` when it wrote.
+    /// Otherwise nothing is written and it says what the file holds
+    /// instead, as [`read`](Self::read) with a limit of [`MAX_FILE_BYTES`]
+    /// reads it; with a `held`, no file there is a
+    /// [`NotFound`](ErrorKind::NotFound) error. What a tool that writes
+    /// over text seen before, or only a new file, writes with; a workspace
+    /// where each call costs a round trip, such as a remote one, checks and
+    /// writes in one.
     ///
     /// By default it reads, then writes.
     fn write_if(
         &self,
         path: &Path,
         bytes: &[u8],
-        held: &ContentHash,
+        held: Option<&ContentHash>,
     ) -> io::Result<Option<Contents>> {
-        let now = self.read(path, MAX_FILE_BYTES)?;
-        if now.size > MAX_FILE_BYTES || content_hash(&now.bytes) != *held {
+        let now = match self.read(path, MAX_FILE_BYTES) {
+            Err(error) if held.is_none() && error.kind() == ErrorKind::NotFound => {
+                self.write(path, bytes)?;
+                return Ok(None);
+            }
+            now => now?,
+        };
+        let holds =
+            |held: &ContentHash| now.size <= MAX_FILE_BYTES && content_hash(&now.bytes) == *held;
+        if !held.is_some_and(holds) {
             return Ok(Some(now));
         }
         self.write(path, bytes)?;

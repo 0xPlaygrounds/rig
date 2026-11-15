@@ -619,14 +619,30 @@ impl Workspace for Remote {
     /// One script: a copy of the file is made beside it and hashed there,
     /// then filled with `bytes` and moved over the file, once it holds all
     /// of them, when the hash is `held`, or sent back when it is not. A machine with neither
-    /// `sha256sum` nor `shasum` always sends it back.
+    /// `sha256sum` nor `shasum` always sends it back. With no `held`, a
+    /// file there is sent back, and else a new one is written as
+    /// [`replace`](Workspace::replace) writes it.
     fn write_if(
         &self,
         path: &Path,
         bytes: &[u8],
-        held: &ContentHash,
+        held: Option<&ContentHash>,
     ) -> io::Result<Option<Contents>> {
         let size = bytes.len();
+        let Some(held) = held else {
+            let script = format!(
+                "p={}; [ -L \"$p\" ] && {{ readlink -- \"$p\" >&2; exit {A_LINK}; }}; \
+                 if [ -e \"$p\" ]; then [ -f \"$p\" ] || exit {NOT_A_FILE}; \
+                 wc -c < \"$p\" && head -c {MAX_FILE_BYTES} -- \"$p\"; exit; fi; \
+                 d=$(dirname -- \"$p\"); \
+                 mkdir -p -- \"$d\" && t=$(mktemp \"$d/.rig-write.XXXXXX\") || exit 1; \
+                 chmod \"$(printf %o $((0666 & ~$(umask))))\" \"$t\" && \
+                 cat > \"$t\" && [ $(wc -c < \"$t\") -eq {size} ] && mv -f -- \"$t\" \"$p\" && echo = || \
+                 {{ rm -f -- \"$t\"; exit 1; }}",
+                quote_path(path)
+            );
+            return compared(&self.written(path, &script, bytes)?);
+        };
         let script = format!(
             "p={}; [ -L \"$p\" ] && {{ readlink -- \"$p\" >&2; exit {A_LINK}; }}; \
              [ -f \"$p\" ] || {{ [ -e \"$p\" ] && exit {NOT_A_FILE}; exit {NOT_FOUND}; }}; \
@@ -641,17 +657,7 @@ impl Workspace for Remote {
             quote_path(path),
             quote(&held.0)
         );
-        let out = self.written(path, &script, bytes)?;
-        let Some((first, rest)) = split_line(&out) else {
-            return Err(io::Error::other("the remote write said nothing"));
-        };
-        if first == "=" {
-            return Ok(None);
-        }
-        Ok(Some(Contents {
-            bytes: rest.to_vec(),
-            size: first.trim().parse().map_err(io::Error::other)?,
-        }))
+        compared(&self.written(path, &script, bytes)?)
     }
 
     fn remove(&self, path: &Path) -> io::Result<()> {
@@ -948,7 +954,7 @@ impl Workspace for Hosts {
         &self,
         path: &Path,
         bytes: &[u8],
-        held: &ContentHash,
+        held: Option<&ContentHash>,
     ) -> io::Result<Option<Contents>> {
         match self.route(path) {
             Some((remote, path)) => remote.write_if(&path, bytes, held),
@@ -1031,6 +1037,21 @@ impl Workspace for Hosts {
 }
 
 /// `bytes` split at its first `\n`: the line before it, as text, and
+/// What a [`write_if`](Workspace::write_if) script answered, `out`: `=`
+/// when it wrote, else the file's size on a line and its bytes.
+fn compared(out: &[u8]) -> io::Result<Option<Contents>> {
+    let Some((first, rest)) = split_line(out) else {
+        return Err(io::Error::other("the remote write said nothing"));
+    };
+    if first == "=" {
+        return Ok(None);
+    }
+    Ok(Some(Contents {
+        bytes: rest.to_vec(),
+        size: first.trim().parse().map_err(io::Error::other)?,
+    }))
+}
+
 /// what follows.
 fn split_line(bytes: &[u8]) -> Option<(String, &[u8])> {
     let newline = bytes.iter().position(|&byte| byte == b'\n')?;
