@@ -263,15 +263,26 @@ fn expect_needs_resolution(outcome: ModelTurnOutcome) -> InvalidToolCallContext 
 fn repeated_model_turn_reuses_prompt_without_recording_rejected_response() {
     let first_usage = usage(10, 3);
     let second_usage = usage(7, 2);
+    let mut first_origin = rig_core::message::Origin::new("test.api", "first", "requested");
+    first_origin.response_model = Some("served".into());
+    first_origin.response_id = Some("response-1".into());
+    first_origin.context = Some(rig_core::message::Fingerprint::of(&"instructions"));
+    let mut second_origin = rig_core::message::Origin::new("other.api", "second", "fallback");
+    second_origin.response_id = Some("response-2".into());
     let mut run = AgentRun::new("question").max_turns(2);
 
     let (first_prompt, first_history, first_turn) = expect_call_model(&mut run);
     assert_eq!(*first_prompt, Message::user("question"));
     assert!(first_history.is_empty());
     assert_eq!(first_turn, 1);
-    expect_continue(
-        run.model_response(text_turn("rejected").with_usage_for_test(first_usage))
-            .expect("first response"),
+    let mut rejected = text_turn("rejected").with_usage_for_test(first_usage);
+    rejected.head = rejected.head.with_origin(first_origin.clone());
+    expect_continue(run.model_response(rejected).expect("first response"));
+    assert_eq!(
+        run.completion_calls()
+            .first()
+            .and_then(|call| call.origin.as_ref()),
+        Some(&first_origin)
     );
 
     run.retry_model_turn(RetryRequest::Repeat)
@@ -282,14 +293,21 @@ fn repeated_model_turn_reuses_prompt_without_recording_rejected_response() {
     assert_eq!(second_turn, 2);
     assert_eq!(run.messages(), &[Arc::new(Message::user("question"))]);
 
-    expect_continue(
-        run.model_response(text_turn("accepted").with_usage_for_test(second_usage))
-            .expect("second response"),
-    );
+    let mut accepted = text_turn("accepted").with_usage_for_test(second_usage);
+    accepted.head = accepted.head.with_origin(second_origin.clone());
+    expect_continue(run.model_response(accepted).expect("second response"));
     let response = expect_done(&mut run);
     assert_eq!(response.output(), "accepted");
     assert_eq!(response.usage, first_usage + second_usage);
     assert_eq!(response.completion_calls.len(), 2);
+    assert_eq!(
+        response
+            .completion_calls
+            .iter()
+            .map(|call| call.origin.as_ref())
+            .collect::<Vec<_>>(),
+        vec![Some(&first_origin), Some(&second_origin)]
+    );
     let messages = response.messages;
     assert_eq!(messages.len(), 2);
     assert!(!format!("{messages:?}").contains("rejected"));

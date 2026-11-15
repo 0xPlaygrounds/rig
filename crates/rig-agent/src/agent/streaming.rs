@@ -140,7 +140,8 @@ pub enum MultiTurnStreamItem {
     ///
     /// This is emitted when a provider call finishes. Usage is the provider's
     /// final usage for that completion request when available; it is not
-    /// incremental per streamed token.
+    /// incremental per streamed token. Origin identifies that response, before
+    /// outcome hooks and model-turn acceptance or retry.
     ///
     /// ```
     /// use rig_agent::agent::MultiTurnStreamItem;

@@ -13,12 +13,15 @@ use crate::completion::{CompletionRequest, FinishReason, PromptError, ToolDefini
 use crate::run::{AgentRun, AgentRunStep};
 use crate::streaming::{Item, StreamEvent};
 use crate::test_utils::{
-    CapturedSpan, Counted, MockAddTool, MockCompletionModel, MockContextProbeTool, MockStreamEvent,
-    MockSubtractTool, SessionId, TraceCapture, drive_to_final_response, mock_final,
+    CapturedSpan, Counted, MOCK_API, MOCK_MODEL, MOCK_PROVIDER, MockAddTool, MockCompletionModel,
+    MockContextProbeTool, MockStreamEvent, MockSubtractTool, SessionId, TraceCapture,
+    drive_to_final_response, mock_final,
 };
 use crate::tool::ToolContext;
 use futures::{StreamExt, TryStreamExt};
-use rig_core::message::{AssistantContent, Message, ToolChoice, ToolResultContent, UserContent};
+use rig_core::message::{
+    AssistantContent, Fingerprint, Message, Origin, ToolChoice, ToolResultContent, UserContent,
+};
 use rig_core::operation::Finish;
 use rig_core::providers::anthropic;
 use rig_core::tool::feedback::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER;
@@ -300,11 +303,6 @@ fn streaming_tool_then_text_model() -> MockCompletionModel {
     ])
 }
 
-/// The record a streamed mock turn scripted with
-/// `MockStreamEvent::final_response(usage)` leaves on `completion_calls`:
-/// index, usage, and the mock's terminal record serialized onto `raw` —
-/// the terminal is always captured, so an expected call without it never
-/// matches.
 fn streamed_call(call_index: usize, usage: Usage) -> CompletionCall {
     let terminal = mock_final(usage);
     CompletionCall::new(
@@ -312,6 +310,7 @@ fn streamed_call(call_index: usize, usage: Usage) -> CompletionCall {
         usage,
         serde_json::to_value(&terminal).expect("mock terminal serializes"),
     )
+    .with_origin(Origin::new(MOCK_API, MOCK_PROVIDER, MOCK_MODEL))
 }
 
 fn usage(input_tokens: u64, output_tokens: u64) -> Usage {
@@ -803,17 +802,20 @@ async fn streaming_rejected_message_telemetry_does_not_record_output() {
 
 #[test]
 fn completion_calls_stream_item_serializes_and_deserializes_expected_shape() {
-    let item: MultiTurnStreamItem = MultiTurnStreamItem::CompletionCall(CompletionCall::new(
-        2,
-        usage(3, 4),
-        serde_json::json!({"id": "resp_2"}),
-    ));
-
-    let value = serde_json::to_value(&item).expect("serialize completion call event");
-
-    assert_eq!(
-        value,
-        serde_json::json!({
+    let context = Fingerprint::of(&"request context");
+    let origin = Origin {
+        response_model: Some("reported-model".to_string()),
+        response_id: Some("resp_2".to_string()),
+        context: Some(context),
+        ..Origin::new("test.api", "test-provider", "requested-model")
+    };
+    for origin in [None, Some(origin)] {
+        let expected_call =
+            CompletionCall::new(2, usage(3, 4), serde_json::json!({"id": "resp_2"}))
+                .with_origin(origin.clone());
+        let item: MultiTurnStreamItem = MultiTurnStreamItem::CompletionCall(expected_call.clone());
+        let value = serde_json::to_value(&item).expect("serialize completion call event");
+        let mut expected = serde_json::json!({
             "type": "completionCall",
             "call_index": 2,
             "usage": {
@@ -822,17 +824,18 @@ fn completion_calls_stream_item_serializes_and_deserializes_expected_shape() {
                 "total_tokens": 7,
             },
             "raw": {"id": "resp_2"}
-        })
-    );
+        });
+        if let Some(origin) = origin {
+            expected["origin"] = serde_json::json!(origin);
+        }
+        assert_eq!(value, expected);
 
-    let item: MultiTurnStreamItem =
-        serde_json::from_value(value).expect("deserialize completion call event");
-    match item {
-        MultiTurnStreamItem::CompletionCall(call) => assert_eq!(
-            call,
-            CompletionCall::new(2, usage(3, 4), serde_json::json!({"id": "resp_2"}))
-        ),
-        other => panic!("expected completion call event, got {other:?}"),
+        let item: MultiTurnStreamItem =
+            serde_json::from_value(value).expect("deserialize completion call event");
+        match item {
+            MultiTurnStreamItem::CompletionCall(call) => assert_eq!(call, expected_call),
+            other => panic!("expected completion call event, got {other:?}"),
+        }
     }
 
     let item: MultiTurnStreamItem = MultiTurnStreamItem::CompletionCall(CompletionCall::new(
@@ -857,11 +860,13 @@ fn completion_calls_stream_item_serializes_and_deserializes_expected_shape() {
 
 #[test]
 fn final_response_serializes_completion_calls_with_missing_usage() {
+    let origin = Origin::new("test.api", "test-provider", "requested-model");
     let item = MultiTurnStreamItem::FinalResponse(
         PromptResponse::from_content(vec![AssistantContent::text("done")], usage(3, 4))
             .with_completion_calls(vec![
                 CompletionCall::new(0, Usage::default(), serde_json::json!({"id": "resp_0"})),
-                CompletionCall::new(1, usage(3, 4), serde_json::json!({"id": "resp_1"})),
+                CompletionCall::new(1, usage(3, 4), serde_json::json!({"id": "resp_1"}))
+                    .with_origin(origin.clone()),
             ]),
     );
 
@@ -881,6 +886,7 @@ fn final_response_serializes_completion_calls_with_missing_usage() {
             },
             {
                 "call_index": 1,
+                "origin": origin,
                 "usage": {
                     "input_tokens": 3,
                     "output_tokens": 4,
@@ -2302,18 +2308,29 @@ async fn stream_prompt_reasoning_delta_stop_prevents_emit_and_later_hook_dispatc
 
 #[tokio::test]
 async fn stream_prompt_reasoning_delta_hook_observes_retried_turns_as_provisional() {
+    let terminals = [
+        ("reported-first", "resp_rejected"),
+        ("reported-second", "resp_accepted"),
+    ]
+    .map(|(model, response_id)| Finish {
+        model: Some(model.to_string()),
+        response_id: Some(response_id.to_string()),
+        ..mock_final(Usage::new().total_tokens(1))
+    });
+    let [first_terminal, second_terminal] = terminals.clone();
     let model = MockCompletionModel::from_stream_turns([
         [
             MockStreamEvent::reasoning_delta("rejected"),
-            MockStreamEvent::final_response_with_total_tokens(1),
+            MockStreamEvent::FinalResponse(first_terminal),
         ],
         [
             MockStreamEvent::reasoning_delta("accepted"),
-            MockStreamEvent::final_response_with_total_tokens(1),
+            MockStreamEvent::FinalResponse(second_terminal),
         ],
     ]);
     let hook = RetryFirstReasoningTurnHook::default();
     let agent = AgentBuilder::new(model).build();
+    let mut completion_call_events = Vec::new();
 
     let mut stream = agent
         .prompt("reason about this")
@@ -2321,6 +2338,7 @@ async fn stream_prompt_reasoning_delta_hook_observes_retried_turns_as_provisiona
         .max_turns(2)
         .stream();
     let mut order = Vec::new();
+    let mut final_completion_calls = None;
 
     while let Some(item) = stream.next().await {
         match item {
@@ -2331,13 +2349,32 @@ async fn stream_prompt_reasoning_delta_hook_observes_retried_turns_as_provisiona
             Ok(MultiTurnStreamItem::ModelTurnRetried { turn }) => {
                 order.push(format!("retry:{turn}"));
             }
-            Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
+            Ok(MultiTurnStreamItem::CompletionCall(call)) => {
+                completion_call_events.push(call);
+            }
+            Ok(MultiTurnStreamItem::FinalResponse(response)) => {
+                final_completion_calls = Some(response.completion_calls().to_vec());
+                break;
+            }
             Ok(_) => {}
             Err(err) => panic!("unexpected streaming error: {err:?}"),
         }
     }
 
     assert_eq!(order, vec!["rejected", "retry:1", "accepted"]);
+    assert_eq!(completion_call_events.len(), terminals.len());
+    for (index, (call, terminal)) in completion_call_events.iter().zip(terminals).enumerate() {
+        assert_eq!(call.call_index, index);
+        assert_eq!(
+            call.origin,
+            Some(Origin {
+                response_model: terminal.model,
+                response_id: terminal.response_id,
+                ..Origin::new(MOCK_API, MOCK_PROVIDER, MOCK_MODEL)
+            })
+        );
+    }
+    assert_eq!(final_completion_calls, Some(completion_call_events));
     let observed = hook.recorder.observed();
     assert_eq!(observed.len(), 2);
     assert_eq!(observed[0].1, "rejected");
