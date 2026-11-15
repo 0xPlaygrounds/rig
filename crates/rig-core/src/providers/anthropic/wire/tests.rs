@@ -12,8 +12,9 @@ use crate::wire::secret::tests::a_config_reloads_without_its_credential;
 #[test]
 fn callers_can_prepare_claude_tool_schemas_for_a_responses_gateway() {
     use crate::completion::ToolDefinition;
+    use crate::message::ToolName;
     use crate::providers::anthropic::completion::nest_root_combinators;
-    use crate::providers::openai::responses_api::Responses;
+    use crate::providers::openai::responses_api::wire::Responses;
     use crate::providers::openai::wire::{OPENROUTER, OpenAIConfig};
     use crate::test_utils::json_body;
     use serde_json::json;
@@ -26,7 +27,7 @@ fn callers_can_prepare_claude_tool_schemas_for_a_responses_gateway() {
         "anthropic/claude-sonnet-4.6",
     );
     let tool = ToolDefinition::new(
-        "t".parse().unwrap_or_else(|error| panic!("{error}")),
+        ToolName::new("t").unwrap_or_else(|error| panic!("{error}")),
         "Choose a or b",
         schema,
     );
