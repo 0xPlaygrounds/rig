@@ -170,7 +170,46 @@ fn a_list_that_is_not_toml_is_named() {
     let moves = plugin_moves("[[plugin]\n", Path::new("/h/settings.toml"));
     assert_eq!(moves.len(), 1, "{moves:?}");
     assert!(
-        moves.iter().all(|line| line.contains("not TOML")),
+        moves
+            .iter()
+            .all(|line| line.contains("not TOML") && !line.contains("rig's defaults")),
         "{moves:?}"
+    );
+}
+
+/// The reasoning setting moves with the model, as settings.toml writes it.
+#[test]
+fn a_0_46_effort_moves_with_the_model() {
+    let cases = [
+        (r#"{"model": "m/x", "effort": null}"#, None),
+        (r#"{"model": "m/x", "effort": "off"}"#, Some("off")),
+        (
+            r#"{"model": "m/x", "effort": {"effort": "high"}}"#,
+            Some("high"),
+        ),
+        (
+            "{\n  \"model\": \"m/x\",\n  \"effort\": {\n    \"budget\": {\n      \"tokens\": 4096\n    }\n  }\n}",
+            Some("4096 tokens"),
+        ),
+    ];
+    for (text, effort) in cases {
+        assert_eq!(model(text).as_deref(), Some("m/x"), "{text}");
+        assert_eq!(self::effort(text).as_deref(), effort, "{text}");
+    }
+    let home = home(
+        "effort",
+        &[(
+            "defaults.json",
+            r#"{"model": "m/x", "effort": {"effort": "xhigh"}}"#,
+        )],
+    );
+    let found = warnings(&home);
+    fs::remove_dir_all(home.root()).ok();
+    assert!(
+        found
+            .iter()
+            .any(|warning| warning
+                .contains("  [model]\n  default = \"m/x\"\n  effort = \"xhigh\"\n")),
+        "{found:?}"
     );
 }

@@ -875,7 +875,7 @@ fn bevy_pins<'a>(
         for (table, dependencies) in manifest.dependency_tables() {
             for (key, item) in dependencies.iter() {
                 let pin = if item.get("workspace").and_then(Item::as_bool) == Some(true) {
-                    workspace_dependency(directory, key).and_then(|(workspace, item)| {
+                    workspace_dependency(&manifest, directory, key).and_then(|(workspace, item)| {
                         workspace.refused("workspace.dependencies", key, &item, bevy)
                     })
                 } else {
@@ -888,21 +888,39 @@ fn bevy_pins<'a>(
     pins
 }
 
-/// The bevy crates [`bevy_pins`] reads: those the Cargo.lock `lock` lists at
-/// [`BEVY_VERSION`], named `bevy` or `bevy_*`.
+/// Bevy's own crates, which [`bevy_pins`] reads: those a plugin names
+/// ([`NAMED_BEVY`]), and each `bevy_*` crate the Cargo.lock `lock` has at
+/// the version it has `bevy_ecs` at, whichever that is, as a home upgraded
+/// from an older rig keeps its old lock until a resolution succeeds.
 fn bevy_crates(lock: &str) -> BTreeSet<String> {
     let lock = lock.parse::<config::toml_edit::DocumentMut>().ok();
-    let packages = lock
+    let packages: Vec<(&str, &str)> = lock
         .as_ref()
         .and_then(|lock| lock.get("package"))
-        .and_then(Item::as_array_of_tables);
-    (packages.into_iter().flat_map(|packages| packages.iter()))
-        .filter(|package| package.get("version").and_then(Item::as_str) == Some(BEVY_VERSION))
-        .filter_map(|package| package.get("name").and_then(Item::as_str))
-        .filter(|name| *name == "bevy" || name.starts_with("bevy_"))
+        .and_then(Item::as_array_of_tables)
+        .into_iter()
+        .flat_map(|packages| packages.iter())
+        .filter_map(|package| {
+            let name = package.get("name").and_then(Item::as_str)?;
+            Some((name, package.get("version").and_then(Item::as_str)?))
+        })
+        .collect();
+    let bevy = packages.iter().find(|(name, _)| *name == "bevy_ecs");
+    let locked = (packages.iter())
+        .filter(|(name, version)| {
+            name.starts_with("bevy_") && bevy.is_some_and(|(_, bevy)| bevy == version)
+        })
+        .map(|(name, _)| *name);
+    NAMED_BEVY
+        .into_iter()
+        .chain(locked)
         .map(str::to_owned)
         .collect()
 }
+
+/// The Bevy crates a plugin names: `bevy`, and those `rig plugin new`
+/// writes or its comments name.
+const NAMED_BEVY: [&str; 4] = ["bevy", "bevy_app", "bevy_ecs", "bevy_reflect"];
 
 /// A crate's `Cargo.toml`, parsed with where each value is written.
 struct Manifest {
@@ -988,13 +1006,38 @@ fn quoted_key(key: &str) -> String {
     }
 }
 
-/// The `[workspace.dependencies]` entry of `key` in the nearest manifest at
-/// or above `directory` with a `[workspace]`, with that manifest.
-fn workspace_dependency(directory: &Path, key: &str) -> Option<(Manifest, Item)> {
-    let workspace = directory
-        .ancestors()
-        .filter_map(Manifest::read)
-        .find(|manifest| manifest.document.get("workspace").is_some())?;
+/// `path` with each `..` taking out the component before it, as a
+/// manifest's relative path reads it.
+fn lexical(path: &Path) -> PathBuf {
+    let mut clean = PathBuf::new();
+    for component in path.components() {
+        match component {
+            std::path::Component::ParentDir if clean.pop() => {}
+            component => clean.push(component),
+        }
+    }
+    clean
+}
+
+/// The `[workspace.dependencies]` entry of `key` in the workspace of
+/// `manifest`, the manifest of `directory`, with the workspace's manifest:
+/// the one its `[package] workspace` path names, else the nearest at or
+/// above `directory` with a `[workspace]`.
+fn workspace_dependency(
+    manifest: &Manifest,
+    directory: &Path,
+    key: &str,
+) -> Option<(Manifest, Item)> {
+    let named = (manifest.document.get("package"))
+        .and_then(|package| package.get("workspace"))
+        .and_then(Item::as_str);
+    let workspace = match named {
+        Some(path) => Manifest::read(&lexical(&directory.join(path)))?,
+        None => directory
+            .ancestors()
+            .filter_map(Manifest::read)
+            .find(|manifest| manifest.document.get("workspace").is_some())?,
+    };
     let item = workspace
         .document
         .get("workspace")?

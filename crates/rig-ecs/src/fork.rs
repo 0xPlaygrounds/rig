@@ -274,12 +274,10 @@ fn fork_now(
     // when the fork has the source's conversation as it is now: the same
     // entries, not only as many.
     let whole = world.get::<Conversation>(from).is_some_and(|conversation| {
-        let entries = |of: &rig_core::conversation::Conversation| {
-            (of.entries())
-                .map(|entry| (entry.id, entry.made, entry.message.clone()))
-                .collect::<Vec<_>>()
-        };
-        entries(conversation) == entries(&copy.conversation)
+        conversation.entries().len() == copy.conversation.entries().len()
+            && (conversation.entries().zip(copy.conversation.entries())).all(|(own, copied)| {
+                own.id == copied.id && own.made == copied.made && own.message == copied.message
+            })
     });
     let measured = world.get::<LastUsage>(from).filter(|_| whole).cloned();
     let key = CacheKey(CacheKey::of(world.get::<CacheKey>(from), &id).to_owned());

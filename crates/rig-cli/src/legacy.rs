@@ -41,11 +41,18 @@ pub fn warnings(home: &Home) -> Vec<String> {
         && let Some(text) = read(&defaults)
     {
         let moves = match model(&text) {
-            Some(model) => vec![
-                format!("  Add to {}:", settings.display()),
-                "  [model]".to_owned(),
-                format!("  default = {}", toml_edit::Value::from(model)),
-            ],
+            Some(model) => {
+                let mut lines = vec![
+                    format!("  Add to {}:", settings.display()),
+                    "  [model]".to_owned(),
+                    format!("  default = {}", toml_edit::Value::from(model)),
+                ];
+                lines.extend(
+                    effort(&text)
+                        .map(|effort| format!("  effort = {}", toml_edit::Value::from(effort))),
+                );
+                lines
+            }
             None => vec![format!(
                 "  Add an empty [model] table to {}: the file names no model.",
                 settings.display()
@@ -105,8 +112,10 @@ fn plugin_moves(text: &str, settings: &Path) -> Vec<String> {
         Ok(entries) => entries,
         Err(why) => {
             return vec![format!(
-                "  It is not TOML ({why}), so its plugins are not listed here. {}",
-                empty.trim_start()
+                "  It is not TOML ({}), so its plugins are not listed here: move them by hand, \
+                 then add [plugins] to {}.",
+                why.message(),
+                settings.display()
             )];
         }
     };
@@ -176,11 +185,9 @@ const MCP_APPROVAL: &str = "rig_mcp_client::approval::McpApprovalPlugin";
 ///
 /// # Errors
 ///
-/// When `text` is not TOML, with why.
-fn entries(text: &str) -> Result<Vec<Entry>, String> {
-    let live = text
-        .parse::<toml_edit::DocumentMut>()
-        .map_err(|why| why.message().to_owned())?;
+/// When `text` is not TOML.
+fn entries(text: &str) -> Result<Vec<Entry>, toml_edit::TomlError> {
+    let live = text.parse::<toml_edit::DocumentMut>()?;
     let tables = live
         .get("plugin")
         .and_then(toml_edit::Item::as_array_of_tables);
@@ -234,8 +241,37 @@ const KEYS: [&str; 7] = ["plugin", "crate", "path", "git", "branch", "rev", "ver
 /// The model `defaults.json`'s text names under `"model"`; `None` for
 /// `null` or a file that names none.
 fn model(text: &str) -> Option<String> {
-    let after = text.split_once("\"model\"")?.1.trim_start();
-    let value = after.strip_prefix(':')?.trim_start();
+    json_string(after_key(text, "model")?)
+}
+
+/// The reasoning setting `defaults.json`'s text holds under `"effort"`, as
+/// `[model] effort` writes it: `off`, a level such as `high`, or `4096
+/// tokens`; `None` for `null` (the model's default) or a file that has
+/// none. v0.46.0 wrote `"off"`, `{"effort": "<level>"}` or `{"budget":
+/// {"tokens": <n>}}`.
+fn effort(text: &str) -> Option<String> {
+    let value = after_key(text, "effort")?;
+    if value.starts_with('"') {
+        return json_string(value);
+    }
+    let inner = value.strip_prefix('{')?.trim_start();
+    if let Some(level) = after_key(inner, "effort") {
+        return json_string(level);
+    }
+    let budget = after_key(inner, "budget")?.strip_prefix('{')?;
+    let tokens = after_key(budget, "tokens")?;
+    let digits: String = tokens.chars().take_while(char::is_ascii_digit).collect();
+    (!digits.is_empty()).then(|| format!("{digits} tokens"))
+}
+
+/// The JSON text after the first `"key":` of `text`, from its value on.
+fn after_key<'t>(text: &'t str, key: &str) -> Option<&'t str> {
+    let after = text.split_once(&format!("\"{key}\""))?.1.trim_start();
+    Some(after.strip_prefix(':')?.trim_start())
+}
+
+/// The JSON string `value` starts with; `None` when it starts with none.
+fn json_string(value: &str) -> Option<String> {
     let body = value.strip_prefix('"')?;
     // The closing quote is the first one no backslash escapes.
     let mut escaped = false;
