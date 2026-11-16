@@ -61,7 +61,8 @@ fn checked(index: usize) -> Result<usize, ProviderError> {
 }
 
 /// One stream event, or the whole reply a unary call answers (`kind` is
-/// then empty), as Cohere sent it.
+/// then empty), as Cohere sent it. Cohere's error body is kept as its text,
+/// a JSON string.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ChatEvent {
     /// The event as sent.
@@ -377,14 +378,11 @@ impl ChatDecoder {
         mut out: Out<'_, Completion>,
     ) -> Result<Flow, ProviderError> {
         self.message_id = reply.str("id").map(str::to_owned);
-        // A `message` string is Cohere's error body, sent with a success
-        // status.
-        let message = match reply.get("message") {
-            Some(Value::String(_)) => {
-                return Err(ProviderError::from_provider_body(reply.to_string()));
-            }
-            message => message.unwrap_or(&Value::Null),
-        };
+        // Cohere's error body, sent with a success status, as `classify` kept it.
+        if let Value::String(body) = reply {
+            return Err(ProviderError::from_provider_body(body.clone()));
+        }
+        let message = reply.get("message").unwrap_or(&Value::Null);
         // The plan leads, as it streams first.
         if let Some(plan) = message.str(PLAN).filter(|plan| !plan.is_empty()) {
             self.plan(plan, &mut out)?;
@@ -510,6 +508,14 @@ impl<'id> Decoder<'id, Completion> for ChatDecoder {
                     .map(|fields| ChatEvent { fields })
             },
         )
+        // An untagged frame with a `message` string is Cohere's error body,
+        // reported as sent.
+        .map(|event| match event.fields.get("message") {
+            Some(Value::String(_)) if event.kind().is_empty() => ChatEvent {
+                fields: Value::String(data.into_owned()),
+            },
+            _ => event,
+        })
     }
 
     fn decode(

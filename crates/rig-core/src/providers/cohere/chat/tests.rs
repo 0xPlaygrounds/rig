@@ -6,17 +6,15 @@ use crate::message::{
     CallId, DocumentMediaType, Image, ImageMediaType, Reasoning, Text, ToolCall, ToolFunction,
     ToolName,
 };
-use crate::providers::cohere::{ChatRoute, CohereChat, CohereConfig};
+use crate::providers::cohere::CohereConfig;
+use crate::providers::openai::wire::Chat;
 use crate::test_utils::json_body;
 use crate::wire::{Operation, WireFrame};
 
 const MODEL: &str = "command-a-03-2025";
 
-fn chat(route: ChatRoute) -> CohereChat {
-    CohereConfig::new("key")
-        .with_base_url("http://127.0.0.1:9")
-        .completion(MODEL)
-        .with_route(route)
+fn compatibility() -> Chat {
+    CohereConfig::new("key").completion(MODEL)
 }
 
 fn native() -> NativeChat {
@@ -91,49 +89,28 @@ fn documents_are_sent_as_cohere_documents() {
     );
 }
 
-/// The automatic route sends a request with documents to the native API
-/// and any other to the Compatibility API; the explicit routes override it.
+/// The native wire sends a request's documents as Cohere `documents`, and
+/// the Compatibility wire sends them as text in the history.
 #[test]
-fn the_route_follows_the_request_and_the_setting() {
+fn each_wire_sends_documents_its_own_way() {
     let with_documents = || {
         let mut request = CompletionRequest::new("Which dock?");
         request.documents = documents();
         request
     };
-    let (path, body) = sent(&chat(ChatRoute::Auto), with_documents(), Mode::Streaming);
+    let (path, body) = sent(&native(), with_documents(), Mode::Streaming);
     assert_eq!(path, "/v2/chat");
     assert_eq!(body["stream"], true);
     assert_eq!(body["documents"][0]["id"], "harbor-1");
-    let (path, _) = sent(
-        &chat(ChatRoute::Auto),
-        CompletionRequest::new("hi"),
-        Mode::Unary,
-    );
-    assert_eq!(path, "/compatibility/v1/chat/completions");
-    let (path, body) = sent(
-        &chat(ChatRoute::Native),
-        CompletionRequest::new("hi"),
-        Mode::Unary,
-    );
+    let (path, body) = sent(&native(), CompletionRequest::new("hi"), Mode::Unary);
     assert_eq!(path, "/v2/chat");
     assert!(body.get("documents").is_none(), "{body}");
-    let (path, body) = sent(
-        &chat(ChatRoute::Compatibility),
-        with_documents(),
-        Mode::Unary,
-    );
+    let (path, body) = sent(&compatibility(), with_documents(), Mode::Unary);
     assert_eq!(path, "/compatibility/v1/chat/completions");
     assert!(body.get("documents").is_none(), "{body}");
     assert!(
         body["messages"].to_string().contains("Dock Seven"),
         "the Compatibility API gets documents as text: {body}"
-    );
-    let default = CohereConfig::new("key").completion("command-a-03-2025");
-    assert_eq!(default.route, ChatRoute::Compatibility);
-    let (path, _) = sent(&default, with_documents(), Mode::Unary);
-    assert_eq!(
-        path, "/compatibility/v1/chat/completions",
-        "the native API is opt-in"
     );
 }
 
@@ -328,7 +305,11 @@ fn native_reply() -> Value {
 }
 
 /// The response `wire` folds `reply` into for `request`.
-fn decoded(wire: &CohereChat, request: &CompletionRequest, reply: &Value) -> CompletionResponse {
+fn decoded<W: Wire<Op = Completion, Frame = WireFrame>>(
+    wire: &W,
+    request: &CompletionRequest,
+    reply: &Value,
+) -> CompletionResponse {
     let request =
         Completion::prepare(request.clone(), &wire.describe()).expect("the request prepares");
     crate::test_utils::decode_reply(
@@ -376,10 +357,10 @@ fn continued(turn: &CompletionResponse) -> CompletionRequest {
 fn a_native_turn_replays_natively_and_canonically_elsewhere() {
     let mut first = CompletionRequest::new("Which dock?").tool(tool("lookup"));
     first.documents = documents();
-    let turn = decoded(&chat(ChatRoute::Auto), &first, &native_reply());
+    let turn = decoded(&native(), &first, &native_reply());
     assert_eq!(turn.origin.api.as_str(), API);
 
-    let (_, body) = sent(&chat(ChatRoute::Native), continued(&turn), Mode::Unary);
+    let (_, body) = sent(&native(), continued(&turn), Mode::Unary);
     let assistant = &body["messages"][1];
     assert_eq!(
         assistant,
@@ -404,7 +385,7 @@ fn a_native_turn_replays_natively_and_canonically_elsewhere() {
     );
     assert_eq!(body["messages"][2]["tool_call_id"], "lookup_1");
 
-    let (path, body) = sent(&chat(ChatRoute::Auto), continued(&turn), Mode::Unary);
+    let (path, body) = sent(&compatibility(), continued(&turn), Mode::Unary);
     assert_eq!(path, "/compatibility/v1/chat/completions");
     let assistant = &body["messages"][1];
     let sent = assistant.to_string();
@@ -430,12 +411,12 @@ fn a_compatibility_turn_replays_canonically_on_the_native_api() {
         "usage": {"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5},
     });
     let first = CompletionRequest::new("Which dock?").tool(tool("lookup"));
-    let turn = decoded(&chat(ChatRoute::Auto), &first, &reply);
+    let turn = decoded(&compatibility(), &first, &reply);
     assert_eq!(turn.origin.api.as_str(), "openai.chat");
 
     let mut next = continued(&turn);
     next.documents = documents();
-    let (path, body) = sent(&chat(ChatRoute::Auto), next, Mode::Unary);
+    let (path, body) = sent(&native(), next, Mode::Unary);
     assert_eq!(path, "/v2/chat");
     assert_eq!(
         body["messages"][1],
@@ -555,32 +536,6 @@ fn the_native_target_states_what_it_carries() {
     assert!(!wire.sends_alone(&opaque(json!({"x": 1}))));
 }
 
-/// The routing wire answers replay as its Compatibility API when asked as a
-/// whole, and routes each request.
-#[test]
-fn the_routing_wire_routes_each_request() {
-    let wire = chat(ChatRoute::Auto);
-    assert_eq!(wire.api().as_str(), "openai.chat");
-    assert_eq!(ReplayTarget::provider(&wire), "cohere");
-    assert_eq!(ReplayTarget::model(&wire), MODEL);
-    assert!(!wire.accepts(MODEL).user_images);
-    let mut request = CompletionRequest::new("hi");
-    let routed = |wire: &CohereChat, request: &CompletionRequest| {
-        wire.route(request).map(|target| target.api())
-    };
-    assert_eq!(
-        routed(&wire, &request).map(|api| api.as_str().to_owned()),
-        Some("openai.chat".to_owned())
-    );
-    request.documents = documents();
-    assert_eq!(
-        routed(&wire, &request).map(|api| api.as_str().to_owned()),
-        Some(API.to_owned())
-    );
-    let strict = wire.with_strict_tools();
-    assert!(strict.compatibility_api.strict_tools && strict.native_api.strict_tools);
-}
-
 /// What the native wire answers for `reasoning` on `model`: the body's
 /// `thinking`, or the error.
 fn native_thinking(
@@ -655,15 +610,13 @@ fn native_thinking_follows_the_catalog() {
     );
 }
 
-/// The Compatibility route refuses `high` effort on a model that does not
+/// The Compatibility API refuses `high` effort on a model that does not
 /// think, by the same catalog rule.
 #[test]
 fn compatibility_effort_follows_the_catalog() {
     use crate::completion::Effort;
     let effort = |model: &str| {
-        let wire = CohereConfig::new("key")
-            .completion(model)
-            .with_route(ChatRoute::Compatibility);
+        let wire = CohereConfig::new("key").completion(model);
         let request = CompletionRequest::new("hi").reasoning(Effort::High);
         Completion::prepare(request, &wire.describe())
             .map_err(|error| error.to_string())

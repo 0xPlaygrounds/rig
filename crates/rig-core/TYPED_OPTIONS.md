@@ -445,7 +445,7 @@ flag); cache `None` `"cache_prompt":false`, `Short` omit, `Long` unsupported;
 unsupported; `service_tier`, `verbosity`, `parallel_tool_calls` unsupported
 (in the documented unsupported list); `top_p`, `seed`, `stop` supported.
 
-**Cohere Compatibility** (`"cohere"`, `ChatRoute::Compatibility`; https://docs.cohere.com/docs/compatibility-api):
+**Cohere Compatibility** (`"cohere"`, `Cohere::completion`; https://docs.cohere.com/docs/compatibility-api):
 `Off` `"reasoning_effort":"none"`; `Effort(High)` `"reasoning_effort":"high"`,
 unsupported on a model whose catalog row says it does not think (Command A,
 R and R7B, Aya; an unlisted id is sent), other levels unsupported ("only
@@ -749,7 +749,7 @@ Docs: [CV] https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_C
 | `seed` | unsupported: `inferenceConfig` has no seed | | [CV] |
 | `stop` | `"inferenceConfig":{"stopSequences":[..]}` | | [CV] |
 
-**Cohere native** (`"cohere"`, `api "cohere.chat"`):
+**Cohere native** (`"cohere"`, `api "cohere.chat"`, `Cohere::native_completion`):
 `Off` `"thinking":{"type":"disabled"}` on models that think (thinking is on
 by default; the catalog row's `reasoning`: `command-a-reasoning-08-2025`,
 `command-a-plus-05-2026`, `north-mini-code-1-0`; an unlisted id whose name
@@ -803,7 +803,7 @@ provider docs. Every `Options` type is serialize-only; every `Extras` type reads
 | `perplexity` | none | none: the Chat API was retired on 2026-09-27 | `citations`, `search_results`, `images`, `related_questions`, `usage.cost`, `search_context_size`, from the recordings | https://docs.perplexity.ai/api-reference/chat-completions-post |
 | `llamacpp` | `"*"` | `chat_template_kwargs`, `reasoning_format`, `n_probs`, `samplers`, `top_k`, `min_p`, `typical_p`, `mirostat`, `mirostat_tau`, `mirostat_eta`, `id_slot`, `timings_per_token` | `timings { cache_n, prompt_n, prompt_ms, predicted_n, predicted_ms, .. }` | v0.43 `crates/rig-core/src/providers/llamacpp/completion.rs` 20-60 |
 | `ollama` | `"*"`, `"ollama.chat"` | `"*"`: `keep_alive` (`/v1` takes it too). `"ollama.chat"`: `options { num_ctx, num_keep, top_k, min_p, repeat_penalty, repeat_last_n, num_gpu, num_thread }` (typed fields, never an open map), `logprobs`, `top_logprobs`. Not added: `truncate`, `shift` (unverified) | native: `model`, `created_at`, `done_reason`, durations, `prompt_eval_count`, `prompt_eval_cached_count`, `eval_count`, `logprobs` | v0.43 `crates/rig-core/src/providers/ollama.rs` 124-294; [OL] |
-| `cohere` | `"*"`, `"cohere.chat"` | `"*"`: `frequency_penalty`, `presence_penalty`. `"cohere.chat"`: `citation_mode` (`citation_options.mode`), `safety_mode`, `priority`, `top_k` (`k`), `logprobs`. `strict_tools` stays `with_strict_tools` (an encoder directive) | `id` (both routes); native: `finish_reason`, `billed_units`, `tokens`, `cached_tokens`, `tool_plan`, `logprobs` | v0.43 `crates/rig-core/src/providers/cohere/completion.rs` 26-305; [CO] |
+| `cohere` | `"*"`, `"cohere.chat"` | `"*"`: `frequency_penalty`, `presence_penalty`. `"cohere.chat"`: `citation_mode` (`citation_options.mode`), `safety_mode`, `priority`, `top_k` (`k`), `logprobs`. `strict_tools` stays `with_strict_tools` (an encoder directive) | `id` (both APIs); native: `finish_reason`, `billed_units`, `tokens`, `cached_tokens`, `tool_plan`, `logprobs` | v0.43 `crates/rig-core/src/providers/cohere/completion.rs` 26-305; [CO] |
 | `copilot` | none | none: `intent` and `copilot_cache_control` are headers | `copilot_usage` (both routes), `prompt_filter_results` (Chat) | recorded parity snapshot `crates/rig-cassette/fixtures/parity/copilot.json` |
 | `chatgpt` | `"openai.responses"` | `prompt_cache_key`, `client_metadata`, `access_programs`; no `store` (the wire forces `false`); `session_id` is a header | as `openai` Responses but `billing` | `references/codex/codex-rs/codex-api/src/common.rs` |
 | `gcp.gemini` | `"*"`, `"gemini.generate_content"`, `"gemini.interactions"` | `"*"`: `store`, `labels` (both routes spell them the same). GenerateContent: `generationConfig` entries `include_thoughts`, `top_k`, penalties, `response_logprobs`, `logprobs`, `candidate_count` (only 1), `response_modalities`, `image_config`, `speech_config`, `media_resolution`, `enable_enhanced_civic_answers`; `safety_settings`. Interactions: `agent`, `agent_config`, `background`, `previous_interaction_id`, `safety_settings` (`type`/`threshold`), `thinking_summaries`, speech. Not added: `cached_content` (`with_cached_content` stays the one typed way), Interactions `response_modalities` (no longer in [IX-REF]), `response_format`/`response_mime_type` (they duplicate `output_schema`), transcription and video config (no verified shape), `service_tier_deferred` (it writes `service_tier`, which `ServiceTier` owns) | `GeminiExtras`, flat: GenerateContent `model_version`, `response_id`, `service_tier`, the four `usageMetadata` token details, `safety_ratings`, `prompt_feedback`, `finish_message`, `citation_metadata`, `grounding_metadata`, `url_context_metadata`, `avg_logprobs`, `logprobs_result`; Interactions `id`, `status`, `service_tier`, `created`, `updated`, per-modality usage, `grounding_tool_count` | v0.43 `crates/rig-core/src/providers/gemini/completion.rs` 622-680, 1314-1700, 2138-2155; v0.43 `gemini/interactions_api/mod.rs` 378-430, 1727-1935; [GR], [GX] |

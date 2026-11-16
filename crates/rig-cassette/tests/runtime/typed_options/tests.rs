@@ -237,8 +237,8 @@ mod no_silent_drop {
             .on_unsupported(policy)
     }
 
-    /// Cohere's Compatibility route, the default `CohereChat` route.
-    pub(super) fn cohere() -> rig::providers::cohere::CohereChat {
+    /// Cohere's Compatibility API wire.
+    pub(super) fn cohere() -> Chat {
         CohereConfig::new(KEY).completion(COMMAND_A_03_2025)
     }
 
