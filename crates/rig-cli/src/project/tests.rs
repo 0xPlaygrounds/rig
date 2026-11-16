@@ -285,3 +285,31 @@ fn the_version_names_the_commit_of_the_checkout_it_was_built_in() {
     };
     assert_eq!(LONG_VERSION, expected);
 }
+
+#[test]
+fn a_quoted_string_reads_back_as_written() {
+    let texts = [
+        "plain",
+        r"C:\Users\me",
+        "say \"hi\"",
+        "two\nlines",
+        "tab\tand \u{7f}",
+        "'single' and \\",
+    ];
+    for text in texts {
+        let toml = format!(
+            "key = {}\ntable = {{ key = {} }}\n",
+            quoted(text),
+            quoted(text)
+        );
+        let parsed = toml.parse::<Document<String>>();
+        let read = parsed.as_ref().ok().map(|parsed| {
+            let table = parsed.get("table").and_then(|table| table.get("key"));
+            (
+                parsed.get("key").and_then(Item::as_str),
+                table.and_then(Item::as_str),
+            )
+        });
+        assert_eq!(read, Some((Some(text), Some(text))), "{toml}");
+    }
+}

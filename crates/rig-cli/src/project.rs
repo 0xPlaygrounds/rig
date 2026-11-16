@@ -11,7 +11,7 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use rig_harness_protocol::Home;
-use rig_harness_protocol::config::toml_edit::{Document, Item, TableLike};
+use rig_harness_protocol::config::toml_edit::{Document, Item, TableLike, Value};
 use rig_harness_protocol::config::{BUILT_IN, Extra, Plugins, Source, built_in};
 use rig_harness_protocol::fs;
 
@@ -494,24 +494,14 @@ pub fn write_if_changed(path: &Path, contents: &str) -> Result<()> {
     Ok(())
 }
 
-/// `path` as a TOML basic string.
+/// `path` as a TOML string.
 pub fn quoted_path(path: &Path) -> String {
     quoted(&path.to_string_lossy())
 }
 
-/// A TOML basic string.
+/// `text` as a TOML string.
 pub fn quoted(text: &str) -> String {
-    let mut quoted = String::from("\"");
-    for c in text.chars() {
-        match c {
-            '"' => quoted.push_str("\\\""),
-            '\\' => quoted.push_str("\\\\"),
-            c if c.is_control() => quoted.push_str(&format!("\\u{:04X}", u32::from(c))),
-            c => quoted.push(c),
-        }
-    }
-    quoted.push('"');
-    quoted
+    Value::from(text).to_string()
 }
 
 #[cfg(test)]
