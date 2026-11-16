@@ -203,11 +203,6 @@ impl EffectLogReplayer {
         report
     }
 
-    /// The mode this replayer compares requests in.
-    pub const fn check(&self) -> RequestCheck {
-        self.check
-    }
-
     /// Build replayers in record first-appearance order, followed by missing keys
     /// from the required and per-program rows. Returns an error for invalid
     /// headers or keys that cannot be described.
