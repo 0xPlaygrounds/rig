@@ -34,15 +34,10 @@ use super::UNKNOWN_AGENT_NAME;
 /// What a completion request was prepared with, including the executable Rig
 /// tool names advertised to the provider for this turn.
 pub(crate) struct PreparedCompletionRequest {
-    /// The messages telemetry records for this attempt.
-    pub(crate) telemetry_messages: Vec<Arc<Message>>,
     /// The typed view the request is dispatched to.
     pub(crate) model: ModelHandle,
     /// Exact implementations behind this turn's provider definitions.
     pub(crate) tool_snapshot: Arc<ToolCatalog>,
-    /// The definitions the request carries (executable tools plus, in Tool
-    /// output mode, the synthetic output tool), for the run's `TurnTools`.
-    pub(crate) advertised_tools: Vec<Arc<ToolDefinition>>,
     /// The turn's tool policy, fed back to the run with the response.
     pub(crate) policy: crate::run::TurnPolicy,
     /// Effective structured output-token cap after runner overrides and request
@@ -70,7 +65,6 @@ pub(crate) async fn build_prepared_completion_request(
     committed_output_tool: Option<&str>,
     request_patch: Option<&RequestPatch>,
 ) -> Result<(CompletionRequest, PreparedCompletionRequest), ProviderError> {
-    let record_telemetry_content = runner.config.record_telemetry_content;
     let tool_server_handle = &runner.tool_server_handle;
 
     let retrieval_query = retrieval_query(&prompt, chat_history);
@@ -114,22 +108,11 @@ pub(crate) async fn build_prepared_completion_request(
     // the provider received is the one that runs.
     tool_snapshot.retain_names(policy.executable());
 
-    let advertised_tools = request.tools.clone();
-    let max_tokens = request.max_tokens;
-    // The agent records the input itself, so the request the provider sees
-    // carries the telemetry flag off: one span, no double recording.
-    let telemetry_messages = if record_telemetry_content {
-        request.messages_for_telemetry()
-    } else {
-        Vec::new()
-    };
     let prepared = PreparedCompletionRequest {
-        telemetry_messages,
         model: model.clone(),
         tool_snapshot: Arc::new(tool_snapshot),
-        advertised_tools,
         policy,
-        max_tokens,
+        max_tokens: request.max_tokens,
     };
     Ok((request, prepared))
 }

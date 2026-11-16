@@ -377,7 +377,6 @@ async fn execution_commit_items_are_not_emitted_when_run_commit_fails() {
         calls,
         tool_snapshot,
         |span| span,
-        true,
         None,
     )
     .await;
