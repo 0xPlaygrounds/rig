@@ -83,7 +83,8 @@ fn label_context(
 /// figure is `stale`, its estimate, as `ctx ~4.7k`, else `ctx ?`; empty
 /// when no reply reported it.
 fn context_label(tokens: Option<u64>, stale: Option<&ContextStale>) -> String {
-    match (tokens, stale.map(|stale| stale.estimate)) {
+    let estimate = |stale: &ContextStale| stale.estimate.map(|estimate| estimate.tokens);
+    match (tokens, stale.map(estimate)) {
         (_, Some(Some(estimate))) => format!("ctx ~{}", tokens_label(estimate)),
         (_, Some(None)) => "ctx ?".to_owned(),
         (Some(tokens), None) => format!("ctx {}", tokens_label(tokens)),

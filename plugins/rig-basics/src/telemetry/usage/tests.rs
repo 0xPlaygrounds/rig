@@ -500,7 +500,10 @@ fn the_meter_shows_unknown_until_the_stale_marker_is_removed() {
     app.update();
     assert_eq!(context(app.world()).as_deref(), Some("ctx ?/2.0k"));
     // With an estimate, as after a summary, the estimate marked as one.
-    let estimate = Some(300);
+    let estimate = Some(rig_ecs::prelude::ContextEstimate {
+        tokens: 300,
+        through: MessageId::default(),
+    });
     app.world_mut()
         .entity_mut(agent)
         .insert(ContextStale { estimate });

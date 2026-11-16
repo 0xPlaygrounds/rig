@@ -2542,25 +2542,78 @@ fn a_held_summary_is_applied_as_reviewed_or_cancelled_and_undone_with_its_ids() 
     assert!(app.world().get::<ContextStale>(agent).is_some());
 }
 
-/// A summary leaves the context marked stale with its estimate of the
-/// context after it, which the status line shows until the next reply.
-#[test]
-fn a_summary_estimates_the_context_it_leaves() {
+/// An agent measured at `reported` tokens through its last entry, its
+/// figure stale (with no estimate, as cleared outputs leave it) when
+/// `cleared`, then summarized `times` times with no reply between (more
+/// messages coming before each later one): after each, the estimate it
+/// left and the conversation's own estimate.
+fn summarized(reported: u64, cleared: bool, times: usize) -> Vec<(Option<u64>, u64)> {
     let (mut app, wakes) = start(&MemoryStore::default());
-    let model = MockCompletionModel::from_stream_turns([reply("## Goal\nThe summary.")]);
-    let agent = agent(&mut app, &model, 1_000_000, long_conversation(3));
+    let summaries = (0..times).map(|n| reply(&format!("## Goal\nSummary {n}.")));
+    let model = MockCompletionModel::from_stream_turns(summaries);
+    let agent = agent(&mut app, &model, 1_000_000, long_conversation(6));
+    let through = app
+        .world()
+        .get::<Conversation>(agent)
+        .and_then(|conversation| conversation.entries().last().map(|entry| entry.id));
+    let usage = Usage::new().input_tokens(reported);
+    let measured = through.map(|through| rig_memory::Anchor { usage, through });
+    app.world_mut()
+        .entity_mut(agent)
+        .insert(LastUsage(measured));
+    if cleared {
+        app.world_mut()
+            .entity_mut(agent)
+            .insert(ContextStale::default());
+    }
     app.update();
-    let focus = String::new();
-    app.world_mut().trigger(Compact {
-        entity: agent,
-        focus,
-    });
-    run_until(&mut app, &wakes, |world| {
-        world.resource::<Ended>().0.len() == 1
-    });
-    let stale = app.world().get::<ContextStale>(agent).copied();
-    let estimate = stale.and_then(|stale| stale.estimate);
-    assert!(estimate.is_some_and(|tokens| tokens > 0), "{stale:?}");
+    let mut estimates = Vec::new();
+    for n in 1..=times {
+        // More conversation since, which no reply measured.
+        if n > 1
+            && let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent)
+        {
+            for message in long_conversation(6) {
+                conversation.push(message);
+            }
+        }
+        let focus = String::new();
+        app.world_mut().trigger(Compact {
+            entity: agent,
+            focus,
+        });
+        run_until(&mut app, &wakes, |world| {
+            world.resource::<Ended>().0.len() == n
+        });
+        let stale = app.world().get::<ContextStale>(agent);
+        let estimate = stale.and_then(|stale| stale.estimate);
+        let conversation = app.world().get::<Conversation>(agent);
+        let own = conversation.map_or(0, |conversation| estimate_tokens(conversation.messages()));
+        estimates.push((estimate.map(|estimate| estimate.tokens), own));
+    }
+    estimates
+}
+
+/// A summary leaves the context marked stale with its estimate: what the
+/// provider counted besides the conversation, plus the conversation left.
+/// A second summary starts from that estimate, not the figure measured
+/// before the first, and a figure already stale gives the conversation's
+/// own estimate.
+#[test]
+fn a_summary_estimates_the_context_from_the_figure_that_measured_it() {
+    let reported = 50_000;
+    let estimates = summarized(reported, false, 2);
+    let [(Some(first), own), (Some(second), left)] = estimates.as_slice() else {
+        return assert!(false, "{estimates:?}");
+    };
+    assert!(first > own && *first < reported, "{estimates:?}");
+    // The same system prompt and tools around each conversation.
+    assert_eq!(first - own, second - left, "{estimates:?}");
+    let estimates = summarized(reported, true, 1);
+    let [(Some(estimate), own)] = estimates.as_slice() else {
+        return assert!(false, "{estimates:?}");
+    };
+    assert_eq!(estimate, own);
 }
 
 /// A summary near the window that a reviewer cancels lets the request go

@@ -59,7 +59,7 @@ fn show_meter(
         };
         let shown = spent.calls > 0;
         let limit = InputLimit::of(limit, connection);
-        let estimated = stale.and_then(|stale| stale.estimate);
+        let estimated = stale.and_then(|stale| stale.estimate.map(|estimate| estimate.tokens));
         let context = match stale {
             Some(_) => estimated,
             None => last.context(),
