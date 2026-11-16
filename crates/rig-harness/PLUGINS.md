@@ -1917,9 +1917,8 @@ effect, which a holder may take as "stop waiting".
   makes it the session's `CurrentAgent`.
 - **Open a stopped one's plugin files:** `PluginData::of(&stores, &dir)`.
 - **Delete:** `DeleteSession(id)`, finished by the next start if a crash cut
-  it short (`SessionDeleted`, else an error notice). It checks that no
-  rig runs the session, then removes it without holding the lock, so a session
-  resumed in that instant can be deleted under it.
+  it short (`SessionDeleted`, else an error notice). It holds the session's
+  launcher lock throughout, so no rig resumes it meanwhile.
 - **Name:** a plain file in its directory (`SessionDir::name`), written by
   `rig_basics::sessions`' `/name` and `NameSession { session, name }`, looked
   up by `rig --resume <name>`, `/resume <name>` and `Home::find`.
