@@ -7,7 +7,8 @@
 //! [`Cohere::native_completion`] chats through Cohere's native chat API
 //! ([`NativeChat`]), which grounds the answer in the request's documents and
 //! keeps the citations that point at each text block in its provider item.
-//! Text and image embeddings use Cohere's own `/v1/embed`.
+//! A turn made on one API replays on the other from its canonical fields
+//! only, so its citations and tool plan stay behind. Text and image embeddings use Cohere's own `/v1/embed`.
 //!
 //! ```no_run
 //! use rig_core::providers::cohere;
