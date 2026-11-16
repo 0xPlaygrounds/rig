@@ -540,3 +540,35 @@ fn denied_callback(authorize_url: &str) -> Option<(std::net::SocketAddr, String)
         format!("{}?error=access_denied&state={state}", redirect.path()),
     ))
 }
+
+/// While the device flow waits for the user, the store's lock is free.
+#[tokio::test]
+async fn device_flow_does_not_hold_the_store_lock() -> anyhow::Result<()> {
+    use crate::providers::auth::FileTokenStore;
+    let dir = assert_fs::TempDir::new()?;
+    let store = FileTokenStore::new(dir.path());
+    let mut replies = vec![MockHttpResponse::success(
+        r#"{"device_auth_id":"d1","user_code":"UC-1","interval":1}"#,
+    )];
+    replies.extend((0..10).map(|_| MockHttpResponse::error(StatusCode::FORBIDDEN, "pending")));
+    let http = SequencedHttpClient::new(replies);
+    let auth = Authenticator::new(
+        AuthSource::OAuth,
+        store.clone(),
+        DeviceCodeHandler::new(|_| {}),
+        true,
+    );
+    let other_process = store.with_lock_wait(std::time::Duration::from_millis(200));
+    tokio::select! {
+        ended = auth.auth_context(&http) => anyhow::bail!("the flow ended early: {:?}", ended.map(|_| ())),
+        lock = async {
+            tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+            other_process.lock(STORE_KEY).await
+        } => {
+            if let Err(error) = lock {
+                anyhow::bail!("lock refused while the device flow waits for the user: {error}");
+            }
+        }
+    }
+    Ok(())
+}

@@ -1,7 +1,8 @@
 use super::{ApiKeyRecord, Authenticator, STORE_KEY, refresh_api_key};
 use crate::http_client::HttpClientExt;
 use crate::providers::auth::{
-    AuthContext, AuthError, DeviceCodePrompt, form, load_record, request, save_record, send_json,
+    AuthContext, AuthError, DeviceCodePrompt, Held, form, load_record, request, save_record,
+    send_json,
 };
 use http::Method;
 use serde::Deserialize;
@@ -37,26 +38,30 @@ impl Authenticator {
         if let Some(context) = self.0.remembered.live(0) {
             return Ok(context);
         }
-        let _held = self.0.hold(STORE_KEY).await?;
+        let held = self.0.hold(STORE_KEY).await?;
         let mut record: ApiKeyRecord = load_record(&*self.0.store, STORE_KEY).await?;
         if record.can_reuse_for_oauth(record.github_token.as_deref()) {
             return Ok(self.remember(record));
         }
 
         let from_cache = record.github_token.is_some();
-        let github_token = match record.github_token.clone() {
-            Some(token) => token,
-            None => self.sign_in_to_github(http, &mut record).await?,
+        let (github_token, held) = match record.github_token.clone() {
+            Some(token) => (token, held),
+            None => self.sign_in_to_github(http, held).await?,
         };
-        let session = match refresh_api_key(http, &github_token).await {
-            Ok(session) => session.bound_to(&github_token, Some(github_token.clone())),
+        let (session, _held) = match refresh_api_key(http, &github_token).await {
+            Ok(session) => (
+                session.bound_to(&github_token, Some(github_token.clone())),
+                held,
+            ),
             Err(err) if from_cache && should_retry_with_fresh_access_token(&err) => {
                 record.github_token = None;
                 save_record(&*self.0.store, STORE_KEY, &record).await?;
-                let fresh = self.sign_in_to_github(http, &mut record).await?;
-                refresh_api_key(http, &fresh)
+                let (fresh, held) = self.sign_in_to_github(http, held).await?;
+                let session = refresh_api_key(http, &fresh)
                     .await?
-                    .bound_to(&fresh, Some(fresh.clone()))
+                    .bound_to(&fresh, Some(fresh.clone()));
+                (session, held)
             }
             Err(err) => return Err(err),
         };
@@ -64,13 +69,14 @@ impl Authenticator {
         Ok(self.remember(session))
     }
 
-    /// Run the device flow when allowed, and keep the GitHub token it gets
-    /// in `record` and the store before the exchange that may fail.
-    async fn sign_in_to_github<H>(
-        &self,
+    /// Run the device flow when allowed, without `held`, since the user may
+    /// take minutes, then take the store again and keep the GitHub token it
+    /// gets in the stored record before the exchange that may fail.
+    async fn sign_in_to_github<'a, H>(
+        &'a self,
         http: &H,
-        record: &mut ApiKeyRecord,
-    ) -> Result<String, AuthError>
+        held: Held<'a>,
+    ) -> Result<(String, Held<'a>), AuthError>
     where
         H: HttpClientExt,
     {
@@ -80,10 +86,13 @@ impl Authenticator {
                     .into(),
             ));
         }
+        drop(held);
         let token = self.login_device_flow(http).await?;
+        let held = self.0.hold(STORE_KEY).await?;
+        let mut record: ApiKeyRecord = load_record(&*self.0.store, STORE_KEY).await?;
         record.github_token = Some(token.clone());
-        save_record(&*self.0.store, STORE_KEY, record).await?;
-        Ok(token)
+        save_record(&*self.0.store, STORE_KEY, &record).await?;
+        Ok((token, held))
     }
 
     async fn login_device_flow<H>(&self, http: &H) -> Result<String, AuthError>

@@ -143,7 +143,7 @@ impl Authenticator {
         if let Some(context) = self.0.remembered.live(TOKEN_EXPIRY_SKEW_SECONDS) {
             return Ok(context);
         }
-        let _held = self.0.hold(STORE_KEY).await?;
+        let held = self.0.hold(STORE_KEY).await?;
         let mut record: AuthRecord = load_record(&*self.0.store, STORE_KEY).await?;
 
         if let Some(access_token) = record.access_token.clone()
@@ -189,8 +189,9 @@ impl Authenticator {
             ));
         }
 
-        let fresh = self.login_device_flow(http).await?;
-        self.keep(fresh).await
+        // The user may take minutes, so the store stays free meanwhile.
+        drop(held);
+        self.sign_in_with_device_code(http).await
     }
 
     /// Sign in again by `method`, whatever is cached, telling `prompt` what
