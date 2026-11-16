@@ -290,15 +290,7 @@ impl InteractionsDecoder {
             .and_then(Value::as_str)
             .unwrap_or_default();
         if !self.steps.contains_key(&index) {
-            let step = match kind {
-                "text" | "text_annotation_delta" | "image" | "audio" | "document" | "video" => {
-                    "model_output"
-                }
-                "thought_summary" | "thought_signature" => "thought",
-                "arguments_delta" => "function_call",
-                other => other,
-            };
-            self.start(index, json!({ "type": step }), out)?;
+            self.start(index, json!({ "type": step_kind(kind) }), out)?;
         }
         let Some(open) = self.steps.get_mut(&index) else {
             return Ok(());
@@ -338,11 +330,7 @@ impl InteractionsDecoder {
                 })
             }
             (Open::Call(arguments), "arguments_delta") => {
-                let fragment = match delta.get("arguments") {
-                    Some(Value::String(fragment)) => Cow::Borrowed(fragment.as_str()),
-                    Some(Value::Null) | None => Cow::Borrowed(""),
-                    Some(other) => Cow::Owned(other.to_string()),
-                };
+                let fragment = arguments_fragment(&delta);
                 arguments.push_str(&fragment);
                 let fragment = CallFragment {
                     arguments: Some(&fragment),
@@ -518,6 +506,29 @@ fn annotation_citation(annotation: &Value) -> Option<WireCitation> {
         )
     });
     Some(WireCitation::new(span, vec![source]))
+}
+
+/// The kind of step a `delta` type belongs to, for a step no `step.start`
+/// opened.
+fn step_kind(delta: &str) -> &str {
+    match delta {
+        "text" | "text_annotation_delta" | "image" | "audio" | "document" | "video" => {
+            "model_output"
+        }
+        "thought_summary" | "thought_signature" => "thought",
+        "arguments_delta" => "function_call",
+        other => other,
+    }
+}
+
+/// The arguments text an `arguments_delta` adds: its string, or the JSON of
+/// any other value.
+fn arguments_fragment(delta: &Map<String, Value>) -> Cow<'_, str> {
+    match delta.get("arguments") {
+        Some(Value::String(fragment)) => Cow::Borrowed(fragment),
+        Some(Value::Null) | None => Cow::Borrowed(""),
+        Some(other) => Cow::Owned(other.to_string()),
+    }
 }
 
 /// Write the id, name and announced arguments a call step states.

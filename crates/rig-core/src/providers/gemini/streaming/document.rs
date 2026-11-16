@@ -3,15 +3,16 @@
 //! REST, Vertex AI and gRPC wires share it, each over its chunks' REST JSON.
 //!
 //! ```
-//! use rig_core::providers::gemini::streaming::document::GenerateContentResponse;
+//! use rig_core::providers::gemini::streaming::{GenerateContentChunk, document::GenerateContentResponse};
+//! use rig_core::wire::document::Reassemble;
 //! use serde_json::json;
 //!
 //! let mut document = GenerateContentResponse::default();
 //! for text in ["Hel", "lo"] {
 //!     let chunk = json!({"candidates": [{"content": {"parts": [{"text": text}], "role": "model"}, "index": 0}]});
-//!     document.chunk(chunk.as_object().unwrap_or(&Default::default()));
+//!     document.absorb(&GenerateContentChunk(chunk.as_object().cloned().unwrap_or_default()));
 //! }
-//! assert_eq!(document.document()["candidates"][0]["content"]["parts"], json!([{"text": "Hello"}]));
+//! assert_eq!(document.finish()["candidates"][0]["content"]["parts"], json!([{"text": "Hello"}]));
 //! ```
 
 use serde_json::{Map, Value};
@@ -43,43 +44,6 @@ pub struct GenerateContentResponse {
 }
 
 impl GenerateContentResponse {
-    /// Absorb one chunk, in REST JSON.
-    ///
-    /// For rig's own crates; not covered by semver.
-    #[doc(hidden)]
-    pub fn chunk(&mut self, chunk: &Map<String, Value>) {
-        for (key, value) in chunk {
-            match (key.as_str(), value) {
-                ("candidates", Value::Array(candidates)) => {
-                    for (position, candidate) in candidates.iter().enumerate() {
-                        self.candidate(position, candidate);
-                    }
-                }
-                // Candidates of another type fail the decoder; the document
-                // keeps the ones it holds.
-                ("candidates", _) => {}
-                ("promptFeedback", value) => {
-                    if self.document.get(key).is_none_or(Value::is_null) {
-                        self.document.insert(key.clone(), value.clone());
-                    }
-                }
-                (_, value) => keep(&mut self.document, key, value),
-            }
-        }
-    }
-
-    /// The document the chunks add up to; `Null` when there were none.
-    ///
-    /// For rig's own crates; not covered by semver.
-    #[doc(hidden)]
-    pub fn document(self) -> Value {
-        if self.document.is_empty() {
-            Value::Null
-        } else {
-            Value::Object(self.document)
-        }
-    }
-
     /// Fold one streamed candidate into the candidate of its `index`.
     fn candidate(&mut self, position: usize, candidate: &Value) {
         let Value::Object(candidate) = candidate else {
@@ -166,10 +130,7 @@ fn part_into(
     index: u64,
     signatures: &mut Vec<(u64, String)>,
 ) {
-    let signature = part
-        .str("thoughtSignature")
-        .filter(|signature| !signature.is_empty())
-        .map(str::to_owned);
+    let signature = super::signature(part).map(str::to_owned);
     if let Some(text) = part.str("text") {
         if text.is_empty() && signature.is_none() {
             return;
@@ -178,23 +139,22 @@ fn part_into(
         if let Some(last) = parts.last_mut()
             && last.str("text").is_some()
             && (last.bool("thought") == Some(true)) == thought
-            && !(signed(last) && signature.is_some())
+            && !(super::signature(last).is_some() && signature.is_some())
         {
             merge_part(last, part);
             return;
         }
-    } else if let Value::Object(fields) = part {
-        let bare = ["thought", "thoughtSignature", "partMetadata"];
-        let data = fields.keys().any(|key| !bare.contains(&key.as_str()));
-        if !data && let Some(signature) = signature {
-            match parts.last_mut().and_then(Value::as_object_mut) {
-                Some(last) => {
-                    last.insert("thoughtSignature".to_owned(), Value::String(signature));
-                }
-                None => signatures.push((index, signature)),
+    } else if let Value::Object(fields) = part
+        && super::is_bare(fields)
+        && let Some(signature) = signature
+    {
+        match parts.last_mut().and_then(Value::as_object_mut) {
+            Some(last) => {
+                last.insert("thoughtSignature".to_owned(), Value::String(signature));
             }
-            return;
+            None => signatures.push((index, signature)),
         }
+        return;
     }
     let mut part = part.clone();
     if let Some(at) = signatures.iter().position(|(held, _)| *held == index)
@@ -208,21 +168,37 @@ fn part_into(
     parts.push(part);
 }
 
-/// Whether `part` holds a non-empty signature.
-fn signed(part: &Value) -> bool {
-    part.str("thoughtSignature")
-        .is_some_and(|signature| !signature.is_empty())
-}
-
 impl crate::wire::document::Serves<crate::operation::Completion> for GenerateContentResponse {}
 
+/// Each chunk in REST JSON; the document is `Null` when there were none.
 impl Reassemble<GenerateContentChunk> for GenerateContentResponse {
     fn absorb(&mut self, GenerateContentChunk(chunk): &GenerateContentChunk) {
-        self.chunk(chunk);
+        for (key, value) in chunk {
+            match (key.as_str(), value) {
+                ("candidates", Value::Array(candidates)) => {
+                    for (position, candidate) in candidates.iter().enumerate() {
+                        self.candidate(position, candidate);
+                    }
+                }
+                // Candidates of another type fail the decoder; the document
+                // keeps the ones it holds.
+                ("candidates", _) => {}
+                ("promptFeedback", value) => {
+                    if self.document.get(key).is_none_or(Value::is_null) {
+                        self.document.insert(key.clone(), value.clone());
+                    }
+                }
+                (_, value) => keep(&mut self.document, key, value),
+            }
+        }
     }
 
     fn finish(self) -> Value {
-        self.document()
+        if self.document.is_empty() {
+            Value::Null
+        } else {
+            Value::Object(self.document)
+        }
     }
 }
 
