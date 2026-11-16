@@ -20,6 +20,7 @@ use rig_harness::services::ProjectRoot;
 use serde::{Deserialize, Serialize};
 
 use crate::models::{ModelLabel, effort_name};
+use crate::session_picker::tilde;
 
 /// The welcome aside's kind.
 pub const WELCOME: &str = "rig.welcome";
@@ -81,7 +82,7 @@ fn welcome(
             .map(|label| label.0.clone())
             .or_else(|| model.map(|model| model.0.clone())),
         reasoning: effort_name(connection, reasoning.copied().unwrap_or_default()),
-        directory: root.map(|root| shown(&root.0)).unwrap_or_default(),
+        directory: root.map(|root| tilde(&root.0)).unwrap_or_default(),
     };
     let value = serde_json::to_value(&says).unwrap_or_default();
     // Read first: a conversation only borrowed mutably is not changed.
@@ -102,19 +103,6 @@ fn welcome(
             conversation.replace_aside(id, aside);
         }
         None => *placed = Some(conversation.add_aside(aside)),
-    }
-}
-
-/// `path`, under `~` when it is in the home.
-fn shown(path: &std::path::Path) -> String {
-    let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
-    match home
-        .as_deref()
-        .and_then(|home| path.strip_prefix(home).ok())
-    {
-        Some(rest) if rest.as_os_str().is_empty() => "~".to_owned(),
-        Some(rest) => format!("~/{}", rest.display()),
-        None => path.display().to_string(),
     }
 }
 
