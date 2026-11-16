@@ -52,7 +52,7 @@ impl ChatBot {
         }
     }
 
-    /// Read prompts from stdin and print answers until `exit`.
+    /// Read prompts from stdin and print answers until `exit` or end of input.
     /// Returns prompt failures and stdout flush errors; input read errors are printed.
     pub async fn run(self) -> Result<(), PromptError> {
         self.run_on(io::stdin().lock()).await
@@ -73,6 +73,7 @@ impl ChatBot {
 
             let mut input = String::new();
             match input_lines.read_line(&mut input) {
+                Ok(0) => break,
                 Ok(_) => {
                     let input = input.trim();
                     if input == "exit" {
