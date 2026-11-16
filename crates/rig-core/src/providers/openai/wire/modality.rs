@@ -18,7 +18,7 @@ use crate::operation::{
 };
 use crate::providers::internal::wire::classify_untyped_line;
 use crate::providers::openai::embedding::{
-    CompatibleEmbeddingResponse, EncodingFormat, model_dimensions_from_identifier,
+    CompatibleEmbeddingResponse, model_dimensions_from_identifier,
 };
 use crate::transcription::TranscriptionRequest;
 use crate::wire::{
@@ -180,10 +180,6 @@ pub struct EmbeddingQuirks {
     pub max_documents: usize,
     /// Whether a successful reply must carry usage.
     pub requires_usage: bool,
-    /// Whether the provider accepts `encoding_format`.
-    pub supports_encoding_format: bool,
-    /// Whether the provider accepts `user`.
-    pub supports_user: bool,
     /// Whether the model is a body field (false for Azure, which addresses a
     /// deployment through the URL).
     pub sends_model_field: bool,
@@ -204,8 +200,6 @@ impl EmbeddingQuirks {
         Self {
             max_documents: 1024,
             requires_usage: true,
-            supports_encoding_format: true,
-            supports_user: true,
             sends_model_field: true,
             dimensions: DimensionsField::Dimensions,
             // Shared OpenAI model widths are resolved separately.
@@ -425,10 +419,6 @@ pub struct Embeddings {
     /// The width the caller asked for, when they named one rather than
     /// taking the model's default.
     pub ndims: Option<usize>,
-    /// The encoding the caller asked the provider to answer in.
-    pub encoding_format: Option<EncodingFormat>,
-    /// The end-user identifier the provider attributes the call to.
-    pub user: Option<String>,
 }
 
 impl Embeddings {
@@ -438,21 +428,7 @@ impl Embeddings {
             provider,
             model: model.into(),
             ndims,
-            encoding_format: None,
-            user: None,
         }
-    }
-
-    /// Ask the provider to answer in `encoding_format`.
-    pub fn with_encoding_format(mut self, encoding_format: EncodingFormat) -> Self {
-        self.encoding_format = Some(encoding_format);
-        self
-    }
-
-    /// Attribute the call to an end user.
-    pub fn with_user(mut self, user: impl Into<String>) -> Self {
-        self.user = Some(user.into());
-        self
     }
 
     /// This model's width contract on this dialect, or `None` for a model
@@ -609,23 +585,6 @@ impl Wire for Embeddings {
 
     fn encode(&self, request: Vec<String>, _mode: Mode) -> Result<Encoded, EncodeError> {
         let quirks = &self.provider.dialect.quirks.embedding;
-        // Base64 vectors are not decoded anywhere, so asking for them would
-        // answer 200 with a payload rig cannot read.
-        if self.encoding_format == Some(EncodingFormat::Base64) {
-            return Err(EncodeError::request(format!(
-                "Rig cannot decode {} embedding responses encoded as `base64`",
-                self.provider.dialect.name
-            )));
-        }
-        if self.encoding_format.is_some() && !quirks.supports_encoding_format {
-            return Err(unsupported_parameter(
-                self.provider.dialect.name,
-                "encoding_format",
-            ));
-        }
-        if self.user.is_some() && !quirks.supports_user {
-            return Err(unsupported_parameter(self.provider.dialect.name, "user"));
-        }
         self.refuse_unhonourable_width()?;
 
         let mut body = serde_json::json!({ "input": request });
@@ -639,15 +598,6 @@ impl Wire for Embeddings {
         }
         if let Some((field, ndims)) = self.requested_width() {
             object.insert(field.to_owned(), serde_json::json!(ndims));
-        }
-        if let Some(encoding_format) = self.encoding_format {
-            object.insert(
-                "encoding_format".to_owned(),
-                serde_json::to_value(encoding_format)?,
-            );
-        }
-        if let Some(user) = &self.user {
-            object.insert("user".to_owned(), serde_json::json!(user));
         }
 
         json_post(

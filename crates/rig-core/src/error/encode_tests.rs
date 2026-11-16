@@ -11,8 +11,7 @@ use crate::providers::cohere::CohereConfig;
 use crate::providers::gemini::GeminiConfig;
 use crate::providers::ollama::OllamaConfig;
 use crate::providers::openai::OpenAIConfig;
-use crate::providers::openai::embedding::EncodingFormat;
-use crate::providers::openai::wire::{GROQ, LLAMACPP, MISTRAL, OPENAI, PERPLEXITY, TOGETHER};
+use crate::providers::openai::wire::{GROQ, LLAMACPP, OPENAI, PERPLEXITY};
 use crate::providers::voyageai::VoyageAiConfig;
 use crate::wire::{Mode, Wire};
 
@@ -127,36 +126,6 @@ fn provider_encode_failures_classify_as_request_building() {
                     .encode(vec!["a".into()], Mode::Unary),
             ),
             "RequestError: invalid uri character",
-        ),
-        (
-            "openai embeddings, base64",
-            failure(
-                OpenAIConfig::with_key(&OPENAI, "k")
-                    .embedding("text-embedding-3-small", None)
-                    .with_encoding_format(EncodingFormat::Base64)
-                    .encode(vec!["a".into()], Mode::Unary),
-            ),
-            "RequestError: Rig cannot decode openai embedding responses encoded as `base64`",
-        ),
-        (
-            "openai-compatible embeddings, unsupported encoding format",
-            failure(
-                OpenAIConfig::with_key(&TOGETHER, "k")
-                    .embedding("m", None)
-                    .with_encoding_format(EncodingFormat::Float)
-                    .encode(vec!["a".into()], Mode::Unary),
-            ),
-            "RequestError: together embeddings do not support the `encoding_format` parameter",
-        ),
-        (
-            "openai-compatible embeddings, unsupported user",
-            failure(
-                OpenAIConfig::with_key(&MISTRAL, "k")
-                    .embedding("mistral-embed", None)
-                    .with_user("u")
-                    .encode(vec!["a".into()], Mode::Unary),
-            ),
-            "RequestError: mistral embeddings do not support the `user` parameter",
         ),
         (
             "openai rerank without the endpoint",
