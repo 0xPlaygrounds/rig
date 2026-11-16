@@ -27,7 +27,7 @@ pub use calls::{ExecCall, MalformedCall, PendingToolCall, ToolAnswer};
 pub use committed::{CommittedItem, project};
 pub use output::OutputMode;
 pub use patch::RequestPatch;
-pub use prepare::{PrepareError, PreparedRequest, prepare_request};
+pub use prepare::{PreparedRequest, prepare_request};
 pub use spec::RunSpec;
 
 use std::collections::BTreeMap;

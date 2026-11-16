@@ -7,7 +7,7 @@
 //! let prepared =
 //!     prepare_request(&RunSpec::new(), &Default::default(), "hi", &[], vec![], None, None)?;
 //! assert!(prepared.request.tools.is_empty());
-//! # Ok::<(), rig_agent::run::prepare::PrepareError>(())
+//! # Ok::<(), rig_core::error::ProviderError>(())
 //! ```
 
 use std::collections::BTreeSet;
@@ -25,22 +25,6 @@ use super::output::OutputMode;
 use super::patch::{RequestPatch, overlay_params};
 use super::policy::TurnPolicy;
 use super::spec::RunSpec;
-
-/// Why a request could not be prepared: a local, pre-IO error. The effective
-/// request is invalid (an impossible tool choice, an `active_tools` name that
-/// is not available, an output-tool collision).
-#[derive(Debug, thiserror::Error)]
-pub enum PrepareError {
-    /// The request the spec, patch and tool set describe.
-    #[error("{0}")]
-    Request(String),
-}
-
-impl From<PrepareError> for ProviderError {
-    fn from(error: PrepareError) -> Self {
-        ProviderError::request(error.to_string())
-    }
-}
 
 /// Everything a model call carries that the protocol decides, as owned data.
 ///
@@ -74,7 +58,8 @@ pub struct PreparedRequest {
 /// A committed output-tool name pins tool mode while a schema is present.
 /// Returns errors for incompatible tool choices, unavailable allow-list names,
 /// output-tool collisions, invalid native schemas, or provider tools beside
-/// `additional_params` that is a string, array or number. Performs no I/O.
+/// `additional_params` that is a string, array or number, as
+/// [`ProviderError::Request`]: a local error, raised before any I/O.
 pub fn prepare_request(
     spec: &RunSpec,
     capabilities: &ProviderCapabilities,
@@ -83,7 +68,7 @@ pub fn prepare_request(
     tools: Vec<Arc<ToolDefinition>>,
     committed_output_tool: Option<&str>,
     patch: Option<&RequestPatch>,
-) -> Result<PreparedRequest, PrepareError> {
+) -> Result<PreparedRequest, ProviderError> {
     let output_schema = spec.output_schema.as_ref();
     let preamble = patch
         .and_then(|o| o.preamble.as_deref())
@@ -107,7 +92,7 @@ pub fn prepare_request(
             | serde_json::Value::Number(_)),
         ) = &additional_params
     {
-        return Err(PrepareError::Request(format!(
+        return Err(ProviderError::request(format!(
             "additional_params must be a JSON object to carry provider tools, got {params}"
         )));
     }
@@ -134,7 +119,7 @@ pub fn prepare_request(
             .iter()
             .find(|name| !tooldefs.iter().any(|tool| tool.name == **name))
         {
-            return Err(PrepareError::Request(format!(
+            return Err(ProviderError::request(format!(
                 "active_tools requested tool `{missing}`, which is not available this turn"
             )));
         }
@@ -177,7 +162,7 @@ pub fn prepare_request(
     if let Some(name) = &output_tool_name
         && executable_tool_names.contains(name)
     {
-        return Err(PrepareError::Request(format!(
+        return Err(ProviderError::request(format!(
             "real tool `{name}` conflicts with the structured-output tool reserved for this \
              run; rename or remove the real tool, exclude it with `active_tools`, or make it \
              visible before starting a new run so Rig can reserve a different output-tool name"
@@ -231,7 +216,7 @@ pub fn prepare_request(
     if let (Some(name), Some(schema)) = (&output_tool_name, output_schema) {
         tooldefs.push(Arc::new(ToolDefinition {
             name: ToolName::new(name.clone()).map_err(|_| {
-                PrepareError::Request("the output tool name cannot be empty".to_string())
+                ProviderError::request("the output tool name cannot be empty".to_string())
             })?,
             description: spec
                 .output_tool_description

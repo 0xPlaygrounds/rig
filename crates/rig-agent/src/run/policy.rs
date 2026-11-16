@@ -11,7 +11,7 @@ use std::collections::BTreeSet;
 use rig_core::message::{Message, ToolCall, ToolChoice, ToolName};
 use serde::{Deserialize, Serialize};
 
-use super::prepare::PrepareError;
+use rig_core::error::ProviderError;
 use super::response::PromptError;
 
 /// Why a model-emitted tool call cannot be dispatched as written.
@@ -118,7 +118,7 @@ struct TurnPolicyRepr {
 }
 
 impl TryFrom<TurnPolicyRepr> for TurnPolicy {
-    type Error = PrepareError;
+    type Error = ProviderError;
 
     fn try_from(repr: TurnPolicyRepr) -> Result<Self, Self::Error> {
         Self::resolve(
@@ -136,14 +136,14 @@ impl TurnPolicy {
     /// output mode, the synthetic `output_tool`, under `tool_choice`.
     ///
     /// # Errors
-    /// [`PrepareError::Request`] when the choice cannot be honored: `Required`
+    /// [`ProviderError::Request`] when the choice cannot be honored: `Required`
     /// with no advertised tool, an empty `Specific`, or a `Specific` naming a
     /// tool that is not advertised.
     pub fn new(
         executable: BTreeSet<String>,
         tool_choice: Option<ToolChoice>,
         output_tool: Option<String>,
-    ) -> Result<Self, PrepareError> {
+    ) -> Result<Self, ProviderError> {
         Self::resolve(executable, tool_choice, output_tool, None, false)
     }
 
@@ -157,7 +157,7 @@ impl TurnPolicy {
         output_tool: Option<String>,
         pre_filter: Option<&BTreeSet<String>>,
         hosted: bool,
-    ) -> Result<Self, PrepareError> {
+    ) -> Result<Self, ProviderError> {
         let output = output_tool.as_deref();
         let hint = |active_tools_caused: bool| {
             if active_tools_caused {
@@ -170,7 +170,7 @@ impl TurnPolicy {
 
         let mut allowed = match &tool_choice {
             Some(ToolChoice::Required) if executable.is_empty() && output.is_none() && !hosted => {
-                return Err(PrepareError::Request(format!(
+                return Err(ProviderError::request(format!(
                     "ToolChoice::Required forces the model to call a tool, but no tools are \
                      advertised this turn.{}",
                     hint(pre_filter.is_some_and(|pf| !pf.is_empty()))
@@ -180,7 +180,7 @@ impl TurnPolicy {
             Some(ToolChoice::None) => BTreeSet::new(),
             Some(ToolChoice::Specific { function_names }) => {
                 if function_names.is_empty() {
-                    return Err(PrepareError::Request(
+                    return Err(ProviderError::request(
                         "ToolChoice::Specific requires at least one function name".to_string(),
                     ));
                 }
@@ -196,7 +196,7 @@ impl TurnPolicy {
                         .chain(output)
                         .collect();
                     // Attribute missing names to filtering only if they existed before it.
-                    return Err(PrepareError::Request(format!(
+                    return Err(ProviderError::request(format!(
                         "ToolChoice::Specific requested tool names not advertised this turn: \
                          {missing:?}. Advertised: {advertised:?}.{}",
                         hint(pre_filter.is_some_and(|pf| missing.iter().any(|n| pf.contains(*n))))

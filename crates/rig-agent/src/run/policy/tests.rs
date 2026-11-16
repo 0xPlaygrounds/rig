@@ -84,7 +84,7 @@ fn resolve_specific_rejects_missing_tools() {
 
     assert!(matches!(
         err,
-        PrepareError::Request(err)
+        ProviderError::Request(err)
             if err.to_string().contains("missing")
                 && err.to_string().contains("add")
     ));
@@ -102,7 +102,7 @@ fn resolve_specific_rejects_empty_names() {
 
     assert!(matches!(
         err,
-        PrepareError::Request(err)
+        ProviderError::Request(err)
             if err.to_string().contains("requires at least one function name")
     ));
 }
@@ -114,7 +114,7 @@ fn required_with_no_advertised_tool_is_local_error() {
         .expect_err("Required with no advertised tool must fail locally");
     assert!(matches!(
         err,
-        PrepareError::Request(err) if err.to_string().contains("Required")
+        ProviderError::Request(err) if err.to_string().contains("Required")
     ));
 }
 
