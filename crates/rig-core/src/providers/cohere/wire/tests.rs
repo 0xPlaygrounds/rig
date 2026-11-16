@@ -115,11 +115,12 @@ fn a_reply_cut_short_on_either_api_is_truncated() {
 }
 
 /// Cohere's error body, a `message` string, sent with a success status fails
-/// the turn in either mode: with its text on the native wire, and as a reply
-/// that never ended on the Compatibility wire, whose chunks it is not.
+/// the turn in either mode: with the body as sent on the native wire, and as
+/// a reply that never ended on the Compatibility wire, whose chunks it is not.
 #[test]
 fn an_error_body_with_a_success_status_fails_the_turn() {
-    let body = [r#"{"id":"x","message":"internal error"}"#];
+    let sent = r#"{ "message": "internal error", "id": "x" }"#;
+    let body = [sent];
     for mode in [Mode::Unary, Mode::Streaming] {
         let native = folded(
             &cohere().native_completion("command-a-03-2025"),
@@ -127,9 +128,10 @@ fn an_error_body_with_a_success_status_fails_the_turn() {
             &body,
         )
         .expect_err("an error body fails the native turn");
-        assert!(
-            native.to_string().contains("internal error"),
-            "{mode:?}: {native}"
+        assert_eq!(
+            native.to_string(),
+            format!("ProviderResponseError: {sent}"),
+            "{mode:?}"
         );
         let compatibility = folded(&cohere().completion("command-a-03-2025"), mode, &body);
         assert!(
