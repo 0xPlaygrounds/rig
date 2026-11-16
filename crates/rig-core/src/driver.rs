@@ -27,6 +27,7 @@ use futures::StreamExt;
 use tracing::Instrument;
 
 use crate::error::ProviderError;
+use crate::lock;
 use crate::streaming::{Item, Streamed};
 use crate::wasm_compat::{WasmBoxedFuture, WasmBoxedStream, WasmCompatSend, WasmCompatSync};
 use crate::wire::document::Reassemble;
@@ -951,12 +952,6 @@ pub(crate) fn decode_with<Op: Operation>(
 /// The reply failed: the error is its last item.
 fn fail<Op: Operation>(reply: &Mutex<Shared<Op>>, error: ProviderError) {
     lock(reply).items.push_back(Err(error));
-}
-
-pub(crate) fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
-    mutex
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 /// Read pages until one names no cursor, names the cursor it was asked

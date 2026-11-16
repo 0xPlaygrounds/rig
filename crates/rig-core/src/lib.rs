@@ -122,6 +122,13 @@ pub fn now_ms() -> u64 {
     millis(web_time::SystemTime::now())
 }
 
+/// Lock `mutex`, taking the guard even if a panicking holder poisoned it.
+pub(crate) fn lock<T>(mutex: &std::sync::Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 // Native runtime values must retain their thread-safety bounds.
 #[cfg(not(target_family = "wasm"))]
 const _: fn() = || {

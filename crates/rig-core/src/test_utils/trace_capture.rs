@@ -10,7 +10,7 @@
 //! assert_eq!(capture.spans()[0].u64("answer"), Some(42));
 //! ```
 
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex};
 
 use serde_json::{Map, Value};
 use tracing::field::{Field, Visit};
@@ -202,7 +202,7 @@ impl TraceCapture {
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Captured> {
-        self.0.lock().unwrap_or_else(PoisonError::into_inner)
+        crate::lock(&self.0)
     }
 }
 

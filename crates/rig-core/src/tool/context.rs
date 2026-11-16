@@ -365,9 +365,7 @@ impl PublishedContext {
     /// The recorder's non-consuming snapshot. Publish before resolving the
     /// sink; values published after resolution are not part of that outcome.
     pub fn result_context(&self) -> Option<ToolResultContext> {
-        self.0
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+        crate::lock(&self.0)
             .as_ref()
             .map(ToolContext::result_context)
     }
@@ -378,10 +376,7 @@ impl PublishedContext {
     /// observe different versions. The slot does not enforce this ordering.
     pub fn publish(&self, mut context: ToolContext) {
         context.clear_scope();
-        *self
-            .0
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(context);
+        *crate::lock(&self.0) = Some(context);
     }
 
     /// Adds `value` to what is published, beside what is there, as
@@ -393,19 +388,14 @@ impl PublishedContext {
     ///
     /// When `value` cannot be encoded; nothing changes then.
     pub fn insert<T: ContextValue>(&self, value: T) -> Result<Option<T>, ToolContextError> {
-        self.0
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+        crate::lock(&self.0)
             .get_or_insert_with(ToolContext::new)
             .insert_result(value)
     }
 
     /// The driver's read: what was published, if anything, leaving nothing.
     pub fn take(&self) -> Option<ToolContext> {
-        self.0
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .take()
+        crate::lock(&self.0).take()
     }
 }
 

@@ -17,6 +17,7 @@ use std::{
 
 use futures::StreamExt;
 
+use crate::lock;
 use crate::{
     completion::UnsupportedOption,
     effect::{Answered, EffectId, EffectKind, HandlerDescriptor, HandlerKey},
@@ -582,12 +583,6 @@ impl Reply {
 // A layer and the recorder at its immediate inner boundary use the same fold.
 // Each outer boundary gets its own slot: a verdict can change that view.
 pub(crate) type Folded = Arc<Mutex<Option<Result<Answered, ErrorReport>>>>;
-
-fn lock<T>(value: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
-    value
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-}
 
 /// An effect's identity, requested delivery mode, and driver-provided scopes.
 /// Reply transport and cancellation remain owned by the driver.

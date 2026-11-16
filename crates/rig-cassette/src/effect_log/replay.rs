@@ -9,7 +9,7 @@
 
 use std::{
     collections::{BTreeMap, VecDeque},
-    sync::{Arc, Mutex, PoisonError},
+    sync::{Arc, Mutex},
 };
 
 use rig_core::{
@@ -59,14 +59,11 @@ pub struct ReplayRefusals(Arc<Mutex<Option<ErrorReport>>>);
 impl ReplayRefusals {
     /// Take the first pending refusal, if a replayer refused a dispatch.
     pub fn take(&self) -> Option<ErrorReport> {
-        self.0.lock().unwrap_or_else(PoisonError::into_inner).take()
+        crate::lock(&self.0).take()
     }
 
     fn report(&self, report: &ErrorReport) {
-        self.0
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .get_or_insert_with(|| report.clone());
+        crate::lock(&self.0).get_or_insert_with(|| report.clone());
     }
 }
 
@@ -164,10 +161,7 @@ impl EffectLogReplayer {
     pub fn for_key_by_id(log: &EffectLog, key: &HandlerKey) -> Result<Self, ErrorReport> {
         let replayer = Self::for_key(log, key)?;
         {
-            let records = replayer
-                .records
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner);
+            let records = crate::lock(&replayer.records);
             let mut seen = std::collections::BTreeSet::new();
             if let Some(twice) = records.iter().find(|record| !seen.insert(record.id)) {
                 return Err(ErrorReport::new(
@@ -359,10 +353,7 @@ impl EffectLogReplayer {
 
     /// Records not yet replayed.
     pub fn remaining(&self) -> usize {
-        self.records
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .len()
+        crate::lock(&self.records).len()
     }
 }
 
@@ -640,7 +631,7 @@ impl Serve for EffectLogReplayer {
 
     async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
         let next = {
-            let mut records = self.records.lock().unwrap_or_else(PoisonError::into_inner);
+            let mut records = crate::lock(&self.records);
             if self.by_id {
                 let id = dispatch.id();
                 (records.iter().position(|record| record.id == id))
