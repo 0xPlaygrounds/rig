@@ -21,10 +21,6 @@ struct OperationArgs {
 #[error("Math error")]
 struct MathError;
 
-#[derive(Debug, thiserror::Error)]
-#[error("Init error")]
-struct InitError;
-
 #[derive(Deserialize, Serialize)]
 struct Add;
 
@@ -66,13 +62,7 @@ impl Tool for Add {
 }
 
 impl ToolEmbedding for Add {
-    type InitError = InitError;
     type Context = ();
-    type State = ();
-
-    fn init(_state: Self::State, _context: Self::Context) -> Result<Self, Self::InitError> {
-        Ok(Add)
-    }
 
     fn embedding_docs(&self) -> Vec<String> {
         vec!["Add x and y together".into()]
@@ -122,13 +112,7 @@ impl Tool for Subtract {
 }
 
 impl ToolEmbedding for Subtract {
-    type InitError = InitError;
     type Context = ();
-    type State = ();
-
-    fn init(_state: Self::State, _context: Self::Context) -> Result<Self, Self::InitError> {
-        Ok(Subtract)
-    }
 
     fn embedding_docs(&self) -> Vec<String> {
         vec!["Subtract y from x (i.e.: x - y)".into()]
@@ -177,12 +161,7 @@ impl Tool for Multiply {
 }
 
 impl ToolEmbedding for Multiply {
-    type InitError = InitError;
     type Context = ();
-    type State = ();
-    fn init(_state: Self::State, _context: Self::Context) -> Result<Self, Self::InitError> {
-        Ok(Multiply)
-    }
     fn embedding_docs(&self) -> Vec<String> {
         vec!["Compute the product of x and y (i.e.: x * y)".into()]
     }
@@ -227,13 +206,7 @@ impl Tool for Divide {
 }
 
 impl ToolEmbedding for Divide {
-    type InitError = InitError;
     type Context = ();
-    type State = ();
-
-    fn init(_state: Self::State, _context: Self::Context) -> Result<Self, Self::InitError> {
-        Ok(Divide)
-    }
 
     fn embedding_docs(&self) -> Vec<String> {
         vec!["Compute the Quotient of x and y (i.e.: x / y). Useful for ratios.".into()]

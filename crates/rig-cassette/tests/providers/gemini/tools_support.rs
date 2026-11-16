@@ -48,10 +48,6 @@ impl Tool for Ping {
     }
 }
 
-#[derive(Debug, thiserror::Error)]
-#[error("init error")]
-pub(crate) struct InitError;
-
 macro_rules! embeddable_operation {
     ($name:ident, $tool_name:literal, $description:literal, $embedding_doc:literal, $op:expr) => {
         #[derive(Clone, Default, Deserialize, Serialize)]
@@ -82,13 +78,7 @@ macro_rules! embeddable_operation {
         }
 
         impl ToolEmbedding for $name {
-            type InitError = InitError;
             type Context = ();
-            type State = ();
-
-            fn init(_state: Self::State, _context: Self::Context) -> Result<Self, Self::InitError> {
-                Ok(Self)
-            }
 
             fn embedding_docs(&self) -> Vec<String> {
                 vec![$embedding_doc.into()]
