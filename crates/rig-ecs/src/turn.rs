@@ -1553,7 +1553,7 @@ pub(crate) fn back_off(
         let Ok((&TurnOf(agent), mut recovery, ending)) = turns.get_mut(turn) else {
             continue;
         };
-        if ending.and_then(TurnOutcome::stops).is_some() {
+        if ending.is_some_and(TurnOutcome::is_stopping) {
             continue;
         }
         recovery.retries += 1;
@@ -1975,7 +1975,7 @@ pub(crate) fn commit_replies(
         if let Some(results) = reply_results(calls, |_| Some(unanswered.clone()), None) {
             commit_results(&mut conversation, results);
         }
-        if ending.and_then(TurnOutcome::stops).is_none() {
+        if !ending.is_some_and(TurnOutcome::is_stopping) {
             spawn_turn_call(&mut commands, turn, agent);
         }
     }
