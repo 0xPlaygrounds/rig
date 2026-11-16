@@ -477,6 +477,44 @@ fn streamed_completion_call_record_requires_a_model_call() {
     .expect("recording during a pending model call succeeds");
 }
 
+#[test]
+fn streamed_completion_response_records_origin_before_turn_acceptance() {
+    let mut terminal = response(vec![AssistantContent::text("done")])
+        .with_finish_reason(rig_core::completion::FinishReason::Stop);
+    terminal.origin.response_model = Some("served-model".into());
+    terminal.origin.response_id = Some("response-1".into());
+    terminal.origin.context = Some(rig_core::message::Fingerprint::of(&"instructions"));
+    terminal.provider_request_id = Some("request-1".into());
+    terminal.usage = Usage::new()
+        .input_tokens(5)
+        .output_tokens(7)
+        .total_tokens(12);
+    terminal.raw = json!({"id": "response-1"});
+    let mut run = AgentRun::new("hello");
+    run.next_step().expect("model call");
+
+    let call = run
+        .record_streamed_completion_response(&terminal)
+        .expect("terminal response records");
+    assert_eq!(call.origin.as_ref(), Some(&terminal.origin));
+    assert_eq!(call.identity(), terminal.identity());
+    assert_eq!(call.usage, terminal.usage);
+    assert_eq!(call.finish_reason, terminal.finish_reason());
+    assert_eq!(call.raw, terminal.raw);
+    assert_eq!(run.completion_calls(), std::slice::from_ref(&call));
+    assert_eq!(run.usage(), terminal.usage);
+
+    let serialized = serde_json::to_value(&run).expect("run serializes");
+    let mut run: AgentRun = serde_json::from_value(serialized).expect("run deserializes");
+    assert_eq!(run.completion_calls(), std::slice::from_ref(&call));
+    run.streamed_turn(assembler().finish(&terminal))
+        .expect("turn accepts");
+    let AgentRunStep::Done(final_response) = run.next_step().expect("run finishes") else {
+        panic!("expected Done");
+    };
+    assert_eq!(final_response.completion_calls, vec![call]);
+}
+
 /// Record the turn's completion call the way a driver does from the
 /// stream's response, for tests that feed a hand-assembled turn.
 fn record_terminal(run: &mut AgentRun) {
@@ -522,12 +560,7 @@ fn streamed_completion_call_is_recorded_once_per_turn() {
     )
     .expect("first record succeeds");
     let err = run
-        .record_streamed_completion_call(
-            Usage::default(),
-            rig_core::completion::ResponseIdentity::default(),
-            None,
-            serde_json::json!({}),
-        )
+        .record_streamed_completion_response(&response(vec![AssistantContent::text("done")]))
         .expect_err("second record for the same turn must be rejected");
     assert!(matches!(err, PromptError::Cancelled { .. }));
     assert_eq!(run.completion_calls().len(), 1);
