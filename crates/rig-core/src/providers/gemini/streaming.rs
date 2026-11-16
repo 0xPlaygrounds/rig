@@ -16,7 +16,7 @@ use super::completion::blocked_prompt_error;
 use super::completion::{map_google_finish_reason, usage_of};
 use crate::error::ProviderError;
 use crate::json_utils::Lenient;
-use crate::message::{CallId, DocumentSourceKind, Image, MediaType, MimeType, ToolName};
+use crate::message::{CallId, DocumentSourceKind, Image, ImageMediaType, MimeType, ToolName};
 use crate::operation::{Block, Completion, Finish};
 use crate::providers::internal::wire;
 use crate::wire::{Decoder, Flow, Out, WireCitation, WireEvent, WireFrame};
@@ -337,7 +337,7 @@ impl GenerateContentDecoder {
             && let (Some(mime_type), Some(data)) =
                 (part.at("/inlineData/mimeType"), part.at("/inlineData/data"))
             && let (Some(mime_type), Some(data)) = (mime_type.as_str(), data.as_str())
-            && let Some(MediaType::Image(media_type)) = MediaType::from_mime_type(mime_type)
+            && let Some(media_type) = ImageMediaType::from_mime_type(mime_type)
         {
             let image = Image {
                 data: DocumentSourceKind::Base64(data.to_owned()),

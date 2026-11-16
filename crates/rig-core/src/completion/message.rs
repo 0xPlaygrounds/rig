@@ -393,7 +393,7 @@ pub struct Reasoning {
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
-        deserialize_with = "native::lenient"
+        deserialize_with = "lenient"
     )]
     pub native: Option<Native>,
 }
@@ -510,7 +510,7 @@ pub struct ToolCall {
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
-        deserialize_with = "native::lenient"
+        deserialize_with = "lenient"
     )]
     pub native: Option<Native>,
 }
@@ -780,9 +780,19 @@ pub struct Text {
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
-        deserialize_with = "native::lenient"
+        deserialize_with = "lenient"
     )]
     pub native: Option<Native>,
+}
+
+/// A stored field, or `None` when it cannot be read, such as a `native`
+/// fingerprinted by an earlier projection: the item then loads with its
+/// canonical fields and replays from them.
+fn lenient<'de, D: serde::Deserializer<'de>, T: serde::de::DeserializeOwned>(
+    deserializer: D,
+) -> Result<Option<T>, D::Error> {
+    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
+    Ok(value.and_then(|value| T::deserialize(value).ok()))
 }
 
 /// A stored [`Text`], read leniently: unreadable citations or native load
@@ -790,9 +800,9 @@ pub struct Text {
 #[derive(Deserialize)]
 struct TextRepr {
     text: String,
-    #[serde(default, deserialize_with = "citation::lenient")]
+    #[serde(default, deserialize_with = "lenient")]
     citations: Option<citation::Citations>,
-    #[serde(default, deserialize_with = "native::lenient")]
+    #[serde(default, deserialize_with = "lenient")]
     native: Option<Native>,
 }
 
@@ -851,7 +861,7 @@ pub struct Image {
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
-        deserialize_with = "native::lenient"
+        deserialize_with = "lenient"
     )]
     pub native: Option<Native>,
 }
@@ -963,15 +973,6 @@ pub struct DocumentContent {
     /// `title`, `context` and `citations`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub additional_params: Option<serde_json::Value>,
-}
-
-/// Helper enum that tracks the media type of the content.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-pub enum MediaType {
-    Image(ImageMediaType),
-    Audio(AudioMediaType),
-    Document(DocumentMediaType),
-    Video(VideoMediaType),
 }
 
 /// Describes the image media type of the content. Not every provider supports every media type.
@@ -1378,25 +1379,6 @@ pub trait MimeType {
     where
         Self: Sized;
     fn to_mime_type(&self) -> &'static str;
-}
-
-impl MimeType for MediaType {
-    fn from_mime_type(mime_type: &str) -> Option<Self> {
-        ImageMediaType::from_mime_type(mime_type)
-            .map(MediaType::Image)
-            .or_else(|| DocumentMediaType::from_mime_type(mime_type).map(MediaType::Document))
-            .or_else(|| AudioMediaType::from_mime_type(mime_type).map(MediaType::Audio))
-            .or_else(|| VideoMediaType::from_mime_type(mime_type).map(MediaType::Video))
-    }
-
-    fn to_mime_type(&self) -> &'static str {
-        match self {
-            MediaType::Image(media_type) => media_type.to_mime_type(),
-            MediaType::Audio(media_type) => media_type.to_mime_type(),
-            MediaType::Document(media_type) => media_type.to_mime_type(),
-            MediaType::Video(media_type) => media_type.to_mime_type(),
-        }
-    }
 }
 
 // Emits both directions of a [`MimeType`] impl from a single pair list, so a

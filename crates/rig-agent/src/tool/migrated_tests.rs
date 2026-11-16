@@ -104,9 +104,7 @@ mod portable_fixtures {
     }
 
     impl ToolEmbedding for PortableEmbeddingFixture {
-        type InitError = std::convert::Infallible;
         type Context = PortableEmbeddingContext;
-        type State = ();
 
         fn embedding_docs(&self) -> Vec<String> {
             vec![format!(
@@ -117,10 +115,6 @@ mod portable_fixtures {
 
         fn context(&self) -> Self::Context {
             self.context.clone()
-        }
-
-        fn init(_state: Self::State, context: Self::Context) -> Result<Self, Self::InitError> {
-            Ok(Self { context })
         }
     }
 }
@@ -198,10 +192,6 @@ async fn tool_definitions_follow_registration_order() {
 
 #[test]
 fn retrieved_tool_schemas_use_canonical_name() {
-    #[derive(Debug, thiserror::Error)]
-    #[error("init error")]
-    struct InitError;
-
     struct RetrievedTool;
 
     impl Tool for RetrievedTool {
@@ -228,19 +218,13 @@ fn retrieved_tool_schemas_use_canonical_name() {
     }
 
     impl ToolEmbedding for RetrievedTool {
-        type InitError = InitError;
         type Context = ();
-        type State = ();
 
         fn embedding_docs(&self) -> Vec<String> {
             vec!["dynamic tool docs".to_string()]
         }
 
         fn context(&self) -> Self::Context {}
-
-        fn init(_state: Self::State, _context: Self::Context) -> Result<Self, Self::InitError> {
-            Ok(Self)
-        }
     }
 
     let mut toolset = ToolSet::default();

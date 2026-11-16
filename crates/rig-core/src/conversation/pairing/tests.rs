@@ -183,25 +183,6 @@ fn a_duplicate_result_for_an_answered_call_is_an_orphan() {
 }
 
 #[test]
-fn answers_matches_a_batch_as_a_multiset() {
-    let pending = [id("c1"), id("c1"), id("c2")];
-    let batch = |ids: &[&str]| ids.iter().map(|id| result(id)).collect::<Vec<_>>();
-    assert_eq!(answers(&pending, &batch(&["c2", "c1", "c1"])), Ok(()));
-    assert_eq!(
-        answers(&pending, &batch(&["c1", "c1", "c1"])),
-        Err(AnswerError::Unknown(id("c1")))
-    );
-    assert_eq!(
-        answers(&pending, &batch(&["c1"])),
-        Err(AnswerError::Unanswered(vec![id("c1"), id("c2")]))
-    );
-    assert_eq!(
-        answers(&pending, &[UserContent::text("hi")]),
-        Err(AnswerError::NotAResult)
-    );
-}
-
-#[test]
 fn close_pending_answers_each_occurrence_in_call_order() {
     let calls = [tool_call("c1"), tool_call("c2"), tool_call("c1")];
     assert_eq!(

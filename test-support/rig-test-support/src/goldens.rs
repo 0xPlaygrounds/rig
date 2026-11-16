@@ -543,11 +543,6 @@ pub async fn tool_index(
     .index(model)
 }
 
-#[derive(Debug, thiserror::Error)]
-#[error("init error")]
-/// Initialization error type for the retrievable arithmetic tools.
-pub struct NoInit;
-
 macro_rules! retrievable_operation {
     ($name:ident, $tool_name:literal, $description:literal, $embedding_doc:literal, $op:expr) => {
         #[derive(Clone, Default, serde::Deserialize, serde::Serialize)]
@@ -579,13 +574,7 @@ macro_rules! retrievable_operation {
         }
 
         impl rig_core::tool::ToolEmbedding for $name {
-            type InitError = NoInit;
             type Context = ();
-            type State = ();
-
-            fn init(_state: Self::State, _context: Self::Context) -> Result<Self, Self::InitError> {
-                Ok(Self)
-            }
 
             fn embedding_docs(&self) -> Vec<String> {
                 vec![$embedding_doc.into()]

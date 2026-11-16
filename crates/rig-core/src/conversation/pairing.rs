@@ -581,39 +581,6 @@ pub(crate) fn is_result(part: &UserContent) -> bool {
     matches!(part, UserContent::ToolResult(_))
 }
 
-/// Why a batch of results does not answer a turn's calls ([`answers`]).
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum AnswerError {
-    /// A part of the batch is not a tool result.
-    #[error("received content that is not a tool result")]
-    NotAResult,
-    /// A result for an id no call has, or whose every call was answered.
-    #[error("received a result for unknown or already-answered tool call id `{0}`")]
-    Unknown(CallId),
-    /// The calls the batch left unanswered, in call order.
-    #[error("left pending tool call id(s) unanswered: {0:?}")]
-    Unanswered(Vec<CallId>),
-}
-
-/// Whether `results` answer `pending` exactly, one result per occurrence of
-/// an id in any order, matched as [`pair`] matches them.
-pub fn answers(pending: &[CallId], results: &[UserContent]) -> Result<(), AnswerError> {
-    let mut waiting = pending.to_vec();
-    for result in results {
-        let UserContent::ToolResult(result) = result else {
-            return Err(AnswerError::NotAResult);
-        };
-        if take(&mut waiting, &result.call, |id| id).is_none() {
-            return Err(AnswerError::Unknown(result.call.clone()));
-        }
-    }
-    if waiting.is_empty() {
-        Ok(())
-    } else {
-        Err(AnswerError::Unanswered(waiting))
-    }
-}
-
 /// The user message closing `calls` nothing answered: a [`NO_RESULT_PROVIDED`]
 /// error result per occurrence, in call order, exactly as [`pair`] closes them.
 pub fn close_pending<'a>(calls: impl IntoIterator<Item = &'a ToolCall>) -> Message {

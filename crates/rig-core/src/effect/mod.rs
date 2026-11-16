@@ -429,42 +429,14 @@ pub mod family {
     /// [`EffectKind::Custom`] under `E::KIND` and answers `E::Answer`.
     pub struct Custom<E: CustomEffect>(PhantomData<fn() -> E>);
 
-    impl<E: CustomEffect> Custom<E> {
-        /// The marker.
-        pub const fn new() -> Self {
-            Self(PhantomData)
-        }
-    }
-
-    // Written by hand: a derive would demand `E: Clone` (and friends), and
-    // the marker must be `Copy` for every `E`.
+    // Written by hand: a derive would demand `E: Clone`, and the marker
+    // must be `Copy` for every `E`.
     impl<E: CustomEffect> Clone for Custom<E> {
         fn clone(&self) -> Self {
             *self
         }
     }
     impl<E: CustomEffect> Copy for Custom<E> {}
-    impl<E: CustomEffect> Default for Custom<E> {
-        fn default() -> Self {
-            Self::new()
-        }
-    }
-    impl<E: CustomEffect> std::fmt::Debug for Custom<E> {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            write!(f, "Custom<{}>", E::KIND)
-        }
-    }
-    impl<E: CustomEffect> PartialEq for Custom<E> {
-        fn eq(&self, _: &Self) -> bool {
-            true
-        }
-    }
-    impl<E: CustomEffect> Eq for Custom<E> {}
-    impl<E: CustomEffect> std::hash::Hash for Custom<E> {
-        fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-            E::KIND.hash(state);
-        }
-    }
 
     impl<E: CustomEffect> Sealed for Custom<E> {}
 

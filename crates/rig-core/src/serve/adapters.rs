@@ -406,8 +406,8 @@ impl<T: Tool> ToolAdapter<T> {
         }
     }
 
-    /// Wraps a tool with embedding descriptions and serialized reconstruction
-    /// context. Returns an error if context serialization fails.
+    /// Wraps a tool with its embedding documents and serialized context.
+    /// Returns an error if context serialization fails.
     pub fn retrievable(tool: T) -> Result<Self, serde_json::Error>
     where
         T: ToolEmbedding,

@@ -47,9 +47,7 @@ impl rig::tool::ContextValue for StableContext {
 }
 
 impl ToolEmbedding for StableTool {
-    type InitError = Infallible;
     type Context = StableContext;
-    type State = ();
 
     fn embedding_docs(&self) -> Vec<String> {
         vec!["stable portable document".to_string()]
@@ -59,10 +57,6 @@ impl ToolEmbedding for StableTool {
         StableContext {
             label: "stable".to_string(),
         }
-    }
-
-    fn init(_state: Self::State, _context: Self::Context) -> Result<Self, Self::InitError> {
-        Ok(Self)
     }
 }
 
