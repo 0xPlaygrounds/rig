@@ -482,7 +482,7 @@ impl ToolServerHandle {
     pub async fn tool_defs(
         &self,
         prompt: Option<String>,
-    ) -> Result<Vec<Arc<ToolDefinition>>, ToolServerError> {
+    ) -> Result<Vec<Arc<ToolDefinition>>, ProviderError> {
         let searches = self
             .retrieval_queries(prompt)
             .into_iter()
@@ -496,7 +496,7 @@ impl ToolServerHandle {
             });
         let dynamic_tool_ids = futures::future::try_join_all(searches)
             .await
-            .map_err(|e| ToolServerError::DefinitionError(ProviderError::request(e)))?
+            .map_err(ProviderError::request)?
             .concat();
         Ok(self
             .snapshot_with_dynamic(&dynamic_tool_ids)
@@ -616,14 +616,6 @@ const _: () = {
     assert_send_sync_static::<ToolCatalog>();
     assert_send_sync_static::<ToolServerHandle>();
 };
-
-/// Errors from reading the registry.
-#[derive(Debug, thiserror::Error)]
-pub enum ToolServerError {
-    /// The advertised definitions could not be computed.
-    #[error("Failed to retrieve tool definitions: {0}")]
-    DefinitionError(ProviderError),
-}
 
 impl ManagedToolSink for ToolServerHandle {
     fn add_managed_tools(&self, tools: Vec<DynamicTool>) -> HashMap<String, ManagedToolToken> {

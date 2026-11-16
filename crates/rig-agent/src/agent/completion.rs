@@ -17,10 +17,7 @@ use crate::run::{AgentRun, OutputMode};
 use crate::{
     completion::{CompletionRequest, Message, PromptError, ToolDefinition},
     run::response::PromptResponse,
-    tool::{
-        ToolCatalog,
-        server::{ToolServerError, ToolServerHandle},
-    },
+    tool::{ToolCatalog, server::ToolServerHandle},
 };
 use rig_core::completion::ModelRef;
 use rig_core::effect::{HandlerDescriptor, HandlerKey, Key, family};
@@ -542,7 +539,7 @@ impl Agent {
     pub async fn tool_definitions(
         &self,
         prompt: Option<String>,
-    ) -> Result<Vec<Arc<ToolDefinition>>, ToolServerError> {
+    ) -> Result<Vec<Arc<ToolDefinition>>, ProviderError> {
         self.tool_server_handle.tool_defs(prompt).await
     }
 }
