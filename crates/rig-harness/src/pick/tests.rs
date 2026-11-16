@@ -72,12 +72,17 @@ fn a_pick_runs_the_items_command_for_the_agent_shown_and_closes_the_picker() {
 fn a_pick_of_several_items_runs_their_commands_in_list_order() {
     let (mut app, agent) = app();
     let world = app.world_mut();
-    let files = Picker::new("Delete which files?")
-        .multiple()
-        .item("a.tmp", "note a.tmp")
-        .checked(true)
-        .item("b.log", "note b.log")
-        .item("c.tmp", "note c.tmp");
+    let ticked = PickItem {
+        checked: true,
+        ..PickItem::new("a.tmp", "note a.tmp")
+    };
+    let files = Picker::new("Delete which files?").multiple();
+    let files = Picker {
+        items: vec![ticked],
+        ..files
+    }
+    .item("b.log", "note b.log")
+    .item("c.tmp", "note c.tmp");
     let picker = world.spawn(files).id();
     world.trigger(Pick::person(picker, Some(Chosen::items([2, 0]))));
     app.update();

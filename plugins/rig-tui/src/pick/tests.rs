@@ -3,7 +3,7 @@ use rig_harness::prelude::*;
 use super::*;
 use crate::tests::{press, type_text, view_app};
 use rig_harness::ask::Choice;
-use rig_harness::pick::{Chosen, Picked, Picker};
+use rig_harness::pick::{Chosen, PickItem, Picked, Picker};
 
 /// What the pickers reported, in order.
 #[derive(Resource, Default)]
@@ -92,12 +92,15 @@ fn tab_ticks_several_items_and_enter_picks_them_in_list_order() {
                 ran.0.push(args.args);
             },
         );
-    let picker = Picker::new("Delete which files?")
+    let ticked = PickItem {
+        checked: true,
+        ..PickItem::new("b.log", "note b")
+    };
+    let mut picker = Picker::new("Delete which files?")
         .multiple()
-        .item("a.tmp", "note a")
-        .item("b.log", "note b")
-        .checked(true)
-        .item("c.tmp", "note c");
+        .item("a.tmp", "note a");
+    picker.items.push(ticked);
+    let picker = picker.item("c.tmp", "note c");
     app.world_mut().spawn(picker);
     app.update();
     // b starts ticked: untick it, tick c, then go back up and tick a.

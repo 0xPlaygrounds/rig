@@ -725,7 +725,7 @@ spawns a `ShowsPickers` entity. Otherwise, as in `-p`, `--json` or ACP, the
 harness closes each picker a command opens at once, with an error notice
 that says what to type instead (the commands its items run, when it has
 any), which refuses the command.
-`Picker::multiple()` (`.checked(true)`) and `Ask::multiple()` (with
+`Picker::multiple()` (an item's `checked: true` ticks it at first) and `Ask::multiple()` (with
 `.with(Choice::new(id, label).checked().more(text))`) take several. The
 terminal view ticks with Tab, shows a choice's `more` on Right, and once
 ticks are in play Enter answers just the ticked; a `ChoiceKeys` component

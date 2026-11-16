@@ -142,14 +142,6 @@ impl Picker {
         self
     }
 
-    /// The same picker, its last item ticked at first, or not.
-    pub fn checked(mut self, checked: bool) -> Self {
-        if let Some(item) = self.items.last_mut() {
-            item.checked = checked;
-        }
-        self
-    }
-
     /// The same picker, taking several items.
     pub fn multiple(mut self) -> Self {
         self.multiple = true;
