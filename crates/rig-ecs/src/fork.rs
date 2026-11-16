@@ -27,7 +27,7 @@ use serde::{Deserialize, Serialize};
 use super::agent::{Agent, AgentId, CacheKey, ContextStale, Conversation, LastUsage};
 use super::model::Connection;
 use super::requests::RequestOf;
-use super::restore::SavedKeys;
+use super::restore::{SavedKeys, saved_type};
 use super::session_log::{Fork, ReflectSaved, SessionLog, save_conversation};
 
 /// A request to fork the agent `agent`: a new agent in the same session
@@ -73,37 +73,21 @@ pub(crate) struct Forking(Option<MessageId>);
 pub struct ForkResult(pub Result<Entity, ForkError>);
 
 /// Why a [`ForkAgent`] made no fork.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum ForkError {
     /// The entity forked is no agent.
+    #[error("it is no agent")]
     NoAgent,
     /// The session is not logged.
+    #[error("the session is not logged")]
     NoLog,
     /// The app has no type registry.
+    #[error("the app has no type registry")]
     NoRegistry,
     /// The log could not be copied, such as through a message the agent
     /// never had.
-    Session(SessionError),
-}
-
-impl std::fmt::Display for ForkError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::NoAgent => f.write_str("it is no agent"),
-            Self::NoLog => f.write_str("the session is not logged"),
-            Self::NoRegistry => f.write_str("the app has no type registry"),
-            Self::Session(failure) => failure.fmt(f),
-        }
-    }
-}
-
-impl std::error::Error for ForkError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Session(failure) => Some(failure),
-            _ => None,
-        }
-    }
+    #[error("{0}")]
+    Session(#[source] SessionError),
 }
 
 /// On an agent made by a [`ForkAgent`]: the agents its conversation came
@@ -313,9 +297,9 @@ fn fork_now(
     let keys = world.get_resource::<SavedKeys>();
     for key in copy.saved.keys() {
         let path = keys.and_then(|keys| keys.path(key)).unwrap_or(key);
-        let registered = registry.get_with_type_path(path);
-        let component = registered.filter(|it| it.data::<ReflectSaved>().is_some());
-        let component = component.and_then(|it| it.data::<ReflectComponent>());
+        let component = saved_type(path, &registry)
+            .ok()
+            .map(|(_, component)| component);
         let held = |component: &ReflectComponent| {
             let entity = world.get_entity(fork).ok();
             entity.is_some_and(|entity| component.contains(entity))

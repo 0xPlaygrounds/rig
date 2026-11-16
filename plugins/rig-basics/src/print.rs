@@ -1399,12 +1399,7 @@ impl Out<'_, '_> {
     fn flush(&mut self) {
         let notices: Vec<Notice> = self.read.notices.read(&self.notices).cloned().collect();
         for notice in notices {
-            let level = match notice.level {
-                NoticeLevel::Info => "info",
-                NoticeLevel::Warn => "warn",
-                NoticeLevel::Error => "error",
-            };
-            let fields = json!({ "level": level, "text": notice.text });
+            let fields = json!({ "level": notice.level, "text": notice.text });
             self.write(notice.agent, "notice", fields);
         }
         let recalled: Vec<Recalled> = self.read.recalled.read(&self.recalled).cloned().collect();

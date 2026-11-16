@@ -368,3 +368,16 @@ fn what_comes_back_to_an_agent_not_shown_waits_until_it_is() {
     let back = "deploy it\n\nthen tag it\n\ndraft";
     assert_eq!(crate::tests::input(&app).text(), back);
 }
+
+#[test]
+fn a_saved_notice_level_reads_only_from_a_word() {
+    let read = |level: serde_json::Value| {
+        let saved = serde_json::json!({ "agent": null, "at": null, "level": level, "text": "t" });
+        serde_json::from_value::<ShownNotice>(saved)
+            .ok()
+            .map(|notice| notice.level)
+    };
+    assert_eq!(read("warn".into()), Some(NoticeLevel::Warn));
+    assert_eq!(read("debug".into()), Some(NoticeLevel::Info));
+    assert_eq!(read(serde_json::json!({ "warn": null })), None);
+}

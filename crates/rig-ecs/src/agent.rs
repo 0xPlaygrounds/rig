@@ -317,10 +317,11 @@ impl From<Option<String>> for SystemPrompt {
 /// made or restored it.
 #[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
-#[serde(from = "Kept", into = "Kept")]
+#[serde(transparent)]
 pub struct ToolAccess {
     kept: Kept,
     /// This run's tools, which only the kernel sets.
+    #[serde(skip)]
     run: Option<Granted>,
 }
 
@@ -332,18 +333,6 @@ enum Kept {
     All,
     /// Only the tools named.
     Only(Granted),
-}
-
-impl From<Kept> for ToolAccess {
-    fn from(kept: Kept) -> Self {
-        Self { kept, run: None }
-    }
-}
-
-impl From<ToolAccess> for Kept {
-    fn from(access: ToolAccess) -> Self {
-        access.kept
-    }
 }
 
 /// Tool names, each once, in the order given.
@@ -378,22 +367,14 @@ impl RunTools {
 
 /// Why [`ToolAccess::grant`] refused: `name` is not one of the tools the
 /// granting access keeps, `yours`.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
+#[error("`{name}` is not one of your tools ({})", .yours.join(", "))]
 pub struct NotYours {
     /// The tool asked for.
     pub name: String,
     /// The registered tools the granting access keeps, sorted.
     pub yours: Vec<String>,
 }
-
-impl std::fmt::Display for NotYours {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let (name, yours) = (&self.name, self.yours.join(", "));
-        write!(f, "`{name}` is not one of your tools ({yours})")
-    }
-}
-
-impl std::error::Error for NotYours {}
 
 impl ToolAccess {
     /// Every registered tool.
@@ -442,7 +423,10 @@ impl ToolAccess {
     /// This access kept to `names`, each once: never more than it was, such
     /// as for an agent profile.
     pub fn narrow<'a>(&self, names: impl IntoIterator<Item = &'a str>) -> Self {
-        self.within(&Kept::Only(Granted(unique(names))).into())
+        self.within(&Self {
+            kept: Kept::Only(Granted(unique(names))),
+            run: None,
+        })
     }
 
     /// A child's access: the tools `asked`, each once, every one a tool of
@@ -802,18 +786,21 @@ impl StopReached {
     }
 }
 
-/// How a [`Notice`] is shown and logged.
-#[derive(Reflect, Clone, Copy, Debug, Default, PartialEq, Eq)]
+/// How a [`Notice`] is shown and logged. It is saved as `info`, `warn` or
+/// `error`, and any other word reads as `info`.
+#[derive(Reflect, Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum NoticeLevel {
-    /// Information.
-    #[default]
-    Info,
     /// Something went wrong that did not stop anything, such as a refused
     /// key with another one used instead: shown like an error, but never a
     /// failure.
     Warn,
     /// Something failed or was refused.
     Error,
+    /// Information.
+    #[default]
+    #[serde(other)]
+    Info,
 }
 
 /// A line for the user, shown by views. A system reads the notices sent

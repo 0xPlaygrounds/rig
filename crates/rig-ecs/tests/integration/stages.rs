@@ -4829,7 +4829,7 @@ impl Serve for NoSeed {
     }
 }
 
-/// What `Adapted::dropped` said in Prepare, and `DroppedOptions` after Start.
+/// What `Adapted::dropped` said in Prepare.
 #[derive(Resource, Default)]
 struct LeftOut(Vec<Vec<String>>);
 
@@ -4855,14 +4855,6 @@ fn a_call_knows_the_options_its_model_left_out() {
     app.init_resource::<Ended>()
         .init_resource::<LeftOut>()
         .add_observer(log_ended)
-        .add_observer(
-            |fitted: On<Add<DroppedOptions>>,
-             calls: Query<&DroppedOptions>,
-             mut left: ResMut<LeftOut>| {
-                left.0
-                    .extend(calls.get(fitted.entity).map(|it| options(&it.0)));
-            },
-        )
         .add_systems(
             AgentPass,
             (
@@ -4883,9 +4875,9 @@ fn a_call_knows_the_options_its_model_left_out() {
     let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
     assert!(run_until(&mut app, done), "{:?}", notices(&app));
     // Fitting to the spec left `top_p` out; the handler's dry run names
-    // `seed`. Prepare and Start agree.
+    // `seed`.
     let left = &app.world().resource::<LeftOut>().0;
-    assert_eq!(left, &[vec!["top_p", "seed"], vec!["top_p", "seed"]]);
+    assert_eq!(left, &[vec!["top_p", "seed"]]);
     let sent = model.requests();
     assert_eq!(
         sent.first().map(|request| request.options.top_p),

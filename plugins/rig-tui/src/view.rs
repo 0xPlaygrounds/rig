@@ -15,7 +15,8 @@ use ratatui::style::Style;
 use rig_core::completion::Message;
 use rig_core::conversation;
 use rig_core::conversation::CallRef;
-use serde::{Deserialize, Serialize};
+use serde::de::IntoDeserializer;
+use serde::{Deserialize, Deserializer, Serialize};
 
 use super::complete::Completion;
 use super::editor::{Editor, MainEditor};
@@ -511,8 +512,8 @@ pub struct ShownNotice {
     /// a notice about every agent); `None` before that agent had a
     /// message, or with no agent shown.
     at: Option<Anchor>,
-    /// Whether it informs, warns or reports a failure.
-    #[serde(with = "level")]
+    /// Whether it informs, warns or reports a failure, saved as its word.
+    #[serde(deserialize_with = "level_word")]
     pub level: NoticeLevel,
     /// The text.
     pub text: String,
@@ -669,28 +670,9 @@ fn anchor(id: &AgentId, conversation: &conversation::Conversation) -> Option<Anc
     })
 }
 
-/// A [`NoticeLevel`] as a word.
-mod level {
-    use rig_ecs::agent::NoticeLevel;
-    use serde::{Deserialize, Deserializer, Serializer};
-
-    pub(super) fn serialize<S: Serializer>(level: &NoticeLevel, out: S) -> Result<S::Ok, S::Error> {
-        out.serialize_str(match level {
-            NoticeLevel::Info => "info",
-            NoticeLevel::Warn => "warn",
-            NoticeLevel::Error => "error",
-        })
-    }
-
-    pub(super) fn deserialize<'de, D: Deserializer<'de>>(
-        input: D,
-    ) -> Result<NoticeLevel, D::Error> {
-        Ok(match String::deserialize(input)?.as_str() {
-            "warn" => NoticeLevel::Warn,
-            "error" => NoticeLevel::Error,
-            _ => NoticeLevel::Info,
-        })
-    }
+/// A [`NoticeLevel`] read only from its word, as it is saved.
+fn level_word<'de, D: Deserializer<'de>>(input: D) -> Result<NoticeLevel, D::Error> {
+    NoticeLevel::deserialize(String::deserialize(input)?.into_deserializer())
 }
 
 impl TranscriptView {

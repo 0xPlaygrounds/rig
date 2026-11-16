@@ -35,6 +35,7 @@ rig-memory = { path = "../rig-memory", version = "0.46.0" }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+thiserror = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 # `Instant` and the wall clock, also on the web.
 web-time = { workspace = true }

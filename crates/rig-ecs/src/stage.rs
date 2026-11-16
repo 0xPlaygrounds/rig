@@ -76,10 +76,10 @@ use super::tools::{
     compute_footprints, refuse_calls,
 };
 use super::turn::{
-    Adapted, DroppedOptions, ModelRequest, NO_MODEL, SentTo, StreamDelta, TurnCall, back_off,
-    build_requests, carry_on_called, commit_replies, commit_turn_calls, end_turns, feed,
-    judge_failures, keeps_settled, model_pool, route_calls, stop_calls, stream_partials,
-    stream_reply, wait_in_order, write_unstreamed,
+    Adapted, ModelRequest, NO_MODEL, SentTo, StreamDelta, back_off, build_requests,
+    carry_on_called, commit_replies, commit_turn_calls, end_turns, feed, judge_failures,
+    keeps_settled, model_pool, route_calls, stop_calls, stream_partials, stream_reply,
+    wait_in_order, write_unstreamed,
 };
 
 /// One pass over the stages. Plugins add their systems to it in a
@@ -118,7 +118,7 @@ pub enum Stage {
     /// turns nothing holds.
     Commit,
     /// The kernel admits what was spawned since the last pass, builds the
-    /// requests of [`TurnCall`]s and [`SideCall`](super::turn::SideCall)s,
+    /// requests of [`TurnCall`](super::turn::TurnCall)s and [`SideCall`](super::turn::SideCall)s,
     /// and marks the calls that wait for an earlier one [`Waiting`].
     Admit,
     /// Plugins edit the requests admitted this pass (`Added<Admitted>`), in
@@ -1199,10 +1199,19 @@ fn start(
         return;
     }
     let at = SystemTime::now();
-    let stopping = |item: &StartItemReadOnlyItem| {
-        let ending = item.of.and_then(|of| turns.get(of.0).ok());
-        ending.and_then(TurnOutcome::stops).is_some()
-    };
+    // In the order they were spawned, such as a reply's calls in call order.
+    // Messages are accepted before. An effect decided since the decisions
+    // were applied, such as by an observer of an answer they applied, is
+    // answered by the next pass's.
+    let mut ready: Vec<_> = ready
+        .iter_mut()
+        .filter(|item| {
+            let ending = item.of.and_then(|of| turns.get(of.0).ok());
+            let stopping = ending.and_then(TurnOutcome::stops).is_some();
+            !item.message && !item.decision.is_decided() && !stopping
+        })
+        .collect();
+    ready.sort_unstable_by_key(|item| item.effect.id());
     // Before an effect that may change something starts, the reply that
     // asked for it and, for a call of a reply, the call's mark are written
     // to the store (not yet synced to disk). When they cannot be, no such
@@ -1211,10 +1220,10 @@ fn start(
     // write.
     let mut changing = false;
     let mut marks = Vec::new();
-    let starting = ready
+    for item in ready
         .iter()
-        .filter(|item| !item.message && !item.decision.is_decided() && !stopping(item));
-    for item in starting.filter(|item| changes(item.tool.is_some(), item.footprint)) {
+        .filter(|item| changes(item.tool.is_some(), item.footprint))
+    {
         changing = true;
         if let (Some(agent), Some(tool)) = (item.agent, item.tool) {
             marks.push((
@@ -1242,20 +1251,7 @@ fn start(
             ErrorReport::new(ErrorKind::Internal, why)
         });
     }
-    // In the order they were spawned, such as a reply's calls in call order.
-    let mut ready: Vec<_> = ready.iter_mut().collect();
-    ready.sort_unstable_by_key(|item| item.effect.id());
     for item in ready {
-        // Messages are accepted before. An effect decided since the
-        // decisions were applied, such as by an observer of an answer
-        // they applied, is answered by the next pass's.
-        if item.message || item.decision.is_decided() {
-            continue;
-        }
-        let ending = item.of.and_then(|of| turns.get(of.0).ok());
-        if ending.and_then(TurnOutcome::stops).is_some() {
-            continue;
-        }
         let (entity, effect) = (item.entity, item.effect);
         let changes = changes(item.tool.is_some(), item.footprint);
         if let Some(unsaved) = unsaved.as_ref().filter(|_| changes) {
@@ -1279,13 +1275,12 @@ fn start(
                 started.try_insert_if_new(Outcome(Err(report)));
                 continue;
             };
-            let mut dropped = adapted.start(&mut model);
+            adapted.start(&mut model);
             let connection = adapted.0.clone();
             let kind = EffectKind::Completion {
                 request: model.request.clone(),
                 stream: true,
             };
-            dropped.extend(connection.handler.0.check(&kind));
             let reference = connection.spec.reference();
             let span =
                 info_span!("model_call", agent = scope, effect = %effect.id, model = reference);
@@ -1300,7 +1295,6 @@ fn start(
                 running,
                 feed,
                 SentTo(connection),
-                DroppedOptions(dropped),
             ));
             continue;
         }
@@ -1377,7 +1371,6 @@ struct StartItem {
     in_reply: Option<&'static InReply>,
     model: Option<&'static mut ModelRequest>,
     adapted: Option<&'static Adapted>,
-    turn_call: Has<TurnCall>,
     message: Has<Incoming>,
     handler: Option<&'static CallHandler>,
     footprint: Option<&'static Footprint>,

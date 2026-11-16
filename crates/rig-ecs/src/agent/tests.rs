@@ -179,3 +179,13 @@ fn the_runs_tools_changed_after_the_start_are_said() {
         )]
     );
 }
+
+#[test]
+fn a_notice_level_is_saved_as_a_word_and_an_unknown_word_reads_as_info() {
+    let levels = [NoticeLevel::Info, NoticeLevel::Warn, NoticeLevel::Error];
+    let words: Vec<_> = levels.iter().map(|level| json!(level)).collect();
+    assert_eq!(words, [json!("info"), json!("warn"), json!("error")]);
+    let read = |word: &str| serde_json::from_value::<NoticeLevel>(json!(word)).ok();
+    assert_eq!(read("error"), Some(NoticeLevel::Error));
+    assert_eq!(read("debug"), Some(NoticeLevel::Info));
+}

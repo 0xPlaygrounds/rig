@@ -389,7 +389,8 @@ pub(crate) fn restore_session(world: &mut World) {
     let registry = world.get_resource::<AppTypeRegistry>().cloned();
     let registry = registry.unwrap_or_default();
     let registry = registry.read();
-    let reader = SavedReader::new(world);
+    let keys = world.get_resource::<SavedKeys>().cloned();
+    let keys = keys.unwrap_or_default();
     let skipped = |what: &str, key: &str, unread: Unread| match unread {
         Unread::Unsaved => {
             info!("kept saved {what} `{key}` unread: no plugin saves it in this build");
@@ -401,13 +402,11 @@ pub(crate) fn restore_session(world: &mut World) {
         )),
     };
     for (key, value) in &state {
-        let restored = reader
-            .read(&registry, key, value)
-            .and_then(|(component, value)| {
-                let mut resource = resource_entity(world, component).map_err(Unread::Failed)?;
-                component.insert(&mut resource, value.as_partial_reflect(), &registry);
-                Ok(())
-            });
+        let restored = read_saved(&keys, &registry, key, value).and_then(|(component, value)| {
+            let mut resource = resource_entity(world, component).map_err(Unread::Failed)?;
+            component.insert(&mut resource, value.as_partial_reflect(), &registry);
+            Ok(())
+        });
         if let Err(unread) = restored {
             notices.extend(skipped("resource", key, unread));
         }
@@ -419,7 +418,7 @@ pub(crate) fn restore_session(world: &mut World) {
         let id = AgentId(agent.id);
         let mut read = Vec::new();
         for (key, value) in &agent.saved {
-            match reader.read(&registry, key, value) {
+            match read_saved(&keys, &registry, key, value) {
                 Ok(value) => read.push(value),
                 Err(unread) => notices.extend(skipped("component", key, unread)),
             }
@@ -522,52 +521,24 @@ impl SavedKeys {
     pub fn listed(&self) -> &BTreeSet<String> {
         &self.listed
     }
-
-    /// Each stable key, with the path of the type saved under it, in key
-    /// order.
-    pub fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
-        (self.paths.iter()).map(|(key, path)| (key.as_str(), path.as_str()))
-    }
 }
 
-/// The one reader of saved values, for a restore: each value is read under
-/// its key (a stable key, or a type path) and reflected as its type.
-pub(crate) struct SavedReader {
-    keys: SavedKeys,
-}
-
-impl SavedReader {
-    /// A reader with the saved keys of `world`.
-    pub(crate) fn new(world: &World) -> Self {
-        Self {
-            keys: world
-                .get_resource::<SavedKeys>()
-                .cloned()
-                .unwrap_or_default(),
-        }
-    }
-
-    /// The saved value `saved` of `key`, with the reflection that inserts
-    /// it.
-    ///
-    /// # Errors
-    ///
-    /// Why it is not read ([`Unread`]).
-    pub(crate) fn read<'r>(
-        &self,
-        registry: &'r TypeRegistry,
-        key: &str,
-        saved: &Value,
-    ) -> Result<(&'r ReflectComponent, Box<dyn Reflect>), Unread> {
-        let (registration, component) = saved_type(self.path(key), registry)?;
-        let value = reflected(registration, saved, registry).map_err(Unread::Failed)?;
-        Ok((component, value))
-    }
-
-    /// The type path of the values saved under `key`.
-    pub(crate) fn path<'k>(&'k self, key: &'k str) -> &'k str {
-        self.keys.path(key).unwrap_or(key)
-    }
+/// The saved value `saved` of `key` (a stable key of `keys`, or a type
+/// path), reflected as its type, with the reflection that inserts it.
+///
+/// # Errors
+///
+/// Why it is not read ([`Unread`]).
+fn read_saved<'r>(
+    keys: &SavedKeys,
+    registry: &'r TypeRegistry,
+    key: &str,
+    saved: &Value,
+) -> Result<(&'r ReflectComponent, Box<dyn Reflect>), Unread> {
+    let path = keys.path(key).unwrap_or(key);
+    let (registration, component) = saved_type(path, registry)?;
+    let value = reflected(registration, saved, registry).map_err(Unread::Failed)?;
+    Ok((component, value))
 }
 
 /// `value` reflected as the type of `registration`.

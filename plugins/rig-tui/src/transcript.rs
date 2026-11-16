@@ -624,7 +624,7 @@ impl<'a> Look<'a> {
             match inside {
                 Inside::Notice(at, notice) => {
                     at.hash(hasher);
-                    level_code(notice.level).hash(hasher);
+                    notice.level.hash(hasher);
                     notice.text.hash(hasher);
                 }
                 Inside::Aside(shown) => {
@@ -719,15 +719,6 @@ fn hash_children(children: Option<&Vec<ChildCall>>, hasher: &mut DefaultHasher) 
         let call = child.call.as_ref();
         call.map(|call| (&call.name, call.raw_arguments()))
             .hash(hasher);
-    }
-}
-
-/// A number for each notice level.
-fn level_code(level: NoticeLevel) -> u8 {
-    match level {
-        NoticeLevel::Info => 0,
-        NoticeLevel::Warn => 1,
-        NoticeLevel::Error => 2,
     }
 }
 
