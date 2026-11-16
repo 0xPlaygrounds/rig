@@ -278,8 +278,8 @@ async fn completion_response_hook_and_calls_carry_identity_metadata() {
         [(Some("resp_1".to_string()), Some("req_1".to_string()),)]
     );
     let call = &response.completion_calls[0];
-    assert_eq!(call.response_id.as_deref(), Some("resp_1"));
-    assert_eq!(call.provider_request_id.as_deref(), Some("req_1"));
+    assert_eq!(call.identity.response_id.as_deref(), Some("resp_1"));
+    assert_eq!(call.identity.provider_request_id.as_deref(), Some("req_1"));
 }
 
 /// A failed attempt's error carries its *own*
@@ -416,7 +416,7 @@ async fn model_turn_finished_identity_blocking_tool_only_and_text() {
     let call_ids: Vec<_> = response
         .completion_calls
         .iter()
-        .map(|call| call.provider_request_id.clone())
+        .map(|call| call.identity.provider_request_id.clone())
         .collect();
     assert_eq!(request_ids, call_ids);
 }

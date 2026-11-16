@@ -104,10 +104,9 @@ pub enum AgentRunStep {
 pub struct ModelTurn {
     /// The turn's origin, stop and provider message, without content.
     pub head: AssistantMessage,
-    /// Provider-assigned response-scoped ID, when available.
-    pub response_id: Option<String>,
-    /// The provider's transport request id for this attempt, when reported.
-    pub provider_request_id: Option<String>,
+    /// The response and transport request ids this attempt reported.
+    #[serde(flatten)]
+    pub identity: ResponseIdentity,
     /// The assistant content returned by the model.
     pub choice: Vec<AssistantContent>,
     /// Token usage reported by the provider for this completion request.
@@ -127,18 +126,15 @@ impl ModelTurn {
     /// attempt: it alone carries the turn's tool choice to the Skip gate and
     /// the invalid-call context.
     pub fn from_policy(resp: &CompletionResponse, policy: TurnPolicy) -> Self {
-        Self::new(
-            resp.head(),
-            resp.choice.clone(),
-            resp.usage,
+        Self {
+            head: resp.head(),
+            identity: resp.identity(),
+            choice: resp.choice.clone(),
+            usage: resp.usage,
             policy,
-            resp.raw.clone(),
-        )
-        .with_identity(
-            resp.response_id().map(str::to_owned),
-            resp.provider_request_id.clone(),
-        )
-        .with_finish_reason(resp.finish_reason())
+            finish_reason: resp.finish_reason(),
+            raw: resp.raw.clone(),
+        }
     }
 
     /// Create a model turn from response parts, the policy the turn was
@@ -153,31 +149,13 @@ impl ModelTurn {
     ) -> Self {
         Self {
             head,
-            response_id: None,
-            provider_request_id: None,
+            identity: ResponseIdentity::default(),
             choice,
             usage,
             policy,
             finish_reason: None,
             raw,
         }
-    }
-
-    /// Attach the remaining response identity metadata this attempt reported.
-    pub fn with_identity(
-        mut self,
-        response_id: Option<String>,
-        provider_request_id: Option<String>,
-    ) -> Self {
-        self.response_id = response_id;
-        self.provider_request_id = provider_request_id;
-        self
-    }
-
-    /// Attach the terminal finish reason this attempt reported.
-    pub fn with_finish_reason(mut self, finish_reason: Option<FinishReason>) -> Self {
-        self.finish_reason = finish_reason;
-        self
     }
 }
 
@@ -1094,11 +1072,7 @@ impl AgentRun {
             ));
         }
 
-        let identity = ResponseIdentity {
-            response_id: turn.response_id,
-            provider_request_id: turn.provider_request_id,
-        };
-        let call = self.completion_call(turn.usage, identity, turn.finish_reason, turn.raw);
+        let call = self.completion_call(turn.usage, turn.identity, turn.finish_reason, turn.raw);
         self.push_completion_call(call);
         self.pin_output_tool(&turn.policy);
 
@@ -1128,9 +1102,13 @@ impl AgentRun {
         finish_reason: Option<FinishReason>,
         raw: serde_json::Value,
     ) -> CompletionCall {
-        CompletionCall::new(self.completion_call_index, usage, raw)
-            .with_identity(identity)
-            .with_finish_reason(finish_reason)
+        CompletionCall {
+            call_index: self.completion_call_index,
+            usage,
+            identity,
+            finish_reason,
+            raw,
+        }
     }
 
     /// Record `call` and aggregate its usage.
@@ -1144,15 +1122,13 @@ impl AgentRun {
     /// [`RunState::Done`], and return the `Done` step. Shared by the
     /// output-tool and plain-text finalization paths in `next_step`.
     fn finish(&mut self, content: Vec<AssistantContent>, output_tool_calls: usize) -> AgentRunStep {
-        let response = PromptResponse::from_content(content, self.usage)
-            .with_messages(
-                self.history
-                    .iter()
-                    .map(|message| Message::clone(message))
-                    .collect(),
-            )
-            .with_completion_calls(self.completion_calls.clone())
-            .with_output_tool_calls(output_tool_calls);
+        let response = PromptResponse {
+            usage: self.usage,
+            completion_calls: self.completion_calls.clone(),
+            messages: self.history.iter().map(|m| Message::clone(m)).collect(),
+            content,
+            output_tool_calls,
+        };
         self.state = RunState::Done(response.clone());
         AgentRunStep::Done(response)
     }

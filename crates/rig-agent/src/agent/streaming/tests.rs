@@ -850,13 +850,13 @@ fn completion_calls_stream_item_serializes_and_deserializes_expected_shape() {
 
 #[test]
 fn final_response_serializes_completion_calls_with_missing_usage() {
-    let item = MultiTurnStreamItem::FinalResponse(
-        PromptResponse::from_content(vec![AssistantContent::text("done")], usage(3, 4))
-            .with_completion_calls(vec![
-                CompletionCall::new(0, Usage::default(), serde_json::json!({"id": "resp_0"})),
-                CompletionCall::new(1, usage(3, 4), serde_json::json!({"id": "resp_1"})),
-            ]),
-    );
+    let item = MultiTurnStreamItem::FinalResponse(PromptResponse {
+        completion_calls: vec![
+            CompletionCall::new(0, Usage::default(), serde_json::json!({"id": "resp_0"})),
+            CompletionCall::new(1, usage(3, 4), serde_json::json!({"id": "resp_1"})),
+        ],
+        ..PromptResponse::from_content(vec![AssistantContent::text("done")], usage(3, 4))
+    });
 
     if let MultiTurnStreamItem::FinalResponse(response) = &item {
         assert_eq!(response.requests(), 2);
