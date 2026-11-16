@@ -40,18 +40,18 @@ fn the_records_of_one_turn_of_an_agent_read_back_from_the_store() {
     }
     app.update();
 
-    let ids = |filter: &EffectFilter| {
-        let records = log.read_matching(filter).unwrap_or_default();
-        records
-            .iter()
-            .map(|record| record.id.as_u64())
-            .collect::<Vec<_>>()
+    let records = log.read().unwrap_or_default();
+    let ids = |keep: fn(&EffectRecord) -> bool| {
+        let kept = records.iter().filter(|record| keep(record));
+        kept.map(|record| record.id.as_u64()).collect::<Vec<_>>()
     };
-    let turn = EffectFilter::default().agent("a").turn(1);
-    assert_eq!(ids(&turn), [2, 3]);
-    assert_eq!(ids(&turn.clone().kind("subagent")), [2]);
-    assert_eq!(ids(&EffectFilter::default().turn(1)), [2, 3, 4]);
-    assert_eq!(ids(&EffectFilter::default()), [1, 2, 3, 4]);
+    fn turn(record: &EffectRecord) -> bool {
+        record.scope.as_deref() == Some("a") && record.turn == Some(1)
+    }
+    assert_eq!(ids(turn), [2, 3]);
+    assert_eq!(ids(|r| turn(r) && r.kind.name() == "subagent"), [2]);
+    assert_eq!(ids(|record| record.turn == Some(1)), [2, 3, 4]);
+    assert_eq!(ids(|_| true), [1, 2, 3, 4]);
     assert!(
         store
             .read_file(SESSION_EFFECT_LOG)

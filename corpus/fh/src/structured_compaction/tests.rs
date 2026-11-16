@@ -2,7 +2,6 @@ use std::sync::Arc;
 use std::sync::mpsc::Receiver;
 
 use rig_basics::telemetry::effect_log::{EffectLog, EffectLogPlugin};
-use rig_cassette::effect_log::EffectFilter;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::rig_core::tool::ToolOutput;
@@ -159,10 +158,7 @@ fn compact_writes_the_template_keeps_the_users_words_and_builds_on_the_last_summ
     // The saved session still has every message the user sent.
     app.update();
     let log = app.world().get_resource::<EffectLog>();
-    let filter = EffectFilter::default().kind(MessageRecord::KIND);
-    let records = log
-        .and_then(|log| log.read_matching(&filter).ok())
-        .unwrap_or_default();
+    let records = log.and_then(|log| log.read().ok()).unwrap_or_default();
     let texts: Vec<String> = records
         .iter()
         .filter_map(|record| MessageRecord::read(&record.kind))

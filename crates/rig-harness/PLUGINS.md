@@ -1471,11 +1471,8 @@ settle order: its request (`kind`), its answer (`outcome`, a reviewer's as
 `reviewed`), who decided it before it ran (`decided_by`), its times, the agent
 it worked for (`scope`, an `AgentId`), its `turn` (`Turn.index`), and the
 effect it was made under (`parent`). `rig_basics::telemetry` writes them to
-the session's effect log in `Persist` (`WriteLogs`) and reads them back through
-its `EffectLog`: `read()`, or `read_matching(&filter)` by agent, kind name
-(`completion`, `tool_call`, `message`, `subagent` or a plugin's) and turn
-(rig-cassette's `EffectFilter::default().agent(id).turn(n)`), as written by
-the end of the last frame.
+the session's effect log in `Persist` (`WriteLogs`) and reads them back with
+`EffectLog::read()`, as written by the end of the last frame.
 
 **Redacting.** A record holds what its effect really carried (tool output,
 file changes with the text before, the request as sent); the log is written
