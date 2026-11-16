@@ -40,14 +40,12 @@ use std::io::{self, ErrorKind};
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
 
-use ignore::overrides::OverrideBuilder;
-
 use rig_core::tool::{ContentHash, content_hash};
 
 use crate::process::{Launcher, NON_INTERACTIVE, Process, STOP_GRACE, Spawn};
 use crate::workspace::{
-    Contents, Excerpt, Listed, Listing, Observation, Stat, Workspace, excerpt_of, not_text,
-    read_file, too_large,
+    Contents, Excerpt, Listed, Listing, Observation, Stat, Workspace, excerpt_of, globbed,
+    not_a_file, not_text, read_file, read_only, too_large,
 };
 use crate::{MAX_BYTES, MAX_FILE_BYTES, quote};
 
@@ -273,14 +271,8 @@ impl Remote {
         match ran.code {
             Some(0) => Ok(ran.out),
             Some(NOT_FOUND) => Err(ErrorKind::NotFound.into()),
-            Some(NOT_A_FILE) => Err(io::Error::new(
-                ErrorKind::InvalidInput,
-                "not a regular file",
-            )),
-            Some(READ_ONLY) => Err(io::Error::new(
-                ErrorKind::PermissionDenied,
-                "the file is read-only; leave it unchanged or ask the user",
-            )),
+            Some(NOT_A_FILE) => Err(not_a_file()),
+            Some(READ_ONLY) => Err(read_only()),
             Some(A_DIRECTORY) => Err(ErrorKind::IsADirectory.into()),
             Some(A_LINK) => Err(io::Error::new(
                 ErrorKind::Unsupported,
@@ -713,16 +705,7 @@ impl Workspace for Remote {
     /// deleted since it was added, nor a link. Then filtered by
     /// [`Listing::keeps`] and `glob`.
     fn files(&self, root: &Path, glob: Option<&str>, listing: Listing) -> io::Result<Listed> {
-        let globs = glob
-            .map(|glob| {
-                OverrideBuilder::new(root)
-                    .add(glob)
-                    .and_then(|builder| builder.build())
-                    .map_err(|error| {
-                        io::Error::new(ErrorKind::InvalidInput, format!("bad glob: {error}"))
-                    })
-            })
-            .transpose()?;
+        let globs = glob.map(|glob| globbed(root, glob)).transpose()?;
         let git = match listing {
             Listing::All => "false",
             Listing::Visible | Listing::Hidden => {

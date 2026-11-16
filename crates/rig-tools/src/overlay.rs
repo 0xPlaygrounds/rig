@@ -6,12 +6,13 @@ use std::io::{self, ErrorKind};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use ignore::overrides::OverrideBuilder;
 use rig_core::tool::{FileChange, content_hash};
 
 use crate::fs::Previous;
 use crate::process::{Launcher, Process, Spawn};
-use crate::workspace::{Contents, Excerpt, Listed, Listing, Stat, Workspace, excerpt_of};
+use crate::workspace::{
+    Contents, Excerpt, Listed, Listing, Stat, Workspace, excerpt_of, globbed, not_a_file, read_only,
+};
 
 /// A [`Workspace`] over another that reads through to it and keeps every
 /// write, removal and rename to itself: run a file tool on it to learn what
@@ -175,16 +176,10 @@ impl Workspace for Overlay {
 
     fn write(&self, path: &Path, bytes: &[u8]) -> io::Result<()> {
         match self.stat(path)? {
-            Stat::Dir | Stat::Other => Err(io::Error::new(
-                ErrorKind::InvalidInput,
-                "not a regular file",
-            )),
+            Stat::Dir | Stat::Other => Err(not_a_file()),
             Stat::File {
                 read_only: true, ..
-            } => Err(io::Error::new(
-                ErrorKind::PermissionDenied,
-                "the file is read-only; leave it unchanged or ask the user",
-            )),
+            } => Err(read_only()),
             Stat::File { .. } | Stat::Missing => {
                 self.keep(path, Some(bytes.into()));
                 Ok(())
@@ -226,12 +221,7 @@ impl Workspace for Overlay {
             files: listed,
             failed,
         } = self.inner.files(root, glob, listing)?;
-        let matcher = glob
-            .map(|glob| OverrideBuilder::new(root).add(glob)?.build())
-            .transpose()
-            .map_err(|error| {
-                io::Error::new(ErrorKind::InvalidInput, format!("bad glob: {error}"))
-            })?;
+        let matcher = glob.map(|glob| globbed(root, glob)).transpose()?;
         let kept = self.kept().clone();
         let removed = |path: &PathBuf| {
             kept.iter()

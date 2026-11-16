@@ -13,7 +13,7 @@ use rig_core::tool::{FileChange, FileState, Hunk, HunkLine, Lines, ToolExecution
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
-use crate::workspace::{Contents, Listed, Listing, Local, Stat, Workspace};
+use crate::workspace::{Contents, Listed, Listing, Local, Stat, Workspace, not_a_file, read_only};
 
 /// Reads `path` as text after checking, without opening it, that it is a
 /// regular file of at most [`MAX_FILE_BYTES`](crate::MAX_FILE_BYTES):
@@ -164,16 +164,10 @@ fn publish(
     let target = real_path(path);
     let permissions = match fs::symlink_metadata(&target) {
         Ok(meta) if !meta.is_file() => {
-            return Err(io::Error::new(
-                ErrorKind::InvalidInput,
-                "not a regular file",
-            ));
+            return Err(not_a_file());
         }
         Ok(meta) if meta.permissions().readonly() => {
-            return Err(io::Error::new(
-                ErrorKind::PermissionDenied,
-                "the file is read-only; leave it unchanged or ask the user",
-            ));
+            return Err(read_only());
         }
         Ok(meta) => Some(meta.permissions()),
         Err(error) if error.kind() == ErrorKind::NotFound => None,
