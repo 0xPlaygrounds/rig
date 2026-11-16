@@ -408,7 +408,8 @@ impl AgentRunner {
     }
 }
 
-/// Why [`stream_to_stdout`] returned no response.
+/// Why [`stream_to_stdout`] returned no response, or why
+/// [`ChatBot::run`](crate::integrations::cli_chatbot::ChatBot::run) stopped.
 #[derive(Debug, thiserror::Error)]
 pub enum StreamToStdoutError {
     /// The run failed.

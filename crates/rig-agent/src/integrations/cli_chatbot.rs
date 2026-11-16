@@ -1,19 +1,18 @@
 //! A terminal chat loop over an agent.
 //!
 //! ```no_run
-//! use rig_agent::{Agent, completion::PromptError, integrations::cli_chatbot::ChatBot};
-//! async fn chat(agent: Agent) -> Result<(), PromptError> {
+//! use rig_agent::{Agent, agent::StreamToStdoutError, integrations::cli_chatbot::ChatBot};
+//! async fn chat(agent: Agent) -> Result<(), StreamToStdoutError> {
 //!     ChatBot::new(agent).max_turns(3).run().await
 //! }
 //! ```
 
 use futures::StreamExt;
-use rig_core::error::ProviderError;
 use rig_core::message::Message;
 use std::io::{self, BufRead, Write};
 
 use crate::{
-    agent::{Agent, MultiTurnStreamItem},
+    agent::{Agent, MultiTurnStreamItem, StreamToStdoutError},
     completion::{PromptError, Usage},
     streaming::{Item, StreamEvent},
 };
@@ -54,22 +53,18 @@ impl ChatBot {
 
     /// Read prompts from stdin and print answers until `exit` or end of input.
     /// Returns prompt failures and stdout flush errors; input read errors are printed.
-    pub async fn run(self) -> Result<(), PromptError> {
+    pub async fn run(self) -> Result<(), StreamToStdoutError> {
         self.run_on(io::stdin().lock()).await
     }
 
-    /// [`Self::run`] reading prompts from `input`.
-    async fn run_on(mut self, mut input_lines: impl BufRead) -> Result<(), PromptError> {
+    /// [`Self::run`] reading prompts from `input_lines`.
+    async fn run_on(mut self, mut input_lines: impl BufRead) -> Result<(), StreamToStdoutError> {
         let mut stdout = io::stdout();
         let mut history = vec![];
 
         loop {
             print!("> ");
-            stdout.flush().map_err(|e| {
-                PromptError::Provider(ProviderError::Response(format!(
-                    "failed to flush stdout: {e}"
-                )))
-            })?;
+            stdout.flush()?;
 
             let mut input = String::new();
             match input_lines.read_line(&mut input) {
