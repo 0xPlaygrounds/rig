@@ -486,6 +486,7 @@ pub(crate) fn read_input(
     // Keys typed with no editor to take them go nowhere.
     let mut none = Editor::default();
     for item in std::mem::take(&mut events.0) {
+        forget_changed_refusal(&mut view, &editors);
         let editor = keyed_editor(&editors, keymap.focus.0);
         let in_panel = editor.is_some() && editor == keymap.focus.0;
         let mut found = editor.and_then(|editor| editors.get_mut(editor).ok());
@@ -589,6 +590,19 @@ pub(crate) fn read_input(
                 moused(mouse, &mut view, pane.map(|(_, _, state, _)| state));
             }
         }
+    }
+    forget_changed_refusal(&mut view, &editors);
+}
+
+/// Forgets the refused command once the main input no longer holds it
+/// unchanged, so a line cleared and typed again is a command again.
+fn forget_changed_refusal(view: &mut TuiView, editors: &Editors) {
+    let main = editors
+        .iter()
+        .find_map(|(_, editor, main)| main.then_some(editor));
+    let changed = main.is_none_or(|editor| view.refused.as_deref() != Some(editor.text()));
+    if view.refused.is_some() && changed {
+        view.refused = None;
     }
 }
 

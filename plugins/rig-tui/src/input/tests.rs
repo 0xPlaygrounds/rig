@@ -10,7 +10,9 @@ use super::super::history::Sent;
 use super::super::view::{self, TuiView};
 use super::send;
 use crate::pick::PickerInput;
-use crate::tests::{input, main_view, push, type_text, view_app};
+use crate::tests::{
+    Delivered as Accepted, input, main_view, press, push, type_text, typed, view_app,
+};
 use crate::{KeyInput, TuiTestScreen};
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::main_agent::ShownAgent;
@@ -234,6 +236,26 @@ fn a_refused_command_comes_back_whole_and_enter_sends_it_as_a_message() {
         app.world().resource::<Delivered>().0,
         ["/gui still doesnt do anything"]
     );
+}
+
+/// Only the refused line left unchanged goes to the model on the next
+/// Enter: cleared with Ctrl+C and typed again, it is refused again.
+#[test]
+fn a_refused_command_typed_again_after_ctrl_c_is_refused_again() {
+    let (mut app, _) = view_app();
+    app.add_command("echo", "Echoes", |_: In<CommandArgs>| {});
+    let delivered = |app: &App| app.world().resource::<Accepted>().0.clone();
+    type_text(&mut app, "/zzzfoo");
+    press(&mut app, "enter");
+    assert_eq!(typed(&app), "/zzzfoo");
+    press(&mut app, "ctrl+c");
+    assert_eq!(typed(&app), "");
+    type_text(&mut app, "/zzzfoo");
+    press(&mut app, "enter");
+    assert_eq!(typed(&app), "/zzzfoo");
+    assert!(delivered(&app).is_empty(), "{:?}", delivered(&app));
+    press(&mut app, "enter");
+    assert_eq!(delivered(&app), ["/zzzfoo"]);
 }
 
 #[test]
