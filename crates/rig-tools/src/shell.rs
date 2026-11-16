@@ -211,11 +211,7 @@ impl Shell {
             }
             None => base.map(Path::to_path_buf),
         };
-        let how = Spawn {
-            stdin: None,
-            merge_stderr: false,
-            ..Spawn::default()
-        };
+        let how = Spawn::default();
         let line = [OsString::from("-c"), OsString::from(&args.command)];
         self.workspace
             .spawn(&self.launcher, dir.as_deref(), OsStr::new("sh"), &line, how)

@@ -556,11 +556,7 @@ pub struct Root {
 impl Default for Root {
     /// This machine's files, from this process's working directory.
     fn default() -> Self {
-        Self {
-            workspace: Arc::new(Local),
-            base: None,
-            confine: false,
-        }
+        Self::from(Arc::new(Local) as Arc<dyn Workspace>)
     }
 }
 

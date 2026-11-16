@@ -72,10 +72,7 @@ pub fn read_prefix(path: &Path, cap: usize) -> io::Result<Prefix> {
 /// text) and makes this process the file's owner. A crash between create
 /// and rename can leave a `.name.<pid>-<n>.tmp` beside the file.
 pub fn write_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
-    publish(path, contents, |temporary, target| {
-        fs::rename(temporary, target).map(|()| true)
-    })
-    .map(drop)
+    write_atomic_if(path, contents, || Ok(true)).map(drop)
 }
 
 /// [`write_atomic`], but only while the file still holds what `still`
