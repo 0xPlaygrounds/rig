@@ -211,13 +211,7 @@ fn create_request_body(request: ImageGenerationRequest) -> Result<Value, EncodeE
         "safetySettings": null,
         "systemInstruction": null,
     });
-    match (&mut body, request.additional_params) {
-        (Value::Object(body), Some(Value::Object(params))) => {
-            crate::json_utils::deep_merge(body, params);
-        }
-        (body, Some(params)) => *body = params,
-        (_, None) => {}
-    }
+    super::apply_params(&mut body, request.additional_params);
     Ok(body)
 }
 

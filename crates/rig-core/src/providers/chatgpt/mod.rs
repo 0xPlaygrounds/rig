@@ -23,8 +23,14 @@ use crate::providers::openai::wire::{
 };
 
 const CHATGPT_API_BASE_URL: &str = "https://chatgpt.com/backend-api/codex";
-const DEFAULT_ORIGINATOR: &str = "rig";
 const DEFAULT_INSTRUCTIONS: &str = "You are ChatGPT, a helpful AI assistant.";
+
+/// The originator and user agent the dialect sends, and their overrides.
+pub(crate) const IDENTITY: Identity = Identity {
+    originator: "rig",
+    originator_env: "CHATGPT_ORIGINATOR",
+    user_agent_env: "CHATGPT_USER_AGENT",
+};
 
 /// Stable descriptor name reported on normalized ChatGPT responses.
 pub const PROVIDER_NAME: &str = "chatgpt";
@@ -52,11 +58,7 @@ pub const DIALECT: Dialect = Dialect {
         accepts_file_ids: false,
         // ChatGPT bills a subscription, not the catalog's API rates.
         catalog_priced: false,
-        identity: Some(Identity {
-            originator: DEFAULT_ORIGINATOR,
-            originator_env: "CHATGPT_ORIGINATOR",
-            user_agent_env: "CHATGPT_USER_AGENT",
-        }),
+        identity: Some(IDENTITY),
         // The backend routes its prompt cache by this header, over
         // `prompt_cache_key`.
         session_header: Some("session-id"),

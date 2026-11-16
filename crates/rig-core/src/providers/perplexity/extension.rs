@@ -72,22 +72,16 @@ pub struct PerplexityExtras {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
 pub struct SearchResult {
     /// The page title.
-    #[serde(default)]
     pub title: Option<String>,
     /// The page URL.
-    #[serde(default)]
     pub url: Option<String>,
     /// The publication date.
-    #[serde(default)]
     pub date: Option<String>,
     /// When the page last changed.
-    #[serde(default)]
     pub last_updated: Option<String>,
     /// The excerpt the answer drew on.
-    #[serde(default)]
     pub snippet: Option<String>,
     /// Where the result came from, such as `web`.
-    #[serde(default)]
     pub source: Option<String>,
 }
 
@@ -96,16 +90,12 @@ pub struct SearchResult {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Deserialize)]
 pub struct PerplexityCost {
     /// For the prompt tokens.
-    #[serde(default)]
     pub input_tokens_cost: Option<f64>,
     /// For the completion tokens.
-    #[serde(default)]
     pub output_tokens_cost: Option<f64>,
     /// Per request.
-    #[serde(default)]
     pub request_cost: Option<f64>,
     /// In all.
-    #[serde(default)]
     pub total_cost: Option<f64>,
 }
 

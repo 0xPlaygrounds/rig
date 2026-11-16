@@ -189,31 +189,22 @@ pub struct LlamaCppExtras {
 #[derive(Clone, Debug, Default, PartialEq, Deserialize)]
 pub struct Timings {
     /// Prompt tokens reused from the cache.
-    #[serde(default)]
     pub cache_n: Option<u64>,
     /// Prompt tokens evaluated.
-    #[serde(default)]
     pub prompt_n: Option<u64>,
     /// Milliseconds spent on the prompt.
-    #[serde(default)]
     pub prompt_ms: Option<f64>,
     /// Milliseconds per prompt token.
-    #[serde(default)]
     pub prompt_per_token_ms: Option<f64>,
     /// Prompt tokens per second.
-    #[serde(default)]
     pub prompt_per_second: Option<f64>,
     /// Tokens generated.
-    #[serde(default)]
     pub predicted_n: Option<u64>,
     /// Milliseconds spent generating.
-    #[serde(default)]
     pub predicted_ms: Option<f64>,
     /// Milliseconds per generated token.
-    #[serde(default)]
     pub predicted_per_token_ms: Option<f64>,
     /// Generated tokens per second.
-    #[serde(default)]
     pub predicted_per_second: Option<f64>,
 }
 

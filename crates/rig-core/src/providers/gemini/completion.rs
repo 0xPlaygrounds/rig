@@ -27,6 +27,8 @@ pub const GEMINI_2_5_FLASH: &str = "gemini-2.5-flash";
 /// `gemini-2.0-flash` completion model
 pub const GEMINI_2_0_FLASH: &str = "gemini-2.0-flash";
 
+use base64::Engine;
+use base64::prelude::BASE64_STANDARD;
 use serde_json::{Map, Value, json};
 
 pub use super::cached_content::with_cached_content;
@@ -796,7 +798,9 @@ fn assistant_part(
             if part
                 .get("thoughtSignature")
                 .and_then(Value::as_str)
-                .is_some_and(|signature| !is_base64(signature))
+                .is_some_and(|signature| {
+                    signature.is_empty() || BASE64_STANDARD.decode(signature).is_err()
+                })
             {
                 remove_preserving_order(part, "thoughtSignature");
             }
@@ -827,16 +831,6 @@ fn assistant_part(
         AssistantContent::Image(image) => media(mime(image.media_type.clone()), &image.data, true)?,
         AssistantContent::Opaque(opaque) => opaque.item.clone(),
     }))
-}
-
-/// Whether `text` is padded standard base64.
-fn is_base64(text: &str) -> bool {
-    let body = text.trim_end_matches('=');
-    let alphabet = |byte: u8| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'/');
-    !body.is_empty()
-        && text.len().is_multiple_of(4)
-        && text.len() - body.len() <= 2
-        && body.bytes().all(alphabet)
 }
 
 /// Convert a specified prompt block reason into a provider error with its

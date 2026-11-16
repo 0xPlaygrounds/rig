@@ -93,7 +93,6 @@ pub(crate) fn decode_reply<T: serde::de::DeserializeOwned>(
 ) -> Result<T, crate::error::ProviderError> {
     #[derive(serde::Deserialize)]
     struct Status {
-        #[serde(default)]
         base_resp: Option<BaseResp>,
     }
     #[derive(serde::Deserialize)]

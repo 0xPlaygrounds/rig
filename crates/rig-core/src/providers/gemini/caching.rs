@@ -34,6 +34,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 use sha2::{Digest, Sha256};
@@ -545,38 +546,9 @@ pub(crate) struct Parsed {
     pub(crate) has_cached_content: bool,
 }
 
-/// A JSON object's members in their order, each as its exact bytes. A
-/// repeated key keeps its first place and its last value, as a map does.
-struct Members(Vec<(String, Box<RawValue>)>);
-
-impl<'de> Deserialize<'de> for Members {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        struct Visitor;
-        impl<'de> serde::de::Visitor<'de> for Visitor {
-            type Value = Members;
-            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                formatter.write_str("a JSON object")
-            }
-            fn visit_map<A: serde::de::MapAccess<'de>>(
-                self,
-                mut map: A,
-            ) -> Result<Members, A::Error> {
-                let mut members: Vec<(String, Box<RawValue>)> = Vec::new();
-                while let Some((key, value)) = map.next_entry::<String, Box<RawValue>>()? {
-                    match members.iter_mut().find(|(held, _)| *held == key) {
-                        Some((_, held)) => *held = value,
-                        None => members.push((key, value)),
-                    }
-                }
-                Ok(Members(members))
-            }
-        }
-        deserializer.deserialize_map(Visitor)
-    }
-}
-
 pub(crate) fn parse(bytes: &[u8]) -> Option<Parsed> {
-    let Members(members) = serde_json::from_slice(bytes).ok()?;
+    // A repeated key keeps its first place and its last value, as `IndexMap::insert` does.
+    let members: IndexMap<String, Box<RawValue>> = serde_json::from_slice(bytes).ok()?;
     let mut parsed = Parsed {
         rest: Vec::new(),
         prefix: [None, None, None],
@@ -692,27 +664,19 @@ pub(crate) fn is_user_text(raw: &RawValue) -> bool {
 
 /// The body that reads `lease` instead of what it holds.
 pub(crate) fn stripped(parsed: &Parsed, lease: &Lease) -> Option<Vec<u8>> {
-    let mut out: Vec<(String, &RawValue)> = Vec::new();
     let name = serde_json::value::to_raw_value(&lease.name).ok()?;
     let contents = serde_json::value::to_raw_value(&parsed.contents.get(lease.covers..)?).ok()?;
-    out.push(("cachedContent".to_owned(), &name));
-    out.push(("contents".to_owned(), &contents));
-    for (key, value) in &parsed.rest {
-        if key != "cachedContent" {
-            out.push((key.clone(), value));
-        }
-    }
-    let mut bytes = b"{".to_vec();
-    for (index, (key, value)) in out.iter().enumerate() {
-        if index > 0 {
-            bytes.push(b',');
-        }
-        bytes.extend(serde_json::to_vec(key).ok()?);
-        bytes.push(b':');
-        bytes.extend(value.get().as_bytes());
-    }
-    bytes.push(b'}');
-    Some(bytes)
+    let mut out: IndexMap<&str, &RawValue> = IndexMap::new();
+    out.insert("cachedContent", &name);
+    out.insert("contents", &contents);
+    out.extend(
+        parsed
+            .rest
+            .iter()
+            .filter(|(key, _)| key != "cachedContent")
+            .map(|(key, value)| (key.as_str(), &**value)),
+    );
+    serde_json::to_vec(&out).ok()
 }
 
 /// The `cachedContents` create body for the first `covers` contents, from

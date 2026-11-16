@@ -157,6 +157,15 @@ impl Mapping {
             Mapping::Omit("the provider routes its prompt cache without a key")
         })
     }
+
+    /// The answer for `reasoning` on a model that does not reason: `Off`
+    /// is honoured by sending nothing, and anything else is refused.
+    pub fn does_not_reason(reasoning: &Reasoning) -> Mapping {
+        match reasoning {
+            Reasoning::Off => Mapping::Omit("the model does not reason"),
+            _ => Mapping::unsupported("the model does not reason"),
+        }
+    }
 }
 
 /// One [`Mapping`] per option, by field name. Not `#[non_exhaustive]` and no

@@ -155,7 +155,7 @@ impl Authenticator {
         }
         let _held = self.0.hold(STORE_KEY).await?;
         let record: ApiKeyRecord = load_record(&*self.0.store, STORE_KEY).await?;
-        if record.can_reuse_for_bootstrap_token(access_token) {
+        if record.reusable_for(Some(access_token)) {
             return Ok(self.remember(record));
         }
 
@@ -205,8 +205,14 @@ impl ApiKeyRecord {
             .cloned()
     }
 
-    fn can_reuse_for_bootstrap_token(&self, bootstrap_token: &str) -> bool {
-        self.has_live_api_key() && self.matches_bootstrap_token(bootstrap_token)
+    /// Whether the key is live and, when `bootstrap_token` is known, was
+    /// exchanged for it.
+    fn reusable_for(&self, bootstrap_token: Option<&str>) -> bool {
+        self.has_live_api_key()
+            && bootstrap_token.is_none_or(|token| {
+                self.bootstrap_token_fingerprint.as_deref()
+                    == Some(bootstrap_token_fingerprint(token).as_str())
+            })
     }
 
     /// This session, exchanged for `bootstrap_token`, kept with
@@ -222,11 +228,6 @@ impl ApiKeyRecord {
             .as_ref()
             .is_some_and(|token| !token.trim().is_empty())
             && !token_expired(self.expires_at, 0)
-    }
-
-    fn matches_bootstrap_token(&self, bootstrap_token: &str) -> bool {
-        self.bootstrap_token_fingerprint.as_deref()
-            == Some(bootstrap_token_fingerprint(bootstrap_token).as_str())
     }
 }
 

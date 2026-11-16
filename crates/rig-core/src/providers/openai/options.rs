@@ -569,12 +569,7 @@ fn openai_chat(
                 Reasoning::Budget { .. } => {
                     Mapping::unsupported("Chat Completions takes an effort level, not a budget")
                 }
-                Reasoning::Off if reasons(facts, model) == Some(false) => {
-                    Mapping::Omit("the model does not reason")
-                }
-                _ if reasons(facts, model) == Some(false) => {
-                    Mapping::unsupported("the model does not reason")
-                }
+                _ if reasons(facts, model) == Some(false) => Mapping::does_not_reason(reasoning),
                 Reasoning::Off => off_refusal(facts, spec, model)
                     .unwrap_or_else(|| send("reasoning_effort", "none")),
                 Reasoning::Effort(Effort::Max) if azure.is_some() => {
@@ -1308,12 +1303,7 @@ fn openai_responses(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -
             Reasoning::Budget { .. } => {
                 Mapping::unsupported("Responses takes an effort level, not a budget")
             }
-            Reasoning::Off if reasons(facts, model) == Some(false) => {
-                Mapping::Omit("the model does not reason")
-            }
-            _ if reasons(facts, model) == Some(false) => {
-                Mapping::unsupported("the model does not reason")
-            }
+            _ if reasons(facts, model) == Some(false) => Mapping::does_not_reason(reasoning),
             Reasoning::Off if spec.is_none() && !named_responses_can_disable(model) => {
                 Mapping::unsupported("this model cannot turn reasoning off")
             }

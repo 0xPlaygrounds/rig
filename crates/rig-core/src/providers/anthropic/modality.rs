@@ -103,7 +103,6 @@ pub struct ModelsPage {
     data: Vec<ModelEntry>,
     #[serde(default)]
     has_more: bool,
-    #[serde(default)]
     last_id: Option<String>,
 }
 

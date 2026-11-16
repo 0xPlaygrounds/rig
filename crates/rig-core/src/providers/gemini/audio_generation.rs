@@ -38,9 +38,7 @@ use crate::error::{EncodeError, ProviderError};
 use crate::json_utils::Lenient;
 use crate::operation::AudioGeneration;
 use crate::providers::internal::wire::classify_marker_keyed_frame;
-use crate::wire::{
-    Decoder, Descriptor, Encoded, Flow, Framing, Mode, Out, Wire, WireEvent, WireFrame,
-};
+use crate::wire::{Descriptor, DocumentDecoder, Encoded, Framing, Mode, Wire, WireFrame};
 
 /// `gemini-3.8-flash-tts`: the most expressive speech model.
 pub const GEMINI_3_8_FLASH_TTS: &str = "gemini-3.8-flash-tts";
@@ -349,13 +347,7 @@ fn create_request_body(model: &str, request: AudioGenerationRequest) -> Value {
             json!({ "speech_config": speech }),
         );
     }
-    match (&mut body, request.additional_params) {
-        (Value::Object(body), Some(Value::Object(params))) => {
-            crate::json_utils::deep_merge(body, params);
-        }
-        (body, Some(params)) => *body = params,
-        (_, None) => {}
-    }
+    super::apply_params(&mut body, request.additional_params);
     body
 }
 
@@ -364,7 +356,7 @@ impl Wire for Speech {
     type Payload = Encoded;
     type Frame = WireFrame;
     type Event = Value;
-    type Decoder<'id> = SpeechDecoder;
+    type Decoder<'id> = DocumentDecoder<AudioGeneration, Value>;
     type Reassembler = crate::wire::document::Unreassembled;
 
     fn describe(&self) -> Descriptor<'_> {
@@ -389,50 +381,39 @@ impl Wire for Speech {
         Ok(Encoded::new(request, Framing::Whole))
     }
 
+    /// The last audio item of an interaction, with its usage and identity.
+    /// An interaction with no inline audio is a response error.
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        SpeechDecoder
+        DocumentDecoder::new(
+            |body| classify_marker_keyed_frame(body, &["steps", "status", "usage", "id"]),
+            speech_of,
+        )
     }
 }
 
-/// Decode the last audio item of an interaction, with its usage and
-/// identity. An interaction with no inline audio is a response error.
-#[derive(Default)]
-pub struct SpeechDecoder;
-
-impl<'id> Decoder<'id, AudioGeneration> for SpeechDecoder {
-    type Event = Value;
-
-    fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
-        classify_marker_keyed_frame(&frame.as_str(), &["steps", "status", "usage", "id"])
-    }
-
-    fn decode(
-        &mut self,
-        event: Self::Event,
-        out: Out<'id, AudioGeneration>,
-    ) -> Result<Flow, ProviderError> {
-        let data = last_audio(&event)
-            .and_then(|audio| audio.str("data"))
-            .ok_or_else(|| {
-                ProviderError::Response(format!(
-                    "the Gemini speech interaction ({}) carried no inline audio",
-                    event.str("status").unwrap_or("no status")
-                ))
-            })?;
-        let audio = BASE64_STANDARD.decode(data).map_err(|err| {
-            ProviderError::Response(format!("Gemini audio data was not valid base64: {err}"))
+/// The speech an interaction carried.
+fn speech_of(event: Value) -> Result<AudioGenerationResponse, ProviderError> {
+    let data = last_audio(&event)
+        .and_then(|audio| audio.str("data"))
+        .ok_or_else(|| {
+            ProviderError::Response(format!(
+                "the Gemini speech interaction ({}) carried no inline audio",
+                event.str("status").unwrap_or("no status")
+            ))
         })?;
-        Ok(out.end(AudioGenerationResponse {
-            model: event.str("model").map(str::to_owned),
-            response_id: event.str("id").map(str::to_owned),
-            usage: event
-                .get("usage")
-                .map(usage_of)
-                .transpose()?
-                .unwrap_or_default(),
-            ..AudioGenerationResponse::new(audio)
-        }))
-    }
+    let audio = BASE64_STANDARD.decode(data).map_err(|err| {
+        ProviderError::Response(format!("Gemini audio data was not valid base64: {err}"))
+    })?;
+    Ok(AudioGenerationResponse {
+        model: event.str("model").map(str::to_owned),
+        response_id: event.str("id").map(str::to_owned),
+        usage: event
+            .get("usage")
+            .map(usage_of)
+            .transpose()?
+            .unwrap_or_default(),
+        ..AudioGenerationResponse::new(audio)
+    })
 }
 
 impl super::GeminiConfig {

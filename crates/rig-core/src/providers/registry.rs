@@ -68,7 +68,8 @@ pub(crate) const OPENAI_DIALECTS: &[&openai::wire::Dialect] = &[
 /// A provider's request grammar and configuration type.
 /// The OpenAI family includes Chat Completions and Responses; select the endpoint
 /// through [`openai::OpenAIConfig::with_route`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Format {
     /// OpenAI's grammar: Chat Completions and the Responses endpoint.
     OpenAi,
@@ -109,24 +110,6 @@ impl Format {
 impl fmt::Display for Format {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
-    }
-}
-
-impl Serialize for Format {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(self.as_str())
-    }
-}
-
-impl<'de> Deserialize<'de> for Format {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let name = String::deserialize(deserializer)?;
-        Self::named(&name).ok_or_else(|| {
-            de::Error::custom(format!(
-                "`{name}` is not a protocol family ({})",
-                Format::names()
-            ))
-        })
     }
 }
 
@@ -773,15 +756,13 @@ pub enum SelectionError {
 /// persistent hosts and typed options on the configuration, not the dialect.
 /// Deserialization reports unknown configuration fields by name.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum ProviderConfig {
     /// An OpenAI-shaped provider, on either of its two endpoints.
-    #[serde(rename = "openai")]
     OpenAi(openai::wire::OpenAIConfig),
     /// A Messages-format provider.
-    #[serde(rename = "anthropic")]
     Anthropic(anthropic::wire::AnthropicConfig),
     /// Gemini.
-    #[serde(rename = "gemini")]
     Gemini(gemini::GeminiConfig),
 }
 
