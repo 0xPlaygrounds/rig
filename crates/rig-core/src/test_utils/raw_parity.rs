@@ -5,12 +5,13 @@
 //! ```no_run
 //! # async fn example() -> Result<(), rig_core::error::ProviderError> {
 //! use rig_core::providers::openai::OpenAIConfig;
-//! use rig_core::test_utils::raw_parity::assert_raw_parity;
+//! use rig_core::test_utils::raw_parity::{comparable, raw_pair};
 //!
 //! let wire = OpenAIConfig::new("sk-test").chat("gpt-4.1-nano");
 //! let unary = r#"{"id":"a","object":"chat.completion","choices":[]}"#;
 //! let streamed = "data: {\"id\":\"b\",\"object\":\"chat.completion.chunk\",\"choices\":[]}\n\n";
-//! assert_raw_parity(wire, unary, streamed, &[]).await?;
+//! let (unary, streamed) = raw_pair(wire, unary, streamed).await?;
+//! assert_eq!(comparable(&unary, &[]), comparable(&streamed, &[]));
 //! # Ok(())
 //! # }
 //! ```
@@ -204,36 +205,6 @@ pub(crate) fn scalar(section: &str, key: &str) -> Option<String> {
         block.push('\n');
     }
     Some(block)
-}
-
-/// Check that a streamed reply's `raw` is the unary document of the same
-/// turn: [`raw_pair`], each side [`comparable`] with `minted`.
-///
-/// # Errors
-///
-/// When either reply fails to decode.
-///
-/// # Panics
-///
-/// When the two documents differ, naming both.
-pub async fn assert_raw_parity<W>(
-    wire: W,
-    unary: impl Into<Bytes>,
-    streamed: impl Into<Bytes>,
-    minted: &[&str],
-) -> Result<(), ProviderError>
-where
-    W: Wire<Op = Completion>,
-    RecordingHttpClient: Transport<W>,
-    MockStreamingClient: Transport<W>,
-{
-    let (unary, streamed) = raw_pair(wire, unary, streamed).await?;
-    let (unary, streamed) = (comparable(&unary, minted), comparable(&streamed, minted));
-    assert_eq!(
-        unary, streamed,
-        "a streamed reply's raw is the unary document of the same turn"
-    );
-    Ok(())
 }
 
 #[cfg(test)]
