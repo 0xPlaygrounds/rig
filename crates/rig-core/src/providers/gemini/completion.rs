@@ -206,12 +206,7 @@ impl Wire for GenerateContent {
         crate::providers::internal::trace_json(target, "Gemini completion request", &body);
         let request = self
             .provider
-            .request(
-                http::Method::POST,
-                &format!("/v1beta/models/{model}:{verb}"),
-            )
-            .header("Content-Type", "application/json")
-            .body(body.into_body())?;
+            .post_json(&format!("/v1beta/models/{model}:{verb}"), body.into_body())?;
         // Gemini supplies no transport request-id response header.
         Ok(Encoded::new(request, framing))
     }
