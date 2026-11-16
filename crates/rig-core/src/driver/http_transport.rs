@@ -117,9 +117,7 @@ impl HttpExchange {
         let response = match http.send_streaming(request).await {
             // Custom transports may return rejected responses directly; preserve
             // their status, headers, and bounded body in the error.
-            Ok(response) if response.status() != http::StatusCode::OK => {
-                Err(reject_response(response).await)
-            }
+            Ok(response) if !response.status().is_success() => Err(reject_response(response).await),
             Ok(response) => {
                 match wrong_content_type(
                     response.headers(),
