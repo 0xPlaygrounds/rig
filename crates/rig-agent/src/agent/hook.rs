@@ -1328,54 +1328,23 @@ impl HookStack {
     }
 }
 
-/// An action with a neutral `Continue` state that observe-only and steering
-/// dispatch short-circuits on: the first non-`Continue` action wins and later
-/// hooks are not invoked.
-trait ShortCircuitAction: Sized {
-    const CONTINUE: Self;
-    fn is_continue(&self) -> bool;
-}
-
-impl ShortCircuitAction for ObservationAction {
-    const CONTINUE: Self = ObservationAction::Continue;
-    fn is_continue(&self) -> bool {
-        matches!(self, ObservationAction::Continue)
-    }
-}
-
-impl ShortCircuitAction for ModelTurnAction {
-    const CONTINUE: Self = ModelTurnAction::Continue;
-    fn is_continue(&self) -> bool {
-        matches!(self, ModelTurnAction::Continue)
-    }
-}
-
-/// Dispatches to each hook in registration order, returning the first action
-/// that is not `Continue` without invoking the remaining hooks.
-async fn first_non_continue<'a, A, F>(hooks: &'a [Arc<dyn DynAgentHook>], mut dispatch: F) -> A
-where
-    A: ShortCircuitAction,
-    F: FnMut(&'a dyn DynAgentHook) -> WasmBoxedFuture<'a, A>,
-{
-    for hook in hooks {
-        let action = dispatch(hook.as_ref()).await;
-        if !action.is_continue() {
-            return action;
-        }
-    }
-    A::CONTINUE
-}
-
-/// Generate the `HookStack` methods whose dispatch is exactly
-/// [`first_non_continue`] over the erased hooks: `(on_* name, erased name,
-/// event type, action type)`, mirroring `for_each_boxed_hook_event!`. The
-/// genuinely chaining events (`on_model_select`, `on_completion_call`,
-/// `on_invalid_tool_call`, `on_dispatch`, `on_outcome`) stay hand-written.
+/// Generate the `HookStack` methods that dispatch to each hook in registration
+/// order and return the first action that is not `Continue`, without invoking
+/// the remaining hooks: `(on_* name, erased name, event type, action type)`,
+/// mirroring `for_each_boxed_hook_event!`. The genuinely chaining events
+/// (`on_model_select`, `on_completion_call`, `on_invalid_tool_call`,
+/// `on_dispatch`, `on_outcome`) stay hand-written.
 macro_rules! stack_first_non_continue {
     ($($on:ident, $erased:ident, $event:ident, $action:ident;)+) => {
         $(
             async fn $on(&self, ctx: &HookContext, event: $event<'_>) -> $action {
-                first_non_continue(&self.hooks, |hook| hook.$erased(ctx, event)).await
+                for hook in &self.hooks {
+                    let action = hook.$erased(ctx, event).await;
+                    if !matches!(action, $action::Continue) {
+                        return action;
+                    }
+                }
+                $action::Continue
             }
         )+
     };
