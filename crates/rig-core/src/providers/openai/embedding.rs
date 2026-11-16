@@ -69,6 +69,8 @@ pub struct EmbeddingTokensDetails {
     pub cached_tokens: u64,
 }
 
+/// The provider's counts are passed through unchanged, so a reply whose
+/// `prompt_tokens` exceeds its `total_tokens` keeps both as sent.
 impl From<&EmbeddingUsage> for crate::completion::Usage {
     fn from(usage: &EmbeddingUsage) -> Self {
         Self {
