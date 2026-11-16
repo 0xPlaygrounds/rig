@@ -8,7 +8,7 @@
 //! other records, in order, in the last slot.
 //!
 //! `ErrorKind::Denied` holds under every consumer mapping: on a tool the
-//! model sees the skipped result, on a completion the run fails, and on a
+//! model sees the refused result, on a completion the run fails, and on a
 //! custom effect from a hook the hook sees `Denied`. No denial is a record,
 //! since the layer decided before any handler served the dispatch.
 

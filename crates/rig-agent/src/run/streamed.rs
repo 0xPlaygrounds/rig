@@ -19,7 +19,7 @@ use rig_core::completion::Message;
 use rig_core::error::ProviderError;
 use rig_core::message::{AssistantContent, AssistantMessage, ToolCall, ToolName};
 use rig_core::streaming::{Item, PartKind, StreamEvent};
-use rig_core::tool::feedback::{not_executed, tool_result_message};
+use rig_core::tool::feedback::invalid_call_feedback;
 
 use super::policy::TurnPolicy;
 
@@ -134,23 +134,10 @@ impl PartialStreamedTurn {
         invalid_tool_call: ToolCall,
         feedback: String,
     ) -> Option<(Message, Message)> {
-        // Answered by position, since a peer may share the invalid call's id.
-        let (content, invalid_at) = self.content_with(Some(invalid_tool_call));
-        let results = content
-            .iter()
-            .enumerate()
-            .filter_map(|(at, part)| match part {
-                AssistantContent::ToolCall(call) if Some(at) == invalid_at => {
-                    Some(tool_result_message(
-                        call.id.clone(),
-                        call.function.name.clone(),
-                        feedback.clone(),
-                    ))
-                }
-                AssistantContent::ToolCall(call) => Some(not_executed(call)),
-                _ => None,
-            })
-            .collect();
+        let (content, Some(invalid_at)) = self.content_with(Some(invalid_tool_call)) else {
+            return None;
+        };
+        let results = invalid_call_feedback(&content, invalid_at, &feedback);
         let assistant_message = Message::Assistant(self.head.clone().with_content(content));
         Some((assistant_message, Message::User { content: results }))
     }

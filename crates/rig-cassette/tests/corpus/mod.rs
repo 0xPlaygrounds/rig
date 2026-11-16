@@ -2635,7 +2635,7 @@ pub async fn call_tools(
             call.arguments().to_string()
         };
         // The bus's answer, mapped as the engine maps it: a layer's denial
-        // is the skipped result the model sees, a cancel stops the run, any
+        // is the refused result the model sees, a cancel stops the run, any
         // other failure is a failed result the model sees.
         let answer = match within(handle.call(name.clone(), args, ToolContext::new())).await {
             Ok(answer) => answer,
@@ -2643,7 +2643,7 @@ pub async fn call_tools(
                 return Err(CANCEL_ADD_DISPATCH);
             }
             Err(report) if report.kind == ErrorKind::Denied => {
-                return Ok(call.answer(rig_core::tool::ToolResult::skipped(report.message)));
+                return Ok(call.answer(rig_core::tool::ToolResult::failed(report.refused().into())));
             }
             Err(report) => {
                 return Ok(call.answer(rig_core::tool::ToolResult::failed(

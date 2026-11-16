@@ -942,8 +942,8 @@ mod structured_tool_results {
 
     // A *tool-authored* refusal surfaces as a `Denied`
     // outcome — distinct from a hook `DispatchAction::skip`, which is `Skipped`. This
-    // pins the documented `Skipped` vs `Denied` split: `Denied` comes only
-    // from the tool, never from a hook skip.
+    // pins the documented `Skipped` vs `Denied` split: `Denied` comes from the
+    // tool or a `Denied` report, never from a hook skip.
     #[tokio::test]
     async fn tool_authored_denial_produces_denied_outcome() {
         let hook = OutcomeHook::default();
@@ -963,6 +963,44 @@ mod structured_tool_results {
             vec!["access to this resource is not permitted".to_string()],
             "the model still receives the tool's denial message"
         );
+    }
+
+    // A hook's denial with a `Denied` report is a refusal the model sees as
+    // the tool's, as the kernel answers one: not a skip.
+    #[tokio::test]
+    async fn hook_denial_produces_denied_outcome() {
+        struct DenyHook;
+        impl AgentHook for DenyHook {
+            async fn on_dispatch(
+                &self,
+                _ctx: &HookContext,
+                event: DispatchEvent<'_>,
+            ) -> DispatchAction {
+                if event.tool_name().is_some() {
+                    DispatchAction::deny(rig_core::error::ErrorReport::new(
+                        rig_core::error::ErrorKind::Denied,
+                        "not allowed",
+                    ))
+                } else {
+                    DispatchAction::proceed()
+                }
+            }
+        }
+
+        let observer = OutcomeHook::default();
+        AgentBuilder::new(model_one_tool_then_text("add"))
+            .tool(MockAddTool)
+            .add_hook(DenyHook)
+            .add_hook(observer.clone())
+            .build()
+            .prompt("go")
+            .max_turns(3)
+            .run()
+            .await
+            .expect("a denial is not fatal");
+
+        assert_eq!(observer.outcomes(), vec!["denied".to_string()]);
+        assert_eq!(observer.results(), vec!["not allowed".to_string()]);
     }
 
     #[tokio::test]
@@ -1523,6 +1561,55 @@ mod span_safety_net {
         }
     }
 
+    /// A layer's denial on a tool's key is a refusal, as the kernel answers
+    /// one: the tool span records the `denied` outcome, not `skipped`.
+    #[tokio::test]
+    async fn layer_denial_is_a_denied_outcome() {
+        struct DenyLayer;
+        impl rig_core::serve::Intercept for DenyLayer {
+            fn name(&self) -> String {
+                "DenyLayer".to_owned()
+            }
+            async fn before(
+                &self,
+                _id: rig_core::effect::EffectId,
+                _kind: &rig_core::effect::EffectKind,
+            ) -> rig_core::serve::BeforeServe {
+                rig_core::serve::BeforeServe::deny("not allowed")
+            }
+        }
+
+        let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+        let capture = TraceCapture::default();
+        let _default = tracing::subscriber::set_default(capture.subscriber());
+        warm_blocking_callsites().await;
+        tracing::callsite::rebuild_interest_cache();
+        capture.clear();
+
+        let adder = rig_core::serve::ErasedHandler::new(
+            rig_core::serve::adapters::ToolAdapter::new(MockAddTool),
+        )
+        .layered(DenyLayer);
+        let server = crate::tool::server::ToolServer::new()
+            .registered_tool(
+                crate::tool::RegisteredTool::from_handler(adder).expect("a tool handler"),
+            )
+            .run();
+        AgentBuilder::new(tool_then_text_model())
+            .tool_server_handle(server)
+            .build()
+            .prompt("go")
+            .max_turns(3)
+            .run()
+            .await
+            .expect("a denial is not fatal");
+
+        assert_eq!(
+            capture.values_of("gen_ai.tool.call.outcome"),
+            vec![Value::from("denied")]
+        );
+    }
+
     /// A `ToolResult` rewrite applies to both model presentation and
     /// telemetry so redaction hooks cannot leak the raw output through spans.
     #[tokio::test]
@@ -2000,6 +2087,72 @@ async fn duplicate_call_ids_keep_their_own_results_when_settling_out_of_order() 
         })
         .collect();
     assert_eq!(answers, ["2", "4"], "results stay with their calls");
+}
+
+/// A resumed run whose advertised tool is no longer registered tells the
+/// model which tools it does have, as the kernel does.
+#[tokio::test]
+async fn a_resumed_call_to_an_unregistered_tool_lists_the_registered_ones() {
+    use crate::run::{AgentRun, AgentRunStep, ModelTurn, TurnPolicy};
+
+    let agent = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::text("done")]))
+        .tool(MockSubtractTool)
+        .build();
+    let mut run = AgentRun::from_spec(&agent.run_spec(), Message::user("go"), None).max_turns(2);
+    let Ok(AgentRunStep::CallModel { turn, .. }) = run.next_step() else {
+        panic!("a fresh run calls the model");
+    };
+    let definition = |name: &str| {
+        std::sync::Arc::new(rig_core::completion::ToolDefinition {
+            name: rig_core::message::ToolName::new(name).expect("tool name"),
+            description: MockAddTool.description(),
+            parameters: MockAddTool.parameters(),
+            annotations: Default::default(),
+        })
+    };
+    run.advertise_tools(turn, vec![definition("add"), definition("subtract")]);
+    let policy = TurnPolicy::new(
+        ["add".to_string(), "subtract".to_string()].into(),
+        None,
+        None,
+    )
+    .expect("policy");
+    run.model_response(ModelTurn::new(
+        rig_core::message::AssistantMessage::default(),
+        vec![tool_call_content("c1", json!({"x": 1, "y": 1}))],
+        Usage::default(),
+        policy,
+        json!({}),
+    ))
+    .expect("the tool turn is accepted");
+
+    let response = agent
+        .resume(run)
+        .run()
+        .await
+        .expect("the resumed run completes");
+
+    let texts: Vec<String> = response
+        .messages()
+        .iter()
+        .flat_map(|message| match message {
+            Message::User { content } => content.clone(),
+            _ => Vec::new(),
+        })
+        .filter_map(|item| match item {
+            UserContent::ToolResult(result) => Some(format!("{:?}", result.content)),
+            _ => None,
+        })
+        .collect();
+    let [text] = texts.as_slice() else {
+        panic!("one tool result expected: {texts:?}");
+    };
+    assert!(
+        text.contains(
+            "There is no tool named `add`. Your tools are: `subtract`. Call one by its exact name."
+        ),
+        "{text}"
+    );
 }
 
 /// Tool-result ids, in history order, across a run's message history.

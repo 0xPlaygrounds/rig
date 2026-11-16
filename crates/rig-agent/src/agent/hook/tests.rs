@@ -475,3 +475,110 @@ async fn nested_wrong_family_patch_preserves_valid_tool_and_stops_later_hooks() 
     assert_eq!(calls.load(Ordering::Relaxed), 0);
     assert_eq!(salvaged_args(&context, event.id), Some(json!({"x": 3})));
 }
+
+/// Counts its run-start, run-settled and delta calls, and observes none of them.
+struct NotObserving(Arc<AtomicUsize>);
+
+impl AgentHook for NotObserving {
+    async fn on_run_start(&self, _ctx: &HookContext, _event: RunStart<'_>) -> RunStartAction {
+        self.0.fetch_add(1, Ordering::Relaxed);
+        RunStartAction::Continue
+    }
+    async fn on_run_settled(&self, _ctx: &HookContext, _event: RunSettled<'_>) {
+        self.0.fetch_add(1, Ordering::Relaxed);
+    }
+    async fn on_text_delta(&self, _ctx: &HookContext, _event: TextDelta<'_>) -> ObservationAction {
+        self.0.fetch_add(1, Ordering::Relaxed);
+        ObservationAction::Continue
+    }
+    async fn on_reasoning_delta(
+        &self,
+        _ctx: &HookContext,
+        _event: ReasoningDelta<'_>,
+    ) -> ObservationAction {
+        self.0.fetch_add(1, Ordering::Relaxed);
+        ObservationAction::Continue
+    }
+    async fn on_tool_call_delta(
+        &self,
+        _ctx: &HookContext,
+        _event: ToolCallDelta<'_>,
+    ) -> ObservationAction {
+        self.0.fetch_add(1, Ordering::Relaxed);
+        ObservationAction::Continue
+    }
+    fn observes(&self, kind: StepEventKind) -> bool {
+        !matches!(
+            kind,
+            StepEventKind::RunStart
+                | StepEventKind::RunSettled
+                | StepEventKind::TextDelta
+                | StepEventKind::ReasoningDelta
+                | StepEventKind::ToolCallDelta
+        )
+    }
+}
+
+/// A stack skips a member that does not observe an event, even when a sibling
+/// with the default interest makes the stack observe it.
+#[tokio::test]
+async fn a_stack_skips_a_hook_that_does_not_observe_the_event() {
+    struct Listener;
+    impl AgentHook for Listener {}
+
+    let calls = Arc::new(AtomicUsize::new(0));
+    let mut stack = HookStack::with(NotObserving(calls.clone()));
+    stack.push(Listener);
+    let prompt = Message::user("hi");
+
+    let _ = stack
+        .on_run_start(
+            &ctx(),
+            RunStart {
+                prompt: &prompt,
+                history: &[],
+            },
+        )
+        .await;
+    stack
+        .on_run_settled(
+            &ctx(),
+            RunSettled {
+                outcome: SettledOutcome::Error("x"),
+                messages: None,
+            },
+        )
+        .await;
+    let _ = stack
+        .on_text_delta(
+            &ctx(),
+            TextDelta {
+                delta: "a",
+                aggregated: "a",
+            },
+        )
+        .await;
+    let _ = stack
+        .on_reasoning_delta(
+            &ctx(),
+            ReasoningDelta {
+                part: Part::new(0),
+                delta: "a",
+                aggregated: "a",
+            },
+        )
+        .await;
+    let _ = stack
+        .on_tool_call_delta(
+            &ctx(),
+            ToolCallDelta {
+                part: Part::new(1),
+                tool_name: "t",
+                delta: "{",
+                aggregated: "{",
+            },
+        )
+        .await;
+
+    assert_eq!(calls.load(Ordering::Relaxed), 0);
+}

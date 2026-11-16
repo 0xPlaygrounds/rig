@@ -93,7 +93,7 @@ async fn suspend_approve_effect_log_is_the_golden_fixture() {
 #[tokio::test]
 async fn suspend_deny_effect_log_is_the_golden_fixture() {
     let log = suspended(Answer::Deny).await;
-    // No record for the denial; the model saw the skipped result.
+    // No record for the denial; the model saw the refused result.
     assert_eq!(
         families(&log),
         [EffectFamily::Completion, EffectFamily::Completion]

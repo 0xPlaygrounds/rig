@@ -1,19 +1,18 @@
 //! A terminal chat loop over an agent.
 //!
 //! ```no_run
-//! use rig_agent::{Agent, completion::PromptError, integrations::cli_chatbot::ChatBot};
-//! async fn chat(agent: Agent) -> Result<(), PromptError> {
+//! use rig_agent::{Agent, agent::StreamToStdoutError, integrations::cli_chatbot::ChatBot};
+//! async fn chat(agent: Agent) -> Result<(), StreamToStdoutError> {
 //!     ChatBot::new(agent).max_turns(3).run().await
 //! }
 //! ```
 
 use futures::StreamExt;
-use rig_core::error::ProviderError;
 use rig_core::message::Message;
 use std::io::{self, Write};
 
 use crate::{
-    agent::{Agent, MultiTurnStreamItem},
+    agent::{Agent, MultiTurnStreamItem, StreamToStdoutError},
     completion::{PromptError, Usage},
     streaming::{Item, StreamEvent},
 };
@@ -52,23 +51,28 @@ impl ChatBot {
         }
     }
 
-    /// Read prompts from stdin and print answers until `exit`.
+    /// Read prompts from stdin and print answers until `exit` or end of input.
     /// Returns prompt failures and stdout flush errors; input read errors are printed.
-    pub async fn run(mut self) -> Result<(), PromptError> {
-        let stdin = io::stdin();
+    pub async fn run(self) -> Result<(), StreamToStdoutError> {
+        self.run_on(|line| io::stdin().read_line(line)).await
+    }
+
+    /// [`Self::run`] reading each prompt with `read_line`, which appends one
+    /// line to its buffer. Stdin is locked only while a line is read.
+    async fn run_on(
+        mut self,
+        mut read_line: impl FnMut(&mut String) -> io::Result<usize>,
+    ) -> Result<(), StreamToStdoutError> {
         let mut stdout = io::stdout();
         let mut history = vec![];
 
         loop {
             print!("> ");
-            stdout.flush().map_err(|e| {
-                PromptError::Provider(ProviderError::Response(format!(
-                    "failed to flush stdout: {e}"
-                )))
-            })?;
+            stdout.flush()?;
 
             let mut input = String::new();
-            match stdin.read_line(&mut input) {
+            match read_line(&mut input) {
+                Ok(0) => break,
                 Ok(_) => {
                     let input = input.trim();
                     if input == "exit" {
@@ -130,3 +134,6 @@ impl ChatBot {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests;

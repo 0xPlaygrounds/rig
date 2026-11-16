@@ -105,17 +105,20 @@ pub const TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER: &str =
     "Tool not executed because another tool call in the same assistant turn was invalid.";
 
 /// The tool results answering a turn with an invalid call, in call order:
-/// `feedback` for the call `invalid`, [`TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER`]
-/// for every other call. Empty when `content` has no tool calls.
+/// `feedback` for the call at position `invalid_at` in `content`,
+/// [`TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER`] for every other call. The call is
+/// picked by position because a peer may share its id. Empty when `content`
+/// has no tool calls.
 pub fn invalid_call_feedback(
     content: &[AssistantContent],
-    invalid: &CallId,
+    invalid_at: usize,
     feedback: &str,
 ) -> Vec<UserContent> {
     content
         .iter()
-        .filter_map(|part| match part {
-            AssistantContent::ToolCall(call) if &call.id == invalid => Some(tool_result_message(
+        .enumerate()
+        .filter_map(|(at, part)| match part {
+            AssistantContent::ToolCall(call) if at == invalid_at => Some(tool_result_message(
                 call.id.clone(),
                 call.function.name.clone(),
                 feedback.to_owned(),

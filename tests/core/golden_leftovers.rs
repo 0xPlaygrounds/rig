@@ -1,5 +1,5 @@
 //! Matrix T's cells: a layer's denial under every consumer mapping — on a
-//! tool (the model sees the skipped result), on a completion (the run
+//! tool (the model sees the refused result), on a completion (the run
 //! fails), on a custom effect from a hook (the hook sees `Denied`) — and the leftovers of the
 //! #2443 review: a host effect that does not serialize dispatched from a
 //! hook (L3), required host keys of the embed, rerank and custom families
@@ -47,7 +47,7 @@ async fn denied_tool_effect_log_is_the_golden_fixture() {
         .prompt(ADD_PROMPT)
         .max_turns(3)
         .await
-        .expect("the model sees the skipped result and answers");
+        .expect("the model sees the refused result and answers");
     assert_eq!(response.output(), "I could not add them.");
     let log = agent.stamp(recorder.take());
     assert_eq!(

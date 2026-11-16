@@ -1357,15 +1357,15 @@ pub(crate) enum ToolExit {
 }
 
 /// Outcome of [`run_single_tool`]: the tool result plus whether the tool's
-/// body ran (and the effective call) or a hook skipped it.
+/// body ran (and the effective call) or the call was skipped or denied.
 pub(crate) struct ToolCallOutcome {
     /// The tool result delivered to the model (a real output, a redacted
-    /// replacement, or a hook skip reason).
+    /// replacement, or the reason it was skipped or denied).
     pub result: ToolResult,
     /// The effective call when the tool's body ran: the model's call with any
     /// [`DispatchAction::Patch`] hook rewrite applied, reported as
     /// [`ToolExecutionCommitted`](crate::agent::streaming::MultiTurnStreamItem::ToolExecutionCommitted).
-    /// `None` when a hook skipped the call ([`DispatchAction::skip`]).
+    /// `None` when the call was skipped or denied before it ran.
     pub executed: Option<ToolCall>,
 }
 
@@ -1648,6 +1648,9 @@ pub(crate) async fn dispatch_tool_call(
     let mut published: Option<crate::tool::ToolContext> = None;
     let mut executed = false;
     let outcome: Result<Answered, ErrorReport> = match denied {
+        Some(report) if report.kind == ErrorKind::Denied => Ok(Answered::ToolResult {
+            result: ToolResult::failed(report.refused().into()),
+        }),
         Some(report) => Ok(Answered::ToolResult {
             result: ToolResult::skipped(report.message),
         }),
@@ -1677,7 +1680,12 @@ pub(crate) async fn dispatch_tool_call(
                     crate::tool::ToolExecutionError::not_found(format!(
                         "no tool named `{tool_name}` is registered"
                     ))
-                    .with_model_feedback(format!("tool `{tool_name}` not found")),
+                    .with_model_feedback(
+                        rig_core::tool::feedback::unknown_tool_feedback(
+                            tool_name,
+                            tool_snapshot.names(),
+                        ),
+                    ),
                 ),
             }),
         },
@@ -1696,11 +1704,11 @@ pub(crate) async fn dispatch_tool_call(
         Err(report) if report.kind == ErrorKind::Cancelled => {
             return Err(ToolExit::Stop(report.message));
         }
-        // A layer on the tool's key denied the call: the model sees the
-        // skipped result, as it does for a hook's denial.
+        // A layer on the tool's key denied the call: a refusal, as for a
+        // hook's denial and in the kernel.
         Err(report) if report.kind == ErrorKind::Denied => {
             tracing::info!(tool_name = tool_name, reason = %report.message, "Tool call denied");
-            ToolResult::skipped(report.message)
+            ToolResult::failed(report.refused().into())
         }
         // No handler could serve the call, or a replayer refused it as a
         // divergence: the run fails with the report rather than telling the model
