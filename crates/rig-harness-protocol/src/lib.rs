@@ -1517,6 +1517,12 @@ pub struct DescribedSecret {
     pub help: String,
 }
 
+/// Whether a report field is a `-` after any number of `\`: the empty
+/// field's mark, or one escaped by a `\` more.
+fn is_dash(field: &str) -> bool {
+    field.trim_start_matches('\\') == "-"
+}
+
 impl AgentDescription {
     /// Reads a report. Without the header it is empty: a build from before
     /// commands, which has none. A record of a kind it does not know is
@@ -1528,7 +1534,11 @@ impl AgentDescription {
         if lines.next() != Some(DESCRIBED_HEADER) {
             return described;
         }
-        let given = |field: &str| (field != "-").then(|| field.to_owned());
+        let given = |field: &str| match field {
+            "-" => None,
+            field if is_dash(field) => field.get(1..).map(str::to_owned),
+            field => Some(field.to_owned()),
+        };
         for line in lines {
             match line.split('\t').collect::<Vec<_>>().as_slice() {
                 ["command", name, usage, run, session, help, ..] => {
@@ -1558,11 +1568,13 @@ impl AgentDescription {
     }
 
     /// The report as text, which [`Self::parse`] reads back. Tabs and line
-    /// breaks in a field become spaces.
+    /// breaks in a field become spaces. An empty usage or value name is
+    /// written `-`, so a `-` of its own gets a `\` before it.
     pub fn write(&self) -> String {
         let clean = |field: &str| field.replace(['\t', '\n', '\r'], " ");
         let or_dash = |field: &str| match field {
             "" => "-".to_owned(),
+            field if is_dash(field) => format!("\\{field}"),
             field => clean(field),
         };
         let mut lines = vec![DESCRIBED_HEADER.to_owned()];

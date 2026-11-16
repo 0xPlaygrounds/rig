@@ -781,6 +781,30 @@ fn a_secret_name_that_is_not_utf8_is_still_a_secret() {
     assert!(!is_secret_variable(OsStr::from_bytes(b"RIG_\xffSECRET_")));
 }
 
+/// A usage or value name that is `-`, or `\-`, is read back as it was,
+/// not as the empty field's mark.
+#[test]
+fn a_dash_usage_survives_the_report() {
+    let command = |usage: &str| DescribedCommand {
+        name: "cat".to_owned(),
+        usage: usage.to_owned(),
+        terminal: false,
+        sessionless: false,
+        help: "reads stdin".to_owned(),
+    };
+    let flag = |value: Option<&str>| DescribedFlag {
+        name: "input".to_owned(),
+        value: value.map(str::to_owned),
+        help: "where".to_owned(),
+    };
+    let described = AgentDescription {
+        commands: ["-", "\\-", ""].map(command).into(),
+        flags: [Some("-"), Some("\\\\-"), None].map(flag).into(),
+        ..AgentDescription::default()
+    };
+    assert_eq!(AgentDescription::parse(&described.write()), described);
+}
+
 /// A word that is not UTF-8 is refused by name, not a panic.
 #[cfg(unix)]
 #[test]
