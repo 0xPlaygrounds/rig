@@ -138,13 +138,6 @@ enum Registered {
     Gemini,
 }
 
-/// Identity is the `(vendor, format)` pair, as for [`ProviderId`].
-impl PartialEq for Registered {
-    fn eq(&self, other: &Self) -> bool {
-        self.vendor() == other.vendor() && self.format() == other.format()
-    }
-}
-
 impl Registered {
     fn vendor(&self) -> &'static str {
         match self {

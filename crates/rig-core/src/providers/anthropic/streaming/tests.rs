@@ -1465,7 +1465,7 @@ fn the_default_decoder_prices_each_cache_lifetime() {
         "anthropic",
         |reply| {
             reply.feed(
-                &mut MessagesDecoder::default(),
+                &mut MessagesDecoder::new(Quirks::anthropic()),
                 Some(document::Message::default()),
                 [WireFrame::Text(message.to_string())],
             )

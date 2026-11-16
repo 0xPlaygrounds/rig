@@ -536,8 +536,7 @@ pub struct Messages {
 impl Messages {
     /// The same wire, encoding with `facts` and pricing its replies by
     /// them. The `max_tokens` a request without one defaults to becomes the
-    /// dialect's default for the model under `facts`; set another with
-    /// [`Self::with_default_max_tokens`] after this.
+    /// dialect's default for the model under `facts`.
     pub fn with_facts(mut self, facts: ModelFacts) -> Self {
         self.default_max_tokens = self
             .provider
@@ -547,10 +546,16 @@ impl Messages {
         self
     }
 
-    /// Set the `max_tokens` a request without one defaults to.
-    pub fn with_default_max_tokens(mut self, tokens: u64) -> Self {
-        self.default_max_tokens = Some(tokens);
-        self
+    /// The `max_tokens` a request to `model` sends: its own, else the
+    /// dialect's default for another model than the wire's, else the wire's.
+    pub(super) fn max_tokens(&self, request: &CompletionRequest, model: &str) -> Option<u64> {
+        let other_model = (model != self.model).then_some(model);
+        request
+            .max_tokens
+            .or_else(|| {
+                other_model.and_then(|m| self.provider.dialect.default_max_tokens(&self.facts, m))
+            })
+            .or(self.default_max_tokens)
     }
 
     /// Enable cache breakpoints on the system prompt, final tool, and final message block.

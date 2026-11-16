@@ -11,7 +11,7 @@ use crate::completion::{CompletionRequest, CompletionResponse};
 use crate::providers::anthropic::extension::AnthropicExt;
 use crate::providers::anthropic::streaming::MessagesDecoder;
 use crate::providers::anthropic::wire::{
-    ANTHROPIC, AnthropicConfig, Dialect, MINIMAX, MOONSHOT, Messages, XIAOMIMIMO, ZAI,
+    ANTHROPIC, AnthropicConfig, Dialect, MINIMAX, MOONSHOT, Messages, Quirks, XIAOMIMIMO, ZAI,
 };
 use crate::wire::document::rebuild;
 use crate::wire::{Mode, WireFrame};
@@ -23,7 +23,7 @@ fn frame(event: &Value) -> WireFrame {
 /// The document `events` rebuild.
 fn rebuilt(events: &[Value]) -> Value {
     rebuild(
-        &MessagesDecoder::default(),
+        &MessagesDecoder::new(Quirks::anthropic()),
         Message::default(),
         events.iter().map(frame),
     )

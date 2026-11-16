@@ -286,12 +286,14 @@ pub enum Speed {
 /// A token budget the model paces an agentic loop by, at least 20000
 /// tokens.
 #[non_exhaustive]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(tag = "type", rename = "tokens")]
 pub struct TaskBudget {
     /// The whole budget.
     pub total: u32,
     /// What is left of it, when history was rewritten and the server can no
     /// longer count it. Unset, the server counts it.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub remaining: Option<u32>,
 }
 
@@ -308,19 +310,6 @@ impl TaskBudget {
     pub fn remaining(mut self, remaining: u32) -> Self {
         self.remaining = Some(remaining);
         self
-    }
-}
-
-impl Serialize for TaskBudget {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let Self { total, remaining } = self;
-        let mut map = serializer.serialize_map(None)?;
-        map.serialize_entry("type", "tokens")?;
-        map.serialize_entry("total", total)?;
-        if let Some(remaining) = remaining {
-            map.serialize_entry("remaining", remaining)?;
-        }
-        map.end()
     }
 }
 
@@ -438,13 +427,15 @@ impl ContextManagement {
 
 /// A remote MCP server the API connects to.
 #[non_exhaustive]
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(tag = "type", rename = "url")]
 pub struct McpServer {
     /// The server's URL.
     pub url: String,
     /// The name an `mcp_toolset` tool refers to it by.
     pub name: String,
     /// An OAuth token the API sends to it.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub authorization_token: Option<String>,
 }
 
@@ -462,24 +453,6 @@ impl McpServer {
     pub fn authorization_token(mut self, token: impl Into<String>) -> Self {
         self.authorization_token = Some(token.into());
         self
-    }
-}
-
-impl Serialize for McpServer {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let Self {
-            url,
-            name,
-            authorization_token,
-        } = self;
-        let mut map = serializer.serialize_map(None)?;
-        map.serialize_entry("type", "url")?;
-        map.serialize_entry("url", url)?;
-        map.serialize_entry("name", name)?;
-        if let Some(token) = authorization_token {
-            map.serialize_entry("authorization_token", token)?;
-        }
-        map.end()
     }
 }
 
@@ -642,18 +615,15 @@ pub(crate) struct MessagesStop {
 }
 
 impl MessagesStop {
-    /// The stop fields of `raw`, a reply on `api`, for `provider`'s extras.
+    /// The stop fields of `raw`, or `None` when `api` is not the Messages API.
     ///
     /// # Errors
     ///
-    /// When `api` is not the Messages API or `raw` is not an object.
-    pub(crate) fn read(provider: &str, api: &Api, raw: &Value) -> Result<Self, serde_json::Error> {
-        if api.as_str() != MESSAGES_API {
-            return Err(serde::de::Error::custom(format!(
-                "{provider} extras read a Messages reply, not one from `{api}`"
-            )));
-        }
-        Self::deserialize(raw)
+    /// When `raw` is a Messages reply but not an object.
+    pub(crate) fn of(api: &Api, raw: &Value) -> Result<Option<Self>, serde_json::Error> {
+        (api.as_str() == MESSAGES_API)
+            .then(|| Self::deserialize(raw))
+            .transpose()
     }
 }
 

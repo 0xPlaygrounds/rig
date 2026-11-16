@@ -20,7 +20,6 @@ use crate::completion::provider_options::reply_field;
 use crate::completion::{ExtensionOptions, ProviderExtension, ReplyExtras};
 use crate::message::Api;
 use crate::providers::anthropic::extension::{MessagesStop, Nested};
-use crate::providers::anthropic::wire::MESSAGES_API;
 
 /// MiniMax's extension marker.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -156,14 +155,10 @@ pub struct MiniMaxExtras {
 
 impl ReplyExtras for MiniMaxExtras {
     fn from_reply(api: &Api, raw: &Value) -> Result<Self, serde_json::Error> {
-        if api.as_str() == MESSAGES_API {
-            let MessagesStop {
-                stop_reason,
-                stop_sequence,
-            } = MessagesStop::read("MiniMax", api, raw)?;
+        if let Some(stop) = MessagesStop::of(api, raw)? {
             return Ok(Self {
-                stop_reason,
-                stop_sequence,
+                stop_reason: stop.stop_reason,
+                stop_sequence: stop.stop_sequence,
                 ..Self::default()
             });
         }

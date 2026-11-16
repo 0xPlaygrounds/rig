@@ -145,13 +145,7 @@ pub(super) fn map_options(
     fields: OptionFields<'_>,
 ) -> OptionMap {
     let model = request.model.as_deref().unwrap_or(&wire.model);
-    let max_tokens = request.max_tokens.or_else(|| {
-        if model == wire.model {
-            wire.default_max_tokens
-        } else {
-            wire.provider.dialect.default_max_tokens(&wire.facts, model)
-        }
-    });
+    let max_tokens = wire.max_tokens(request, model);
     // Not `options::param`, which calls `map_options`.
     let has_tools = crate::completion::history::declares_tools(request);
     match wire.provider.dialect.name {
