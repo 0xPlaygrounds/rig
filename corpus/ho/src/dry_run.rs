@@ -24,7 +24,7 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::serde_json::{Map, Value, from_value};
 use rig_harness::rig_core::tool::ToolOutput;
 use rig_tools::edit::apply;
-use rig_tools::fs::{file_change, read_text, write_atomic};
+use rig_tools::fs::{file_change, write_atomic};
 use rig_tools::workspace::{Local, Workspace};
 use rig_tools::{EditArgs, ReadArgs, ShellArgs, WriteArgs};
 use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
@@ -74,8 +74,10 @@ impl Overlay {
     /// The file at `path` as dry run sees it: previewed, else on disk, read
     /// as the file tools read it.
     fn current(&self, path: &str) -> Result<String, ToolExecutionError> {
-        self.content(path)
-            .map_or_else(|| read_text(path), |content| Ok(content.to_owned()))
+        self.content(path).map_or_else(
+            || <dyn Workspace>::read_text(&Local, Path::new(path)),
+            |content| Ok(content.to_owned()),
+        )
     }
 
     /// Previews `content` for the file at `path`, remembering what is on

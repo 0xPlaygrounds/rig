@@ -15,14 +15,6 @@ use serde::de::DeserializeOwned;
 
 use crate::workspace::{Contents, Listed, Listing, Local, Stat, Workspace, not_a_file, read_only};
 
-/// Reads `path` as text after checking, without opening it, that it is a
-/// regular file of at most [`MAX_FILE_BYTES`](crate::MAX_FILE_BYTES):
-/// opening a FIFO or a device can block forever. [`Local`]'s
-/// `read_text`.
-pub fn read_text(path: &str) -> Result<String, ToolExecutionError> {
-    <dyn Workspace>::read_text(&Local, Path::new(path))
-}
-
 /// The start of a file read by [`read_prefix`].
 pub struct Prefix {
     /// At most the asked number of bytes, as text, without a byte-order

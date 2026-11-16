@@ -209,26 +209,17 @@ pub enum Listing {
 }
 
 impl Listing {
-    /// The listing of a tool call's `hidden` and `glob` arguments.
+    /// The listing of a tool call's `hidden` and `glob` arguments: `Hidden`
+    /// when `hidden` is set or the glob names a hidden file or directory,
+    /// such as `.github/**` or `**/.env*`, so asking for one finds it.
     pub(crate) fn from_options(hidden: bool, glob: Option<&str>) -> Self {
-        match hidden {
-            true => Self::Hidden,
-            false => Self::Visible,
-        }
-        .for_glob(glob)
-    }
-
-    /// The listing a search or listing for `glob` uses: `Visible` becomes
-    /// `Hidden` when the glob names a hidden file or directory, such as
-    /// `.github/**` or `**/.env*`, so asking for one finds it.
-    pub fn for_glob(self, glob: Option<&str>) -> Self {
         let names_hidden = glob.is_some_and(|glob| {
             glob.split(['/', '\\'])
                 .any(|part| part.starts_with('.') && part != "." && part != "..")
         });
-        match self {
-            Self::Visible if names_hidden => Self::Hidden,
-            other => other,
+        match hidden || names_hidden {
+            true => Self::Hidden,
+            false => Self::Visible,
         }
     }
 
@@ -259,16 +250,6 @@ pub enum Observation<T> {
     Excluded,
     /// The look failed, so whether something is there is not known.
     Failed(io::Error),
-}
-
-impl<T> Observation<T> {
-    /// What was found, if it was.
-    pub fn found(self) -> Option<T> {
-        match self {
-            Self::Found(found) => Some(found),
-            Self::Missing | Self::Excluded | Self::Failed(_) => None,
-        }
-    }
 }
 
 /// What [`Workspace::files`] listed.
