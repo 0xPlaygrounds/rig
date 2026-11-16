@@ -1240,7 +1240,7 @@ pub struct ProviderCapabilities {
     /// Whether the model answers a forced tool choice (`Required` or
     /// `Specific`) with an error. Rig then does not force the output tool
     /// of its own structured-output flow (the extractor). Defaults to `false`.
-    #[serde(default, skip_serializing_if = "crate::json_utils::is_false")]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub rejects_forced_tool_choice: bool,
 }
 
