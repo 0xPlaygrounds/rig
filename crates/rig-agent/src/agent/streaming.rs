@@ -252,26 +252,12 @@ impl AgentRunner {
     /// the driver as a stream. Called on the first poll, under `ambient`, the
     /// span the stream was built in.
     fn start_stream(self, ambient: tracing::Span) -> StreamingResult {
-        let (agent_span, created_agent_span) = self.open_agent_span(ambient);
-
-        let hook_ctx = self.hook_context(true);
-        let run = self.build_run();
         let source = StreamingTurnSource::new(
             &self.config.hooks,
             self.agent_name_or_default().to_string(),
-            created_agent_span,
             self.config.record_telemetry_content,
         );
-
-        let driver = drive_agent(
-            self,
-            source,
-            run,
-            agent_span.clone(),
-            created_agent_span,
-            hook_ctx,
-        )
-        .flat_map(|item| {
+        let driver = drive_agent(self, source, ambient).flat_map(|item| {
             let (head, tools) = match item {
                 Ok(DriveItem::Surfaced(item)) => (Some(Ok(item.into())), None),
                 Ok(DriveItem::Live(live)) => (Some(Ok(live.into())), None),
@@ -281,7 +267,7 @@ impl AgentRunner {
             };
             futures::stream::iter(head.into_iter().chain(tools.into_iter().flatten().map(Ok)))
         });
-        Box::pin(driver.instrument(agent_span))
+        Box::pin(driver)
     }
 }
 

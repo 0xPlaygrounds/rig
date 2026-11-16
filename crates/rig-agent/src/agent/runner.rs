@@ -565,38 +565,22 @@ impl AgentRunner {
     }
 
     async fn run_under(self, ambient: tracing::Span) -> Result<PromptResponse, PromptError> {
-        let (agent_span, created_agent_span) = self.open_agent_span(ambient);
-        let hook_ctx = self.hook_context(false);
-        let run = self.build_run();
-
-        // Instrument the fold under the captured agent span, not the poller's span.
-        let record_telemetry_content = self.config.record_telemetry_content;
         // Boxed, so the futures awaiting the run stay small.
-        let mut driver = Box::pin(drive_agent(
-            self,
-            UnaryTurnSource::new(record_telemetry_content),
-            run,
-            agent_span.clone(),
-            created_agent_span,
-            hook_ctx,
-        ));
-        let fold = async move {
-            let mut response = None;
-            while let Some(item) = driver.next().await {
-                match item {
-                    Ok(DriveItem::Done(done)) => response = Some(done),
-                    Ok(DriveItem::Surfaced(_) | DriveItem::Live(_) | DriveItem::Projected(_)) => {}
-                    Err(err) => {
-                        // Drain through termination so engine teardown completes
-                        // rather than being dropped at the error yield.
-                        while driver.next().await.is_some() {}
-                        return Err(err);
-                    }
+        let mut driver = Box::pin(drive_agent(self, UnaryTurnSource::default(), ambient));
+        let mut response = None;
+        while let Some(item) = driver.next().await {
+            match item {
+                Ok(DriveItem::Done(done)) => response = Some(done),
+                Ok(DriveItem::Surfaced(_) | DriveItem::Live(_) | DriveItem::Projected(_)) => {}
+                Err(err) => {
+                    // Drain through termination so engine teardown completes
+                    // rather than being dropped at the error yield.
+                    while driver.next().await.is_some() {}
+                    return Err(err);
                 }
             }
-            response.ok_or_else(no_final_response)
-        };
-        fold.instrument(agent_span).await
+        }
+        response.ok_or_else(no_final_response)
     }
 }
 

@@ -91,7 +91,7 @@ pub(crate) enum DriveItem {
     Done(PromptResponse),
 }
 
-/// Medium-specific model turns, span chaining, telemetry, and final-item
+/// Medium-specific model turns, span chaining, and final-item
 /// construction. Implementations resolve invalid calls during model ingestion
 /// and feed accepted turns back into the run; the engine runs tool calls.
 pub(crate) trait TurnSource: Sized + WasmCompatSend + WasmCompatSync {
@@ -110,21 +110,11 @@ pub(crate) trait TurnSource: Sized + WasmCompatSend + WasmCompatSync {
         run: &'a mut AgentRun,
         prepared: PreparedCompletionRequest,
         chat_span: tracing::Span,
-        agent_span: &'a tracing::Span,
         scope: &'a mut CompletionScope<Self>,
     ) -> DriveStream<'a>;
 
     /// Chain a chat or tool execute span into this medium's span sequence.
     fn chain_span(&self, span: tracing::Span) -> tracing::Span;
-
-    /// Record run-level telemetry onto the agent span at `Done`. Gated on
-    /// `created_agent_span` so a caller-supplied outer span is never polluted.
-    fn record_run_level_telemetry(
-        &self,
-        agent_span: &tracing::Span,
-        response: &PromptResponse,
-        created_agent_span: bool,
-    );
 
     /// The item the run's response ends this medium's surface with: the
     /// final stream item, or the response the blocking fold returns.
@@ -137,21 +127,23 @@ pub(crate) fn store_error_usage(runner: &AgentRunner, run: &AgentRun) {
     }
 }
 
-/// Drive run steps, hooks and request preparation using `source`.
-/// Yields stream items and a terminal response, or settles and yields an error.
-/// Only engine-owned agent spans receive run-level telemetry.
+/// Drive `runner`'s run with `source` under an agent span opened now in
+/// `ambient`. Yields stream items and a terminal response, or settles and
+/// yields an error. Only an agent span the run created receives run-level
+/// telemetry, so a caller's span is never polluted.
 pub(crate) fn drive_agent<S>(
     runner: AgentRunner,
     mut source: S,
-    mut run: AgentRun,
-    agent_span: tracing::Span,
-    created_agent_span: bool,
-    hook_ctx: HookContext,
+    ambient: tracing::Span,
 ) -> impl Stream<Item = Result<DriveItem, PromptError>>
 where
     S: TurnSource,
 {
-    async_stream::stream! {
+    let (agent_span, created_agent_span) = runner.open_agent_span(ambient);
+    let hook_ctx = runner.hook_context(S::STREAMS);
+    let mut run = runner.build_run();
+    let driver_span = agent_span.clone();
+    let driver = async_stream::stream! {
         // Hooks must see resumed entries from their first invocation.
         hook_ctx.seed_entries(run.entries());
         // Step-boundary flushing includes hook state in serialization; settlement
@@ -366,7 +358,6 @@ where
                         request,
                         prepared,
                         chat_span,
-                        &agent_span,
                     );
                     let turn_error = loop {
                         match turn_stream.next().await {
@@ -449,7 +440,12 @@ where
                         max_turns = runner.config.max_turns(),
                         "Agent run finished"
                     );
-                    source.record_run_level_telemetry(&agent_span, &response, created_agent_span);
+                    if created_agent_span {
+                        if runner.config.record_telemetry_content {
+                            agent_span.record("gen_ai.completion", response.output());
+                        }
+                        agent_span.record_token_usage(&response.usage);
+                    }
                     if runner.config.hooks.observes(StepEventKind::RunSettled) {
                         runner
                             .config
@@ -468,8 +464,9 @@ where
                 }
             }
         }
-
-    }
+    };
+    // Streams need tracing-futures' `Instrument`; futures here use tracing's.
+    tracing_futures::Instrument::instrument(driver, driver_span)
 }
 
 /// Execute a turn's tool calls **atomically per batch**, shared by both surfaces.
@@ -790,11 +787,7 @@ pub(crate) struct StreamingTurnSource {
     last_response_id: Option<String>,
     /// Resolved agent name, kept only for the empty-turn diagnostic warning.
     agent_name: String,
-    /// Whether we created the agent span (vs. adopting a caller's ambient span);
-    /// gates recording `gen_ai.completion` onto it, matching the blocking source
-    /// so neither surface pollutes a caller-supplied span.
-    created_agent_span: bool,
-    /// Whether sensitive run-level prompt and completion content may be recorded.
+    /// Whether sensitive prompt and completion content may be recorded.
     record_telemetry_content: bool,
     /// Hot-path interest gates, computed once: skip building/dispatching the
     /// high-frequency delta events when no hook observes them.
@@ -810,7 +803,6 @@ impl StreamingTurnSource {
     pub(crate) fn new(
         hooks: &HookStack,
         agent_name: String,
-        created_agent_span: bool,
         record_telemetry_content: bool,
     ) -> Self {
         Self {
@@ -818,28 +810,12 @@ impl StreamingTurnSource {
             last_final_choice: Vec::new(),
             last_response_id: None,
             agent_name,
-            created_agent_span,
             record_telemetry_content,
             observes_text_delta: hooks.observes(StepEventKind::TextDelta),
             observes_reasoning_delta: hooks.observes(StepEventKind::ReasoningDelta),
             observes_tool_call_delta: hooks.observes(StepEventKind::ToolCallDelta),
             has_hooks: !hooks.is_empty(),
         }
-    }
-
-    /// Record a completed model turn's canonical output onto the agent and
-    /// chat spans. Only self-created agent spans receive `gen_ai.completion`,
-    /// so neither surface pollutes a caller-supplied span.
-    fn record_turn_telemetry(
-        &self,
-        agent_span: &tracing::Span,
-        chat_span: &tracing::Span,
-        choice: &[AssistantContent],
-    ) {
-        if self.created_agent_span && self.record_telemetry_content {
-            agent_span.record("gen_ai.completion", AssistantContent::concat_text(choice));
-        }
-        rig_core::telemetry::record_model_output(chat_span, choice, self.record_telemetry_content);
     }
 }
 
@@ -853,7 +829,6 @@ impl TurnSource for StreamingTurnSource {
         run: &'a mut AgentRun,
         prepared: PreparedCompletionRequest,
         chat_span: tracing::Span,
-        agent_span: &'a tracing::Span,
         scope: &'a mut CompletionScope<Self>,
     ) -> DriveStream<'a> {
         Box::pin(async_stream::try_stream! {
@@ -1174,20 +1149,20 @@ impl TurnSource for StreamingTurnSource {
                     // A stop observes an already completed provider turn:
                     // its content telemetry stays visible before the
                     // cancellation.
-                    self.record_turn_telemetry(
-                        agent_span,
+                    rig_core::telemetry::record_model_output(
                         &chat_span,
                         scope.choice(),
+                        self.record_telemetry_content,
                     );
                     return Err(run.cancel_error(reason))?;
                 }
             }
 
             // Only hook-accepted canonical output belongs in content telemetry.
-            self.record_turn_telemetry(
-                agent_span,
+            rig_core::telemetry::record_model_output(
                 &chat_span,
                 scope.choice(),
+                self.record_telemetry_content,
             );
 
             self.last_final_choice = final_turn_content;
@@ -1196,17 +1171,6 @@ impl TurnSource for StreamingTurnSource {
 
     fn chain_span(&self, span: tracing::Span) -> tracing::Span {
         span
-    }
-
-    fn record_run_level_telemetry(
-        &self,
-        agent_span: &tracing::Span,
-        response: &PromptResponse,
-        created_agent_span: bool,
-    ) {
-        if created_agent_span {
-            agent_span.record_token_usage(&response.usage);
-        }
     }
 
     fn finish(&mut self, mut response: PromptResponse) -> DriveItem {
@@ -1449,6 +1413,7 @@ fn record_tool_result(span: &tracing::Span, result: &ToolResult) {
 /// Emits no intermediate items (the blocking surface folds the engine to its
 /// final response), but keeps the blocking driver's linear `follows_from` span
 /// chain across chat and tool spans.
+#[derive(Default)]
 pub(crate) struct UnaryTurnSource {
     /// Sequences chat and tool spans into a linear `follows_from` chain (the
     /// streaming surface parents the same tree but does not chain).
@@ -1459,16 +1424,6 @@ pub(crate) struct UnaryTurnSource {
     /// borrows the source, so every `TurnSource` must be `Sync`, which
     /// `AtomicU64` provides and `Cell` does not.
     current_span_id: AtomicU64,
-    record_telemetry_content: bool,
-}
-
-impl UnaryTurnSource {
-    pub(crate) fn new(record_telemetry_content: bool) -> Self {
-        Self {
-            current_span_id: AtomicU64::new(0),
-            record_telemetry_content,
-        }
-    }
 }
 
 impl TurnSource for UnaryTurnSource {
@@ -1497,7 +1452,6 @@ impl TurnSource for UnaryTurnSource {
         run: &'a mut AgentRun,
         prepared: PreparedCompletionRequest,
         chat_span: tracing::Span,
-        _agent_span: &'a tracing::Span,
         scope: &'a mut CompletionScope<Self>,
     ) -> DriveStream<'a> {
         // A unary turn surfaces nothing but its error.
@@ -1572,23 +1526,6 @@ impl TurnSource for UnaryTurnSource {
             futures::stream::once(turn)
                 .filter_map(|done| std::future::ready(done.err().map(Err::<Surfaced, _>))),
         )
-    }
-
-    fn record_run_level_telemetry(
-        &self,
-        agent_span: &tracing::Span,
-        response: &PromptResponse,
-        created_agent_span: bool,
-    ) {
-        // Record completion and usage onto the agent span only when this run
-        // created it, never onto a caller-supplied outer span. The blocking
-        // surface additionally records the final completion text.
-        if created_agent_span {
-            if self.record_telemetry_content {
-                agent_span.record("gen_ai.completion", response.output());
-            }
-            agent_span.record_token_usage(&response.usage);
-        }
     }
 
     fn finish(&mut self, response: PromptResponse) -> DriveItem {
