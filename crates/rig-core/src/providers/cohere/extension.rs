@@ -13,10 +13,10 @@
 //! let request = CompletionRequest::new("hi").provider_option(options);
 //! ```
 
-use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize, Serializer};
 use serde_json::Value;
 
+use crate::completion::provider_options::reply_field;
 use crate::completion::{ExtensionOptions, ProviderExtension, ReplyExtras};
 use crate::message::Api;
 
@@ -236,24 +236,16 @@ pub struct Logprob {
     pub logprobs: Vec<f64>,
 }
 
-/// The value at `pointer` in `raw`, or `None` when it is absent or `null`.
-fn at<T: DeserializeOwned>(raw: &Value, pointer: &str) -> Result<Option<T>, serde_json::Error> {
-    match raw.pointer(pointer) {
-        None | Some(Value::Null) => Ok(None),
-        Some(value) => T::deserialize(value).map(Some),
-    }
-}
-
 impl ReplyExtras for CohereExtras {
     fn from_reply(_api: &Api, raw: &Value) -> Result<Self, serde_json::Error> {
         Ok(Self {
-            id: at(raw, "/id")?,
-            finish_reason: at(raw, "/finish_reason")?,
-            billed_units: at(raw, "/usage/billed_units")?,
-            tokens: at(raw, "/usage/tokens")?,
-            cached_tokens: at(raw, "/usage/cached_tokens")?,
-            tool_plan: at(raw, "/message/tool_plan")?,
-            logprobs: at(raw, "/logprobs")?,
+            id: reply_field(raw, "/id")?,
+            finish_reason: reply_field(raw, "/finish_reason")?,
+            billed_units: reply_field(raw, "/usage/billed_units")?,
+            tokens: reply_field(raw, "/usage/tokens")?,
+            cached_tokens: reply_field(raw, "/usage/cached_tokens")?,
+            tool_plan: reply_field(raw, "/message/tool_plan")?,
+            logprobs: reply_field(raw, "/logprobs")?,
         })
     }
 }

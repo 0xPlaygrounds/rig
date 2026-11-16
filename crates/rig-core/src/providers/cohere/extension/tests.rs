@@ -272,3 +272,14 @@ fn extras_read_the_tool_plan_and_logprobs_of_a_native_reply() {
     );
     assert!(CohereExtras::from_reply(&Api::from_static("cohere.chat"), &json!({"id": 7})).is_err());
 }
+
+/// An empty `logprobs` list reads as none, as every provider's extras read it.
+#[test]
+fn empty_logprobs_read_as_none() {
+    let extras = CohereExtras::from_reply(
+        &Api::from_static("cohere.chat"),
+        &json!({"id": "r-1", "logprobs": []}),
+    )
+    .expect("the reply reads");
+    assert_eq!(extras.logprobs, None);
+}
