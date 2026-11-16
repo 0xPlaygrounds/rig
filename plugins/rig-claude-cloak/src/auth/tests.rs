@@ -3,7 +3,6 @@ use rig_harness::rig_core::providers::chatgpt::auth::StoreLock;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
-use std::process::Stdio;
 
 mod http;
 mod off_runtime;
@@ -532,8 +531,8 @@ fn a_login_waiting_in_the_browser_leaves_the_credentials_free() -> anyhow::Resul
         .args(["--exact", name, "--test-threads", "1"])
         .env(LOGIN_HOME, &home)
         .env("PATH", path)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .spawn()?;
     let waited = (|| {
         let started = std::time::Instant::now();
