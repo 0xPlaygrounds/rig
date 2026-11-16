@@ -802,18 +802,21 @@ impl StopReached {
     }
 }
 
-/// How a [`Notice`] is shown and logged.
-#[derive(Reflect, Clone, Copy, Debug, Default, PartialEq, Eq)]
+/// How a [`Notice`] is shown and logged. It is saved as `info`, `warn` or
+/// `error`, and any other word reads as `info`.
+#[derive(Reflect, Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum NoticeLevel {
-    /// Information.
-    #[default]
-    Info,
     /// Something went wrong that did not stop anything, such as a refused
     /// key with another one used instead: shown like an error, but never a
     /// failure.
     Warn,
     /// Something failed or was refused.
     Error,
+    /// Information.
+    #[default]
+    #[serde(other)]
+    Info,
 }
 
 /// A line for the user, shown by views. A system reads the notices sent

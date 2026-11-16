@@ -471,15 +471,10 @@ fn stream_text(mut events: Events) {
 
 fn relay_notices(mut notices: MessageReader<Notice>, mut events: Events) {
     for notice in notices.read() {
-        let level = match notice.level {
-            NoticeLevel::Info => "info",
-            NoticeLevel::Warn => "warn",
-            NoticeLevel::Error => "error",
-        };
         let event = json!({
             "type": "notice",
             "agent": notice.agent.and_then(|agent| events.name(agent)),
-            "level": level,
+            "level": notice.level,
             "text": notice.text,
         });
         events.send(&event);
