@@ -332,3 +332,24 @@ fn a_home_with_a_line_break_still_generates_a_manifest_that_parses() {
     assert_eq!(parsed, Ok(()), "{manifest:?}");
     assert!(second.starts_with("fn main"), "main.rs line 2: {second}");
 }
+
+/// A RIG_HOME with a line break is refused before anything is written, as
+/// cargo cannot build there: build scripts' paths go through its
+/// line-based output.
+#[test]
+fn a_home_with_a_line_break_is_refused_before_building() {
+    let root = std::env::temp_dir().join(format!("rig-line\nbreak-{}", std::process::id()));
+    fs::remove_dir_all(&root).ok();
+    let home = Home::at(&root);
+    let generated =
+        generate(&home, &only(&[]), &RigSource::Registry).map_err(|why| why.to_string());
+    let written = home.project().exists();
+    fs::remove_dir_all(&root).ok();
+    assert!(
+        generated
+            .as_ref()
+            .is_err_and(|why| why.contains("holds a line break")),
+        "{generated:?}"
+    );
+    assert!(!written, "the project was written");
+}

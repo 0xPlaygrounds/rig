@@ -280,8 +280,24 @@ pub fn rig_version(source: &RigSource) -> String {
 }
 
 /// Writes the agent project with the plugins on of `plugins`.
+///
+/// # Errors
+///
+/// When the project or its target directory holds a line break, where
+/// cargo cannot build (build scripts' paths pass through line-based
+/// output), or a file cannot be written.
 pub fn generate(home: &Home, plugins: &Plugins, source: &RigSource) -> Result<()> {
     let project = home.project();
+    let broken = [project.clone(), home.target()]
+        .into_iter()
+        .find(|path| path.to_string_lossy().contains(['\n', '\r']));
+    if let Some(path) = broken {
+        return Err(format!(
+            "the agent's path {path:?} holds a line break, and cargo cannot build there; \
+             set RIG_HOME to a path without one"
+        )
+        .into());
+    }
     write_if_changed(
         &project.join("Cargo.toml"),
         &manifest(home, plugins, source)?,
