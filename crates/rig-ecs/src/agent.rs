@@ -317,10 +317,11 @@ impl From<Option<String>> for SystemPrompt {
 /// made or restored it.
 #[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
-#[serde(from = "Kept", into = "Kept")]
+#[serde(transparent)]
 pub struct ToolAccess {
     kept: Kept,
     /// This run's tools, which only the kernel sets.
+    #[serde(skip)]
     run: Option<Granted>,
 }
 
@@ -332,18 +333,6 @@ enum Kept {
     All,
     /// Only the tools named.
     Only(Granted),
-}
-
-impl From<Kept> for ToolAccess {
-    fn from(kept: Kept) -> Self {
-        Self { kept, run: None }
-    }
-}
-
-impl From<ToolAccess> for Kept {
-    fn from(access: ToolAccess) -> Self {
-        access.kept
-    }
 }
 
 /// Tool names, each once, in the order given.
@@ -434,7 +423,10 @@ impl ToolAccess {
     /// This access kept to `names`, each once: never more than it was, such
     /// as for an agent profile.
     pub fn narrow<'a>(&self, names: impl IntoIterator<Item = &'a str>) -> Self {
-        self.within(&Kept::Only(Granted(unique(names))).into())
+        self.within(&Self {
+            kept: Kept::Only(Granted(unique(names))),
+            run: None,
+        })
     }
 
     /// A child's access: the tools `asked`, each once, every one a tool of
