@@ -16,12 +16,15 @@
 //! ```
 
 use crate::completion::CompletionRequest;
+use crate::json_utils::Lenient;
+use crate::model::{ModelInfo, ModelList};
 use crate::providers::internal::credential_header;
 use crate::providers::openai::responses_api::SystemInstructionsPlacement;
 use crate::providers::openai::wire::{
     Dialect, DialectHooks, EmbeddingQuirks, OpenAIConfig, Quirks, ResponsesQuirks, Route,
 };
 use crate::wire::Body;
+use serde_json::Value;
 
 use super::PROVIDER_NAME;
 
@@ -80,8 +83,32 @@ static HOOKS: DialectHooks = DialectHooks {
     modality_envelope: Some(|provider, request| {
         stamp(request, provider.api_key.expose(), "user", false)
     }),
-    model_listing: Some(super::model_listing::catalogue),
+    model_listing: Some(catalogue),
 };
+
+/// The `GET /models` catalogue's `data`, each entry naming its id, its name,
+/// its vendor, its modality under `capabilities.type` and its tool-call
+/// support under `capabilities.supports.tool_calls`. The whole catalogue
+/// comes in one reply.
+fn catalogue(event: Value) -> ModelList {
+    let text =
+        |entry: &Value, pointer: &str| entry.at(pointer).and_then(Value::as_str).map(str::to_owned);
+    let models = event
+        .arr("data")
+        .iter()
+        .filter_map(|entry| {
+            let mut model = ModelInfo::from_id(entry.str("id")?);
+            model.name = text(entry, "/name");
+            model.owned_by = text(entry, "/vendor");
+            model.r#type = text(entry, "/capabilities/type");
+            model.supports_tool_calls = entry
+                .at("/capabilities/supports/tool_calls")
+                .and_then(Value::as_bool);
+            Some(model)
+        })
+        .collect();
+    ModelList::new(models)
+}
 
 /// The editor envelope of a completion request: the initiator and vision
 /// flag follow the request's history.

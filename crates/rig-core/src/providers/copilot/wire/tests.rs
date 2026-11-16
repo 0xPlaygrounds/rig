@@ -360,13 +360,11 @@ fn the_embeddings_request_sends_the_resolved_width() {
 #[tokio::test]
 async fn the_model_listing_folds_its_recorded_catalogue() {
     let body = cassette_body("models/list_models_smoke.yaml", "then");
-    let models = crate::driver::Model::new(
-        super::super::model_listing::Models::new(copilot()),
-        RecordingHttpClient::new(Bytes::from(body)),
-    )
-    .list()
-    .await
-    .expect("the recorded catalogue folds");
+    let models = copilot()
+        .connect(RecordingHttpClient::new(Bytes::from(body)))
+        .list_models()
+        .await
+        .expect("the recorded catalogue folds");
 
     let opus = models
         .iter()
@@ -423,13 +421,11 @@ async fn the_model_listing_keeps_tool_call_support_distinct() {
         {"id": "no-capabilities"},
         {"id": "malformed", "capabilities": {"supports": {"tool_calls": "true"}}}
     ]}"#;
-    let models = crate::driver::Model::new(
-        super::super::model_listing::Models::new(copilot()),
-        RecordingHttpClient::new(Bytes::from(body)),
-    )
-    .list()
-    .await
-    .expect("the catalogue folds");
+    let models = copilot()
+        .connect(RecordingHttpClient::new(Bytes::from(body)))
+        .list_models()
+        .await
+        .expect("the catalogue folds");
 
     let support: Vec<_> = models.iter().map(|m| m.supports_tool_calls).collect();
     assert_eq!(support, [Some(true), Some(false), None, None, None]);

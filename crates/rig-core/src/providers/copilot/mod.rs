@@ -31,7 +31,6 @@
 /// ```
 pub mod auth;
 pub mod extension;
-pub mod model_listing;
 pub mod wire;
 
 pub use wire::DIALECT;
