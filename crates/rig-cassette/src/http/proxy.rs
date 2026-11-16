@@ -322,7 +322,7 @@ async fn unary(
 ) -> http_client::Result<http_client::Response<LazyBody>> {
     let mut response = request?.send().await.map_err(rig_reqwest::from_reqwest)?;
     let head = head(&mut response);
-    let body: LazyBody = Box::pin(async move { read_whole(response).await });
+    let body: LazyBody = Box::pin(read_whole(response));
     head.body(body).map_err(http_client::Error::Protocol)
 }
 
@@ -402,8 +402,7 @@ async fn checked(
     let body: LazyBody = if traffic::framing(&parts.headers).is_some() {
         body
     } else {
-        let body = body.await;
-        Box::pin(async move { body })
+        Box::pin(std::future::ready(body.await))
     };
     Ok(http_client::Response::from_parts(parts, body))
 }

@@ -12,7 +12,7 @@ fn request(body: &'static str) -> Request<Bytes> {
 }
 
 #[test]
-fn unary_request_passes_through_unchanged_and_body_converts() {
+fn unary_request_and_reply_pass_through_unchanged() {
     let inner = RecordingHttpClient::new(r#"{"ok":true}"#);
     let erased = DynHttpClient::new(inner.clone());
 

@@ -1,9 +1,9 @@
 //! Transport-independent HTTP requests, lazy response bodies, and errors.
 //!
 //! ```
-//! use rig_http::http_client::{NoBody, Request};
+//! use rig_http::http_client::{Bytes, Request};
 //!
-//! let request = Request::get("https://example.com/v1/models").body(NoBody)?;
+//! let request = Request::get("https://example.com/v1/models").body(Bytes::new())?;
 //! assert_eq!(request.uri().path(), "/v1/models");
 //! # Ok::<(), rig_http::http_client::Error>(())
 //! ```
@@ -170,7 +170,8 @@ pub type BoxedStream = WasmBoxedStream<'static, Result<Bytes>>;
 /// A response whose body streams.
 pub type StreamingResponse = Response<BoxedStream>;
 
-/// A request with an empty body.
+/// The empty body of a WebSocket handshake request. An HTTP request with no
+/// body sends `Bytes::new()`.
 #[derive(Debug, Clone, Copy)]
 pub struct NoBody;
 
