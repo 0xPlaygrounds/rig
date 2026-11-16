@@ -129,17 +129,12 @@ impl PartialStreamedTurn {
     /// Rollback messages for a retried or skipped streamed turn: the partial
     /// assistant turn plus a user message carrying `feedback` for the invalid
     /// call and a synthetic "not executed" result for each validated peer.
-    pub fn rollback_messages(
-        &self,
-        invalid_tool_call: ToolCall,
-        feedback: String,
-    ) -> Option<(Message, Message)> {
-        let (content, Some(invalid_at)) = self.content_with(Some(invalid_tool_call)) else {
-            return None;
-        };
-        let results = invalid_call_feedback(&content, invalid_at, &feedback);
+    pub fn rollback_messages(&self, invalid_tool_call: ToolCall, feedback: String) -> [Message; 2] {
+        // `content_with` always places the call it is given, so `invalid_at` is set.
+        let (content, invalid_at) = self.content_with(Some(invalid_tool_call));
+        let results = invalid_call_feedback(&content, invalid_at.unwrap_or(usize::MAX), &feedback);
         let assistant_message = Message::Assistant(self.head.clone().with_content(content));
-        Some((assistant_message, Message::User { content: results }))
+        [assistant_message, Message::User { content: results }]
     }
 }
 
@@ -218,12 +213,6 @@ struct OpenCall {
     live: bool,
 }
 
-/// A complete tool call with a disallowed name, awaiting resolution.
-#[derive(Clone, Serialize, Deserialize)]
-struct PendingInvalid {
-    tool_call: ToolCall,
-}
-
 /// A tool call that ended this turn and was settled without abandoning it.
 #[derive(Clone, Serialize, Deserialize)]
 struct EndedCall {
@@ -247,7 +236,8 @@ pub struct StreamedTurnAssembler {
     /// response still carries ignored calls and original names;
     /// [`Self::resolved`] applies these to it.
     ended_calls: Vec<EndedCall>,
-    pending_invalid: Option<PendingInvalid>,
+    /// A complete tool call with a disallowed name, awaiting resolution.
+    pending_invalid: Option<ToolCall>,
     /// Replayed assistant blocks excluded from assembly this turn (see
     /// [`unknown_payload_loses_assistant_content`]): counted per item,
     /// surfaced as one warning when the guard drops.
@@ -367,10 +357,13 @@ impl StreamedTurnAssembler {
             } => {
                 self.open_calls.remove(&part.index());
                 if !self.policy.allows(tool_call.function.name.as_str()) {
-                    return Ok(self.surface_invalid_call(
-                        tool_call.clone(),
-                        Some(tool_call.function.arguments_json()),
-                    ));
+                    let invalid = StreamedInvalidToolCall {
+                        tool_call: tool_call.clone(),
+                        args: Some(tool_call.function.arguments_json()),
+                        policy: self.policy.clone(),
+                    };
+                    self.pending_invalid = Some(tool_call.clone());
+                    return Ok(StreamedTurnEvent::InvalidToolCall(invalid));
                 }
                 self.ended_calls.push(EndedCall {
                     call: tool_call.clone(),
@@ -393,9 +386,7 @@ impl StreamedTurnAssembler {
         &mut self,
         resolution: &StreamedResolution,
     ) -> Option<StreamedTurnEvent> {
-        let pending = self.pending_invalid.take()?;
-
-        let PendingInvalid { mut tool_call } = pending;
+        let mut tool_call = self.pending_invalid.take()?;
         match resolution {
             StreamedResolution::Repaired { tool_name } => {
                 if let Ok(tool_name) = ToolName::new(tool_name.clone()) {
@@ -425,7 +416,7 @@ impl StreamedTurnAssembler {
     /// The run answers it as cut off, so it is not resolved as invalid. The
     /// call is returned to forward like any ended call.
     pub fn keep_pending_cut_off(&mut self) -> Option<StreamedTurnEvent> {
-        let PendingInvalid { tool_call } = self.pending_invalid.take()?;
+        let tool_call = self.pending_invalid.take()?;
         self.ended_calls.push(EndedCall {
             call: tool_call.clone(),
             ignored: false,
@@ -502,22 +493,6 @@ impl StreamedTurnAssembler {
                 })
             })
             .collect()
-    }
-
-    /// Park resolution on `tool_call` and surface it to the caller as an
-    /// [`StreamedTurnEvent::InvalidToolCall`].
-    fn surface_invalid_call(
-        &mut self,
-        tool_call: ToolCall,
-        args: Option<String>,
-    ) -> StreamedTurnEvent {
-        let invalid = StreamedInvalidToolCall {
-            tool_call: tool_call.clone(),
-            args,
-            policy: self.policy.clone(),
-        };
-        self.pending_invalid = Some(PendingInvalid { tool_call });
-        StreamedTurnEvent::InvalidToolCall(invalid)
     }
 }
 

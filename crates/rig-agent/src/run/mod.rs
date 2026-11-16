@@ -41,7 +41,8 @@ use rig_core::error::ProviderError;
 use rig_core::conversation::Aside;
 use rig_core::message::{AssistantContent, AssistantMessage, ToolCall, ToolName, UserContent};
 use rig_core::tool::feedback::{
-    invalid_arguments_feedback, not_executed, output_limit_feedback, tool_result_message,
+    invalid_arguments_feedback, invalid_call_feedback, not_executed, output_limit_feedback,
+    tool_result_message,
 };
 
 use calls::AnswerKind;
@@ -58,7 +59,7 @@ pub use response::{CompletionCall, PromptError, PromptResponse};
 use rig_core::completion::message::turn_failure;
 use rig_core::structured_output;
 use rig_core::tool::validate::Problem;
-use transcript::{assistant_message, assistant_turn, invalid_tool_retry_user_message};
+use transcript::{assistant_message, assistant_turn};
 
 pub use streamed::{
     PartialStreamedTurn, StreamedInvalidToolCall, StreamedResolution, StreamedTurn,
@@ -976,11 +977,8 @@ impl AgentRun {
                             ));
                         }
                         self.history.commit(assistant_message(head, items.clone()));
-                        if let Some(user_message) =
-                            invalid_tool_retry_user_message(&items, position, &feedback)
-                        {
-                            self.history.commit([user_message]);
-                        }
+                        let content = invalid_call_feedback(&items, position, &feedback);
+                        self.history.commit([Message::User { content }]);
                         return self.reprompt_for_output();
                     }
 
@@ -1328,14 +1326,12 @@ impl AgentRun {
                     resolving.head.clone(),
                     resolving.original_choice.clone(),
                 ));
-                let Some(user_message) = invalid_tool_retry_user_message(
+                let content = invalid_call_feedback(
                     &resolving.original_choice,
                     resolving.original_position(),
                     &feedback,
-                ) else {
-                    return Err(self.fail("invalid tool call retry produced no retry messages"));
-                };
-                self.history.commit([user_message]);
+                );
+                self.history.commit([Message::User { content }]);
                 self.state = RunState::READY;
                 Ok(ModelTurnOutcome::TurnRetried)
             }
@@ -1642,23 +1638,15 @@ impl AgentRun {
         )?;
 
         match action {
-            ValidatedInvalidToolCallAction::Retry { feedback } => self.abandon_streamed_turn(
-                partial,
-                invalid,
-                feedback,
-                !recorded,
-                "invalid tool call retry produced no retry messages",
-            ),
+            ValidatedInvalidToolCallAction::Retry { feedback } => {
+                self.abandon_streamed_turn(partial, invalid, feedback, !recorded)
+            }
             ValidatedInvalidToolCallAction::Repair { tool_name } => {
                 Ok(StreamedResolution::Repaired { tool_name })
             }
-            ValidatedInvalidToolCallAction::Skip { reason } => self.abandon_streamed_turn(
-                partial,
-                invalid,
-                reason,
-                !recorded,
-                "invalid tool call skip produced no recovery messages",
-            ),
+            ValidatedInvalidToolCallAction::Skip { reason } => {
+                self.abandon_streamed_turn(partial, invalid, reason, !recorded)
+            }
         }
     }
 
@@ -1671,8 +1659,7 @@ impl AgentRun {
     }
 
     /// Shared rollback for the streamed Retry and Skip resolutions: push the
-    /// partial turn's rollback messages and abandon the turn, or fail the run
-    /// when the partial turn yields no rollback messages. `rollback_owed`
+    /// partial turn's rollback messages and abandon the turn. `rollback_owed`
     /// says the abandoned attempt's completion call is still to be recorded.
     fn abandon_streamed_turn(
         &mut self,
@@ -1680,14 +1667,9 @@ impl AgentRun {
         invalid: &StreamedInvalidToolCall,
         feedback: String,
         rollback_owed: bool,
-        no_messages_reason: &str,
     ) -> Result<StreamedResolution, PromptError> {
-        let Some((assistant_message, user_message)) =
-            partial.rollback_messages(invalid.tool_call.clone(), feedback)
-        else {
-            return Err(self.fail(no_messages_reason));
-        };
-        self.history.commit([assistant_message, user_message]);
+        self.history
+            .commit(partial.rollback_messages(invalid.tool_call.clone(), feedback));
         self.state = RunState::PreparingRequest { rollback_owed };
         Ok(StreamedResolution::TurnAbandoned)
     }

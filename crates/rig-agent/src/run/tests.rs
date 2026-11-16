@@ -1170,8 +1170,7 @@ fn a_truncated_reasoning_only_turn_commits_nothing() {
     );
 }
 
-/// An empty choice, or a retry with no tool calls to answer, builds no
-/// message, so nothing empty is appended to history.
+/// An empty choice builds no message, so nothing empty is appended to history.
 #[test]
 fn transcript_helpers_build_no_message_from_nothing() {
     assert_eq!(
@@ -1180,14 +1179,6 @@ fn transcript_helpers_build_no_message_from_nothing() {
     );
     assert_eq!(
         transcript::assistant_turn(rig_core::message::AssistantMessage::default(), Vec::new()),
-        None
-    );
-    assert_eq!(
-        transcript::invalid_tool_retry_user_message(
-            &[AssistantContent::text("no calls here")],
-            0,
-            "feedback",
-        ),
         None
     );
 }

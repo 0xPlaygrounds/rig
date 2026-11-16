@@ -11,8 +11,8 @@ use std::collections::BTreeSet;
 use rig_core::message::{Message, ToolCall, ToolChoice, ToolName};
 use serde::{Deserialize, Serialize};
 
-use rig_core::error::ProviderError;
 use super::response::PromptError;
+use rig_core::error::ProviderError;
 
 /// Why a model-emitted tool call cannot be dispatched as written.
 ///
