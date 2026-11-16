@@ -395,31 +395,29 @@ impl EntryRef<'_> {
     /// not only tool results, with no author or [`AuthorKind::User`] with
     /// no title.
     pub fn is_users_own(&self) -> bool {
-        let typed = match self.message {
-            Message::User { content } => content
-                .iter()
-                .any(|item| !matches!(item, UserContent::ToolResult(_))),
-            _ => false,
-        };
-        let users = self
-            .author
-            .is_none_or(|author| author.kind == AuthorKind::User && author.title.is_none());
-        typed && users
+        self.says_something()
+            && self
+                .author
+                .is_none_or(|author| author.kind == AuthorKind::User && author.title.is_none())
     }
 
     /// Whether it asks something of the model: a user message with text
     /// or attachments, not only tool results, that is not rig's own (the
     /// [`STOPPED`] note). The user's, an agent's or a plugin's.
     pub fn is_request(&self) -> bool {
-        let asks = match self.message {
-            Message::User { content } => content
-                .iter()
-                .any(|item| !matches!(item, UserContent::ToolResult(_))),
+        self.says_something()
+            && self
+                .author
+                .is_none_or(|author| author.kind != AuthorKind::Rig)
+    }
+
+    /// Whether it is a user message with text or attachments, not only
+    /// tool results.
+    fn says_something(&self) -> bool {
+        match self.message {
+            Message::User { content } => content.iter().any(|item| !pairing::is_result(item)),
             _ => false,
-        };
-        asks && self
-            .author
-            .is_none_or(|author| author.kind != AuthorKind::Rig)
+        }
     }
 
     /// Whether it is the [`STOPPED`] note rig puts between a request the

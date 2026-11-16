@@ -393,7 +393,7 @@ pub struct Reasoning {
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
-        deserialize_with = "native::lenient"
+        deserialize_with = "lenient"
     )]
     pub native: Option<Native>,
 }
@@ -510,7 +510,7 @@ pub struct ToolCall {
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
-        deserialize_with = "native::lenient"
+        deserialize_with = "lenient"
     )]
     pub native: Option<Native>,
 }
@@ -780,9 +780,19 @@ pub struct Text {
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
-        deserialize_with = "native::lenient"
+        deserialize_with = "lenient"
     )]
     pub native: Option<Native>,
+}
+
+/// A stored field, or `None` when it cannot be read, such as a `native`
+/// fingerprinted by an earlier projection: the item then loads with its
+/// canonical fields and replays from them.
+fn lenient<'de, D: serde::Deserializer<'de>, T: serde::de::DeserializeOwned>(
+    deserializer: D,
+) -> Result<Option<T>, D::Error> {
+    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
+    Ok(value.and_then(|value| T::deserialize(value).ok()))
 }
 
 /// A stored [`Text`], read leniently: unreadable citations or native load
@@ -790,9 +800,9 @@ pub struct Text {
 #[derive(Deserialize)]
 struct TextRepr {
     text: String,
-    #[serde(default, deserialize_with = "citation::lenient")]
+    #[serde(default, deserialize_with = "lenient")]
     citations: Option<citation::Citations>,
-    #[serde(default, deserialize_with = "native::lenient")]
+    #[serde(default, deserialize_with = "lenient")]
     native: Option<Native>,
 }
 
@@ -851,7 +861,7 @@ pub struct Image {
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
-        deserialize_with = "native::lenient"
+        deserialize_with = "lenient"
     )]
     pub native: Option<Native>,
 }
