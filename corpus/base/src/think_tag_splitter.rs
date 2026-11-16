@@ -22,10 +22,9 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use rig_harness::prelude::*;
-use rig_harness::rig_core::effect::{Answered, EffectId, EffectKind};
-use rig_harness::rig_core::error::ErrorReport;
+use rig_harness::rig_core::effect::{EffectId, EffectKind};
 use rig_harness::rig_core::message::{Reasoning, Text};
-use rig_harness::rig_core::serve::{AfterServe, BeforeServe, Intercept};
+use rig_harness::rig_core::serve::{BeforeServe, Intercept};
 use rig_harness::rig_core::streaming::{Item, Part, PartKind, Relayed, StreamEvent};
 use rig_harness::rig_core::tool::{ContextValue, PublishedContext};
 use rig_harness::rig_ecs::effects::Handler;
@@ -181,15 +180,6 @@ impl Intercept for LeaveOutReasoning {
             request: request.into(),
             stream,
         })
-    }
-
-    async fn after(
-        &self,
-        _: EffectId,
-        _: &EffectKind,
-        _: &Result<Answered, ErrorReport>,
-    ) -> AfterServe {
-        AfterServe::Keep
     }
 }
 

@@ -248,19 +248,11 @@ fn key_envs(vendor: &str) -> String {
 
 /// `/login`'s picker: the ChatGPT plan, then each provider a key reaches.
 pub(super) fn login_picker(agent: Entity, connector: &Connector) -> Picker {
-    let plan = PickItem {
-        label: "ChatGPT plan".to_owned(),
-        command: format!("login {}", super::PROVIDER),
-        detail: Some("sign in in the browser".to_owned()),
-        more: None,
-        checked: false,
-    };
-    let keys = key_vendors(connector).into_iter().map(|vendor| PickItem {
-        label: vendor.to_owned(),
-        command: format!("login {vendor}"),
-        detail: Some(format!("API key, used before {}", key_envs(vendor))),
-        more: None,
-        checked: false,
+    let plan = PickItem::new("ChatGPT plan", format!("login {}", super::PROVIDER))
+        .detail("sign in in the browser");
+    let keys = key_vendors(connector).into_iter().map(|vendor| {
+        PickItem::new(vendor, format!("login {vendor}"))
+            .detail(format!("API key, used before {}", key_envs(vendor)))
     });
     Picker {
         items: std::iter::once(plan).chain(keys).collect(),
@@ -312,15 +304,7 @@ fn save_typed_key(
     entries: Query<&KeyEntry>,
     keys: Res<Keys>,
     mut models: ResMut<Models>,
-    agents: Query<
-        (
-            Entity,
-            Option<&Connection>,
-            Option<&ModelChoice>,
-            Has<ActiveTurn>,
-        ),
-        With<Agent>,
-    >,
+    agents: KeyAgents<'_, '_>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -385,15 +369,7 @@ fn remove_key(
     remove: On<RemoveKey>,
     keys: Res<Keys>,
     mut models: ResMut<Models>,
-    agents: Query<
-        (
-            Entity,
-            Option<&Connection>,
-            Option<&ModelChoice>,
-            Has<ActiveTurn>,
-        ),
-        With<Agent>,
-    >,
+    agents: KeyAgents<'_, '_>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -421,22 +397,23 @@ fn remove_key(
     });
 }
 
+/// The agents a saved or removed key may reconnect.
+type KeyAgents<'w, 's> = Query<
+    'w,
+    's,
+    (
+        Entity,
+        Option<&'static Connection>,
+        Option<&'static ModelChoice>,
+        Has<ActiveTurn>,
+    ),
+    With<Agent>,
+>;
+
 /// Drops the connections of the idle agents on `vendor`'s models, which
 /// the kernel connects again once [`Models`] changed, with the key now
 /// saved or none.
-fn reconnect(
-    vendor: &str,
-    agents: &Query<
-        (
-            Entity,
-            Option<&Connection>,
-            Option<&ModelChoice>,
-            Has<ActiveTurn>,
-        ),
-        With<Agent>,
-    >,
-    commands: &mut Commands,
-) {
+fn reconnect(vendor: &str, agents: &KeyAgents<'_, '_>, commands: &mut Commands) {
     for (agent, connection, _, busy) in agents {
         if !busy && connection.is_some_and(|connection| connection.spec.provider.vendor() == vendor)
         {
@@ -452,20 +429,14 @@ pub(super) fn logout_picker(
     signed_in: Option<(&str, &str)>,
     keys: &Keys,
 ) -> Option<Picker> {
-    let plan = signed_in.map(|(title, provider)| PickItem {
-        label: format!("{title} sign-in"),
-        command: format!("logout {provider}"),
-        detail: Some("revoked, then deleted".to_owned()),
-        more: None,
-        checked: false,
+    let plan = signed_in.map(|(title, provider)| {
+        PickItem::new(format!("{title} sign-in"), format!("logout {provider}"))
+            .detail("revoked, then deleted")
     });
     let saved = keys.vendors().unwrap_or_default();
-    let saved = saved.into_iter().map(|vendor| PickItem {
-        label: format!("API key for {vendor}"),
-        command: format!("logout {vendor}"),
-        detail: Some(keys.path(&vendor).display().to_string()),
-        more: None,
-        checked: false,
+    let saved = saved.into_iter().map(|vendor| {
+        PickItem::new(format!("API key for {vendor}"), format!("logout {vendor}"))
+            .detail(keys.path(&vendor).display().to_string())
     });
     let items: Vec<PickItem> = plan.into_iter().chain(saved).collect();
     (!items.is_empty()).then(|| Picker {

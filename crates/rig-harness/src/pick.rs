@@ -72,6 +72,23 @@ pub struct PickItem {
     pub checked: bool,
 }
 
+impl PickItem {
+    /// An item showing `label` that runs `command` (empty: nothing).
+    pub fn new(label: impl Into<String>, command: impl Into<String>) -> Self {
+        Self {
+            label: label.into(),
+            command: command.into(),
+            ..Self::default()
+        }
+    }
+
+    /// The same item, `detail` shown beside its label.
+    pub fn detail(mut self, detail: impl Into<String>) -> Self {
+        self.detail = Some(detail.into());
+        self
+    }
+}
+
 /// A filterable list for the user to choose one item, or several, from, on
 /// an entity of the plugin's. See [`pick`](crate::pick).
 #[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq)]
@@ -121,13 +138,7 @@ impl Picker {
     /// The same picker with an item showing `label` that runs `command`
     /// (empty: nothing).
     pub fn item(mut self, label: impl Into<String>, command: impl Into<String>) -> Self {
-        self.items.push(PickItem {
-            label: label.into(),
-            command: command.into(),
-            detail: None,
-            more: None,
-            checked: false,
-        });
+        self.items.push(PickItem::new(label, command));
         self
     }
 

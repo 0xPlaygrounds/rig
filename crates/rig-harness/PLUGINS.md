@@ -400,8 +400,8 @@ A tool registered with `app.add_tool_per_call(tool, options)`, a
 app's workspace (an overlay of it for a
 [preview](#gating-and-reviewing-tool-calls)), the calling agent's `WorkDir`
 else the `ProjectRoot` (`base`, `confine` for a `WorkDir`), and for a tool
-registered with `add_live_tool_per_call` the `Live` its output goes to, as
-the coding tools are. Each such call gets its `CallPlace` component in
+whose `PerCallTool::LIVE` is true, as the shell's is, the `Live` its output
+goes to. Each such call gets its `CallPlace` component in
 `PerCallSystems::Place` and its `CallHandler` in `PerCallSystems::Build`,
 both in `PrepareSystems::Compose`: a system between them changes where the
 call works, one after replaces or wraps the handler. The tool's entity has

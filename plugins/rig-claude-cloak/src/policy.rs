@@ -5,10 +5,9 @@ use std::sync::Arc;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::{
     completion::{CacheRetention, CompletionRequest, Reasoning},
-    effect::{Answered, EffectId, EffectKind},
-    error::ErrorReport,
+    effect::{EffectId, EffectKind},
     message::{Message, UserContent},
-    serve::{AfterServe, BeforeServe, Intercept},
+    serve::{BeforeServe, Intercept},
 };
 use serde_json::{Map, Value};
 
@@ -111,15 +110,6 @@ impl Intercept for RequestPolicy {
             request: Arc::new(request),
             stream: *stream,
         })
-    }
-
-    async fn after(
-        &self,
-        _id: EffectId,
-        _kind: &EffectKind,
-        _outcome: &Result<Answered, ErrorReport>,
-    ) -> AfterServe {
-        AfterServe::Keep
     }
 }
 
@@ -276,15 +266,6 @@ impl Intercept for AgentIdentity {
             request: Arc::new(request),
             stream: *stream,
         })
-    }
-
-    async fn after(
-        &self,
-        _id: EffectId,
-        _kind: &EffectKind,
-        _outcome: &Result<Answered, ErrorReport>,
-    ) -> AfterServe {
-        AfterServe::Keep
     }
 }
 

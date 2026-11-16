@@ -351,7 +351,7 @@ fn create_request_body(model: &str, request: AudioGenerationRequest) -> Value {
     }
     match (&mut body, request.additional_params) {
         (Value::Object(body), Some(Value::Object(params))) => {
-            crate::completion::options::deep_merge(body, params);
+            crate::json_utils::deep_merge(body, params);
         }
         (body, Some(params)) => *body = params,
         (_, None) => {}

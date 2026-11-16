@@ -15,7 +15,7 @@ fn browser_opener_receives_the_authorization_url_as_one_argument() -> anyhow::Re
         "state-with-&-and-'",
         "synthetic-challenge",
     )?;
-    let command = browser_command(&url);
+    let command = browser_opener(url.as_str());
     #[cfg(target_os = "linux")]
     anyhow::ensure!(command.get_program() == "xdg-open");
     #[cfg(target_os = "macos")]
@@ -45,7 +45,7 @@ fn the_browser_gets_no_secret() -> anyhow::Result<()> {
         return Ok(());
     }
     let url = authorization_url("http://localhost:54545/callback", "state", "challenge")?;
-    let command = browser_command(&url);
+    let command = browser_opener(url.as_str());
     let removed = command
         .get_envs()
         .any(|(name, value)| name == PROBE && value.is_none());
@@ -531,8 +531,8 @@ fn a_login_waiting_in_the_browser_leaves_the_credentials_free() -> anyhow::Resul
         .args(["--exact", name, "--test-threads", "1"])
         .env(LOGIN_HOME, &home)
         .env("PATH", path)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .spawn()?;
     let waited = (|| {
         let started = std::time::Instant::now();

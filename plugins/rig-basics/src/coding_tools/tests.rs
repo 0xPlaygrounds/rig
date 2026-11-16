@@ -391,6 +391,22 @@ fn without_a_cut_the_shell_returns_every_line() {
     assert_eq!(numbers(&whole), lines, "{whole:.200}");
 }
 
+#[test]
+fn a_shell_call_reports_its_output_as_it_runs() {
+    let (mut app, wakes) = app_on(&MemoryStore::default());
+    app.add_plugins((AgentPlugin, ShellTool));
+    app.finish();
+    app.update();
+    let world = app.world_mut();
+    let agent = spawn_root(world).id();
+    let command = json!({ "command": "sleep 1" });
+    let call = start_call(world, agent, ("shell", "c0"), command);
+    // The call's output is where its tool reports as it runs.
+    run_until(&mut app, &wakes, |world| {
+        call.is_some_and(|call| world.get::<CallOutput>(call).is_some())
+    });
+}
+
 /// The texts of the system prompt's `remote_hosts` sections.
 fn host_sections(app: &mut App) -> Vec<String> {
     let mut sections = app.world_mut().query::<&PromptSection>();

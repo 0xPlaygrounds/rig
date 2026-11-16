@@ -24,13 +24,12 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::ModelSpec;
 use rig_harness::rig_core::completion::CompletionRequest;
 use rig_harness::rig_core::effect::{EffectId, EffectKind};
-use rig_harness::rig_core::error::ErrorReport;
 use rig_harness::rig_core::message::{
     AssistantContent, Message as ChatMessage, Opaque, SourceLocation, Text,
 };
 use rig_harness::rig_core::providers::anthropic::extension::AnthropicExt;
 use rig_harness::rig_core::providers::registry::Format;
-use rig_harness::rig_core::serve::{self, AfterServe, Intercept};
+use rig_harness::rig_core::serve::{self, Intercept};
 use rig_harness::rig_core::wasm_compat::WasmCompatSend;
 use rig_harness::rig_ecs::effects::Handler;
 use serde::Deserialize;
@@ -181,15 +180,6 @@ impl Intercept for ProviderSide {
             }),
             false => serve::BeforeServe::Proceed,
         })
-    }
-
-    fn after(
-        &self,
-        _: EffectId,
-        _: &EffectKind,
-        _: &Result<rig_harness::rig_core::effect::Answered, ErrorReport>,
-    ) -> impl Future<Output = AfterServe> + WasmCompatSend {
-        ready(AfterServe::Keep)
     }
 }
 

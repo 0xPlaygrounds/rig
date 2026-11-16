@@ -4,7 +4,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 
 use super::lifecycle::{AgentDataItem, Agents};
-use super::spawn::{Brief, Defaulted, Role, SpawnSubagent, TaskCall};
+use super::spawn::{Brief, Defaulted, SpawnSubagent, TaskCall};
 use super::{
     Awaiting, Awaits, Lifecycle, ORIGIN, Peers, Request, SubagentDefaults, SubagentsPlugin,
     Subtask, answered, refused,
@@ -214,18 +214,13 @@ fn on_task(
     let defaulted = (args.model.is_none() && defaults.model.is_some())
         || (args.tools.is_none() && defaults.tools.is_some());
     let request = SpawnSubagent {
-        title: args.description.clone(),
-        brief: args.prompt.clone(),
-        role: Role::Task,
         model: args.model.clone().or_else(|| defaults.model.clone()),
         effort: args.effort.clone(),
         tools: args.tools.clone().or_else(|| defaults.tools.clone()),
-        system_prompt: None,
         environment: args.environment.clone(),
         peers: args.peers,
-        once: false,
-        id: None,
         extra: args.extra.clone(),
+        ..SpawnSubagent::task(args.description.clone(), args.prompt.clone())
     };
     let mut spawned = commands.spawn((
         request,

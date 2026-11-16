@@ -16,7 +16,7 @@ use super::{CacheRetention, OnUnsupported, UnsupportedOption};
 use crate::completion::provider_options::SHARED;
 use crate::completion::{CompletionRequest, ReplayTarget};
 use crate::error::EncodeError;
-use crate::json_utils::remove_preserving_order;
+use crate::json_utils::{deep_merge, remove_preserving_order};
 use crate::providers::openai::wire::BodyRewrite;
 use crate::wire::Body;
 
@@ -716,19 +716,6 @@ fn placed(raw: Map<String, Value>, raw_at: RawAt) -> Map<String, Value> {
                 tracing::warn!("{warning}");
             }
             Map::new()
-        }
-    }
-}
-
-/// Merge `upper` into `body`: objects key by key, recursively; any other
-/// value, `null` and arrays included, replaces.
-pub(crate) fn deep_merge(body: &mut Map<String, Value>, upper: Map<String, Value>) {
-    for (key, value) in upper {
-        match (body.get_mut(&key), value) {
-            (Some(Value::Object(lower)), Value::Object(upper)) => deep_merge(lower, upper),
-            (_, value) => {
-                body.insert(key, value);
-            }
         }
     }
 }

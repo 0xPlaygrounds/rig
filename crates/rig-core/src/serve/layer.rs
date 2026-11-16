@@ -70,22 +70,27 @@ pub trait Intercept: WasmCompatSend + WasmCompatSync + 'static {
     /// The layer's name, as the log records it.
     fn name(&self) -> String;
 
-    /// Before the handler: the dispatch as it will be served, or not.
+    /// Before the handler: the dispatch as it will be served, or not. By
+    /// default it proceeds.
     fn before(
         &self,
-        id: EffectId,
-        kind: &EffectKind,
-    ) -> impl Future<Output = BeforeServe> + WasmCompatSend;
+        _id: EffectId,
+        _kind: &EffectKind,
+    ) -> impl Future<Output = BeforeServe> + WasmCompatSend {
+        async { BeforeServe::Proceed }
+    }
 
     /// After the handler: the answer as the consumer will receive it. For a
     /// streaming dispatch `outcome` is the fold of the events (the
-    /// completion the record stores).
+    /// completion the record stores). By default the answer is kept.
     fn after(
         &self,
-        id: EffectId,
-        kind: &EffectKind,
-        outcome: &Result<Answered, ErrorReport>,
-    ) -> impl Future<Output = AfterServe> + WasmCompatSend;
+        _id: EffectId,
+        _kind: &EffectKind,
+        _outcome: &Result<Answered, ErrorReport>,
+    ) -> impl Future<Output = AfterServe> + WasmCompatSend {
+        async { AfterServe::Keep }
+    }
 }
 
 /// A handler wrapped in a policy: a [`Serve`] like any other, registered

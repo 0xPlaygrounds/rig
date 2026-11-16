@@ -92,7 +92,8 @@ pub(super) fn open_browser(url: &str) -> bool {
 }
 
 /// The command that asks the desktop to open `url` in the default browser:
-/// `open` on macOS, `start` through `cmd` on Windows, `xdg-open` elsewhere.
+/// `/usr/bin/open` on macOS, `start` through `cmd` on Windows, `xdg-open`
+/// elsewhere.
 /// It has no standard input, and its output is discarded so it does not
 /// write to the terminal. Native only.
 pub fn browser_command(url: &str) -> Command {
@@ -106,7 +107,7 @@ pub fn browser_command(url: &str) -> Command {
 
 #[cfg(target_os = "macos")]
 fn platform_command(url: &str) -> Command {
-    let mut command = Command::new("open");
+    let mut command = Command::new("/usr/bin/open");
     command.arg(url);
     command
 }

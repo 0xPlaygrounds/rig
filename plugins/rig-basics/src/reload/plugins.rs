@@ -92,10 +92,10 @@ fn plugins(
         )
         .multiple();
     for (listed, detail) in listed.iter().zip(details) {
-        picker = picker.item(&listed.type_path, "").checked(listed.enabled);
-        if let Some(item) = picker.items.last_mut() {
-            item.detail = Some(detail);
-        }
+        picker.items.push(PickItem {
+            checked: listed.enabled,
+            ..PickItem::new(&listed.type_path, "").detail(detail)
+        });
     }
     commands
         .spawn((

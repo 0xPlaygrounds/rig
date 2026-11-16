@@ -59,13 +59,9 @@ fn model_items(
 ) -> (Vec<PickItem>, usize) {
     let mut contributed: Vec<&ModelItem> = contributed.iter().collect();
     contributed.sort_by(|a, b| a.name.cmp(&b.name));
-    let contributed = contributed.into_iter().map(|item| PickItem {
-        label: item.label.clone(),
-        command: item.command.clone(),
-        detail: None,
-        more: None,
-        checked: false,
-    });
+    let contributed = contributed
+        .into_iter()
+        .map(|item| PickItem::new(item.label.clone(), item.command.clone()));
     let mut listed = catalog(&models.0);
     let chosen = current.and_then(|current| models.0.catalog().resolve(&current.0).ok());
     if let Some(chosen) = chosen
@@ -86,13 +82,9 @@ fn model_items(
         listed.insert(0, listing(chosen.spec, &note));
     }
     let current = current.map(|current| format!("model {}", current.0));
-    let listed = listed.into_iter().map(|listed| PickItem {
-        label: listed.line,
-        command: format!("model {}", listed.reference),
-        detail: None,
-        more: None,
-        checked: false,
-    });
+    let listed = listed
+        .into_iter()
+        .map(|listed| PickItem::new(listed.line, format!("model {}", listed.reference)));
     let mut items: Vec<PickItem> = contributed.chain(listed).collect();
     let at = items
         .iter()
@@ -185,13 +177,7 @@ pub(super) fn pick_effort(agent: Entity, spec: &ModelSpec, commands: &mut Comman
             .reasoning
             .choices()
             .into_iter()
-            .map(|choice| PickItem {
-                label: choice.label(),
-                command: format!("effort {}", choice.name),
-                detail: None,
-                more: None,
-                checked: false,
-            })
+            .map(|choice| PickItem::new(choice.label(), format!("effort {}", choice.name)))
             .collect(),
         ..Picker::new(title).for_agent(agent)
     });

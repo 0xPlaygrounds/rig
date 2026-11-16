@@ -308,13 +308,8 @@ fn item_of(rated: &Rated) -> PickItem {
         .reason
         .as_deref()
         .map_or_else(String::new, |reason| format!(" · {reason}"));
-    PickItem {
-        label: format!("{} · {model}{reason}", rating.verdict.word()),
-        command: String::new(),
-        detail: Some(format!("{} · {}", when(rating.at_ms), rated.first_line)),
-        more: None,
-        checked: false,
-    }
+    let label = format!("{} · {model}{reason}", rating.verdict.word());
+    PickItem::new(label, "").detail(format!("{} · {}", when(rating.at_ms), rated.first_line))
 }
 
 /// `at_ms` as a local date and time, to the minute.

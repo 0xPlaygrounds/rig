@@ -61,9 +61,8 @@ impl FileWatch {
     /// A watch of every file under `path`.
     pub fn tree(path: impl Into<PathBuf>) -> Self {
         Self {
-            path: path.into(),
             recursive: true,
-            listing: Listing::Visible,
+            ..Self::new(path)
         }
     }
 

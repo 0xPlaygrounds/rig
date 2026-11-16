@@ -1105,14 +1105,6 @@ impl rig_core::serve::Intercept for DenyAddLayer {
             rig_core::serve::BeforeServe::Proceed
         }
     }
-    async fn after(
-        &self,
-        _id: rig_core::effect::EffectId,
-        _kind: &rig_core::effect::EffectKind,
-        _outcome: &Result<rig_core::effect::Answered, rig_core::error::ErrorReport>,
-    ) -> rig_core::serve::AfterServe {
-        rig_core::serve::AfterServe::Keep
-    }
 }
 
 /// The hook `PatchAddArgs`, as a layer.
@@ -1128,14 +1120,6 @@ impl rig_core::serve::Intercept for PatchAddArgsLayer {
         kind: &rig_core::effect::EffectKind,
     ) -> rig_core::serve::BeforeServe {
         patch_add(kind, PATCHED_ARGS)
-    }
-    async fn after(
-        &self,
-        _id: rig_core::effect::EffectId,
-        _kind: &rig_core::effect::EffectKind,
-        _outcome: &Result<rig_core::effect::Answered, rig_core::error::ErrorReport>,
-    ) -> rig_core::serve::AfterServe {
-        rig_core::serve::AfterServe::Keep
     }
 }
 
@@ -1153,14 +1137,6 @@ impl rig_core::serve::Intercept for PatchAgainLayer {
     ) -> rig_core::serve::BeforeServe {
         patch_add(kind, PATCHED_AGAIN_ARGS)
     }
-    async fn after(
-        &self,
-        _id: rig_core::effect::EffectId,
-        _kind: &rig_core::effect::EffectKind,
-        _outcome: &Result<rig_core::effect::Answered, rig_core::error::ErrorReport>,
-    ) -> rig_core::serve::AfterServe {
-        rig_core::serve::AfterServe::Keep
-    }
 }
 
 /// The hook `ReplaceAddResult`, as a layer.
@@ -1169,13 +1145,6 @@ pub struct ReplaceAddResultLayer;
 impl rig_core::serve::Intercept for ReplaceAddResultLayer {
     fn name(&self) -> String {
         "ReplaceAddResultLayer".to_owned()
-    }
-    async fn before(
-        &self,
-        _id: rig_core::effect::EffectId,
-        _kind: &rig_core::effect::EffectKind,
-    ) -> rig_core::serve::BeforeServe {
-        rig_core::serve::BeforeServe::Proceed
     }
     async fn after(
         &self,
@@ -1225,14 +1194,6 @@ impl rig_core::serve::Intercept for ApprovalLayer {
             }
         }
     }
-    async fn after(
-        &self,
-        _id: rig_core::effect::EffectId,
-        _kind: &rig_core::effect::EffectKind,
-        _outcome: &Result<rig_core::effect::Answered, rig_core::error::ErrorReport>,
-    ) -> rig_core::serve::AfterServe {
-        rig_core::serve::AfterServe::Keep
-    }
 }
 
 /// A patch of another family: never a dispatch.
@@ -1256,14 +1217,6 @@ impl rig_core::serve::Intercept for WrongFamilyLayer {
             rig_core::serve::BeforeServe::Proceed
         }
     }
-    async fn after(
-        &self,
-        _id: rig_core::effect::EffectId,
-        _kind: &rig_core::effect::EffectKind,
-        _outcome: &Result<rig_core::effect::Answered, rig_core::error::ErrorReport>,
-    ) -> rig_core::serve::AfterServe {
-        rig_core::serve::AfterServe::Keep
-    }
 }
 
 /// `after` on a completion → the answer is cancelled.
@@ -1272,13 +1225,6 @@ pub struct CancelStreamLayer;
 impl rig_core::serve::Intercept for CancelStreamLayer {
     fn name(&self) -> String {
         "CancelStreamLayer".to_owned()
-    }
-    async fn before(
-        &self,
-        _id: rig_core::effect::EffectId,
-        _kind: &rig_core::effect::EffectKind,
-    ) -> rig_core::serve::BeforeServe {
-        rig_core::serve::BeforeServe::Proceed
     }
     async fn after(
         &self,
@@ -1306,14 +1252,6 @@ impl rig_core::serve::Intercept for DenyAllLayer {
         _kind: &rig_core::effect::EffectKind,
     ) -> rig_core::serve::BeforeServe {
         rig_core::serve::BeforeServe::deny(HOST_DENY_REASON)
-    }
-    async fn after(
-        &self,
-        _id: rig_core::effect::EffectId,
-        _kind: &rig_core::effect::EffectKind,
-        _outcome: &Result<rig_core::effect::Answered, rig_core::error::ErrorReport>,
-    ) -> rig_core::serve::AfterServe {
-        rig_core::serve::AfterServe::Keep
     }
 }
 

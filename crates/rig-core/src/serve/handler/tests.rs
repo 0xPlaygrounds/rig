@@ -365,17 +365,6 @@ fn a_model_handler_names_what_its_model_leaves_out() {
         fn name(&self) -> String {
             "pass".to_owned()
         }
-        async fn before(&self, _: EffectId, _: &EffectKind) -> crate::serve::BeforeServe {
-            crate::serve::BeforeServe::Proceed
-        }
-        async fn after(
-            &self,
-            _: EffectId,
-            _: &EffectKind,
-            _: &Result<Answered, ErrorReport>,
-        ) -> crate::serve::AfterServe {
-            crate::serve::AfterServe::Keep
-        }
     }
     let http = crate::test_utils::RecordingHttpClient::new("{}");
     let model = crate::catalog::Catalog::builtin()

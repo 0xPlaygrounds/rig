@@ -39,11 +39,12 @@ use rig_core::providers::chatgpt::{
     self,
     auth::{
         AuthError, AuthSource, Authenticator, DeviceCodeHandler, DeviceCodePrompt, FileTokenStore,
-        SignInMethod, SignInPrompt, SignedOut, browser_command,
+        SignInMethod, SignInPrompt, SignedOut,
     },
 };
 use rig_core::providers::registry::ConnectError;
 use rig_core::serve::ErasedHandler;
+use rig_harness::secrets::browser_opener;
 use rig_harness::services::RigHome;
 use rig_harness::settings::AppSettingsExt;
 use serde::Deserialize;
@@ -53,8 +54,7 @@ use rig_ecs::model::{ChoiceKind, Connection, ModelChoice, Models, SetModel};
 use rig_ecs::requests::RequestOf;
 use rig_ecs::tasks::{Done, PollTasks, Running, Wake};
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
-use rig_harness::harness_protocol::without_secrets;
-use rig_tools::process::{NON_INTERACTIVE, Process};
+use rig_tools::process::Process;
 
 /// The provider `/login` signs in to: the ChatGPT plan, the catalog's
 /// `chatgpt` vendor, which is also what `/login` and `/logout` take for it.
@@ -342,16 +342,7 @@ async fn sign_in_flow(
 /// the browser it starts stays as rig goes on or exits. Returns whether
 /// the opener started.
 fn open_browser(url: &str) -> bool {
-    let mut command = browser_command(url);
-    // A browser it starts outlives rig with the user's own editor and pager.
-    for (name, _) in NON_INTERACTIVE {
-        match std::env::var_os(name) {
-            Some(value) => command.env(name, value),
-            None => command.env_remove(name),
-        };
-    }
-    without_secrets(&mut command);
-    let Ok(mut opener) = Process::start_with_stdio(command) else {
+    let Ok(mut opener) = Process::start_with_stdio(browser_opener(url)) else {
         return false;
     };
     opener.release();
