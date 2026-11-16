@@ -3,7 +3,8 @@
 //! REST, Vertex AI and gRPC wires share it, each over its chunks' REST JSON.
 //!
 //! ```
-//! use rig_core::providers::gemini::streaming::{GenerateContentChunk, document::GenerateContentResponse};
+//! use rig_core::providers::gemini::streaming::GenerateContentChunk;
+//! use rig_core::providers::gemini::streaming::document::GenerateContentResponse;
 //! use rig_core::wire::document::Reassemble;
 //! use serde_json::json;
 //!

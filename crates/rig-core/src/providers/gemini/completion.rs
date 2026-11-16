@@ -216,10 +216,12 @@ impl Wire for GenerateContent {
     }
 }
 
-/// The REST wire's place among the GenerateContent wires.
 impl GenerateContentWire for GenerateContent {
-    const PROVIDER: &'static str = PROVIDER_NAME;
     const ROUTE: Route = Route::Rest;
+
+    fn provider_name(&self) -> &'static str {
+        PROVIDER_NAME
+    }
 
     fn wire_model(&self) -> &str {
         &self.model
@@ -240,11 +242,12 @@ impl GenerateContentWire for GenerateContent {
 /// For rig's own crates; not covered by semver.
 #[doc(hidden)]
 pub trait GenerateContentWire: std::fmt::Debug + crate::wasm_compat::WasmCompatSync {
-    /// The descriptor name of the provider the wire speaks to.
-    const PROVIDER: &'static str;
     /// The route, which decides the API name, whether a function response
     /// takes file URLs, and the service tiers.
     const ROUTE: Route;
+
+    /// The descriptor name of the provider the wire speaks to.
+    fn provider_name(&self) -> &'static str;
 
     /// The model the wire addresses.
     fn wire_model(&self) -> &str;
@@ -271,7 +274,7 @@ impl<W: GenerateContentWire> ReplayTarget for W {
     }
 
     fn provider(&self) -> &str {
-        W::PROVIDER
+        self.provider_name()
     }
 
     fn model(&self) -> &str {

@@ -169,10 +169,12 @@ fn referenced_media(content: &mut serde_json::Value, images: &mut usize) {
     }
 }
 
-/// Vertex AI's place among the GenerateContent wires.
 impl rest::GenerateContentWire for GenerateContent {
-    const PROVIDER: &'static str = PROVIDER_NAME;
     const ROUTE: rest::Route = rest::Route::Vertex;
+
+    fn provider_name(&self) -> &'static str {
+        PROVIDER_NAME
+    }
 
     fn wire_model(&self) -> &str {
         &self.model
