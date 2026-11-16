@@ -251,7 +251,7 @@ impl<H: Highlight> Writer<'_, H> {
             let prefixes = std::iter::once(first).chain(std::iter::repeat(self.prefix()));
             for (line, mut spans) in code.split('\n').zip(prefixes) {
                 spans.push(Span::from("  "));
-                spans.push(Span::from(line.replace('\t', "    ")));
+                spans.push(Span::from(crate::code::untabbed(line)));
                 self.code_lines.push((self.lines.len(), None));
                 self.lines.push(Line::from(spans).bg(tint));
             }
