@@ -14,10 +14,7 @@ fn usage_decodes_both_billing_shapes_and_keeps_unknown_ones() {
 
     assert_eq!(
         usage(r#"{"text":"hi","usage":{"type":"duration","seconds":6}}"#),
-        Some(TranscriptionUsage::Duration {
-            r#type: DurationTag::Duration,
-            seconds: 6.0
-        })
+        Some(TranscriptionUsage::Duration { seconds: 6.0 })
     );
     assert_eq!(
         usage(
@@ -26,7 +23,6 @@ fn usage_decodes_both_billing_shapes_and_keeps_unknown_ones() {
                    "output_tokens":16,"total_tokens":70}}"#
         ),
         Some(TranscriptionUsage::Tokens {
-            r#type: TokensTag::Tokens,
             input_tokens: 54,
             input_token_details: Some(TranscriptionInputTokenDetails {
                 audio_tokens: 54,
@@ -44,7 +40,6 @@ fn usage_decodes_both_billing_shapes_and_keeps_unknown_ones() {
                    "output_tokens":16,"total_tokens":70}}"#
         ),
         Some(TranscriptionUsage::Tokens {
-            r#type: TokensTag::Tokens,
             input_tokens: 54,
             input_token_details: None,
             output_tokens: 16,
@@ -75,6 +70,16 @@ fn usage_decodes_both_billing_shapes_and_keeps_unknown_ones() {
         Some(TranscriptionUsage::Other(_))
     ));
     assert_eq!(usage(r#"{"text":"hi"}"#), None);
+    // The tag is written back out, and a kept shape round-trips as sent.
+    assert_eq!(
+        serde_json::to_value(TranscriptionUsage::Duration { seconds: 6.0 }).ok(),
+        Some(serde_json::json!({"type": "duration", "seconds": 6.0}))
+    );
+    let credits = serde_json::json!({"type": "credits", "spent": 3});
+    assert_eq!(
+        serde_json::to_value(TranscriptionUsage::Other(credits.clone())).ok(),
+        Some(credits)
+    );
     assert_eq!(usage(r#"{"text":"hi","usage":null}"#), None);
 }
 
