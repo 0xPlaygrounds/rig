@@ -41,6 +41,7 @@ use rig_core::completion::{self, CompletionRequest, tokens_label};
 use rig_core::conversation::{Entry, TurnEnd};
 use rig_core::effect::EffectId;
 use rig_core::error::{ErrorKind, ErrorReport};
+use rig_core::json_utils::{deep_merge, struct_fields};
 use rig_core::message::{CallId, LocalCallId, ToolCall, ToolResultContent};
 use rig_core::tool::Tool;
 use rig_ecs::prelude::*;
@@ -187,7 +188,7 @@ impl<'de> Deserialize<'de> for CompactionDefault {
             serde_json::Value::Object(built_in) => built_in,
             _ => serde_json::Map::new(),
         };
-        merge(&mut merged, table);
+        deep_merge(&mut merged, table);
         let policy = serde_path_to_error::deserialize(serde_json::Value::Object(merged));
         let policy: CompactionPolicy = policy.map_err(|failure| {
             let path = failure.path();
@@ -205,64 +206,6 @@ impl<'de> Deserialize<'de> for CompactionDefault {
 
 /// The `[compaction]` key of [`CompactionDefault::answer_tokens`].
 const ANSWER_TOKENS: &str = "answer_tokens";
-
-/// The keys `T`'s serde form reads as a table.
-fn struct_fields<T: serde::de::DeserializeOwned>() -> &'static [&'static str] {
-    let mut fields: &'static [&'static str] = &[];
-    // The deserializer only records the field list and then fails, so the
-    // error is expected.
-    let _ = T::deserialize(FieldNames(&mut fields));
-    fields
-}
-
-/// A deserializer that records the field names a struct asks for.
-struct FieldNames<'a>(&'a mut &'static [&'static str]);
-
-impl<'de> Deserializer<'de> for FieldNames<'_> {
-    type Error = serde::de::value::Error;
-
-    fn deserialize_any<V: serde::de::Visitor<'de>>(self, _: V) -> Result<V::Value, Self::Error> {
-        Err(serde::de::Error::custom(
-            "only a struct's field names are read",
-        ))
-    }
-
-    fn deserialize_struct<V: serde::de::Visitor<'de>>(
-        self,
-        _: &'static str,
-        fields: &'static [&'static str],
-        _: V,
-    ) -> Result<V::Value, Self::Error> {
-        *self.0 = fields;
-        Err(serde::de::Error::custom(
-            "only a struct's field names are read",
-        ))
-    }
-
-    serde::forward_to_deserialize_any! {
-        bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str string
-        bytes byte_buf option unit unit_struct newtype_struct seq tuple
-        tuple_struct map enum identifier ignored_any
-    }
-}
-
-/// Puts each key of `over` in `base`, merging a table into the table it
-/// replaces key by key.
-fn merge(
-    base: &mut serde_json::Map<String, serde_json::Value>,
-    over: serde_json::Map<String, serde_json::Value>,
-) {
-    for (key, value) in over {
-        match (base.get_mut(&key), value) {
-            (Some(serde_json::Value::Object(inner)), serde_json::Value::Object(value)) => {
-                merge(inner, value);
-            }
-            (_, value) => {
-                base.insert(key, value);
-            }
-        }
-    }
-}
 
 /// The coding agent's summary prompts: a structured checkpoint of its
 /// work for another model to continue from, told apart from the user's

@@ -3,7 +3,6 @@
 
 use std::collections::BTreeMap;
 
-use serde::de::{DeserializeOwned, Visitor};
 use serde::{Deserialize, Serialize};
 
 use super::details::{
@@ -13,6 +12,7 @@ use super::spec::{
     CacheSupport, ChatTools, Compat, Modalities, ModelSpec, Pricing, ReasoningSupport, Sampling,
 };
 use crate::completion::{CacheRetention, Effort};
+use crate::json_utils::struct_fields;
 use crate::providers::registry::{Format, ProviderId};
 
 /// A models.dev model row, every field models.dev publishes but its `id`,
@@ -655,67 +655,27 @@ impl Facts {
 /// body or the names of its modes.
 pub(super) fn known_fields(path: &[&str]) -> Option<Vec<&'static str>> {
     Some(match path {
-        [] => fields::<Row>().to_vec(),
-        ["limit"] => fields::<Limit>().to_vec(),
-        ["cost"] => fields::<Cost>().to_vec(),
-        ["rig"] => fields::<Facts>().to_vec(),
-        ["modalities"] => fields::<RowModalities>().to_vec(),
-        ["reasoning_options", _] => fields::<ReasoningOption>().to_vec(),
+        [] => struct_fields::<Row>().to_vec(),
+        ["limit"] => struct_fields::<Limit>().to_vec(),
+        ["cost"] => struct_fields::<Cost>().to_vec(),
+        ["rig"] => struct_fields::<Facts>().to_vec(),
+        ["modalities"] => struct_fields::<RowModalities>().to_vec(),
+        ["reasoning_options", _] => struct_fields::<ReasoningOption>().to_vec(),
         // `interleaved` is `true`, `false`, or this object.
         ["interleaved"] => vec!["field"],
         ["cost", "context_over_200k"] | ["experimental", "modes", _, "cost"] => {
-            fields::<Rates>().to_vec()
+            struct_fields::<Rates>().to_vec()
         }
         // A tier's rates are flattened beside it, which serde does not list.
-        ["cost", "tiers", _] => [fields::<Rates>(), &["tier"]].concat(),
-        ["cost", "tiers", _, "tier"] => fields::<Tier>().to_vec(),
+        ["cost", "tiers", _] => [struct_fields::<Rates>(), &["tier"]].concat(),
+        ["cost", "tiers", _, "tier"] => struct_fields::<Tier>().to_vec(),
         ["provider"] | ["experimental", "modes", _, "provider"] => {
-            fields::<ProviderOverride>().to_vec()
+            struct_fields::<ProviderOverride>().to_vec()
         }
-        ["experimental"] => fields::<Experimental>().to_vec(),
-        ["experimental", "modes", _] => fields::<Mode>().to_vec(),
+        ["experimental"] => struct_fields::<Experimental>().to_vec(),
+        ["experimental", "modes", _] => struct_fields::<Mode>().to_vec(),
         _ => return None,
     })
-}
-
-/// The fields `T`'s derived `Deserialize` reads, as the input spells them.
-fn fields<T: DeserializeOwned>() -> &'static [&'static str] {
-    let mut fields: &'static [&'static str] = &[];
-    // The deserializer only records the field list and then fails, so the
-    // error is expected.
-    let _ = T::deserialize(FieldNames(&mut fields));
-    fields
-}
-
-/// A deserializer that records the field names a struct asks for.
-struct FieldNames<'a>(&'a mut &'static [&'static str]);
-
-impl<'de> serde::Deserializer<'de> for FieldNames<'_> {
-    type Error = serde::de::value::Error;
-
-    fn deserialize_any<V: Visitor<'de>>(self, _: V) -> Result<V::Value, Self::Error> {
-        Err(serde::de::Error::custom(
-            "only a struct's field names are read",
-        ))
-    }
-
-    fn deserialize_struct<V: Visitor<'de>>(
-        self,
-        _: &'static str,
-        fields: &'static [&'static str],
-        _: V,
-    ) -> Result<V::Value, Self::Error> {
-        *self.0 = fields;
-        Err(serde::de::Error::custom(
-            "only a struct's field names are read",
-        ))
-    }
-
-    serde::forward_to_deserialize_any! {
-        bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str string
-        bytes byte_buf option unit unit_struct newtype_struct seq tuple
-        tuple_struct map enum identifier ignored_any
-    }
 }
 
 /// The modalities `words` names, as models.dev spells them.

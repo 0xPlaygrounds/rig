@@ -164,6 +164,8 @@ pub fn remove_preserving_order(
     removed
 }
 
+/// `b`'s top-level keys over `a`'s when both are objects, each replacing the
+/// whole value it covers; otherwise `a`. [`deep_merge`] merges nested objects.
 pub fn merge(a: serde_json::Value, b: serde_json::Value) -> serde_json::Value {
     match (a, b) {
         (serde_json::Value::Object(mut a_map), serde_json::Value::Object(b_map)) => {
@@ -173,6 +175,66 @@ pub fn merge(a: serde_json::Value, b: serde_json::Value) -> serde_json::Value {
             serde_json::Value::Object(a_map)
         }
         (a, _) => a,
+    }
+}
+
+/// Merges `upper` into `body` in place: objects key by key, recursively; any
+/// other value, `null` and arrays included, replaces.
+pub fn deep_merge(
+    body: &mut serde_json::Map<String, serde_json::Value>,
+    upper: serde_json::Map<String, serde_json::Value>,
+) {
+    for (key, value) in upper {
+        match (body.get_mut(&key), value) {
+            (Some(serde_json::Value::Object(lower)), serde_json::Value::Object(upper)) => {
+                deep_merge(lower, upper)
+            }
+            (_, value) => {
+                body.insert(key, value);
+            }
+        }
+    }
+}
+
+/// The field names `T`'s derived `Deserialize` reads, as the input spells
+/// them. Empty for a type that does not deserialize as a plain struct, such
+/// as an enum or a struct with a flattened field.
+pub fn struct_fields<T: serde::de::DeserializeOwned>() -> &'static [&'static str] {
+    let mut fields: &'static [&'static str] = &[];
+    // The deserializer only records the field list and then fails, so the
+    // error is expected.
+    let _ = T::deserialize(FieldNames(&mut fields));
+    fields
+}
+
+/// A deserializer that records the field names a struct asks for.
+struct FieldNames<'a>(&'a mut &'static [&'static str]);
+
+impl<'de> Deserializer<'de> for FieldNames<'_> {
+    type Error = serde::de::value::Error;
+
+    fn deserialize_any<V: serde::de::Visitor<'de>>(self, _: V) -> Result<V::Value, Self::Error> {
+        Err(serde::de::Error::custom(
+            "only a struct's field names are read",
+        ))
+    }
+
+    fn deserialize_struct<V: serde::de::Visitor<'de>>(
+        self,
+        _: &'static str,
+        fields: &'static [&'static str],
+        _: V,
+    ) -> Result<V::Value, Self::Error> {
+        *self.0 = fields;
+        Err(serde::de::Error::custom(
+            "only a struct's field names are read",
+        ))
+    }
+
+    serde::forward_to_deserialize_any! {
+        bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str string
+        bytes byte_buf option unit unit_struct newtype_struct seq tuple
+        tuple_struct map enum identifier ignored_any
     }
 }
 
