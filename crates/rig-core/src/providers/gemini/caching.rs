@@ -31,7 +31,7 @@
 //! hosted-tool parts.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -367,7 +367,7 @@ impl CacheBook {
     }
 
     pub(crate) fn book(&self) -> std::sync::MutexGuard<'_, Book> {
-        self.inner.lock().unwrap_or_else(PoisonError::into_inner)
+        crate::lock(&self.inner)
     }
 
     pub(crate) fn now(&self) -> u64 {

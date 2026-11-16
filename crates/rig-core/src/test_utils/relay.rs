@@ -62,12 +62,7 @@ impl Serve for MockRelay {
                 ),
             )));
         }
-        let turn = self
-            .turns
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .pop_front();
-        let Some(turn) = turn else {
+        let Some(turn) = crate::lock(&self.turns).pop_front() else {
             return Reply::Outcome(Err(ErrorReport::new(
                 ErrorKind::Provider,
                 "mock relay has no scripted turn",

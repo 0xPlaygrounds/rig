@@ -17,7 +17,7 @@
 //! # Ok::<(), &str>(())
 //! ```
 
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use super::{DispatchContext, Recorder};
 use crate::{
@@ -193,7 +193,7 @@ impl RecordBuffer {
     }
 
     fn slots(&self) -> MutexGuard<'_, Vec<Slot>> {
-        self.slots.lock().unwrap_or_else(PoisonError::into_inner)
+        crate::lock(&self.slots)
     }
 
     /// Edits the newest record of `id` that `keep` accepts. Records in

@@ -9,7 +9,7 @@
 use std::{
     collections::BTreeMap,
     fmt,
-    sync::{Arc, Mutex, MutexGuard, PoisonError},
+    sync::{Arc, Mutex, MutexGuard},
 };
 
 use rig_core::serve::{DispatchContext, RecordBuffer, Recorder};
@@ -128,7 +128,7 @@ impl EffectLogRecorder {
     }
 
     fn lock_header(&self) -> MutexGuard<'_, LogHeader> {
-        self.header.lock().unwrap_or_else(PoisonError::into_inner)
+        crate::lock(&self.header)
     }
 }
 
@@ -170,12 +170,7 @@ impl Recorder for EffectLogRecorder {
         header
             .signature
             .insert_if_absent(key.clone(), kind.family());
-        *self
-            .touched
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .entry(key.clone())
-            .or_insert(0) += 1;
+        *crate::lock(&self.touched).entry(key.clone()).or_insert(0) += 1;
         drop(header);
         self.records.begin(id, key, kind, origin);
     }
@@ -189,7 +184,7 @@ impl Recorder for EffectLogRecorder {
         };
         header.stream_errors.remove(&id);
         // A key belongs in the signature only while it has retained or taken records.
-        let mut touched = self.touched.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut touched = crate::lock(&self.touched);
         let remaining = touched.get(&key).copied().unwrap_or(0).saturating_sub(1);
         if remaining == 0 {
             touched.remove(&key);

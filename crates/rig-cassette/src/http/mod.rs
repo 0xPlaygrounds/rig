@@ -361,10 +361,7 @@ impl DirectRecorder {
             impl IntoIterator<Item = (impl AsRef<str>, impl AsRef<[u8]>)>,
         >,
     ) {
-        let mut scrubber = self
-            .scrubber
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut scrubber = crate::lock(&self.scrubber);
         let request_headers: Vec<_> = request.headers.into_iter().collect();
         let response_headers: Vec<_> = response.headers.into_iter().collect();
         let request_text = || {
@@ -533,10 +530,7 @@ impl DirectRecorder {
     }
 
     fn keep(&self, number: u64, interaction: CassetteInteraction) {
-        let mut interactions = self
-            .interactions
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut interactions = crate::lock(&self.interactions);
         let at = interactions.partition_point(|(kept, _)| *kept <= number);
         interactions.insert(at, (number, interaction));
     }
@@ -573,10 +567,7 @@ impl DirectRecorder {
     /// once it learned the exchange's URL and request headers: a transport
     /// error names the URL it failed on, query and key included.
     fn refusal_text(&self, exchange: &Exchange, text: &str) -> String {
-        let mut scrubber = self
-            .scrubber
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut scrubber = crate::lock(&self.scrubber);
         let inspection = scrubber.learn_request(
             &exchange.uri,
             crate::scrub::header_pairs(&exchange.request_headers),
@@ -591,10 +582,7 @@ impl DirectRecorder {
     }
 
     fn refuse(&self, why: String) {
-        self.refusals
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .push(why);
+        crate::lock(&self.refusals).push(why);
     }
 
     /// The kept interactions as YAML, scrubbed again with the session's
@@ -603,10 +591,7 @@ impl DirectRecorder {
     /// held and a later request sends as its key, leaves the earlier ones too.
     /// `None` when nothing was kept.
     fn recorded_yaml(&self) -> Option<String> {
-        let mut interactions: Vec<_> = self
-            .interactions
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+        let mut interactions: Vec<_> = crate::lock(&self.interactions)
             .iter()
             .map(|(_, interaction)| interaction.clone())
             .collect();
@@ -615,18 +600,12 @@ impl DirectRecorder {
         }
         // The interactions' lock is released before the scrubber's is taken:
         // the two locks are never held together.
-        self.scrubber
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .scrub_interactions(&mut interactions);
+        crate::lock(&self.scrubber).scrub_interactions(&mut interactions);
         Some(serialize_cassette_interactions(&interactions))
     }
 
     fn refusals(&self) -> Vec<String> {
-        self.refusals
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone()
+        crate::lock(&self.refusals).clone()
     }
 }
 

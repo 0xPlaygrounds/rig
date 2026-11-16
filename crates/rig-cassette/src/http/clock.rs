@@ -87,11 +87,7 @@ impl CassetteClock {
     /// the next saved reading and panics when the test asks for more
     /// readings than were recorded.
     pub fn now(&self) -> u64 {
-        let mut readings = self
-            .state
-            .readings
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut readings = crate::lock(&self.state.readings);
         match self.state.mode {
             CassetteMode::Record => {
                 let now = std::time::SystemTime::now()
@@ -132,12 +128,7 @@ impl CassetteClock {
     /// Save the readings beside the fixture (recording) or check that
     /// replay used every one of them.
     pub(crate) async fn finish(&self, cassette_path: &Path) -> Result<(), CassetteError> {
-        let readings = self
-            .state
-            .readings
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone();
+        let readings = crate::lock(&self.state.readings).clone();
         match self.state.mode {
             CassetteMode::Record => {
                 if readings.is_empty() {

@@ -886,25 +886,14 @@ impl Cost {
 
     /// A cost split into its parts, each known; `total` is their sum.
     pub fn from_parts(input: f64, output: f64, cache_read: f64, cache_write: f64) -> Self {
-        Self {
-            input: Some(input),
-            output: Some(output),
-            cache_read: Some(cache_read),
-            cache_write: Some(cache_write),
-            total: input + output + cache_read + cache_write,
-            incomplete: false,
-        }
+        Self::priced(input, output, Some(cache_read), Some(cache_write))
     }
 
     /// A cost known only as its total; every part is `None`.
     pub fn from_total(total: f64) -> Self {
         Self {
-            input: None,
-            output: None,
-            cache_read: None,
-            cache_write: None,
             total,
-            incomplete: false,
+            ..Self::default()
         }
     }
 
@@ -1439,15 +1428,12 @@ impl CompletionRequest {
     /// Most providers do not accept documents directly as input, so it needs to convert into a
     /// `Message` so that it can be incorporated into `chat_history`.
     pub fn normalized_documents(&self) -> Option<Message> {
-        Self::normalized_documents_from(&self.documents)
-    }
-
-    fn normalized_documents_from(documents: &[Document]) -> Option<Message> {
-        if documents.is_empty() {
+        if self.documents.is_empty() {
             return None;
         }
 
-        let content = documents
+        let content = self
+            .documents
             .iter()
             .map(|doc| UserContent::document_text(doc.to_string(), Some(DocumentMediaType::TXT)))
             .collect();

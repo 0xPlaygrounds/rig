@@ -227,20 +227,6 @@ macro_rules! completion_parent_span {
 // constants it implements.
 pub use crate::completion_parent_span;
 
-/// Classification of the current span for completion-parent adoption.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum CompletionParentVerdict {
-    /// The marker and all required fields are present.
-    Adopt,
-    /// The marker, but the span omits at least one field in
-    /// [`COMPLETION_PARENT_REQUIRED_FIELDS`]. The missing names are computed
-    /// only if a warning is emitted.
-    RejectMissingFields,
-    /// No marker at all: an ordinary ambient span that becomes the parent of a
-    /// fresh `rig::completions` child. Never warns.
-    NotAParent,
-}
-
 /// Returns undeclared required fields for the warning diagnostic.
 fn missing_required_fields(metadata: &tracing::Metadata<'_>) -> Vec<&'static str> {
     let fields = metadata.fields();
@@ -249,25 +235,6 @@ fn missing_required_fields(metadata: &tracing::Metadata<'_>) -> Vec<&'static str
         .copied()
         .filter(|name| fields.field(name).is_none())
         .collect()
-}
-
-/// Classifies span metadata without logging or changing global state.
-fn classify_completion_parent(metadata: &tracing::Metadata<'_>) -> CompletionParentVerdict {
-    let fields = metadata.fields();
-    // Exact match, never a prefix: a runtime field that merely starts with the
-    // marker name (`rig.completion_parent.id`, say) is not the marker and must
-    // not make its span a rejected parent.
-    if fields.field(COMPLETION_PARENT_MARKER_FIELD).is_none() {
-        return CompletionParentVerdict::NotAParent;
-    }
-    if COMPLETION_PARENT_REQUIRED_FIELDS
-        .iter()
-        .all(|name| fields.field(name).is_some())
-    {
-        CompletionParentVerdict::Adopt
-    } else {
-        CompletionParentVerdict::RejectMissingFields
-    }
 }
 
 /// Incomplete parent callsites already reported, bounded by the program's
@@ -285,42 +252,25 @@ static NEAR_MISS_WARNED: LazyLock<Mutex<HashSet<Identifier>>> =
 /// test independent of callsite identity, ordering, and runner.
 #[cfg(test)]
 fn reset_near_miss_warnings() {
-    NEAR_MISS_WARNED
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .clear();
+    crate::lock(&NEAR_MISS_WARNED).clear();
 }
 
 /// Warns once per incomplete parent callsite, recovering a poisoned dedup lock.
 /// A subscriber panic must not prevent subsequent completions.
-fn warn_once_on_completion_parent_verdict(
-    verdict: CompletionParentVerdict,
-    metadata: &tracing::Metadata<'_>,
-) {
-    match verdict {
-        CompletionParentVerdict::Adopt | CompletionParentVerdict::NotAParent => {}
-        CompletionParentVerdict::RejectMissingFields => {
-            let first_sighting = {
-                let mut warned = NEAR_MISS_WARNED
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                warned.insert(metadata.callsite())
-            };
-            // Release the lock before invoking subscribers, which may re-enter
-            // the builder and deadlock if the guard is still held.
-            if !first_sighting {
-                return;
-            }
-            tracing::warn!(
-                marker = COMPLETION_PARENT_MARKER_FIELD,
-                missing_fields = ?missing_required_fields(metadata),
-                "completion-parent span declares the marker but not every required field \
-                 and is not adopted; provider telemetry lands on a fresh child span \
-                 instead — declare the span with \
-                 `rig_core::telemetry::completion_parent_span!`"
-            );
-        }
+fn warn_once_on_missing_fields(metadata: &tracing::Metadata<'_>, missing: &[&'static str]) {
+    // Release the lock before invoking subscribers, which may re-enter
+    // the builder and deadlock if the guard is still held.
+    if !crate::lock(&NEAR_MISS_WARNED).insert(metadata.callsite()) {
+        return;
     }
+    tracing::warn!(
+        marker = COMPLETION_PARENT_MARKER_FIELD,
+        missing_fields = ?missing,
+        "completion-parent span declares the marker but not every required field \
+         and is not adopted; provider telemetry lands on a fresh child span \
+         instead — declare the span with \
+         `rig_core::telemetry::completion_parent_span!`"
+    );
 }
 
 macro_rules! new_modality_span {
@@ -435,9 +385,13 @@ impl<'a> SpanBuilder<'a> {
     fn adopt_completion_parent(&self) -> Option<tracing::Span> {
         let current = tracing::Span::current();
         let metadata = current.metadata()?;
-        let verdict = classify_completion_parent(metadata);
-        warn_once_on_completion_parent_verdict(verdict, metadata);
-        if verdict != CompletionParentVerdict::Adopt {
+        // Exact match, never a prefix: a runtime field that merely starts with the
+        // marker name (`rig.completion_parent.id`, say) is not the marker and must
+        // not make its span a rejected parent.
+        metadata.fields().field(COMPLETION_PARENT_MARKER_FIELD)?;
+        let missing = missing_required_fields(metadata);
+        if !missing.is_empty() {
+            warn_once_on_missing_fields(metadata, &missing);
             return None;
         }
         current.record("gen_ai.operation.name", self.operation.as_str());

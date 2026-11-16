@@ -202,10 +202,7 @@ impl<I: Intercept> Serve for Layer<I> {
                 let outcome = if decided {
                     None
                 } else {
-                    folded
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner)
-                        .take()
+                    crate::lock(&folded).take()
                 };
                 let item = if let Some(outcome) = outcome {
                     decided = true;

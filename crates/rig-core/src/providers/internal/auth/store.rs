@@ -4,7 +4,7 @@
 use crate::error::BoxError;
 use crate::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex};
 
 /// Keeps the credentials a sign-in writes and refreshes, each a JSON text
 /// under a key the provider names, such as `chatgpt` or `copilot`.
@@ -116,7 +116,7 @@ impl std::fmt::Debug for MemoryTokenStore {
 
 impl MemoryTokenStore {
     fn records(&self) -> std::sync::MutexGuard<'_, HashMap<String, String>> {
-        self.0.lock().unwrap_or_else(PoisonError::into_inner)
+        crate::lock(&self.0)
     }
 }
 

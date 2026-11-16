@@ -88,16 +88,9 @@ pub type WasmBoxedStream<'a, T> = Pin<Box<dyn Stream<Item = T> + Send + 'a>>;
 pub type WasmBoxedStream<'a, T> = Pin<Box<dyn Stream<Item = T> + 'a>>;
 
 /// Error returned by [`timeout`] when the future does not complete in time.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error("future timed out")]
 pub struct Elapsed;
-
-impl std::fmt::Display for Elapsed {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("future timed out")
-    }
-}
-
-impl std::error::Error for Elapsed {}
 
 /// Await `future` until `duration` elapses, then drop it and return [`Elapsed`].
 /// The future is polled first, even for zero duration; cancellation runs only

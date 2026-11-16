@@ -579,9 +579,7 @@ impl<'id, Op: Operation> Out<'id, Op> {
     }
 
     pub(crate) fn lock(&self) -> std::sync::MutexGuard<'id, Shared<Op>> {
-        self.shared
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+        crate::lock(self.shared)
     }
 
     /// End the reply with what the provider sent at its end. It consumes the

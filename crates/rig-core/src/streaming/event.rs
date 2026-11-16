@@ -312,13 +312,7 @@ impl StreamRecord {
                 StreamEvent::Text { .. } => Some(PartKind::Text),
                 StreamEvent::Reasoning { .. } => Some(PartKind::Reasoning),
                 StreamEvent::Arguments { .. } => Some(PartKind::ToolCall),
-                StreamEvent::End { content, .. } => Some(match content {
-                    AssistantContent::Text(_) => PartKind::Text,
-                    AssistantContent::Reasoning(_) => PartKind::Reasoning,
-                    AssistantContent::ToolCall(_) => PartKind::ToolCall,
-                    AssistantContent::Image(_) => PartKind::Image,
-                    AssistantContent::Opaque(_) => PartKind::Opaque,
-                }),
+                StreamEvent::End { content, .. } => Some(PartKind::of(content)),
             };
             if let Some(kind) = kind {
                 match self.parts.get_mut(&index) {

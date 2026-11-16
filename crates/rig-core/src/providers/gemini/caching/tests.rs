@@ -142,7 +142,7 @@ impl crate::driver::Transport<super::super::completion::GenerateContent> for Cac
             let (seen, gate) = (self.0.clone(), self.1.clone());
             return Opening::new(async move {
                 drop(gate.lock().await);
-                let mut seen = seen.lock().unwrap_or_else(PoisonError::into_inner);
+                let mut seen = crate::lock(&seen);
                 seen.0 += 1;
                 let cache = serde_json::json!({
                     "name": format!("cachedContents/cache-{}", seen.0),
@@ -153,7 +153,7 @@ impl crate::driver::Transport<super::super::completion::GenerateContent> for Cac
         }
         let body = crate::test_utils::json_body(&payload.request);
         let read = body.get("cachedContent").and_then(|name| name.as_str());
-        let mut seen = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut seen = crate::lock(&self.0);
         seen.1.push(read.map(str::to_owned));
         if read.is_some_and(|name| self.2.lock().expect("refused").contains(name)) {
             let error = ProviderError::from_http_response(http::StatusCode::FORBIDDEN, "refused");
@@ -188,10 +188,7 @@ impl crate::driver::Transport<super::super::cached_content::CachedContents> for 
         _: crate::driver::Exchange,
     ) -> crate::driver::Opening<crate::wire::WireFrame> {
         let path = payload.request.uri().path().trim_start_matches("/v1beta/");
-        self.0
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .push(path.to_owned());
+        crate::lock(&self.0).push(path.to_owned());
         let (gate, refused) = (self.1.clone(), self.2.clone());
         crate::driver::Opening::new(async move {
             drop(gate.lock().await);
@@ -249,7 +246,7 @@ async fn an_expired_shared_prefix_cache_is_replaced() {
     }
 
     assert_eq!(
-        server.0.lock().unwrap_or_else(PoisonError::into_inner).1,
+        crate::lock(&server.0).1,
         [
             None,
             Some("cachedContents/cache-1".to_owned()),
@@ -273,10 +270,7 @@ async fn an_expired_shared_prefix_cache_is_replaced() {
         model.call(ask(n % 2)).await.expect("the call answers");
         clock.fetch_add(2, Ordering::SeqCst);
     }
-    assert_eq!(
-        *server.0.lock().unwrap_or_else(PoisonError::into_inner),
-        (0, vec![None; 8])
-    );
+    assert_eq!(*crate::lock(&server.0), (0, vec![None; 8]));
 
     // A new conversation each TTL: every call is on a line of its own, and
     // none would read what the one before it made.
@@ -287,10 +281,7 @@ async fn an_expired_shared_prefix_cache_is_replaced() {
         model.call(ask(n)).await.expect("the call answers");
         clock.fetch_add(3600, Ordering::SeqCst);
     }
-    assert_eq!(
-        *server.0.lock().unwrap_or_else(PoisonError::into_inner),
-        (0, vec![None; 8])
-    );
+    assert_eq!(*crate::lock(&server.0), (0, vec![None; 8]));
 
     // Two questions, then a pause past the TTL: the first pair's cache is
     // read by no other request, so no later pair replaces it.
@@ -463,10 +454,7 @@ impl crate::driver::Transport<super::super::completion::GenerateContent> for Key
             .get("x-goog-api-key")
             .and_then(|value| value.to_str().ok())
             .map(str::to_owned);
-        self.0
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .push((payload.request.uri().clone(), header));
+        crate::lock(&self.0).push((payload.request.uri().clone(), header));
         self.1.send(payload, exchange)
     }
 }
@@ -582,7 +570,7 @@ async fn no_gemini_wire_puts_the_key_in_its_url() {
         let request = CompletionRequest::new(format!("question {n}")).preamble("x".repeat(8192));
         model.call(request).await.expect("the call answers");
     }
-    let sent = std::mem::take(&mut *spy.0.lock().unwrap_or_else(PoisonError::into_inner));
+    let sent = std::mem::take(&mut *crate::lock(&spy.0));
     assert!(
         sent.iter()
             .any(|(uri, _)| uri.path().ends_with("/cachedContents")),

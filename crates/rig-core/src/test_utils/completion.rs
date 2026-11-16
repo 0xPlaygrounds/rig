@@ -7,6 +7,7 @@ use std::{
 
 use crate::driver::{Exchange, Model, Opened, Opening, Transport};
 use crate::error::{EncodeError, ProviderError};
+use crate::lock;
 use crate::operation::Completion;
 use crate::wire::{Capabilities, Descriptor, Mode, Wire};
 use crate::{
@@ -465,13 +466,6 @@ impl MockCompletionModel {
 impl MockRuntime {
     fn requests_guard(&self) -> MutexGuard<'_, Vec<CompletionRequest>> {
         lock(&self.state.requests)
-    }
-}
-
-fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    match mutex.lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => poisoned.into_inner(),
     }
 }
 
