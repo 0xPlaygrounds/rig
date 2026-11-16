@@ -13,7 +13,7 @@ use rig_harness::prelude::StoreOpener;
 use rig_harness::rig_core::completion::Message;
 use rig_harness::rig_core::conversation::{Conversation, EntryRef, TurnEnd};
 use rig_harness::rig_core::effect::{EffectKind, EffectRecord, FamilyDescriptor};
-use rig_harness::rig_core::message::{AssistantContent, ToolResultContent, UserContent};
+use rig_harness::rig_core::message::{AssistantContent, UserContent};
 use rig_harness::rig_core::redact;
 use rig_harness::rig_memory::{SavedAgent, Session};
 use serde_json::{Map, Value, json};
@@ -403,11 +403,7 @@ fn chat_messages(message: &Message, keep_reasoning: bool, out: &mut Vec<Value>) 
                         let text: Vec<String> = result
                             .content
                             .iter()
-                            .map(|part| match part {
-                                ToolResultContent::Text(text) => text.text.clone(),
-                                ToolResultContent::Image(_) => "[image]".to_owned(),
-                                ToolResultContent::Json { value } => value.to_string(),
-                            })
+                            .map(|part| part.to_text("[image]"))
                             .collect();
                         out.push(json!({
                             "role": "tool",

@@ -388,10 +388,7 @@ impl Host {
             .output()
             .as_content()
             .iter()
-            .map(|item| match item.as_json() {
-                Some(value) => value.to_string(),
-                None => item.as_text().unwrap_or("[image]").to_owned(),
-            })
+            .map(|item| item.to_text("[image]"))
             .collect::<Vec<_>>()
             .join("\n");
         if !result.is_success() {

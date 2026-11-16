@@ -131,7 +131,10 @@ pub fn excerpt(entry: &EntryRef<'_>) -> String {
         }
         Message::Assistant(turn) => {
             let text = turn.text();
-            let calls: Vec<&str> = turn.tool_calls().map(|call| call.function.name.as_str()).collect();
+            let calls: Vec<&str> = turn
+                .tool_calls()
+                .map(|call| call.function.name.as_str())
+                .collect();
             match (text.trim().is_empty(), calls.is_empty()) {
                 (true, false) => ("calls", calls.join(", ")),
                 _ => ("assistant", text),

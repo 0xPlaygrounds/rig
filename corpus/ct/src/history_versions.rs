@@ -322,10 +322,7 @@ fn preview(message: &Message) -> String {
         Message::System { content } => format!("system: {content}"),
         Message::User { content } => {
             let text = content.iter().find_map(UserContent::as_text);
-            format!(
-                "user: {}",
-                text.unwrap_or("[tool results]")
-            )
+            format!("user: {}", text.unwrap_or("[tool results]"))
         }
         Message::Assistant(assistant) => {
             let calls: Vec<&str> = assistant

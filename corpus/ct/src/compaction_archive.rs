@@ -22,7 +22,6 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use rig_basics::compaction::Summarizing;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::Conversation as Chat;
-use rig_harness::rig_core::message::ToolResultContent;
 use rig_harness::rig_ecs::session_log::SessionStore;
 use rig_harness::rig_memory::{LogRecord, SessionError, summary_author};
 use schemars::JsonSchema;
@@ -275,11 +274,7 @@ pub fn text_of(message: &message::Message) -> String {
                 match item {
                     UserContent::Text(text) => parts.push(text.text.clone()),
                     UserContent::ToolResult(result) => {
-                        parts.extend(result.content.iter().map(|part| match part {
-                            ToolResultContent::Text(text) => text.text.clone(),
-                            ToolResultContent::Json { value } => value.to_string(),
-                            ToolResultContent::Image(_) => "[image]".to_owned(),
-                        }));
+                        parts.extend(result.content.iter().map(|part| part.to_text("[image]")));
                     }
                     UserContent::Image(_)
                     | UserContent::Audio(_)

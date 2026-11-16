@@ -10,7 +10,7 @@ use rig_harness::harness_protocol::SessionDir;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::pairing::{close_pending_with, pending_calls};
 use rig_harness::rig_core::conversation::{Conversation, Entry, MessageId};
-use rig_harness::rig_core::message::{AssistantContent, Message, ToolResultContent, UserContent};
+use rig_harness::rig_core::message::{AssistantContent, Message, UserContent};
 use rig_harness::rig_memory::Session;
 use rig_harness::rig_tools::shorten;
 
@@ -211,11 +211,7 @@ fn text_of(message: &Message) -> (&'static str, String) {
                     let output: Vec<String> = result
                         .content
                         .iter()
-                        .map(|item| match item {
-                            ToolResultContent::Text(text) => text.text.clone(),
-                            ToolResultContent::Json { value } => value.to_string(),
-                            ToolResultContent::Image(_) => "[image]".to_owned(),
-                        })
+                        .map(|item| item.to_text("[image]"))
                         .collect();
                     format!("[{} result] {}", result.name.as_str(), output.join("\n"))
                 }

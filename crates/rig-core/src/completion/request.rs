@@ -596,7 +596,9 @@ impl CompletionResponse {
 
     /// The tool calls in [`Self::choice`], in order.
     pub fn tool_calls(&self) -> impl Iterator<Item = &ToolCall> {
-        self.choice.iter().filter_map(AssistantContent::as_tool_call)
+        self.choice
+            .iter()
+            .filter_map(AssistantContent::as_tool_call)
     }
 
     /// Sets or clears the finish reason, reconciling a present reason with the choice.

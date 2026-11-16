@@ -53,7 +53,6 @@ fn transcription_thinking(budget: u32, include: bool) -> Value {
     json!({ "thinkingConfig": { "thinkingBudget": budget, "includeThoughts": include } })
 }
 
-
 fn has_reasoning(choice: &[AssistantContent]) -> bool {
     choice
         .iter()

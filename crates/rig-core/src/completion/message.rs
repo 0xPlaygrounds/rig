@@ -107,7 +107,9 @@ impl AssistantMessage {
 
     /// The tool calls, in order.
     pub fn tool_calls(&self) -> impl Iterator<Item = &ToolCall> {
-        self.content.iter().filter_map(AssistantContent::as_tool_call)
+        self.content
+            .iter()
+            .filter_map(AssistantContent::as_tool_call)
     }
 
     /// The text parts, concatenated.
@@ -456,6 +458,16 @@ impl ToolResultContent {
         match self {
             Self::Json { value } => Some(value),
             Self::Text(_) | Self::Image(_) => None,
+        }
+    }
+
+    /// The content as text: literal text, JSON as its compact text, and an
+    /// image as `image`.
+    pub fn to_text(&self, image: &str) -> String {
+        match self {
+            Self::Text(text) => text.text.clone(),
+            Self::Json { value } => value.to_string(),
+            Self::Image(_) => image.to_owned(),
         }
     }
 

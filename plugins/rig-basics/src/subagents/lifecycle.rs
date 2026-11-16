@@ -536,7 +536,10 @@ fn last_words(conversation: &Conversation) -> Option<String> {
         match &**message {
             Message::Assistant(reply) => {
                 let parts = reply.content.iter().filter_map(AssistantContent::as_text);
-                let text: Vec<&str> = parts.map(str::trim).filter(|text| !text.is_empty()).collect();
+                let text: Vec<&str> = parts
+                    .map(str::trim)
+                    .filter(|text| !text.is_empty())
+                    .collect();
                 if !text.is_empty() {
                     return Some(text.join("\n\n"));
                 }

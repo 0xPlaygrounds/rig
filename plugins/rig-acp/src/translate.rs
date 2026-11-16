@@ -146,11 +146,7 @@ pub(crate) fn tool_done(id: &str, failed: bool, output: String) -> acp::ToolCall
 /// What a tool result's `content` says, as text: the same for a call live
 /// and loaded.
 pub(crate) fn tool_output(content: &[ToolResultContent]) -> String {
-    let parts = content.iter().map(|part| match part {
-        ToolResultContent::Text(text) => text.text.clone(),
-        ToolResultContent::Json { value } => value.to_string(),
-        ToolResultContent::Image(_) => "[image]".to_owned(),
-    });
+    let parts = content.iter().map(|part| part.to_text("[image]"));
     parts.collect::<Vec<_>>().join("\n")
 }
 

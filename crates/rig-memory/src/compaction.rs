@@ -1207,11 +1207,7 @@ impl Summarizer {
                                 let output: Vec<String> = result
                                     .content
                                     .iter()
-                                    .map(|part| match part {
-                                        ToolResultContent::Text(text) => text.text.clone(),
-                                        ToolResultContent::Json { value } => value.to_string(),
-                                        ToolResultContent::Image(_) => "[image]".to_owned(),
-                                    })
+                                    .map(|part| part.to_text("[image]"))
                                     .collect();
                                 let label = if result.is_error {
                                     "Tool error"
