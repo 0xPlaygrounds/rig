@@ -2,18 +2,17 @@
 
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use rand::RngCore;
-use rig_harness::harness_protocol::without_secrets;
 use rig_harness::rig_core::error::{BoxError, retryable_status};
 use rig_harness::rig_core::providers::chatgpt::auth::{FileStoreError, FileTokenStore, TokenStore};
 use rig_harness::rig_core::providers::internal::loopback::{Loopback, LoopbackError, LoopbackHost};
-use rig_harness::rig_tools::process::{self, Process};
+use rig_harness::rig_tools::process::Process;
+use rig_harness::secrets::browser_opener;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
     fs,
     os::unix::fs::{DirBuilderExt, PermissionsExt},
     path::{Path, PathBuf},
-    process::Stdio,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use url::Url;
@@ -374,28 +373,6 @@ fn listen_error(error: LoopbackError) -> AuthError {
     }
 }
 
-fn browser_command(url: &Url) -> std::process::Command {
-    #[cfg(target_os = "linux")]
-    let opener = "xdg-open";
-    #[cfg(target_os = "macos")]
-    let opener = "/usr/bin/open";
-    let mut command = std::process::Command::new(opener);
-    command
-        .arg(url.as_str())
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
-    // A browser it starts outlives rig with the user's own editor and pager.
-    for (name, _) in process::NON_INTERACTIVE {
-        match std::env::var_os(name) {
-            Some(value) => command.env(name, value),
-            None => command.env_remove(name),
-        };
-    }
-    without_secrets(&mut command);
-    command
-}
-
 /// Runs `opener`, which opens the browser: whether it said it did within
 /// `wait`. It is handed over as it starts, so the browser it starts, and
 /// an opener that waits for that browser, stay as rig goes on or exits.
@@ -436,7 +413,7 @@ pub async fn login(home: &Path) -> Result<(), AuthError> {
     let redirect = listener.redirect_uri().to_owned();
     let verifier = random_verifier();
     let url = authorization_url(&redirect, &state, &verifier)?;
-    open_browser(browser_command(&url), Duration::from_secs(15)).await?;
+    open_browser(browser_opener(url.as_str()), Duration::from_secs(15)).await?;
     let received = listener.code().await.map_err(listen_error)?;
     let exchanged = async {
         let client = OAuthClient::production()?;

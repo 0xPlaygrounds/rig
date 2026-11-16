@@ -3,6 +3,7 @@ use rig_harness::rig_core::providers::chatgpt::auth::StoreLock;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
+use std::process::Stdio;
 
 mod http;
 mod off_runtime;
@@ -15,7 +16,7 @@ fn browser_opener_receives_the_authorization_url_as_one_argument() -> anyhow::Re
         "state-with-&-and-'",
         "synthetic-challenge",
     )?;
-    let command = browser_command(&url);
+    let command = browser_opener(url.as_str());
     #[cfg(target_os = "linux")]
     anyhow::ensure!(command.get_program() == "xdg-open");
     #[cfg(target_os = "macos")]
@@ -45,7 +46,7 @@ fn the_browser_gets_no_secret() -> anyhow::Result<()> {
         return Ok(());
     }
     let url = authorization_url("http://localhost:54545/callback", "state", "challenge")?;
-    let command = browser_command(&url);
+    let command = browser_opener(url.as_str());
     let removed = command
         .get_envs()
         .any(|(name, value)| name == PROBE && value.is_none());

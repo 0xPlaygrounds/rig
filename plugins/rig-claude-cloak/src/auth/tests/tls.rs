@@ -1,7 +1,7 @@
 #![allow(clippy::disallowed_methods, reason = "test fixtures")]
 
 use super::*;
-use std::process::{Child, Command, ExitStatus};
+use std::process::{Child, Command, ExitStatus, Stdio};
 use std::time::Instant;
 
 const CHILD_URL: &str = "RIG_CLAUDE_CLOAK_TEST_TLS_URL";

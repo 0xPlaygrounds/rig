@@ -17,7 +17,8 @@
 //! [`Processes`](crate::services::Processes) (the shell and every tool), not
 //! the terminal view's editor. A plugin that starts a process with a bare
 //! `std::process::Command` passes its secrets on: start processes with
-//! `Processes`. What this protects from: tools, the model's commands,
+//! `Processes`, and one that opens the user's browser starts
+//! [`browser_opener`]. What this protects from: tools, the model's commands,
 //! build scripts and proc macros, and helper programs. What it does not:
 //! the same user reading the agent's environment (`/proc/<pid>/environ`),
 //! and plugin code, which is trusted as all Bevy plugin code is.
@@ -107,4 +108,20 @@ impl fmt::Debug for Secrets {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_set().entries(self.0.keys()).finish()
     }
+}
+
+/// The command that opens `url` in the user's browser, as rig-core's
+/// [`browser_command`](rig_core::providers::chatgpt::auth::browser_command)
+/// does, with the user's own editor and pager and none of the plugins'
+/// secrets in its environment: the browser it starts outlives rig.
+pub fn browser_opener(url: &str) -> std::process::Command {
+    let mut command = rig_core::providers::chatgpt::auth::browser_command(url);
+    for (name, _) in rig_tools::process::NON_INTERACTIVE {
+        match std::env::var_os(name) {
+            Some(value) => command.env(name, value),
+            None => command.env_remove(name),
+        };
+    }
+    rig_harness_protocol::without_secrets(&mut command);
+    command
 }
