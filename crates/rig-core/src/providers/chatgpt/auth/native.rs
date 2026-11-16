@@ -373,7 +373,8 @@ impl Authenticator {
             .interval
             .as_ref()
             .and_then(Lenient::as_u64_lenient)
-            .unwrap_or(DEVICE_CODE_POLL_SLEEP_SECONDS);
+            .unwrap_or(DEVICE_CODE_POLL_SLEEP_SECONDS)
+            .max(1);
         let start = std::time::Instant::now();
         let code = loop {
             if start.elapsed().as_secs() as i64 >= DEVICE_CODE_TIMEOUT_SECONDS {

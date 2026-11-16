@@ -572,3 +572,29 @@ async fn device_flow_does_not_hold_the_store_lock() -> anyhow::Result<()> {
     }
     Ok(())
 }
+
+/// A device-code `interval` of 0 must not poll in a tight loop.
+#[tokio::test]
+async fn a_zero_interval_is_clamped() -> anyhow::Result<()> {
+    let http = SequencedHttpClient::new([
+        MockHttpResponse::success(r#"{"device_auth_id":"d1","user_code":"UC-1","interval":0}"#),
+        MockHttpResponse::error(StatusCode::FORBIDDEN, "pending"),
+        MockHttpResponse::error(StatusCode::FORBIDDEN, "pending"),
+        MockHttpResponse::success(r#"{"authorization_code":"code","code_verifier":"verifier"}"#),
+        MockHttpResponse::success(r#"{"access_token":"fresh","refresh_token":"fresh-refresh"}"#),
+    ]);
+    let auth = Authenticator::new(
+        AuthSource::OAuth,
+        MemoryTokenStore::default(),
+        DeviceCodeHandler::new(|_| {}),
+        true,
+    );
+    let started = std::time::Instant::now();
+    auth.auth_context(&http).await?;
+    let elapsed = started.elapsed();
+    anyhow::ensure!(
+        elapsed >= std::time::Duration::from_secs(2),
+        "two pending polls with interval 0 took {elapsed:?}; expected at least 1 s between polls"
+    );
+    Ok(())
+}
