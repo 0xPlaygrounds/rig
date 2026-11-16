@@ -84,12 +84,7 @@ pub(crate) async fn build_prepared_completion_request(
     for (key, kind) in tool_server_handle.retrieval_effects(retrieval_query) {
         let ids = crate::agent::engine::dispatch_effect(runner, ctx, &key, kind)
             .await
-            .and_then(|outcome| match outcome {
-                rig_core::effect::Answered::Documents(
-                    rig_core::effect::RetrievedDocuments::Ids(ids),
-                ) => Ok(ids.into_iter().map(|(_, id)| id).collect::<Vec<String>>()),
-                other => Err(crate::agent::engine::wrong_outcome("retrieved ids", &other)),
-            })
+            .and_then(crate::tool::server::retrieved_ids)
             .map_err(|report| {
                 ProviderError::request(format!("Failed to get tool definitions: {report}"))
             })?;

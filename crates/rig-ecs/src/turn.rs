@@ -41,7 +41,7 @@ use rig_core::conversation::{
     Author, AuthorKind, CallRef, Entry, Halt, MessageId, ResultFacts, StopCause, TurnEnd,
     is_attachment_text,
 };
-use rig_core::effect::{self, EffectId, EffectKind};
+use rig_core::effect::{self, EffectId, EffectKind, Family};
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::message::{
     AssistantContent, AssistantMessage, CallId, StopReason, ToolCall, UserContent,
@@ -1715,10 +1715,7 @@ pub(crate) fn commit_turn_calls(
                 continue;
             }
             _ if failed.is_some() => continue,
-            Ok(other) => ErrorReport::new(
-                ErrorKind::Internal,
-                format!("the model answered with a {} outcome", other.family()),
-            ),
+            Ok(other) => effect::family::Completion::mismatch(other),
             Err(report) => report.clone(),
         };
         // The verdict says what failed; a call refused before it was sent

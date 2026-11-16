@@ -19,7 +19,7 @@ use tracing::{Instrument, span::Id};
 use rig_core::error::ProviderError;
 use rig_core::{
     completion::ModelRef,
-    effect::{Answered, EffectKind},
+    effect::{Answered, EffectKind, Family, family},
     error::{ErrorKind, ErrorReport},
     message::{
         self, AssistantContent, Message, ToolCall, ToolFunction, ToolName, ToolResultContent,
@@ -1287,7 +1287,7 @@ pub(crate) async fn settle_model_turn<M>(
             replaced = Some(replacement.choice);
         }
         OutcomeAction::Replace(Ok(other)) => {
-            return Err(PromptError::Report(wrong_outcome("a completion", &other)));
+            return Err(PromptError::Report(family::Completion::mismatch(&other)));
         }
         OutcomeAction::Replace(Err(report)) => {
             if report.kind == ErrorKind::Cancelled {
@@ -1348,16 +1348,6 @@ pub(crate) async fn dispatch_effect(
         OutcomeAction::Proceed => outcome,
         OutcomeAction::Replace(replaced) => replaced,
     }
-}
-
-pub(crate) fn wrong_outcome(expected: &str, outcome: &Answered) -> ErrorReport {
-    ErrorReport::new(
-        ErrorKind::Internal,
-        format!(
-            "expected {expected}, the handler answered with a {} outcome",
-            outcome.family()
-        ),
-    )
 }
 
 /// Why a tool call ended the run instead of answering: a hook stopped it,
@@ -1701,12 +1691,8 @@ pub(crate) async fn dispatch_tool_call(
         OutcomeAction::Proceed => outcome,
         OutcomeAction::Replace(replaced) => replaced,
     };
-    let result = match outcome {
-        Ok(Answered::ToolResult { result }) => result,
-        Ok(other) => ToolResult::failed(crate::tool::ToolExecutionError::other(format!(
-            "the tool handler answered with a {} outcome",
-            other.family()
-        ))),
+    let result = match outcome.and_then(family::Tool::unwrap) {
+        Ok(result) => result,
         // A hook that observed the result stopped the run.
         Err(report) if report.kind == ErrorKind::Cancelled => {
             return Err(ToolExit::Stop(report.message));

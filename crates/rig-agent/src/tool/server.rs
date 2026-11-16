@@ -24,7 +24,7 @@ use rig_core::error::ProviderError;
 use rig_core::serve::adapters::RetrieveAdapter;
 use rig_core::{
     effect::Key,
-    effect::{HandlerKey, family},
+    effect::{Family, HandlerKey, family},
     vector_store::{VectorStoreIndex, request::DynamicSearchFilter},
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
@@ -487,22 +487,12 @@ impl ToolServerHandle {
             .retrieval_queries(prompt)
             .into_iter()
             .map(|(index, kind)| async move {
-                let outcome = rig_core::serve::serve_inline(&index.handler, kind)
+                rig_core::serve::serve_inline(&index.handler, kind)
                     .await
+                    .and_then(retrieved_ids)
                     .map_err(|report| {
                         rig_core::vector_store::VectorStoreError::DatastoreError(Box::new(report))
-                    })?;
-                match outcome {
-                    rig_core::effect::Answered::Documents(
-                        rig_core::effect::RetrievedDocuments::Ids(ids),
-                    ) => Ok(ids.into_iter().map(|(_, id)| id).collect::<Vec<String>>()),
-                    other => Err(rig_core::vector_store::VectorStoreError::DatastoreError(
-                        Box::new(rig_core::error::ErrorReport::new(
-                            rig_core::error::ErrorKind::Internal,
-                            format!("tool retrieval answered with a {} outcome", other.family()),
-                        )),
-                    )),
-                }
+                    })
             });
         let dynamic_tool_ids = futures::future::try_join_all(searches)
             .await
@@ -567,6 +557,22 @@ impl ToolServerHandle {
         ToolCatalog::from_registered(
             self.with_registry(|state| snapshot_registered_tools(state, dynamic_tool_ids)),
         )
+    }
+}
+
+/// The tool ids a `TopNIds` retrieval answered, or the report for any other
+/// answer.
+pub(crate) fn retrieved_ids(
+    outcome: rig_core::effect::Answered,
+) -> Result<Vec<String>, rig_core::error::ErrorReport> {
+    match family::Retrieve::unwrap(outcome)? {
+        rig_core::effect::RetrievedDocuments::Ids(ids) => {
+            Ok(ids.into_iter().map(|(_, id)| id).collect())
+        }
+        rig_core::effect::RetrievedDocuments::Scored(_) => Err(rig_core::error::ErrorReport::new(
+            rig_core::error::ErrorKind::Internal,
+            "expected retrieved ids, the handler answered scored documents",
+        )),
     }
 }
 

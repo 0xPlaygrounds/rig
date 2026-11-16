@@ -1,4 +1,5 @@
 use super::*;
+use rig_core::effect::Answered;
 use rig_core::message::{ImageMediaType, ToolResultContent};
 use rig_core::tool::{ContextValue, ToolErrorKind, ToolOutput};
 

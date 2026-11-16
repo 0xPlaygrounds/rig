@@ -55,11 +55,11 @@ use bevy_tasks::{AsyncComputeTaskPool, TaskPool};
 use bevy_time::{Real, Time, Virtual};
 use rig_core::completion::CompletionResponse;
 use rig_core::effect::{
-    self, Decider, Disposition, EffectId, EffectKind, EffectRecord, HandlerKey, tool_key,
+    self, Decider, Disposition, EffectId, EffectKind, EffectRecord, Family, HandlerKey, tool_key,
 };
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::serve::{DispatchContext, Recorder, Reply, cancelled};
-use rig_core::tool::{ToolExecutionError, ToolResult, ToolResultContext};
+use rig_core::tool::{ToolResult, ToolResultContext};
 use rig_core::{millis, now_ms};
 use web_time::SystemTime;
 
@@ -357,14 +357,10 @@ impl Outcome {
     /// What a tool call answered this way returns to the model: its
     /// result, or the failure as an error result.
     pub fn tool_result(&self) -> ToolResult {
-        match &self.0 {
-            Ok(effect::Answered::ToolResult { result }) => result.clone(),
-            Ok(other) => ToolResult::failed(ToolExecutionError::other(format!(
-                "the tool answered with a {} outcome",
-                other.family()
-            ))),
-            Err(report) => ToolResult::failed(report.clone().into()),
-        }
+        self.0
+            .clone()
+            .and_then(effect::family::Tool::unwrap)
+            .unwrap_or_else(|report| ToolResult::failed(report.into()))
     }
 
     /// An answer of a kind of its own, rig-core's custom outcome with
