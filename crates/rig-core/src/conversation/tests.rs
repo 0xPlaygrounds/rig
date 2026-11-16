@@ -116,10 +116,8 @@ fn a_fold_of_the_outbox_equals_the_live_value() {
         u64::try_from(read.len()).unwrap_or(u64::MAX)
     );
     assert!(live.aside(scratch).is_some() && folded.aside(scratch).is_none());
-    assert_eq!(
-        folded.aside_position(folded.aside(note).expect("the note")),
-        3
-    );
+    let after = folded.aside(note).and_then(|aside| aside.after);
+    assert_eq!(after.and_then(|after| folded.index_of(after)), Some(2));
 
     let mut wrong = folded.clone();
     let stale = ChangeRecord {
@@ -397,7 +395,14 @@ fn restore_puts_entries_back_with_their_ids_and_the_fold_accepts_them() {
     let originals: Vec<Entry> = (1..3).filter_map(|at| live.entry(at)).collect();
     let summary = Entry::new(Message::user("summary"));
     live.splice(1..3, [summary], Author::plugin("compact"));
-    assert_eq!(live.aside_position(live.aside(note).expect("the note")), 1);
+    let after = live.aside(note).and_then(|aside| aside.after);
+    assert_eq!(after, before.get(2).map(|key| key.id), "the note follows c");
+    let after = after.expect("the note follows c");
+    assert_eq!(
+        (live.index_of(after), live.start_of(after)),
+        (None, 0),
+        "an edit took c out"
+    );
 
     let copies = live
         .clone()
@@ -420,7 +425,7 @@ fn restore_puts_entries_back_with_their_ids_and_the_fold_accepts_them() {
         (MessageId(5), 2_000),
         "the outsider is new"
     );
-    assert_eq!(live.aside_position(live.aside(note).expect("the note")), 3);
+    assert_eq!(live.index_of(after), Some(2), "the note follows c again");
 
     let lines: Vec<String> = live
         .unsaved()
@@ -504,39 +509,6 @@ fn normalize_keeps_ids_and_reanchors_asides() {
     let mut all = saved;
     all.extend(live.unsaved().iter().cloned());
     assert_eq!(fold(&all), live);
-}
-
-/// `reread` takes what the log holds, lineage and revision too, and keeps
-/// the value's unsaved asides with their ids; it is refused while the
-/// value has unsaved changes.
-#[test]
-fn reread_takes_the_log_and_keeps_unsaved_asides() {
-    let mut live = Conversation::from_messages([Message::user("my secret")]);
-    let note = Aside::new("note", Author::plugin("n"), serde_json::json!("secret"));
-    let note = live.add_aside(note);
-    let scratch = Aside::new("scratch", Author::rig(), serde_json::Value::Null).unsaved();
-    let scratch = live.add_aside(scratch);
-    let mut log = fold(live.unsaved());
-    log.edit_each(Author::plugin("redact"), |_| {
-        Some(Message::user("my [redacted]"))
-    });
-    let redacted = Aside::new("note", Author::plugin("n"), serde_json::json!("[redacted]"));
-    log.replace_aside(note, redacted.clone());
-    let changes = u64::try_from(log.take_unsaved().len()).unwrap_or_default();
-    log.continue_log(Lineage::fresh(), changes);
-
-    assert!(live.reread(log.clone()).is_err(), "unsaved changes");
-    live.take_unsaved();
-    live.reread(log.clone()).expect("reread");
-    assert_eq!(live, log);
-    assert_eq!(
-        (live.lineage(), live.revision()),
-        (log.lineage(), log.revision())
-    );
-    assert_eq!(live.aside(note), Some(&redacted));
-    assert!(live.aside(scratch).is_some_and(|aside| !aside.saved));
-    let next = live.add_aside(Aside::new("next", Author::rig(), serde_json::Value::Null));
-    assert!(next > scratch);
 }
 
 /// A turn record opens after the last entry, numbered after the last one,

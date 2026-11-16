@@ -730,22 +730,6 @@ impl Conversation {
             .map(|(_, aside)| aside)
     }
 
-    /// Where `aside` is drawn: before entry `position`, after entry
-    /// `position - 1`. While an edit took out the entry it follows, after
-    /// the entry that stands for it now ([`start_of`](Self::start_of)).
-    pub fn aside_position(&self, aside: &Aside) -> usize {
-        let Some(after) = aside.after else {
-            return 0;
-        };
-        match self.index_of(after) {
-            Some(index) => index.saturating_add(1),
-            None => self
-                .messages
-                .len()
-                .min(self.start_of(after).saturating_add(1)),
-        }
-    }
-
     // Editing: each builds a change with every id filled in, applies it and
     // records it.
 
@@ -1064,52 +1048,6 @@ impl Conversation {
             self.move_aside(id, after, &by);
         }
         normalized
-    }
-
-    /// Takes everything a log holds from `from_log`, a value read from that
-    /// log: entries, saved asides, halt, next ids, lineage and revision.
-    /// This value's unsaved asides stay, with their ids. For a host whose
-    /// log was rewritten under the value it holds.
-    ///
-    /// # Errors
-    ///
-    /// [`ApplyError::Mismatch`], changing nothing, while either value has
-    /// unsaved changes, or when an unsaved aside's id is a saved one's in
-    /// `from_log`.
-    pub fn reread(&mut self, from_log: Conversation) -> Result<(), ApplyError> {
-        if !self.unsaved.is_empty() || !from_log.unsaved.is_empty() {
-            return Err(mismatch(
-                "a value with unsaved changes is not reread".to_owned(),
-            ));
-        }
-        let mut asides = from_log.asides;
-        asides.retain(|(_, aside)| aside.saved);
-        let unsaved = self.asides.iter().filter(|(_, aside)| !aside.saved);
-        if let Some((id, _)) = unsaved
-            .clone()
-            .find(|(id, _)| asides.iter().any(|(saved, _)| saved == id))
-        {
-            return Err(mismatch(format!("aside id {} is saved in the log", id.0)));
-        }
-        let next_aside = unsaved
-            .clone()
-            .map(|(id, _)| id.0.saturating_add(1))
-            .fold(from_log.next_aside, u64::max);
-        asides.extend(unsaved.cloned());
-        asides.sort_by_key(|(id, _)| *id);
-        *self = Self {
-            messages: from_log.messages,
-            meta: from_log.meta,
-            asides,
-            halted: from_log.halted,
-            next_id: from_log.next_id,
-            next_aside,
-            revision: from_log.revision,
-            lineage: from_log.lineage,
-            unsaved: Vec::new(),
-            clock: self.clock,
-        };
-        Ok(())
     }
 
     /// Leaves the user's last message unanswered, for `halt`. Whether it

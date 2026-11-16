@@ -965,15 +965,6 @@ pub struct DocumentContent {
     pub additional_params: Option<serde_json::Value>,
 }
 
-/// Helper enum that tracks the media type of the content.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-pub enum MediaType {
-    Image(ImageMediaType),
-    Audio(AudioMediaType),
-    Document(DocumentMediaType),
-    Video(VideoMediaType),
-}
-
 /// Describes the image media type of the content. Not every provider supports every media type.
 /// Convertible to and from MIME type strings.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -1378,25 +1369,6 @@ pub trait MimeType {
     where
         Self: Sized;
     fn to_mime_type(&self) -> &'static str;
-}
-
-impl MimeType for MediaType {
-    fn from_mime_type(mime_type: &str) -> Option<Self> {
-        ImageMediaType::from_mime_type(mime_type)
-            .map(MediaType::Image)
-            .or_else(|| DocumentMediaType::from_mime_type(mime_type).map(MediaType::Document))
-            .or_else(|| AudioMediaType::from_mime_type(mime_type).map(MediaType::Audio))
-            .or_else(|| VideoMediaType::from_mime_type(mime_type).map(MediaType::Video))
-    }
-
-    fn to_mime_type(&self) -> &'static str {
-        match self {
-            MediaType::Image(media_type) => media_type.to_mime_type(),
-            MediaType::Audio(media_type) => media_type.to_mime_type(),
-            MediaType::Document(media_type) => media_type.to_mime_type(),
-            MediaType::Video(media_type) => media_type.to_mime_type(),
-        }
-    }
 }
 
 // Emits both directions of a [`MimeType`] impl from a single pair list, so a
