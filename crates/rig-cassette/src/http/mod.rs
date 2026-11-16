@@ -76,8 +76,9 @@ static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 type PanicPayload = Box<dyn Any + Send + 'static>;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 enum ReplayMatching {
+    #[default]
     Ordered,
     Unordered,
 }
@@ -152,7 +153,7 @@ impl From<&'static str> for CassetteSpec {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 struct CassettePolicy {
     required_request_headers: &'static [&'static str],
     /// Older Gemini recordings keep a credential the client now sends as a
@@ -164,12 +165,11 @@ struct CassettePolicy {
 
 impl CassettePolicy {
     fn for_scenario(provider: &str, spec: CassetteSpec) -> Self {
-        let required_request_headers = match provider {
-            "openai" | "doubleword" | "venice" => OPENAI_REQUIRED_REQUEST_HEADERS,
-            "chatgpt" => CHATGPT_REQUIRED_REQUEST_HEADERS,
-            "anthropic" => ANTHROPIC_REQUIRED_REQUEST_HEADERS,
-            "gemini" => GEMINI_REQUIRED_REQUEST_HEADERS,
-            _ => NO_REQUIRED_REQUEST_HEADERS,
+        let required_request_headers: &[&str] = match provider {
+            "openai" | "doubleword" | "venice" | "chatgpt" => &["authorization"],
+            "anthropic" => &["x-api-key"],
+            "gemini" => &["x-goog-api-key"],
+            _ => &[],
         };
 
         Self {
@@ -177,17 +177,6 @@ impl CassettePolicy {
             drops_recorded_key: provider == "gemini",
             replay_matching: spec.replay_matching,
             body_matching: spec.body_matching.unwrap_or(BodyMatching::Exact),
-        }
-    }
-}
-
-impl Default for CassettePolicy {
-    fn default() -> Self {
-        Self {
-            required_request_headers: NO_REQUIRED_REQUEST_HEADERS,
-            drops_recorded_key: false,
-            replay_matching: ReplayMatching::Ordered,
-            body_matching: BodyMatching::Exact,
         }
     }
 }
@@ -3057,12 +3046,6 @@ const FORBIDDEN_CASSETTE_PATTERNS: &[&str] = &[
     "x-amz-security-token",
 ];
 
-const NO_REQUIRED_REQUEST_HEADERS: &[&str] = &[];
-const OPENAI_REQUIRED_REQUEST_HEADERS: &[&str] = &["authorization"];
-const CHATGPT_REQUIRED_REQUEST_HEADERS: &[&str] = &["authorization"];
-const ANTHROPIC_REQUIRED_REQUEST_HEADERS: &[&str] = &["x-api-key"];
-const GEMINI_REQUIRED_REQUEST_HEADERS: &[&str] = &["x-goog-api-key"];
-
 const RECORDED_REQUEST_HEADERS: &[&str] = &[
     "accept",
     "content-type",
@@ -3262,13 +3245,6 @@ fn scrub_query_params(scrubber: &mut Scrubber, query_params: &mut [NameValue]) {
 
 #[cfg(test)]
 mod tests;
-
-/// Collect UTF-8 HTTP headers as owned name/value pairs.
-pub fn owned_headers(headers: &http_client::HeaderMap) -> Vec<(String, String)> {
-    crate::scrub::recordable_pairs(crate::scrub::header_pairs(headers))
-        .map(|(name, value)| (name.to_owned(), value.to_owned()))
-        .collect()
-}
 
 #[cfg(test)]
 mod explicit_destination_tests;
