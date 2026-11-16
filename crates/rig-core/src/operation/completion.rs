@@ -870,16 +870,7 @@ impl ReplyFold {
     ) -> Result<(), ProviderError> {
         let position = *self.ended.get(&index).ok_or_else(|| not_open(index))?;
         let slots = self.blob_slots;
-        let queued = items.iter_mut().find_map(|item| match item {
-            Ok(Item::Event(StreamEvent::End { part, content })) if part.index() == position => {
-                Some(content)
-            }
-            _ => None,
-        });
-        let content = match queued {
-            Some(content) => Some(content),
-            None => self.choice.get_mut(position).and_then(Option::as_mut),
-        };
+        let content = ended_content(&mut self.choice, items, position);
         if let Some(content) = content {
             if let Some(item) = item_of(content) {
                 edit(item);
@@ -926,16 +917,7 @@ impl ReplyFold {
             );
             return;
         };
-        let queued = items.iter_mut().find_map(|item| match item {
-            Ok(Item::Event(StreamEvent::End { part, content })) if part.index() == position => {
-                Some(content)
-            }
-            _ => None,
-        });
-        let content = match queued {
-            Some(content) => Some(content),
-            None => self.choice.get_mut(position).and_then(Option::as_mut),
-        };
+        let content = ended_content(&mut self.choice, items, position);
         match content {
             Some(AssistantContent::Text(text)) => {
                 let kept = if replace {
@@ -1214,6 +1196,24 @@ pub(crate) fn canonical(block: AssistantContent) -> AssistantContent {
         }),
         block => block.into_canonical(),
     }
+}
+
+/// The content of the part at `position` after it ended: its end event
+/// while that waits in `items` to be taken, else what the fold holds.
+fn ended_content<'a>(
+    choice: &'a mut [Option<AssistantContent>],
+    items: &'a mut Items,
+    position: usize,
+) -> Option<&'a mut AssistantContent> {
+    items
+        .iter_mut()
+        .find_map(|item| match item {
+            Ok(Item::Event(StreamEvent::End { part, content })) if part.index() == position => {
+                Some(content)
+            }
+            _ => None,
+        })
+        .or_else(|| choice.get_mut(position).and_then(Option::as_mut))
 }
 
 /// The provider item `content` holds, if any.

@@ -922,10 +922,7 @@ fn read(text: &str) -> Option<Option<Reasoning>> {
             Some(tokens) => Reasoning::Budget {
                 tokens: tokens.trim().parse().ok()?,
             },
-            None => {
-                let word = serde::de::value::StrDeserializer::<serde::de::value::Error>::new(text);
-                Reasoning::Effort(Effort::deserialize(word).ok()?)
-            }
+            None => Reasoning::Effort(Effort::named(text)?),
         },
     };
     Some(Some(reasoning))

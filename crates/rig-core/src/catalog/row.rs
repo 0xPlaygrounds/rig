@@ -571,7 +571,7 @@ impl Row {
             match option.kind.as_str() {
                 "effort" => {
                     for value in &option.values {
-                        match effort(value) {
+                        match Effort::named(value) {
                             Some(level) if !levels.contains(&level) => levels.push(level),
                             Some(_) => {}
                             None => can_disable |= value == "none",
@@ -716,14 +716,6 @@ impl<'de> serde::Deserializer<'de> for FieldNames<'_> {
         bytes byte_buf option unit unit_struct newtype_struct seq tuple
         tuple_struct map enum identifier ignored_any
     }
-}
-
-/// The effort level `word` names, by [`Effort`]'s serde names.
-fn effort(word: &str) -> Option<Effort> {
-    use serde::de::IntoDeserializer;
-    let word: serde::de::value::StrDeserializer<'_, serde::de::value::Error> =
-        word.into_deserializer();
-    Effort::deserialize(word).ok()
 }
 
 /// The modalities `words` names, as models.dev spells them.

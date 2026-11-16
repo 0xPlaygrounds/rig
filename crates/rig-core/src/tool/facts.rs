@@ -228,25 +228,10 @@ impl FileState {
 }
 
 impl FileChange {
-    /// `path` was created with `lines` lines.
-    pub fn created(path: impl Into<String>, lines: usize) -> Self {
+    fn new(path: impl Into<String>, kind: ChangeKind, added: usize, removed: usize) -> Self {
         Self {
             path: path.into(),
-            kind: ChangeKind::Created,
-            added: lines,
-            removed: 0,
-            hunks: Vec::new(),
-            before_text: None,
-            before: None,
-            after: None,
-        }
-    }
-
-    /// `path` was changed: `added` lines added and `removed` removed.
-    pub fn modified(path: impl Into<String>, added: usize, removed: usize) -> Self {
-        Self {
-            path: path.into(),
-            kind: ChangeKind::Modified,
+            kind,
             added,
             removed,
             hunks: Vec::new(),
@@ -256,18 +241,19 @@ impl FileChange {
         }
     }
 
+    /// `path` was created with `lines` lines.
+    pub fn created(path: impl Into<String>, lines: usize) -> Self {
+        Self::new(path, ChangeKind::Created, lines, 0)
+    }
+
+    /// `path` was changed: `added` lines added and `removed` removed.
+    pub fn modified(path: impl Into<String>, added: usize, removed: usize) -> Self {
+        Self::new(path, ChangeKind::Modified, added, removed)
+    }
+
     /// `path`, which had `lines` lines, was deleted.
     pub fn deleted(path: impl Into<String>, lines: usize) -> Self {
-        Self {
-            path: path.into(),
-            kind: ChangeKind::Deleted,
-            added: 0,
-            removed: lines,
-            hunks: Vec::new(),
-            before_text: None,
-            before: None,
-            after: None,
-        }
+        Self::new(path, ChangeKind::Deleted, 0, lines)
     }
 
     /// This change, made by `hunks`.

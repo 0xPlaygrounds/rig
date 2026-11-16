@@ -278,6 +278,13 @@ impl Effort {
             Self::Max => "max",
         }
     }
+
+    /// The level `word` names by its serde name, the inverse of
+    /// [`Self::as_str`].
+    pub(crate) fn named(word: &str) -> Option<Self> {
+        Self::deserialize(serde::de::value::StrDeserializer::<serde::de::value::Error>::new(word))
+            .ok()
+    }
 }
 
 /// How long the provider keeps the prompt prefix cached.

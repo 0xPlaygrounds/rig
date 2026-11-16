@@ -326,15 +326,7 @@ impl Connector {
     ) -> (Result<ErasedHandler, ConnectError>, Option<&dyn SignIn>) {
         let connected = match self.providers.get(spec.provider.vendor()) {
             Some(provider) => provider.handler(spec, &self.catalog, &self.transport),
-            None => {
-                let options = match self.transport.shared() {
-                    Some(http) => ConnectOptions::new().http(http),
-                    None => ConnectOptions::new(),
-                };
-                self.catalog
-                    .connect_with(spec, options)
-                    .map(|model| adapted(spec, model))
-            }
+            None => ConnectOptions::new().handler(spec, &self.catalog, &self.transport),
         };
         match connected {
             Err(error @ ConnectError::MissingKey { .. }) => self
