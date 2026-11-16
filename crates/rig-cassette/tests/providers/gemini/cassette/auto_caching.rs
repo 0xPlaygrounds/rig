@@ -17,12 +17,13 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use rig::agent::Agent;
-use rig::completion::{CacheCost, CacheRates, Effort, GenerationOptions, Message};
+use rig::completion::{Effort, GenerationOptions, Message};
 use rig::providers::gemini::{
     AutoCache, CacheBook, CacheEvent, CacheReport, Gemini, Lease, ThoughtReplay,
 };
 use rig::tool::Tool;
 use rig::{AgentBuilder, AgentRun};
+use rig_test_support::cache_cost::{CacheCost, CacheRates};
 use rig_test_support::cache_longrun::{
     self, CacheWire, Created, Interaction, Limits, LongRun, LookupOrder, Recording, RunLog,
     SUPPORT_PREAMBLE, chat, chat_streamed, question,

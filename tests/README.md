@@ -571,7 +571,7 @@ with caching off as the baseline.
   the smallest per-call share from the first read on, cache accuracy (reads over cacheable
   tokens, where a call's cacheable tokens are its conversation's previous prompt), where the
   reads fell short of that, writes over prompt tokens, input dollars with and without caching
-  through `rig_core::completion::CacheCost` at the provider's rates, and the same for the first
+  through `rig_test_support::cache_cost::CacheCost` at the provider's rates, and the same for the first
   30 turns alone, to set beside the baseline.
 - The checks `check` runs on every run: rig's `Usage` matches the wire on every call (input,
   cached reads, cache writes, output and total); the input saving, counting every write, read

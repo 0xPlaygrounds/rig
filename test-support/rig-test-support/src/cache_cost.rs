@@ -5,17 +5,18 @@ use std::ops::{Add, AddAssign};
 
 use serde::{Deserialize, Serialize};
 
-use super::Usage;
+use rig_core::completion::Usage;
+use rig_core::providers::gemini::CacheReport;
 
 /// Prices of one model and tier, in USD per 1M tokens (storage: per 1M
-/// token-hours). The built-in catalog's [`Pricing`](crate::catalog::Pricing)
+/// token-hours). The built-in catalog's [`Pricing`](rig_core::catalog::Pricing)
 /// holds the input, cached-read and cache-write prices of the models it
 /// lists, but no storage price. A provider without a separate write price
 /// bills writes at `input`; one without storage leaves `storage_per_hour`
 /// at zero.
 ///
 /// ```no_run
-/// use rig_core::completion::CacheRates;
+/// use rig_test_support::cache_cost::CacheRates;
 ///
 /// // A 5-minute cache write at 1.25 times the input price, reads at a tenth.
 /// let rates = CacheRates { input: 3.0, cached_read: 0.3, cache_write: 3.75, storage_per_hour: 0.0 };
@@ -42,7 +43,8 @@ pub struct CacheRates {
 /// the provider's price list:
 ///
 /// ```no_run
-/// use rig_core::completion::{CacheCost, CacheRates, Usage};
+/// use rig_core::completion::Usage;
+/// use rig_test_support::cache_cost::{CacheCost, CacheRates};
 /// use rig_core::providers::gemini::{AutoCache, CacheBook};
 ///
 /// # let calls: Vec<Usage> = Vec::new();
@@ -114,6 +116,19 @@ impl CacheCost {
             1.0 - self.usd(rates) / uncached
         } else {
             0.0
+        }
+    }
+}
+
+/// A Gemini cache book's caches as billed beside the calls: every created
+/// token as a cache write (priced at the input price) and `token_hours` of
+/// storage. Add it to the calls' [`CacheCost::from_usage`] to price a run.
+impl From<&CacheReport> for CacheCost {
+    fn from(report: &CacheReport) -> Self {
+        Self {
+            cache_writes: report.created.iter().map(|created| created.tokens).sum(),
+            storage_token_hours: report.token_hours,
+            ..Self::default()
         }
     }
 }

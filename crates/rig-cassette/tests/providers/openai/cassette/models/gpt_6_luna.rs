@@ -2,8 +2,8 @@
 //! recording: see `rig_test_support::model_session`. Chat Completions takes its
 //! function tools only at the caller's `reasoning_effort: "none"`.
 
-use rig::completion::CacheRates;
 use rig::providers::openai::GPT_6_LUNA;
+use rig_test_support::cache_cost::CacheRates;
 use rig_test_support::cache_longrun::CacheWire;
 use rig_test_support::model_session::{self, ChatSupport, OpenAiProfile};
 
