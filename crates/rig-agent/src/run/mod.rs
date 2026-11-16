@@ -470,7 +470,9 @@ impl AgentRun {
         self.turn_tools.as_ref()
     }
 
-    /// Set the input chat history preceding the prompt.
+    /// Set the input chat history preceding the prompt. It is not checked: a
+    /// history from outside the run (another store, a run resumed in another
+    /// process) goes through `rig_core::conversation::pairing::validate` first.
     pub fn with_history(
         mut self,
         history: impl IntoIterator<Item = impl Into<Arc<Message>>>,

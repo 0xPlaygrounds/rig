@@ -1,5 +1,6 @@
 //! Pure request preparation from run settings, model capabilities, the prompt,
-//! history, tools, and per-turn overrides. Retrieval and model execution remain driver responsibilities.
+//! history, tools, and per-turn overrides. Retrieval and model execution remain
+//! driver responsibilities.
 //!
 //! ```
 //! use rig_agent::run::{prepare::prepare_request, spec::RunSpec};

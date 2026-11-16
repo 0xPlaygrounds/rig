@@ -92,13 +92,13 @@ so its sensitivity and size grow with the run. Hosts must apply their persistenc
 and redaction policy before storing it. Constructing a run directly does not
 execute an agent's configured hooks, tools, or retrieval.
 
-Everything an agent loop *is* sits beside it in `rig_agent::run` — the
+Everything an agent loop *is* sits beside it in `rig_agent::run`: the
 `RunSpec` it is configured by, `prepare_request` (the pure `(RunSpec,
-capabilities, prompt, history, tools, patch) → PreparedRequest` step, whose
-`CompletionRequest` every driver sends, so all send the same bytes), the
-output policy, the per-turn `RequestPatch`, the run's response and error
-types, the invalid-call decisions, the streamed-turn assembler and the
-loop-side transcript helpers — all sans-IO and serializable.
+capabilities, prompt, history, tools, patch) → PreparedRequest` step whose
+`CompletionRequest` every driver sends unchanged, so all drivers send the same
+bytes), the output policy, the per-turn `RequestPatch`, the run's response and
+error types, the invalid-call decisions, the streamed-turn assembler and the
+loop-side transcript helpers. All of it is sans-IO and serializable.
 rig-core keeps only the message-model invariants (`conversation::pairing`, the
 `tool::feedback` constructors). A host that drives runs itself (an ECS schedule, a
 job system) depends on this crate with default features off: that graph
