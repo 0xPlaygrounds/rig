@@ -17,7 +17,7 @@ use serde_json::json;
 use tokio::sync::{Barrier, Notify};
 
 use crate::agent::AgentBuilder;
-use crate::agent::hook::{AgentHook, HookContext, RequestPatch, StepEventKind};
+use crate::agent::hook::{AgentHook, HookContext, RequestPatch};
 use crate::agent::streaming::MultiTurnStreamItem;
 use crate::completion::{Message, PromptError, Usage};
 use crate::run::OutputMode;
@@ -40,18 +40,31 @@ use rig_core::vector_store::{
 };
 use rig_core::wasm_compat::WasmCompatSend;
 
+/// A hook callback the recording hook saw.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Event {
+    CompletionCall,
+    ModelTurnFinished,
+    InvalidToolCall,
+    CompletionDispatch,
+    ToolDispatch,
+    TextDelta,
+    ReasoningDelta,
+    ToolCallDelta,
+}
+
 /// Records the kind of every hook event (and every tool-result payload) so a
 /// run() and a stream() of the same scenario can be compared.
 #[derive(Clone, Default)]
 struct RecordingHook {
-    events: Arc<Mutex<Vec<StepEventKind>>>,
+    events: Arc<Mutex<Vec<Event>>>,
     tool_results: Arc<Mutex<Vec<String>>>,
 }
 
 impl RecordingHook {
     /// Event kinds that should be identical across streaming and
     /// non-streaming (excludes the streaming-only delta events).
-    fn shared_events(&self) -> Vec<StepEventKind> {
+    fn shared_events(&self) -> Vec<Event> {
         self.events
             .lock()
             .expect("events lock")
@@ -60,10 +73,10 @@ impl RecordingHook {
             .filter(|kind| {
                 matches!(
                     kind,
-                    StepEventKind::CompletionCall
-                        | StepEventKind::CompletionDispatch
-                        | StepEventKind::ToolDispatch
-                        | StepEventKind::InvalidToolCall
+                    Event::CompletionCall
+                        | Event::CompletionDispatch
+                        | Event::ToolDispatch
+                        | Event::InvalidToolCall
                 )
             })
             .collect()
@@ -75,7 +88,7 @@ impl RecordingHook {
 
     /// Count of a single event kind across the whole run, including the
     /// streaming-only delta events that `shared_events` excludes.
-    fn count(&self, kind: StepEventKind) -> usize {
+    fn count(&self, kind: Event) -> usize {
         self.events
             .lock()
             .expect("events lock")
@@ -86,7 +99,7 @@ impl RecordingHook {
 }
 
 impl RecordingHook {
-    fn record(&self, kind: StepEventKind) {
+    fn record(&self, kind: Event) {
         self.events.lock().expect("events lock").push(kind);
     }
 }
@@ -97,7 +110,7 @@ impl AgentHook for RecordingHook {
         _: &HookContext,
         _: CompletionCallEvent<'_>,
     ) -> CompletionCallAction {
-        self.record(StepEventKind::CompletionCall);
+        self.record(Event::CompletionCall);
         CompletionCallAction::continue_run()
     }
     async fn on_model_turn_finished(
@@ -105,7 +118,7 @@ impl AgentHook for RecordingHook {
         _: &HookContext,
         _: ModelTurnFinished<'_>,
     ) -> ModelTurnAction {
-        self.record(StepEventKind::ModelTurnFinished);
+        self.record(Event::ModelTurnFinished);
         ModelTurnAction::continue_run()
     }
     async fn on_invalid_tool_call(
@@ -113,13 +126,13 @@ impl AgentHook for RecordingHook {
         _: &HookContext,
         _: &InvalidToolCallContext,
     ) -> Option<InvalidToolCallAction> {
-        self.record(StepEventKind::InvalidToolCall);
+        self.record(Event::InvalidToolCall);
         None
     }
     /// Records `ToolDispatch` once at the tool-call dispatch boundary.
     async fn on_dispatch(&self, _: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
         if event.tool_name().is_some() {
-            self.record(StepEventKind::ToolDispatch);
+            self.record(Event::ToolDispatch);
         }
         DispatchAction::proceed()
     }
@@ -128,9 +141,9 @@ impl AgentHook for RecordingHook {
     /// per tool outcome, capturing the model-visible result text.
     async fn on_outcome(&self, _: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
         if event.completion().is_some() {
-            self.record(StepEventKind::CompletionDispatch);
+            self.record(Event::CompletionDispatch);
         } else if let Some(result) = event.tool_result() {
-            self.record(StepEventKind::ToolDispatch);
+            self.record(Event::ToolDispatch);
             self.tool_results
                 .lock()
                 .expect("results lock")
@@ -139,7 +152,7 @@ impl AgentHook for RecordingHook {
         OutcomeAction::proceed()
     }
     async fn on_text_delta(&self, _: &HookContext, _: TextDelta<'_>) -> ObservationAction {
-        self.record(StepEventKind::TextDelta);
+        self.record(Event::TextDelta);
         ObservationAction::continue_run()
     }
     async fn on_reasoning_delta(
@@ -147,11 +160,11 @@ impl AgentHook for RecordingHook {
         _: &HookContext,
         _: ReasoningDelta<'_>,
     ) -> ObservationAction {
-        self.record(StepEventKind::ReasoningDelta);
+        self.record(Event::ReasoningDelta);
         ObservationAction::continue_run()
     }
     async fn on_tool_call_delta(&self, _: &HookContext, _: ToolCallDelta<'_>) -> ObservationAction {
-        self.record(StepEventKind::ToolCallDelta);
+        self.record(Event::ToolCallDelta);
         ObservationAction::continue_run()
     }
 }
@@ -2776,9 +2789,7 @@ async fn invalid_tool_call_repair_parity_across_run_and_stream() {
     assert_outcomes_match(&blocking, &streaming, "repair");
     assert_eq!(blocking.output, "the answer is 5");
     assert!(
-        blocking
-            .shared_events
-            .contains(&StepEventKind::InvalidToolCall),
+        blocking.shared_events.contains(&Event::InvalidToolCall),
         "the hook must observe the invalid tool call"
     );
     assert_eq!(blocking.tool_results, vec!["5".to_string()]);
@@ -2883,7 +2894,7 @@ impl ScriptedTurn {
 struct ParityOutcome {
     output: String,
     messages: Vec<Message>,
-    shared_events: Vec<StepEventKind>,
+    shared_events: Vec<Event>,
     tool_results: Vec<String>,
 }
 
@@ -3062,9 +3073,7 @@ async fn invalid_tool_call_skip_parity_across_run_and_stream() {
     assert_eq!(streaming.output, blocking.output);
     assert_eq!(blocking.shared_events, streaming.shared_events);
     assert!(
-        blocking
-            .shared_events
-            .contains(&StepEventKind::InvalidToolCall),
+        blocking.shared_events.contains(&Event::InvalidToolCall),
         "the hook must observe the invalid tool call"
     );
     // A streamed turn cut short at its invalid call replays canonically;
@@ -4664,7 +4673,7 @@ async fn model_turn_retry_rejects_tool_turn_before_tool_hooks_or_execution() {
     assert!(reason.contains("tool-bearing model turns"));
     assert!(reason.contains("tool-call hooks"));
     assert_eq!(chat_history, vec![Message::user("add")]);
-    assert_eq!(recorder.count(StepEventKind::ToolDispatch), 0);
+    assert_eq!(recorder.count(Event::ToolDispatch), 0);
     assert_eq!(executions.load(SeqCst), 0);
 }
 
@@ -4724,7 +4733,7 @@ async fn streaming_model_turn_retry_rejects_tool_turn_without_committed_executio
     assert_eq!(completion_calls, 1);
     assert_eq!(agent_finals, 0);
     assert_eq!(retry_markers, 0);
-    assert_eq!(recorder.count(StepEventKind::ToolDispatch), 0);
+    assert_eq!(recorder.count(Event::ToolDispatch), 0);
     assert_eq!(executions.load(SeqCst), 0);
 }
 
@@ -4948,10 +4957,13 @@ async fn outcome_stop_is_terminal_through_nested_hooks_on_both_surfaces() {
     for streaming in [false, true] {
         for nested in [false, true] {
             let later = Arc::new(AtomicU32::new(0));
-            let mut inner = HookStack::with(StopTool);
+            let mut inner = HookStack::new();
+            inner.push(StopTool);
             inner.push(Revive(later.clone()));
             let mut stack = if nested {
-                HookStack::with(inner)
+                let mut outer = HookStack::new();
+                outer.push(inner);
+                outer
             } else {
                 inner
             };

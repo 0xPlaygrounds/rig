@@ -404,17 +404,18 @@ async fn downstream_models_keep_typed_low_level_apis_and_share_a_concrete_agent_
     assert_eq!(extracted.output.value, "external model extraction");
 
     let diagnostic = AgentBuilder::named_model("diagnostic-alpha", alpha).build();
-    assert_eq!(
-        diagnostic.model_label(),
-        Some(ModelRef::from("diagnostic-alpha")),
+    let descriptor = diagnostic
+        .handler_descriptor(diagnostic.model_key().raw())
+        .expect("registered model descriptor");
+    assert!(
+        matches!(
+            &descriptor.family,
+            rig_core::effect::FamilyDescriptor::Completion { model, .. }
+                if model.as_str() == "diagnostic-alpha"
+        ),
         "the agent's default model is addressed by its registered label"
     );
-    let debug = format!(
-        "{:?}",
-        diagnostic
-            .model_descriptor()
-            .expect("registered model descriptor")
-    );
+    let debug = format!("{descriptor:?}");
     assert!(debug.contains("diagnostic-alpha"));
     assert!(!debug.contains("credential-must-not-leak"));
 }

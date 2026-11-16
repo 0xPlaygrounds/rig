@@ -135,7 +135,6 @@ pub struct HookContext {
     run_id: RunId,
     turn: AtomicUsize,
     is_streaming: bool,
-    agent_name: Option<String>,
     scratchpad: Scratchpad,
     /// A patch a stack accumulated before one of its hooks denied the
     /// dispatch, keyed by the effect's id. `DispatchAction::Deny` carries only
@@ -154,13 +153,12 @@ pub struct HookContext {
 }
 
 impl HookContext {
-    pub(crate) fn new(is_streaming: bool, agent_name: Option<String>, handlers: Handlers) -> Self {
+    pub(crate) fn new(is_streaming: bool, handlers: Handlers) -> Self {
         Self {
             handlers,
             run_id: RunId::new(),
             turn: AtomicUsize::new(0),
             is_streaming,
-            agent_name,
             scratchpad: Scratchpad::default(),
             salvaged_patches: std::sync::Mutex::new(HashMap::new()),
             output_tool: std::sync::Mutex::new(None),
@@ -232,11 +230,6 @@ impl HookContext {
     /// Whether the streaming surface is driving this run.
     pub fn is_streaming(&self) -> bool {
         self.is_streaming
-    }
-
-    /// Configured agent name.
-    pub fn agent_name(&self) -> Option<&str> {
-        self.agent_name.as_deref()
     }
 
     /// Shared run scratchpad.
@@ -505,12 +498,6 @@ pub enum StepEventKind {
     RunStart,
     /// `on_run_settled`.
     RunSettled,
-    /// `on_completion_call`.
-    CompletionCall,
-    /// `on_model_turn_finished`.
-    ModelTurnFinished,
-    /// `on_invalid_tool_call`.
-    InvalidToolCall,
     /// `on_text_delta`.
     TextDelta,
     /// `on_reasoning_delta`.
@@ -1087,7 +1074,8 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
     }
 
     /// Declare event interest. Memory, retrieval, embedding, reranking, and custom
-    /// dispatches default to false; all other kinds default to true.
+    /// dispatches default to false; all other kinds default to true. The
+    /// completion-call, model-turn and invalid-call callbacks are always called.
     /// For dispatch events, false prevents both boundary callbacks and therefore
     /// prevents this hook from steering that family.
     fn observes(&self, kind: StepEventKind) -> bool {
@@ -1237,13 +1225,6 @@ impl HookStack {
         Self::default()
     }
 
-    /// Creates a hook stack containing `hook`.
-    pub fn with<H: AgentHook + 'static>(hook: H) -> Self {
-        let mut stack = Self::new();
-        stack.push(hook);
-        stack
-    }
-
     /// Append a hook. Its recorded name is [`AgentHook::name`] or its type name
     /// without the module path; nested stacks contribute flattened names.
     pub fn push<H: AgentHook + 'static>(&mut self, hook: H) {
@@ -1267,11 +1248,6 @@ impl HookStack {
     /// Returns `true` when the stack contains no hooks.
     pub fn is_empty(&self) -> bool {
         self.hooks.is_empty()
-    }
-
-    /// Returns the number of hooks in the stack.
-    pub fn len(&self) -> usize {
-        self.hooks.len()
     }
 }
 

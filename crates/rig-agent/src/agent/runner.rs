@@ -546,11 +546,7 @@ impl AgentRunner {
     /// The run-scoped hook context: minted once per run, shared by every
     /// hook event.
     pub(crate) fn hook_context(&self, is_streaming: bool) -> HookContext {
-        HookContext::new(
-            is_streaming,
-            self.config.name.clone(),
-            self.config.handlers.clone(),
-        )
+        HookContext::new(is_streaming, self.config.handlers.clone())
     }
 
     /// Drive the agent loop to completion, returning the aggregated

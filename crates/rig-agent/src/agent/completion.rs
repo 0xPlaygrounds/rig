@@ -320,25 +320,22 @@ impl AgentConfig {
         self.handlers.bind(&self.model_key)
     }
 
-    /// The default model's label as registered now, if a completion model
-    /// serves it.
-    pub(crate) fn registered_model_label(&self) -> Option<ModelRef> {
-        match self.handlers.descriptor(self.model_key.raw())?.family {
-            rig_core::effect::FamilyDescriptor::Completion { model, .. } => Some(model),
-            _ => None,
-        }
-    }
-
     /// The default model's label as registered now (the key's tail when
     /// nothing serves it).
     pub(crate) fn model_label(&self) -> ModelRef {
-        self.registered_model_label().unwrap_or_else(|| {
-            let key = self.model_key.as_str();
-            let label = key
-                .strip_prefix(&*self.owner)
-                .and_then(|rest| rest.strip_prefix("/model:"));
-            ModelRef::new(label.unwrap_or(key))
-        })
+        match self.handlers.descriptor(self.model_key.raw()) {
+            Some(HandlerDescriptor {
+                family: rig_core::effect::FamilyDescriptor::Completion { model, .. },
+                ..
+            }) => model,
+            _ => {
+                let key = self.model_key.as_str();
+                let label = key
+                    .strip_prefix(&*self.owner)
+                    .and_then(|rest| rest.strip_prefix("/model:"));
+                ModelRef::new(label.unwrap_or(key))
+            }
+        }
     }
 
     /// Bind the model registered under `label`.
@@ -435,16 +432,6 @@ impl Agent {
     /// key; `.raw()` for the wire string).
     pub fn model_key(&self) -> &Key<family::Completion> {
         &self.config.model_key
-    }
-
-    /// The descriptor of this agent's default model, as registered now.
-    pub fn model_descriptor(&self) -> Option<HandlerDescriptor> {
-        self.config.handlers.descriptor(self.config.model_key.raw())
-    }
-
-    /// The label of this agent's default model, as registered now.
-    pub fn model_label(&self) -> Option<ModelRef> {
-        self.config.registered_model_label()
     }
 
     /// Register `model` in this agent's table under `label` and return the
