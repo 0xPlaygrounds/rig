@@ -31,7 +31,8 @@ use serde_json::{Map, Value, json};
 
 pub use super::cached_content::with_cached_content;
 #[doc(hidden)]
-pub use super::options::{Route, generate_content_options};
+pub use super::options::Route;
+use super::options::generate_content_options;
 use crate::completion::options::{BaseInput, FinalBody, RawAt, Rewrite, request_params};
 use crate::completion::{Accepts, CompletionRequest, Media, Place, Replay, ReplayTarget};
 use crate::error::{EncodeError, ProviderError};
@@ -220,29 +221,76 @@ impl Wire for GenerateContent {
     }
 }
 
-impl ReplayTarget for GenerateContent {
+/// The REST wire's place among the GenerateContent wires.
+impl GenerateContentWire for GenerateContent {
+    const PROVIDER: &'static str = PROVIDER_NAME;
+    const ROUTE: Route = Route::Rest;
+
+    fn wire_model(&self) -> &str {
+        &self.model
+    }
+
+    fn wire_facts(&self) -> &crate::catalog::ModelFacts {
+        &self.facts
+    }
+
+    fn cache_handle(&self) -> Option<&str> {
+        self.cached_content.as_deref()
+    }
+}
+
+/// A wire that speaks GenerateContent: the REST wire here, and the Vertex AI
+/// and gRPC wires in their crates. Each is a [`ReplayTarget`] through it.
+///
+/// For rig's own crates; not covered by semver.
+#[doc(hidden)]
+pub trait GenerateContentWire: std::fmt::Debug + crate::wasm_compat::WasmCompatSync {
+    /// The descriptor name of the provider the wire speaks to.
+    const PROVIDER: &'static str;
+    /// The route, which decides the API name, whether a function response
+    /// takes file URLs, and the service tiers.
+    const ROUTE: Route;
+
+    /// The model the wire addresses.
+    fn wire_model(&self) -> &str;
+
+    /// The model facts the encoder reads and replies are priced by.
+    fn wire_facts(&self) -> &crate::catalog::ModelFacts;
+
+    /// The `cachedContents` handle every request reads its prefix from.
+    fn cache_handle(&self) -> Option<&str> {
+        None
+    }
+}
+
+impl<W: GenerateContentWire> ReplayTarget for W {
     fn facts(&self) -> Option<&crate::catalog::ModelFacts> {
-        Some(&self.facts)
+        Some(self.wire_facts())
     }
 
     fn api(&self) -> crate::message::Api {
-        crate::message::Api::from_static("gemini.generate_content")
+        crate::message::Api::from_static(match W::ROUTE {
+            Route::Vertex => "vertexai.generate_content",
+            Route::Rest | Route::Grpc => "gemini.generate_content",
+        })
     }
 
     fn provider(&self) -> &str {
-        PROVIDER_NAME
+        W::PROVIDER
     }
 
     fn model(&self) -> &str {
-        &self.model
+        self.wire_model()
     }
 
     fn accepts(&self, model: &str) -> Accepts {
         accepts(model)
     }
 
+    /// Vertex AI declares `fileData` in a function response; the Gemini API
+    /// does not.
     fn encodes(&self, _model: &str, media: Media<'_>) -> bool {
-        encodes(media, false)
+        encodes(media, W::ROUTE == Route::Vertex)
     }
 
     fn normalize_tool_call_id(
@@ -261,51 +309,36 @@ impl ReplayTarget for GenerateContent {
     }
 
     fn call_id_slot(&self) -> Option<&'static str> {
-        CALL_ID_SLOT
+        Some("/functionCall/id")
     }
 
     fn blob_slots(&self) -> &'static [&'static str] {
-        BLOB_SLOTS
+        &["/thoughtSignature"]
     }
 
-    fn declares_tools(&self, request: &crate::completion::CompletionRequest) -> bool {
-        self.cached_content.is_some() || declares_tools(self, request)
+    /// Tools in `tools`, in the `tools` of `additional_params`, or through a
+    /// `cachedContent` handle, since a cache holds its function
+    /// declarations.
+    fn declares_tools(&self, request: &CompletionRequest) -> bool {
+        let param = |key: &str| crate::completion::options::param(self, request, key);
+        self.cache_handle().is_some()
+            || !request.tools.is_empty()
+            || param("tools").is_some_and(|tools| !tools.as_array().is_none_or(Vec::is_empty))
+            || CACHED_CONTENT
+                .iter()
+                .any(|spelling| param(spelling).is_some_and(|value| !value.is_null()))
     }
 
-    /// Section 6.4 of the typed-options design, for the Gemini API.
+    /// Section 6.4 of the typed-options design, for the route's tiers.
     fn map_options(
         &self,
         request: &CompletionRequest,
         fields: crate::completion::options::OptionFields<'_>,
     ) -> crate::completion::options::OptionMap {
-        let model = request.model.as_deref().unwrap_or(&self.model);
-        generate_content_options(&self.facts, model, Route::Rest, fields)
+        let model = request.model.as_deref().unwrap_or(self.wire_model());
+        generate_content_options(self.wire_facts(), model, W::ROUTE, fields)
     }
 }
-
-/// Whether `request` declares tools on `target`, a GenerateContent wire: in
-/// `tools`, in the `tools` of its `additional_params`, or through a
-/// `cachedContent` handle there, since a cache holds its function
-/// declarations.
-pub fn declares_tools(
-    target: &dyn ReplayTarget,
-    request: &crate::completion::CompletionRequest,
-) -> bool {
-    let param = |key: &str| crate::completion::options::param(target, request, key);
-    !request.tools.is_empty()
-        || param("tools").is_some_and(|tools| !tools.as_array().is_none_or(Vec::is_empty))
-        || CACHED_CONTENT
-            .iter()
-            .any(|spelling| param(spelling).is_some_and(|value| !value.is_null()))
-}
-
-/// Where a GenerateContent part holds its call's id, on every wire that
-/// speaks it.
-pub const CALL_ID_SLOT: Option<&str> = Some("/functionCall/id");
-
-/// Where a GenerateContent part, a call's included, holds its thought
-/// signature, on every wire that speaks it.
-pub const BLOB_SLOTS: &[&str] = &["/thoughtSignature"];
 
 /// The major version of a Gemini model id, read past a `models/` prefix:
 /// `gemini-<major>…` or `gemini-live-<major>…`, or `None` for an id that is
@@ -345,7 +378,7 @@ pub fn requires_tool_call_id(model: &str) -> bool {
 /// responses only from Gemini 3 on. A Gemini alias reads them as the
 /// current generation, and a model that is not Gemini (Claude behind
 /// Vertex AI) is assumed to read them, as pi assumes.
-pub fn accepts(model: &str) -> Accepts {
+pub(crate) fn accepts(model: &str) -> Accepts {
     Accepts {
         tool_result_images: gemini_major(model).is_none_or(|major| major >= 3),
         ..Accepts::ALL
@@ -357,7 +390,7 @@ pub fn accepts(model: &str) -> Accepts {
 /// needs no media type and a file id is never taken. A function response
 /// takes image data, and a URL only when `response_files`: Vertex AI declares
 /// `fileData` there and the Gemini API does not.
-pub fn encodes(media: Media<'_>, response_files: bool) -> bool {
+fn encodes(media: Media<'_>, response_files: bool) -> bool {
     match media {
         Media::Image(image, place) => {
             reads_image(image.media_type.as_ref(), place)
@@ -403,7 +436,7 @@ pub(crate) fn reads_image(
 /// `id` as `model` takes another model's call id: when the model takes ids
 /// at all, characters outside `[a-zA-Z0-9_-]` become `_` and it keeps at
 /// most 64 of them.
-pub fn normalize_tool_call_id(model: &str, id: &str) -> String {
+fn normalize_tool_call_id(model: &str, id: &str) -> String {
     if !requires_tool_call_id(model) {
         return id.to_owned();
     }

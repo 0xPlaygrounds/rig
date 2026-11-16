@@ -23,7 +23,6 @@ use futures::StreamExt;
 use rig_core::completion::CompletionRequest;
 use rig_core::driver::{Exchange, Opened, Opening, Transport};
 use rig_core::error::{EncodeError, ProviderError};
-use rig_core::message;
 use rig_core::operation::Completion;
 use rig_core::providers::gemini::completion as rest;
 use rig_core::providers::gemini::streaming::document::GenerateContentResponse as Document;
@@ -100,70 +99,17 @@ impl Wire for GenerateContent {
     }
 }
 
-impl rig_core::completion::ReplayTarget for GenerateContent {
-    /// The GenerateContent mapping, for what the gRPC request declares.
-    fn map_options(
-        &self,
-        request: &CompletionRequest,
-        fields: rig_core::completion::options::OptionFields<'_>,
-    ) -> rig_core::completion::options::OptionMap {
-        let model = request.model.as_deref().unwrap_or(&self.model);
-        rest::generate_content_options(&self.facts, model, rest::Route::Grpc, fields)
-    }
+/// The gRPC wire's place among the GenerateContent wires.
+impl rest::GenerateContentWire for GenerateContent {
+    const PROVIDER: &'static str = PROVIDER_NAME;
+    const ROUTE: rest::Route = rest::Route::Grpc;
 
-    fn facts(&self) -> Option<&rig_core::catalog::ModelFacts> {
-        Some(&self.facts)
-    }
-
-    fn api(&self) -> message::Api {
-        message::Api::from_static("gemini.generate_content")
-    }
-
-    fn provider(&self) -> &str {
-        PROVIDER_NAME
-    }
-
-    fn model(&self) -> &str {
+    fn wire_model(&self) -> &str {
         &self.model
     }
 
-    /// What the model reads, as on every GenerateContent wire.
-    fn accepts(&self, model: &str) -> rig_core::completion::Accepts {
-        rest::accepts(model)
-    }
-
-    /// The media the Gemini API takes, as on the REST wire.
-    fn encodes(&self, _model: &str, media: rig_core::completion::Media<'_>) -> bool {
-        rest::encodes(media, false)
-    }
-
-    fn normalize_tool_call_id(
-        &self,
-        id: &str,
-        model: &str,
-        _source: Option<&message::Origin>,
-    ) -> String {
-        rest::normalize_tool_call_id(model, id)
-    }
-
-    /// Gemini takes system text only in `systemInstruction`: later system
-    /// messages fold into the leading one, as pi's `collapseSystemMessages`.
-    fn later_system(&self, _model: &str) -> rig_core::completion::LaterSystem {
-        rig_core::completion::LaterSystem::Leading
-    }
-
-    fn call_id_slot(&self) -> Option<&'static str> {
-        rest::CALL_ID_SLOT
-    }
-
-    fn blob_slots(&self) -> &'static [&'static str] {
-        rest::BLOB_SLOTS
-    }
-
-    /// Tools in `additional_params` or a cached content count, as on the
-    /// REST wire.
-    fn declares_tools(&self, request: &CompletionRequest) -> bool {
-        rest::declares_tools(self, request)
+    fn wire_facts(&self) -> &rig_core::catalog::ModelFacts {
+        &self.facts
     }
 }
 

@@ -2,6 +2,7 @@ use super::*;
 use crate::proto;
 use rig_core::Model;
 use rig_core::completion::CompletionResponse;
+use rig_core::message;
 use rig_core::streaming::CompletionStream;
 
 /// The protobuf request `request` sends to `model`.
