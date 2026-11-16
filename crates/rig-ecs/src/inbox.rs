@@ -31,7 +31,6 @@ use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemParam;
 use bevy_ecs::world::DeferredWorld;
 use bevy_reflect::prelude::*;
-use rig_core::catalog::ModelSpec;
 use rig_core::completion::Message;
 use rig_core::conversation::{Aside, AsideId, Author, AuthorKind, Entry, Halt};
 use rig_core::effect::{EffectKind, HandlerKey};
@@ -405,7 +404,6 @@ pub(crate) fn accept(
             commands.entity(entity).try_insert((Started { at }, mark));
             continue;
         }
-        let spec = connection.map(|connection| &*connection.spec);
         // An `Inform` message to an idle agent waits for the next turn.
         let turn = match joins {
             None if message.mode == DeliveryMode::Inform => None,
@@ -417,7 +415,7 @@ pub(crate) fn accept(
         let into = (turn, &mut commands);
         deliver(
             agent,
-            spec,
+            connection,
             [(entity, message)],
             conversation,
             &mut notices,
@@ -469,10 +467,9 @@ pub(crate) fn carry_on_accepted(
         let Some(next) = carry_on(inboxes.of(agent)) else {
             continue;
         };
-        let spec = connection.map(|connection| &*connection.spec);
         let conversation = &mut *conversation;
         let into = (Some(turn), &mut commands);
-        deliver(agent, spec, next, conversation, &mut notices, into);
+        deliver(agent, connection, next, conversation, &mut notices, into);
         take_outcome(&mut commands, turn, holds);
         spawn_turn_call(&mut commands, turn, agent);
     }
@@ -641,12 +638,11 @@ pub(crate) fn settle_unsent(
                 .try_insert_if_new(Outcome::custom("recalled"));
             typed.entry(agent).or_default().push(message.text().trim());
         } else {
-            let spec = connection.map(|connection| &*connection.spec);
             let conversation = &mut *conversation;
             let into = (None, &mut commands);
             deliver(
                 agent,
-                spec,
+                connection,
                 [(entity, message)],
                 conversation,
                 &mut notices,
@@ -705,48 +701,22 @@ pub(crate) fn message_kind(message: &Incoming) -> (HandlerKey, EffectKind) {
 }
 
 /// Puts each of `messages`, accepted by `agent`, in its `conversation`
-/// as [`pending`] does, and answers it as delivered, [`DeliveredIn`] the
-/// turn `into` names, if any.
+/// and answers it as delivered, [`DeliveredIn`] the turn `into` names, if
+/// any. Each goes in as a user message of its own by its author: its parts
+/// in order, each attachment the model of `connection` takes and each text
+/// trimmed, the first text headed by its author's line when it is not the
+/// user's own. The author is kept, and logged, unless it is the plain
+/// user, so a user's message with a title keeps it.
 pub(crate) fn deliver<'a>(
     agent: Entity,
-    spec: Option<&ModelSpec>,
+    connection: Option<&Connection>,
     messages: impl IntoIterator<Item = (Entity, &'a Incoming)>,
     conversation: &mut Conversation,
     notices: &mut MessageWriter<Notice>,
     (into, commands): (Option<Entity>, &mut Commands),
 ) {
+    let spec = connection.map(|connection| &*connection.spec);
     for (entity, message) in messages {
-        push_messages(agent, spec, [message], conversation, notices);
-        let mut delivered = commands.entity(entity);
-        delivered.try_insert_if_new(Outcome::custom("delivered"));
-        if let Some(turn) = into {
-            delivered.try_insert(DeliveredIn(turn));
-        }
-    }
-}
-
-/// The text parts of `parts`, in order.
-fn texts(parts: &[MessagePart]) -> impl Iterator<Item = &str> {
-    parts.iter().filter_map(|part| match part {
-        MessagePart::Text(text) => Some(text.as_str()),
-        MessagePart::Attachment(_) => None,
-    })
-}
-
-/// Pushes each of `messages` to `conversation`, that of `agent`, whose
-/// model is `spec`, as a user message of its own by its author: its parts
-/// in order, each attachment the model takes and each text trimmed, the
-/// first text headed by its author's line when it is not the user's own.
-/// The author is kept, and logged, unless it is the plain user, so a
-/// user's message with a title keeps it.
-pub(crate) fn push_messages<'a>(
-    agent: Entity,
-    spec: Option<&ModelSpec>,
-    messages: impl IntoIterator<Item = &'a Incoming>,
-    conversation: &mut Conversation,
-    notices: &mut MessageWriter<Notice>,
-) {
-    for message in messages {
         let mut header = message.author.header();
         let mut content = Vec::with_capacity(message.parts.len());
         let mut refused = Vec::new();
@@ -802,7 +772,20 @@ pub(crate) fn push_messages<'a>(
             false => entry.by(message.author.clone()),
         };
         conversation.push(entry);
+        let mut delivered = commands.entity(entity);
+        delivered.try_insert_if_new(Outcome::custom("delivered"));
+        if let Some(turn) = into {
+            delivered.try_insert(DeliveredIn(turn));
+        }
     }
+}
+
+/// The text parts of `parts`, in order.
+fn texts(parts: &[MessagePart]) -> impl Iterator<Item = &str> {
+    parts.iter().filter_map(|part| match part {
+        MessagePart::Text(text) => Some(text.as_str()),
+        MessagePart::Attachment(_) => None,
+    })
 }
 
 #[cfg(test)]
