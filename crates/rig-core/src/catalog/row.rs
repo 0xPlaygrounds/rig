@@ -171,30 +171,19 @@ struct Facts {
 /// [`Catalog::with_models_dev`](super::Catalog::with_models_dev) leaves a
 /// pinned key as it is, so a refresh from models.dev keeps it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub(super) enum Pinned {
-    #[serde(rename = "name")]
     Name,
-    #[serde(rename = "description")]
     Description,
-    #[serde(rename = "family")]
     Family,
-    #[serde(rename = "type")]
     Type,
-    #[serde(rename = "reasoning")]
     Reasoning,
-    #[serde(rename = "reasoning_options")]
     ReasoningOptions,
-    #[serde(rename = "tool_call")]
     ToolCall,
-    #[serde(rename = "structured_output")]
     StructuredOutput,
-    #[serde(rename = "temperature")]
     Temperature,
-    #[serde(rename = "attachment")]
     Attachment,
-    #[serde(rename = "interleaved")]
     Interleaved,
-    #[serde(rename = "modalities")]
     Modalities,
     #[serde(rename = "limit.context")]
     LimitContext,
@@ -220,19 +209,12 @@ pub(super) enum Pinned {
     CostTiers,
     #[serde(rename = "cost.context_over_200k")]
     CostContextOver200k,
-    #[serde(rename = "knowledge")]
     Knowledge,
-    #[serde(rename = "release_date")]
     ReleaseDate,
-    #[serde(rename = "last_updated")]
     LastUpdated,
-    #[serde(rename = "open_weights")]
     OpenWeights,
-    #[serde(rename = "status")]
     Status,
-    #[serde(rename = "provider")]
     Provider,
-    #[serde(rename = "experimental")]
     Experimental,
 }
 
