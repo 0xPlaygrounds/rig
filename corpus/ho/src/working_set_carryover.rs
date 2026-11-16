@@ -8,11 +8,11 @@
 //! it. The tracking is saved with the session ([`WorkingSet`]).
 
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use regex::Regex;
 use rig_basics::compaction::summary_in;
 use rig_harness::prelude::*;
+use rig_harness::rig_core::now_ms;
 use rig_harness::rig_core::tool::{ExitStatus, FilesChanged, FilesRead};
 use serde::{Deserialize, Serialize};
 
@@ -124,11 +124,7 @@ fn track(
         return;
     };
     let tool = request.call.function.name.as_str();
-    let at_ms = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |since| {
-            u64::try_from(since.as_millis()).unwrap_or(u64::MAX)
-        });
+    let at_ms = now_ms();
     if let Ok(Some(FilesRead(files))) = published.0.get::<FilesRead>() {
         for path in files.into_iter().map(|file| file.path) {
             set.read.retain(|read| read.path != path);

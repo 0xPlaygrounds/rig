@@ -14,7 +14,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
 
 use bevy_log::warn;
 use bevy_tasks::{IoTaskPool, TaskPool};
@@ -22,6 +22,7 @@ use rig_basics::session_picker::SessionEntry;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::attached_file;
 use rig_harness::rig_core::message::{Message, ToolResultContent};
+use rig_harness::rig_core::millis;
 use rig_harness::rig_core::tool::ToolOutput;
 use rig_harness::rig_memory::{DirStore, read_conversation};
 use rig_tools::fs::{read_json, write_json};
@@ -448,12 +449,7 @@ fn stamp(session: &Path) -> Stamp {
         let Ok(metadata) = fs::metadata(file) else {
             continue;
         };
-        let modified = metadata
-            .modified()
-            .ok()
-            .and_then(|at| at.duration_since(UNIX_EPOCH).ok())
-            .map(|since| u64::try_from(since.as_millis()).unwrap_or(u64::MAX))
-            .unwrap_or_default();
+        let modified = metadata.modified().ok().map(millis).unwrap_or_default();
         stamp.logs += 1;
         stamp.bytes += metadata.len();
         stamp.modified_ms = stamp.modified_ms.max(modified);

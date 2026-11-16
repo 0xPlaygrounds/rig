@@ -13,10 +13,10 @@ mod stats;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::thread::JoinHandle;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use futures::channel::oneshot;
 use rig_harness::prelude::*;
+use rig_harness::rig_core::now_ms;
 use rig_harness::rig_ecs::StopTurnsOnExit;
 use serde::{Deserialize, Serialize};
 
@@ -253,10 +253,7 @@ fn replace(path: &Path, table: &Table) -> Result<(), String> {
 
 /// Today, in days since the Unix epoch.
 fn today() -> u64 {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default();
-    (now.as_millis() as u64) / DAY_MS
+    now_ms() / DAY_MS
 }
 
 /// Counts each tool call recorded this frame, in the session's table and,

@@ -7,7 +7,7 @@
 use std::io::{self, ErrorKind, Write as _};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use rig_core::message::ImageMediaType;
 
@@ -142,10 +142,7 @@ pub fn read_image(launcher: &Launcher, into: &Path) -> io::Result<Option<PathBuf
         return Ok(None);
     };
     std::fs::create_dir_all(into)?;
-    let stamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|elapsed| elapsed.as_millis())
-        .unwrap_or_default();
+    let stamp = rig_core::now_ms();
     let path = into.join(format!("pasted-{stamp}.{}", kind.extension()));
     std::fs::write(&path, bytes)?;
     Ok(Some(path))
