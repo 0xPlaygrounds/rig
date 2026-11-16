@@ -25,6 +25,7 @@ use std::io::{self, Write as _};
 #[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// `Ok(None)` for a [`io::ErrorKind::NotFound`] failure, the value for
 /// success, and every other failure as it is.
@@ -236,22 +237,29 @@ pub fn open(options: &OpenOptions, path: impl AsRef<Path>) -> io::Result<File> {
 }
 
 /// Replaces the file `target` with `bytes` whole, so a reader sees the old
-/// file or the new one. The bytes go to a new file beside it, never one that
-/// was there (such as a planted link), which is private from creation, takes
-/// the old file's permissions and group, and is synced before it is renamed
-/// over `target`; the folder is synced after where the system allows. A new
-/// `target` gets the default mode.
+/// file or the new one. The bytes go to a new file beside it, named for this
+/// call alone and never one that was there (such as a planted link), which
+/// is private from creation, takes the old file's permissions and group, and
+/// is synced before it is renamed over `target`; the folder is synced after
+/// where the system allows. A new `target` gets the default mode.
 ///
 /// # Errors
 ///
-/// When a step fails, naming it and its path, the old file's group that
-/// cannot be kept included. The staged file is removed.
+/// When `target` names no file, or a step fails, naming it and its path,
+/// the old file's group that cannot be kept included. The staged file is
+/// removed.
 pub fn replace(target: &Path, bytes: &[u8]) -> io::Result<()> {
-    let folder = target.parent().unwrap_or(Path::new(""));
-    let name = target.file_name().unwrap_or_default().to_string_lossy();
-    let staged = folder.join(format!(".{name}.{}", std::process::id()));
+    static CALLS: AtomicU64 = AtomicU64::new(0);
+    let (Some(folder), Some(name)) = (target.parent(), target.file_name()) else {
+        let why = format!("replace {}: not a file's path", target.display());
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, why));
+    };
+    let call = CALLS.fetch_add(1, Ordering::Relaxed);
+    let name = name.to_string_lossy();
+    let staged = folder.join(format!(".{name}.{}.{call}", std::process::id()));
     let kept = optional(symlink_metadata(target))?.filter(Metadata::is_file);
-    // A crash's leftover, or a link planted here, must not become this copy.
+    // A leftover of a crashed process with the same id, or a link planted
+    // here, must not become this copy.
     optional(remove_file(&staged))?;
     let mut options = OpenOptions::new();
     options.write(true).create_new(true);

@@ -288,15 +288,29 @@ fn a_private_settings_file_is_never_staged_readable() {
     assert_eq!(open, None, "staged readable by others");
     assert_eq!(mode(&path).ok(), Some(0o600));
 
-    let staged = dir.join(format!(".settings.toml.{}", std::process::id()));
+    // Links at every staged name the next edit may take, as each call has
+    // its own.
+    let staged: Vec<_> = (0..1024)
+        .map(|call| dir.join(format!(".settings.toml.{}.{call}", std::process::id())))
+        .collect();
     let outside = dir.join("outside");
-    assert!(std::fs::write(&outside, "").is_ok() && symlink(&outside, &staged).is_ok());
+    assert!(std::fs::write(&outside, "").is_ok());
+    assert!(
+        staged
+            .iter()
+            .all(|staged| symlink(&outside, staged).is_ok())
+    );
     assert_eq!(set_key(&path, -1), Ok((true, ())));
     assert_eq!(std::fs::read_to_string(&outside).ok().as_deref(), Some(""));
     assert_eq!(mode(&path).ok(), Some(0o600));
-    assert!(
-        std::fs::symlink_metadata(&staged).is_err(),
-        "staged copy left"
+    let left = staged
+        .iter()
+        .filter(|staged| std::fs::symlink_metadata(staged).is_ok())
+        .count();
+    assert_eq!(
+        left,
+        staged.len() - 1,
+        "the edit's own staged name is cleared"
     );
 
     let fresh = dir.join("fresh.toml");
