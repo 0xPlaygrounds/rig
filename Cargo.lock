@@ -14253,6 +14253,7 @@ dependencies = [
  "schemars 1.2.1",
  "serde",
  "serde_json",
+ "thiserror 2.0.21",
  "uuid",
  "web-time",
 ]
@@ -14331,6 +14332,7 @@ dependencies = [
  "serde",
  "serde_json",
  "signal-hook 0.4.6",
+ "thiserror 2.0.21",
  "tokio",
  "toml",
 ]

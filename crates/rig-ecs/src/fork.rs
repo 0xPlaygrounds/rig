@@ -73,37 +73,21 @@ pub(crate) struct Forking(Option<MessageId>);
 pub struct ForkResult(pub Result<Entity, ForkError>);
 
 /// Why a [`ForkAgent`] made no fork.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum ForkError {
     /// The entity forked is no agent.
+    #[error("it is no agent")]
     NoAgent,
     /// The session is not logged.
+    #[error("the session is not logged")]
     NoLog,
     /// The app has no type registry.
+    #[error("the app has no type registry")]
     NoRegistry,
     /// The log could not be copied, such as through a message the agent
     /// never had.
-    Session(SessionError),
-}
-
-impl std::fmt::Display for ForkError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::NoAgent => f.write_str("it is no agent"),
-            Self::NoLog => f.write_str("the session is not logged"),
-            Self::NoRegistry => f.write_str("the app has no type registry"),
-            Self::Session(failure) => failure.fmt(f),
-        }
-    }
-}
-
-impl std::error::Error for ForkError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Session(failure) => Some(failure),
-            _ => None,
-        }
-    }
+    #[error("{0}")]
+    Session(#[source] SessionError),
 }
 
 /// On an agent made by a [`ForkAgent`]: the agents its conversation came

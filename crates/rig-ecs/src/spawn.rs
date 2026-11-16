@@ -66,38 +66,29 @@ pub struct AgentSpec {
 }
 
 /// Why no agent was made.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum SpawnRefused {
     /// The origin is not an agent.
+    #[error("the agent to spawn from is gone")]
     NotAnAgent,
     /// An agent has the id asked for, or one differing only in letter case
     /// ([`same_log_name`]), or a spawn not applied yet asked for it first:
     /// on a disk that ignores case, the two would share one log.
+    #[error("an agent with the id `{}` exists", .0.0)]
     IdTaken(AgentId),
     /// The id asked for cannot name a new agent log
     /// ([`check_new_log_name`]): it is empty, holds a `/` or `\`, is `.` or
     /// `..`, is longer than [`MAX_NEW_LOG_NAME`](rig_memory::MAX_NEW_LOG_NAME)
     /// bytes, or is the session's own log's name in any letter case.
+    #[error("`{}` cannot name an agent's log", .0.0)]
     NotALogName(AgentId),
     /// A tool asked for is not one its origin keeps.
+    #[error(transparent)]
     Tool(NotYours),
     /// The model or effort asked for cannot be used, for the reason given.
+    #[error("{0}")]
     Model(String),
 }
-
-impl std::fmt::Display for SpawnRefused {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::NotAnAgent => f.write_str("the agent to spawn from is gone"),
-            Self::IdTaken(id) => write!(f, "an agent with the id `{}` exists", id.0),
-            Self::NotALogName(id) => write!(f, "`{}` cannot name an agent's log", id.0),
-            Self::Tool(refused) => refused.fmt(f),
-            Self::Model(why) => f.write_str(why),
-        }
-    }
-}
-
-impl std::error::Error for SpawnRefused {}
 
 /// What a new agent takes from its origin.
 #[derive(QueryData)]

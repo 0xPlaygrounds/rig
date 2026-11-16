@@ -378,22 +378,14 @@ impl RunTools {
 
 /// Why [`ToolAccess::grant`] refused: `name` is not one of the tools the
 /// granting access keeps, `yours`.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
+#[error("`{name}` is not one of your tools ({})", .yours.join(", "))]
 pub struct NotYours {
     /// The tool asked for.
     pub name: String,
     /// The registered tools the granting access keeps, sorted.
     pub yours: Vec<String>,
 }
-
-impl std::fmt::Display for NotYours {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let (name, yours) = (&self.name, self.yours.join(", "));
-        write!(f, "`{name}` is not one of your tools ({yours})")
-    }
-}
-
-impl std::error::Error for NotYours {}
 
 impl ToolAccess {
     /// Every registered tool.

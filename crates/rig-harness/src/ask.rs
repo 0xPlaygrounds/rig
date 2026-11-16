@@ -227,28 +227,19 @@ impl Ask {
 }
 
 /// Why an [`Answer`] does not answer an [`Ask`] ([`Ask::check`]).
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
 pub enum AnswerRefused {
     /// It takes a choice, by this id, that the question does not offer.
+    #[error("the question offers no choice `{0}`")]
     NotOffered(String),
     /// It takes no choice, and no text the question takes.
+    #[error("the answer needs a choice")]
     NoChoice,
     /// It takes several choices for a question that takes one.
+    #[error("the question takes one choice")]
     SeveralChoices,
 }
-
-impl std::fmt::Display for AnswerRefused {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::NotOffered(id) => write!(f, "the question offers no choice `{id}`"),
-            Self::NoChoice => f.write_str("the answer needs a choice"),
-            Self::SeveralChoices => f.write_str("the question takes one choice"),
-        }
-    }
-}
-
-impl std::error::Error for AnswerRefused {}
 
 /// How an [`Ask`] was answered: the choices taken and the text typed,
 /// either or both, such as a choice with a note on it.
