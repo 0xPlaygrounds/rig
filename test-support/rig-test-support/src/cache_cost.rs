@@ -14,14 +14,6 @@ use rig_core::providers::gemini::CacheReport;
 /// lists, but no storage price. A provider without a separate write price
 /// bills writes at `input`; one without storage leaves `storage_per_hour`
 /// at zero.
-///
-/// ```no_run
-/// use rig_test_support::cache_cost::CacheRates;
-///
-/// // A 5-minute cache write at 1.25 times the input price, reads at a tenth.
-/// let rates = CacheRates { input: 3.0, cached_read: 0.3, cache_write: 3.75, storage_per_hour: 0.0 };
-/// # let _ = rates;
-/// ```
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct CacheRates {
     /// Uncached input.
@@ -38,27 +30,6 @@ pub struct CacheRates {
 /// token-hours its cache resources were stored. Sum the costs of a run's
 /// calls (and of any cache resources beside them) and price the total with
 /// [`CacheCost::usd`].
-///
-/// A run priced the same way on any provider, with the caller's rates from
-/// the provider's price list:
-///
-/// ```no_run
-/// use rig_core::completion::Usage;
-/// use rig_test_support::cache_cost::{CacheCost, CacheRates};
-/// use rig_core::providers::gemini::{AutoCache, CacheBook};
-///
-/// # let calls: Vec<Usage> = Vec::new();
-/// # let book = CacheBook::new(AutoCache::default());
-/// let run: CacheCost = calls.iter().map(CacheCost::from_usage).sum();
-///
-/// let opus = CacheRates { input: 4.0, cached_read: 0.2, cache_write: 5.0, storage_per_hour: 0.0 };
-/// println!("${:.3}, {:.1}% saved", run.usd(&opus), run.saving(&opus) * 100.0);
-///
-/// // Gemini: the calls, plus the cache book's creation and storage.
-/// let gemini = run + CacheCost::from(&book.report());
-/// let flash = CacheRates { input: 0.75, cached_read: 0.075, cache_write: 0.75, storage_per_hour: 0.5 };
-/// println!("${:.3}", gemini.usd(&flash));
-/// ```
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct CacheCost {
     /// Input billed at the uncached price.
