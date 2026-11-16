@@ -428,13 +428,9 @@ rig-vertexai = { path = "crates/rig-vertexai", version = "0.46.0", optional = tr
 
 # The bundled websocket backend is native-only (tungstenite needs a tokio
 # reactor and raises a `compile_error!` on wasm), so it is scoped to non-wasm
-# targets. That is what lets `websocket` mean "the protocol, plus the bundled
-# backend where one exists": on wasm the feature still enables
-# `rig-core/tungstenite`, which there is `rig-core/websocket` alone, so
-# `rig::ws_client` is reachable and a browser backend
-# can be implemented against it — which is the escape hatch the backend's own
-# wasm error message prescribes. Wiring the dependency unconditionally would
-# make that hatch unreachable through the facade.
+# targets. On wasm, `websocket` then adds nothing and still compiles, and a
+# browser backend is written against `rig::ws_client`, the escape hatch the
+# backend's own wasm error message prescribes.
 #
 # Not `default-features = false`, unlike the other optional companions: the
 # backend's own `default = ["rustls"]` is what guarantees that enabling
@@ -534,8 +530,6 @@ reqwest = ["dep:rig-reqwest", "rig-core/reqwest", "rig-typesafeai?/reqwest"]
 # compiled in. That trade is deliberate — a build that silently cannot speak
 # `wss://` is worse than one that compiles a TLS stack it does not use.
 websocket = ["reqwest", "dep:rig-tungstenite", "rig-core/tungstenite"]
-# `dep:rig-tungstenite` above resolves to nothing on wasm, where the dependency
-# is not in the graph: the feature degrades to the protocol alone.
 websocket-rustls = ["websocket", "rustls"]
 websocket-native-tls = ["websocket", "native-tls"]
 rustls = [

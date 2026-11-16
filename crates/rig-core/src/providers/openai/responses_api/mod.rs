@@ -31,8 +31,6 @@ use serde_json::{Map, Value, json};
 use std::sync::Arc;
 
 pub mod streaming;
-#[cfg(feature = "websocket")]
-#[cfg_attr(docsrs, doc(cfg(feature = "websocket")))]
 pub mod websocket;
 pub mod wire;
 

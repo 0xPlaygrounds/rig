@@ -9,7 +9,6 @@
 //! script supplies the frames. The real backend is exercised end-to-end in
 //! `rig-tungstenite`'s own suite.
 
-#![cfg(feature = "websocket")]
 #![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
 
 #[path = "../common/websocket_script.rs"]
