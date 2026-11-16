@@ -217,6 +217,28 @@ pub struct Attached {
     /// A line for the user about each reference that names a path with no
     /// file there, or one that could not be looked at, and why.
     pub warnings: Vec<String>,
+    /// For the model, each of the [`notes`](Self::notes) and
+    /// [`warnings`](Self::warnings) in an attached file's form, labelled
+    /// with its path: what the user typed ([`typed`]) leaves it out.
+    pub unattached: Vec<String>,
+}
+
+impl Attached {
+    /// Adds `line` about `label`, which is not attached, to `lines` and
+    /// [`unattached`](Self::unattached), once.
+    fn not_attached(&mut self, warning: bool, label: &str, line: String) {
+        let lines = if warning {
+            &mut self.warnings
+        } else {
+            &mut self.notes
+        };
+        if lines.contains(&line) {
+            return;
+        }
+        self.unattached
+            .push(format!("{FILE_OPEN}{label}\">\n{line}\n{FILE_CLOSE}"));
+        lines.push(line);
+    }
 }
 
 /// The files `text` names ([`Reference::parse`]), each once, resolved from
@@ -244,23 +266,17 @@ pub fn attachments(text: &str, base: &Path, workspace: &dyn Workspace) -> Attach
             Observation::Found(()) => {}
             Observation::Missing if warn => {
                 let missing = format!("{}: no such file", Reference::format(named));
-                if !attached.warnings.contains(&missing) {
-                    attached.warnings.push(missing);
-                }
+                attached.not_attached(true, &label, missing);
                 continue;
             }
             Observation::Excluded if warn => {
                 let note = format!("{label} is not attached: it is not a file.");
-                if !attached.notes.contains(&note) {
-                    attached.notes.push(note);
-                }
+                attached.not_attached(false, &label, note);
                 continue;
             }
             Observation::Failed(failure) if warn => {
                 let failed = format!("could not read {label}: {failure}");
-                if !attached.warnings.contains(&failed) {
-                    attached.warnings.push(failed);
-                }
+                attached.not_attached(true, &label, failed);
                 continue;
             }
             Observation::Missing | Observation::Excluded | Observation::Failed(_) => continue,
@@ -275,9 +291,10 @@ pub fn attachments(text: &str, base: &Path, workspace: &dyn Workspace) -> Attach
         };
         match read {
             Ok(content) => attached.files.push((label, content)),
-            Err(why) => attached
-                .notes
-                .push(format!("{label} is not attached: {why}.")),
+            Err(why) => {
+                let note = format!("{label} is not attached: {why}.");
+                attached.not_attached(false, &label, note);
+            }
         }
         seen.push(path);
     }
