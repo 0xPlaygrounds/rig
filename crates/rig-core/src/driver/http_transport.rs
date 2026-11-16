@@ -111,7 +111,7 @@ impl HttpExchange {
     async fn streaming<H: HttpClientExt>(
         self,
         http: &H,
-        request: http::Request<Vec<u8>>,
+        request: http::Request<Bytes>,
         mut framer: Framer,
     ) -> Opened<WireFrame> {
         let response = match http.send_streaming(request).await {
@@ -199,11 +199,11 @@ where
     let (parts, body) = request.into_parts();
     let response = match body {
         Body::Bytes(bytes) => {
-            http.send::<_, Bytes>(http::Request::from_parts(parts, bytes))
+            http.send(http::Request::from_parts(parts, bytes.into()))
                 .await
         }
         Body::Multipart(form) => {
-            http.send_multipart::<Bytes>(http::Request::from_parts(parts, form))
+            http.send_multipart(http::Request::from_parts(parts, form))
                 .await
         }
     };
@@ -314,10 +314,10 @@ fn wrong_content_type(
 }
 
 /// A request whose body is bytes. Multipart replies are never streamed.
-fn byte_request(request: http::Request<Body>) -> Result<http::Request<Vec<u8>>, ProviderError> {
+fn byte_request(request: http::Request<Body>) -> Result<http::Request<Bytes>, ProviderError> {
     let (parts, body) = request.into_parts();
     match body {
-        Body::Bytes(bytes) => Ok(http::Request::from_parts(parts, bytes)),
+        Body::Bytes(bytes) => Ok(http::Request::from_parts(parts, bytes.into())),
         Body::Multipart(_) => Err(ProviderError::request(
             "a multipart request cannot open a streamed reply",
         )),

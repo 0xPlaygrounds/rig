@@ -528,14 +528,11 @@ async fn a_success_whose_body_failed_refuses_the_recording_and_an_unread_one_doe
     let http = cassette.direct_http();
 
     let cut = http
-        .send::<_, Bytes>(post(&origin, "failed"))
+        .send(post(&origin, "failed"))
         .await
         .expect("the reply starts");
     assert!(cut.into_body().await.is_err(), "the body read should fail");
-    let unread = http
-        .send::<_, Bytes>(post(&origin, "unread"))
-        .await
-        .expect("a reply");
+    let unread = http.send(post(&origin, "unread")).await.expect("a reply");
     drop(unread);
 
     let error = cassette
@@ -579,7 +576,7 @@ async fn a_captured_error_is_kept_and_a_cut_binary_stream_refuses() {
     let cassette = session.start_direct(&origin).await;
     let http = cassette.direct_http();
 
-    let missing = http.send::<_, Bytes>(post(&origin, "missing")).await;
+    let missing = http.send(post(&origin, "missing")).await;
     assert_eq!(
         missing
             .err()
@@ -701,11 +698,7 @@ async fn an_unread_stream_and_a_request_without_reply_refuse_the_recording() {
         .await
         .expect("the stream starts");
     drop(unread);
-    assert!(
-        http.send::<_, Bytes>(post(&closed, "unreachable"))
-            .await
-            .is_err()
-    );
+    assert!(http.send(post(&closed, "unreachable")).await.is_err());
 
     let error = cassette
         .try_finish()
@@ -828,14 +821,11 @@ async fn a_request_cancelled_before_its_headers_refuses_the_recording() {
     let cassette = session.start_direct(&origin).await;
     let http = cassette.direct_http();
 
-    let done = http
-        .send::<_, Bytes>(post(&origin, "done"))
-        .await
-        .expect("a reply");
+    let done = http.send(post(&origin, "done")).await.expect("a reply");
     done.into_body().await.expect("a body");
     let cancelled = tokio::time::timeout(
         std::time::Duration::from_millis(200),
-        http.send::<_, Bytes>(post(&origin, "cancelled")),
+        http.send(post(&origin, "cancelled")),
     )
     .await;
     assert!(
@@ -963,7 +953,7 @@ async fn direct_error_replies_reach_the_fixture_byte_for_byte() {
     let http = cassette.direct_http();
 
     let large = http
-        .send::<_, Bytes>(post(&origin, "large"))
+        .send(post(&origin, "large"))
         .await
         .err()
         .expect("a provider error");
@@ -1018,7 +1008,7 @@ async fn direct_error_replies_reach_the_fixture_byte_for_byte() {
     .expect("the replay starts");
     let replayed = replay
         .direct_http()
-        .send::<_, Bytes>(
+        .send(
             rig_core::http_client::Request::post(format!("{}/large", replay.base_url()))
                 .header("authorization", "Bearer replay-key")
                 .body(Bytes::from_static(b"{}"))
@@ -1315,13 +1305,7 @@ async fn a_refusal_does_not_print_the_key_its_url_carried() {
     ))
     .body(Bytes::from_static(b"{}"))
     .expect("a request");
-    assert!(
-        cassette
-            .direct_http()
-            .send::<_, Bytes>(request)
-            .await
-            .is_err()
-    );
+    assert!(cassette.direct_http().send(request).await.is_err());
 
     let error = cassette
         .try_finish()
@@ -1445,14 +1429,8 @@ async fn an_error_reply_cut_short_keeps_what_arrived() {
         let text =
             |error: rig_core::http_client::Error| error.non_success_body().map(str::to_owned);
         vec![
-            http.send::<_, Bytes>(post(origin, "cut"))
-                .await
-                .err()
-                .and_then(text),
-            http.send_multipart::<Bytes>(multipart())
-                .await
-                .err()
-                .and_then(text),
+            http.send(post(origin, "cut")).await.err().and_then(text),
+            http.send_multipart(multipart()).await.err().and_then(text),
             http.send_streaming(post(origin, "cut"))
                 .await
                 .err()
@@ -1564,7 +1542,7 @@ async fn a_direct_reply_checked_only_by_status_is_kept() {
             .uri(format!("{origin}/v1/files/file_1"))
             .body(Bytes::new())
             .expect("a request");
-        let reply = http.send::<_, Bytes>(request).await.expect("a reply");
+        let reply = http.send(request).await.expect("a reply");
         assert!(reply.status().is_success());
     }
 
@@ -1624,10 +1602,7 @@ async fn interactions_are_kept_in_the_order_they_started() {
         };
         read.extend_from_slice(&chunk);
     }
-    let next = http
-        .send::<_, Bytes>(post(&origin, "next"))
-        .await
-        .expect("a reply");
+    let next = http.send(post(&origin, "next")).await.expect("a reply");
     next.into_body().await.expect("the body");
     drop(stream);
 

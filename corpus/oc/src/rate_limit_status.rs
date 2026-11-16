@@ -257,42 +257,29 @@ impl Observing {
 }
 
 impl HttpClientExt for Observing {
-    fn send<T, U>(
+    fn send(
         &self,
-        request: Request<T>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        T: Into<Bytes>,
-        T: WasmCompatSend,
-        U: From<Bytes>,
-        U: WasmCompatSend + 'static,
+        request: Request<Bytes>,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
     {
-        let request = request.map(Into::into);
         self.clone().observe(request, |inner, request| async move {
-            inner.send::<Bytes, U>(request).await
+            inner.send(request).await
         })
     }
 
     /// No model call sends a multipart body.
-    fn send_multipart<U>(
+    fn send_multipart(
         &self,
         request: Request<MultipartForm>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        U: From<Bytes>,
-        U: WasmCompatSend + 'static,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
     {
         self.inner.send_multipart(request)
     }
 
-    fn send_streaming<T>(
+    fn send_streaming(
         &self,
-        request: Request<T>,
-    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
-    where
-        T: Into<Bytes> + WasmCompatSend,
-    {
-        let request = request.map(Into::into);
+        request: Request<Bytes>,
+    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend {
         self.clone().observe(request, |inner, request| async move {
             inner.send_streaming(request).await
         })

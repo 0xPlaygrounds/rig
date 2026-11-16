@@ -10,7 +10,7 @@
 
 use bytes::Bytes;
 use rig_http::{
-    http_client::{HttpClientExt, NoBody, Request},
+    http_client::{HttpClientExt, Request},
     wasm_compat::WasmBoxedFuture,
 };
 use rig_reqwest::ReqwestMiddlewareClient;
@@ -81,7 +81,7 @@ fn supplied_middleware_is_lazy_and_preserves_status_headers_and_body() {
     .with(stamp)
     .build();
     let client = ReqwestMiddlewareClient::from(client);
-    let operation = client.send::<_, Bytes>(Request::builder().uri(uri).body(NoBody).unwrap());
+    let operation = client.send(Request::builder().uri(uri).body(Bytes::new()).unwrap());
     assert_eq!(CALLS.load(Ordering::SeqCst), 0);
     let error = futures::executor::block_on(rig_http::wasm_compat::timeout(
         std::time::Duration::from_secs(10),

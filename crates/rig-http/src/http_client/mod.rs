@@ -168,7 +168,7 @@ pub const fn retryable_status(status: Option<u16>) -> bool {
 }
 
 /// A response body that is read when awaited.
-pub type LazyBody<T> = WasmBoxedFuture<'static, Result<T>>;
+pub type LazyBody = WasmBoxedFuture<'static, Result<Bytes>>;
 
 /// The body of a streaming response: the transport's own chunks, boxed.
 pub type BoxedStream = WasmBoxedStream<'static, Result<Bytes>>;
@@ -187,7 +187,7 @@ impl From<NoBody> for Bytes {
 }
 
 /// Reads `response`'s body as text, replacing invalid UTF-8.
-pub async fn text(response: Response<LazyBody<Vec<u8>>>) -> Result<String> {
+pub async fn text(response: Response<LazyBody>) -> Result<String> {
     let text = response.into_body().await?;
     Ok(String::from(String::from_utf8_lossy(&text)))
 }
@@ -202,33 +202,23 @@ pub async fn text(response: Response<LazyBody<Vec<u8>>>) -> Result<String> {
     note = "use `rig_reqwest::ReqwestClient` (wrap a configured `reqwest::Client` with `ReqwestClient::from(client)`), erase a client with `DynHttpClient::new(client)`, or implement `HttpClientExt`; a provider configuration takes it with `.connect(client)`"
 )]
 pub trait HttpClientExt: WasmCompatSend + WasmCompatSync {
-    /// Sends a request and returns headers with a lazy body converted from bytes to `U`.
-    fn send<T, U>(
+    /// Sends a request and returns headers with a lazy body.
+    fn send(
         &self,
-        req: Request<T>,
-    ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        T: Into<Bytes>,
-        T: WasmCompatSend,
-        U: From<Bytes>,
-        U: WasmCompatSend + 'static;
+        req: Request<Bytes>,
+    ) -> impl Future<Output = Result<Response<LazyBody>>> + WasmCompatSend + 'static;
 
-    /// Sends a multipart request and returns headers with a lazy body converted to `U`.
-    fn send_multipart<U>(
+    /// Sends a multipart request and returns headers with a lazy body.
+    fn send_multipart(
         &self,
         req: Request<MultipartForm>,
-    ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        U: From<Bytes>,
-        U: WasmCompatSend + 'static;
+    ) -> impl Future<Output = Result<Response<LazyBody>>> + WasmCompatSend + 'static;
 
     /// Sends a request and returns headers with a stream of transport byte chunks.
-    fn send_streaming<T>(
+    fn send_streaming(
         &self,
-        req: Request<T>,
-    ) -> impl Future<Output = Result<StreamingResponse>> + WasmCompatSend
-    where
-        T: Into<Bytes> + WasmCompatSend;
+        req: Request<Bytes>,
+    ) -> impl Future<Output = Result<StreamingResponse>> + WasmCompatSend;
 }
 
 #[cfg(test)]

@@ -232,7 +232,7 @@ where
     H: HttpClientExt,
 {
     let req = req.map_err(http_client::Error::Protocol)?;
-    let response = http.send::<_, bytes::Bytes>(req).await?;
+    let response = http.send(req).await?;
     Ok(response.into_body().await?)
 }
 

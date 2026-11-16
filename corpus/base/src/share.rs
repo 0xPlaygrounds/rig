@@ -12,7 +12,7 @@ use bevy_reflect::prelude::*;
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::{Answered, EffectKind};
-use rig_harness::rig_core::http_client::{self, HttpClientExt, Method, Request};
+use rig_harness::rig_core::http_client::{self, Bytes, HttpClientExt, Method, Request};
 use rig_harness::rig_core::{ErrorKind, ErrorReport};
 use rig_tui::CopyToClipboard;
 use serde::{Deserialize, Serialize};
@@ -470,14 +470,15 @@ async fn send(
     for (name, value) in headers {
         request = request.header(name, value);
     }
-    let request = request.body(body).map_err(|error| error.to_string())?;
-    let response = rig_reqwest::shared()
-        .send::<String, Vec<u8>>(request)
-        .await
-        .map_err(|error| match error.non_success_body() {
+    let request = request
+        .body(Bytes::from(body))
+        .map_err(|error| error.to_string())?;
+    let response = rig_reqwest::shared().send(request).await.map_err(|error| {
+        match error.non_success_body() {
             Some(body) => format!("{error}: {body}"),
             None => error.to_string(),
-        })?;
+        }
+    })?;
     http_client::text(response)
         .await
         .map_err(|error| error.to_string())

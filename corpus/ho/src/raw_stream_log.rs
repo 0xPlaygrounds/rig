@@ -411,50 +411,40 @@ struct Tee {
 }
 
 impl HttpClientExt for Tee {
-    fn send<T, U>(
+    fn send(
         &self,
-        req: Request<T>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        T: Into<Bytes> + WasmCompatSend,
-        U: From<Bytes> + WasmCompatSend + 'static,
+        req: Request<Bytes>,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
     {
-        let req = req.map(Into::into);
         let tap = Tap::begin(&self.recorded, &req);
-        let sent = self.inner.send::<Bytes, Bytes>(req);
+        let sent = self.inner.send(req);
         async move {
             let sent = sent.await;
             tap.sent(&sent);
             sent.map(|response| {
-                response.map(|body| -> LazyBody<U> {
+                response.map(|body| -> LazyBody {
                     Box::pin(async move {
                         let body = body.await;
                         tap.chunk(&body);
-                        body.map(U::from)
+                        body
                     })
                 })
             })
         }
     }
 
-    fn send_multipart<U>(
+    fn send_multipart(
         &self,
         req: Request<MultipartForm>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        U: From<Bytes> + WasmCompatSend + 'static,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
     {
         self.inner.send_multipart(req)
     }
 
-    fn send_streaming<T>(
+    fn send_streaming(
         &self,
-        req: Request<T>,
-    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
-    where
-        T: Into<Bytes> + WasmCompatSend,
-    {
-        let req = req.map(Into::into);
+        req: Request<Bytes>,
+    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend {
         let tap = Tap::begin(&self.recorded, &req);
         let sent = self.inner.send_streaming(req);
         async move {

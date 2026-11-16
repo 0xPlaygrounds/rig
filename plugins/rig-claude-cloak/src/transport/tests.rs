@@ -20,39 +20,26 @@ pub(super) struct Rerouted<R> {
 }
 
 impl<R: Reroute> HttpClientExt for Rerouted<R> {
-    fn send<T, U>(
+    fn send(
         &self,
-        req: Request<T>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        T: Into<Bytes> + WasmCompatSend,
-        U: From<Bytes> + WasmCompatSend + 'static,
+        req: Request<Bytes>,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
     {
         let this = self.clone();
-        let req = req.map(Into::into);
         async move { this.inner.send(this.by.reroute(req)?).await }
     }
 
     #[allow(clippy::manual_async_fn)]
-    fn send_multipart<U>(
+    fn send_multipart(
         &self,
         _: Request<MultipartForm>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        U: From<Bytes> + WasmCompatSend + 'static,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
     {
         async { Err(http_client::Error::permanent(Error::Multipart)) }
     }
 
-    fn send_streaming<T>(
-        &self,
-        req: Request<T>,
-    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
-    where
-        T: Into<Bytes> + WasmCompatSend,
-    {
-        let req = req.map(Into::into);
-        async move { self.inner.send_streaming(self.by.reroute(req)?).await }
+    async fn send_streaming(&self, req: Request<Bytes>) -> http_client::Result<StreamingResponse> {
+        self.inner.send_streaming(self.by.reroute(req)?).await
     }
 }
 
@@ -354,43 +341,31 @@ impl CacheCapture {
 }
 
 impl HttpClientExt for CacheCapture {
-    fn send<T, U>(
+    fn send(
         &self,
-        request: Request<T>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        T: Into<Bytes> + WasmCompatSend,
-        U: From<Bytes> + WasmCompatSend + 'static,
+        request: Request<Bytes>,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
     {
         let this = self.clone();
-        let request = request.map(Into::into);
         async move {
             this.capture(request)?;
             Err(http_client::Error::permanent(Error::Body))
         }
     }
     #[allow(clippy::manual_async_fn)]
-    fn send_multipart<U>(
+    fn send_multipart(
         &self,
         _: Request<MultipartForm>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        U: From<Bytes> + WasmCompatSend + 'static,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
     {
         async { Err(http_client::Error::permanent(Error::Multipart)) }
     }
-    fn send_streaming<T>(
+    async fn send_streaming(
         &self,
-        request: Request<T>,
-    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
-    where
-        T: Into<Bytes> + WasmCompatSend,
-    {
-        let request = request.map(Into::into);
-        async move {
-            self.capture(request)?;
-            Err(http_client::Error::permanent(Error::Body))
-        }
+        request: Request<Bytes>,
+    ) -> http_client::Result<StreamingResponse> {
+        self.capture(request)?;
+        Err(http_client::Error::permanent(Error::Body))
     }
 }
 

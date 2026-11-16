@@ -7,7 +7,7 @@
 #![allow(clippy::expect_used)]
 
 use bytes::Bytes;
-use rig_http::http_client::{HttpClientExt, NoBody, Request};
+use rig_http::http_client::{HttpClientExt, Request};
 use rig_reqwest::ReqwestClient;
 use std::io::{Read, Write};
 use std::net::TcpListener;
@@ -48,9 +48,9 @@ async fn plain_http_works_on_a_host_without_ca_certificates() {
 
     let client = ReqwestClient::default();
     let request = Request::get(serve_once("hello"))
-        .body(NoBody)
+        .body(Bytes::new())
         .expect("a request");
-    let response = tokio::time::timeout(Duration::from_secs(10), client.send::<_, Bytes>(request))
+    let response = tokio::time::timeout(Duration::from_secs(10), client.send(request))
         .await
         .expect("a reply in time")
         .expect("a plain-http reply without system roots");

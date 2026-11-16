@@ -441,12 +441,12 @@ async fn send(
     if let Some(slot) = request.headers_mut() {
         *slot = headers;
     }
-    let body = body.map(|body| body.to_string().into_bytes());
+    let body = body.map(|body| Bytes::from(body.to_string()));
     let request = request
         .body(body.unwrap_or_default())
         .map_err(|error| error.to_string())?;
     let response = http
-        .send::<_, Bytes>(request)
+        .send(request)
         .await
         .map_err(|error| error.to_string())?;
     let status = response.status();

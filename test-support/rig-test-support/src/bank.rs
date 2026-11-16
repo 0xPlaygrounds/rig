@@ -385,12 +385,9 @@ fn delivered(
 }
 
 /// `entry` as the bundled transport delivers a unary reply.
-fn unary<U>(entry: Option<Entry>) -> rig_core::http_client::Result<Response<LazyBody<U>>>
-where
-    U: From<bytes::Bytes> + WasmCompatSend + 'static,
-{
+fn unary(entry: Option<Entry>) -> rig_core::http_client::Result<Response<LazyBody>> {
     let (_, body, headers) = delivered(entry)?;
-    let body: LazyBody<U> = Box::pin(async move { Ok(U::from(body)) });
+    let body: LazyBody = Box::pin(async move { Ok(body) });
     let mut response = Response::builder()
         .status(StatusCode::OK)
         .body(body)
@@ -422,37 +419,26 @@ fn streamed(entry: Option<Entry>) -> rig_core::http_client::Result<StreamingResp
 }
 
 impl HttpClientExt for BankHttpClient {
-    fn send<T, U>(
+    fn send(
         &self,
-        _req: Request<T>,
-    ) -> impl Future<Output = rig_core::http_client::Result<Response<LazyBody<U>>>>
-    + WasmCompatSend
-    + 'static
-    where
-        T: Into<bytes::Bytes> + WasmCompatSend,
-        U: From<bytes::Bytes> + WasmCompatSend + 'static,
+        _req: Request<bytes::Bytes>,
+    ) -> impl Future<Output = rig_core::http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
     {
         std::future::ready(unary(self.next()))
     }
 
-    fn send_multipart<U>(
+    fn send_multipart(
         &self,
         _req: Request<MultipartForm>,
-    ) -> impl Future<Output = rig_core::http_client::Result<Response<LazyBody<U>>>>
-    + WasmCompatSend
-    + 'static
-    where
-        U: From<bytes::Bytes> + WasmCompatSend + 'static,
+    ) -> impl Future<Output = rig_core::http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
     {
         std::future::ready(unary(self.next()))
     }
 
-    fn send_streaming<T>(
+    fn send_streaming(
         &self,
-        _req: Request<T>,
+        _req: Request<bytes::Bytes>,
     ) -> impl Future<Output = rig_core::http_client::Result<StreamingResponse>> + WasmCompatSend
-    where
-        T: Into<bytes::Bytes> + WasmCompatSend,
     {
         std::future::ready(streamed(self.next()))
     }

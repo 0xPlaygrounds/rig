@@ -113,16 +113,12 @@ fn inspect_root_ttl(value: &Value, attempts: &AtomicUsize) -> Result<(), Error> 
 }
 
 impl HttpClientExt for Audit {
-    fn send<T, U>(
+    fn send(
         &self,
-        req: Request<T>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        T: Into<Bytes> + WasmCompatSend,
-        U: From<Bytes> + WasmCompatSend + 'static,
+        req: Request<Bytes>,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
     {
         let this = self.clone();
-        let req = req.map(Into::into);
         async move {
             let count = this.inspect(&req)?;
             let response = this.inner.send(req).await?;
@@ -132,30 +128,19 @@ impl HttpClientExt for Audit {
     }
 
     #[allow(clippy::manual_async_fn)]
-    fn send_multipart<U>(
+    fn send_multipart(
         &self,
         _: Request<MultipartForm>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        U: From<Bytes> + WasmCompatSend + 'static,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
     {
         async { Err(http_client::Error::permanent(Error::Multipart)) }
     }
 
-    fn send_streaming<T>(
-        &self,
-        req: Request<T>,
-    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
-    where
-        T: Into<Bytes> + WasmCompatSend,
-    {
-        let req = req.map(Into::into);
-        async move {
-            let count = self.inspect(&req)?;
-            let response = self.inner.send_streaming(req).await?;
-            self.record(count, response.status().as_u16())?;
-            Ok(response)
-        }
+    async fn send_streaming(&self, req: Request<Bytes>) -> http_client::Result<StreamingResponse> {
+        let count = self.inspect(&req)?;
+        let response = self.inner.send_streaming(req).await?;
+        self.record(count, response.status().as_u16())?;
+        Ok(response)
     }
 }
 

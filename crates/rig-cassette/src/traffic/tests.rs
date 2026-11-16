@@ -37,13 +37,10 @@ impl Scripted {
 }
 
 impl HttpClientExt for Scripted {
-    fn send<T, U>(
+    fn send(
         &self,
-        _req: Request<T>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        T: Into<Bytes> + WasmCompatSend,
-        U: From<Bytes> + WasmCompatSend + 'static,
+        _req: Request<Bytes>,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
     {
         let (status, headers, body) = (self.status, self.reply(), self.chunks.concat());
         async move {
@@ -52,7 +49,7 @@ impl HttpClientExt for Scripted {
                     status, headers, body,
                 ));
             }
-            let body: LazyBody<U> = Box::pin(async move { Ok(U::from(Bytes::from(body))) });
+            let body: LazyBody = Box::pin(async move { Ok(Bytes::from(body)) });
             let mut response = Response::new(body);
             *response.status_mut() = status;
             *response.headers_mut() = headers;
@@ -60,23 +57,18 @@ impl HttpClientExt for Scripted {
         }
     }
 
-    fn send_multipart<U>(
+    fn send_multipart(
         &self,
         req: Request<MultipartForm>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        U: From<Bytes> + WasmCompatSend + 'static,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
     {
         self.send(req.map(|_| Bytes::new()))
     }
 
-    fn send_streaming<T>(
+    fn send_streaming(
         &self,
-        _req: Request<T>,
-    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
-    where
-        T: Into<Bytes> + WasmCompatSend,
-    {
+        _req: Request<Bytes>,
+    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend {
         let (status, headers) = (self.status, self.reply());
         let chunks: Vec<http_client::Result<Bytes>> = self
             .chunks
@@ -153,7 +145,7 @@ async fn exchange(provider: Scripted, request: Request<Bytes>, streamed: bool) -
         if let Ok(response) = http.send_streaming(request).await {
             let _: Vec<_> = response.into_body().collect().await;
         }
-    } else if let Ok(response) = http.send::<_, Bytes>(request).await {
+    } else if let Ok(response) = http.send(request).await {
         response.into_body().await.ok();
     }
     log.flush();
@@ -250,10 +242,7 @@ async fn a_secret_part_of_a_multipart_request_reaches_the_file_nowhere() {
         .expect("a request");
     let written = Written::default();
     let log = TrafficLog::new(written.clone()).expect("the writer starts");
-    log.wrap_http(provider)
-        .send_multipart::<Bytes>(request)
-        .await
-        .ok();
+    log.wrap_http(provider).send_multipart(request).await.ok();
     log.flush();
     let text = written.text();
     let line = written.lines().into_iter().next().unwrap_or_default();
@@ -400,7 +389,7 @@ async fn a_call_is_written_against_its_own_conversations_last_one() {
     let log = TrafficLog::new(written.clone()).expect("the writer starts");
     let http = log.wrap_http(provider);
     for body in [first, other, second] {
-        let response = http.send::<_, Bytes>(request(body)).await.expect("a reply");
+        let response = http.send(request(body)).await.expect("a reply");
         response.into_body().await.expect("its body");
     }
     log.flush();
@@ -461,9 +450,9 @@ async fn a_request_completes_while_the_writer_is_stuck_and_the_log_is_gone() {
     let log = TrafficLog::new(Gated { gate, done }).expect("the writer starts");
     let http = log.wrap_http(ok_reply());
     // The first line takes the writer and holds it at the gate.
-    let first = http.send::<_, Bytes>(request("{}")).await.expect("a reply");
+    let first = http.send(request("{}")).await.expect("a reply");
     first.into_body().await.expect("a body");
-    let last = http.send::<_, Bytes>(request("{}")).await.expect("a reply");
+    let last = http.send(request("{}")).await.expect("a reply");
     drop(log);
     drop(http);
 
@@ -495,7 +484,7 @@ async fn a_request_never_awaited_writes_nothing() {
     let written = Written::default();
     let log = TrafficLog::new(written.clone()).expect("the writer starts");
     let http = log.wrap_http(ok_reply());
-    drop(http.send::<_, Bytes>(request("{}")));
+    drop(http.send(request("{}")));
     drop(http.send_streaming(request("{}")));
     log.flush();
     assert_eq!(written.text(), "");

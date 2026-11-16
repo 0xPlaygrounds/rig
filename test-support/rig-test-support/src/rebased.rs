@@ -41,37 +41,24 @@ impl Rebased {
 }
 
 impl HttpClientExt for Rebased {
-    fn send<T, U>(
+    fn send(
         &self,
-        req: Request<T>,
-    ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        T: Into<Bytes>,
-        T: WasmCompatSend,
-        U: From<Bytes>,
-        U: WasmCompatSend + 'static,
-    {
+        req: Request<Bytes>,
+    ) -> impl Future<Output = Result<Response<LazyBody>>> + WasmCompatSend + 'static {
         self.inner.send(self.rebase(req))
     }
 
-    fn send_multipart<U>(
+    fn send_multipart(
         &self,
         req: Request<MultipartForm>,
-    ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        U: From<Bytes>,
-        U: WasmCompatSend + 'static,
-    {
+    ) -> impl Future<Output = Result<Response<LazyBody>>> + WasmCompatSend + 'static {
         self.inner.send_multipart(self.rebase(req))
     }
 
-    fn send_streaming<T>(
+    fn send_streaming(
         &self,
-        req: Request<T>,
-    ) -> impl Future<Output = Result<StreamingResponse>> + WasmCompatSend
-    where
-        T: Into<Bytes> + WasmCompatSend,
-    {
+        req: Request<Bytes>,
+    ) -> impl Future<Output = Result<StreamingResponse>> + WasmCompatSend {
         self.inner.send_streaming(self.rebase(req))
     }
 }
