@@ -425,7 +425,12 @@ fn restore_puts_entries_back_with_their_ids_and_the_fold_accepts_them() {
         (MessageId(5), 2_000),
         "the outsider is new"
     );
-    assert_eq!(live.index_of(after), Some(2), "the note follows c again");
+    let after = live.aside(note).and_then(|aside| aside.after);
+    assert_eq!(
+        after.and_then(|after| live.index_of(after)),
+        Some(2),
+        "the note follows c again"
+    );
 
     let lines: Vec<String> = live
         .unsaved()
