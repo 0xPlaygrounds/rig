@@ -92,6 +92,11 @@ struct Vault {
 }
 
 impl Vault {
+    /// The secret the placeholder numbered `number` names.
+    fn secret(&self, number: usize) -> Option<&str> {
+        self.secrets.get(number.checked_sub(1)?)?.as_deref()
+    }
+
     /// Each secret found again wherever it shows, with its number: one of
     /// at least [`SHORTEST`] characters that is no name, nor part of one.
     fn findable(&self) -> impl Iterator<Item = (usize, &str)> {
@@ -228,6 +233,14 @@ impl Secrets {
         redacted
     }
 
+    /// Redacts `text` in place as [`text`](Self::text) does; whether it
+    /// changed.
+    fn redact(&self, text: &mut String) -> bool {
+        owned(self.text(text))
+            .map(|redacted| *text = redacted)
+            .is_some()
+    }
+
     /// `data` with every string in it redacted, through its JSON form;
     /// `None` when it holds no secret or its redacted form does not read
     /// back.
@@ -334,10 +347,7 @@ impl Secrets {
         let mut out = String::new();
         let mut from = 0;
         for (at, number) in placeholders(text) {
-            let known = number
-                .checked_sub(1)
-                .and_then(|at| vault.secrets.get(at)?.as_deref());
-            if let Some(secret) = known {
+            if let Some(secret) = vault.secret(number) {
                 out.push_str(text.get(from..at.start).unwrap_or_default());
                 out.push_str(secret);
                 from = at.end;
@@ -429,32 +439,7 @@ fn changed(before: &Value, after: &Value, at: String, out: &mut Vec<String>) {
 /// such as an image's base64, are left whole: a key's shape or a known
 /// secret could match them by chance and break them.
 fn json(secrets: &Secrets, value: &mut Value) -> bool {
-    match value {
-        Value::String(text) => match json_text(secrets, text) {
-            Some(changed) => {
-                *text = changed;
-                true
-            }
-            None => false,
-        },
-        Value::Array(items) => items
-            .iter_mut()
-            .fold(false, |any, item| json(secrets, item) | any),
-        Value::Object(fields) => {
-            // How a media source's base64 serializes: its value stays whole
-            // when it is base64.
-            let encoded = fields.get("type").and_then(Value::as_str) == Some("base64")
-                && fields
-                    .get("value")
-                    .and_then(Value::as_str)
-                    .is_some_and(is_base64);
-            fields
-                .iter_mut()
-                .filter(|(key, _)| !(encoded && key.as_str() == "value"))
-                .fold(false, |any, (_, field)| json(secrets, field) | any)
-        }
-        Value::Null | Value::Bool(_) | Value::Number(_) => false,
-    }
+    each_string(value, &mut |text| json_text(secrets, text))
 }
 
 /// One string of [`json`]: as text, then as the JSON it holds; `None` when
@@ -605,13 +590,7 @@ fn redact_facts(
                         let changed = files.0.iter_mut().fold(false, |any, change| {
                             // A path can hold a secret, as one a call wrote a
                             // file named after.
-                            let renamed = match secrets.text(&change.path) {
-                                Cow::Owned(path) => {
-                                    change.path = path;
-                                    true
-                                }
-                                Cow::Borrowed(_) => false,
-                            };
+                            let renamed = secrets.redact(&mut change.path);
                             redact_hunks(&mut change.hunks, &secrets) | renamed | any
                         });
                         changed.then(|| serde_json::to_value(files).ok()).flatten()
@@ -659,10 +638,7 @@ fn redact_hunks(hunks: &mut Vec<Hunk>, secrets: &Secrets) -> bool {
     let mut changed = false;
     for line in hunks.iter_mut().flat_map(|hunk| &mut hunk.lines) {
         let (HunkLine::Same(text) | HunkLine::Removed(text) | HunkLine::Added(text)) = line;
-        if let Cow::Owned(redacted) = secrets.text(text) {
-            *text = redacted;
-            changed = true;
-        }
+        changed |= secrets.redact(text);
     }
     changed
 }
@@ -700,10 +676,7 @@ fn redact_parts(parts: &mut [MessagePart], secrets: &Secrets) -> bool {
             MessagePart::Text(text) => text,
             MessagePart::Attachment(Attachment { label, content }) => {
                 // A label is a path or a URI, which may hold a key too.
-                if let Cow::Owned(redacted) = secrets.text(label) {
-                    *label = redacted;
-                    changed = true;
-                }
+                changed |= secrets.redact(label);
                 match content {
                     UserContent::Text(text) => &mut text.text,
                     // A medium's link, not its data, which a key's shape
@@ -725,10 +698,7 @@ fn redact_parts(parts: &mut [MessagePart], secrets: &Secrets) -> bool {
                 }
             }
         };
-        if let Cow::Owned(redacted) = secrets.text(text) {
-            *text = redacted;
-            changed = true;
-        }
+        changed |= secrets.redact(text);
     }
     changed
 }
@@ -739,9 +709,7 @@ fn redact_parts(parts: &mut [MessagePart], secrets: &Secrets) -> bool {
 /// one kept, each time, so a secret learned since is found in it too.
 fn redact_notices(mut notices: ResMut<Messages<Notice>>, secrets: Res<Secrets>) {
     for notice in MessageCursor::default().read_mut(&mut notices) {
-        if let Some(text) = owned(secrets.text(&notice.text)) {
-            notice.text = text;
-        }
+        secrets.redact(&mut notice.text);
     }
 }
 
@@ -751,9 +719,7 @@ fn redact_recalled(mut recalled: ResMut<Messages<Recalled>>, secrets: Res<Secret
     for recalled in MessageCursor::default().read_mut(&mut recalled) {
         let texts = std::iter::once(&mut recalled.text).chain(&mut recalled.why);
         for text in texts {
-            if let Cow::Owned(redacted) = secrets.text(text) {
-                *text = redacted;
-            }
+            secrets.redact(text);
         }
     }
 }
@@ -815,16 +781,26 @@ impl Intercept for AsSent {
     }
 }
 
-/// Every string in `value` that `change` gives a new text for; whether any.
+/// Every string in `value` that `change` gives a new text for, but a media
+/// source's base64, which [`json`] leaves whole; whether any.
 fn each_string(value: &mut Value, change: &mut impl FnMut(&str) -> Option<String>) -> bool {
     match value {
         Value::String(text) => change(text).map(|changed| *text = changed).is_some(),
         Value::Array(items) => items
             .iter_mut()
             .fold(false, |any, item| each_string(item, change) | any),
-        Value::Object(fields) => fields
-            .values_mut()
-            .fold(false, |any, field| each_string(field, change) | any),
+        Value::Object(fields) => {
+            // How a media source's base64 serializes.
+            let encoded = fields.get("type").and_then(Value::as_str) == Some("base64")
+                && fields
+                    .get("value")
+                    .and_then(Value::as_str)
+                    .is_some_and(is_base64);
+            fields
+                .iter_mut()
+                .filter(|(key, _)| !(encoded && key.as_str() == "value"))
+                .fold(false, |any, (_, field)| each_string(field, change) | any)
+        }
         Value::Null | Value::Bool(_) | Value::Number(_) => false,
     }
 }
@@ -841,15 +817,12 @@ fn refuse_unknown(
     for (request, mut decision) in &mut calls {
         let args = Value::Object(request.call.function.arguments.clone()).to_string();
         let vault = secrets.vault();
-        let unknown = placeholders(&args).find(|(_, number)| {
-            let at = number.checked_sub(1);
-            at.and_then(|at| vault.secrets.get(at)?.as_ref()).is_none()
-        });
+        let unknown = placeholders(&args).find(|(_, number)| vault.secret(*number).is_none());
         let shell = request.call.function.name.as_str() == rig_tools::Shell::NAME;
         let special = placeholders(&args).filter(|_| shell).find(|(_, number)| {
-            let at = number.checked_sub(1);
-            let secret = at.and_then(|at| vault.secrets.get(at)?.as_deref());
-            secret.is_some_and(|secret| secret.contains(SHELL_SPECIAL))
+            vault
+                .secret(*number)
+                .is_some_and(|secret| secret.contains(SHELL_SPECIAL))
         });
         if let Some((at, _)) = special {
             let why = format!(
