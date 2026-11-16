@@ -57,17 +57,10 @@ impl ResponsesWebSocketCreateOptions {
 }
 
 #[derive(Debug, Clone, Serialize)]
-struct ResponsesWebSocketClientEvent {
-    #[serde(rename = "type")]
-    kind: ResponsesWebSocketClientEventKind,
-    #[serde(flatten)]
-    request: FinalBody,
-}
-
-#[derive(Debug, Clone, Serialize)]
-enum ResponsesWebSocketClientEventKind {
+#[serde(tag = "type")]
+enum ClientEvent {
     #[serde(rename = "response.create")]
-    ResponseCreate,
+    Create(FinalBody),
 }
 
 /// A protocol error event emitted by OpenAI WebSocket mode.
@@ -283,14 +276,16 @@ impl ResponsesWebSocketSessionBuilder {
         W: WebSocketClientExt,
     {
         let request = websocket_request(&self.wire, self.cache_key.as_deref())?;
-        ResponsesWebSocketSession::connect_with_timeouts(
-            backend,
-            request,
+        let options = ConnectOptions::new().with_timeout(self.connect_timeout);
+        let socket = backend
+            .connect(request, options)
+            .await
+            .map_err(websocket_provider_error)?;
+        Ok(ResponsesWebSocketSession::from_connection(
             self.wire,
-            self.connect_timeout,
+            socket,
             self.event_timeout,
-        )
-        .await
+        ))
     }
 }
 
@@ -313,24 +308,6 @@ pub struct ResponsesWebSocketSession {
 }
 
 impl ResponsesWebSocketSession {
-    async fn connect_with_timeouts<W>(
-        backend: &W,
-        request: http_client::Request<NoBody>,
-        wire: Responses,
-        connect_timeout: Option<Duration>,
-        event_timeout: Option<Duration>,
-    ) -> Result<Self, ProviderError>
-    where
-        W: WebSocketClientExt,
-    {
-        let socket = backend
-            .connect(request, ConnectOptions::new().with_timeout(connect_timeout))
-            .await
-            .map_err(websocket_provider_error)?;
-
-        Ok(Self::from_connection(wire, socket, event_timeout))
-    }
-
     /// Build a session over an already-open, authenticated connection.
     /// A turn in flight that sends no event for `event_timeout` fails as
     /// [`ProviderError::Stalled`]; `None` waits indefinitely.
@@ -428,10 +405,12 @@ impl ResponsesWebSocketSession {
             &completion_request,
             &mut Call::new(&describe, Mode::Streaming),
         );
-        let payload = ResponsesWebSocketClientEvent {
-            kind: ResponsesWebSocketClientEventKind::ResponseCreate,
-            request: self.prepare_request(completion_request)?,
-        };
+        // The HTTP body, without the `stream` and `background` flags an
+        // event-driven session ignores.
+        let payload = ClientEvent::Create(
+            self.wire
+                .responses_request(&completion_request, super::Delivery::WebSocket)?,
+        );
 
         crate::providers::internal::trace_json(
             crate::providers::internal::LogTarget::Completions,
@@ -552,17 +531,6 @@ impl ResponsesWebSocketSession {
             .map_err(websocket_provider_error);
         self.mark_closed();
         result
-    }
-
-    /// The `response.create` body: the HTTP body, without the `stream` and
-    /// `background` flags an event-driven session ignores.
-    fn prepare_request(
-        &self,
-        completion_request: crate::completion::CompletionRequest,
-    ) -> Result<FinalBody, ProviderError> {
-        Ok(self
-            .wire
-            .responses_request(&completion_request, super::Delivery::WebSocket)?)
     }
 
     /// Decode the turn's events as they arrive, and return the provider's
@@ -791,18 +759,14 @@ fn terminal_response_result(response: Value) -> Result<Value, ProviderError> {
         // Without an error object, return a local diagnostic instead.
         Some("failed") => match response.get("error").filter(|error| !error.is_null()) {
             Some(_) => Err(ProviderError::from_provider_body(response.to_string())),
-            None => Err(ProviderError::Provider(response_error_message(
-                "failed response",
-            ))),
+            None => Err(ProviderError::Provider(
+                "OpenAI websocket returned a failed response".to_owned(),
+            )),
         },
         Some(other) => Err(ProviderError::Provider(format!(
             "OpenAI websocket response ended in state `{other}`"
         ))),
     }
-}
-
-fn response_error_message(fallback: &str) -> String {
-    format!("OpenAI websocket returned a {fallback}")
 }
 
 /// Preserve an error event as reserialized provider JSON without an HTTP status.
