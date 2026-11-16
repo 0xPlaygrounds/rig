@@ -3,13 +3,6 @@ use serde::de::Deserializer;
 use std::cmp::Ordering;
 use std::sync::LazyLock;
 
-/// `skip_serializing_if` helper: serde requires a `fn(&bool) -> bool`, so the
-/// trivially-copy lint does not apply here.
-#[allow(clippy::trivially_copy_pass_by_ref)]
-pub(crate) fn is_false(value: &bool) -> bool {
-    !value
-}
-
 /// The numeric order of two JSON numbers, exact: integers compare as
 /// integers and an integer against a float rounds neither, so `5` equals
 /// `5.0` but `2^53 + 1` does not equal `2^53` as a float. With serde_json's
@@ -439,8 +432,6 @@ pub trait Lenient {
     fn str(&self, key: &str) -> Option<&str>;
     /// The unsigned integer at `key`, from a number or a numeric string.
     fn u64(&self, key: &str) -> Option<u64>;
-    /// The integer at `key`, from a number or a numeric string.
-    fn i64(&self, key: &str) -> Option<i64>;
     /// The number at `key`, from a number or a numeric string.
     fn f64(&self, key: &str) -> Option<f64>;
     /// The boolean at `key`.
@@ -462,14 +453,6 @@ impl Lenient for serde_json::Value {
 
     fn u64(&self, key: &str) -> Option<u64> {
         self.get(key)?.as_u64_lenient()
-    }
-
-    fn i64(&self, key: &str) -> Option<i64> {
-        match self.get(key)? {
-            serde_json::Value::Number(number) => number.as_i64(),
-            serde_json::Value::String(text) => text.trim().parse().ok(),
-            _ => None,
-        }
     }
 
     fn f64(&self, key: &str) -> Option<f64> {

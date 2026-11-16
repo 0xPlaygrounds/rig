@@ -389,7 +389,7 @@ pub struct Reasoning {
     /// The reasoning text, summaries included.
     pub text: String,
     /// Whether the provider withheld the text.
-    #[serde(default, skip_serializing_if = "crate::json_utils::is_false")]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub redacted: bool,
     /// The provider item this block was decoded from.
     #[serde(
@@ -425,7 +425,7 @@ pub struct ToolResult {
     pub content: Vec<ToolResultContent>,
     /// Whether the tool failed, was refused, or never ran: `content` then
     /// says why.
-    #[serde(default, skip_serializing_if = "crate::json_utils::is_false")]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub is_error: bool,
 }
 

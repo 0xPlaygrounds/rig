@@ -42,7 +42,7 @@ fn request(app: &mut App) -> bool {
         .header("x-api-key", KEY)
         .body(Bytes::from_static(b"{\"model\":\"m\"}"))
         .ok()
-        .and_then(|request| bevy_tasks::block_on(http.send::<_, Bytes>(request)).ok())
+        .and_then(|request| bevy_tasks::block_on(http.send(request)).ok())
         .and_then(|response| bevy_tasks::block_on(response.into_body()).ok())
         .is_some()
 }

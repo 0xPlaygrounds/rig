@@ -37,39 +37,31 @@ impl Scripted {
 }
 
 impl HttpClientExt for Scripted {
-    fn send<T, U>(
+    fn send(
         &self,
-        _: Request<T>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        T: Into<Bytes> + WasmCompatSend,
-        U: From<Bytes> + WasmCompatSend + 'static,
+        _: Request<Bytes>,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
     {
         ready(Err(http_client::Error::StreamEnded))
     }
 
-    fn send_multipart<U>(
+    fn send_multipart(
         &self,
         _: Request<MultipartForm>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        U: From<Bytes> + WasmCompatSend + 'static,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
     {
         ready(Err(http_client::Error::StreamEnded))
     }
 
-    fn send_streaming<T>(
+    fn send_streaming(
         &self,
-        request: Request<T>,
-    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
-    where
-        T: Into<Bytes> + WasmCompatSend,
-    {
+        request: Request<Bytes>,
+    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend {
         let mut chunks = self.chunks.clone().into_iter();
         let polls = self.polls.clone();
         let stall = self.stall;
         let stored = self.requests.lock().map(|mut requests| {
-            requests.push(request.map(Into::into));
+            requests.push(request);
         });
         let status = self.status;
         let recorded = stored.is_ok();

@@ -6,7 +6,6 @@ use super::*;
 fn non_success_headers_absent_when_not_captured() {
     for error in [
         Error::StreamEnded,
-        Error::NoHeaders,
         Error::transient(std::io::Error::other("connection reset")),
     ] {
         assert!(error.non_success_headers().is_none());

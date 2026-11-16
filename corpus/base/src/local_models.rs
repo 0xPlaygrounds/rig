@@ -27,7 +27,7 @@ use rig_harness::rig_core::completion::Message;
 use rig_harness::rig_core::effect::{Answered, EffectId, EffectKind};
 use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
 use rig_harness::rig_core::http_client::{
-    DynHttpClient, HttpClientExt, LazyBody, Method, Request, Response,
+    Bytes, DynHttpClient, HttpClientExt, LazyBody, Method, Request, Response,
 };
 use rig_harness::rig_core::operation::Completion;
 use rig_harness::rig_core::providers::registry::{ConnectError, ConnectOptions, ProviderId};
@@ -357,9 +357,9 @@ async fn fetch(
         .method(method)
         .uri(url)
         .header("content-type", "application/json")
-        .body(bytes)
+        .body(Bytes::from(bytes))
         .map_err(|error| error.to_string())?;
-    let response: Response<LazyBody<Vec<u8>>> = http
+    let response: Response<LazyBody> = http
         .send(request)
         .await
         .map_err(|error| error.to_string())?;

@@ -331,11 +331,7 @@ async fn decode_error_body(bytes: Vec<u8>, _headers: &http::HeaderMap) -> String
 }
 
 /// Keep successful bodies lazy and owned by the response on every executor.
-async fn into_response<U>(mut response: reqwest::Response) -> Result<Response<LazyBody<U>>>
-where
-    U: From<Bytes>,
-    U: WasmCompatSend + 'static,
-{
+async fn into_response(mut response: reqwest::Response) -> Result<Response<LazyBody>> {
     if !response.status().is_success() {
         return Err(non_success_status_error(response).await);
     }
@@ -345,13 +341,10 @@ where
         *headers = std::mem::take(response.headers_mut());
     }
 
-    let body = async {
-        let bytes = response.bytes().await.map_err(from_reqwest)?;
-        Ok(U::from(bytes))
-    };
+    let body = async { response.bytes().await.map_err(from_reqwest) };
     #[cfg(not(target_family = "wasm"))]
     let body = rig_http::runtime::bind(body)?;
-    let body: LazyBody<U> = Box::pin(body);
+    let body: LazyBody = Box::pin(body);
     res.body(body).map_err(Error::Protocol)
 }
 
@@ -588,41 +581,30 @@ where
 macro_rules! http_client_ext {
     ($client:ty) => {
         impl HttpClientExt for $client {
-            fn send<T, U>(
+            fn send(
                 &self,
-                req: Request<T>,
-            ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-            where
-                T: Into<Bytes>,
-                U: From<Bytes> + WasmCompatSend + 'static,
-            {
+                req: Request<Bytes>,
+            ) -> impl Future<Output = Result<Response<LazyBody>>> + WasmCompatSend + 'static {
                 let (parts, body) = req.into_parts();
-                let payload = Ok(Payload::Bytes(body.into()));
-                send_with(self, parts, payload, into_response::<U>)
+                send_with(self, parts, Ok(Payload::Bytes(body)), into_response)
             }
 
-            fn send_multipart<U>(
+            fn send_multipart(
                 &self,
                 req: Request<MultipartForm>,
-            ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-            where
-                U: From<Bytes> + WasmCompatSend + 'static,
-            {
+            ) -> impl Future<Output = Result<Response<LazyBody>>> + WasmCompatSend + 'static {
                 let (parts, form) = req.into_parts();
                 // Reject invalid MIME types locally rather than sending incomplete metadata.
                 let payload = multipart_form(form).map(Payload::Form);
-                send_with(self, parts, payload, into_response::<U>)
+                send_with(self, parts, payload, into_response)
             }
 
-            fn send_streaming<T>(
+            fn send_streaming(
                 &self,
-                req: Request<T>,
-            ) -> impl Future<Output = Result<StreamingResponse>> + WasmCompatSend
-            where
-                T: Into<Bytes> + WasmCompatSend,
-            {
+                req: Request<Bytes>,
+            ) -> impl Future<Output = Result<StreamingResponse>> + WasmCompatSend {
                 let (parts, body) = req.into_parts();
-                let payload = Ok(Payload::Bytes(body.into()));
+                let payload = Ok(Payload::Bytes(body));
                 send_with(self, parts, payload, into_streaming_response)
             }
         }

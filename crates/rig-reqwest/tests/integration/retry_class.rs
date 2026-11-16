@@ -5,7 +5,7 @@
 
 use bytes::Bytes;
 use futures::StreamExt;
-use rig_http::http_client::{Error, HttpClientExt, NoBody, Request};
+use rig_http::http_client::{Error, HttpClientExt, Request};
 use rig_reqwest::ReqwestClient;
 use std::io::{Read, Write};
 use std::net::TcpListener;
@@ -48,9 +48,9 @@ fn cut_short() -> String {
 async fn a_body_cut_short_is_transient() {
     let request = Request::builder()
         .uri(cut_short())
-        .body(NoBody)
+        .body(Bytes::new())
         .expect("request");
-    let response = client().send::<_, Bytes>(request).await.expect("headers");
+    let response = client().send(request).await.expect("headers");
     let error = response
         .into_body()
         .await
@@ -59,7 +59,7 @@ async fn a_body_cut_short_is_transient() {
 
     let request = Request::builder()
         .uri(cut_short())
-        .body(NoBody)
+        .body(Bytes::new())
         .expect("request");
     let response = client().send_streaming(request).await.expect("headers");
     let mut body = response.into_body();
@@ -78,9 +78,9 @@ async fn a_body_cut_short_is_transient() {
 async fn a_request_reqwest_cannot_build_is_permanent() {
     let request = Request::builder()
         .uri("/relative")
-        .body(NoBody)
+        .body(Bytes::new())
         .expect("request");
-    let Err(error) = client().send::<_, Bytes>(request).await else {
+    let Err(error) = client().send(request).await else {
         panic!("a relative URL has no host");
     };
     assert!(matches!(error, Error::Permanent(_)), "{error:?}");

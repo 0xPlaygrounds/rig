@@ -32,34 +32,26 @@ impl PendingHttp {
 }
 
 impl HttpClientExt for PendingHttp {
-    fn send<T, U>(
+    fn send(
         &self,
-        _request: Request<T>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        T: Into<Bytes> + WasmCompatSend,
-        U: From<Bytes> + WasmCompatSend + 'static,
+        _request: Request<Bytes>,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
     {
         self.hang()
     }
 
-    fn send_multipart<U>(
+    fn send_multipart(
         &self,
         _request: Request<MultipartForm>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        U: From<Bytes> + WasmCompatSend + 'static,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
     {
         self.hang()
     }
 
-    fn send_streaming<T>(
+    fn send_streaming(
         &self,
-        _request: Request<T>,
-    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
-    where
-        T: Into<Bytes> + WasmCompatSend,
-    {
+        _request: Request<Bytes>,
+    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend {
         self.hang()
     }
 }

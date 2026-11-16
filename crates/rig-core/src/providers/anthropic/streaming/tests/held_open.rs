@@ -10,27 +10,21 @@ use http::{Request, Response};
 struct HeldOpenClient(Bytes);
 
 impl HttpClientExt for HeldOpenClient {
-    fn send<T, U>(
+    fn send(
         &self,
-        req: Request<T>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        T: Into<Bytes> + WasmCompatSend,
-        U: From<Bytes> + WasmCompatSend + 'static,
+        req: Request<Bytes>,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
     {
         let client = MockStreamingClient {
             sse_bytes: self.0.clone(),
         };
-        let req = req.map(Into::into);
         async move { client.send(req).await }
     }
 
-    fn send_multipart<U>(
+    fn send_multipart(
         &self,
         req: Request<MultipartForm>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        U: From<Bytes> + WasmCompatSend + 'static,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
     {
         let client = MockStreamingClient {
             sse_bytes: self.0.clone(),
@@ -38,10 +32,7 @@ impl HttpClientExt for HeldOpenClient {
         async move { client.send_multipart(req).await }
     }
 
-    async fn send_streaming<T>(&self, _req: Request<T>) -> http_client::Result<StreamingResponse>
-    where
-        T: Into<Bytes> + WasmCompatSend,
-    {
+    async fn send_streaming(&self, _req: Request<Bytes>) -> http_client::Result<StreamingResponse> {
         let stream = futures::stream::iter([Ok(self.0.clone())]).chain(futures::stream::pending());
         let body: http_client::BoxedStream = Box::pin(stream);
         Response::builder()

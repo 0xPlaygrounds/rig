@@ -44,13 +44,10 @@ impl Stream for Chunks {
     }
 }
 impl HttpClientExt for Replay {
-    fn send<T, U>(
+    fn send(
         &self,
-        _: Request<T>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        T: Into<Bytes> + WasmCompatSend,
-        U: From<Bytes> + WasmCompatSend + 'static,
+        _: Request<Bytes>,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
     {
         std::future::ready(Err(http_client::Error::non_success_with_details(
             StatusCode::NOT_IMPLEMENTED,
@@ -58,12 +55,10 @@ impl HttpClientExt for Replay {
             String::new(),
         )))
     }
-    fn send_multipart<U>(
+    fn send_multipart(
         &self,
         _: Request<MultipartForm>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        U: From<Bytes> + WasmCompatSend + 'static,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
     {
         std::future::ready(Err(http_client::Error::non_success_with_details(
             StatusCode::NOT_IMPLEMENTED,
@@ -71,13 +66,10 @@ impl HttpClientExt for Replay {
             String::new(),
         )))
     }
-    fn send_streaming<T>(
+    fn send_streaming(
         &self,
-        _: Request<T>,
-    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
-    where
-        T: Into<Bytes> + WasmCompatSend,
-    {
+        _: Request<Bytes>,
+    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend {
         let body: BoxedStream = Box::pin(Chunks {
             replay: self.clone(),
             offset: 0,

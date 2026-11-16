@@ -914,7 +914,7 @@ async fn url_keys_and_json_authorization_are_private_in_live_and_cassette_output
     let client = log.wrap_http(rig_reqwest::ReqwestClient::from(raw.clone()));
     let request = json!({"authorization":auth,"headers":{"Authorization":format!("Bearer {header_auth}")},"echo":format!("{key_password} {signed} {nested}"),"fingerprint":"local"});
     let response = client
-        .send::<_, Bytes>(
+        .send(
             Request::post(format!("{}/submit", session.base_url()))
                 .header("authorization", "Bearer local")
                 .body(Bytes::from(request.to_string()))
@@ -1104,7 +1104,7 @@ async fn raw_multipart_capture_keeps_only_metadata_and_omits_request_bytes() {
                 .expect("client"),
         ));
         let response = client
-            .send::<_, Bytes>(
+            .send(
                 Request::post(format!("{}/submit", session.base_url()))
                     .header("content-type", "multipart/form-data; boundary=sample")
                     .header("authorization", format!("Bearer {secret}"))
@@ -1286,7 +1286,7 @@ async fn short_password_and_header_echoes_are_private_in_both_output_files() {
             let response = client.send_streaming(request).await.expect("reply");
             let _: Vec<_> = response.into_body().collect().await;
         } else {
-            assert!(client.send::<_, Bytes>(request).await.is_err());
+            assert!(client.send(request).await.is_err());
         }
         log.flush();
         session.try_finish().await.expect("safe recording");
@@ -1605,7 +1605,7 @@ async fn capture_scrub_request_with_header_map(
                 let _: Vec<_> = reply.into_body().collect().await;
             } else {
                 client
-                    .send::<_, Bytes>(request)
+                    .send(request)
                     .await
                     .expect("reply")
                     .into_body()
@@ -1616,7 +1616,7 @@ async fn capture_scrub_request_with_header_map(
         RequestBodyRef::Multipart(form) => {
             assert!(!streaming, "typed multipart uses unary replies");
             client
-                .send_multipart::<Bytes>(builder.body(form.clone()).expect("request"))
+                .send_multipart(builder.body(form.clone()).expect("request"))
                 .await
                 .expect("reply")
                 .into_body()

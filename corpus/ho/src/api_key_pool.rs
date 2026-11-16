@@ -511,44 +511,31 @@ fn keyed(
 }
 
 impl HttpClientExt for Rotating {
-    fn send<T, U>(
+    fn send(
         &self,
-        request: Request<T>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        T: Into<Bytes>,
-        T: WasmCompatSend,
-        U: From<Bytes>,
-        U: WasmCompatSend + 'static,
+        request: Request<Bytes>,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
     {
-        let request = request.map(Into::into);
         self.clone()
             .send_keyed(request, |inner, request| async move {
-                inner.send::<Bytes, U>(request).await
+                inner.send(request).await
             })
     }
 
     /// A multipart body is sent once, on the current key: it cannot be
     /// sent again. No model call sends one.
-    fn send_multipart<U>(
+    fn send_multipart(
         &self,
         request: Request<MultipartForm>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        U: From<Bytes>,
-        U: WasmCompatSend + 'static,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
     {
         self.inner.send_multipart(request)
     }
 
-    fn send_streaming<T>(
+    fn send_streaming(
         &self,
-        request: Request<T>,
-    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
-    where
-        T: Into<Bytes> + WasmCompatSend,
-    {
-        let request = request.map(Into::into);
+        request: Request<Bytes>,
+    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend {
         self.clone()
             .send_keyed(request, |inner, request| async move {
                 inner.send_streaming(request).await

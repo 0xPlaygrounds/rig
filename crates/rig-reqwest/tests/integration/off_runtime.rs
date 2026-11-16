@@ -7,7 +7,7 @@
 
 use bytes::Bytes;
 use futures::StreamExt;
-use rig_http::http_client::{HttpClientExt, NoBody, Request};
+use rig_http::http_client::{HttpClientExt, Request};
 use rig_reqwest::ReqwestClient;
 use std::io::{Read, Write};
 use std::net::TcpListener;
@@ -90,12 +90,12 @@ fn unary_request_without_a_tokio_runtime() {
     let request = Request::builder()
         .method(http::Method::GET)
         .uri(url)
-        .body(NoBody)
+        .body(Bytes::new())
         .expect("request");
 
     // No tokio runtime anywhere on this thread: `futures::executor` only.
     let body: Bytes = block_on(async {
-        let response = client.send::<_, Bytes>(request).await.expect("send");
+        let response = client.send(request).await.expect("send");
         assert_eq!(response.status(), http::StatusCode::OK);
         response.into_body().await.expect("body")
     });
@@ -114,7 +114,7 @@ fn streamed_body_without_a_tokio_runtime() {
     let request = Request::builder()
         .method(http::Method::GET)
         .uri(url)
-        .body(NoBody)
+        .body(Bytes::new())
         .expect("request");
 
     let collected: Vec<u8> = block_on(async {
@@ -145,10 +145,10 @@ async fn unary_request_inside_a_tokio_runtime() {
     let request = Request::builder()
         .method(http::Method::GET)
         .uri(url)
-        .body(NoBody)
+        .body(Bytes::new())
         .expect("request");
     let body = tokio::time::timeout(std::time::Duration::from_secs(10), async {
-        let response = client.send::<_, Bytes>(request).await.expect("send");
+        let response = client.send(request).await.expect("send");
         response.into_body().await.expect("body")
     })
     .await
@@ -171,12 +171,12 @@ fn bodies_can_move_off_the_request_executor() {
     );
     let request = Request::builder()
         .uri(serve_once("moved unary", 1))
-        .body(NoBody)
+        .body(Bytes::new())
         .expect("request");
     let response = runtime
         .block_on(rig_http::wasm_compat::timeout(
             std::time::Duration::from_secs(10),
-            client.send::<_, Bytes>(request),
+            client.send(request),
         ))
         .expect("request deadline")
         .expect("response");
@@ -185,7 +185,7 @@ fn bodies_can_move_off_the_request_executor() {
 
     let request = Request::builder()
         .uri(serve_once("moved stream", 4))
-        .body(NoBody)
+        .body(Bytes::new())
         .expect("request");
     let response = runtime
         .block_on(rig_http::wasm_compat::timeout(

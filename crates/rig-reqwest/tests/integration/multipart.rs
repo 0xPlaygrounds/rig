@@ -58,7 +58,7 @@ async fn a_parts_content_type_reaches_the_wire() {
         .expect("request should build");
 
     let response = ReqwestClient::default()
-        .send_multipart::<Vec<u8>>(request)
+        .send_multipart(request)
         .await
         .expect("the request should be sent");
     assert!(response.status().is_success());
@@ -92,7 +92,7 @@ async fn a_part_without_a_content_type_is_still_rendered() {
         .expect("request should build");
 
     ReqwestClient::default()
-        .send_multipart::<Vec<u8>>(request)
+        .send_multipart(request)
         .await
         .expect("the request should be sent");
 

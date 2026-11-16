@@ -1,9 +1,9 @@
 //! Transport-independent HTTP requests, lazy response bodies, and errors.
 //!
 //! ```
-//! use rig_http::http_client::{NoBody, Request};
+//! use rig_http::http_client::{Bytes, Request};
 //!
-//! let request = Request::get("https://example.com/v1/models").body(NoBody)?;
+//! let request = Request::get("https://example.com/v1/models").body(Bytes::new())?;
 //! assert_eq!(request.uri().path(), "/v1/models");
 //! # Ok::<(), rig_http::http_client::Error>(())
 //! ```
@@ -50,12 +50,6 @@ pub enum Error {
         /// The failed response's headers, verbatim.
         headers: http::HeaderMap,
     },
-    /// A header value with characters a header cannot carry.
-    #[error("Header value outside of legal range: {0}")]
-    InvalidHeaderValue(#[from] http::header::InvalidHeaderValue),
-    /// The request builder failed earlier, so its headers cannot be read.
-    #[error("Request in error state, cannot access headers")]
-    NoHeaders,
     /// The response stream ended before it was done.
     #[error("Stream ended")]
     StreamEnded,
@@ -168,7 +162,7 @@ pub const fn retryable_status(status: Option<u16>) -> bool {
 }
 
 /// A response body that is read when awaited.
-pub type LazyBody<T> = WasmBoxedFuture<'static, Result<T>>;
+pub type LazyBody = WasmBoxedFuture<'static, Result<Bytes>>;
 
 /// The body of a streaming response: the transport's own chunks, boxed.
 pub type BoxedStream = WasmBoxedStream<'static, Result<Bytes>>;
@@ -176,7 +170,8 @@ pub type BoxedStream = WasmBoxedStream<'static, Result<Bytes>>;
 /// A response whose body streams.
 pub type StreamingResponse = Response<BoxedStream>;
 
-/// A request with an empty body.
+/// The empty body of a WebSocket handshake request. An HTTP request with no
+/// body sends `Bytes::new()`.
 #[derive(Debug, Clone, Copy)]
 pub struct NoBody;
 
@@ -187,7 +182,7 @@ impl From<NoBody> for Bytes {
 }
 
 /// Reads `response`'s body as text, replacing invalid UTF-8.
-pub async fn text(response: Response<LazyBody<Vec<u8>>>) -> Result<String> {
+pub async fn text(response: Response<LazyBody>) -> Result<String> {
     let text = response.into_body().await?;
     Ok(String::from(String::from_utf8_lossy(&text)))
 }
@@ -202,33 +197,23 @@ pub async fn text(response: Response<LazyBody<Vec<u8>>>) -> Result<String> {
     note = "use `rig_reqwest::ReqwestClient` (wrap a configured `reqwest::Client` with `ReqwestClient::from(client)`), erase a client with `DynHttpClient::new(client)`, or implement `HttpClientExt`; a provider configuration takes it with `.connect(client)`"
 )]
 pub trait HttpClientExt: WasmCompatSend + WasmCompatSync {
-    /// Sends a request and returns headers with a lazy body converted from bytes to `U`.
-    fn send<T, U>(
+    /// Sends a request and returns headers with a lazy body.
+    fn send(
         &self,
-        req: Request<T>,
-    ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        T: Into<Bytes>,
-        T: WasmCompatSend,
-        U: From<Bytes>,
-        U: WasmCompatSend + 'static;
+        req: Request<Bytes>,
+    ) -> impl Future<Output = Result<Response<LazyBody>>> + WasmCompatSend + 'static;
 
-    /// Sends a multipart request and returns headers with a lazy body converted to `U`.
-    fn send_multipart<U>(
+    /// Sends a multipart request and returns headers with a lazy body.
+    fn send_multipart(
         &self,
         req: Request<MultipartForm>,
-    ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        U: From<Bytes>,
-        U: WasmCompatSend + 'static;
+    ) -> impl Future<Output = Result<Response<LazyBody>>> + WasmCompatSend + 'static;
 
     /// Sends a request and returns headers with a stream of transport byte chunks.
-    fn send_streaming<T>(
+    fn send_streaming(
         &self,
-        req: Request<T>,
-    ) -> impl Future<Output = Result<StreamingResponse>> + WasmCompatSend
-    where
-        T: Into<Bytes> + WasmCompatSend;
+        req: Request<Bytes>,
+    ) -> impl Future<Output = Result<StreamingResponse>> + WasmCompatSend;
 }
 
 #[cfg(test)]

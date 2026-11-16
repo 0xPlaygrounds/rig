@@ -65,7 +65,7 @@ async fn an_unbuilt_client_reports_its_build_error_on_every_send() {
             .expect("a request")
     };
     for _ in 0..2 {
-        let Err(error) = client.send::<_, Bytes>(request()).await else {
+        let Err(error) = client.send(request()).await else {
             panic!("an unbuilt client sent a request");
         };
         assert!(
@@ -155,7 +155,7 @@ async fn only_a_redirect_on_the_same_origin_keeps_the_keys() {
         }
         let request = request.body(Bytes::from("the-body")).expect("a request");
         ReqwestClient::default()
-            .send::<_, Bytes>(request)
+            .send(request)
             .await
             .expect("the redirect is followed");
         landed.recv().await.expect("a request landed")
@@ -202,7 +202,7 @@ async fn only_a_redirect_on_the_same_origin_keeps_the_keys() {
         .body(Bytes::new())
         .expect("a request");
     ReqwestClient::default()
-        .send::<_, Bytes>(undecodable)
+        .send(undecodable)
         .await
         .expect("the redirect is followed");
     let landed = landed_on_first.recv().await.expect("a request landed");

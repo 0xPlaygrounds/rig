@@ -250,7 +250,7 @@ pub struct Native {
     pub baseline: Option<serde_json::Value>,
     /// Whether an edit was detected before serialization. A stored edit
     /// stays stale even if JSON parsing makes its numbers equal again.
-    #[serde(default, skip_serializing_if = "crate::json_utils::is_false")]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub edited: bool,
     /// Where the item keeps its reasoning blob, as a JSON pointer such as
     /// `/signature`, when it holds one. The reply fold sets it from the

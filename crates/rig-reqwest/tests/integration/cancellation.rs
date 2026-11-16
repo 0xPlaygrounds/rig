@@ -3,7 +3,7 @@
 
 use bytes::Bytes;
 use futures::FutureExt;
-use rig_http::http_client::{HttpClientExt, NoBody, Request};
+use rig_http::http_client::{HttpClientExt, Request};
 use rig_reqwest::ReqwestClient;
 use std::{
     io::{Read, Write},
@@ -91,8 +91,11 @@ fn dropping_a_pending_request_releases_the_connection() {
             .build()
             .expect("client"),
     );
-    let request = Request::builder().uri(url).body(NoBody).expect("request");
-    let mut send = Box::pin(client.send::<_, Bytes>(request));
+    let request = Request::builder()
+        .uri(url)
+        .body(Bytes::new())
+        .expect("request");
+    let mut send = Box::pin(client.send(request));
     block_on(async {
         match futures::future::select(send.as_mut(), received).await {
             futures::future::Either::Right((received, _)) => {
@@ -121,8 +124,11 @@ fn the_supplied_timeout_releases_a_pending_request() {
         .expect("client");
     let client = ReqwestClient::from(client);
     let started = std::time::Instant::now();
-    let request = Request::builder().uri(url).body(NoBody).expect("request");
-    let error = block_on(client.send::<_, Bytes>(request))
+    let request = Request::builder()
+        .uri(url)
+        .body(Bytes::new())
+        .expect("request");
+    let error = block_on(client.send(request))
         .err()
         .expect("request times out");
     match error {
@@ -158,9 +164,9 @@ fn dropping_before_first_poll_never_connects() {
             "http://{}/",
             listener.local_addr().expect("address")
         ))
-        .body(NoBody)
+        .body(Bytes::new())
         .expect("request");
-    drop(client.send::<_, Bytes>(request));
+    drop(client.send(request));
     assert_eq!(
         listener.accept().expect_err("no connection").kind(),
         std::io::ErrorKind::WouldBlock
@@ -176,9 +182,11 @@ fn dropping_a_lazy_unary_body_releases_the_connection() {
             .build()
             .expect("client"),
     );
-    let request = Request::builder().uri(url).body(NoBody).expect("request");
-    let response =
-        block_on(client.send::<_, Bytes>(request)).expect("headers without waiting for body");
+    let request = Request::builder()
+        .uri(url)
+        .body(Bytes::new())
+        .expect("request");
+    let response = block_on(client.send(request)).expect("headers without waiting for body");
     block_on(received).expect("request reached server");
     drop(response.into_body());
     assert!(
@@ -197,8 +205,11 @@ fn dropping_a_polled_unary_body_releases_the_connection() {
             .build()
             .expect("client"),
     );
-    let request = Request::builder().uri(url).body(NoBody).expect("request");
-    let response = block_on(client.send::<_, Bytes>(request)).expect("response");
+    let request = Request::builder()
+        .uri(url)
+        .body(Bytes::new())
+        .expect("request");
+    let response = block_on(client.send(request)).expect("response");
     block_on(received).expect("request reached server");
     assert!(
         response.into_body().now_or_never().is_none(),
@@ -221,11 +232,14 @@ fn a_host_runtime_allows_body_drop_from_a_foreign_executor() {
             .build()
             .expect("client"),
     );
-    let request = Request::builder().uri(url).body(NoBody).expect("request");
+    let request = Request::builder()
+        .uri(url)
+        .body(Bytes::new())
+        .expect("request");
     let response = runtime
         .block_on(rig_http::wasm_compat::timeout(
             Duration::from_secs(10),
-            client.send::<_, Bytes>(request),
+            client.send(request),
         ))
         .expect("request deadline")
         .expect("response");
@@ -250,11 +264,14 @@ fn host_runtime_shutdown_releases_io_and_late_body_polling_returns_an_error() {
             .build()
             .expect("client"),
     );
-    let request = Request::builder().uri(url).body(NoBody).expect("request");
+    let request = Request::builder()
+        .uri(url)
+        .body(Bytes::new())
+        .expect("request");
     let response = runtime
         .block_on(rig_http::wasm_compat::timeout(
             Duration::from_secs(10),
-            client.send::<_, Bytes>(request),
+            client.send(request),
         ))
         .expect("request deadline")
         .expect("response");
@@ -277,7 +294,10 @@ fn dropping_an_idle_stream_releases_the_connection_without_another_chunk() {
             .build()
             .expect("client"),
     );
-    let request = Request::builder().uri(url).body(NoBody).expect("request");
+    let request = Request::builder()
+        .uri(url)
+        .body(Bytes::new())
+        .expect("request");
     let response = block_on(client.send_streaming(request)).expect("response");
     block_on(received).expect("request reached server");
     drop(response);

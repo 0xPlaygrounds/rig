@@ -52,13 +52,10 @@ impl Backend {
 const NOT_FOUND: &str = r#"{"detail":"The 'gpt-5.3-chat-latest' model is not supported when using Codex with a ChatGPT account.","error":{"type":"invalid_request_error","code":"model_not_found","message":"The 'gpt-5.3-chat-latest' model is not supported when using Codex with a ChatGPT account."}}"#;
 
 impl HttpClientExt for Backend {
-    fn send<T, U>(
+    fn send(
         &self,
-        _: Request<T>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        T: Into<Bytes> + WasmCompatSend,
-        U: From<Bytes> + WasmCompatSend + 'static,
+        _: Request<Bytes>,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
     {
         // A credential refresh.
         let stalls = self.stalls;
@@ -70,23 +67,18 @@ impl HttpClientExt for Backend {
         }
     }
 
-    fn send_multipart<U>(
+    fn send_multipart(
         &self,
         _: Request<MultipartForm>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        U: From<Bytes> + WasmCompatSend + 'static,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
     {
         ready(Err(http_client::Error::StreamEnded))
     }
 
-    fn send_streaming<T>(
+    fn send_streaming(
         &self,
-        request: Request<T>,
-    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
-    where
-        T: Into<Bytes> + WasmCompatSend,
-    {
+        request: Request<Bytes>,
+    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend {
         let listing = request.uri().path().ends_with("/models");
         let (status, body) = match listing {
             true => {

@@ -1,6 +1,5 @@
 //! Type-erased HTTP transport with optional middleware.
-//! Without middleware, requests pass through unchanged after body conversion to
-//! bytes; lazy response bodies convert through `U::from`.
+//! Without middleware, requests and responses pass through unchanged.
 //!
 //! ```
 //! use rig_http::http_client::{DynHttpClient, HttpClientExt};
@@ -21,23 +20,22 @@ use super::middleware::{Exchange, HttpMiddleware};
 use super::{HttpClientExt, LazyBody, MultipartForm, Result, StreamingResponse};
 use crate::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync};
 
-/// Object-safe mirror of [`HttpClientExt`] with the generics fixed to
-/// [`Bytes`]. Private: the only way to reach it is through
-/// [`DynHttpClient`], which re-exposes the generic surface.
+/// Object-safe mirror of [`HttpClientExt`] with boxed futures. Private: the
+/// only way to reach it is through [`DynHttpClient`].
 pub(crate) trait ErasedHttpClient: WasmCompatSend + WasmCompatSync {
-    fn send_bytes(
+    fn send_boxed(
         &self,
         req: Request<Bytes>,
-    ) -> WasmBoxedFuture<'static, Result<Response<LazyBody<Bytes>>>>;
+    ) -> WasmBoxedFuture<'static, Result<Response<LazyBody>>>;
 
-    fn send_multipart_bytes(
+    fn send_multipart_boxed(
         &self,
         req: Request<MultipartForm>,
-    ) -> WasmBoxedFuture<'static, Result<Response<LazyBody<Bytes>>>>;
+    ) -> WasmBoxedFuture<'static, Result<Response<LazyBody>>>;
 
     /// Borrows `self`: [`HttpClientExt::send_streaming`] does not promise a
     /// `'static` future, so neither can its erasure.
-    fn send_streaming_bytes(
+    fn send_streaming_boxed(
         &self,
         req: Request<Bytes>,
     ) -> WasmBoxedFuture<'_, Result<StreamingResponse>>;
@@ -47,25 +45,25 @@ impl<H> ErasedHttpClient for H
 where
     H: HttpClientExt + 'static,
 {
-    fn send_bytes(
+    fn send_boxed(
         &self,
         req: Request<Bytes>,
-    ) -> WasmBoxedFuture<'static, Result<Response<LazyBody<Bytes>>>> {
-        Box::pin(self.send::<Bytes, Bytes>(req))
+    ) -> WasmBoxedFuture<'static, Result<Response<LazyBody>>> {
+        Box::pin(self.send(req))
     }
 
-    fn send_multipart_bytes(
+    fn send_multipart_boxed(
         &self,
         req: Request<MultipartForm>,
-    ) -> WasmBoxedFuture<'static, Result<Response<LazyBody<Bytes>>>> {
-        Box::pin(self.send_multipart::<Bytes>(req))
+    ) -> WasmBoxedFuture<'static, Result<Response<LazyBody>>> {
+        Box::pin(self.send_multipart(req))
     }
 
-    fn send_streaming_bytes(
+    fn send_streaming_boxed(
         &self,
         req: Request<Bytes>,
     ) -> WasmBoxedFuture<'_, Result<StreamingResponse>> {
-        Box::pin(self.send_streaming::<Bytes>(req))
+        Box::pin(self.send_streaming(req))
     }
 }
 
@@ -216,71 +214,47 @@ impl fmt::Debug for DynHttpClient {
 }
 
 impl HttpClientExt for DynHttpClient {
-    fn send<T, U>(
+    fn send(
         &self,
-        req: Request<T>,
-    ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        T: Into<Bytes>,
-        T: WasmCompatSend,
-        U: From<Bytes>,
-        U: WasmCompatSend + 'static,
-    {
+        req: Request<Bytes>,
+    ) -> impl Future<Output = Result<Response<LazyBody>>> + WasmCompatSend + 'static {
         let this = self.clone();
-        let (mut parts, body) = req.map(Into::into).into_parts();
+        let (mut parts, body) = req.into_parts();
         async move {
             let body = this.apply_request_middleware(&mut parts, body).await?;
-            let response = this
-                .observe(parts, body, |request| this.inner.send_bytes(request))
-                .await?;
-            Ok(convert_body::<U>(response))
+            this.observe(parts, body, |request| this.inner.send_boxed(request))
+                .await
         }
     }
 
-    fn send_multipart<U>(
+    fn send_multipart(
         &self,
         req: Request<MultipartForm>,
-    ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        U: From<Bytes>,
-        U: WasmCompatSend + 'static,
-    {
+    ) -> impl Future<Output = Result<Response<LazyBody>>> + WasmCompatSend + 'static {
         let this = self.clone();
         let (mut parts, body) = req.into_parts();
         async move {
             this.apply_header_middleware(&mut parts).await?;
-            let response = this
-                .observe(parts, body, |request| {
-                    this.inner.send_multipart_bytes(request)
-                })
-                .await?;
-            Ok(convert_body::<U>(response))
-        }
-    }
-
-    fn send_streaming<T>(
-        &self,
-        req: Request<T>,
-    ) -> impl Future<Output = Result<StreamingResponse>> + WasmCompatSend
-    where
-        T: Into<Bytes> + WasmCompatSend,
-    {
-        let (mut parts, body) = req.map(Into::into).into_parts();
-        async move {
-            let body = self.apply_request_middleware(&mut parts, body).await?;
-            self.observe(parts, body, |request| {
-                self.inner.send_streaming_bytes(request)
+            this.observe(parts, body, |request| {
+                this.inner.send_multipart_boxed(request)
             })
             .await
         }
     }
-}
 
-fn convert_body<U>(response: Response<LazyBody<Bytes>>) -> Response<LazyBody<U>>
-where
-    U: From<Bytes> + WasmCompatSend + 'static,
-{
-    response.map(|body| -> LazyBody<U> { Box::pin(async move { body.await.map(U::from) }) })
+    fn send_streaming(
+        &self,
+        req: Request<Bytes>,
+    ) -> impl Future<Output = Result<StreamingResponse>> + WasmCompatSend {
+        let (mut parts, body) = req.into_parts();
+        async move {
+            let body = self.apply_request_middleware(&mut parts, body).await?;
+            self.observe(parts, body, |request| {
+                self.inner.send_streaming_boxed(request)
+            })
+            .await
+        }
+    }
 }
 
 #[cfg(test)]

@@ -2,23 +2,23 @@ use super::*;
 use crate::test_utils::RecordingHttpClient;
 use futures::executor::block_on;
 
-fn request(body: &'static str) -> Request<&'static str> {
+fn request(body: &'static str) -> Request<Bytes> {
     Request::builder()
         .method(http::Method::POST)
         .uri("https://example.test/v1/echo?x=1")
         .header("x-probe", "yes")
-        .body(body)
+        .body(Bytes::from_static(body.as_bytes()))
         .expect("valid request")
 }
 
 #[test]
-fn unary_request_passes_through_unchanged_and_body_converts() {
+fn unary_request_and_reply_pass_through_unchanged() {
     let inner = RecordingHttpClient::new(r#"{"ok":true}"#);
     let erased = DynHttpClient::new(inner.clone());
 
-    let response = block_on(erased.send::<_, Vec<u8>>(request("hello"))).expect("send");
+    let response = block_on(erased.send(request("hello"))).expect("send");
     let body = block_on(response.into_body()).expect("body");
-    assert_eq!(body, br#"{"ok":true}"#);
+    assert_eq!(body, Bytes::from_static(br#"{"ok":true}"#));
 
     let captured = inner.requests();
     assert_eq!(captured.len(), 1);
@@ -132,7 +132,7 @@ mod middleware {
                 log: log.clone(),
             });
 
-        block_on(erased.send::<_, Bytes>(request("body-"))).expect("send");
+        block_on(erased.send(request("body-"))).expect("send");
 
         let captured = inner.requests();
         assert_eq!(captured.len(), 1);
@@ -206,7 +206,7 @@ mod middleware {
     fn request_side_failure_aborts_before_sending() {
         let inner = RecordingHttpClient::new("ok");
         let erased = DynHttpClient::new(inner.clone()).with_middleware(FailAt("headers"));
-        let Err(err) = block_on(erased.send::<_, Bytes>(request("hello"))) else {
+        let Err(err) = block_on(erased.send(request("hello"))) else {
             panic!("must abort")
         };
         assert_eq!(err.non_success_status(), Some(StatusCode::BAD_REQUEST));
@@ -217,7 +217,7 @@ mod middleware {
     fn response_hook_failure_surfaces_as_the_request_error() {
         let inner = RecordingHttpClient::new("ok");
         let erased = DynHttpClient::new(inner.clone()).with_middleware(FailAt("response"));
-        let Err(err) = block_on(erased.send::<_, Bytes>(request("hello"))) else {
+        let Err(err) = block_on(erased.send(request("hello"))) else {
             panic!("must fail")
         };
         assert_eq!(
@@ -303,7 +303,7 @@ mod middleware {
         let erased = DynHttpClient::new(inner)
             .with_middleware(SeeReplies(seen.clone()))
             .with_middleware(FailAt("response"));
-        let Err(err) = block_on(erased.send::<_, Bytes>(request("hello"))) else {
+        let Err(err) = block_on(erased.send(request("hello"))) else {
             panic!("an error reply fails the request")
         };
         assert_eq!(seen.lock().expect("seen").as_slice(), ["429:7"]);
@@ -391,7 +391,7 @@ mod middleware {
         let erased = DynHttpClient::new(inner).with_middleware(SeeServes(seen.clone()));
         let mut marked = request("hello");
         marked.extensions_mut().insert(Serves(7));
-        let _ = block_on(erased.send::<_, Bytes>(marked));
+        let _ = block_on(erased.send(marked));
         assert_eq!(
             seen.lock().expect("seen").as_slice(),
             [
@@ -414,7 +414,7 @@ mod middleware {
         assert!(plain.ptr_eq(&layered));
         // Re-erasing clones the handle, middleware included.
         let reerased = DynHttpClient::new(layered);
-        block_on(reerased.send::<_, Bytes>(request("x"))).expect("send");
+        block_on(reerased.send(request("x"))).expect("send");
         assert!(!log.lock().expect("log").is_empty());
     }
 }
@@ -423,7 +423,7 @@ mod middleware {
 fn transport_errors_surface_unchanged() {
     let inner = RecordingHttpClient::with_error(http::StatusCode::TOO_MANY_REQUESTS, "slow");
     let erased = DynHttpClient::new(inner);
-    let Err(err) = block_on(erased.send::<_, Bytes>(request(""))) else {
+    let Err(err) = block_on(erased.send(request(""))) else {
         panic!("expected a transport error")
     };
     assert_eq!(
