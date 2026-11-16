@@ -175,12 +175,6 @@ impl RecordingHttpClient {
         Self::scripted(MockHttpResponse::error(status, message))
     }
 
-    /// Create a client that returns a non-success HTTP response (status and body)
-    /// for unary requests, instead of a transport-level error.
-    pub fn with_error_response(status: http::StatusCode, body: impl Into<Bytes>) -> Self {
-        Self::scripted(MockHttpResponse::ErrorResponse(status, body.into()))
-    }
-
     /// Create a client whose transport reports a non-success status *and*
     /// preserves the failed response's headers, as the bundled reqwest client
     /// does (rig#2210).

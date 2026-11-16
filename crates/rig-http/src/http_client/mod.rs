@@ -50,12 +50,6 @@ pub enum Error {
         /// The failed response's headers, verbatim.
         headers: http::HeaderMap,
     },
-    /// A header value with characters a header cannot carry.
-    #[error("Header value outside of legal range: {0}")]
-    InvalidHeaderValue(#[from] http::header::InvalidHeaderValue),
-    /// The request builder failed earlier, so its headers cannot be read.
-    #[error("Request in error state, cannot access headers")]
-    NoHeaders,
     /// The response stream ended before it was done.
     #[error("Stream ended")]
     StreamEnded,

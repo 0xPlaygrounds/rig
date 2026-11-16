@@ -55,7 +55,7 @@ impl HttpClientExt for Fake {
         _: Request<Bytes>,
     ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
     {
-        future::ready(Err(http_client::Error::NoHeaders))
+        future::ready(Err(http_client::Error::permanent("not scripted")))
     }
 
     fn send_multipart(
@@ -63,7 +63,7 @@ impl HttpClientExt for Fake {
         _: Request<MultipartForm>,
     ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
     {
-        future::ready(Err(http_client::Error::NoHeaders))
+        future::ready(Err(http_client::Error::permanent("not scripted")))
     }
 
     fn send_streaming(

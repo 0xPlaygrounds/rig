@@ -164,14 +164,10 @@ fn vector_response_less_transport_reports_preserve_classification_and_sources() 
     #[error("transport backend")]
     struct Backend(#[source] Reset);
 
-    let Err(invalid_header) = http::HeaderValue::from_bytes(b"\x00") else {
-        panic!("NUL must be an invalid header value");
-    };
     let Err(protocol) = http::Request::builder().header("x-invalid", "\n").body(()) else {
         panic!("a newline must be an invalid request header value");
     };
     let protocol_source = protocol.to_string();
-    let header_source = invalid_header.to_string();
     for (transport, retryable, sources) in [
         (http_client::Error::StreamEnded, true, Vec::new()),
         (
@@ -184,12 +180,6 @@ fn vector_response_less_transport_reports_preserve_classification_and_sources() 
             false,
             vec![protocol_source],
         ),
-        (
-            http_client::Error::InvalidHeaderValue(invalid_header),
-            false,
-            vec![header_source],
-        ),
-        (http_client::Error::NoHeaders, false, Vec::new()),
         (
             http_client::Error::InvalidContentType(http::HeaderValue::from_static("text/html")),
             false,
@@ -431,11 +421,6 @@ fn reports_match_the_replaced_error_enums() {
             "*::HttpError(Permanent)",
             ProviderError::Http(H::permanent(std::io::Error::other("not logged in")).into()),
             r#"{"code":null,"http_status":null,"kind":"http","message":"HttpError: Http client error: not logged in","refusal":false,"retryable":false,"source_chain":[]}"#,
-        ),
-        (
-            "*::HttpError(NoHeaders)",
-            ProviderError::Http(H::NoHeaders.into()),
-            r#"{"code":null,"http_status":null,"kind":"http","message":"HttpError: Request in error state, cannot access headers","refusal":false,"retryable":false,"source_chain":[]}"#,
         ),
         (
             "*::JsonError",
