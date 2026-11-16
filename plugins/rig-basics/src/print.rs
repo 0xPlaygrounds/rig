@@ -1194,10 +1194,7 @@ fn excerpt(text: &str) -> String {
         .match_indices('\n')
         .nth(EXCERPT_LINES - 1)
         .map_or(text.len(), |(at, _)| at);
-    let mut end = lines_end.min(EXCERPT_BYTES);
-    while !text.is_char_boundary(end) {
-        end -= 1;
-    }
+    let end = text.floor_char_boundary(lines_end.min(EXCERPT_BYTES));
     let (shown, left) = text.split_at(end);
     match left.trim_end().len() {
         0 => text.trim_end().to_owned(),

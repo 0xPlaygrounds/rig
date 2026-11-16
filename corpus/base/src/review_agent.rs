@@ -663,8 +663,7 @@ impl Git {
         let args = ["diff", "--no-color", "--no-ext-diff", &base, &now];
         let mut diff = self.run(None, &args)?;
         if diff.len() > cap {
-            let end = (0..=cap).rev().find(|&end| diff.is_char_boundary(end));
-            diff.truncate(end.unwrap_or_default());
+            diff.truncate(diff.floor_char_boundary(cap));
             diff.push_str("\n[The diff is cut here; read the changed files for the rest.]");
         }
         Ok(diff)

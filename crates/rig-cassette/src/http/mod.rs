@@ -2383,12 +2383,7 @@ fn sse_body_chunks(body: &str) -> Vec<Bytes> {
     while start < body.len() {
         let target_len = CHUNK_SIZES[size_index % CHUNK_SIZES.len()];
         size_index += 1;
-
-        let mut end = (start + target_len).min(body.len());
-        while end < body.len() && !body.is_char_boundary(end) {
-            end += 1;
-        }
-
+        let end = body.ceil_char_boundary(start + target_len);
         chunks.push(Bytes::copy_from_slice(&body.as_bytes()[start..end]));
         start = end;
     }

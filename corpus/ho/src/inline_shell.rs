@@ -273,10 +273,7 @@ fn cut(text: &str) -> String {
     if text.len() <= OUTPUT_LIMIT {
         return text.to_owned();
     }
-    let end = (0..=OUTPUT_LIMIT)
-        .rev()
-        .find(|&end| text.is_char_boundary(end))
-        .unwrap_or_default();
+    let end = text.floor_char_boundary(OUTPUT_LIMIT);
     let kept = text.get(..end).unwrap_or_default();
     format!("{kept}\n({} bytes cut)", text.len() - end)
 }

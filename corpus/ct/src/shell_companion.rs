@@ -445,10 +445,7 @@ fn tail(output: &str, settings: &ShellSettings) -> String {
         .get(lines.len().saturating_sub(settings.tail_lines)..)
         .unwrap_or_default()
         .join("\n");
-    let mut start = kept.len().saturating_sub(settings.tail_bytes);
-    while !kept.is_char_boundary(start) {
-        start += 1;
-    }
+    let start = kept.ceil_char_boundary(kept.len().saturating_sub(settings.tail_bytes));
     kept.get(start..).unwrap_or_default().to_owned()
 }
 

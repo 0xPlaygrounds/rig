@@ -132,11 +132,9 @@ impl RunOutput {
     fn push(&mut self, line: &str) {
         self.text.push_str(line);
         self.text.push('\n');
-        let mut excess = self.text.len().saturating_sub(KEPT_BYTES);
+        let excess = self.text.len().saturating_sub(KEPT_BYTES);
         if excess > 0 {
-            while !self.text.is_char_boundary(excess) {
-                excess += 1;
-            }
+            let excess = self.text.ceil_char_boundary(excess);
             self.text.drain(..excess);
             self.cut = true;
         }
