@@ -21,7 +21,7 @@ use rig_core::structured_output::{
 };
 
 use super::output::OutputMode;
-use super::patch::RequestPatch;
+use super::patch::{RequestPatch, overlay_params};
 use super::policy::TurnPolicy;
 use super::spec::RunSpec;
 
@@ -82,38 +82,20 @@ pub fn prepare_request(
     committed_output_tool: Option<&str>,
     patch: Option<&RequestPatch>,
 ) -> Result<PreparedRequest, PrepareError> {
-    let request_patch = patch;
-    let chat_history = history;
-    let preamble = spec.preamble.as_deref();
-    let static_context = &spec.static_context;
-    let temperature = spec.temperature;
-    let max_tokens = spec.max_tokens;
-    let additional_params = spec.additional_params.as_ref();
-    let tool_choice = spec.tool_choice.as_ref();
     let output_schema = spec.output_schema.as_ref();
-    let output_mode = &spec.output_mode;
-    let output_tool_description = spec.output_tool_description.as_deref();
-    let augment_output_preamble = spec.augment_output_preamble;
-    let preamble = request_patch
+    let preamble = patch
         .and_then(|o| o.preamble.as_deref())
-        .or(preamble);
-    let temperature = request_patch.and_then(|o| o.temperature).or(temperature);
-    let max_tokens = request_patch.and_then(|o| o.max_tokens).or(max_tokens);
-    let tool_choice = request_patch
+        .or(spec.preamble.as_deref());
+    let temperature = patch.and_then(|o| o.temperature).or(spec.temperature);
+    let max_tokens = patch.and_then(|o| o.max_tokens).or(spec.max_tokens);
+    let tool_choice = patch
         .and_then(|o| o.tool_choice.as_ref())
-        .or(tool_choice);
-    // Non-object patches must replace the baseline; the object merge helper
-    // otherwise retains its first argument for these inputs.
-    let additional_params: Option<serde_json::Value> = match (
-        additional_params,
-        request_patch.and_then(|o| o.additional_params.as_ref()),
-    ) {
-        (Some(base), Some(patch)) if base.is_object() && patch.is_object() => {
-            Some(rig_core::json_utils::merge(base.clone(), patch.clone()))
-        }
-        (base, patch) => patch.or(base).cloned(),
-    };
-    let active_tools = request_patch.and_then(|o| o.active_tools.as_deref());
+        .or(spec.tool_choice.as_ref());
+    let additional_params = overlay_params(
+        spec.additional_params.clone(),
+        patch.and_then(|o| o.additional_params.clone()),
+    );
+    let active_tools = patch.and_then(|o| o.active_tools.as_deref());
     // Hosted tools also arrive as raw `additional_params.tools`; providers
     // advertise both after the function tools.
     let hosted = !spec.provider_tools.is_empty()
@@ -167,7 +149,7 @@ pub fn prepare_request(
             hosted || !executable_tool_names.is_empty(),
             output_tool_callable(tool_choice, &candidate_output_tool),
             capabilities.composes_native_output_with_tools,
-            output_mode,
+            &spec.output_mode,
         )
     };
 
@@ -202,7 +184,7 @@ pub fn prepare_request(
     let effective_preamble: Option<String> = {
         let base = preamble.map(str::to_owned);
         let instruction = match &resolved_mode {
-            OutputMode::Tool if augment_output_preamble => {
+            OutputMode::Tool if spec.augment_output_preamble => {
                 output_tool_name.as_deref().map(output_tool_augmentation)
             }
             OutputMode::Tool => None,
@@ -222,9 +204,8 @@ pub fn prepare_request(
     };
 
     // Request history replacement must not mutate persisted conversation history.
-    let messages_history: &[Arc<Message>] = request_patch
-        .and_then(|o| o.history.as_deref())
-        .unwrap_or(chat_history);
+    let messages_history: &[Arc<Message>] =
+        patch.and_then(|o| o.history.as_deref()).unwrap_or(history);
     let preamble = effective_preamble.map(|preamble| Arc::new(Message::system(preamble)));
     let chat_history: Vec<Arc<Message>> = preamble
         .into_iter()
@@ -236,7 +217,9 @@ pub fn prepare_request(
             name: ToolName::new(name.clone()).map_err(|_| {
                 PrepareError::Request("the output tool name cannot be empty".to_string())
             })?,
-            description: output_tool_description
+            description: spec
+                .output_tool_description
+                .as_deref()
                 .unwrap_or(OUTPUT_TOOL_DESCRIPTION)
                 .to_string(),
             parameters: schema.as_value().clone(),
@@ -249,8 +232,8 @@ pub fn prepare_request(
         _ => None,
     };
 
-    let mut documents = static_context.clone();
-    if let Some(patch) = request_patch {
+    let mut documents = spec.static_context.clone();
+    if let Some(patch) = patch {
         documents.extend(patch.extra_context.iter().cloned());
     }
 

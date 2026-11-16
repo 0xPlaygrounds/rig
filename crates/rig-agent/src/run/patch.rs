@@ -59,6 +59,20 @@ fn merge_last_wins<T>(earlier: Option<T>, later: Option<T>, field: &str) -> Opti
     }
 }
 
+/// Overlay `later` additional parameters on `base`: two JSON objects
+/// shallow-merge with later keys winning; otherwise `later` replaces `base`.
+pub(crate) fn overlay_params(
+    base: Option<serde_json::Value>,
+    later: Option<serde_json::Value>,
+) -> Option<serde_json::Value> {
+    match (base, later) {
+        (Some(base), Some(later)) if base.is_object() && later.is_object() => {
+            Some(rig_core::json_utils::merge(base, later))
+        }
+        (base, later) => later.or(base),
+    }
+}
+
 impl RequestPatch {
     /// Creates an empty request patch.
     pub fn new() -> Self {
@@ -134,14 +148,7 @@ impl RequestPatch {
 
     /// Whether the patch sets nothing at all.
     pub fn is_empty(&self) -> bool {
-        self.preamble.is_none()
-            && self.temperature.is_none()
-            && self.max_tokens.is_none()
-            && self.tool_choice.is_none()
-            && self.active_tools.is_none()
-            && self.additional_params.is_none()
-            && self.extra_context.is_empty()
-            && self.history.is_none()
+        *self == Self::default()
     }
 
     /// Merge a later patch over this one under the rules documented on the
@@ -150,12 +157,8 @@ impl RequestPatch {
     /// the later value (with a warning when both are set).
     pub fn merge(mut self, later: Self) -> Self {
         self.extra_context.extend(later.extra_context);
-        self.additional_params = match (self.additional_params.take(), later.additional_params) {
-            (Some(base), Some(patch)) if base.is_object() && patch.is_object() => {
-                Some(rig_core::json_utils::merge(base, patch))
-            }
-            (base, patch) => patch.or(base),
-        };
+        self.additional_params =
+            overlay_params(self.additional_params.take(), later.additional_params);
         self.preamble = merge_last_wins(self.preamble, later.preamble, "preamble");
         self.temperature = merge_last_wins(self.temperature, later.temperature, "temperature");
         self.max_tokens = merge_last_wins(self.max_tokens, later.max_tokens, "max_tokens");
