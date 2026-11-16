@@ -124,7 +124,10 @@ pub(super) fn listed(fields: &Map<String, Value>) -> Vec<WireCitation> {
 /// Perplexity's `usage.cost` parts, xAI's `usage.cost_in_usd_ticks`,
 /// Venice's top-level `cost.usd`, or a gateway's top-level `cost` as a
 /// number or a numeric string. `None` when it reports none.
-pub(super) fn cost(usage: Option<&Value>, fields: &Map<String, Value>) -> Option<Cost> {
+pub(in crate::providers::openai) fn cost(
+    usage: Option<&Value>,
+    fields: &Map<String, Value>,
+) -> Option<Cost> {
     let finite = |value: f64| value.is_finite().then_some(value);
     let reported = usage.and_then(|usage| match usage.get("cost") {
         Some(parts @ Value::Object(_)) => {

@@ -1499,11 +1499,7 @@ impl ChatDecoder {
     /// item.
     fn call(&mut self, call: &Value, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
         self.close_writing(out)?;
-        let id = match call.get("id") {
-            Some(Value::String(id)) if !id.is_empty() && id != "null" => Some(id.clone()),
-            Some(id @ Value::Number(_)) => Some(id.to_string()),
-            _ => None,
-        };
+        let id = call.as_object().and_then(document::stated_id);
         let index = call
             .get("index")
             .and_then(Value::as_u64)
@@ -1929,7 +1925,7 @@ impl ChatDecoder {
 
 mod document;
 pub(crate) mod finish;
-mod reported;
+pub(in crate::providers::openai) mod reported;
 
 #[cfg(test)]
 mod tests;

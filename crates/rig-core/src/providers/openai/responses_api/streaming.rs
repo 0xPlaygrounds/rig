@@ -17,13 +17,14 @@ use std::collections::{HashMap, HashSet};
 
 use serde_json::{Value, json};
 
-use crate::completion::{Cost, FinishReason, Usage};
+use crate::completion::{FinishReason, Usage};
 use crate::error::ProviderError;
 use crate::json_utils::Lenient;
 use crate::json_utils::remove_preserving_order;
 use crate::message::{Source, SourceLocation};
 use crate::operation::{Block, CallFragment, Completion, Finish};
 use crate::providers::internal::wire;
+use crate::providers::openai::wire::chat::reported;
 use crate::wire::{Decoder, Flow, Out, WireCitation, WireEvent, WireFrame};
 
 /// Whether `kind` is a Responses event type this decoder reads. A frame of
@@ -321,20 +322,7 @@ pub(crate) fn usage_of(usage: &Value) -> Usage {
         reasoning_tokens: count("/output_tokens_details/reasoning_tokens"),
         ..Usage::default()
     }
-    .cost(reported_cost(usage))
-}
-
-/// xAI cost ticks per USD.
-const TICKS_PER_USD: f64 = 1e10;
-
-/// The total a `usage` value reports in USD: xAI's integer
-/// `cost_in_usd_ticks`, or OpenRouter's `cost` in credits of one USD.
-fn reported_cost(usage: &Value) -> Option<Cost> {
-    let total = match usage.u64("cost_in_usd_ticks") {
-        Some(ticks) => ticks as f64 / TICKS_PER_USD,
-        None => usage.f64("cost").filter(|cost| cost.is_finite())?,
-    };
-    Some(Cost::from_total(total))
+    .cost(reported::cost(Some(usage), &serde_json::Map::new()))
 }
 
 /// The citations a message item's `output_text` parts state, in part order.
