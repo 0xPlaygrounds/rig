@@ -589,7 +589,9 @@ checkout is refused, naming it, and `rig` starts no agent until it is fixed:
 a build from before was built from other settings. `rig plugin disable <name>`
 takes a name rig does not know out of the file. A build that cargo cannot
 resolve or compile instead starts the previous build, whose conversation is
-told why, except under `rig -p`, which refuses with cargo's errors on stderr.
+told why, except under `rig -p`, which refuses on stderr with rig's
+explanation (such as a plugin's Bevy pin, by file and line), else cargo's
+errors, and the path of the build log.
 
 Turning a plugin on or off, or changing an `extra` crate, rebuilds the agent
 at the next start or `/reload`: only the generated crate compiles again, and

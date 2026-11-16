@@ -1575,12 +1575,8 @@ fn message_lines(
                             ));
                             continue;
                         }
-                        if let Some((_, why)) = unattached(&text.text) {
-                            let rows = text_rows(why.trim_end(), Style::new().dim());
-                            lines.extend(on_band(rows, look.theme.user));
-                            continue;
-                        }
-                        if note {
+                        // An unattached note is the model's copy of a notice the user saw.
+                        if note || unattached(&text.text).is_some() {
                             continue;
                         }
                         lines.push(LookLine::default());
