@@ -5,7 +5,11 @@ use rig_harness::rig_core::completion::message::{
 };
 use rig_harness::rig_core::conversation::Author;
 use rig_harness::rig_core::message::ToolName;
+use rig_harness::rig_tools::process::Launcher;
+use rig_harness::rig_tools::remote::{Hosts, Remote};
+use rig_harness::rig_tools::workspace::Local;
 use serde_json::json;
+use std::sync::Arc;
 
 use super::*;
 
@@ -135,7 +139,7 @@ fn a_compacted_conversation_replays_what_its_summary_replaced_in_place_of_the_su
         .unwrap_or_default();
     assert_ne!(first, second);
     let replaced = BTreeMap::from([(summary, originals)]);
-    let updates = replay("main", &conversation, &replaced, Path::new("/p"));
+    let updates = replay("main", &conversation, &replaced, Path::new("/p"), &Local);
     let shown: Vec<String> = updates
         .iter()
         .map(|update| match update {
@@ -209,7 +213,13 @@ fn a_call_is_known_by_where_it_sits_whatever_the_providers_id() {
     messages.push(message::Message::Assistant(AssistantMessage::new(asked)));
     messages.push(message::Message::User { content: results });
     let conversation = Conversation::from_messages(messages);
-    let updates = replay("main", &conversation, &BTreeMap::new(), Path::new("/p"));
+    let updates = replay(
+        "main",
+        &conversation,
+        &BTreeMap::new(),
+        Path::new("/p"),
+        &Local,
+    );
     let done: Vec<_> = updates
         .into_iter()
         .filter_map(|update| match update {
@@ -249,8 +259,13 @@ fn an_embedded_resource_is_fenced_longer_than_its_own_fences() {
 
 #[test]
 fn a_location_is_a_local_file_made_absolute_and_none_for_another_host_or_home() {
+    let bench = Remote::new("bench", ["ssh", "bench"], Launcher::default);
+    let Ok(bench) = bench else {
+        return assert!(bench.is_ok());
+    };
+    let workspace = Hosts::new(Arc::new(Local), [bench]);
     let at = |path: &str| {
-        let located = locations(&json!({ "path": path }), Path::new("/p"));
+        let located = locations(&json!({ "path": path }), Path::new("/p"), &workspace);
         located
             .into_iter()
             .map(|location| location.path)
@@ -306,7 +321,13 @@ fn a_saved_call_of_a_stopped_reply_is_shown_failed_not_pending() {
         asked,
         answered,
     ]);
-    let updates = replay("main", &conversation, &BTreeMap::new(), Path::new("/p"));
+    let updates = replay(
+        "main",
+        &conversation,
+        &BTreeMap::new(),
+        Path::new("/p"),
+        &Local,
+    );
     let closed: Vec<_> = updates
         .iter()
         .filter_map(|update| match update {
@@ -324,4 +345,16 @@ fn a_saved_call_of_a_stopped_reply_is_shown_failed_not_pending() {
             (Some(acp::ToolCallStatus::Completed), json!("a text")),
         ]
     );
+}
+
+/// A local file with a colon in its first name, such as a time stamp,
+/// keeps its location: its prefix names no configured remote.
+#[test]
+fn a_local_file_with_a_colon_in_its_name_has_a_location() {
+    let located = locations(&json!({ "path": "notes:2024.md" }), Path::new("/p"), &Local);
+    let paths = located
+        .into_iter()
+        .map(|location| location.path)
+        .collect::<Vec<_>>();
+    assert_eq!(paths, [absolute(Path::new("/p").join("notes:2024.md"))]);
 }

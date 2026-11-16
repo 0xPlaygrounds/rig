@@ -14,6 +14,7 @@ use rig_harness::rig_core::completion::message::{
     ToolCall, ToolResultContent, UserContent,
 };
 use rig_harness::rig_core::conversation::{Author, AuthorKind, Conversation, Entry, MessageId};
+use rig_harness::rig_tools::workspace::Workspace;
 use rig_harness::services::WorkDir;
 use serde_json::Value;
 
@@ -44,21 +45,15 @@ fn title(name: &str, args: &Value) -> String {
 }
 
 /// The files a call names, made absolute against `cwd` as rig's file tools
-/// make them (a drive-relative `C:a.txt` too); none for a
-/// path on another host (`host:path`), which is not on this machine, or in
-/// the home directory (`~`), which rig's tools resolve and ACP has no word
-/// for. A drive letter (`C:`) is no host.
-fn locations(args: &Value, cwd: &Path) -> Vec<acp::ToolCallLocation> {
+/// make them (a drive-relative `C:a.txt` too); none for a path `workspace`
+/// puts on another host ([`Workspace::host_for`]), such as a configured
+/// remote's `host:path`, which is not on this machine, or in the home
+/// directory (`~`), which rig's tools resolve and ACP has no word for.
+fn locations(args: &Value, cwd: &Path, workspace: &dyn Workspace) -> Vec<acp::ToolCallLocation> {
     args.get("path")
         .and_then(Value::as_str)
         .into_iter()
-        .filter(|path| {
-            let remote = path.split_once(':').is_some_and(|(host, _)| {
-                let drive = host.len() == 1 && host.chars().all(|c| c.is_ascii_alphabetic());
-                !host.is_empty() && !host.contains(['/', '\\']) && !drive
-            });
-            !remote && !path.starts_with('~')
-        })
+        .filter(|path| workspace.host_for(Path::new(path)).is_none() && !path.starts_with('~'))
         .map(|path| {
             let joined = cwd.join(path);
             acp::ToolCallLocation::new(std::path::absolute(&joined).unwrap_or(joined))
@@ -80,13 +75,18 @@ pub(crate) fn call_id_at(agent: &str, at: CallRef) -> String {
 }
 
 /// A call the model asked for, as ACP announces it under `id`: pending.
-pub(crate) fn tool_call(call: &ToolCall, id: String, cwd: &Path) -> acp::ToolCall {
+pub(crate) fn tool_call(
+    call: &ToolCall,
+    id: String,
+    cwd: &Path,
+    workspace: &dyn Workspace,
+) -> acp::ToolCall {
     let name = call.function.name.as_str();
     let args = call.function.arguments_value();
     acp::ToolCall::new(id, title(name, &args))
         .kind(kind(name))
         .status(acp::ToolCallStatus::Pending)
-        .locations(locations(&args, cwd))
+        .locations(locations(&args, cwd, workspace))
         .raw_input(args)
 }
 
@@ -96,6 +96,7 @@ pub(crate) fn tool_asked(
     call: &ToolCall,
     id: String,
     cwd: &Path,
+    workspace: &dyn Workspace,
     why: &str,
 ) -> acp::ToolCallUpdate {
     let name = call.function.name.as_str();
@@ -106,7 +107,7 @@ pub(crate) fn tool_asked(
         .title(title(name, &args))
         .kind(kind(name))
         .status(acp::ToolCallStatus::Pending)
-        .locations(locations(&args, cwd))
+        .locations(locations(&args, cwd, workspace))
         .content((!why.is_empty()).then(|| vec![reasons]))
         .raw_input(args);
     acp::ToolCallUpdate::new(id, fields)
@@ -182,6 +183,7 @@ pub(crate) fn replay(
     conversation: &Conversation,
     replaced: &BTreeMap<MessageId, Vec<Entry>>,
     cwd: &Path,
+    workspace: &dyn Workspace,
 ) -> Vec<acp::SessionUpdate> {
     let mut entries = Vec::new();
     let mut expanded = HashSet::new();
@@ -261,7 +263,7 @@ pub(crate) fn replay(
                         }
                         AssistantContent::ToolCall(call) => {
                             let Some(id) = calls.next() else { continue };
-                            let announced = tool_call(call, id.clone(), cwd);
+                            let announced = tool_call(call, id.clone(), cwd, workspace);
                             updates.push(acp::SessionUpdate::ToolCall(announced));
                             if let Some(result) = results.get(&id) {
                                 let done =

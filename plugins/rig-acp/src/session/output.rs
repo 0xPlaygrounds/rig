@@ -81,6 +81,7 @@ pub(super) fn call_asked(
     agents: Query<&AgentId>,
     dirs: Query<&WorkDir>,
     root: Res<ProjectRoot>,
+    workspace: Res<ProjectWorkspace>,
     mut out: Out,
 ) {
     if let Ok((request, &ForAgent(agent), in_reply, restored)) = calls.get(asked.entity)
@@ -93,7 +94,7 @@ pub(super) fn call_asked(
             return;
         }
         let cwd = translate::cwd_of(dirs.get(agent).ok(), &root);
-        let call = translate::tool_call(&request.call, id, &cwd);
+        let call = translate::tool_call(&request.call, id, &cwd, &*workspace.0);
         out.send(acp::SessionUpdate::ToolCall(call));
     }
 }
