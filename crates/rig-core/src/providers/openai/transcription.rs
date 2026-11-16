@@ -114,7 +114,9 @@ pub enum TranscriptionUsage {
         /// Tokens in the transcript.
         output_tokens: u64,
         /// `input_tokens + output_tokens`, as the provider reported it.
-        total_tokens: u64,
+        /// `None` when the provider omits it.
+        #[serde(default)]
+        total_tokens: Option<u64>,
     },
     /// A shape this version does not model, preserved as sent.
     #[serde(untagged)]
@@ -145,7 +147,7 @@ impl TranscriptionResponse {
             }) => Usage {
                 input_tokens: Some(*input_tokens),
                 output_tokens: Some(*output_tokens),
-                total_tokens: Some(*total_tokens),
+                total_tokens: *total_tokens,
                 ..Default::default()
             },
             // Duration billing reports no token counts; the seconds stay
