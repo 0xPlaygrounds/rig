@@ -289,22 +289,18 @@ pub fn load<P: Plugin + Default>(app: &mut App, package: &str, source: &str) {
         entity,
         plugin: PhantomData,
     });
-    let attribute = attribute(app.world_mut(), entity);
-    let before = systems(app.world());
-    let outer = app.world_mut().remove_resource::<Loading>();
-    app.insert_resource(Loading(entity));
+    let outer = app.world_mut().remove_resource::<Attributing>();
+    Attribute::Open(entity).bracket(app);
     // `Attribute` before and after it brackets its `finish` and `cleanup`
     // (and the plugins it adds), which run in the order plugins were
     // added.
     app.add_plugins(Attribute::Open(entity));
     app.add_plugins(plugin);
     app.add_plugins(Attribute::Close);
-    app.world_mut().remove_resource::<Loading>();
+    Attribute::Close.bracket(app);
     if let Some(outer) = outer {
         app.insert_resource(outer);
     }
-    PluginSystems::record(app.world_mut(), &before, entity);
-    stop_attributing(app.world_mut(), attribute);
 }
 
 /// What a plugin keeps with the session, on the entity [`load`] spawned for
@@ -418,8 +414,7 @@ impl AppKeepsExt for App {
 /// Adds `what` to the list `of` of the [`Keeps`] of the plugin being
 /// built, finished or cleaned up, once.
 fn keep(world: &mut World, of: fn(&mut Keeps) -> &mut Vec<String>, what: &str) {
-    let loading = world.get_resource::<Loading>().map(|loading| loading.0);
-    let plugin = loading.or_else(|| Some(world.get_resource::<Attributing>()?.plugin));
+    let plugin = world.get_resource::<Attributing>().map(|it| it.plugin);
     let Some(mut plugin) = plugin.and_then(|plugin| world.get_entity_mut(plugin).ok()) else {
         return;
     };
@@ -434,10 +429,6 @@ fn keep(world: &mut World, of: fn(&mut Keeps) -> &mut Vec<String>, what: &str) {
         list.push(what.to_owned());
     }
 }
-
-/// The plugin [`load`] is building.
-#[derive(Resource)]
-struct Loading(Entity);
 
 /// Marks each named entity and observer spawned from now on as
 /// `plugin`'s, until [`stop_attributing`].
@@ -459,15 +450,15 @@ fn stop_attributing(world: &mut World, attribute: Entity) {
     world.despawn(attribute);
 }
 
-/// Attributes what a plugin spawns in `finish` and `cleanup`, from its
-/// [`Attribute::Open`] to the [`Attribute::Close`] after it.
+/// Attributes what a plugin spawns in its build, `finish` and `cleanup`,
+/// from its [`Attribute::Open`] to the [`Attribute::Close`] after it.
 enum Attribute {
     Open(Entity),
     Close,
 }
 
-/// The plugin being finished or cleaned up, the observer attributing to
-/// it, and the systems before it.
+/// The plugin being built, finished or cleaned up, the observer
+/// attributing to it, and the systems before it.
 #[derive(Resource)]
 struct Attributing {
     plugin: Entity,
