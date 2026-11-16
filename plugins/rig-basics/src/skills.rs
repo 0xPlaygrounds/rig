@@ -32,6 +32,7 @@ use rig_ecs::stage::ForAgent;
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::rig_core::conversation::Author;
 use rig_harness::services::{Project, ProjectRoot, RigHome};
+use rig_tools::shorten;
 use serde::Deserialize;
 
 /// The file that makes a directory a skill.
@@ -357,11 +358,7 @@ fn escape(text: &str) -> String {
 
 /// The first line of `text`, cut to a help line's length.
 fn first_line(text: &str) -> String {
-    let line = text.lines().next().unwrap_or_default();
-    match line.char_indices().nth(80) {
-        Some((at, _)) => format!("{}…", line.get(..at).unwrap_or(line)),
-        None => line.to_owned(),
-    }
+    shorten(text.lines().next().unwrap_or_default(), 81)
 }
 
 /// The message `/skill:<name> [text]` sends: the skill's body, without its

@@ -267,9 +267,7 @@ fn settled(input: &str) -> usize {
         }
     }
     let least = input.len().saturating_sub(HELD_MOST);
-    let cut = (cut.max(least)..=input.len())
-        .find(|&at| input.is_char_boundary(at))
-        .unwrap_or(input.len());
+    let cut = input.ceil_char_boundary(cut.max(least));
     // A whole secret the bound cuts through goes out whole, so it is
     // redacted as in the whole text: an assigned value with its name before
     // it and its closing quote after it.

@@ -18,6 +18,7 @@ use rig_harness::rig_core::completion::Message;
 use rig_harness::rig_core::conversation::Conversation as Chat;
 use rig_harness::rig_ecs::Persist;
 use rig_harness::rig_memory::{HeuristicTokenCounter, summary_in};
+use rig_harness::rig_tools::shorten;
 use serde::{Deserialize, Serialize};
 
 /// The plugin's name: its settings table and the author of its restores.
@@ -335,11 +336,7 @@ fn preview(message: &Message) -> String {
             }
         }
     };
-    let line = text.lines().next().unwrap_or_default();
-    match line.char_indices().nth(60) {
-        Some((at, _)) => format!("{}…", line.get(..at).unwrap_or(line)),
-        None => line.to_owned(),
-    }
+    shorten(text.lines().next().unwrap_or_default(), 61)
 }
 
 /// How long ago `at` was.

@@ -30,9 +30,6 @@ pub enum AccountFailure {
 }
 
 impl AccountFailure {
-    /// Every kind, for iterating declarations.
-    pub const ALL: [Self; 4] = [Self::Auth, Self::RateLimit, Self::Quota, Self::Credit];
-
     pub(crate) const fn bit(self) -> u8 {
         match self {
             Self::Auth => 1,

@@ -30,7 +30,6 @@
 //! set <name> <value>` and `/params unset <name>` override one for this session, saved with it.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::future::Future;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
@@ -39,12 +38,9 @@ use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{CompletionRequest, Section, SystemPrompt};
 use rig_harness::rig_core::effect::EffectId;
-use rig_harness::rig_core::http_client::{
-    self, Bytes, DynHttpClient, HttpClientExt, LazyBody, MultipartForm, Request, Response,
-    StreamingResponse,
-};
+use rig_harness::rig_core::http_client::{self, Exchange, HeaderMap, HttpMiddleware};
 use rig_harness::rig_core::serve::Serving;
-use rig_harness::rig_core::wasm_compat::WasmCompatSend;
+use rig_harness::rig_core::wasm_compat::WasmBoxedFuture;
 use serde_json::{Map, Value};
 
 #[cfg(test)]
@@ -87,12 +83,7 @@ impl Plugin for ModelParamsPlugin {
         app.world_mut()
             .get_resource_or_init::<Models>()
             .0
-            .wrap_http(move |inner| {
-                DynHttpClient::new(WithHeaders {
-                    inner,
-                    table: wrapped.clone(),
-                })
-            });
+            .wrap_http(move |inner| inner.with_middleware(WithHeaders(wrapped.clone())));
         app.insert_resource(headers)
             .init_resource::<Files>()
             .init_resource::<Warned>()
@@ -803,51 +794,25 @@ fn show(reference: &str, params: &Effective, max_output: Option<u32>) -> String 
     lines.join("\n")
 }
 
-/// An HTTP client that adds each model call's headers to its requests.
-#[derive(Clone)]
-struct WithHeaders {
-    inner: DynHttpClient,
-    table: HeaderTable,
-}
+/// A hook that adds each model call's headers to its requests.
+struct WithHeaders(HeaderTable);
 
-impl WithHeaders {
-    /// `request` with the headers of the call its [`Serving`] names.
-    fn headed(&self, mut request: Request<Bytes>) -> Request<Bytes> {
-        let serving = request.extensions().get::<Serving>().map(|s| s.effect);
-        let headers = serving.and_then(|effect| self.table.lock().get(&effect).cloned());
-        for (name, value) in headers.into_iter().flatten() {
+impl HttpMiddleware for WithHeaders {
+    fn before_request_headers<'a>(
+        &'a self,
+        exchange: Exchange<'a>,
+        headers: &'a mut HeaderMap,
+    ) -> WasmBoxedFuture<'a, http_client::Result<()>> {
+        let serving = exchange.extensions.get::<Serving>().map(|s| s.effect);
+        let table = serving.and_then(|effect| self.0.lock().get(&effect).cloned());
+        for (name, value) in table.into_iter().flatten() {
             if let (Ok(name), Ok(value)) = (
                 http::HeaderName::from_bytes(name.as_bytes()),
                 http::HeaderValue::from_str(&value),
             ) {
-                request.headers_mut().insert(name, value);
+                headers.insert(name, value);
             }
         }
-        request
-    }
-}
-
-impl HttpClientExt for WithHeaders {
-    fn send(
-        &self,
-        req: Request<Bytes>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
-    {
-        self.inner.send(self.headed(req))
-    }
-
-    fn send_multipart(
-        &self,
-        req: Request<MultipartForm>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
-    {
-        self.inner.send_multipart(req)
-    }
-
-    fn send_streaming(
-        &self,
-        req: Request<Bytes>,
-    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend {
-        self.inner.send_streaming(self.headed(req))
+        Box::pin(std::future::ready(Ok(())))
     }
 }

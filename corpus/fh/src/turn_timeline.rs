@@ -18,10 +18,11 @@ use std::collections::HashMap;
 use std::fs::OpenOptions;
 use std::io::Write as _;
 use std::path::PathBuf;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime};
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::EffectId;
+use rig_harness::rig_core::now_ms;
 use serde::{Deserialize, Serialize};
 
 mod view;
@@ -449,11 +450,6 @@ fn notice_suspension(mut recorder: ResMut<Recorder>) {
     recorder.last_tick = Some(now);
 }
 
-fn unix_ms(at: SystemTime) -> u64 {
-    let since = at.duration_since(UNIX_EPOCH).unwrap_or_default();
-    u64::try_from(since.as_millis()).unwrap_or(u64::MAX)
-}
-
 /// Opens a turn's timeline, nested under the call that started its agent,
 /// if one did.
 fn turn_began(
@@ -479,7 +475,7 @@ fn turn_began(
         name,
         index: turn.index,
         began: now,
-        began_unix_ms: unix_ms(SystemTime::now()),
+        began_unix_ms: now_ms(),
         under,
         spans: Vec::new(),
         suspended: Vec::new(),

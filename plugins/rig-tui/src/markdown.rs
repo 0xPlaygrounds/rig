@@ -82,13 +82,7 @@ pub fn render_marked(
         .iter()
         .take(MOST_MARKS)
         .enumerate()
-        .map(|(index, (at, _))| {
-            let mut at = (*at).min(text.len());
-            while !text.is_char_boundary(at) {
-                at = at.saturating_sub(1);
-            }
-            (at, index)
-        })
+        .map(|(index, (at, _))| (text.floor_char_boundary(*at), index))
         .collect();
     placed.sort_by_key(|(at, _)| *at);
     let mut marked = String::with_capacity(text.len() + 3 * placed.len());

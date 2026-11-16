@@ -14,6 +14,7 @@ use std::str::FromStr;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::{self, AuthorKind, EntryRef};
 use rig_harness::rig_core::message::Message as Said;
+use rig_harness::rig_tools::shorten;
 use rig_tui::ratatui::layout::Constraint;
 use rig_tui::ratatui::style::Style;
 use rig_tui::ratatui::text::Line;
@@ -86,8 +87,8 @@ impl TurnHeader {
         let head = format!("▸ {} · ", self.turn);
         let tail = format!(" · {} · {calls}", short_time(self.elapsed));
         let room = usize::from(width).saturating_sub(columns(&head) + columns(&tail));
-        let text = format!("{head}{}{tail}", cut(&self.first_line, room));
-        Line::styled(cut(&text, usize::from(width)), Style::new().reversed())
+        let text = format!("{head}{}{tail}", shorten(&self.first_line, room));
+        Line::styled(shorten(&text, usize::from(width)), Style::new().reversed())
     }
 }
 
@@ -330,27 +331,6 @@ fn draw_header(header: Res<PromptHeader>, mut panels: Query<&mut PanelCanvas, Wi
 /// How wide `text` is drawn, in columns.
 fn columns(text: &str) -> usize {
     text.chars().map(|c| c.width().unwrap_or(0)).sum()
-}
-
-/// `text` cut to `width` columns, ending in `…` when cut.
-fn cut(text: &str, width: usize) -> String {
-    if columns(text) <= width {
-        return text.to_owned();
-    }
-    let mut kept = String::new();
-    let mut used = 0;
-    for c in text.chars() {
-        let wide = c.width().unwrap_or(0);
-        if used + wide + 1 > width {
-            break;
-        }
-        used += wide;
-        kept.push(c);
-    }
-    if width > 0 {
-        kept.push('…');
-    }
-    kept
 }
 
 /// A duration in a few characters: `42s`, `3m 05s`, `2h 10m`.

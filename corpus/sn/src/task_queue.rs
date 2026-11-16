@@ -20,11 +20,10 @@
 //! task. With the `tui` feature, a panel lists the tasks and the status
 //! line says how the last one ended.
 
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use rig_basics::subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
 use rig_basics::telemetry::usage::TurnUsage;
 use rig_harness::prelude::*;
+use rig_harness::rig_core::now_ms;
 use rig_harness::rig_ecs::session_log::Never;
 use serde::Deserialize;
 
@@ -167,7 +166,7 @@ impl Task {
     /// How long its last run took, or runs so far, in seconds.
     pub fn elapsed(&self) -> Option<u64> {
         let started = self.started?;
-        let ended = self.ended.unwrap_or_else(now);
+        let ended = self.ended.unwrap_or_else(now_ms);
         Some(ended.saturating_sub(started) / 1000)
     }
 }
@@ -184,14 +183,6 @@ pub struct QueueNote(pub String);
 /// On a task's [`SpawnSubagent`] request until it settles.
 #[derive(Component)]
 struct TaskRequest(u32);
-
-/// Wall time, in milliseconds since the Unix epoch.
-fn now() -> u64 {
-    let since = SystemTime::now().duration_since(UNIX_EPOCH);
-    since.map_or(0, |since| {
-        u64::try_from(since.as_millis()).unwrap_or(u64::MAX)
-    })
-}
 
 /// The name of task `number`'s agent.
 fn title(number: u32) -> String {
@@ -283,7 +274,7 @@ fn queue(
                     if let Some(agent) = agent_of(number) {
                         commands.trigger(StopTurn::new(agent));
                     }
-                    task.ended = Some(now());
+                    task.ended = Some(now_ms());
                 }
                 state => return Err(format!("Task {number} is {} already.", state.label())),
             }
@@ -425,7 +416,7 @@ fn start_next(
             break;
         };
         task.state = TaskState::Running;
-        task.started = Some(now());
+        task.started = Some(now_ms());
         let agent = agents
             .iter()
             .find_map(|(agent, queued)| (queued.0 == task.number).then_some(agent));
@@ -481,7 +472,7 @@ fn adopt(
         (None, result) => {
             let why = result.as_ref().err().map(|error| error.message.clone());
             task.state = TaskState::Failed;
-            task.ended = Some(now());
+            task.ended = Some(now_ms());
             task.outcome = why.unwrap_or_else(|| "Its agent did not start.".to_owned());
             note.0 = format!("task {number} failed");
             notices.write(Notice::error(
@@ -529,7 +520,7 @@ fn finish(
         }
     };
     task.state = state;
-    task.ended = Some(now());
+    task.ended = Some(now_ms());
     task.cost = spent.map_or(0.0, |spent| spent.0.cost);
     task.outcome = outcome.lines().next().unwrap_or_default().to_owned();
     note.0 = format!("task {number} {}", state.label());

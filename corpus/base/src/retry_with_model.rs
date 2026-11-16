@@ -8,6 +8,7 @@
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::FilesChanged;
+use rig_harness::rig_tools::shorten;
 use rig_tui::CompletionSource;
 use serde::{Deserialize, Serialize};
 
@@ -107,11 +108,7 @@ impl Alternative {
             .split_whitespace()
             .collect::<Vec<_>>()
             .join(" ");
-        let mut excerpt: String = line.chars().take(EXCERPT).collect();
-        if line.chars().count() > EXCERPT {
-            excerpt.push('…');
-        }
-        excerpt
+        shorten(&line, EXCERPT + 1)
     }
 }
 

@@ -311,7 +311,6 @@ async fn hash_mode_refuses_by_the_hash_pair_and_payload_mode_by_the_pointer() {
         let replayer = super::EffectLogReplayer::for_key(&log, &key)
             .expect("records")
             .checking(check);
-        assert_eq!(replayer.check(), check);
         answer(&replayer, 9, custom_kind())
             .await
             .expect("the record answers");

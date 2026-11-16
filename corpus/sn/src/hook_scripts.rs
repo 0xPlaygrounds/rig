@@ -28,12 +28,11 @@ use std::io;
 use std::path::PathBuf;
 use std::process::Output;
 
-use rig_harness::rig_core::tool::{ToolExecutionError, ToolOutput};
+use rig_harness::rig_core::tool::{ToolExecutionError, ToolOutput, content_hash};
 use rig_harness::rig_ecs::tasks::Running;
 use rig_tools::process::{KillOnDrop, Spawn};
 use serde::Deserialize;
 use serde_json::{Map, Value};
-use sha2::{Digest, Sha256};
 
 use rig_harness::prelude::*;
 
@@ -606,10 +605,7 @@ fn load(
                 continue;
             }
         };
-        let digest: String = Sha256::digest(text.as_bytes())
-            .iter()
-            .map(|byte| format!("{byte:02x}"))
-            .collect();
+        let digest = content_hash(text.as_bytes()).0;
         let known = remembered.get(&path.display().to_string()) == Some(&digest);
         let trust = match (project, flagged || known, answerers.can_answer(None)) {
             (false, ..) | (true, true, _) => Trust::Trusted,

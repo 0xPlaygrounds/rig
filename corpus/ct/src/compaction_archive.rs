@@ -497,7 +497,7 @@ fn read_one(archive: &[Scoped], args: &GetArgs) -> Result<String, String> {
     let context = args.context.unwrap_or(0);
     let near = |scoped: &Scoped| {
         let text = scoped.archived.text();
-        let end = boundary(&text, NEIGHBOUR_CHARS);
+        let end = text.floor_char_boundary(NEIGHBOUR_CHARS);
         let more = if end < text.len() { "…" } else { "" };
         format!(
             "{}:\n{}{more}",
@@ -533,7 +533,9 @@ fn cut(text: &str, lines: &[&str]) -> String {
     let total = lines.len();
     if shown == 0 {
         let first = lines.first().copied().unwrap_or_default();
-        let first = first.get(..boundary(first, MAX_CHARS)).unwrap_or_default();
+        let first = first
+            .get(..first.floor_char_boundary(MAX_CHARS))
+            .unwrap_or_default();
         return format!(
             "{first}\n[truncated: line 1 of {total} cut at {MAX_CHARS} characters; ask \
              `{GET}` with from_line and to_line for the rest]"
@@ -548,22 +550,13 @@ fn cut(text: &str, lines: &[&str]) -> String {
 
 /// `text` around byte `at`, on one line.
 fn snippet(text: &str, at: usize) -> String {
-    let start = boundary(text, at.saturating_sub(SNIPPET_CHARS));
-    let end = boundary(text, at.saturating_add(SNIPPET_CHARS * 2));
+    let start = text.floor_char_boundary(at.saturating_sub(SNIPPET_CHARS));
+    let end = text.floor_char_boundary(at.saturating_add(SNIPPET_CHARS * 2));
     let inner = text.get(start..end).unwrap_or_default();
     let inner: Vec<&str> = inner.split_whitespace().collect();
     let before = if start > 0 { "…" } else { "" };
     let after = if end < text.len() { "…" } else { "" };
     format!("{before}{}{after}", inner.join(" "))
-}
-
-/// The char boundary of `text` at or before byte `at`.
-fn boundary(text: &str, at: usize) -> usize {
-    let mut at = at.min(text.len());
-    while !text.is_char_boundary(at) {
-        at = at.saturating_sub(1);
-    }
-    at
 }
 
 /// Puts [`ARCHIVED_LINE`] at the end of entry `id` of `conversation`,

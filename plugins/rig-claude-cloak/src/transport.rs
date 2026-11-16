@@ -22,6 +22,7 @@ use std::{
 };
 
 use rig_harness::rig_core::json_utils::remove_preserving_order;
+use rig_harness::rig_core::tool::content_hash;
 
 use crate::auth;
 use crate::profile::{self, BETAS, VERSION};
@@ -110,7 +111,7 @@ fn device_id(home: &Path) -> Result<String, Error> {
     options.write(true).create_new(true).mode(0o600);
     match options.open(&path) {
         Ok(mut file) => {
-            let id = profile::sha256_hex(uuid::Uuid::new_v4().as_bytes());
+            let id = content_hash(uuid::Uuid::new_v4().as_bytes()).0;
             file.write_all(id.as_bytes())?;
             file.sync_all()?;
             Ok(id)
@@ -309,6 +310,19 @@ fn js_json(value: &Value) -> Result<Vec<u8>, Error> {
     Ok(output.into_bytes())
 }
 
+/// Whether `block` is of a kind a cache breakpoint skips.
+fn skipped(block: &Value) -> bool {
+    matches!(
+        block.get("type").and_then(Value::as_str),
+        Some("thinking" | "redacted_thinking" | "fallback" | "tool_addition" | "tool_removal")
+    )
+}
+
+/// The `type` of `object`'s `key` value, such as `thinking` or `tool_choice`.
+fn kind_of<'a>(object: &'a serde_json::Map<String, Value>, key: &str) -> Option<&'a str> {
+    object.get(key)?.get("type")?.as_str()
+}
+
 fn cache_message(message: &mut Value, control: &Value) -> bool {
     let Some(content) = message.get_mut("content") else {
         return false;
@@ -321,10 +335,7 @@ fn cache_message(message: &mut Value, control: &Value) -> bool {
         return false;
     };
     for block in blocks.iter_mut().rev() {
-        if matches!(
-            block.get("type").and_then(Value::as_str),
-            Some("thinking" | "redacted_thinking" | "fallback" | "tool_addition" | "tool_removal")
-        ) {
+        if skipped(block) {
             continue;
         }
         if block.get("cache_control").is_some_and(|v| !v.is_null()) {
@@ -386,18 +397,11 @@ fn validate_caching(object: &serde_json::Map<String, Value>) -> Result<(usize, b
                 if content.is_string() {
                     Some(content)
                 } else {
-                    content.as_array()?.iter().rev().find(|block| {
-                        !matches!(
-                            block.get("type").and_then(Value::as_str),
-                            Some(
-                                "thinking"
-                                    | "redacted_thinking"
-                                    | "fallback"
-                                    | "tool_addition"
-                                    | "tool_removal"
-                            )
-                        )
-                    })
+                    content
+                        .as_array()?
+                        .iter()
+                        .rev()
+                        .find(|block| !skipped(block))
                 }
             })
             .or_else(|| object.get("system")?.as_array()?.last())
@@ -622,10 +626,7 @@ fn body(bytes: &[u8], device: &str, session: &str, account: Option<&str>) -> Res
         remove_preserving_order(object, "cache_control");
     }
     normalize_messages(object);
-    let thinking = object
-        .get("thinking")
-        .and_then(|v| v.get("type"))
-        .and_then(Value::as_str);
+    let thinking = kind_of(object, "thinking");
     if options.get("sampling_allowed") == Some(&Value::Bool(false))
         || thinking.is_some_and(|t| t != "disabled")
     {
@@ -647,23 +648,11 @@ fn body(bytes: &[u8], device: &str, session: &str, account: Option<&str>) -> Res
     }
     if (options.get("forced_tools_allowed") == Some(&Value::Bool(false))
         || object.contains_key("compaction"))
-        && matches!(
-            object
-                .get("tool_choice")
-                .and_then(|v| v.get("type"))
-                .and_then(Value::as_str),
-            Some("any" | "tool")
-        )
+        && matches!(kind_of(object, "tool_choice"), Some("any" | "tool"))
     {
         object.insert("tool_choice".into(), json!({"type":"auto"}));
     }
-    if matches!(
-        object
-            .get("tool_choice")
-            .and_then(|v| v.get("type"))
-            .and_then(Value::as_str),
-        Some("any" | "tool")
-    ) {
+    if matches!(kind_of(object, "tool_choice"), Some("any" | "tool")) {
         remove_preserving_order(object, "thinking");
         if let Some(edits) = object
             .get_mut("context_management")
@@ -687,11 +676,7 @@ fn body(bytes: &[u8], device: &str, session: &str, account: Option<&str>) -> Res
             }
         }
     }
-    if object
-        .get("thinking")
-        .and_then(|v| v.get("type"))
-        .and_then(Value::as_str)
-        == Some("enabled")
+    if kind_of(object, "thinking") == Some("enabled")
         && let Some(budget) = options
             .get("thinking_budget")
             .and_then(Value::as_u64)
@@ -731,13 +716,8 @@ fn body(bytes: &[u8], device: &str, session: &str, account: Option<&str>) -> Res
     {
         remove_preserving_order(object, "tool_choice");
     }
-    if matches!(
-        object
-            .get("thinking")
-            .and_then(|v| v.get("type"))
-            .and_then(Value::as_str),
-        Some("adaptive" | "enabled")
-    ) && !object.contains_key("compaction")
+    if matches!(kind_of(object, "thinking"), Some("adaptive" | "enabled"))
+        && !object.contains_key("compaction")
     {
         object
             .entry("context_management")
@@ -781,9 +761,9 @@ fn body(bytes: &[u8], device: &str, session: &str, account: Option<&str>) -> Res
     object.entry("tools").or_insert_with(|| json!([]));
     let derived_device = match account.filter(|a| !a.is_empty()) {
         Some(account) => {
-            profile::sha256_hex(format!("omp-claude-device-id-v2\0{device}\0{account}"))
+            content_hash(format!("omp-claude-device-id-v2\0{device}\0{account}").as_bytes()).0
         }
-        None => profile::sha256_hex(format!("omp-claude-device-id-v1:{device}")),
+        None => content_hash(format!("omp-claude-device-id-v1:{device}").as_bytes()).0,
     };
     let mut identity = json!({"device_id":derived_device,"session_id":session});
     if let Some(account) = account.filter(|s| !s.is_empty()) {
@@ -897,8 +877,7 @@ impl OAuthTransport {
                 .and_then(Value::as_array)
                 .is_some_and(|tools| !tools.is_empty())
             || payload
-                .get("thinking")
-                .and_then(|v| v.get("type"))
+                .pointer("/thinking/type")
                 .and_then(Value::as_str)
                 .is_some_and(|t| t != "disabled");
         let betas = if agent { BETAS } else { profile::UTILITY_BETAS };

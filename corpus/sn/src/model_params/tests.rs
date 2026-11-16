@@ -1,11 +1,16 @@
+use std::future::Future;
 use std::sync::mpsc::Receiver;
 
 use rig_basics::models::ModelsPlugin;
 use rig_basics::subagents::SubagentsPlugin;
 use rig_core::completion::CompletionRequest;
-use rig_core::http_client::{HeaderMap, StatusCode};
+use rig_core::http_client::{
+    Bytes, DynHttpClient, HttpClientExt, LazyBody, MultipartForm, Request, Response, StatusCode,
+    StreamingResponse,
+};
 use rig_core::providers::registry::ConnectOptions;
 use rig_core::test_utils::MockCompletionModel;
+use rig_core::wasm_compat::WasmCompatSend;
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     Collected, Ended, app_on, calls, collect, first_agent, log_ended, reply, run_until,
