@@ -355,3 +355,10 @@ async fn device_flow_does_not_hold_the_store_lock() -> anyhow::Result<()> {
     }
     Ok(())
 }
+
+/// The stored fingerprint is a SHA-256 prefix, so it reads the same after a
+/// toolchain update.
+#[test]
+fn bootstrap_token_fingerprint_is_a_sha256_prefix() {
+    assert_eq!(bootstrap_token_fingerprint("abc"), "ba7816bf8f01cfea");
+}
