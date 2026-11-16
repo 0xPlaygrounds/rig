@@ -108,10 +108,10 @@ fn adapted(spec: &ModelSpec, model: crate::driver::DynModel<Completion>) -> Eras
 }
 
 /// One wrapper of a [`Transport`], `Send` and `Sync` outside browser wasm.
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 type Wrapper = Arc<dyn Fn(DynHttpClient) -> DynHttpClient + Send + Sync>;
 /// One wrapper of a [`Transport`], which may hold browser values.
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+#[cfg(target_family = "wasm")]
 type Wrapper = Arc<dyn Fn(DynHttpClient) -> DynHttpClient>;
 
 /// The wrappers a [`Connector`] applies to every HTTP client its models are
@@ -442,7 +442,7 @@ impl Connector {
 
 // On browser wasm a provider, a sign-in and an HTTP wrapper may hold values
 // that are neither `Send` nor `Sync`, such as JavaScript handles.
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+#[cfg(target_family = "wasm")]
 const _: fn(&mut Connector, ProviderId) = |connector, vendor| {
     use std::rc::Rc;
 

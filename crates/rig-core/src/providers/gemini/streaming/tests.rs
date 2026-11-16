@@ -5,14 +5,14 @@ use serde_json::json;
 
 /// The request every stream test below sends. The decoder is what they
 /// exercise, so the request only has to be well-formed.
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 fn streaming_request() -> crate::completion::CompletionRequest {
     crate::completion::CompletionRequest::new("hello")
 }
 
 /// The GenerateContent wire for `model`, bound to a transport that answers
 /// with `frames` as one SSE body.
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 fn streamed(
     model: &str,
     frames: &[&str],
@@ -198,7 +198,7 @@ fn test_deserialize_stream_response_with_empty_parts() {
 
 /// Open a `streamGenerateContent` stream over the given SSE frames and
 /// collect every item the consumer sees, and whether the reply ended.
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 async fn collect_stream(
     frames: &[&str],
 ) -> (
@@ -219,7 +219,7 @@ async fn collect_stream(
     (items, finished)
 }
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 #[tokio::test]
 async fn blocked_prompt_is_a_provider_error_naming_the_block_reason() {
     // Gemini answers a blocked prompt on the streaming wire with one chunk
@@ -262,7 +262,7 @@ async fn blocked_prompt_is_a_provider_error_naming_the_block_reason() {
     assert!(!finished, "a blocked prompt has no terminal record");
 }
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 #[tokio::test]
 async fn blocked_prompt_without_usage_is_still_recognised_and_ends_the_stream() {
     // The block chunk may carry no `usageMetadata` at all (proto3 JSON omits
@@ -283,7 +283,7 @@ async fn blocked_prompt_without_usage_is_still_recognised_and_ends_the_stream() 
     assert!(!finished);
 }
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 #[tokio::test]
 async fn blocked_prompt_with_an_unrecognised_safety_category_still_names_the_block() {
     // Google adds harm categories without notice. The block chunk carries
@@ -319,7 +319,7 @@ async fn blocked_prompt_with_an_unrecognised_safety_category_still_names_the_blo
     assert!(!finished);
 }
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 #[tokio::test]
 async fn in_band_http_errors_match_unary_classification_and_preserve_the_envelope() {
     for code in [400, 401, 404, 429, 500, 503] {
@@ -343,7 +343,7 @@ async fn in_band_http_errors_match_unary_classification_and_preserve_the_envelop
     }
 }
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 #[tokio::test]
 async fn in_band_opaque_or_invalid_codes_do_not_invent_http_status() {
     for code in [
@@ -548,7 +548,7 @@ fn two_signed_thought_parts_keep_both_signatures() {
 
 /// A reply cut short still relays the usage its chunks reported, the
 /// latest replacing the first.
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 #[tokio::test]
 async fn a_reply_cut_short_relays_the_usage_its_chunks_reported() {
     use crate::streaming::Relayed;

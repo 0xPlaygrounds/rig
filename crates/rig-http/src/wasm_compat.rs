@@ -11,17 +11,13 @@ use futures::Stream;
 
 // Browser markers assume single-threaded execution; atomics would invalidate
 // that assumption. Relaxed bounds do not make non-Send handlers thread-safe.
-#[cfg(all(
-    target_arch = "wasm32",
-    target_os = "unknown",
-    target_feature = "atomics"
-))]
+#[cfg(all(target_family = "wasm", target_feature = "atomics"))]
 compile_error!(
     "rig-http does not support threaded wasm (`+atomics`): its wasm-compat markers assume a \
      single-threaded target"
 );
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 /// `Send` on native targets, a no-op marker on browser wasm.
 ///
 /// ```compile_fail
@@ -37,16 +33,16 @@ compile_error!(
     note = "handlers and transports run inside a driver's task: hold shared state behind an `Arc` (never an `Rc`), or use a `!Send` value only on browser wasm, where this marker is a no-op"
 )]
 pub trait WasmCompatSend: Send {}
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+#[cfg(target_family = "wasm")]
 /// `Send` on native targets, a no-op marker on browser wasm.
 pub trait WasmCompatSend {}
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 impl<T> WasmCompatSend for T where T: Send {}
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+#[cfg(target_family = "wasm")]
 impl<T> WasmCompatSend for T {}
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 /// `Sync` on native targets, a no-op marker on browser wasm.
 ///
 /// ```compile_fail
@@ -62,28 +58,28 @@ impl<T> WasmCompatSend for T {}
     note = "handlers and transports are shared between a driver and its in-flight tasks: use `Mutex`/atomics instead of `Cell`/`RefCell`, or use a `!Sync` value only on browser wasm, where this marker is a no-op"
 )]
 pub trait WasmCompatSync: Sync {}
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+#[cfg(target_family = "wasm")]
 /// `Sync` on native targets, a no-op marker on browser wasm.
 pub trait WasmCompatSync {}
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 impl<T> WasmCompatSync for T where T: Sync {}
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+#[cfg(target_family = "wasm")]
 impl<T> WasmCompatSync for T {}
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 /// Boxed future with `Send` on the same targets as [`WasmCompatSend`].
 pub type WasmBoxedFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+#[cfg(target_family = "wasm")]
 /// Boxed future type without `Send`, on browser wasm.
 pub type WasmBoxedFuture<'a, T> = Pin<Box<dyn Future<Output = T> + 'a>>;
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 /// Boxed stream with `Send` on the same targets as [`WasmCompatSend`].
 pub type WasmBoxedStream<'a, T> = Pin<Box<dyn Stream<Item = T> + Send + 'a>>;
 
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+#[cfg(target_family = "wasm")]
 /// Boxed stream type without `Send`, on browser wasm.
 pub type WasmBoxedStream<'a, T> = Pin<Box<dyn Stream<Item = T> + 'a>>;
 

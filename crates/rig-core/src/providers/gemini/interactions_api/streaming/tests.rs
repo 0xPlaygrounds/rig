@@ -101,7 +101,7 @@ fn classify_interactions_frame(data: &str) -> WireEvent<InteractionsEvent> {
 
 /// The Interactions wire bound to a transport answering with `frames` as
 /// one SSE body, driven through the full normalized path.
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 async fn drive_frames(
     frames: &[&str],
 ) -> (
@@ -128,7 +128,7 @@ async fn drive_frames(
     (items, stream.finish().await)
 }
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 fn texts_of(items: &[Result<Item<StreamEvent>, String>]) -> Vec<&str> {
     items
         .iter()
@@ -139,7 +139,7 @@ fn texts_of(items: &[Result<Item<StreamEvent>, String>]) -> Vec<&str> {
         .collect()
 }
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 #[tokio::test]
 async fn provider_error_event_ends_the_stream_without_draining_later_frames() {
     let (items, outcome) = drive_frames(&[
@@ -163,7 +163,7 @@ async fn provider_error_event_ends_the_stream_without_draining_later_frames() {
 /// `interaction.created` and after each event the API marks with an
 /// `event_id`; a stream that resumes an interaction names it without that
 /// event, and joins the step that was open.
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 #[tokio::test]
 async fn resume_points_yield_cursors() -> anyhow::Result<()> {
     use futures::StreamExt;
@@ -239,7 +239,7 @@ async fn resume_points_yield_cursors() -> anyhow::Result<()> {
 /// Not a cassette test: an overload or quota hit is a transient condition
 /// that cannot be recorded on demand, and the defect is the verdict the
 /// envelope gets, which a hand-written frame pins exactly.
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 #[tokio::test]
 async fn an_in_band_error_with_a_status_code_is_classified_like_the_rest_stream()
 -> anyhow::Result<()> {
