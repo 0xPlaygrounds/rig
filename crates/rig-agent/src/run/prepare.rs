@@ -74,7 +74,7 @@ pub struct PreparedRequest {
 /// A committed output-tool name pins tool mode while a schema is present.
 /// Returns errors for incompatible tool choices, unavailable allow-list names,
 /// output-tool collisions, invalid native schemas, or provider tools beside
-/// `additional_params` that is not an object. Performs no I/O.
+/// `additional_params` that is a string, array or number. Performs no I/O.
 pub fn prepare_request(
     spec: &RunSpec,
     capabilities: &ProviderCapabilities,
@@ -98,7 +98,8 @@ pub fn prepare_request(
         patch.and_then(|o| o.additional_params.clone()),
     );
     // Provider tools are sent in `additional_params.tools`, which a string,
-    // array or number cannot carry.
+    // array or number cannot carry; rig-core's merge reads a bool as `stream`
+    // and null as no params.
     if !spec.provider_tools.is_empty()
         && let Some(
             params @ (serde_json::Value::String(_)

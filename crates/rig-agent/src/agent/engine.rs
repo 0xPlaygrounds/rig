@@ -1357,15 +1357,15 @@ pub(crate) enum ToolExit {
 }
 
 /// Outcome of [`run_single_tool`]: the tool result plus whether the tool's
-/// body ran (and the effective call) or a hook skipped it.
+/// body ran (and the effective call) or the call was skipped or denied.
 pub(crate) struct ToolCallOutcome {
     /// The tool result delivered to the model (a real output, a redacted
-    /// replacement, or a hook skip reason).
+    /// replacement, or the reason it was skipped or denied).
     pub result: ToolResult,
     /// The effective call when the tool's body ran: the model's call with any
     /// [`DispatchAction::Patch`] hook rewrite applied, reported as
     /// [`ToolExecutionCommitted`](crate::agent::streaming::MultiTurnStreamItem::ToolExecutionCommitted).
-    /// `None` when a hook skipped the call ([`DispatchAction::skip`]).
+    /// `None` when the call was skipped or denied before it ran.
     pub executed: Option<ToolCall>,
 }
 

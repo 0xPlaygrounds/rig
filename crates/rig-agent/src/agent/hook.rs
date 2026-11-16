@@ -1424,7 +1424,7 @@ impl AgentHook for HookStack {
                 }
                 deny @ DispatchAction::Deny(_) => {
                     // The denial wins, but an earlier hook's patch is what
-                    // the skipped result must report: keep it for the engine.
+                    // the skipped or refused result must report: keep it for the engine.
                     if let Some(kind) = patched {
                         ctx.salvage_patch(event.id, kind);
                     }
