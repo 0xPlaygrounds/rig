@@ -529,10 +529,8 @@ struct Anchor {
 }
 
 /// Where a notice or a note is drawn in an agent's transcript, by the
-/// index of a message in its [`Conversation`]. Slots order as they are
-/// drawn: the top, then each message with the slots inside it by item,
-/// then the slot after it. Those in the same slot are drawn in the order
-/// they came.
+/// index of a message in its [`Conversation`]. Those in the same slot are
+/// drawn in the order they came.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum TranscriptSlot {
     /// Before the first message.
@@ -563,27 +561,6 @@ impl TranscriptSlot {
             0 | 1 => Self::After(standing),
             _ => Self::Inside(standing, 1),
         }
-    }
-
-    /// Its place in drawing order.
-    fn order(self) -> Option<(usize, bool, usize)> {
-        match self {
-            Self::Top => None,
-            Self::Inside(message, item) => Some((message, false, item)),
-            Self::After(message) => Some((message, true, 0)),
-        }
-    }
-}
-
-impl Ord for TranscriptSlot {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.order().cmp(&other.order())
-    }
-}
-
-impl PartialOrd for TranscriptSlot {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
     }
 }
 
