@@ -9,7 +9,7 @@
 
 use futures::StreamExt;
 use rig_core::message::Message;
-use std::io::{self, BufRead, Write};
+use std::io::{self, Write};
 
 use crate::{
     agent::{Agent, MultiTurnStreamItem, StreamToStdoutError},
@@ -54,11 +54,15 @@ impl ChatBot {
     /// Read prompts from stdin and print answers until `exit` or end of input.
     /// Returns prompt failures and stdout flush errors; input read errors are printed.
     pub async fn run(self) -> Result<(), StreamToStdoutError> {
-        self.run_on(io::stdin().lock()).await
+        self.run_on(|line| io::stdin().read_line(line)).await
     }
 
-    /// [`Self::run`] reading prompts from `input_lines`.
-    async fn run_on(mut self, mut input_lines: impl BufRead) -> Result<(), StreamToStdoutError> {
+    /// [`Self::run`] reading each prompt with `read_line`, which appends one
+    /// line to its buffer. Stdin is locked only while a line is read.
+    async fn run_on(
+        mut self,
+        mut read_line: impl FnMut(&mut String) -> io::Result<usize>,
+    ) -> Result<(), StreamToStdoutError> {
         let mut stdout = io::stdout();
         let mut history = vec![];
 
@@ -67,7 +71,7 @@ impl ChatBot {
             stdout.flush()?;
 
             let mut input = String::new();
-            match input_lines.read_line(&mut input) {
+            match read_line(&mut input) {
                 Ok(0) => break,
                 Ok(_) => {
                     let input = input.trim();
