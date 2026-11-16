@@ -41,7 +41,11 @@ use sha2::{Digest, Sha256};
 use crate::json_utils::remove_preserving_order;
 
 /// Unix seconds.
+#[cfg(not(target_family = "wasm"))]
 pub type Clock = Arc<dyn Fn() -> u64 + Send + Sync>;
+/// Unix seconds (browser wasm: no `Send + Sync`, no threads).
+#[cfg(target_family = "wasm")]
+pub type Clock = Arc<dyn Fn() -> u64>;
 
 /// Seconds since the Unix epoch, also on the web.
 fn system_now() -> u64 {
@@ -349,7 +353,13 @@ impl CacheBook {
     }
 
     /// The same book reading time from `clock` (Unix seconds).
-    pub fn with_clock(mut self, clock: impl Fn() -> u64 + Send + Sync + 'static) -> Self {
+    pub fn with_clock(
+        mut self,
+        clock: impl Fn() -> u64
+        + crate::wasm_compat::WasmCompatSend
+        + crate::wasm_compat::WasmCompatSync
+        + 'static,
+    ) -> Self {
         self.clock = Arc::new(clock);
         self
     }
