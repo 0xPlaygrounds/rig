@@ -370,7 +370,9 @@ fn hook_context_reports_identity_and_turn() {
     assert_eq!(context.agent_name(), Some("agent"));
     context.set_turn(3);
     assert_eq!(context.turn(), 3);
-    assert!(context.run_id().to_raw() > 0);
+    assert_eq!(context.run_id(), context.run_id(), "one id per run");
+    let next = HookContext::new(false, None, crate::handlers::Handlers::default());
+    assert!(next.run_id() > context.run_id(), "each run gets a new id");
 }
 
 struct RewriteHook(Value);
