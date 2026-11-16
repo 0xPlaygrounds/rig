@@ -179,7 +179,7 @@ fn near_miss_completion_parent_warns_once_per_callsite() {
     // touches.
     reset_near_miss_warnings();
     tracing::subscriber::with_default(capture.subscriber(), || {
-        // The `warn!` callsite lives in `warn_once_on_completion_parent_verdict`
+        // The `warn!` callsite lives in `warn_once_on_missing_fields`
         // and is shared with every other near-miss test, so its interest may
         // already be cached as `never` from a run under a different
         // subscriber. Same hazard `test_utils::scoped_tracing_subscriber_guard`
