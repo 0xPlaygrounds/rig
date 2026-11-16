@@ -186,11 +186,10 @@ fn finds_an_error_in_a_tool_output_counts_regex_matches_and_scrolls_back() {
         .collect();
     assert!(before.iter().any(|row| row.contains("Run cargo build.")));
     assert!(before.iter().all(|row| !row.contains(LAST_ASK)));
-    let row = whole.item(&call).and_then(|call| {
-        call.rows()
-            .iter()
-            .position(|row| row.text.contains("E0425"))
-    });
+    let row = whole
+        .rows()
+        .get(rows.clone())
+        .and_then(|call| call.iter().position(|row| row.text.contains("E0425")));
 
     // `/` on the input starts a slash command, also after typing ended
     // the reading of a selected item.
@@ -289,8 +288,9 @@ fn finds_an_error_in_a_tool_output_counts_regex_matches_and_scrolls_back() {
     assert!(narrow.rows().iter().all(|row| !row.text.contains(split)));
     assert_eq!(narrow.lit_in(&call), 1);
     let hits = Regex::new(split).map_or_else(|_| Vec::new(), |regex| find(&regex, agent, &narrow));
-    let narrow = narrow.item(&call).unwrap_or_default();
-    let lit = narrow.rows().iter().position(|row| row.lit_total() > 0);
+    let rows = narrow.rows_of(&call).unwrap_or_default();
+    let narrow = narrow.rows().get(rows).unwrap_or_default();
+    let lit = narrow.iter().position(|row| row.lit_total() > 0);
     let starts = |hit: &Hit| hit.item() == Some(&call) && Some(hit.row) == lit;
     assert!(
         matches!(hits.as_slice(), [hit] if starts(hit)),

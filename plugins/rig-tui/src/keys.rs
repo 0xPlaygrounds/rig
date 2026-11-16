@@ -74,11 +74,6 @@ impl KeyPress {
         Self::new(KeyCode::Char(character), KeyModifiers::ALT)
     }
 
-    /// `code` with Shift.
-    pub fn shift(code: KeyCode) -> Self {
-        Self::new(code, KeyModifiers::SHIFT)
-    }
-
     /// The press `event` reports.
     pub fn of(event: &KeyEvent) -> Self {
         Self::new(event.code, event.modifiers)

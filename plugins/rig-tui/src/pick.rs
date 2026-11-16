@@ -118,17 +118,6 @@ pub struct PickerInput {
 }
 
 impl PickerInput {
-    /// What is typed, which filters the items or answers.
-    pub fn filter(&self) -> &str {
-        &self.filter
-    }
-
-    /// The items ticked, by their position in the list, in a choice of
-    /// several.
-    pub fn ticked(&self) -> &[usize] {
-        &self.ticked
-    }
-
     /// Whether it is a question answered in the input rather than over the
     /// transcript.
     pub fn in_input(&self) -> bool {

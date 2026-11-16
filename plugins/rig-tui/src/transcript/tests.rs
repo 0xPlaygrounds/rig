@@ -35,8 +35,8 @@ use super::{
 use crate::render::CallStates;
 use crate::tests::{drawn_rows, line_of, on_screen, press, say, view_app};
 use crate::{
-    CallItem, CallState, ContentKind, DrawnRow, DrawnTranscript, Highlight, ItemRow, LineSpan,
-    LookLine, MarkIn, PastEffects, ScrollTo, TextMark, TranscriptItem, TranscriptLayout,
+    CallItem, CallState, ContentKind, DrawnLine, DrawnRow, DrawnTranscript, Highlight, ItemRow,
+    LineSpan, LookLine, MarkIn, PastEffects, ScrollTo, TextMark, TranscriptItem, TranscriptLayout,
     TranscriptView,
 };
 
@@ -1048,10 +1048,12 @@ fn a_plugins_own_spans_are_lit_and_counted_and_no_other_text() {
     };
     // A search of its own, as a regular expression's `cannot find|\bfoo\b`:
     // the foo in foobar is no match.
-    let laid = laid_out(&mut app, agent);
-    let lines = laid.and_then(|laid| laid.item(&item)).unwrap_or_default();
+    let laid = laid_out(&mut app, agent).unwrap_or_default();
+    let rows = laid.rows_of(&item).unwrap_or_default();
+    let lines = laid.lines().filter(|line| rows.contains(&line.rows.start));
+    let lines: Vec<DrawnLine> = lines.collect();
     let mut spans = Vec::new();
-    for (line, drawn) in lines.lines().enumerate() {
+    for (line, drawn) in lines.iter().enumerate() {
         let text = drawn.text.as_str();
         let words = text
             .match_indices("cannot find")
@@ -1144,10 +1146,10 @@ fn a_layout_is_the_drawn_transcript_on_no_screen() {
     assert_eq!(laid.rows(), drawn.rows());
     assert_eq!(laid.on_screen(), 0..0);
     // The call alone: its header and every line of its output.
-    let call_rows = laid.item(&item).unwrap_or_default();
-    let lit: Vec<usize> = call_rows.rows().iter().map(DrawnRow::lit_total).collect();
+    let call_rows = laid.rows_of(&item).unwrap_or_default();
+    let call_rows = laid.rows().get(call_rows).unwrap_or_default();
+    let lit: Vec<usize> = call_rows.iter().map(DrawnRow::lit_total).collect();
     assert_eq!(lit, [0, 1, 0, 0, 1]);
-    assert_eq!(call_rows.items().first(), Some(&(item, 0..5)));
 }
 
 #[test]
@@ -1270,7 +1272,7 @@ fn a_tool_call_is_drawn_while_its_arguments_stream() {
 fn layout_app() -> (App, Entity) {
     let mut app = App::new();
     app.init_resource::<CallFacts>()
-        .init_resource::<crate::Notices>()
+        .init_resource::<crate::view::Notices>()
         .init_resource::<crate::Theme>()
         .init_resource::<rig_ecs::effects::Effects>()
         .add_message::<EffectRecorded>()

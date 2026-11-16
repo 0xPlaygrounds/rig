@@ -149,7 +149,7 @@ fn a_picker_filled_in_batches_keeps_what_is_typed_and_selected() {
     app.world_mut().entity_mut(picker).insert(more);
     app.update();
     let state = app.world().get::<PickerInput>(picker);
-    assert_eq!(state.map(PickerInput::filter), Some("rs"));
+    assert_eq!(state.map(|state| state.filter.as_str()), Some("rs"));
     assert_eq!(highlighted(&app), Some(Highlighted(2)));
     press(&mut app, "enter");
     assert_eq!(

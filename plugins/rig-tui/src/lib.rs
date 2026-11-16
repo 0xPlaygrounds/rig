@@ -100,9 +100,8 @@ pub use terminal::{
 pub use theme::Theme;
 pub use transcript::{PastEffects, Replaced};
 pub use view::{
-    CallItem, DrawnLine, DrawnRow, DrawnTranscript, Highlight, ItemRow, LineSpan, MarkIn, Notices,
-    RowWrap, ScrollTo, ShowAgent, ShownNotice, TextMark, TranscriptItem, TranscriptSlot,
-    TranscriptView,
+    CallItem, DrawnLine, DrawnRow, DrawnTranscript, Highlight, ItemRow, LineSpan, MarkIn, RowWrap,
+    ScrollTo, ShowAgent, TextMark, TranscriptItem, TranscriptView,
 };
 
 /// The terminal view's name as a front.
@@ -146,7 +145,7 @@ impl Plugin for TuiViewPlugin {
         app.add_setting::<turns::TuiSettings>("tui");
         app.init_resource::<render::FrameLayout>()
             .init_resource::<TuiFrame>()
-            .init_resource::<Notices>()
+            .init_resource::<view::Notices>()
             .init_resource::<transcript::CallFacts>()
             .init_resource::<TerminalSize>()
             .init_resource::<Theme>()
