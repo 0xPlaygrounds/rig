@@ -27,7 +27,7 @@ use serde::{Deserialize, Serialize};
 use super::agent::{Agent, AgentId, CacheKey, ContextStale, Conversation, LastUsage};
 use super::model::Connection;
 use super::requests::RequestOf;
-use super::restore::SavedKeys;
+use super::restore::{SavedKeys, saved_type};
 use super::session_log::{Fork, ReflectSaved, SessionLog, save_conversation};
 
 /// A request to fork the agent `agent`: a new agent in the same session
@@ -297,9 +297,9 @@ fn fork_now(
     let keys = world.get_resource::<SavedKeys>();
     for key in copy.saved.keys() {
         let path = keys.and_then(|keys| keys.path(key)).unwrap_or(key);
-        let registered = registry.get_with_type_path(path);
-        let component = registered.filter(|it| it.data::<ReflectSaved>().is_some());
-        let component = component.and_then(|it| it.data::<ReflectComponent>());
+        let component = saved_type(path, &registry)
+            .ok()
+            .map(|(_, component)| component);
         let held = |component: &ReflectComponent| {
             let entity = world.get_entity(fork).ok();
             entity.is_some_and(|entity| component.contains(entity))
