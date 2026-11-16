@@ -805,11 +805,11 @@ fn a_dash_usage_survives_the_report() {
     assert_eq!(AgentDescription::parse(&described.write()), described);
 }
 
-/// A word that is not UTF-8 is refused by name, not a panic.
+/// A word that is not UTF-8 is refused, and it is the error.
 #[cfg(unix)]
 #[test]
 fn a_word_that_is_not_utf8_is_refused_by_name() {
-    use std::ffi::OsString;
+    use std::ffi::{OsStr, OsString};
     use std::os::unix::ffi::OsStringExt;
     let words = [
         OsString::from("-p"),
@@ -817,6 +817,6 @@ fn a_word_that_is_not_utf8_is_refused_by_name() {
     ];
     assert_eq!(
         super::text_words(&words),
-        Err("`caf\u{fffd}` is not UTF-8".to_owned())
+        Err(words.get(1).map_or(OsStr::new(""), OsString::as_os_str))
     );
 }

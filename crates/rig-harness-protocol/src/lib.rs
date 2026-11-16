@@ -1239,14 +1239,11 @@ pub const INVOCATION_USAGE: &str =
 ///
 /// # Errors
 ///
-/// The first word that is not UTF-8, named with its invalid bytes replaced.
-pub fn text_words(words: &[OsString]) -> Result<Vec<&str>, String> {
+/// The first word that is not UTF-8.
+pub fn text_words(words: &[OsString]) -> Result<Vec<&str>, &OsStr> {
     words
         .iter()
-        .map(|word| {
-            word.to_str()
-                .ok_or_else(|| format!("`{}` is not UTF-8", word.to_string_lossy()))
-        })
+        .map(|word| word.to_str().ok_or(word.as_os_str()))
         .collect()
 }
 
@@ -1265,7 +1262,9 @@ impl Invocation {
     /// The agent's own arguments, from the process's.
     pub fn from_env() -> Result<Self, String> {
         let args: Vec<OsString> = std::env::args_os().skip(1).collect();
-        Self::parse(&text_words(&args)?)
+        let words = text_words(&args)
+            .map_err(|word| format!("`{}` is not UTF-8", word.to_string_lossy()))?;
+        Self::parse(&words)
     }
 
     /// Whether nobody sits at a terminal view, and the run ends by itself.

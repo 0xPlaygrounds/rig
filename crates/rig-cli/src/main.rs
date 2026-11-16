@@ -115,7 +115,9 @@ fn main() -> ExitCode {
     };
     let args: Vec<String> = match text_words(&launch.args) {
         Ok(words) => words.into_iter().map(str::to_owned).collect(),
-        Err(why) => return run::refused(&why),
+        Err(word) => {
+            return run::refused(&format!("`{}` is not UTF-8", word.to_string_lossy()));
+        }
     };
     let home = launch.home();
     let result = match args
