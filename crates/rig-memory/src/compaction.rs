@@ -25,9 +25,9 @@ use rig_core::conversation::{
     Aside, AsideId, Author, Change, Conversation, Entry, MessageId, Spliced, pairing,
 };
 use rig_core::message::{CallId, StopReason, ToolCall, ToolResult, ToolResultContent, UserContent};
+use rig_core::tool::content_hash;
 use serde::{Deserialize, Serialize};
 
-use crate::blobs::sha256_hex;
 use crate::session::replay;
 use crate::{HeuristicTokenCounter, SessionError, Store};
 
@@ -590,7 +590,7 @@ pub fn apply_summary(
             summary,
             replaced: spliced.removed.clone(),
             replaced_hash: replaced_hash
-                .and_then(|bytes| sha256_hex(&bytes).get(..HASH_LEN).map(str::to_owned)),
+                .and_then(|bytes| content_hash(&bytes).0.get(..HASH_LEN).map(str::to_owned)),
             state: state.clone(),
         };
         let value = serde_json::to_value(compacted).unwrap_or_default();

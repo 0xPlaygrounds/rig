@@ -13,7 +13,7 @@ use rig_core::completion::Message;
 use rig_core::conversation::{Author, Change, ChangeRecord};
 use rig_core::message::DocumentSourceKind::{Base64, Raw, Unknown, Url};
 use rig_core::message::{Image, ImageMediaType};
-use sha2::{Digest, Sha256};
+use rig_core::tool::content_hash;
 
 use crate::Files;
 
@@ -76,20 +76,12 @@ pub(crate) fn store_images_with<'m>(
         if let Some(bytes) = bytes {
             let extension = image.media_type.as_ref();
             let extension = extension.map_or("bin", ImageMediaType::extension);
-            let name = format!("{}.{extension}", sha256_hex(&bytes));
+            let name = format!("{}.{extension}", content_hash(&bytes).0);
             image.data = Url(format!("{BLOB}{name}"));
             put(name, bytes)?;
         }
     }
     Ok(Cow::Owned(message))
-}
-
-/// The SHA-256 digest of `bytes` in lowercase hex.
-pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
-    Sha256::digest(bytes)
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
 }
 
 /// Puts the data of each image `message` names back in place, from the

@@ -671,7 +671,6 @@ dependencies = [
  "rig-core",
  "serde",
  "serde_json",
- "sha2",
  "thiserror",
 ]
 

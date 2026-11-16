@@ -16,7 +16,10 @@ fn append(store: &dyn Store, log: &str, bytes: &[u8]) -> Result<(), LogWriteErro
 
 /// The file a torn tail `tail` of the log `log` is set aside in.
 fn part(log: &str, tail: &[u8]) -> String {
-    format!("recovered/{log}-{}.part", crate::blobs::sha256_hex(tail))
+    format!(
+        "recovered/{log}-{}.part",
+        rig_core::tool::content_hash(tail).0
+    )
 }
 
 /// A conversation with an image, an authored entry, a splice that keeps an
