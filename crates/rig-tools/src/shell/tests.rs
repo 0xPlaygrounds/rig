@@ -1,6 +1,6 @@
 use rig_core::tool::{ExitStatus, KeptEnd, OutputCut, Tool, ToolContext};
 
-use super::{Shell, ShellArgs, split_status};
+use super::{JOBS_ENDED, Shell, ShellArgs, split_status};
 use crate::OutputLimit;
 use crate::process::Launcher;
 
@@ -81,6 +81,19 @@ fn returns_when_a_process_outside_the_group_holds_the_pipe() {
     assert!(started.elapsed() < Duration::from_secs(3));
     assert!(output.contains("started"), "{output}");
     assert!(output.ends_with("[exit code 0]"), "{output}");
+}
+
+/// A job left in the background that still holds the call's output is
+/// ended with the call, and the result says so and how to keep one running.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_background_job_holding_the_output_is_said_to_end_with_the_call() {
+    let output = shell("sleep 30 & echo started", None);
+    assert!(output.contains("started"), "{output}");
+    assert!(output.contains(JOBS_ENDED), "{output}");
+    assert!(output.ends_with("[exit code 0]"), "{output}");
+    let elsewhere = shell("sleep 2 >/dev/null 2>&1 & echo started", None);
+    assert!(!elsewhere.contains(JOBS_ENDED), "{elsewhere}");
 }
 
 /// Output cut by lines or by bytes is kept whole, and `read` reads it back

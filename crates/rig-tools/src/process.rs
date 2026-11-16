@@ -694,7 +694,8 @@ impl Process {
     /// it exited. A process that exited in time has all it printed before
     /// taken, however long `sink` takes. After an exit, something it left
     /// running that still holds its output gets a moment (100 ms) to
-    /// finish, then the rest of its group is killed, as it is when `sink`
+    /// finish, then the rest of its group is killed (which ends the wait as
+    /// [`Ended::EndedJobs`]), as it is when `sink`
     /// stops taking output then (which ends the wait as [`Ended::Stopped`]); past the deadline or
     /// stopped while it runs, the group is [stopped](Self::stop) with its
     /// grace ([`Spawn::grace`]). Output that came before a kill is still
@@ -726,11 +727,11 @@ impl Process {
                 }
             }
         };
-        if !matches!(ended, Ended::Exited(_)) {
+        let Ended::Exited(status) = ended else {
             self.stop(self.grace).ok();
             self.read_rest(&mut drop);
             return Ok(ended);
-        }
+        };
         // It exited in time: what it printed before is taken, however long
         // the sink takes.
         let more = Cell::new(more);
@@ -739,11 +740,18 @@ impl Process {
                 more.set(sink(line));
             }
         };
-        if !self.read_rest(&mut take) || !more.get() {
+        let held = !self.read_rest(&mut take);
+        // Only a job still in its group is ended by the kill.
+        let left = held && has_members(self.child.id());
+        if held || !more.get() {
             self.kill().ok();
             self.read_rest(&mut take);
         }
-        Ok(if more.get() { ended } else { Ended::Stopped })
+        Ok(match (more.get(), left) {
+            (false, _) => Ended::Stopped,
+            (true, true) => Ended::EndedJobs(status),
+            (true, false) => ended,
+        })
     }
 
     /// Hands its output to `take` until the pipes' end: all of it once
@@ -813,6 +821,9 @@ impl Process {
 pub enum Ended {
     /// It exited.
     Exited(ExitStatus),
+    /// It exited, and a job it left running in its group still held its
+    /// output, so that job was killed.
+    EndedJobs(ExitStatus),
     /// It ran past the deadline, and its group was stopped.
     TimedOut,
     /// The sink stopped the wait, and its group was stopped.
