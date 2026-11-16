@@ -10,7 +10,7 @@
 use futures::StreamExt;
 use rig_core::error::ProviderError;
 use rig_core::message::Message;
-use std::io::{self, Write};
+use std::io::{self, BufRead, Write};
 
 use crate::{
     agent::{Agent, MultiTurnStreamItem},
@@ -54,8 +54,12 @@ impl ChatBot {
 
     /// Read prompts from stdin and print answers until `exit`.
     /// Returns prompt failures and stdout flush errors; input read errors are printed.
-    pub async fn run(mut self) -> Result<(), PromptError> {
-        let stdin = io::stdin();
+    pub async fn run(self) -> Result<(), PromptError> {
+        self.run_on(io::stdin().lock()).await
+    }
+
+    /// [`Self::run`] reading prompts from `input`.
+    async fn run_on(mut self, mut input_lines: impl BufRead) -> Result<(), PromptError> {
         let mut stdout = io::stdout();
         let mut history = vec![];
 
@@ -68,7 +72,7 @@ impl ChatBot {
             })?;
 
             let mut input = String::new();
-            match stdin.read_line(&mut input) {
+            match input_lines.read_line(&mut input) {
                 Ok(_) => {
                     let input = input.trim();
                     if input == "exit" {
@@ -130,3 +134,6 @@ impl ChatBot {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests;
