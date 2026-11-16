@@ -3342,6 +3342,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
                 let prepared = prepare_request(
                     &spec,
                     &model.capabilities(),
+                    prompt,
                     &history,
                     definitions,
                     run.output_tool_name(),
@@ -3353,8 +3354,8 @@ async fn hand_drive(program: &Program, resume: Resume) {
                 // preparation failure leaves it unchanged — so a resumed
                 // engine's selection hook sees it.
                 run.set_previous_model(rig_core::completion::ModelRef::new(label));
-                run.advertise_tools(turn, prepared.tools.clone());
-                let request = prepared.clone().apply(CompletionRequest::new(prompt));
+                run.advertise_tools(turn, prepared.request.tools.clone());
+                let request = prepared.request.clone();
                 // The completion-call hook's dispatch, before the completion.
                 if program.hooks.contains(&Hook::NoteAtCompletionCall) {
                     note("completion_call").await;

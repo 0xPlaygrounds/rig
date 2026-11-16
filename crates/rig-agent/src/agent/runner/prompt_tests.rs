@@ -914,7 +914,7 @@ async fn a_run_accepts_unknown_finish_reasons_on_its_own() {
 /// the prepared request accepts the reason and the run answers.
 #[tokio::test]
 async fn a_sans_io_run_from_the_agent_spec_accepts_unknown_finish_reasons() {
-    use crate::run::{AgentRun, AgentRunStep, ModelTurn, prepare_request};
+    use crate::run::{AgentRun, AgentRunStep, ModelTurn, PreparedRequest, prepare_request};
 
     let model = MockCompletionModel::from_turns([unknown_finish(MockTurn::text("answer"))]);
     let agent = AgentBuilder::new(model.clone())
@@ -928,11 +928,18 @@ async fn a_sans_io_run_from_the_agent_spec_accepts_unknown_finish_reasons() {
             AgentRunStep::CallModel {
                 prompt, history, ..
             } => {
-                let prepared =
-                    prepare_request(&spec, &Default::default(), &history, Vec::new(), None, None)
-                        .expect("prepared");
-                let policy = prepared.policy.clone();
-                let request = prepared.apply(CompletionRequest::new(prompt));
+                let PreparedRequest {
+                    request, policy, ..
+                } = prepare_request(
+                    &spec,
+                    &Default::default(),
+                    prompt,
+                    &history,
+                    Vec::new(),
+                    None,
+                    None,
+                )
+                .expect("prepared");
                 assert!(request.accept_unknown_finish_reasons);
                 let response = model.call(request).await.expect("the reply folds");
                 run.model_response(ModelTurn::new(

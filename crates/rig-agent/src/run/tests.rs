@@ -1468,6 +1468,7 @@ fn a_provider_error_retry_still_pins_and_intercepts_the_output_tool() {
         prepare_request(
             &spec,
             &Default::default(),
+            "go",
             &history,
             tools.clone(),
             run.output_tool_name(),

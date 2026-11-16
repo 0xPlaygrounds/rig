@@ -13,6 +13,7 @@ fn prepared_request_round_trips_through_serde() {
     let prepared = prepare_request(
         &spec,
         &ProviderCapabilities::default(),
+        "hi",
         &[Message::user("hi").into()],
         vec![std::sync::Arc::new(ToolDefinition {
             name: rig_core::message::ToolName::new("add").expect("tool name"),
@@ -84,6 +85,7 @@ fn hosted_tools_are_advertised_but_not_executable() {
     let prepared = prepare_request(
         &spec,
         &ProviderCapabilities::default(),
+        "hi",
         &[],
         vec![],
         None,
@@ -93,9 +95,8 @@ fn hosted_tools_are_advertised_but_not_executable() {
 
     assert_eq!(prepared.output_mode, OutputMode::Tool);
     assert!(prepared.policy.executable().is_empty());
-    let request = prepared.apply(CompletionRequest::new("hi"));
     assert_eq!(
-        request.additional_params,
+        prepared.request.additional_params,
         Some(serde_json::json!({
             "tools": [{"type": "patch"}, {"type": "web_search"}, {"type": "code"}],
         }))
@@ -110,6 +111,7 @@ fn hosted_tools_are_advertised_but_not_executable() {
     prepare_request(
         &raw,
         &ProviderCapabilities::default(),
+        "hi",
         &[],
         vec![],
         None,

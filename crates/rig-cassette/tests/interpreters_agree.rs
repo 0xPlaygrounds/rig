@@ -19,12 +19,14 @@ use proptest::prelude::*;
 use rig_agent::handlers::{ModelHandle, ToolHandle};
 use rig_agent::{
     AgentBuilder,
-    run::{AgentRun, AgentRunStep, ModelTurn, PendingToolCall, RunSpec, prepare_request},
+    run::{
+        AgentRun, AgentRunStep, ModelTurn, PendingToolCall, PreparedRequest, RunSpec,
+        prepare_request,
+    },
     tool::{Tool, ToolContext, ToolExecutionError},
 };
 use rig_cassette::effect_log::EffectLogRecorder;
 use rig_core::{
-    completion::CompletionRequest,
     effect::{EffectKind, EffectRecord},
     test_utils::{MockCompletionModel, MockTurn},
 };
@@ -203,18 +205,19 @@ async fn hand_interpreter(case: &Case) -> (String, Trace) {
                 history,
                 turn,
             } => {
-                let prepared = prepare_request(
+                let PreparedRequest {
+                    request, policy, ..
+                } = prepare_request(
                     &spec,
                     &model.capabilities(),
+                    prompt,
                     &history,
                     catalog.definitions().to_vec(),
                     run.output_tool_name(),
                     None,
                 )
                 .expect("prepared");
-                run.advertise_tools(turn, prepared.tools.clone());
-                let policy = prepared.policy.clone();
-                let request = prepared.apply(CompletionRequest::new(prompt));
+                run.advertise_tools(turn, request.tools.clone());
                 let response = tokio::time::timeout(Duration::from_secs(5), model.call(request))
                     .await
                     .expect("never hangs")

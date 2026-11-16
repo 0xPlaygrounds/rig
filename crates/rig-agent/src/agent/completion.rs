@@ -100,9 +100,12 @@ pub(crate) async fn build_prepared_completion_request(
         None => (&*runner.config.spec, committed_output_tool),
     };
 
-    let prepared = crate::run::prepare::prepare_request(
+    let crate::run::PreparedRequest {
+        request, policy, ..
+    } = crate::run::prepare::prepare_request(
         spec,
         &capabilities,
+        prompt,
         chat_history,
         tool_snapshot.take_definitions(),
         committed_output_tool,
@@ -112,14 +115,12 @@ pub(crate) async fn build_prepared_completion_request(
     // Narrow dispatch to the tools actually advertised this turn (a per-turn
     // `active_tools` allow-list), so the implementation behind every definition
     // the provider received is the one that runs.
-    tool_snapshot.retain_names(prepared.policy.executable());
+    tool_snapshot.retain_names(policy.executable());
 
-    let advertised_tools = prepared.tools.clone();
-    let policy = prepared.policy.clone();
-    let max_tokens = prepared.max_tokens;
+    let advertised_tools = request.tools.clone();
+    let max_tokens = request.max_tokens;
     // The agent records the input itself, so the request the provider sees
     // carries the telemetry flag off: one span, no double recording.
-    let request = prepared.apply(CompletionRequest::new(prompt));
     let telemetry_messages = if record_telemetry_content {
         request.messages_for_telemetry()
     } else {
