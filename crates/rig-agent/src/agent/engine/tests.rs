@@ -2002,6 +2002,72 @@ async fn duplicate_call_ids_keep_their_own_results_when_settling_out_of_order() 
     assert_eq!(answers, ["2", "4"], "results stay with their calls");
 }
 
+/// A resumed run whose advertised tool is no longer registered tells the
+/// model which tools it does have, as the kernel does.
+#[tokio::test]
+async fn a_resumed_call_to_an_unregistered_tool_lists_the_registered_ones() {
+    use crate::run::{AgentRun, AgentRunStep, ModelTurn, TurnPolicy};
+
+    let agent = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::text("done")]))
+        .tool(MockSubtractTool)
+        .build();
+    let mut run = AgentRun::from_spec(&agent.run_spec(), Message::user("go"), None).max_turns(2);
+    let Ok(AgentRunStep::CallModel { turn, .. }) = run.next_step() else {
+        panic!("a fresh run calls the model");
+    };
+    let definition = |name: &str| {
+        std::sync::Arc::new(rig_core::completion::ToolDefinition {
+            name: rig_core::message::ToolName::new(name).expect("tool name"),
+            description: MockAddTool.description(),
+            parameters: MockAddTool.parameters(),
+            annotations: Default::default(),
+        })
+    };
+    run.advertise_tools(turn, vec![definition("add"), definition("subtract")]);
+    let policy = TurnPolicy::new(
+        ["add".to_string(), "subtract".to_string()].into(),
+        None,
+        None,
+    )
+    .expect("policy");
+    run.model_response(ModelTurn::new(
+        rig_core::message::AssistantMessage::default(),
+        vec![tool_call_content("c1", json!({"x": 1, "y": 1}))],
+        Usage::default(),
+        policy,
+        json!({}),
+    ))
+    .expect("the tool turn is accepted");
+
+    let response = agent
+        .resume(run)
+        .run()
+        .await
+        .expect("the resumed run completes");
+
+    let texts: Vec<String> = response
+        .messages()
+        .iter()
+        .flat_map(|message| match message {
+            Message::User { content } => content.clone(),
+            _ => Vec::new(),
+        })
+        .filter_map(|item| match item {
+            UserContent::ToolResult(result) => Some(format!("{:?}", result.content)),
+            _ => None,
+        })
+        .collect();
+    let [text] = texts.as_slice() else {
+        panic!("one tool result expected: {texts:?}");
+    };
+    assert!(
+        text.contains(
+            "There is no tool named `add`. Your tools are: `subtract`. Call one by its exact name."
+        ),
+        "{text}"
+    );
+}
+
 /// Tool-result ids, in history order, across a run's message history.
 fn tool_result_ids(messages: &[Message]) -> Vec<String> {
     messages
