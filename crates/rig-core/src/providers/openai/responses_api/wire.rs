@@ -262,7 +262,7 @@ impl crate::completion::ReplayTarget for Responses {
         let model = model
             .rsplit('/')
             .next()
-            .unwrap_or_default()
+            .unwrap_or(model)
             .to_ascii_lowercase();
         crate::completion::Accepts {
             user_images: images,

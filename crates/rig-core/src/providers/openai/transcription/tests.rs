@@ -197,9 +197,7 @@ fn token_usage_without_a_total_keeps_its_counts() {
         r#"{"text":"hi","usage":{"type":"tokens","input_tokens":10,"output_tokens":5}}"#,
     )
     .expect("response should decode");
-    println!("B73 decoded usage: {:?}", response.usage);
     let normalized = response.normalize().expect("normalizes");
-    println!("B73 normalized usage: {:?}", normalized.usage);
     assert_eq!(normalized.usage.input_tokens, Some(10));
     assert_eq!(normalized.usage.output_tokens, Some(5));
 }
