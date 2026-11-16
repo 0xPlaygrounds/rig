@@ -1677,7 +1677,12 @@ pub(crate) async fn dispatch_tool_call(
                     crate::tool::ToolExecutionError::not_found(format!(
                         "no tool named `{tool_name}` is registered"
                     ))
-                    .with_model_feedback(format!("tool `{tool_name}` not found")),
+                    .with_model_feedback(
+                        rig_core::tool::feedback::unknown_tool_feedback(
+                            tool_name,
+                            tool_snapshot.names(),
+                        ),
+                    ),
                 ),
             }),
         },
