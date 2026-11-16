@@ -1,14 +1,14 @@
 //! Cassette-backed coverage of Cohere's native chat API: documents with
 //! citations, the tool plan and streamed tool calls, and a conversation that
-//! moves between the native and Compatibility APIs.
+//! moves between the native and Compatibility wires.
 
 use std::collections::HashMap;
 
 use futures::StreamExt;
 use rig::completion::{CompletionRequest, CompletionResponse, Cost, Document, Message};
 use rig::message::{AssistantContent, Source, SourceLocation, ToolResultContent, UserContent};
+use rig::providers::cohere::NativeChat;
 use rig::providers::cohere::extension::{CohereExt, CohereExtras};
-use rig::providers::cohere::{ChatRoute, CohereChat};
 use rig::providers::ollama::extension::OllamaExt;
 use rig::streaming::{Item, StreamEvent};
 use rig::tool::Tool;
@@ -76,7 +76,7 @@ fn billed(input: f64, output: f64) -> Option<Cost> {
 
 /// The events of a streamed reply, and the response it folds into.
 async fn streamed(
-    model: &rig::Model<CohereChat>,
+    model: &rig::Model<NativeChat>,
     request: CompletionRequest,
 ) -> (Vec<StreamEvent>, CompletionResponse) {
     let mut stream = model.stream(request).expect("the stream opens");
@@ -90,7 +90,7 @@ async fn streamed(
     (events, response)
 }
 
-/// On the `Auto` route a streamed answer grounded in documents cites them:
+/// On the native API a streamed answer grounded in documents cites them:
 /// each citation spans the characters it quotes and names its source
 /// document, and its JSON sits in the provider item of the text it cites.
 /// The second citation arrives after the last text it spans. The cost
@@ -100,8 +100,7 @@ async fn documents_ground_a_streamed_answer_with_citations() {
     with_cohere_cassette(
         "native/documents_ground_a_streamed_answer_with_citations",
         |client| async move {
-            let mut model = client.completion(CASSETTE_MODEL);
-            model.wire = model.wire.with_route(ChatRoute::Auto);
+            let model = client.native_completion(CASSETTE_MODEL);
             let mut request =
                 CompletionRequest::new("Which dock has beacon amber-73, and when does it close?")
                     .max_tokens(96);
@@ -156,7 +155,7 @@ async fn documents_ground_a_streamed_answer_with_citations() {
     .await;
 }
 
-/// On the native route a streamed tool turn plans as reasoning, streams its
+/// On the native API a streamed tool turn plans as reasoning, streams its
 /// call's arguments fragment by fragment, and replays its plan and call to
 /// the native API on the next turn.
 #[tokio::test]
@@ -164,8 +163,7 @@ async fn a_streamed_tool_plan_and_call_replay_natively() {
     with_cohere_cassette(
         "native/a_streamed_tool_plan_and_call_replay_natively",
         |client| async move {
-            let mut model = client.completion(CASSETTE_MODEL);
-            model.wire = model.wire.with_route(ChatRoute::Native);
+            let model = client.native_completion(CASSETTE_MODEL);
             let subtract = rig::completion::ToolDefinition::new(
                 rig::message::ToolName::new(IntegerSubtract::NAME).expect("a tool name"),
                 IntegerSubtract.description(),
@@ -251,18 +249,18 @@ fn extras(reply: &CompletionResponse) -> CohereExtras {
         .expect("the extras read")
 }
 
-/// A conversation the `Auto` route moves between the APIs replays on each:
-/// a native turn grounded in documents, a Compatibility API turn without
-/// them that reads the first canonically, and a native turn that sends the
-/// first back with its citations and the second canonically. Each reply's
-/// typed extras read what its route returns.
+/// A conversation that moves between the two wires replays on each: a
+/// native turn grounded in documents, a Compatibility API turn without them
+/// that reads the first canonically, and a native turn that sends the first
+/// back with its citations and the second canonically. Each reply's typed
+/// extras read what its API returns.
 #[tokio::test]
 async fn a_conversation_switching_routes_replays() {
     with_cohere_cassette(
         "native/a_conversation_switching_routes_replays",
         |client| async move {
-            let mut model = client.completion(CASSETTE_MODEL);
-            model.wire = model.wire.with_route(ChatRoute::Auto);
+            let native = client.native_completion(CASSETTE_MODEL);
+            let compatibility = client.completion(CASSETTE_MODEL);
             let ask = |history: &[Message], prompt: &str, grounded: bool| {
                 let mut request = CompletionRequest::new(prompt).max_tokens(64);
                 request
@@ -276,7 +274,7 @@ async fn a_conversation_switching_routes_replays() {
             let mut history = Vec::new();
 
             let question = "Which dock has beacon amber-73?";
-            let first = model
+            let first = native
                 .call(ask(&history, question, true))
                 .await
                 .expect("the native turn succeeds");
@@ -314,7 +312,7 @@ async fn a_conversation_switching_routes_replays() {
             history.push(first.message().expect("an assistant turn"));
 
             let question = "Repeat the dock's name in capital letters.";
-            let second = model
+            let second = compatibility
                 .call(ask(&history, question, false))
                 .await
                 .expect("the Compatibility API turn succeeds");
@@ -332,7 +330,7 @@ async fn a_conversation_switching_routes_replays() {
             history.push(Message::user(question));
             history.push(second.message().expect("an assistant turn"));
 
-            let third = model
+            let third = native
                 .call(ask(&history, "When does that dock close?", true))
                 .await
                 .expect("the native turn after a switch succeeds");
@@ -369,15 +367,14 @@ async fn a_conversation_switching_routes_replays() {
     .await;
 }
 
-/// The Compatibility route keeps documents off the native API: they reach
+/// The Compatibility API keeps documents off the native API: they reach
 /// the model as text in the history, and the answer has no citations.
 #[tokio::test]
 async fn the_compatibility_route_sends_documents_as_text() {
     with_cohere_cassette(
         "native/the_compatibility_route_sends_documents_as_text",
         |client| async move {
-            let mut model = client.completion(CASSETTE_MODEL);
-            model.wire = model.wire.with_route(ChatRoute::Compatibility);
+            let model = client.completion(CASSETTE_MODEL);
             let mut request = CompletionRequest::new(
                 "Which dock has beacon amber-73? Answer with the dock's name only.",
             )

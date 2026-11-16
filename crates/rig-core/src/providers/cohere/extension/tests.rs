@@ -8,17 +8,19 @@ use crate::completion::{
 };
 use crate::message::{ToolChoice, ToolName};
 use crate::operation::Completion;
-use crate::providers::cohere::{ChatRoute, CohereChat, CohereConfig};
+use crate::providers::cohere::{CohereConfig, NativeChat};
+use crate::providers::openai::wire::Chat;
 use crate::test_utils::json_body;
 use crate::wire::{Encoded, Mode, Operation, Wire};
 
 const MODEL: &str = "command-a-03-2025";
 
-fn chat(route: ChatRoute) -> CohereChat {
-    CohereConfig::new("key")
-        .with_base_url("http://127.0.0.1:9")
-        .completion(MODEL)
-        .with_route(route)
+fn native_wire() -> NativeChat {
+    CohereConfig::new("key").native_completion(MODEL)
+}
+
+fn compatibility_wire() -> Chat {
+    CohereConfig::new("key").completion(MODEL)
 }
 
 fn every_field() -> CohereOptions {
@@ -53,13 +55,13 @@ fn sent<W: Wire<Op = Completion, Payload = Encoded>>(
 }
 
 fn native(options: &CohereOptions) -> Value {
-    let (path, body) = sent(&chat(ChatRoute::Native), with(options));
+    let (path, body) = sent(&native_wire(), with(options));
     assert_eq!(path, "/v2/chat");
     body
 }
 
 fn compatibility(options: &CohereOptions) -> Value {
-    let (path, body) = sent(&chat(ChatRoute::Compatibility), with(options));
+    let (path, body) = sent(&compatibility_wire(), with(options));
     assert_eq!(path, "/compatibility/v1/chat/completions");
     body
 }
@@ -73,14 +75,14 @@ fn documents() -> Vec<Document> {
 }
 
 #[test]
-fn frequency_penalty_goes_to_both_routes() {
+fn frequency_penalty_goes_to_both_apis() {
     let options = CohereOptions::default().frequency_penalty(0.25);
     assert_eq!(native(&options)["frequency_penalty"], json!(0.25));
     assert_eq!(compatibility(&options)["frequency_penalty"], json!(0.25));
 }
 
 #[test]
-fn presence_penalty_goes_to_both_routes() {
+fn presence_penalty_goes_to_both_apis() {
     let options = CohereOptions::default().presence_penalty(0.5);
     assert_eq!(native(&options)["presence_penalty"], json!(0.5));
     assert_eq!(compatibility(&options)["presence_penalty"], json!(0.5));
@@ -122,9 +124,9 @@ fn logprobs_is_sent() {
 }
 
 /// The native section is skipped on a request the Compatibility API takes,
-/// with no error, and read on one `Auto` sends natively for its documents.
+/// with no error.
 #[test]
-fn the_native_section_goes_only_to_the_native_route() {
+fn the_native_section_goes_only_to_the_native_api() {
     let options = every_field();
     let body = compatibility(&options);
     for key in [
@@ -137,23 +139,13 @@ fn the_native_section_goes_only_to_the_native_route() {
         assert!(body.get(key).is_none(), "{key}: {body}");
     }
     assert_eq!(body["presence_penalty"], json!(0.5));
-
-    let (path, body) = sent(&chat(ChatRoute::Auto), with(&options));
-    assert_eq!(path, "/compatibility/v1/chat/completions");
-    assert!(body.get("k").is_none(), "{body}");
-
-    let mut grounded = with(&options);
-    grounded.documents = documents();
-    let (path, body) = sent(&chat(ChatRoute::Auto), grounded);
-    assert_eq!(path, "/v2/chat");
-    assert_eq!(body["k"], json!(40));
 }
 
 #[test]
 fn raw_beats_typed() {
     let mut request = with(&CohereOptions::default().top_k(7).frequency_penalty(0.1));
     request.additional_params = Some(json!({"k": 3, "frequency_penalty": 0.9}));
-    let (_, body) = sent(&chat(ChatRoute::Native), request);
+    let (_, body) = sent(&native_wire(), request);
     assert_eq!(body["k"], json!(3));
     assert_eq!(body["frequency_penalty"], json!(0.9));
 }
@@ -173,7 +165,7 @@ fn leaves(value: &Value, at: &str, out: &mut BTreeSet<String>) {
 }
 
 /// No field writes a leaf that a mapped option or the request's own fields
-/// write, or a leaf above or below one, on either route.
+/// write, or a leaf above or below one, on either API.
 #[test]
 fn no_field_writes_a_reserved_leaf() {
     let options = ProviderOptions::new()
@@ -188,7 +180,7 @@ fn no_field_writes_a_reserved_leaf() {
             .get::<CohereExt>()
             .is_some_and(|entry| entry.contains_key(SHARED))
     );
-    for route in [ChatRoute::Native, ChatRoute::Compatibility] {
+    for native_api in [true, false] {
         for reasoning in [Reasoning::Off, Reasoning::Budget { tokens: 2048 }] {
             let mut request = CompletionRequest::new("q")
                 .reasoning(reasoning)
@@ -211,7 +203,11 @@ fn no_field_writes_a_reserved_leaf() {
             ];
             request.tool_choice = Some(ToolChoice::Required);
             request.output_schema = Some(schemars::json_schema!({"type": "object"}));
-            let (_, body) = sent(&chat(route), request);
+            let (_, body) = if native_api {
+                sent(&native_wire(), request)
+            } else {
+                sent(&compatibility_wire(), request)
+            };
             let mut owned = BTreeSet::new();
             leaves(&body, "", &mut owned);
             for leaf in &provider {
@@ -220,7 +216,7 @@ fn no_field_writes_a_reserved_leaf() {
                         !(leaf == reserved
                             || leaf.starts_with(&format!("{reserved}/"))
                             || reserved.starts_with(&format!("{leaf}/"))),
-                        "{route:?}: {leaf} meets {reserved}"
+                        "native {native_api}: {leaf} meets {reserved}"
                     );
                 }
             }

@@ -133,8 +133,14 @@ macro_rules! with_model {
                     .completion($crate::runtime::decode::GEMINI);
                 Some($body)
             }
+            "cohere" if encoder.ends_with("/v2/chat") => {
+                let $model = $crate::runtime::decode::cohere_model(http)
+                    .native_completion("command-a-03-2025");
+                Some($body)
+            }
             "cohere" => {
-                let $model = $crate::runtime::decode::cohere_model(http);
+                let $model =
+                    $crate::runtime::decode::cohere_model(http).completion("command-a-03-2025");
                 Some($body)
             }
             "ollama" if encoder.ends_with("/api/chat") => {
@@ -180,11 +186,8 @@ pub(crate) fn gemini_model(http: rig::http_client::DynHttpClient) -> GeminiModel
     GeminiModels::new(GeminiConfig::new(KEY).with_base_url(BASE_URL), http)
 }
 
-pub(crate) fn cohere_model(
-    http: rig::http_client::DynHttpClient,
-) -> rig::Model<rig::providers::cohere::CohereChat> {
+pub(crate) fn cohere_model(http: rig::http_client::DynHttpClient) -> CohereModels {
     CohereModels::new(CohereConfig::new(KEY).with_base_url(BASE_URL), http)
-        .completion("command-a-03-2025")
 }
 
 pub(crate) fn ollama_model(

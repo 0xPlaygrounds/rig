@@ -1,5 +1,5 @@
 //! Cohere's typed request options and reply extras. The shared section
-//! goes to both routes, the Compatibility API and the native chat API; the
+//! goes to both APIs, the Compatibility API and the native chat API; the
 //! `"cohere.chat"` section goes to the native API only and is skipped on a
 //! request the Compatibility API takes.
 //!
@@ -34,7 +34,7 @@ impl ProviderExtension for CohereExt {
 #[non_exhaustive]
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct CohereOptions {
-    /// The fields both routes read.
+    /// The fields both APIs read.
     #[serde(rename = "*")]
     pub shared: CohereShared,
     /// The fields only the native chat API reads.
@@ -95,7 +95,7 @@ impl CohereOptions {
     }
 }
 
-/// The fields both Cohere routes read.
+/// The fields both Cohere APIs read.
 #[non_exhaustive]
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct CohereShared {
@@ -180,7 +180,7 @@ pub enum SafetyMode {
 #[non_exhaustive]
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct CohereExtras {
-    /// `id`, on both routes.
+    /// `id`, on both APIs.
     pub id: Option<String>,
     /// `finish_reason` as Cohere spells it (`COMPLETE`, `MAX_TOKENS`, ...).
     pub finish_reason: Option<String>,

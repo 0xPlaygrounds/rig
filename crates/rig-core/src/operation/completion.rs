@@ -52,11 +52,7 @@ impl Operation for Completion {
             .telemetry
             .map_or(GenAiOperation::Chat, |telemetry| telemetry(call.mode));
         debug_assert!(telemetry.is_completion());
-        // A wire that picks its API per request records the one it used.
-        let replay = call
-            .wire
-            .replay
-            .map(|target| target.route(request).unwrap_or(target));
+        let replay = call.wire.replay;
         let model = request
             .model
             .as_deref()
@@ -121,8 +117,7 @@ impl Operation for Completion {
             .take()
             .filter(|model| !model.is_empty())
             .or_else(|| Some(target.model().to_owned()).filter(|model| !model.is_empty()));
-        let target = target.route(&request).unwrap_or(target);
-        // Every option the routed wire cannot honour is reported here, before
+        // Every option the wire cannot honour is reported here, before
         // any wire encodes, whatever its encoder does.
         crate::completion::options::check(target, &mut request)?;
         // Message cache points name the history as written; they are moved
