@@ -263,7 +263,12 @@ impl LastUsage {
 /// this marker when a reply reports a new context figure. Saved with the session.
 #[derive(Component, Reflect, Clone, Copy, Debug, Default, Serialize, Deserialize)]
 #[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
-pub struct ContextStale {}
+pub struct ContextStale {
+    /// The tokens the next request is estimated to send, when what made
+    /// the figure stale estimated them, as a summary does.
+    #[serde(default)]
+    pub estimate: Option<u64>,
+}
 
 /// The agent's own part of its system prompt: who it is and how it works.
 /// Each request's prompt adds the app's

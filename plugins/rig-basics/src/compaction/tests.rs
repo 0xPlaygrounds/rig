@@ -2542,6 +2542,27 @@ fn a_held_summary_is_applied_as_reviewed_or_cancelled_and_undone_with_its_ids() 
     assert!(app.world().get::<ContextStale>(agent).is_some());
 }
 
+/// A summary leaves the context marked stale with its estimate of the
+/// context after it, which the status line shows until the next reply.
+#[test]
+fn a_summary_estimates_the_context_it_leaves() {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    let model = MockCompletionModel::from_stream_turns([reply("## Goal\nThe summary.")]);
+    let agent = agent(&mut app, &model, 1_000_000, long_conversation(3));
+    app.update();
+    let focus = String::new();
+    app.world_mut().trigger(Compact {
+        entity: agent,
+        focus,
+    });
+    run_until(&mut app, &wakes, |world| {
+        world.resource::<Ended>().0.len() == 1
+    });
+    let stale = app.world().get::<ContextStale>(agent).copied();
+    let estimate = stale.and_then(|stale| stale.estimate);
+    assert!(estimate.is_some_and(|tokens| tokens > 0), "{stale:?}");
+}
+
 /// A summary near the window that a reviewer cancels lets the request go
 /// as it was, its answer clamped to the room left, when that is a fair
 /// share of its output budget.

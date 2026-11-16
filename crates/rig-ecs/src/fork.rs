@@ -303,7 +303,7 @@ fn fork_now(
         }
         // No reply measured the conversation it starts with.
         None if !empty => {
-            spawned.insert(ContextStale {});
+            spawned.insert(ContextStale::default());
         }
         None => {}
     }
