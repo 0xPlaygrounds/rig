@@ -73,6 +73,62 @@ fn what_a_plugin_spawns_in_build_and_finish_is_its_own() {
     assert_eq!(by("unattributed"), None);
 }
 
+/// Spawns and adds a system before and after loading `Nested` in the
+/// middle of its build.
+#[derive(Default)]
+struct Host;
+
+fn host_before() {}
+fn host_after() {}
+
+impl Plugin for Host {
+    fn build(&self, app: &mut App) {
+        app.world_mut().spawn(Name::new("host before"));
+        app.add_systems(Update, host_before);
+        load::<Nested>(app, "nested", "version 1");
+        app.world_mut().spawn(Name::new("host after"));
+        app.add_systems(Update, host_after);
+    }
+}
+
+/// Spawns in its build, loaded by `Host`.
+#[derive(Default)]
+struct Nested;
+
+impl Plugin for Nested {
+    fn build(&self, app: &mut App) {
+        app.world_mut().spawn(Name::new("nested"));
+    }
+}
+
+#[test]
+fn a_plugin_loaded_in_another_build_is_attributed_and_the_outer_carries_on() {
+    let mut app = App::new();
+    load::<Host>(&mut app, "host", "version 1");
+    app.finish();
+    app.cleanup();
+    app.update();
+    let world = app.world_mut();
+    let host = world.resource::<PluginEntity<Host>>().entity();
+    let mut named = world.query::<(&Name, Option<&ProvidedBy>)>();
+    let mut by = |name: &str| {
+        named
+            .iter(world)
+            .find(|(named, _)| named.as_str() == name)
+            .and_then(|(_, by)| by.map(|by| by.0))
+    };
+    assert_eq!(by("host before"), Some(host));
+    assert_eq!(by("host after"), Some(host));
+    let systems = world.resource::<super::PluginSystems>();
+    let of = |name: &str| {
+        (systems.0.iter())
+            .find(|((system, _), _)| system.contains(name))
+            .and_then(|(_, plugin)| *plugin)
+    };
+    assert_eq!(of("host_before"), Some(host));
+    assert_eq!(of("host_after"), Some(host));
+}
+
 /// A saved agent component under a stable key.
 #[derive(Component, Reflect, Default)]
 #[reflect(Component, Saved)]

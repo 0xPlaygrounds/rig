@@ -276,14 +276,15 @@ pub struct Retire {
 }
 
 /// Saves the outbox of `conversation`, that of `agent` whose id is `id`,
-/// to `log`; one [`ConversationChanged`] per change saved.
+/// to `log`, without marking it changed; one [`ConversationChanged`] per
+/// change saved.
 pub(crate) fn save_conversation(
     log: &SessionLog,
     agent: Entity,
     id: &AgentId,
-    conversation: &mut Conversation,
+    conversation: &mut Mut<Conversation>,
 ) -> Vec<ConversationChanged> {
-    let saved = log.0.save(&id.0, conversation);
+    let saved = log.0.save(&id.0, conversation.bypass_change_detection());
     let committed = |change| ConversationChanged { agent, change };
     saved.into_iter().map(committed).collect()
 }
@@ -303,8 +304,7 @@ impl Drain<'_, '_> {
     pub(crate) fn save(&mut self) -> Option<Entity> {
         let mut changed = None;
         for (agent, id, mut conversation) in &mut self.agents {
-            let conversation = conversation.bypass_change_detection();
-            let saved = save_conversation(&self.log, agent, id, conversation);
+            let saved = save_conversation(&self.log, agent, id, &mut conversation);
             if !saved.is_empty() {
                 changed = Some(agent);
                 self.committed.write_batch(saved);
@@ -364,8 +364,7 @@ pub(crate) fn save_discarded(mut world: DeferredWorld, context: HookContext) {
     if conversation.unsaved().is_empty() {
         return;
     }
-    let conversation = conversation.bypass_change_detection();
-    for committed in save_conversation(&log, agent, &id, conversation) {
+    for committed in save_conversation(&log, agent, &id, &mut conversation) {
         world.write_message(committed);
     }
 }
@@ -382,8 +381,7 @@ pub(crate) fn retire(
     let Ok((id, mut conversation)) = agents.get_mut(agent) else {
         return;
     };
-    let conversation = conversation.bypass_change_detection();
-    committed.write_batch(save_conversation(&log, agent, id, conversation));
+    committed.write_batch(save_conversation(&log, agent, id, &mut conversation));
     log.0.retire(&id.0);
     commands.entity(agent).try_despawn();
 }

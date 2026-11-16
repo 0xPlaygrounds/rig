@@ -491,12 +491,13 @@ fn relist(stores: &StoreOpener, store: &dyn Store, session: &Session) {
     }
 }
 
-/// The launcher lock of the session in `dir`, held for a rewrite of it:
+/// The launcher lock of the session in `dir`, held for a rewrite or a
+/// delete of it:
 /// refused for the running session (`running`), a session that is not
 /// there and one another rig runs.
 fn hold_stopped(running: &SessionDir, dir: &SessionDir) -> Result<File, String> {
     if dir.path() == running.path() {
-        return Err("it is this session: only a stopped session is rewritten".to_owned());
+        return Err("it is this session".to_owned());
     }
     if !dir.path().is_dir() {
         return Err("there is no such session".to_owned());
@@ -595,10 +596,9 @@ fn map_spill(scratch: &DirFiles, with: &dyn Rewrite) -> io::Result<()> {
 /// The session is marked deleting first ([`SessionDir::mark_deleting`]),
 /// which hides it from listings, then everything its store holds is
 /// destroyed, wherever [`StoreOpener`] keeps it, then its directory is
-/// removed. A delete a crash cut short is finished at the next start.
-/// The delete checks that no rig runs the session, then removes it without
-/// holding its lock, so a session resumed in that instant can be deleted
-/// under it. [`SessionDeleted`] follows, or an error notice says why not.
+/// removed, all while holding its launcher lock. A delete a crash cut short
+/// is finished at the next start. [`SessionDeleted`] follows, or an error
+/// notice says why not.
 #[derive(Event, Clone, Debug)]
 pub struct DeleteSession(pub SessionId);
 
@@ -616,26 +616,18 @@ fn delete_session(
 ) {
     let home = home.map_or_else(Home::from_env, |home| home.0.clone());
     let session = home.session(&delete.0);
-    let refusal = if session.path() == paths.path() {
-        Some("it is this session".to_owned())
-    } else if !session.path().is_dir() {
-        Some("there is no such session".to_owned())
-    } else if session.runs_elsewhere() {
-        Some("another rig runs it".to_owned())
-    } else {
-        // No lock is held from the check above on: see `DeleteSession`.
+    let done = hold_stopped(&paths, &session).and_then(|_held| {
         session
             .mark_deleting()
             .map_err(SessionError::from)
             .and_then(|()| finish_delete(&session, &stores))
-            .err()
-            .map(|failure| failure.to_string())
-    };
-    match refusal {
-        None => {
+            .map_err(|failure| failure.to_string())
+    });
+    match done {
+        Ok(()) => {
             deleted.write(SessionDeleted(delete.0.clone()));
         }
-        Some(why) => {
+        Err(why) => {
             notices.write(Notice::error(
                 None,
                 format!("Could not delete session {}: {why}.", delete.0),

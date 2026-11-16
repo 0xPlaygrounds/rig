@@ -1,5 +1,5 @@
 //! Work that runs off the main thread: a [`Running`] task on an entity
-//! becomes a [`Done`] component when it finishes, through one `poll_tasks`
+//! becomes a [`Done`] component when it finishes, through one `finish`
 //! system, so observers of that component carry on; on an effect, such as
 //! an open tool call, it becomes the effect's
 //! [`Outcome`](super::stage::Outcome) in
@@ -19,7 +19,7 @@ use bevy_tasks::futures::check_ready;
 use bevy_tasks::{ConditionalSend, ConditionalSendFuture, Task, TaskPool};
 use futures::{Stream, StreamExt};
 
-use super::stage::{self, Effect};
+use super::stage;
 
 /// Frames run right after a woken one (see [`run_settle_frames`]).
 const SETTLE_FRAMES: u32 = 4;
@@ -223,24 +223,15 @@ impl<T: Send + Sync + 'static> From<T> for Done<T> {
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PollTasks;
 
-/// Replaces each finished [`Running`] task with its output, but an
-/// effect's, which the kernel takes in [`Stage::Arrive`](stage::Stage::Arrive).
-pub(crate) fn poll_tasks(
-    tasks: Query<(Entity, &mut Running), Without<Effect>>,
-    commands: Commands,
-) {
-    finish(tasks, commands);
-}
-
-/// Replaces each finished effect's [`Running`] task with its outcome, in
-/// [`Stage::Arrive`](stage::Stage::Arrive).
-pub(crate) fn arrive(tasks: Query<(Entity, &mut Running), With<Effect>>, commands: Commands) {
-    finish(tasks, commands);
-}
-
 /// Replaces each finished task among `tasks` with its output, and puts a
-/// stream's items on its entity in order, removing it once it ended.
-fn finish<F: QueryFilter>(mut tasks: Query<(Entity, &mut Running), F>, mut commands: Commands) {
+/// stream's items on its entity in order, removing it once it ended. It
+/// runs twice: `finish::<Without<Effect>>` in `Update`, and for effects,
+/// whose output is their outcome, `finish::<With<Effect>>` in
+/// [`Stage::Arrive`](stage::Stage::Arrive).
+pub(crate) fn finish<F: QueryFilter>(
+    mut tasks: Query<(Entity, &mut Running), F>,
+    mut commands: Commands,
+) {
     for (entity, mut running) in &mut tasks {
         match &mut running.bypass_change_detection().0 {
             Work::Task(task) => {

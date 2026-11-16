@@ -15,7 +15,6 @@
 
 use std::path::{Path, PathBuf};
 
-use rig_basics::coding_tools::ShellOutput;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::CompletionRequest;
 use rig_harness::rig_core::effect::Answered;

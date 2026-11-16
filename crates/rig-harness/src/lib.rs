@@ -127,7 +127,7 @@ pub mod prelude {
     };
     pub use crate::per_call::{
         AppPerCallExt, CallPlace, FilesSeen, PerCall, PerCallShell, PerCallSystems, PerCallTool,
-        PerCallTools,
+        PerCallTools, ShellOutput,
     };
     pub use crate::pick::{
         Chosen, Highlighted, Pick, PickItem, PickPreview, Picked, Picker, ShowsPickers,

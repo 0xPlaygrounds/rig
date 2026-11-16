@@ -53,7 +53,7 @@ use super::build::{self, BuildFailure, BuildOutput, FailedAt, Staging};
 use super::update;
 use super::{LONG_VERSION, Result, locks};
 
-mod stop;
+pub(crate) mod stop;
 
 /// How often the launcher looks for the ready file while the agent runs.
 const POLL: Duration = Duration::from_millis(100);

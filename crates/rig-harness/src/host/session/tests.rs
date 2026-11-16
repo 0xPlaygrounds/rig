@@ -119,6 +119,61 @@ fn another_session_can_be_deleted_but_not_this_one_nor_one_another_rig_runs() {
     fs::remove_dir_all(&root).ok();
 }
 
+/// A delete holds the session's launcher lock, as a rewrite does, from
+/// its check until the session is gone, so no launcher resumes it in
+/// between; one another rig runs is refused with a rewrite's text.
+#[test]
+fn a_delete_holds_the_session_lock_as_a_rewrite_does() {
+    let home = scratch_home("rig-session-delete-held");
+    let (Some(id), Some(here)) = (
+        "1700000000-30".parse::<SessionId>().ok(),
+        "1700000000-31".parse::<SessionId>().ok(),
+    ) else {
+        return;
+    };
+    let (session, here) = (home.session(&id), home.session(&here));
+    let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let saw = seen.clone();
+    let stores = StoreOpener::new(move |dir| {
+        if let Ok(mut saw) = saw.lock() {
+            saw.push(dir.runs_elsewhere());
+        }
+        Ok(Arc::new(DirStore::open(dir.path())?))
+    });
+    fs::create_dir_all(session.path()).ok();
+    let mut app = App::new();
+    app.add_message::<Notice>()
+        .init_resource::<Seen>()
+        .insert_resource(RigHome(home.clone()))
+        .insert_resource(SessionPaths(here.clone()))
+        .insert_resource(stores.clone())
+        .add_plugins(SessionPlugin)
+        .add_systems(Last, watch);
+    drop(std::panic::take_hook());
+    app.update();
+    let lock = File::create(session.launcher_lock()).ok();
+    assert!(lock.as_ref().is_some_and(|lock| lock.try_lock().is_ok()));
+    let rewrite = rewrite_stopped(&stores, &here, &session, Author::plugin("p"), &redact());
+    app.world_mut().trigger(DeleteSession(id.clone()));
+    app.update();
+    drop(lock);
+    let refused = format!(
+        "Could not delete session {id}: {}.",
+        rewrite.err().unwrap_or_default()
+    );
+    assert_eq!(app.world().resource::<Seen>().notices, [refused]);
+    if let Ok(mut seen) = seen.lock() {
+        seen.clear();
+    }
+    app.world_mut().trigger(DeleteSession(id.clone()));
+    app.update();
+    assert!(!session.path().exists());
+    assert_eq!(app.world().resource::<Seen>().deleted, [id]);
+    let held = seen.lock().map(|seen| seen.clone()).unwrap_or_default();
+    assert_eq!(held, [true], "its store was opened under the lock");
+    fs::remove_dir_all(home.root()).ok();
+}
+
 /// A delete reaches a store a plugin keeps outside the session's
 /// directory, keyed by the session's id, and a delete a crash cut short
 /// after marking the session is hidden, then finished by the next start.

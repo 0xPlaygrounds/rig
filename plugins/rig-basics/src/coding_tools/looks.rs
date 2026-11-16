@@ -5,36 +5,11 @@
 //! the whole change it published ([`FilesChanged`]) as a diff; and `shell`
 //! the command, as bash, and its output.
 
-use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::{FilesChanged, FilesRead, LinesShown};
-use rig_tools::{Edit, Read, Shell, Write};
 use rig_tui::highlight::{Code, Language, code_rows};
 use rig_tui::ratatui::style::{Style, Stylize};
 use rig_tui::ratatui::text::{Line, Span};
-use rig_tui::{LookLine, OUTPUT_INDENT, RenderBatch, ToolRender, text_rows};
-
-/// Draws the calls of `tool` with `look`.
-fn draw(batch: &mut RenderBatch, tool: &str, look: fn(&ToolRender) -> Vec<LookLine>) {
-    for (call, output) in batch.tools_mut(tool) {
-        output.lines = look(call);
-    }
-}
-
-pub(super) fn draw_read(mut batch: ResMut<RenderBatch>) {
-    draw(&mut batch, Read::NAME, read);
-}
-
-pub(super) fn draw_edit(mut batch: ResMut<RenderBatch>) {
-    draw(&mut batch, Edit::NAME, edit);
-}
-
-pub(super) fn draw_write(mut batch: ResMut<RenderBatch>) {
-    draw(&mut batch, Write::NAME, write);
-}
-
-pub(super) fn draw_shell(mut batch: ResMut<RenderBatch>) {
-    draw(&mut batch, Shell::NAME, shell);
-}
+use rig_tui::{LookLine, OUTPUT_INDENT, ToolRender, text_rows};
 
 pub(super) fn read(view: &ToolRender) -> Vec<LookLine> {
     let path = view.argument("path").unwrap_or_default().to_owned();

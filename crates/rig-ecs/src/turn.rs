@@ -763,8 +763,7 @@ impl Stopper<'_, '_> {
             at,
             calls: cut,
         });
-        let conversation = conversation.bypass_change_detection();
-        let saved = save_conversation(&self.log, agent, id, conversation);
+        let saved = save_conversation(&self.log, agent, id, &mut conversation);
         self.committed.write_batch(saved);
         // A plugin says why it stopped a turn itself.
         let said = match cause {
@@ -1130,8 +1129,8 @@ pub(crate) fn build_requests(
             let waiting = inboxes.of(agent).into_iter();
             let waiting = waiting.filter(|(_, message)| message.mode != DeliveryMode::Queue);
             let conversation = &mut *builder.conversation;
-            let into = (turn, &mut commands);
-            deliver(agent, spec, waiting, conversation, &mut notices, into);
+            let (connection, into) = (builder.connection, (turn, &mut commands));
+            deliver(agent, connection, waiting, conversation, &mut notices, into);
         }
         if call.turn_call && builder.conversation.messages().is_empty() {
             let why = ErrorReport::new(ErrorKind::Internal, "The conversation is empty.");
@@ -1773,10 +1772,10 @@ fn commit_reply(
     // What was sent meanwhile carries the turn on. Inform messages go along
     // but carry nothing on.
     if let Some(next) = carry_on(inboxes.of(agent)) {
-        let spec = answered.connection.map(|connection| &*connection.spec);
+        let connection = answered.connection;
         let conversation = &mut *answered.conversation;
         let into = (Some(turn), commands);
-        deliver(agent, spec, next, conversation, notices, into);
+        deliver(agent, connection, next, conversation, notices, into);
         return Next::Call;
     }
     match answered

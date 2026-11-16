@@ -18,7 +18,7 @@
 //! ```
 
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, PoisonError, RwLock};
 
 use bevy_app::{App, Plugin};
 use bevy_ecs::prelude::*;
@@ -33,7 +33,9 @@ use rig_ecs::prelude::{
     ToolDef, ToolOptions, ToolRequest, Wake, WorldToolsExt,
 };
 use rig_tools::workspace::{Root, Workspace};
-use rig_tools::{Delete, Edit, LineFilter, List, Live, Read, Search, Seen, Shell, Spill, Write};
+use rig_tools::{
+    Delete, Edit, LineFilter, List, Live, OutputLimit, Read, Search, Seen, Shell, Spill, Write,
+};
 
 use crate::host::session::Scratch;
 use crate::progress::CallOutput;
@@ -141,9 +143,9 @@ file_tools_per_call!(Search, List, Delete);
 
 /// [`Shell`] registered per call, starting each command as the app's
 /// [`Processes`] say when it starts: under their wrapper and without a
-/// secret. It starts in its [`CallPlace`]'s base when confined there or
-/// when the `Processes` name no directory. `shell`'s own `launcher` is not
-/// used.
+/// secret, its output cut as the app's [`ShellOutput`] says then. It starts
+/// in its [`CallPlace`]'s base when confined there or when the `Processes`
+/// name no directory. `shell`'s own `launcher` and `cut` are not used.
 ///
 /// ```
 /// use rig_harness::prelude::*;
@@ -165,21 +167,50 @@ file_tools_per_call!(Search, List, Delete);
 /// ```
 #[derive(Clone)]
 pub struct PerCallShell {
-    /// The shell each call runs, but for its launcher.
+    /// The shell each call runs, but for its launcher and its cut.
     pub shell: Shell,
     processes: Processes,
+    output: ShellOutput,
     dir: Option<PathBuf>,
 }
 
 impl PerCallShell {
-    /// `shell`, starting its commands as `world`'s [`Processes`] say,
-    /// which this inits if missing.
+    /// `shell`, starting its commands as `world`'s [`Processes`] say and
+    /// cutting their output as its [`ShellOutput`] says, which this inits
+    /// if missing.
     pub fn new(shell: Shell, world: &mut World) -> Self {
         Self {
             shell,
             processes: world.get_resource_or_init::<Processes>().clone(),
+            output: world.get_resource_or_init::<ShellOutput>().clone(),
             dir: None,
         }
+    }
+}
+
+/// How much of a command's output [`PerCallShell`] gives the model, read
+/// as each call runs: [`OutputLimit::default`] unless set. A plugin that
+/// cuts or summarizes output itself turns the cut off with `set(None)`,
+/// such as from its `finish`, and then holds all of it. Shared by its
+/// clones: change it with [`set`](Self::set), not by inserting a new one.
+#[derive(Resource, Clone, Debug)]
+pub struct ShellOutput(Arc<RwLock<Option<OutputLimit>>>);
+
+impl ShellOutput {
+    /// How the next call cuts its output; `None` keeps all of it.
+    pub fn cut(&self) -> Option<OutputLimit> {
+        *self.0.read().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Cuts every call's output from now on as `cut` says.
+    pub fn set(&self, cut: Option<OutputLimit>) {
+        *self.0.write().unwrap_or_else(PoisonError::into_inner) = cut;
+    }
+}
+
+impl Default for ShellOutput {
+    fn default() -> Self {
+        Self(Arc::new(RwLock::new(Some(OutputLimit::default()))))
     }
 }
 
@@ -233,6 +264,7 @@ impl Tool for PerCallShell {
         }
         let shell = Shell {
             launcher,
+            cut: self.output.cut(),
             ..self.shell.clone()
         };
         shell.call(context, args).await
@@ -262,13 +294,17 @@ impl AppPerCallExt for App {
         let own = Touches::from_annotations(&definition.annotations);
         let own = options.footprint.is_none().then_some(Footprint(own));
         let handler = ErasedHandler::new(ToolAdapter::new(tool.clone()));
-        let tool = Arc::new(tool);
+        let build = Arc::new(move |place| {
+            CallHandler(Handler(ErasedHandler::new(ToolAdapter::new(
+                tool.at(place),
+            ))))
+        });
         let world = self.world_mut();
         if let Some(entity) = world.spawn_tool(definition, handler, options) {
             let mut entity = world.entity_mut(entity);
             entity.insert(PerCall {
                 live: T::LIVE,
-                tool,
+                build,
             });
             if let Some(own) = own {
                 entity.insert(own);
@@ -322,28 +358,7 @@ impl Plugin for PerCallPlugin {
 pub struct PerCall {
     /// Whether its calls report their output as they run.
     pub live: bool,
-    tool: Arc<dyn BuildAt>,
-}
-
-impl PerCall {
-    /// The handler of a call of this tool working at `place`. It runs
-    /// nothing.
-    pub fn build(&self, place: CallPlace) -> CallHandler {
-        self.tool.build(place)
-    }
-}
-
-/// A [`PerCallTool`] whose type is erased.
-trait BuildAt: Send + Sync {
-    fn build(&self, place: CallPlace) -> CallHandler;
-}
-
-impl<T: PerCallTool> BuildAt for T {
-    fn build(&self, place: CallPlace) -> CallHandler {
-        CallHandler(Handler(ErasedHandler::new(ToolAdapter::new(
-            self.at(place),
-        ))))
-    }
+    build: Arc<dyn Fn(CallPlace) -> CallHandler + Send + Sync>,
 }
 
 /// The tools registered per call, and where a call of an agent's works:
@@ -428,7 +443,7 @@ impl PerCallTools<'_, '_> {
     /// `place`; `None` when no enabled tool of that name is registered per
     /// call. It runs nothing.
     pub fn build(&self, name: &str, place: CallPlace) -> Option<CallHandler> {
-        self.find(name).map(|tool| tool.build(place))
+        self.find(name).map(|tool| (tool.build)(place))
     }
 
     /// The per-call tool named `name`.

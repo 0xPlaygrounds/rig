@@ -209,7 +209,7 @@ fn fork_now(
         .cloned()
         .ok_or(ForkError::NoRegistry)?;
     if let Some(mut conversation) = world.get_mut::<Conversation>(from) {
-        let saved = save_conversation(&log, from, &id, conversation.bypass_change_detection());
+        let saved = save_conversation(&log, from, &id, &mut conversation);
         world.write_message_batch(saved);
     }
     let to = AgentId::default();
