@@ -792,14 +792,7 @@ fn provider(base: ProviderOverride, over: ProviderOverride) -> ProviderOverride 
 fn json(base: serde_json::Value, over: serde_json::Value) -> serde_json::Value {
     match (base, over) {
         (serde_json::Value::Object(mut base), serde_json::Value::Object(over)) => {
-            for (key, value) in over {
-                match base.get_mut(&key) {
-                    Some(slot) => *slot = json(slot.take(), value),
-                    None => {
-                        base.insert(key, value);
-                    }
-                }
-            }
+            crate::json_utils::deep_merge(&mut base, over);
             serde_json::Value::Object(base)
         }
         (_, over) => over,

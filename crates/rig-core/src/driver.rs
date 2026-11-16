@@ -1004,33 +1004,9 @@ where
 pub fn warn_unmodeled(kind: &str, payload: &impl serde::Serialize) {
     tracing::warn!(
         kind,
-        payload_bytes = unknown_payload_bytes(payload),
+        payload_bytes = crate::json_utils::json_len(payload),
         "skipping unmodeled wire payload"
     );
-}
-
-/// Serialized byte size of an unknown frame's payload, for the structural
-/// warn log (the log never carries the payload itself).
-fn unknown_payload_bytes(value: &impl serde::Serialize) -> u64 {
-    /// Counter sink: measures how many bytes serialization would write
-    /// without buffering them.
-    struct CountingWriter(u64);
-
-    impl std::io::Write for CountingWriter {
-        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-            self.0 += buf.len() as u64;
-            Ok(buf.len())
-        }
-
-        fn flush(&mut self) -> std::io::Result<()> {
-            Ok(())
-        }
-    }
-
-    let mut counter = CountingWriter(0);
-    // A `Value` cannot fail to serialize; degrade to 0 rather than panic.
-    let _ = serde_json::to_writer(&mut counter, value);
-    counter.0
 }
 
 /// Page count after which a listing's cursors are ignored, preventing

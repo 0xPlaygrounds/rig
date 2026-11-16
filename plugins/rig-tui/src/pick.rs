@@ -1,7 +1,5 @@
 //! Pickers and questions over the transcript.
 
-use std::io;
-
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemParam;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -9,6 +7,7 @@ use ratatui::style::Stylize;
 use ratatui::text::{Line, Span};
 use rig_core::conversation::pairing::safe_start;
 use rig_core::conversation::{self, Aside, Author, MessageId, TURN, TurnEnd, TurnRecord};
+use rig_core::json_utils::json_len;
 use rig_core::message::{AssistantContent, Message, ToolResultContent, UserContent};
 use rig_ecs::stage::{Effect, Outcome, Settled, SupersededBy};
 use rig_harness::ask::Ask;
@@ -850,7 +849,7 @@ fn drawn_size(message: &Message) -> usize {
                     .iter()
                     .map(|part| match part {
                         ToolResultContent::Text(text) => text.text.len(),
-                        ToolResultContent::Json { value } => json_size(value),
+                        ToolResultContent::Json { value } => json_len(value),
                         _ => 0,
                     })
                     .sum(),
@@ -863,27 +862,11 @@ fn drawn_size(message: &Message) -> usize {
             .map(|item| match item {
                 AssistantContent::Text(text) => text.text.len(),
                 AssistantContent::Reasoning(reasoning) => reasoning.text.len(),
-                AssistantContent::ToolCall(call) => json_size(&call.function.arguments),
+                AssistantContent::ToolCall(call) => json_len(&call.function.arguments),
                 _ => 0,
             })
             .sum(),
     }
-}
-
-/// How many bytes `value` takes as JSON, counted without writing it.
-fn json_size(value: &impl serde::Serialize) -> usize {
-    struct Count(usize);
-    impl io::Write for Count {
-        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-            self.0 += bytes.len();
-            Ok(bytes.len())
-        }
-        fn flush(&mut self) -> io::Result<()> {
-            Ok(())
-        }
-    }
-    let mut count = Count(0);
-    serde_json::to_writer(&mut count, value).map_or(0, |()| count.0)
 }
 
 /// The strip that shows the question asked beside the work, if any

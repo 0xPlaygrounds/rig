@@ -5,7 +5,7 @@ use futures::executor::block_on;
 use super::*;
 use crate::{
     completion::{CompletionRequest, Message},
-    effect::{FamilyDescriptor, family, tool_key},
+    effect::{Disposition, FamilyDescriptor, family, tool_key},
     operation::Finish,
     serve::{Dispatch, ErasedHandler, Reply, Serve, catch_panics},
     tool::ToolResult,

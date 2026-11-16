@@ -40,8 +40,6 @@ serde = { workspace = true, features = ["derive"] }
 tokio = { workspace = true, features = ["full"] }
 
 [features]
-# The transport-agnostic websocket contract (`ws_client`). Adds no dependency.
-websocket = []
 # `runtime`: the tokio runtime the bundled transports poll their I/O in (native).
 tokio = ["dep:tokio"]
 # HTTP client doubles (`test_utils`) for tests of code that sends through an

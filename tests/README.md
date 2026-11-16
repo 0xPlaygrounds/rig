@@ -117,7 +117,7 @@ existing assertion style.
 
 ### Core feature isolation
 
-The core crate's dev-dependency on itself enables `test-utils`, `websocket`,
+The core crate's dev-dependency on itself enables `test-utils`, `reqwest`
 and its default features. Consequently, a core unit-test run with
 `--no-default-features` does not prove those features are absent. For an actual
 feature-disabled library check, select core alone without test targets:

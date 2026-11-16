@@ -230,13 +230,9 @@ pub use crate::http_client::retryable_status;
 /// Collect the `Display` of each `source()` link below `error`, outermost
 /// first.
 pub(crate) fn source_chain(error: &(dyn std::error::Error + 'static)) -> Vec<String> {
-    let mut chain = Vec::new();
-    let mut current = error.source();
-    while let Some(source) = current {
-        chain.push(source.to_string());
-        current = source.source();
-    }
-    chain
+    std::iter::successors(error.source(), |source| source.source())
+        .map(ToString::to_string)
+        .collect()
 }
 
 pub use crate::http_client::BoxError;

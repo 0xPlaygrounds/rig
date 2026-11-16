@@ -65,7 +65,7 @@ rig-http = { path = "../rig-http", version = "0.46.0" }
 rig-reqwest = { path = "../rig-reqwest", version = "0.46.0", optional = true, default-features = false }
 
 # The bundled websocket backend is native-only: on wasm the `tungstenite`
-# feature degrades to the websocket contract alone.
+# feature adds nothing.
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 rig-tungstenite = { path = "../rig-tungstenite", version = "0.46.0", optional = true, default-features = false }
 
@@ -83,7 +83,7 @@ anyhow = { workspace = true }
 # for every rig-core test target (unit, integration, doctest), so the
 # sequence laws panic in ALL of rig's own suites while staying log-only in
 # downstream builds. `reqwest` gives the doc examples their clients.
-rig-core = { path = ".", features = ["reqwest", "test-utils", "websocket"] }
+rig-core = { path = ".", features = ["reqwest", "test-utils"] }
 # streaming identity/merge law property tests
 proptest = "1"
 assert_fs = { workspace = true }
@@ -109,16 +109,12 @@ derive = ["dep:rig-derive"]
 test-utils = ["rig-http/test-utils", "dep:tracing-subscriber"]
 pdf = ["dep:lopdf"]
 epub = ["dep:epub", "dep:quick-xml"]
-# The transport-agnostic websocket contract (`ws_client`) and the provider
-# websocket sessions written against it. Adds no dependency, but stays gated
-# so the surface is opt-in.
-websocket = ["rig-http/websocket"]
 # Provider clients default to the bundled reqwest transport: `OpenAI::from_env()`
 # and every other client constructor that names no transport.
 reqwest = ["dep:rig-reqwest"]
 # The bundled tungstenite websocket backend: a Responses WebSocket session
 # opened with `connect()` and no backend. Native-only.
-tungstenite = ["websocket", "dep:rig-tungstenite"]
+tungstenite = ["dep:rig-tungstenite"]
 # TLS for the bundled transports. Enable exactly one; `rustls` is the default.
 rustls = ["rig-reqwest?/rustls", "rig-tungstenite?/rustls"]
 native-tls = ["rig-reqwest?/native-tls", "rig-tungstenite?/native-tls"]

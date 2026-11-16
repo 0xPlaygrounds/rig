@@ -630,51 +630,38 @@ where
     async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> Reply {
         match kind {
             EffectKind::Retrieve { query } => {
-                let outcome = match query {
-                    RetrieveQuery::TopN { req } => {
-                        match req.try_map_filter(F::from_dynamic_filter) {
-                            Ok(req) => self
-                                .index
-                                .top_n::<serde_json::Value>(req)
-                                .await
-                                .map(|results| {
-                                    Answered::Documents(RetrievedDocuments::Scored(
-                                        results
-                                            .into_iter()
-                                            .map(|result| {
-                                                (
-                                                    result.score,
-                                                    result.id,
-                                                    F::normalize_dynamic_document(result.document),
-                                                )
-                                            })
-                                            .collect(),
-                                    ))
-                                })
-                                .map_err(ErrorReport::from),
-                            Err(error) => Err(ErrorReport::from(VectorStoreError::from(error))),
-                        }
-                    }
-                    RetrieveQuery::TopNIds { req } => {
-                        match req.try_map_filter(F::from_dynamic_filter) {
-                            Ok(req) => self
-                                .index
-                                .top_n_ids(req)
-                                .await
-                                .map(|results| {
-                                    Answered::Documents(RetrievedDocuments::Ids(
-                                        results
-                                            .into_iter()
-                                            .map(|result| (result.score, result.id))
-                                            .collect(),
-                                    ))
-                                })
-                                .map_err(ErrorReport::from),
-                            Err(error) => Err(ErrorReport::from(VectorStoreError::from(error))),
-                        }
-                    }
+                let ids = matches!(query, RetrieveQuery::TopNIds { .. });
+                let (RetrieveQuery::TopN { req } | RetrieveQuery::TopNIds { req }) = query;
+                let outcome = match req.try_map_filter(F::from_dynamic_filter) {
+                    Ok(req) if ids => self.index.top_n_ids(req).await.map(|results| {
+                        RetrievedDocuments::Ids(
+                            results
+                                .into_iter()
+                                .map(|result| (result.score, result.id))
+                                .collect(),
+                        )
+                    }),
+                    Ok(req) => self
+                        .index
+                        .top_n::<serde_json::Value>(req)
+                        .await
+                        .map(|results| {
+                            RetrievedDocuments::Scored(
+                                results
+                                    .into_iter()
+                                    .map(|result| {
+                                        (
+                                            result.score,
+                                            result.id,
+                                            F::normalize_dynamic_document(result.document),
+                                        )
+                                    })
+                                    .collect(),
+                            )
+                        }),
+                    Err(error) => Err(VectorStoreError::from(error)),
                 };
-                Reply::Outcome(outcome)
+                Reply::Outcome(outcome.map(Answered::Documents).map_err(ErrorReport::from))
             }
             other @ (EffectKind::Completion { .. }
             | EffectKind::ToolCall { .. }

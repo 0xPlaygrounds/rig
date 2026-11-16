@@ -77,8 +77,6 @@ pub mod transcription;
 pub mod vector_store;
 pub use rig_http::wasm_compat;
 pub mod wire;
-#[cfg(feature = "websocket")]
-#[cfg_attr(docsrs, doc(cfg(feature = "websocket")))]
 pub use rig_http::ws_client;
 
 pub use completion::message;

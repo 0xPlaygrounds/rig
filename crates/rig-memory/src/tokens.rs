@@ -12,6 +12,7 @@ use std::sync::Arc;
 use rig_core::catalog::ModelSpec;
 use rig_core::completion::{CompletionRequest, Message, ToolDefinition, Usage};
 use rig_core::conversation::{Conversation, MessageId};
+use rig_core::json_utils::json_len;
 use serde::{Deserialize, Serialize};
 
 /// Estimates token cost from UTF-8 lengths, rounded up per text-bearing part.
@@ -91,24 +92,6 @@ impl HeuristicTokenCounter {
             other => self.bytes_to_tokens(json_len(other)),
         }
     }
-}
-
-/// The bytes of `value`'s JSON text, counted as it is written; 0 when it
-/// does not serialize.
-fn json_len(value: &impl serde::Serialize) -> usize {
-    struct Len(usize);
-    impl io::Write for Len {
-        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-            self.0 += bytes.len();
-            Ok(bytes.len())
-        }
-
-        fn flush(&mut self) -> io::Result<()> {
-            Ok(())
-        }
-    }
-    let mut len = Len(0);
-    serde_json::to_writer(&mut len, value).map_or(0, |()| len.0)
 }
 
 /// About how many tokens an image, or another attachment, costs.

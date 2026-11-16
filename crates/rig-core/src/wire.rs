@@ -843,8 +843,6 @@ impl<'id, Op: Operation, Event> Decoder<'id, Op> for DocumentDecoder<Op, Event> 
 pub type Request<W> = <<W as Wire>::Op as Operation>::Request;
 /// A wire's response type.
 pub type Response<W> = <<W as Wire>::Op as Operation>::Response;
-/// A wire's event type.
-pub type Event<W> = <<W as Wire>::Op as Operation>::Event;
 
 #[cfg(test)]
 mod tests;
