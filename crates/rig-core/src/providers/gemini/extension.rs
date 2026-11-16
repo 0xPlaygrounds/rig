@@ -973,13 +973,13 @@ impl From<GenerateContentReply> for GeminiExtras {
         };
         if let Some(usage) = reply.usage_metadata {
             extras.service_tier = usage.service_tier;
-            extras.prompt_tokens_details = usage.prompt_tokens_details;
-            extras.cache_tokens_details = usage.cache_tokens_details;
-            extras.candidates_tokens_details = usage.candidates_tokens_details;
-            extras.tool_use_prompt_tokens_details = usage.tool_use_prompt_tokens_details;
+            extras.prompt_tokens_details = listed(usage.prompt_tokens_details);
+            extras.cache_tokens_details = listed(usage.cache_tokens_details);
+            extras.candidates_tokens_details = listed(usage.candidates_tokens_details);
+            extras.tool_use_prompt_tokens_details = listed(usage.tool_use_prompt_tokens_details);
         }
         if let Some(candidate) = reply.candidates.into_iter().next() {
-            extras.safety_ratings = candidate.safety_ratings;
+            extras.safety_ratings = listed(candidate.safety_ratings);
             extras.finish_message = candidate.finish_message;
             extras.citation_metadata = candidate.citation_metadata;
             extras.grounding_metadata = candidate.grounding_metadata;
@@ -989,6 +989,12 @@ impl From<GenerateContentReply> for GeminiExtras {
         }
         extras
     }
+}
+
+/// `items`, or `None` when the list is empty, as `reply_field` reads a
+/// list for every other `Extras` type.
+fn listed<T>(items: Option<Vec<T>>) -> Option<Vec<T>> {
+    items.filter(|items| !items.is_empty())
 }
 
 /// The parts of an interaction resource [`GeminiExtras`] reads.
@@ -1021,10 +1027,10 @@ impl From<InteractionReply> for GeminiExtras {
             ..Self::default()
         };
         if let Some(usage) = reply.usage {
-            extras.input_tokens_by_modality = usage.input_tokens_by_modality;
-            extras.output_tokens_by_modality = usage.output_tokens_by_modality;
-            extras.cached_tokens_by_modality = usage.cached_tokens_by_modality;
-            extras.grounding_tool_count = usage.grounding_tool_count;
+            extras.input_tokens_by_modality = listed(usage.input_tokens_by_modality);
+            extras.output_tokens_by_modality = listed(usage.output_tokens_by_modality);
+            extras.cached_tokens_by_modality = listed(usage.cached_tokens_by_modality);
+            extras.grounding_tool_count = listed(usage.grounding_tool_count);
         }
         extras
     }
