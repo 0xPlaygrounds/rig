@@ -216,11 +216,15 @@ history from anywhere on the first line. The usual emacs keys edit
 (Ctrl+A/E/K/U/W, Alt+B/F/D); Ctrl+C clears the input, and Ctrl+D on an
 empty input quits. A leading `/` completes command names and `@` completes
 the paths of the shown agent's working directory (skipping what
-`.gitignore` leaves out); Tab or Enter takes the selected one. A path a
+`.gitignore` leaves out); Tab or Enter takes the selected one. A `/`
+followed by a space, or a first word with another `/` in it (a path such as
+`/etc/hosts: what is this?`, or `//x`), is no command: it goes to the model
+as typed. A path a
 space or trailing punctuation would cut is inserted quoted,
 `@"my notes.md"`, which is also how to type one by hand. A command that is
-unknown or refused comes back in the input with the reason, and Enter then
-sends it to the model as it is.
+unknown or refused comes back in the input with the reason, and Enter on it
+unchanged sends it to the model as it is; changed or cleared (Ctrl+C) and
+typed again, it is a command again.
 `/help` lists the commands.
 
 While an earlier prompt is shown, the input's top row says "An earlier
@@ -229,7 +233,9 @@ the keys and the bottom row the status line: the model, the reasoning
 setting, what the agent is doing, the session's tokens (uncached input,
 output, cache reads and writes), its cost (the provider's figure, else the
 catalog's list price; `+` when some calls had no price) and the context in
-use against the model's window. `/usage` breaks them down. With the optional
+use against the model's window: after `/compact`, until the next reply
+measures it, an estimate marked `~` (`ctx ~12k/1.0M`), and `?` where
+nothing estimated it. `/usage` breaks them down. With the optional
 `rig_basics::budget::BudgetPlugin` (`rig plugin enable
 rig_basics::budget::BudgetPlugin`), `/budget 2.00` or `/budget 500000 tokens`
 bounds what the session spends, helpers included: at the limit the running
@@ -257,7 +263,8 @@ resumed.
 the image when the model reads images. It resolves as the tools resolve a
 path, so `@bench:~/notes.md` is the host `bench`'s file. A reference that
 looks like a path (it has a `/` or an extension) with no file there, or one
-that cannot be read, is warned about with the reason. A message waiting for
+that cannot be read, is warned about with the reason, and the model's
+message says the same, so the model knows it got no file. A message waiting for
 files on another machine holds back those sent after it, and Esc meanwhile
 puts them all back in the input. Ctrl+V pastes the clipboard's image
 (through `wl-paste`, `xclip` or `pngpaste`) as such a path, and a dropped
@@ -418,7 +425,8 @@ A `shell` call runs until its command ends, unless the model sets
 host too. A job the command leaves running on this machine in the
 background with its output elsewhere (`server > log 2>&1 &`) keeps running
 between calls and through an interrupt of a later one, and ends when rig
-exits; `setsid server > log 2>&1 &` keeps it running after rig (on macOS,
+exits; a job still writing to the call's output is ended with the call, and
+the result says so; `setsid server > log 2>&1 &` keeps it running after rig (on macOS,
 which has no `setsid` command, `perl -MPOSIX -e 'POSIX::setsid(); exec
 @ARGV' server > log 2>&1 &`). On a remote
 host such a job keeps running after the call. A command finds no editor
@@ -477,7 +485,9 @@ to stdout, failures to stderr, and the exit code is 0 when the turn ended with
 an answer, 1 when it failed or a plugin such as the budget stopped its work
 (answer or not), or when the agent did not start because
 `RIG_HOME/settings.toml` cannot be read, is not TOML or has a `[plugins]`
-table that does not read (stderr says why), 2 for a refused slash command, a
+table that does not read (stderr says why), 2 for a refused slash command (a
+prompt that starts with a path, `//` or a `/` and a space is none, and goes
+to the model), a
 plugin's settings table that does not read, or piped input that is over
 64 MiB, fails to read or is not UTF-8. Piped input is read until stdin closes; give `</dev/null` for none. A
 command that would open a list to pick from, such as `/model`, `/effort`,
@@ -577,9 +587,9 @@ A mistake in this file (a name rig does not know, an `extra` path that holds
 no crate, a file that is not TOML) or a `RIG_SOURCE` that is not a rig
 checkout is refused, naming it, and `rig` starts no agent until it is fixed:
 a build from before was built from other settings. `rig plugin disable <name>`
-takes a name rig does not know out of the file. A build that fails to compile
-instead starts the previous build, whose conversation is told why, except
-under `rig -p`, which refuses with the compiler's errors on stderr.
+takes a name rig does not know out of the file. A build that cargo cannot
+resolve or compile instead starts the previous build, whose conversation is
+told why, except under `rig -p`, which refuses with cargo's errors on stderr.
 
 Turning a plugin on or off, or changing an `extra` crate, rebuilds the agent
 at the next start or `/reload`: only the generated crate compiles again, and

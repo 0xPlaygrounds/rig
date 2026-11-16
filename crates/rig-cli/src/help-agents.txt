@@ -62,7 +62,13 @@ about the build unless it fails.
 A job a shell command leaves running on this machine in the background,
 its output elsewhere (`server > log 2>&1 &`), ends when rig exits; `setsid`
 keeps it running after (on macOS: perl -MPOSIX -e 'POSIX::setsid(); exec
-@ARGV' CMD).
+@ARGV' CMD). A job still writing to the call's output is ended with the
+call, and the call's result says so.
+
+A task that starts with `/` and a name is a slash command. One that starts
+with a path or `//` (a first word with another `/` in it, such as
+"/etc/hosts: what is this?"), or with `/` and a space, goes to the model
+as it is, from -p, piped stdin or a send request.
 
 Every line, both ways, is a JSON object with "v":3. A line of another
 version is refused with a reply saying whether rig or the driver needs
