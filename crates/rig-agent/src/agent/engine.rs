@@ -99,14 +99,6 @@ pub(crate) trait TurnSource: Sized + WasmCompatSend + WasmCompatSync {
     /// Whether this source's completions are dispatched as streams.
     const STREAMS: bool;
 
-    /// Build this medium's per-turn `chat` span (name + parenting + any
-    /// `follows_from` chaining differ between blocking and streaming).
-    fn open_chat_span(
-        &self,
-        runner: &AgentRunner,
-        effective_preamble: Option<&str>,
-    ) -> tracing::Span;
-
     /// Run one model turn: issue the provider call through the engine's open
     /// `scope`, feed the result into the sans-IO machine, and yield any
     /// intermediate items. Returning normally advances the loop; yielding an
@@ -334,7 +326,8 @@ where
                         .and_then(|o| o.preamble.as_deref())
                         .or(runner.config.spec.preamble.as_deref());
 
-                    let chat_span = source.open_chat_span(&runner, effective_preamble);
+                    let chat_span =
+                        source.chain_span(build_chat_span!(runner, effective_preamble));
 
                     // Pin output mode across registry changes between turns.
                     let committed_output_tool = run.output_tool_name().map(str::to_owned);
@@ -853,14 +846,6 @@ impl StreamingTurnSource {
 
 impl TurnSource for StreamingTurnSource {
     const STREAMS: bool = true;
-
-    fn open_chat_span(
-        &self,
-        runner: &AgentRunner,
-        effective_preamble: Option<&str>,
-    ) -> tracing::Span {
-        build_chat_span!(runner, effective_preamble, "chat", "chat")
-    }
 
     fn run_model_turn<'a>(
         &'a mut self,
@@ -1514,15 +1499,6 @@ impl TurnSource for UnaryTurnSource {
             self.current_span_id.store(id.into_u64(), Ordering::Relaxed);
         }
         span
-    }
-
-    fn open_chat_span(
-        &self,
-        runner: &AgentRunner,
-        effective_preamble: Option<&str>,
-    ) -> tracing::Span {
-        let chat_span = build_chat_span!(runner, effective_preamble, "chat", "chat");
-        self.chain_span(chat_span)
     }
 
     fn run_model_turn<'a>(
