@@ -106,6 +106,19 @@ impl GeminiConfig {
         )
     }
 
+    /// A JSON `POST` of `body` to `path` under the API root, as
+    /// [`request`](Self::request) builds it.
+    pub(crate) fn post_json(
+        &self,
+        path: &str,
+        body: crate::wire::Body,
+    ) -> Result<http::Request<crate::wire::Body>, crate::error::EncodeError> {
+        Ok(self
+            .request(http::Method::POST, path)
+            .header(http::header::CONTENT_TYPE, "application/json")
+            .body(body)?)
+    }
+
     /// The header that authenticates every request.
     pub(crate) const API_KEY_HEADER: &'static str = "x-goog-api-key";
 

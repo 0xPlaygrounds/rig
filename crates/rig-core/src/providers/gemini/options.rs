@@ -158,10 +158,7 @@ fn config(value: serde_json::Value) -> Mapping {
 /// the Gemini API facts `facts` give it (section 2.4 of
 /// `TYPED_OPTIONS.md`). Every GenerateContent wire calls it, so the REST,
 /// Vertex AI and gRPC wires agree.
-///
-/// For rig's own crates; not covered by semver.
-#[doc(hidden)]
-pub fn generate_content_options(
+pub(super) fn generate_content_options(
     facts: &ModelFacts,
     model: &str,
     route: Route,

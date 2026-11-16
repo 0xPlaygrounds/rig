@@ -5,8 +5,6 @@ when:
   header:
   - name: accept
     value: '*/*'
-  - name: content-type
-    value: application/json
   body: null
 then:
   status: 200

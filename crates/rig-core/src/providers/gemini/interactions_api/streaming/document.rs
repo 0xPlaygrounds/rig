@@ -70,17 +70,9 @@ impl Interaction {
     /// The step at `index`, opened as the kind `delta` implies when no
     /// `step.start` stated it.
     fn step(&mut self, index: usize, delta: &str) -> &mut Value {
-        self.steps.entry(index).or_insert_with(|| {
-            let kind = match delta {
-                "text" | "text_annotation_delta" | "image" | "audio" | "document" | "video" => {
-                    "model_output"
-                }
-                "thought_summary" | "thought_signature" => "thought",
-                "arguments_delta" => "function_call",
-                other => other,
-            };
-            json!({ "type": kind })
-        })
+        self.steps
+            .entry(index)
+            .or_insert_with(|| json!({ "type": super::step_kind(delta) }))
     }
 
     /// Apply one delta to the step at `index`.
@@ -123,11 +115,7 @@ impl Interaction {
             }
             ("function_call", "arguments_delta") => {
                 let arguments = self.arguments.entry(index).or_default();
-                match delta.get("arguments") {
-                    Some(Value::String(fragment)) => arguments.push_str(fragment),
-                    Some(Value::Null) | None => {}
-                    Some(other) => arguments.push_str(&other.to_string()),
-                }
+                arguments.push_str(&super::arguments_fragment(delta));
             }
             // A delta that restates its step replaces the fields it names;
             // any other merges.

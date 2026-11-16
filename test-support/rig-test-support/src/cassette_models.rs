@@ -446,12 +446,7 @@ impl CopilotModels {
 
     /// The session's model listing.
     pub async fn list_models(&self) -> Result<ModelList, ProviderError> {
-        Model::new(
-            copilot::model_listing::Models::new(self.config.clone()),
-            self.http.clone(),
-        )
-        .list()
-        .await
+        self.client().list_models().await
     }
 }
 

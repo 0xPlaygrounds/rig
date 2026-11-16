@@ -189,11 +189,7 @@ impl crate::wire::Wire for Interactions {
             "Gemini interactions completion request",
             &body,
         );
-        let request = self
-            .provider
-            .request(http::Method::POST, path)
-            .header("Content-Type", "application/json")
-            .body(body.into_body())?;
+        let request = self.provider.post_json(path, body.into_body())?;
         // Gemini supplies no transport request-id response header.
         Ok(crate::wire::Encoded::new(request, framing))
     }

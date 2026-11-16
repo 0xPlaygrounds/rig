@@ -266,10 +266,7 @@ impl GenerateContentDecoder {
                 .or_insert(Value::String(signature));
         }
         self.last = Some(index);
-        self.signed = item
-            .get("thoughtSignature")
-            .and_then(Value::as_str)
-            .is_some_and(|signature| !signature.is_empty());
+        self.signed = signature(&item).is_some();
         if matches!(block, Block::Text) {
             self.answer.open(index, text);
             self.placement = Some((index, 0));
@@ -295,9 +292,7 @@ impl GenerateContentDecoder {
             return self.open(Block::Opaque { replay: false }, part, "", out);
         };
         let thought = part.bool("thought") == Some(true);
-        let signature = part
-            .str("thoughtSignature")
-            .filter(|signature| !signature.is_empty());
+        let signature = signature(&part);
         if let Some(text) = part.str("text") {
             // An empty part without a signature carries nothing.
             if text.is_empty() && signature.is_none() {
@@ -352,8 +347,7 @@ impl GenerateContentDecoder {
             };
             return self.open(Block::Image(image), part, "", out);
         }
-        let bare = ["thought", "thoughtSignature", "partMetadata"];
-        let data = fields.keys().any(|key| !bare.contains(&key.as_str()));
+        let data = !is_bare(fields);
         if !data && let Some(signature) = signature {
             let Some(index) = self.open.map(|(index, _)| index).or(self.last) else {
                 self.signature = Some(signature.to_owned());
@@ -382,6 +376,19 @@ impl GenerateContentDecoder {
             WireEvent::Known(_)
         )
     }
+}
+
+/// A part's thought signature, when it is not empty.
+fn signature(part: &Value) -> Option<&str> {
+    part.str("thoughtSignature")
+        .filter(|signature| !signature.is_empty())
+}
+
+/// Whether a part holds nothing but its thought flag, signature and
+/// metadata.
+fn is_bare(part: &Map<String, Value>) -> bool {
+    let bare = ["thought", "thoughtSignature", "partMetadata"];
+    part.keys().all(|key| bare.contains(&key.as_str()))
 }
 
 fn malformed(what: &str) -> ProviderError {

@@ -169,71 +169,19 @@ fn referenced_media(content: &mut serde_json::Value, images: &mut usize) {
     }
 }
 
-impl rig_core::completion::ReplayTarget for GenerateContent {
-    /// The GenerateContent mapping, for Vertex AI's tiers.
-    fn map_options(
-        &self,
-        request: &rig_core::completion::CompletionRequest,
-        fields: rig_core::completion::options::OptionFields<'_>,
-    ) -> rig_core::completion::options::OptionMap {
-        let model = request.model.as_deref().unwrap_or(&self.model);
-        rest::generate_content_options(&self.facts, model, rest::Route::Vertex, fields)
-    }
+impl rest::GenerateContentWire for GenerateContent {
+    const ROUTE: rest::Route = rest::Route::Vertex;
 
-    fn facts(&self) -> Option<&rig_core::catalog::ModelFacts> {
-        Some(&self.facts)
-    }
-
-    fn api(&self) -> rig_core::message::Api {
-        rig_core::message::Api::from_static("vertexai.generate_content")
-    }
-
-    fn provider(&self) -> &str {
+    fn provider_name(&self) -> &'static str {
         PROVIDER_NAME
     }
 
-    fn model(&self) -> &str {
+    fn wire_model(&self) -> &str {
         &self.model
     }
 
-    /// What the model reads, as on every GenerateContent wire.
-    fn accepts(&self, model: &str) -> rig_core::completion::Accepts {
-        rest::accepts(model)
-    }
-
-    /// The media Vertex AI takes: what the Gemini API takes, and image URLs inside
-    /// function responses too.
-    fn encodes(&self, _model: &str, media: rig_core::completion::Media<'_>) -> bool {
-        rest::encodes(media, true)
-    }
-
-    fn normalize_tool_call_id(
-        &self,
-        id: &str,
-        model: &str,
-        _source: Option<&rig_core::message::Origin>,
-    ) -> String {
-        rest::normalize_tool_call_id(model, id)
-    }
-
-    /// Gemini takes system text only in `systemInstruction`: later system
-    /// messages fold into the leading one, as pi's `collapseSystemMessages`.
-    fn later_system(&self, _model: &str) -> rig_core::completion::LaterSystem {
-        rig_core::completion::LaterSystem::Leading
-    }
-
-    fn call_id_slot(&self) -> Option<&'static str> {
-        rest::CALL_ID_SLOT
-    }
-
-    fn blob_slots(&self) -> &'static [&'static str] {
-        rest::BLOB_SLOTS
-    }
-
-    /// Tools in `additional_params` or a cached content count, as on the
-    /// REST wire.
-    fn declares_tools(&self, request: &rig_core::completion::CompletionRequest) -> bool {
-        rest::declares_tools(self, request)
+    fn wire_facts(&self) -> &rig_core::catalog::ModelFacts {
+        &self.facts
     }
 }
 
