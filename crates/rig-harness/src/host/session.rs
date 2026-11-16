@@ -253,7 +253,6 @@ impl Plugin for SessionPlugin {
         app.init_resource::<StoreOpener>()
             .init_resource::<SystemTimings>()
             .add_message::<SessionDeleted>()
-            .add_message::<SessionDeleteFailed>()
             .add_message::<Notice>()
             .add_observer(delete_session)
             .add_systems(PreStartup, list_keys)
@@ -599,8 +598,7 @@ fn map_spill(scratch: &DirFiles, with: &dyn Rewrite) -> io::Result<()> {
 /// removed. A delete a crash cut short is finished at the next start.
 /// The delete checks that no rig runs the session, then removes it without
 /// holding its lock, so a session resumed in that instant can be deleted
-/// under it. [`SessionDeleted`] follows, or [`SessionDeleteFailed`] and an error
-/// notice say why not.
+/// under it. [`SessionDeleted`] follows, or an error notice says why not.
 #[derive(Event, Clone, Debug)]
 pub struct DeleteSession(pub SessionId);
 
@@ -609,23 +607,11 @@ pub struct DeleteSession(pub SessionId);
 #[derive(Message, Clone, Debug)]
 pub struct SessionDeleted(pub SessionId);
 
-/// A session [`DeleteSession`], or the next start finishing a delete a
-/// crash cut short, could not remove, and why, such as `another rig runs
-/// it`.
-#[derive(Message, Clone, Debug)]
-pub struct SessionDeleteFailed {
-    /// The session.
-    pub id: SessionId,
-    /// Why it is still there.
-    pub why: String,
-}
-
 fn delete_session(
     delete: On<DeleteSession>,
     (paths, stores): (Res<SessionPaths>, Res<StoreOpener>),
     home: Option<Res<RigHome>>,
     mut deleted: MessageWriter<SessionDeleted>,
-    mut failed: MessageWriter<SessionDeleteFailed>,
     mut notices: MessageWriter<Notice>,
 ) {
     let home = home.map_or_else(Home::from_env, |home| home.0.clone());
@@ -654,8 +640,6 @@ fn delete_session(
                 None,
                 format!("Could not delete session {}: {why}.", delete.0),
             ));
-            let id = delete.0.clone();
-            failed.write(SessionDeleteFailed { id, why });
         }
     }
 }
@@ -678,7 +662,6 @@ fn finish_deletes(
     home: Option<Res<RigHome>>,
     (paths, stores): (Res<SessionPaths>, Res<StoreOpener>),
     mut deleted: MessageWriter<SessionDeleted>,
-    mut failed: MessageWriter<SessionDeleteFailed>,
     mut notices: MessageWriter<Notice>,
 ) {
     let Some(home) = home else {
@@ -697,7 +680,7 @@ fn finish_deletes(
                 deleted.write(SessionDeleted(id));
             }
             (Ok(()), None) => {}
-            (Err(failure), id) => {
+            (Err(failure), _) => {
                 notices.write(Notice::warn(
                     None,
                     format!(
@@ -705,10 +688,6 @@ fn finish_deletes(
                         session.path().display()
                     ),
                 ));
-                if let Some(id) = id {
-                    let why = failure.to_string();
-                    failed.write(SessionDeleteFailed { id, why });
-                }
             }
         }
     }

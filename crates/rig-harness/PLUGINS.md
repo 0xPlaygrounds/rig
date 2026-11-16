@@ -1920,7 +1920,7 @@ effect, which a holder may take as "stop waiting".
   makes it the session's `CurrentAgent`.
 - **Open a stopped one's plugin files:** `PluginData::of(&stores, &dir)`.
 - **Delete:** `DeleteSession(id)`, finished by the next start if a crash cut
-  it short (`SessionDeleted`, else `SessionDeleteFailed`). It checks that no
+  it short (`SessionDeleted`, else an error notice). It checks that no
   rig runs the session, then removes it without holding the lock, so a session
   resumed in that instant can be deleted under it.
 - **Name:** a plain file in its directory (`SessionDir::name`), written by
@@ -2186,7 +2186,7 @@ one stage that write the same data [unordered](#ordering-against-other-plugins),
 naming their plugins, and is empty for an app with the plugin and those it is
 used with. `rig plugin check --build` runs the same check on the plugins the
 user's `settings.toml` turns on, the default plugins included. How long each system takes is
-`PluginTimings` (`totals()`, `last_frame()`), filled once a plugin crate
+`PluginTimings::last_frame()`, filled once a plugin crate
 depends on rig-harness with `features = ["trace"]`.
 
 ```rust

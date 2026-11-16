@@ -17,8 +17,8 @@ use rig_harness_test_support::{commit_message, first_agent, scratch_home};
 use rig_memory::{DirStore, Files, MemoryStore, SessionMeta, Store, Strings, save};
 
 use super::{
-    AppStart, DeleteSession, Scratch, SessionDeleteFailed, SessionDeleted, SessionPaths,
-    SessionPlugin, StoreOpener, log_layer, paths_in, rewrite_stopped,
+    AppStart, DeleteSession, Scratch, SessionDeleted, SessionPaths, SessionPlugin, StoreOpener,
+    log_layer, paths_in, rewrite_stopped,
 };
 use crate::host::cli::{AppCliExt, Front};
 use crate::host::exit::ExitReason;
@@ -31,22 +31,14 @@ use crate::services::{ProjectRoot, RigHome};
 #[derive(Resource, Default)]
 struct Seen {
     deleted: Vec<SessionId>,
-    failed: Vec<(SessionId, String)>,
     notices: Vec<String>,
 }
 
 fn watch(
-    (mut deleted, mut failed): (
-        MessageReader<SessionDeleted>,
-        MessageReader<SessionDeleteFailed>,
-    ),
+    mut deleted: MessageReader<SessionDeleted>,
     mut notices: MessageReader<Notice>,
     mut seen: ResMut<Seen>,
 ) {
-    let failed = failed
-        .read()
-        .map(|failed| (failed.id.clone(), failed.why.clone()));
-    seen.failed.extend(failed);
     seen.deleted
         .extend(deleted.read().map(|deleted| deleted.0.clone()));
     seen.notices
@@ -119,12 +111,11 @@ fn another_session_can_be_deleted_but_not_this_one_nor_one_another_rig_runs() {
     let seen = app.world().resource::<Seen>();
     assert_eq!(seen.deleted, std::slice::from_ref(&to));
     assert!(!copy.path().exists());
-    assert_eq!(seen.notices.len(), 2, "{:?}", seen.notices);
-    let failed = [
-        (to, "another rig runs it".to_owned()),
-        (id, "it is this session".to_owned()),
+    let refused = [
+        format!("Could not delete session {to}: another rig runs it."),
+        format!("Could not delete session {id}: it is this session."),
     ];
-    assert_eq!(seen.failed, failed);
+    assert_eq!(seen.notices, refused);
     fs::remove_dir_all(&root).ok();
 }
 
