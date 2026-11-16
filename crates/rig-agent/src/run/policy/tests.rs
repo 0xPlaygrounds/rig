@@ -189,7 +189,8 @@ fn a_persisted_policy_re_derives_its_allowed_set() {
     assert!(json.get("allowed").is_none(), "{json}");
     let restored: TurnPolicy = serde_json::from_value(json.clone()).expect("deserialize");
     assert_eq!(restored, policy);
-    assert_eq!(restored.allowed(), &tool_names(&["add"]));
+    assert!(restored.allows("add"));
+    assert!(!restored.allows("sub"));
 
     let mut stale = json;
     stale["executable"] = serde_json::json!(["sub"]);

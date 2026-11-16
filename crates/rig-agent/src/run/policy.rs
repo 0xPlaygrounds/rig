@@ -225,12 +225,6 @@ impl TurnPolicy {
         &self.executable
     }
 
-    /// Names the model may call without it being an invalid tool call: the
-    /// executable tools narrowed by the tool choice, plus the output tool.
-    pub fn allowed(&self) -> &BTreeSet<String> {
-        &self.allowed
-    }
-
     /// The turn's effective tool choice (patch over spec).
     pub fn tool_choice(&self) -> Option<&ToolChoice> {
         self.tool_choice.as_ref()

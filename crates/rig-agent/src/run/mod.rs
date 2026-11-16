@@ -386,13 +386,6 @@ pub struct TurnTools {
     pub definitions: Vec<Arc<ToolDefinition>>,
 }
 
-impl TurnTools {
-    /// Whether a tool of this name was advertised.
-    pub fn contains(&self, tool_name: &str) -> bool {
-        self.definitions.iter().any(|d| d.name == tool_name)
-    }
-}
-
 impl AgentRun {
     /// Create a run for one prompt with no input history, a one-model-call
     /// budget, and no invalid tool-call retries.
@@ -773,17 +766,6 @@ impl AgentRun {
     /// Whether the run reached [`AgentRunStep::Done`].
     pub fn is_done(&self) -> bool {
         matches!(self.state, RunState::Done(_))
-    }
-
-    /// The final response once the run is done, without cloning it.
-    /// [`AgentRun::next_step`] in the done state returns an owned clone
-    /// (including the full accumulated message history); prefer this when
-    /// only inspecting the result.
-    pub fn response(&self) -> Option<&PromptResponse> {
-        match &self.state {
-            RunState::Done(response) => Some(response),
-            _ => None,
-        }
     }
 
     /// [`Self::full_history`] closed for cancellation by
