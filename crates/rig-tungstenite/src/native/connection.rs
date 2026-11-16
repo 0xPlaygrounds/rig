@@ -24,7 +24,7 @@ impl WebSocketConnection for Connection {
             self.0
                 .send(into_message(frame))
                 .await
-                .map_err(crate::from_tungstenite)
+                .map_err(super::from_tungstenite)
         };
         Box::pin(async move { rig_http::runtime::bind(send)?.await })
     }
@@ -39,7 +39,7 @@ impl WebSocketConnection for Connection {
                         Some(frame) => return Ok(Some(frame)),
                         None => continue,
                     },
-                    Some(Err(error)) => return Err(crate::from_tungstenite(error)),
+                    Some(Err(error)) => return Err(super::from_tungstenite(error)),
                     None => return Ok(None),
                 }
             }
@@ -52,7 +52,7 @@ impl WebSocketConnection for Connection {
             self.0
                 .close(frame.map(into_close_frame))
                 .await
-                .map_err(crate::from_tungstenite)
+                .map_err(super::from_tungstenite)
         };
         Box::pin(async move { rig_http::runtime::bind(close)?.await })
     }

@@ -209,12 +209,8 @@ struct Chain<'a>(&'a (dyn std::error::Error + 'static));
 impl std::fmt::Display for Chain<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)?;
-        let mut source = self.0.source();
-        while let Some(cause) = source {
-            write!(f, ": {cause}")?;
-            source = cause.source();
-        }
-        Ok(())
+        std::iter::successors(self.0.source(), |cause| cause.source())
+            .try_for_each(|cause| write!(f, ": {cause}"))
     }
 }
 
@@ -336,11 +332,7 @@ async fn into_response(mut response: reqwest::Response) -> Result<Response<LazyB
         return Err(non_success_status_error(response).await);
     }
 
-    let mut res = Response::builder().status(response.status());
-    if let Some(headers) = res.headers_mut() {
-        *headers = std::mem::take(response.headers_mut());
-    }
-
+    let res = response_head(&mut response);
     let body = async { response.bytes().await.map_err(from_reqwest) };
     #[cfg(not(target_family = "wasm"))]
     let body = rig_http::runtime::bind(body)?;
@@ -348,7 +340,8 @@ async fn into_response(mut response: reqwest::Response) -> Result<Response<LazyB
     res.body(body).map_err(Error::Protocol)
 }
 
-fn streaming_head(response: &mut reqwest::Response) -> http::response::Builder {
+/// The status, headers (moved out) and, on native, HTTP version of `response`.
+fn response_head(response: &mut reqwest::Response) -> http::response::Builder {
     #[cfg(not(target_family = "wasm"))]
     let mut res = Response::builder()
         .status(response.status())
@@ -370,7 +363,7 @@ async fn into_streaming_response(mut response: reqwest::Response) -> Result<Stre
     if !response.status().is_success() {
         return Err(non_success_status_error(response).await);
     }
-    let res = streaming_head(&mut response);
+    let res = response_head(&mut response);
 
     use futures::StreamExt;
     let stream = response
