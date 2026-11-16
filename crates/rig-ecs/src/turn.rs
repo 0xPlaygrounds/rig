@@ -1812,9 +1812,9 @@ pub(crate) fn spawn_reply(
     (reply, asked): (EffectId, MessageId),
     response: &CompletionResponse,
 ) {
+    let cut_off: Vec<_> = response.cut_off_calls().collect();
     for (index, call) in (0..).zip(calls) {
-        let mut cut_off = response.cut_off_calls();
-        let refused = cut_off.find(|cut| cut.id == call.id).map(|cut| {
+        let refused = cut_off.iter().find(|cut| cut.id == call.id).map(|cut| {
             let name = cut.function.name.as_str();
             let why = feedback::output_limit_feedback(name, &cut.function.raw_arguments());
             Outcome(Err(ErrorReport::new(
