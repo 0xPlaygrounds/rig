@@ -1833,6 +1833,15 @@ fn a_reported_cost_is_its_total_in_usd() {
         usage(json!({ "cost": "0.25" })),
         Some(Cost::from_total(0.25))
     );
+    // Non-integer ticks count, and a reported `cost` comes before ticks.
+    assert_eq!(
+        usage(json!({ "cost_in_usd_ticks": 1.5e8 })),
+        Some(Cost::from_total(0.015))
+    );
+    assert_eq!(
+        usage(json!({ "cost": 0.25, "cost_in_usd_ticks": 184_183_500 })),
+        Some(Cost::from_total(0.25))
+    );
     assert_eq!(usage(json!({ "cost": null })), None);
     assert_eq!(usage(json!({})), None);
 }

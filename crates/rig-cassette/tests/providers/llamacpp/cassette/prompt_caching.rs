@@ -36,7 +36,7 @@ use rig::completion::CompletionRequest;
 /// which is what makes the hit ratios comparable across the matrix.
 const LLAMACPP_CACHE_SUPPORT: CacheSupport = CacheSupport {
     provider: "llamacpp",
-    // `openai::Usage`: `prompt_tokens_details.cached_tokens` is a breakdown of
+    // OpenAI Chat usage: `prompt_tokens_details.cached_tokens` is a breakdown of
     // `prompt_tokens`, not a sibling of it.
     // The KV cache is automatic; there is no `cache_control` on this wire.
     explicit_breakpoints: false,

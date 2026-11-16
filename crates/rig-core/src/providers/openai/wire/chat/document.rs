@@ -313,7 +313,7 @@ fn merge_call(message: &mut Map<String, Value>, fragment: &Value) {
 
 /// The id a fragment or a rebuilt call states, as the decoder reads it:
 /// some providers send `""` or `"null"` for a call they gave no id.
-fn stated_id(call: &Map<String, Value>) -> Option<String> {
+pub(super) fn stated_id(call: &Map<String, Value>) -> Option<String> {
     match call.get("id") {
         Some(Value::String(id)) if !id.is_empty() && id != "null" => Some(id.clone()),
         Some(id @ Value::Number(_)) => Some(id.to_string()),

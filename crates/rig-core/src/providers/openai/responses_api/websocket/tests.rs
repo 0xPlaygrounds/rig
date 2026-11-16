@@ -82,6 +82,7 @@ fn websocket_error_event_preserves_provider_payload_as_json() {
         .provider_response_json()
         .expect("preserved body should be valid JSON")
         .expect("provider response body should be present");
+    assert_eq!(json["type"], "error");
     assert_eq!(json["error"]["code"], "rate_limit_exceeded");
     assert_eq!(json["error"]["message"], "slow down");
     assert_eq!(json["error"]["type"], "invalid_request_error");
@@ -147,6 +148,25 @@ fn parse_done_event_exposes_response_id() {
     ));
     assert_eq!(event.response_id(), Some("resp_done_1"));
     assert!(event.is_terminal());
+    // The event serializes back with its tag.
+    let done = serde_json::from_value::<ResponsesWebSocketDoneEvent>(payload.clone());
+    assert_eq!(
+        done.ok().and_then(|done| serde_json::to_value(done).ok()),
+        Some(payload)
+    );
+}
+
+/// Each server event reads only under its own `type`.
+#[test]
+fn server_events_reject_a_wrong_or_missing_type_on_read() {
+    let done = json!({"type": "error", "response": {}});
+    assert!(serde_json::from_value::<ResponsesWebSocketDoneEvent>(done).is_err());
+    let done = json!({"response": {}});
+    assert!(serde_json::from_value::<ResponsesWebSocketDoneEvent>(done).is_err());
+    let error = json!({"type": "response.done", "error": {}});
+    assert!(serde_json::from_value::<ResponsesWebSocketErrorEvent>(error).is_err());
+    let error = json!({"error": {}});
+    assert!(serde_json::from_value::<ResponsesWebSocketErrorEvent>(error).is_err());
 }
 
 /// A terminal event that states no response object still ends the turn:

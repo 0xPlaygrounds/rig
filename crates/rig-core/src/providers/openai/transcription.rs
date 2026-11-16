@@ -95,19 +95,15 @@ impl From<Speaker> for String {
 /// Duration or token accounting selected by the wire's `type` tag.
 /// Payloads that do not match a modeled shape are preserved verbatim in `Other`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(untagged)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum TranscriptionUsage {
     /// Duration-billed models.
     Duration {
-        /// Always `"duration"`; pins this variant to its wire tag.
-        r#type: DurationTag,
         /// Length of the audio, in seconds.
         seconds: f64,
     },
     /// Token-billed models.
     Tokens {
-        /// Always `"tokens"`; pins this variant to its wire tag.
-        r#type: TokensTag,
         /// Tokens consumed by the audio and any prompt.
         input_tokens: u64,
         /// How the input tokens split between audio and text, when the
@@ -121,23 +117,8 @@ pub enum TranscriptionUsage {
         total_tokens: u64,
     },
     /// A shape this version does not model, preserved as sent.
+    #[serde(untagged)]
     Other(serde_json::Value),
-}
-
-/// The wire tag of [`TranscriptionUsage::Duration`].
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum DurationTag {
-    /// `"duration"`.
-    Duration,
-}
-
-/// The wire tag of [`TranscriptionUsage::Tokens`].
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum TokensTag {
-    /// `"tokens"`.
-    Tokens,
 }
 
 /// How a token-billed transcription's input tokens split by modality.
