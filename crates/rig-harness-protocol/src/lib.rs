@@ -1142,8 +1142,8 @@ impl SessionDir {
     }
 
     /// Names the session, or removes its name with `None` or a blank name.
-    /// The name is written beside the file and renamed over it, so a
-    /// reader sees the old name or the new one, never a part.
+    /// The name replaces the file whole by [`fs::replace`], so a reader
+    /// sees the old name or the new one, never a part.
     ///
     /// # Errors
     ///
@@ -1151,27 +1151,21 @@ impl SessionDir {
     pub fn set_name(&self, name: Option<&str>) -> std::io::Result<()> {
         let file = self.name_file();
         match name.map(str::trim).filter(|name| !name.is_empty()) {
-            Some(name) => {
-                let part = self.0.join("name.part");
-                fs::write(&part, name)?;
-                fs::rename(&part, &file)
-            }
+            Some(name) => fs::replace(&file, name.as_bytes()),
             None => fs::optional(fs::remove_file(&file)).map(drop),
         }
     }
 
     /// Writes `directory` as the one the session runs in
-    /// ([`Self::directory`]), beside the file and renamed over it, so a
-    /// reader sees the old one or the new one, never a part.
+    /// ([`Self::directory`]) by [`fs::replace`], so a reader sees the old
+    /// one or the new one, never a part.
     ///
     /// # Errors
     ///
     /// When the file cannot be written.
     pub fn set_working_directory(&self, directory: &Path) -> std::io::Result<()> {
         fs::create_dir_all(&self.0)?;
-        let part = self.0.join("directory.part");
-        fs::write(&part, directory.to_string_lossy().as_bytes())?;
-        fs::rename(&part, self.directory())
+        fs::replace(&self.directory(), directory.to_string_lossy().as_bytes())
     }
 
     /// The plain-text file of [`Self::name`].
