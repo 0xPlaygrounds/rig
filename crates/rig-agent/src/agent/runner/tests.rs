@@ -819,9 +819,9 @@ async fn the_connected_model_checks_every_call_including_a_switched_one() {
         .await
         .expect("Opus 4.8 by value takes `high`");
     let (default, default_http) = connected(Catalog::builtin(), "anthropic/claude-opus-4-8");
-    agent
-        .clone()
-        .with_model(default)
+    let mut swapped = agent.clone();
+    swapped.set_model(default);
+    swapped
         .prompt("go")
         .run()
         .await

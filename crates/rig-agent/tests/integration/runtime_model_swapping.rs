@@ -447,7 +447,8 @@ async fn replacement_and_override_scopes_have_value_semantics() {
     let original = AgentBuilder::named_model("alpha", alpha.clone())
         .model_route("beta", beta.clone())
         .build();
-    let changed_clone = original.clone().with_model_label("beta");
+    let mut changed_clone = original.clone();
+    changed_clone.set_model_label("beta");
     assert_eq!(
         original
             .prompt("original")

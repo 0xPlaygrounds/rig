@@ -43,7 +43,7 @@ use rig_agent::{
 use rig_cassette::effect_log::{EffectLog, EffectLogRecorder, EffectLogReplayer, RequestCheck};
 use rig_core::{
     completion::{CompletionRequest, Document},
-    effect::{EffectFamily, EffectRecord, HandlerKey},
+    effect::{EffectFamily, EffectRecord, HandlerKey, Key, family},
     error::{ErrorKind, ErrorReport},
     message::ToolChoice,
     message::{AssistantContent, Message},
@@ -645,7 +645,9 @@ struct LookupBeforeRun;
 impl AgentHook for LookupBeforeRun {
     async fn on_run_start(&self, ctx: &HookContext, _event: RunStart<'_>) -> RunStartAction {
         let tool = ctx
-            .tool(&HandlerKey::from(LOOKUP_KEY))
+            .bind(&Key::<family::Tool>::new_unchecked(HandlerKey::from(
+                LOOKUP_KEY,
+            )))
             .expect("the run's bus serves add");
         let answer = tool
             .dispatch(rig_core::effect::ToolCallRequest {

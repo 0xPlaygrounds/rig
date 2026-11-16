@@ -492,21 +492,6 @@ impl Agent {
         &self.config.handlers
     }
 
-    /// [`Agent::set_model_label`] by value.
-    pub fn with_model_label(mut self, label: impl Into<ModelRef>) -> Self {
-        self.set_model_label(label);
-        self
-    }
-
-    /// [`Agent::set_model`] by value.
-    pub fn with_model(
-        mut self,
-        model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
-    ) -> Self {
-        self.set_model(model);
-        self
-    }
-
     /// The effect row this program can dispatch to: its model, every tool
     /// the registry serves and its retrieval indexes,
     /// each with the family it needs, from the registry rather than what a

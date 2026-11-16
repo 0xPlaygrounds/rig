@@ -49,7 +49,7 @@ use rig_core::{
 
 use crate::{
     completion::{ResponseIdentity, Usage},
-    handlers::{Handle, Handlers, IndexHandle, ModelHandle, ToolHandle},
+    handlers::{Handle, Handlers},
     tool::{ToolContext, ToolOutput, ToolResult},
 };
 
@@ -95,14 +95,6 @@ impl Scratchpad {
         let entries = self.lock();
         let entry = entries.get(&TypeId::of::<T>())?;
         (&**entry as &dyn Any).downcast_ref::<T>().cloned()
-    }
-
-    /// Whether a type is present.
-    pub fn contains<T>(&self) -> bool
-    where
-        T: WasmCompatSend + WasmCompatSync + 'static,
-    {
-        self.lock().contains_key(&TypeId::of::<T>())
     }
 
     /// Remove a value.
@@ -227,22 +219,6 @@ impl HookContext {
         self.handlers.bind(key)
     }
 
-    /// Bind the retrieval index under `key`, for a hook that retrieves for
-    /// itself. Fails when `key` serves another family.
-    pub fn index(&self, key: &rig_core::effect::HandlerKey) -> Result<IndexHandle, ErrorReport> {
-        self.handlers.handle(key)
-    }
-
-    /// [`index`](Self::index) for a completion model.
-    pub fn model(&self, key: &rig_core::effect::HandlerKey) -> Result<ModelHandle, ErrorReport> {
-        self.handlers.handle(key)
-    }
-
-    /// [`index`](Self::index) for a tool.
-    pub fn tool(&self, key: &rig_core::effect::HandlerKey) -> Result<ToolHandle, ErrorReport> {
-        self.handlers.handle(key)
-    }
-
     /// Stable run identifier.
     pub fn run_id(&self) -> RunId {
         self.run_id
@@ -353,27 +329,6 @@ pub struct ModelSelection<'a> {
     pub default_model: &'a ModelRef,
     /// Candidate after all earlier model-selection hooks.
     pub selected_model: &'a ModelRef,
-}
-
-impl<'a> ModelSelection<'a> {
-    /// Construct a model-selection event from borrowed request and candidate state.
-    pub fn new(
-        prompt: &'a Message,
-        history: &'a [Arc<Message>],
-        request_patch: Option<&'a RequestPatch>,
-        previous_model: Option<&'a ModelRef>,
-        default_model: &'a ModelRef,
-        selected_model: &'a ModelRef,
-    ) -> Self {
-        Self {
-            prompt,
-            history,
-            request_patch,
-            previous_model,
-            default_model,
-            selected_model,
-        }
-    }
 }
 
 /// Medium-neutral accepted model-turn event.
@@ -766,14 +721,6 @@ impl<'a> DispatchEvent<'a> {
     /// The dispatch context, for a tool-call effect.
     pub fn tool_context(&self) -> Option<&'a ToolContext> {
         self.context
-    }
-
-    /// The request about to be sent, for a completion effect.
-    pub fn completion_request(&self) -> Option<&'a rig_core::completion::CompletionRequest> {
-        match self.kind {
-            EffectKind::Completion { request, .. } => Some(request),
-            _ => None,
-        }
     }
 }
 

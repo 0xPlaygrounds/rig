@@ -141,13 +141,15 @@ fn usage(input_tokens: u64, output_tokens: u64) -> Usage {
 
 #[test]
 fn typed_prompt_response_serializes_with_serialize_only_output() {
-    let response = TypedPromptResponse::new(
-        SerializeOnly { value: "ok" },
-        Usage::new()
+    let response = TypedPromptResponse {
+        output: SerializeOnly { value: "ok" },
+        usage: Usage::new()
             .input_tokens(1)
             .output_tokens(2)
             .total_tokens(3),
-    );
+        completion_calls: Vec::new(),
+        messages: Vec::new(),
+    };
 
     let json = serde_json::to_string(&response).expect("serialize typed prompt response");
     assert!(json.contains("\"value\":\"ok\""));
