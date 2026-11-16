@@ -20,7 +20,7 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{
     self, CompletionRequest, Section, ToolDefinition, tokens_label,
 };
-use rig_memory::{HeuristicTokenCounter, TokenCounter, summary_author};
+use rig_memory::{HeuristicTokenCounter, summary_author};
 
 use message::Message;
 

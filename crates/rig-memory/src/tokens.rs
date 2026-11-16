@@ -12,25 +12,7 @@ use std::sync::Arc;
 use rig_core::catalog::ModelSpec;
 use rig_core::completion::{CompletionRequest, Message, ToolDefinition, Usage};
 use rig_core::conversation::{Conversation, MessageId};
-use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use serde::{Deserialize, Serialize};
-
-/// Counts the tokens of one [`Message`]: the provider's tokenizer (such as
-/// `tiktoken-rs` for OpenAI) or an estimate. It runs once per message a
-/// window or a compaction weighs, so it must be cheap.
-pub trait TokenCounter: WasmCompatSend + WasmCompatSync {
-    /// About how many tokens `message` costs.
-    fn count(&self, message: &Message) -> usize;
-}
-
-impl<F> TokenCounter for F
-where
-    F: Fn(&Message) -> usize + WasmCompatSend + WasmCompatSync,
-{
-    fn count(&self, message: &Message) -> usize {
-        (self)(message)
-    }
-}
 
 /// Estimates token cost from UTF-8 lengths, rounded up per text-bearing part.
 /// Tool calls count name bytes plus serialized argument bytes. Attachments and
@@ -38,7 +20,7 @@ where
 ///
 /// ```
 /// use rig_core::completion::Message;
-/// use rig_memory::{HeuristicTokenCounter, TokenCounter};
+/// use rig_memory::HeuristicTokenCounter;
 ///
 /// let counter = HeuristicTokenCounter::default();
 /// assert_eq!(counter.count(&Message::user("12345678")), 2 + 4);
@@ -144,8 +126,9 @@ impl Default for HeuristicTokenCounter {
     }
 }
 
-impl TokenCounter for HeuristicTokenCounter {
-    fn count(&self, message: &Message) -> usize {
+impl HeuristicTokenCounter {
+    /// About how many tokens `message` costs.
+    pub fn count(&self, message: &Message) -> usize {
         let content_tokens: usize = match message {
             Message::User { content } => content
                 .iter()
@@ -257,7 +240,7 @@ fn estimate_sent(
     let prompt = prompt.map_or(0, |prompt| counter.count(&Message::system(prompt)));
     let tools = tools.iter().map(|tool| counter.count_tool(tool));
     let tools = tools.fold(0, usize::saturating_add);
-    (prompt.saturating_add(tools) as u64).saturating_add(estimate_messages(messages))
+    (prompt.saturating_add(tools) as u64).saturating_add(crate::estimate_tokens(messages))
 }
 
 /// Feeds bytes written to it to a hasher.
@@ -272,16 +255,6 @@ impl io::Write for HashWriter<'_> {
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }
-}
-
-/// The estimated tokens of `messages`, by the default
-/// [`HeuristicTokenCounter`].
-fn estimate_messages(messages: &[Arc<Message>]) -> u64 {
-    let counter = HeuristicTokenCounter::default();
-    messages
-        .iter()
-        .map(|message| counter.count(message) as u64)
-        .fold(0, u64::saturating_add)
 }
 
 /// About how many tokens `request` sends. Anchored, it is the usage the
@@ -304,7 +277,7 @@ pub fn next_request_tokens(
         let same = follows && request.fingerprint(sent.messages) == sent.fingerprint;
         let reported = anchor.usage.context_tokens().filter(|_| same)?;
         let after = request.history.messages().get(at.saturating_add(1)..);
-        Some(reported.saturating_add(estimate_messages(after.unwrap_or_default())))
+        Some(reported.saturating_add(crate::estimate_tokens(after.unwrap_or_default())))
     });
     anchored.unwrap_or_else(|| request.whole_tokens())
 }

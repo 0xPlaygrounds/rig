@@ -17,7 +17,7 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::Message;
 use rig_harness::rig_core::conversation::Conversation as Chat;
 use rig_harness::rig_ecs::Persist;
-use rig_harness::rig_memory::{HeuristicTokenCounter, TokenCounter, summary_in};
+use rig_harness::rig_memory::{HeuristicTokenCounter, summary_in};
 use serde::{Deserialize, Serialize};
 
 /// The plugin's name: its settings table and the author of its restores.

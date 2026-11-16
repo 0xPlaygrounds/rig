@@ -16,7 +16,7 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::tokens_label;
 use rig_harness::rig_core::message::{CallId, Message, ToolResultContent};
 use rig_harness::rig_core::serde_json;
-use rig_memory::{HeuristicTokenCounter, TokenCounter};
+use rig_memory::HeuristicTokenCounter;
 
 /// Who the edits are recorded as made by.
 const PLUGIN: &str = "conversation-surgery";

@@ -90,7 +90,7 @@ pub use store::{
     check_log_name, check_name, check_new_log_name, same_log_name,
 };
 pub use tokens::{
-    ATTACHMENT_TOKENS, Anchor, HeuristicTokenCounter, Prepared, RequestStart, TokenCounter, fits,
+    ATTACHMENT_TOKENS, Anchor, HeuristicTokenCounter, Prepared, RequestStart, fits,
     next_request_tokens, output_room, request_estimate,
 };
 pub use writer::Writer;

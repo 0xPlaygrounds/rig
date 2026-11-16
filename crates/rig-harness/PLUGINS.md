@@ -1471,11 +1471,8 @@ settle order: its request (`kind`), its answer (`outcome`, a reviewer's as
 `reviewed`), who decided it before it ran (`decided_by`), its times, the agent
 it worked for (`scope`, an `AgentId`), its `turn` (`Turn.index`), and the
 effect it was made under (`parent`). `rig_basics::telemetry` writes them to
-the session's effect log in `Persist` (`WriteLogs`) and reads them back through
-its `EffectLog`: `read()`, or `read_matching(&filter)` by agent, kind name
-(`completion`, `tool_call`, `message`, `subagent` or a plugin's) and turn
-(rig-cassette's `EffectFilter::default().agent(id).turn(n)`), as written by
-the end of the last frame.
+the session's effect log in `Persist` (`WriteLogs`) and reads them back with
+`EffectLog::read()`, as written by the end of the last frame.
 
 **Redacting.** A record holds what its effect really carried (tool output,
 file changes with the text before, the request as sent); the log is written
@@ -1920,7 +1917,7 @@ effect, which a holder may take as "stop waiting".
   makes it the session's `CurrentAgent`.
 - **Open a stopped one's plugin files:** `PluginData::of(&stores, &dir)`.
 - **Delete:** `DeleteSession(id)`, finished by the next start if a crash cut
-  it short (`SessionDeleted`, else `SessionDeleteFailed`). It checks that no
+  it short (`SessionDeleted`, else an error notice). It checks that no
   rig runs the session, then removes it without holding the lock, so a session
   resumed in that instant can be deleted under it.
 - **Name:** a plain file in its directory (`SessionDir::name`), written by
@@ -2186,7 +2183,7 @@ one stage that write the same data [unordered](#ordering-against-other-plugins),
 naming their plugins, and is empty for an app with the plugin and those it is
 used with. `rig plugin check --build` runs the same check on the plugins the
 user's `settings.toml` turns on, the default plugins included. How long each system takes is
-`PluginTimings` (`totals()`, `last_frame()`), filled once a plugin crate
+`PluginTimings::last_frame()`, filled once a plugin crate
 depends on rig-harness with `features = ["trace"]`.
 
 ```rust

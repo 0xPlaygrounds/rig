@@ -449,11 +449,7 @@ pub(crate) fn map_log(
     with: &dyn Rewrite,
     blobs: &dyn Store,
 ) -> Result<Option<Mapped>, SessionError> {
-    let refuse = |line, why| SessionError::Record {
-        log: name.to_owned(),
-        line,
-        why,
-    };
+    let refuse = |line, why| SessionError::record(name, line, why);
     let Some((_, _, first)) = lines.iter().next() else {
         return Ok(None);
     };
@@ -659,11 +655,8 @@ pub fn rewrite(
         bytes.extend_from_slice(&mapped.body);
         let new = LogLines::parse(bytes);
         if fold_lines(name, &new, Fold::WHOLE, &blob)?.is_none() {
-            return Err(SessionError::Record {
-                log: name.clone(),
-                line: 1,
-                why: "the rewritten log is empty".to_owned(),
-            });
+            let why = "the rewritten log is empty".to_owned();
+            return Err(SessionError::record(name, 1, why));
         }
         rewritten.logs.push(RewrittenLog {
             log: name.clone(),

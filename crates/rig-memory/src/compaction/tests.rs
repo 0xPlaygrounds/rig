@@ -62,10 +62,9 @@ fn a_cut_never_separates_a_call_from_its_result() {
         Message::assistant("done"),
     ]
     .map(Arc::new);
-    let counter = HeuristicTokenCounter::default();
-    assert_eq!(cut_at(&messages, 0, 0, false, &counter), Some(3));
-    assert_eq!(cut_at(&messages, 0, usize::MAX, false, &counter), None);
-    assert_eq!(cut_at(&messages, 0, usize::MAX, true, &counter), Some(3));
+    assert_eq!(cut_at(&messages, 0, 0, false), Some(3));
+    assert_eq!(cut_at(&messages, 0, usize::MAX, false), None);
+    assert_eq!(cut_at(&messages, 0, usize::MAX, true), Some(3));
 }
 
 /// A system message between a call and its results, even between two
@@ -88,9 +87,8 @@ fn a_cut_never_lands_inside_a_tool_exchange_at_a_system_message() {
         result("2", "x"),
     ]
     .map(Arc::new);
-    let counter = HeuristicTokenCounter::default();
-    assert_eq!(cut_at(&messages, 0, 0, true, &counter), Some(1));
-    assert_eq!(cut_at(&messages, 0, usize::MAX, true, &counter), Some(1));
+    assert_eq!(cut_at(&messages, 0, 0, true), Some(1));
+    assert_eq!(cut_at(&messages, 0, usize::MAX, true), Some(1));
 }
 
 fn spec(window: u32) -> Option<ModelSpec> {
@@ -265,26 +263,26 @@ fn a_summary_of_its_own_always_reads_some_conversation() {
 #[test]
 fn clearing_keeps_the_newest_outputs_and_the_last_message() {
     let big = "x".repeat(4_000);
-    let mut messages = [
+    let mut conversation = Conversation::from_messages([
         call("1", "read", "a.rs"),
         result("1", &big),
         call("2", "read", "b.rs"),
         result("2", &big),
         result("3", &big),
-    ]
-    .map(Arc::new);
+    ]);
     let policy = ClearToolOutputs::new(1_500);
-    let cleared = policy.clear(&mut messages);
+    let cleared = policy.clear_conversation(&mut conversation, summary_author());
     assert_eq!(cleared.results, 1);
     assert_eq!(cleared.tokens, 1_000);
-    assert!(is_cleared(match &*messages[1] {
+    assert!(is_cleared(match &*conversation.messages()[1] {
         Message::User { content } => match &content[0] {
             UserContent::ToolResult(result) => &result.content,
             other => panic!("{other:?}"),
         },
         other => panic!("{other:?}"),
     }));
-    assert_eq!(policy.clear(&mut messages), Cleared::default());
+    let again = policy.clear_conversation(&mut conversation, summary_author());
+    assert_eq!(again, Cleared::default());
 }
 
 /// Clearing skips error results, which are short and still needed, and
@@ -301,7 +299,7 @@ fn clearing_skips_errors_and_leaves_the_other_parts_alone() {
             content: vec![ToolResultContent::text(big.as_str())],
         })
     };
-    let mut messages = [
+    let mut conversation = Conversation::from_messages([
         call("1", "read", "a.rs"),
         Message::User {
             content: vec![
@@ -314,10 +312,10 @@ fn clearing_skips_errors_and_leaves_the_other_parts_alone() {
             content: vec![output("3", true)],
         },
         Message::assistant("done"),
-    ]
-    .map(Arc::new);
+    ]);
     let policy = ClearToolOutputs::new(1_500);
-    assert_eq!(policy.clear(&mut messages).results, 1);
+    let by = summary_author();
+    assert_eq!(policy.clear_conversation(&mut conversation, by).results, 1);
     let cleared = |message: &Message| -> Vec<bool> {
         let Message::User { content } = message else {
             return Vec::new();
@@ -327,12 +325,15 @@ fn clearing_skips_errors_and_leaves_the_other_parts_alone() {
             .map(|item| matches!(item, UserContent::ToolResult(result) if is_cleared(&result.content)))
             .collect()
     };
-    let parts: Vec<Vec<bool>> = messages.iter().map(|message| cleared(message)).collect();
+    let messages = conversation.messages().iter();
+    let parts: Vec<Vec<bool>> = messages.map(|message| cleared(message)).collect();
     assert_eq!(
         parts,
         [vec![], vec![false, true, false], vec![false], vec![]]
     );
-    assert_eq!(policy.clear(&mut []), Cleared::default());
+    let mut empty = Conversation::default();
+    let nothing = policy.clear_conversation(&mut empty, summary_author());
+    assert_eq!(nothing, Cleared::default());
 }
 
 /// A policy is plain serde data, one flat table: each field it does not

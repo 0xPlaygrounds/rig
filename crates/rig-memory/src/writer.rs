@@ -18,6 +18,7 @@ use crate::session::{
 use crate::store::now;
 use crate::{LogWriteError, Repair, SavedAgent, Session, SessionError, Stamp, Store};
 use rig_core::now_ms;
+use rig_core::tool::content_hash;
 
 /// One log as the writer keeps it.
 #[derive(Default)]
@@ -622,7 +623,7 @@ async fn set_aside_tail_async<S: crate::AsyncStore + ?Sized>(
         let log = log.to_owned();
         return Err(SessionError::Changed { log });
     };
-    let name = format!("recovered/{log}-{}.part", crate::blobs::sha256_hex(tail));
+    let name = format!("recovered/{log}-{}.part", content_hash(tail).0);
     store.write_file_async(&name, tail).await?;
     let replaced = store.replace_log_async(log, kept + cut, prefix).await;
     refused(log, replaced)?;

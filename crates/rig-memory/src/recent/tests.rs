@@ -5,7 +5,7 @@ use rig_core::message::{
 };
 
 use super::{LastMessages, TokenBudget, view};
-use crate::{HeuristicTokenCounter, TokenCounter};
+use crate::HeuristicTokenCounter;
 
 fn call(id: &str) -> Message {
     let function = ToolFunction::new(ToolName::new("t").expect("a name"), serde_json::json!({}));

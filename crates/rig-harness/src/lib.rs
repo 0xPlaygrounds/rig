@@ -117,8 +117,8 @@ pub mod prelude {
     pub use crate::host::exit::{Exit, ExitReason, ExitRequest};
     pub use crate::host::launcher::{self, Invoked};
     pub use crate::host::session::{
-        AppStart, DeleteSession, Logged, LoggedQueue, Scratch, SessionDeleteFailed, SessionDeleted,
-        SessionPaths, StoreOpener, rewrite_stopped,
+        AppStart, DeleteSession, Logged, LoggedQueue, Scratch, SessionDeleted, SessionPaths,
+        StoreOpener, rewrite_stopped,
     };
     pub use crate::host::signals::{self, ExitWhenUnread};
     pub use crate::main_agent::{

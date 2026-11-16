@@ -19,7 +19,7 @@ use rig_core::completion::Message;
 use rig_core::conversation::pairing::safe_start;
 use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
 
-use crate::{HeuristicTokenCounter, TokenCounter};
+use crate::HeuristicTokenCounter;
 
 /// Where the newest messages a request sends start.
 pub trait Recent: WasmCompatSend + WasmCompatSync {

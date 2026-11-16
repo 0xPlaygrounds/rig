@@ -708,14 +708,6 @@ fn kept_reply(
     })
 }
 
-/// What the summary for `reason` should keep above all; may be empty.
-fn focus(reason: &CompactReason) -> &str {
-    match reason {
-        CompactReason::Asked { focus } => focus.trim(),
-        _ => "",
-    }
-}
-
 /// Where a request asked in place ([`ask_at`]) ends.
 #[derive(Clone, Copy, Debug)]
 enum Upto {
@@ -855,7 +847,7 @@ fn plan_in_place(
     let ask = (
         &policy.summarizer,
         Asking::Summary(
-            focus(&summarizing.reason),
+            summarizing.reason.focus(),
             kept_reply(conversation, summarizing.keep_from),
         ),
     );
@@ -1736,7 +1728,7 @@ fn ask_in_place(
         let ask = (
             &policy.summarizer,
             Asking::Summary(
-                focus(&summarizing.reason),
+                summarizing.reason.focus(),
                 kept_reply(conversation, summarizing.keep_from),
             ),
         );

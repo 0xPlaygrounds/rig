@@ -14,7 +14,7 @@
 
 use std::borrow::{Borrow, Cow};
 use std::collections::{BTreeMap, BTreeSet};
-use std::fmt::{self, Write as _};
+use std::fmt::Write as _;
 use std::sync::Arc;
 
 use rig_core::catalog::ModelSpec;
@@ -25,11 +25,11 @@ use rig_core::conversation::{
     Aside, AsideId, Author, Change, Conversation, Entry, MessageId, Spliced, pairing,
 };
 use rig_core::message::{CallId, StopReason, ToolCall, ToolResult, ToolResultContent, UserContent};
+use rig_core::tool::content_hash;
 use serde::{Deserialize, Serialize};
 
-use crate::blobs::sha256_hex;
 use crate::session::replay;
-use crate::{HeuristicTokenCounter, SessionError, Store, TokenCounter};
+use crate::{HeuristicTokenCounter, SessionError, Store};
 
 /// A summary of a conversation's older messages and the values tracked
 /// across compactions (such as the files a coding agent read). The default
@@ -185,8 +185,8 @@ fn cut_at(
     from: usize,
     keep_tokens: usize,
     force: bool,
-    counter: &impl TokenCounter,
 ) -> Option<usize> {
+    let counter = HeuristicTokenCounter::default();
     let mut kept = 0;
     let mut newest = None;
     let mut answering = false;
@@ -225,6 +225,17 @@ pub enum CompactReason {
     Threshold,
     /// The model refused the request as too long.
     Overflow,
+}
+
+impl CompactReason {
+    /// What the user asked the summary to focus on, trimmed; empty when
+    /// they named nothing or did not ask.
+    pub fn focus(&self) -> &str {
+        match self {
+            Self::Asked { focus } => focus.trim(),
+            Self::Threshold | Self::Overflow => "",
+        }
+    }
 }
 
 /// Tokens of the newest messages an automatic compaction keeps unless
@@ -416,7 +427,6 @@ impl CompactionPolicy {
             from,
             self.keep(reason, spec),
             !matches!(reason, CompactReason::Threshold),
-            &HeuristicTokenCounter::default(),
         )
     }
 
@@ -580,7 +590,7 @@ pub fn apply_summary(
             summary,
             replaced: spliced.removed.clone(),
             replaced_hash: replaced_hash
-                .and_then(|bytes| sha256_hex(&bytes).get(..HASH_LEN).map(str::to_owned)),
+                .and_then(|bytes| content_hash(&bytes).0.get(..HASH_LEN).map(str::to_owned)),
             state: state.clone(),
         };
         let value = serde_json::to_value(compacted).unwrap_or_default();
@@ -703,10 +713,9 @@ pub fn undo_summary(
         .ok_or(UndoError::NotInLog)?;
     let restored = conversation.restore(at..=at, originals, by).restored;
     conversation.remove_aside(aside);
-    let state = Compacted::of(conversation).last().map(|(_, it)| it.state);
     Ok(Uncompacted {
         restored,
-        state: state.unwrap_or_default(),
+        state: summary_state(conversation),
     })
 }
 
@@ -1013,31 +1022,22 @@ fn within(tokens: u64) -> String {
 }
 
 /// Why a summary cannot be used.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
 pub enum SummaryError {
     /// The summary hit the model's output limit, so it is incomplete.
+    #[error("the summary hit the model's output limit")]
     Truncated,
     /// The model called a tool instead of summarizing.
+    #[error("the model called a tool instead of summarizing")]
     CalledTool,
     /// The model returned no text.
+    #[error("the model returned no summary")]
     Empty,
     /// The reply failed or was filtered, for this reason.
+    #[error("{0}")]
     Failed(String),
 }
-
-impl fmt::Display for SummaryError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::Truncated => "the summary hit the model's output limit",
-            Self::CalledTool => "the model called a tool instead of summarizing",
-            Self::Empty => "the model returned no summary",
-            Self::Failed(why) => why,
-        })
-    }
-}
-
-impl std::error::Error for SummaryError {}
 
 /// Whether `spec` knows what bounds its output: its output limit or its
 /// window. A request to a model that knows neither is sent no output limit,
@@ -1079,10 +1079,7 @@ impl Summarizer {
         spec: &ModelSpec,
     ) -> Result<CompletionRequest, UnsupportedOption> {
         let limits = &self.limits;
-        let focus = match reason {
-            CompactReason::Asked { focus } => focus.trim(),
-            _ => "",
-        };
+        let focus = reason.focus();
         let (most, budget, least) = match spec.input_limit().map(u64::from) {
             None => (
                 self.max_tokens(spec),
@@ -1295,7 +1292,7 @@ fn snippet(text: &str, chars: usize) -> String {
     }
 }
 
-/// What [`ClearToolOutputs::clear`] took out.
+/// What [`ClearToolOutputs::clear_conversation`] took out.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Cleared {
     /// Tool results cleared.
@@ -1355,20 +1352,9 @@ impl ClearToolOutputs {
         }
     }
 
-    /// Clears older tool outputs of `messages` in place.
-    pub fn clear(&self, messages: &mut [Arc<Message>]) -> Cleared {
-        let (targets, cleared) = self.targets(messages);
-        for (at, items) in targets {
-            if let Some(message) = messages.get_mut(at) {
-                clear_items(Arc::make_mut(message), &items);
-            }
-        }
-        cleared
-    }
-
-    /// Clears older tool outputs of `conversation`, as [`Self::clear`]
-    /// does, rewriting the entries that change in place by `by`
-    /// ([`Conversation::edit_each`]), so they keep their ids.
+    /// Clears older tool outputs of `conversation`, rewriting the entries
+    /// that change in place by `by` ([`Conversation::edit_each`]), so they
+    /// keep their ids.
     pub fn clear_conversation(&self, conversation: &mut Conversation, by: Author) -> Cleared {
         self.plan(conversation).apply(conversation, None, by)
     }

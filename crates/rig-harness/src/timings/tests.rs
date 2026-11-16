@@ -7,7 +7,7 @@ use bevy_log::tracing_subscriber::layer::SubscriberExt;
 use super::{SystemTimings, TimeSystems};
 
 /// Every run of a system span is timed under the system's name; other
-/// spans are not timed, and clearing forgets them all.
+/// spans are not timed.
 #[test]
 fn each_run_of_a_system_is_timed() {
     let timings = SystemTimings::default();
@@ -20,16 +20,15 @@ fn each_run_of_a_system_is_timed() {
         }
         let _other = info_span!("calculate conflicting systems").entered();
     });
-    let systems = timings.systems();
-    let busy = systems.get(&("corpus_profiled::busy".to_owned(), None));
-    assert_eq!(busy.map(|busy| busy.runs), Some(2), "{systems:?}");
-    assert!(busy.is_some_and(|busy| busy.max >= Duration::from_millis(2)));
-    assert_eq!(systems.len(), 1, "{systems:?}");
-    timings.clear();
-    assert!(
-        timings.systems().is_empty(),
-        "clearing forgets every timing"
-    );
+    timings.next_frame();
+    let last = timings.lock().last.clone();
+    let runs: Vec<_> = last
+        .iter()
+        .map(|(system, schedule, _)| (system.as_str(), schedule.as_deref()))
+        .collect();
+    assert_eq!(runs, [("corpus_profiled::busy", None); 2], "{last:?}");
+    let slept = Duration::from_millis(2);
+    assert!(last.iter().all(|(_, _, took)| *took >= slept), "{last:?}");
 }
 
 #[cfg(feature = "trace")]
@@ -108,15 +107,17 @@ mod trace {
         let world = app.world_mut();
         let busy = world.resource::<PluginEntity<Busy>>().entity();
         let passes = world.resource::<PluginEntity<Passes>>().entity();
-        let totals = world.run_system_once(|timings: PluginTimings| timings.totals());
-        let totals = totals.unwrap_or_default();
+        let last = world.run_system_once(|timings: PluginTimings| timings.last_frame());
+        let last = last.unwrap_or_default();
         let runs = |plugin, schedule: &str| {
-            let key = (Some(plugin), Some(schedule.to_owned()));
-            totals.get(&key).map(|timing| timing.runs)
+            let charged = |run: &&SystemRun| {
+                run.plugin == Some(plugin) && run.schedule.as_deref() == Some(schedule)
+            };
+            last.iter().filter(charged).count()
         };
-        assert_eq!(runs(busy, "Update"), Some(1), "{totals:?}");
-        assert_eq!(runs(passes, "Update"), Some(1), "{totals:?}");
-        assert_eq!(runs(passes, "Pass"), Some(1), "{totals:?}");
+        assert_eq!(runs(busy, "Update"), 1, "{last:?}");
+        assert_eq!(runs(passes, "Update"), 1, "{last:?}");
+        assert_eq!(runs(passes, "Pass"), 1, "{last:?}");
     }
 
     /// The last whole frame lists each run once, with its plugin and
