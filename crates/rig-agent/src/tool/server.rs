@@ -476,7 +476,7 @@ impl ToolServerHandle {
     }
 
     /// Retrieve advertised definitions for `prompt`, returning retrieval failures
-    /// or incompatible result shapes as definition errors. The retrieval
+    /// or incompatible result shapes as [`ProviderError::Request`]. The retrieval
     /// queries run inline on the registry's own handlers: this is a registry
     /// read, while the engine dispatches the same queries through its handlers.
     pub async fn tool_defs(
