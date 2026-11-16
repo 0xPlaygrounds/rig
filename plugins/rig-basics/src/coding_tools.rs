@@ -24,11 +24,13 @@ use rig_harness::prelude::{
     Plugin, PrepareSystems, ProjectRoot, ProjectWorkspace, Query, Recalled, Remove, Res, Running,
     Started, StopReached, SystemSet, ToolOptions, Wake, Without, WorkDir, blocking,
 };
+#[cfg(feature = "tui")]
+use rig_harness::prelude::{ResMut, Tool};
 use rig_harness::rig_core::tool::ToolExecutionError;
 use rig_tools::attach::{Attached, Reference, attachments};
 use rig_tools::{Edit, Read, Shell, Write};
 #[cfg(feature = "tui")]
-use rig_tui::{RenderSystems, TranscriptRender};
+use rig_tui::{LookLine, RenderBatch, RenderSystems, ToolRender, TranscriptRender};
 
 /// The systems that draw the coding tools' calls in the terminal view, in
 /// `rig_tui::RenderSystems::Render`. A plugin that draws them its own way
@@ -53,7 +55,7 @@ impl Plugin for ReadTool {
     fn build(&self, app: &mut App) {
         app.add_tool_per_call(Read::default(), ToolOptions::default());
         #[cfg(feature = "tui")]
-        add_look(app, looks::draw_read);
+        add_look(app, Read::NAME, looks::read);
     }
 }
 
@@ -65,7 +67,7 @@ impl Plugin for EditTool {
     fn build(&self, app: &mut App) {
         app.add_tool_per_call(Edit::default(), ToolOptions::default());
         #[cfg(feature = "tui")]
-        add_look(app, looks::draw_edit);
+        add_look(app, Edit::NAME, looks::edit);
     }
 }
 
@@ -77,7 +79,7 @@ impl Plugin for WriteTool {
     fn build(&self, app: &mut App) {
         app.add_tool_per_call(Write::default(), ToolOptions::default());
         #[cfg(feature = "tui")]
-        add_look(app, looks::draw_write);
+        add_look(app, Write::NAME, looks::write);
     }
 }
 
@@ -101,16 +103,21 @@ impl Plugin for ShellTool {
         let shell = PerCallShell::new(Shell::default(), app.world_mut());
         app.add_tool_per_call(shell, ToolOptions::default());
         #[cfg(feature = "tui")]
-        add_look(app, looks::draw_shell);
+        add_look(app, Shell::NAME, looks::shell);
     }
 }
 
-/// Draws a tool's calls with `look`, in [`CodingToolLooks`].
+/// Draws the calls of `tool` with `look`, in [`CodingToolLooks`].
 #[cfg(feature = "tui")]
-fn add_look<M>(app: &mut App, look: impl IntoScheduleConfigs<bevy_ecs::system::ScheduleSystem, M>) {
+fn add_look(app: &mut App, tool: &'static str, look: fn(&ToolRender) -> Vec<LookLine>) {
+    let draw = move |mut batch: ResMut<RenderBatch>| {
+        for (call, output) in batch.tools_mut(tool) {
+            output.lines = look(call);
+        }
+    };
     app.add_systems(
         TranscriptRender,
-        look.in_set(CodingToolLooks).in_set(RenderSystems::Render),
+        draw.in_set(CodingToolLooks).in_set(RenderSystems::Render),
     );
 }
 
