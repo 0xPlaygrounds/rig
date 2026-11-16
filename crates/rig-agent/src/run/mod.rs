@@ -187,38 +187,37 @@ pub enum ModelTurnOutcome {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ResolvingState {
-    head: AssistantMessage,
+    /// The turn being accepted. Its `items` are the working copy of the
+    /// assistant content, where repairs rename tool calls.
+    turn: TurnState,
     /// The unmodified model output, used for diagnostic histories and retry
     /// messages (repairs are never reflected in those).
     original_choice: Vec<AssistantContent>,
-    /// Working copy of the assistant content; repairs rename tool calls here.
-    items: Vec<AssistantContent>,
     /// Index of the next item to validate.
     next_index: usize,
-    policy: TurnPolicy,
-    /// Synthetic results keyed by content position so repeated call IDs cannot
-    /// assign a skipped result to a different call.
-    skipped: BTreeMap<usize, UserContent>,
     recovered: bool,
     any_skipped: bool,
-    has_tool_calls: bool,
 }
 
 impl ResolvingState {
     /// The position in `original_choice` of the item at `next_index`. Ignored
-    /// calls are removed from `items` only at `next_index`, so each one came
+    /// calls are removed from `turn.items` only at `next_index`, so each one came
     /// before it.
     fn original_position(&self) -> usize {
-        self.next_index + self.original_choice.len().saturating_sub(self.items.len())
+        let kept = self.turn.items.len();
+        self.next_index + self.original_choice.len().saturating_sub(kept)
     }
 }
 
 /// The invalid tool call resolution is currently parked on, if any: the item
 /// at `next_index` when it is a tool call outside the allowed set.
 fn pending_invalid_call(resolving: &ResolvingState) -> Option<&ToolCall> {
-    match resolving.items.get(resolving.next_index) {
+    match resolving.turn.items.get(resolving.next_index) {
         Some(AssistantContent::ToolCall(tool_call))
-            if !resolving.policy.allows(tool_call.function.name.as_str()) =>
+            if !resolving
+                .turn
+                .policy
+                .allows(tool_call.function.name.as_str()) =>
         {
             Some(tool_call)
         }
@@ -236,8 +235,8 @@ fn has_tool_calls(items: &[AssistantContent]) -> bool {
 struct TurnState {
     head: AssistantMessage,
     items: Vec<AssistantContent>,
-    has_tool_calls: bool,
-    /// Keyed by position in `items` (see `ResolvingState::skipped`).
+    /// Synthetic results keyed by position in `items`, so repeated call IDs
+    /// cannot assign a skipped result to a different call.
     skipped: BTreeMap<usize, UserContent>,
     /// Kept until the turn's calls are answered, so an invalid-call context
     /// raised in the tool step reports the policy the turn was judged by.
@@ -338,7 +337,7 @@ pub struct AgentRun {
 }
 
 /// The [`AgentRun`] envelope format this crate writes and reads.
-pub const RUN_FORMAT: u32 = 6;
+pub const RUN_FORMAT: u32 = 7;
 
 /// Deserialize the envelope's `format`, refusing any other than
 /// [`RUN_FORMAT`] by name so a run persisted by another rig is never loaded
@@ -651,7 +650,7 @@ impl AgentRun {
     ) -> Result<(), PromptError> {
         let replacement_has_tool_calls = has_tool_calls(&choice);
         let parked_has_tool_calls = match &self.state {
-            RunState::AwaitingAdvance(turn) => turn.has_tool_calls,
+            RunState::AwaitingAdvance(turn) => has_tool_calls(&turn.items),
             _ => {
                 return Err(self.protocol_violation(
                     "replace_accepted_turn_choice called without an accepted turn awaiting advancement",
@@ -693,7 +692,7 @@ impl AgentRun {
             }
         };
 
-        if turn.has_tool_calls {
+        if has_tool_calls(&turn.items) {
             return Err(self.fail(
                 "model-turn retry does not support tool-bearing model turns; use tool-call hooks instead",
             ));
@@ -793,12 +792,12 @@ impl AgentRun {
         };
         let tool_call = pending_invalid_call(resolving)?;
 
-        Some(resolving.policy.invalid_call_context(
+        Some(resolving.turn.policy.invalid_call_context(
             tool_call,
             Some(tool_call.function.arguments_json()),
             self.diagnostic_history(resolving),
             false,
-            resolving.policy.name_reason(tool_call),
+            resolving.turn.policy.name_reason(tool_call),
         ))
     }
 
@@ -853,11 +852,11 @@ impl AgentRun {
                 let TurnState {
                     head,
                     items,
-                    has_tool_calls,
                     mut skipped,
                     policy,
                     cut_off,
                 } = turn_state;
+                let has_tool_calls = has_tool_calls(&items);
                 // A failed turn runs no tool and finalizes no output; reasoning
                 // alone is not an answer. A failed turn's calls never run, and
                 // the turn stays in the run's messages for display, as pi
@@ -1076,19 +1075,18 @@ impl AgentRun {
         self.push_completion_call(call);
         self.pin_output_tool(&turn.policy);
 
-        let items: Vec<AssistantContent> = turn.choice.clone();
-        let has_tool_calls = has_tool_calls(&items);
-
         self.state = RunState::ResolvingToolCalls(ResolvingState {
-            head: turn.head,
+            turn: TurnState {
+                head: turn.head,
+                items: turn.choice.clone(),
+                skipped: BTreeMap::new(),
+                policy: turn.policy,
+                cut_off: Vec::new(),
+            },
             original_choice: turn.choice,
-            items,
             next_index: 0,
-            policy: turn.policy,
-            skipped: BTreeMap::new(),
             recovered: false,
             any_skipped: false,
-            has_tool_calls,
         });
 
         self.advance_resolution()
@@ -1131,29 +1129,6 @@ impl AgentRun {
         };
         self.state = RunState::Done(response.clone());
         AgentRunStep::Done(response)
-    }
-
-    /// Park an accepted model turn in [`RunState::AwaitingAdvance`]. Both the
-    /// non-streamed (`advance_resolution`) and streamed (`streamed_turn`)
-    /// ingestion paths converge here, differing only in the `skipped` map
-    /// and the `cut_off` call positions, which only a streamed reply marks.
-    fn finalize_turn(
-        &mut self,
-        head: AssistantMessage,
-        items: Vec<AssistantContent>,
-        has_tool_calls: bool,
-        skipped: BTreeMap<usize, UserContent>,
-        cut_off: Vec<usize>,
-        policy: TurnPolicy,
-    ) {
-        self.state = RunState::AwaitingAdvance(TurnState {
-            head,
-            items,
-            has_tool_calls,
-            skipped,
-            policy,
-            cut_off,
-        });
     }
 
     /// Count a tool step that answers a call whose arguments are not a JSON
@@ -1292,14 +1267,14 @@ impl AgentRun {
         let action = self.validate_invalid_tool_call_action(
             action,
             &tool_call,
-            &resolving.policy,
+            &resolving.turn.policy,
             &diagnostic_history,
         )?;
 
         match action {
             ValidatedInvalidToolCallAction::Retry { feedback } => {
                 self.history.commit(assistant_message(
-                    resolving.head.clone(),
+                    resolving.turn.head.clone(),
                     resolving.original_choice.clone(),
                 ));
                 let content = invalid_call_feedback(
@@ -1313,7 +1288,7 @@ impl AgentRun {
             }
             ValidatedInvalidToolCallAction::Repair { tool_name } => {
                 if let Some(AssistantContent::ToolCall(tool_call)) =
-                    resolving.items.get_mut(resolving.next_index)
+                    resolving.turn.items.get_mut(resolving.next_index)
                     && let Ok(tool_name) = ToolName::new(tool_name)
                 {
                     tool_call.function.name = tool_name;
@@ -1331,7 +1306,10 @@ impl AgentRun {
                 // Keyed by the call's position: `next_index` is exactly the
                 // invalid call's slot in `items`, and later mutations only
                 // touch indices at or after it, so earlier keys stay stable.
-                resolving.skipped.insert(resolving.next_index, user_content);
+                resolving
+                    .turn
+                    .skipped
+                    .insert(resolving.next_index, user_content);
                 resolving.recovered = true;
                 resolving.any_skipped = true;
                 resolving.next_index += 1;
@@ -1367,8 +1345,7 @@ impl AgentRun {
             ));
         }
 
-        resolving.items.remove(resolving.next_index);
-        resolving.has_tool_calls = has_tool_calls(&resolving.items);
+        resolving.turn.items.remove(resolving.next_index);
         self.state = RunState::ResolvingToolCalls(resolving);
         self.advance_resolution()
     }
@@ -1491,10 +1468,13 @@ impl AgentRun {
     fn advance_resolution(&mut self) -> Result<ModelTurnOutcome, PromptError> {
         let mut resolving =
             self.take_resolving("internal: advance_resolution outside of tool-call resolution")?;
-        while let Some(item) = resolving.items.get(resolving.next_index) {
+        while let Some(item) = resolving.turn.items.get(resolving.next_index) {
             match item {
                 AssistantContent::ToolCall(tool_call)
-                    if !resolving.policy.allows(tool_call.function.name.as_str()) =>
+                    if !resolving
+                        .turn
+                        .policy
+                        .allows(tool_call.function.name.as_str()) =>
                 {
                     break;
                 }
@@ -1502,7 +1482,7 @@ impl AgentRun {
             }
         }
 
-        if resolving.next_index < resolving.items.len() {
+        if resolving.next_index < resolving.turn.items.len() {
             self.state = RunState::ResolvingToolCalls(resolving);
             return match self.pending_invalid_tool_call() {
                 Some(context) => Ok(ModelTurnOutcome::NeedsResolution(context)),
@@ -1513,29 +1493,25 @@ impl AgentRun {
         }
 
         let ResolvingState {
-            head,
-            items,
-            mut skipped,
+            mut turn,
             recovered,
             any_skipped,
-            has_tool_calls,
-            policy,
             ..
         } = resolving;
 
         // When any tool call was skipped, none of the turn's tool calls
         // execute: peers get a synthetic "not executed" result.
         if any_skipped {
-            for (index, item) in items.iter().enumerate() {
+            for (index, item) in turn.items.iter().enumerate() {
                 if let AssistantContent::ToolCall(tool_call) = item {
-                    skipped
+                    turn.skipped
                         .entry(index)
                         .or_insert_with(|| not_executed(tool_call));
                 }
             }
         }
 
-        self.finalize_turn(head, items, has_tool_calls, skipped, Vec::new(), policy);
+        self.state = RunState::AwaitingAdvance(turn);
         Ok(ModelTurnOutcome::Continue {
             response_hook_suppressed: recovered,
         })
@@ -1664,8 +1640,6 @@ impl AgentRun {
             ));
         }
 
-        let has_tool_calls = has_tool_calls(&turn.choice);
-
         // A call the reply was cut off in is answered as such whatever its
         // name, as it never runs.
         for (position, item) in turn.choice.iter().enumerate() {
@@ -1685,14 +1659,13 @@ impl AgentRun {
         }
 
         self.pin_output_tool(&turn.policy);
-        self.finalize_turn(
-            turn.head,
-            turn.choice,
-            has_tool_calls,
-            BTreeMap::new(),
-            turn.cut_off,
-            turn.policy,
-        );
+        self.state = RunState::AwaitingAdvance(TurnState {
+            head: turn.head,
+            items: turn.choice,
+            skipped: BTreeMap::new(),
+            policy: turn.policy,
+            cut_off: turn.cut_off,
+        });
         Ok(())
     }
 
@@ -1710,7 +1683,7 @@ impl AgentRun {
     /// the unmodified assistant turn under inspection.
     fn diagnostic_history(&self, resolving: &ResolvingState) -> Vec<Message> {
         self.owned_history(assistant_message(
-            resolving.head.clone(),
+            resolving.turn.head.clone(),
             resolving.original_choice.clone(),
         ))
     }
