@@ -121,6 +121,11 @@ use session_log::{
 };
 use tasks::{PollTasks, Wake, finish, run_settle_frames};
 
+/// Runs `schedule`'s systems on the calling thread.
+pub(crate) fn single_threaded(schedule: &mut Schedule) {
+    schedule.set_executor(SingleThreadedExecutor::new());
+}
+
 /// The system in `Last`, on exit, that stops the running turns as the
 /// user's stop does, for the [`Exiting`](turn::Exiting) reason, in Bevy's
 /// `OnAppExitSystems`. What they leave is saved after `Last`.
@@ -184,14 +189,11 @@ impl Plugin for AgentPlugin {
             // would wake the task pool for them every frame (a frame that
             // saves a conversation paid more in thread handoffs than in
             // saving).
-            let single = |schedule: &mut Schedule| {
-                schedule.set_executor(SingleThreadedExecutor::new());
-            };
             app.add_plugins(TimePlugin)
-                .edit_schedule(First, single)
-                .edit_schedule(PreUpdate, single)
-                .edit_schedule(Last, single)
-                .edit_schedule(Persist, single);
+                .edit_schedule(First, single_threaded)
+                .edit_schedule(PreUpdate, single_threaded)
+                .edit_schedule(Last, single_threaded)
+                .edit_schedule(Persist, single_threaded);
         }
         if let Some(mut order) = app.world_mut().get_resource_mut::<MainScheduleOrder>() {
             // A conversation changed before `Update` is saved before it runs.
@@ -208,12 +210,8 @@ impl Plugin for AgentPlugin {
             .init_resource::<SessionLog>()
             .init_resource::<SavedOne>()
             .init_resource::<spawn::PendingIds>()
-            .edit_schedule(SaveConversations, |schedule| {
-                schedule.set_executor(SingleThreadedExecutor::new());
-            })
-            .edit_schedule(SaveFrame, |schedule| {
-                schedule.set_executor(SingleThreadedExecutor::new());
-            })
+            .edit_schedule(SaveConversations, single_threaded)
+            .edit_schedule(SaveFrame, single_threaded)
             .add_systems(SaveConversations, save_conversations)
             .add_systems(SaveFrame, save_now.map(drop))
             .init_resource::<Wake>()

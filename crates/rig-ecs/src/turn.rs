@@ -763,8 +763,7 @@ impl Stopper<'_, '_> {
             at,
             calls: cut,
         });
-        let conversation = conversation.bypass_change_detection();
-        let saved = save_conversation(&self.log, agent, id, conversation);
+        let saved = save_conversation(&self.log, agent, id, &mut conversation);
         self.committed.write_batch(saved);
         // A plugin says why it stopped a turn itself.
         let said = match cause {

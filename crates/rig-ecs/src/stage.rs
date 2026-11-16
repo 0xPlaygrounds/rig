@@ -44,9 +44,7 @@ use bevy_ecs::error::{BevyError, ErrorContext, ErrorHandler, FallbackErrorHandle
 use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::prelude::*;
 use bevy_ecs::query::QueryData;
-use bevy_ecs::schedule::{
-    InternedSystemSet, LogLevel, ScheduleBuildSettings, ScheduleLabel, SingleThreadedExecutor,
-};
+use bevy_ecs::schedule::{InternedSystemSet, LogLevel, ScheduleBuildSettings, ScheduleLabel};
 use bevy_ecs::world::DeferredWorld;
 use bevy_log::tracing::Instrument;
 use bevy_log::{info_span, warn};
@@ -670,11 +668,9 @@ pub(crate) fn build(app: &mut App) {
     app.init_resource::<Passes>()
         .add_message::<EffectRecorded>()
         .add_message::<StreamDelta>()
-        .edit_schedule(BetweenStages, |between| {
-            between.set_executor(SingleThreadedExecutor::new());
-        })
+        .edit_schedule(BetweenStages, super::single_threaded)
         .edit_schedule(AgentPass, |pass| {
-            pass.set_executor(SingleThreadedExecutor::new());
+            super::single_threaded(pass);
             if cfg!(debug_assertions) {
                 // Unordered systems writing the same data in one stage are
                 // reported, as their order is meaningless: two deciders, two
