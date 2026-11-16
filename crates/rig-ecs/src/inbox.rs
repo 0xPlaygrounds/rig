@@ -197,11 +197,17 @@ impl Incoming {
 
     /// The slash command line, without its `/`, that an app with slash
     /// commands runs instead of sending this message: the user's text that
-    /// starts with `/`, unless it is [`literal`](Self::literal).
+    /// starts with `/` and a name, unless it is [`literal`](Self::literal).
+    /// A `/` and then a space, or a first word with another `/` in it (a
+    /// path such as `/etc/hosts`, or `//`), is text for the model.
     pub fn command(&self) -> Option<&str> {
         let user = self.author.kind == AuthorKind::User && !self.literal;
-        user.then(|| self.text().trim_start().strip_prefix('/'))
-            .flatten()
+        let line = user
+            .then(|| self.text().trim_start().strip_prefix('/'))
+            .flatten()?;
+        let name = line.split(char::is_whitespace).next().unwrap_or_default();
+        let spaced = line.starts_with(char::is_whitespace);
+        (!spaced && !name.contains('/')).then_some(line)
     }
 }
 

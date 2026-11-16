@@ -213,7 +213,7 @@ impl Plugin for PrintPlugin {
                 app.world_mut().resource_mut::<JsonOut>().one_shot = true;
             }
         } else {
-            let command = prompt.as_deref().unwrap_or_default().trim_start();
+            let command = is_command(prompt.as_deref().unwrap_or_default());
             if !app.world().contains_resource::<Printed>() {
                 let writer = front_writer(app.world());
                 let out = Terminal::of(&std::io::stdout());
@@ -232,9 +232,7 @@ impl Plugin for PrintPlugin {
                 (
                     // Before the run can end on what they say, so its
                     // why knows them.
-                    print_notices(command.starts_with('/'))
-                        .after(AgentLoop)
-                        .before(drive),
+                    print_notices(command).after(AgentLoop).before(drive),
                     print_progress,
                 ),
             )
@@ -704,6 +702,13 @@ struct Agents<'w, 's> {
     keep: Query<'w, 's, (), With<KeepRunning>>,
 }
 
+/// Whether `prompt` runs as a slash command rather than going to the model.
+fn is_command(prompt: &str) -> bool {
+    Incoming::new(prompt, DeliveryMode::Steer)
+        .command()
+        .is_some()
+}
+
 /// Once [`check_start`] passed, ends a run whose `--tools` was refused,
 /// chooses the model, sends the prompt, and exits after the turn.
 fn drive(
@@ -721,10 +726,7 @@ fn drive(
         run.fail(REFUSED_EXIT_CODE, why, true);
     }
     // A command such as `/login` runs without a model.
-    let command = run
-        .prompt
-        .as_ref()
-        .is_some_and(|prompt| prompt.trim_start().starts_with('/'));
+    let command = run.prompt.as_deref().is_some_and(is_command);
     let to = run.agent(&agents.primary);
     for notice in notices.read() {
         if let Some(agent) = to
