@@ -1,5 +1,5 @@
 use crate::agent::ResponseIdentity;
-use crate::agent::typed::{TypedPromptResponse, deserialize_structured_output};
+use crate::agent::typed::TypedPromptResponse;
 use crate::run::response::{CompletionCall, PromptResponse};
 use crate::{
     agent::{
@@ -79,30 +79,6 @@ struct DeserializeOnly {
 #[derive(Debug, Deserialize, JsonSchema, PartialEq)]
 struct TypedAnswer {
     value: String,
-}
-
-#[test]
-fn deserialize_structured_output_tolerates_fences_and_prose() {
-    // Clean JSON (native / output-tool path).
-    assert_eq!(
-        deserialize_structured_output::<TypedAnswer>(r#"{"value":"x"}"#).unwrap(),
-        TypedAnswer { value: "x".into() }
-    );
-    // Markdown-fenced JSON (weak Prompted-mode models).
-    assert_eq!(
-        deserialize_structured_output::<TypedAnswer>("```json\n{\"value\":\"y\"}\n```").unwrap(),
-        TypedAnswer { value: "y".into() }
-    );
-    // Prose around the JSON object.
-    assert_eq!(
-        deserialize_structured_output::<TypedAnswer>(
-            "Here you go: {\"value\":\"z\"} — hope that helps!"
-        )
-        .unwrap(),
-        TypedAnswer { value: "z".into() }
-    );
-    // No JSON at all still errors.
-    assert!(deserialize_structured_output::<TypedAnswer>("no json here").is_err());
 }
 
 #[derive(Clone)]

@@ -15,6 +15,7 @@ use schemars::{JsonSchema, schema_for};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
+use rig_core::structured_output;
 use rig_core::wasm_compat::{WasmBoxedFuture, WasmCompatSend};
 use tracing_futures::Instrument;
 
@@ -213,7 +214,7 @@ fn recover_output<T: DeserializeOwned>(
             if output.is_empty() {
                 return Err(StructuredOutputError::EmptyResponse);
             }
-            deserialize_structured_output(&output)
+            structured_output::json_in_text(&output)
                 .map_err(|error| deserialization_error(&output, error))
         }
         OutputSource::OutputTool => {
@@ -246,26 +247,6 @@ fn deserialization_error(output: &str, error: serde_json::Error) -> StructuredOu
     StructuredOutputError::Deserialization {
         output: output.to_string(),
         error,
-    }
-}
-
-/// Deserialize final text directly, then try one value starting at the first
-/// object or array delimiter. Returns a parse error if neither attempt yields `T`.
-pub(crate) fn deserialize_structured_output<T: DeserializeOwned>(
-    text: &str,
-) -> Result<T, serde_json::Error> {
-    let trimmed = text.trim();
-    match serde_json::from_str::<T>(trimmed) {
-        Ok(value) => Ok(value),
-        Err(direct_err) => {
-            let Some(start) = trimmed.find(['{', '[']) else {
-                return Err(direct_err);
-            };
-            serde_json::Deserializer::from_str(&trimmed[start..])
-                .into_iter::<T>()
-                .next()
-                .unwrap_or(Err(direct_err))
-        }
     }
 }
 
