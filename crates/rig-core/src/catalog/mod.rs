@@ -143,8 +143,8 @@ impl Catalog {
     /// When the models.dev data behind [`Self::builtin`] was read. Lay a
     /// fetched copy on only when it is newer, so an old cache never hides
     /// what this rig shipped. `cargo xtask catalog sync` writes the time
-    /// as RFC 3339 UTC; a file in another form reads as the Unix epoch, so
-    /// any fetched copy is newer.
+    /// as RFC 3339 UTC; a file that does not parse reads as the Unix epoch,
+    /// so any fetched copy is newer.
     pub fn generated_at() -> SystemTime {
         crate::error::rfc3339(include_str!("generated_at").trim_ascii_end())
             .and_then(|nanos| u64::try_from(nanos).ok())

@@ -52,8 +52,8 @@ pub(crate) const USAGE: &str = "\
 /// The generated catalog, relative to the workspace root.
 const OUTPUT: &str = "crates/rig-core/src/catalog/models.json";
 /// When the models.dev data behind [`OUTPUT`] was read, relative to the
-/// workspace root: one RFC 3339 UTC time, which rig-core reads at compile
-/// time as `Catalog::generated_at`.
+/// workspace root: one RFC 3339 UTC time, which rig-core reads as
+/// `Catalog::generated_at`.
 const GENERATED_AT: &str = "crates/rig-core/src/catalog/generated_at";
 /// The reviewed facts, relative to the workspace root.
 const REVIEW: &str = "xtask/src/catalog/review.json";

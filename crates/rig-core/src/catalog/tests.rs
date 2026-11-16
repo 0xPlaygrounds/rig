@@ -1233,8 +1233,8 @@ fn check_refuses_what_the_catalog_refuses_and_the_rest_is_the_wires() {
     );
 }
 
-/// The sync's time reads as a time in 2026 or later, so a file in
-/// another form, which reads as the Unix epoch, fails here.
+/// The sync's time reads as a time in 2026 or later, so a file that does
+/// not parse, which reads as the Unix epoch, fails here.
 #[test]
 fn the_generation_time_is_an_rfc_3339_utc_time() {
     let generated = Catalog::generated_at();

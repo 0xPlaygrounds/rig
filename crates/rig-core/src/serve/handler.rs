@@ -601,10 +601,10 @@ impl Dispatch {
     /// driver installs it after [`begin`](super::Recorder::begin): its
     /// outcome, stream, origin and layer decisions, and the tool output its
     /// handler publishes into a [`PublishedContext`](crate::tool::PublishedContext)
-    /// scope. Add the scopes first. A handler that serves the dispatch
-    /// through an inner one, passing it on, is recorded once it answered,
-    /// with what it published by then; a [`Layer`](super::Layer) hands the
-    /// recorder to the handler it wraps.
+    /// scope, whatever a layer's verdict. Add the scopes first. A handler
+    /// that serves the dispatch through an inner one, passing it on, is
+    /// recorded once it answered, with what it published by then; a
+    /// [`Layer`](super::Layer) hands the recorder to the handler it wraps.
     pub fn recorded_by(mut self, recorder: Arc<dyn super::Recorder + Send + Sync>) -> Self {
         let published = self.scope::<crate::tool::PublishedContext>();
         self.observer = Some(Arc::new(Mutex::new(Some(Observed {
