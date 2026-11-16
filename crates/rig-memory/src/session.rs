@@ -147,11 +147,7 @@ fn read_lines(
     let Some((_, _, first)) = lines.iter().next() else {
         return Ok(None);
     };
-    let refuse = |line, why| SessionError::Record {
-        log: name.to_owned(),
-        line,
-        why,
-    };
+    let refuse = |line, why| SessionError::record(name, line, why);
     let (started, header) = read_header(name, first)?;
     let mut last = started;
     for (line, _, bytes) in lines.iter().skip(1) {
@@ -195,11 +191,8 @@ pub(crate) fn read_header(name: &str, first: &[u8]) -> Result<(Stamp, Header), S
         return Err(SessionError::Format { log, found });
     }
     if !header.lineage.is_log() {
-        return Err(SessionError::Record {
-            log: name.to_owned(),
-            line: 1,
-            why: "a header without the log's lineage".to_owned(),
-        });
+        let why = "a header without the log's lineage".to_owned();
+        return Err(SessionError::record(name, 1, why));
     }
     Ok((started, header))
 }
@@ -329,11 +322,7 @@ fn tally(name: &str, lines: &LogLines) -> Result<Option<Folded>, SessionError> {
     let (mut last, mut changes) = (started, 0);
     let (mut state, mut retired) = (BTreeMap::new(), false);
     for (line, _, bytes) in lines.iter().skip(1) {
-        let refuse = |why| SessionError::Record {
-            log: name.to_owned(),
-            line,
-            why,
-        };
+        let refuse = |why| SessionError::record(name, line, why);
         let (stamp, change) = stamp_of(bytes).map_err(refuse)?;
         if !change && let (_, Body::Meta(meta)) = parse(bytes).map_err(refuse)? {
             note_meta(meta, &mut state, &mut retired);

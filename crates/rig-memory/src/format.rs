@@ -96,6 +96,14 @@ pub enum SessionError {
     },
 }
 
+impl SessionError {
+    /// Line `line` of the log `log` cannot be read, for `why`.
+    pub(crate) fn record(log: &str, line: usize, why: String) -> Self {
+        let log = log.to_owned();
+        Self::Record { log, line, why }
+    }
+}
+
 impl From<SessionError> for io::Error {
     /// The store's own error back; any other as
     /// [`io::ErrorKind::InvalidData`], so `?` works in code that returns

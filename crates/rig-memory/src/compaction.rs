@@ -14,7 +14,7 @@
 
 use std::borrow::{Borrow, Cow};
 use std::collections::{BTreeMap, BTreeSet};
-use std::fmt::{self, Write as _};
+use std::fmt::Write as _;
 use std::sync::Arc;
 
 use rig_core::catalog::ModelSpec;
@@ -713,10 +713,9 @@ pub fn undo_summary(
         .ok_or(UndoError::NotInLog)?;
     let restored = conversation.restore(at..=at, originals, by).restored;
     conversation.remove_aside(aside);
-    let state = Compacted::of(conversation).last().map(|(_, it)| it.state);
     Ok(Uncompacted {
         restored,
-        state: state.unwrap_or_default(),
+        state: summary_state(conversation),
     })
 }
 
@@ -1023,31 +1022,22 @@ fn within(tokens: u64) -> String {
 }
 
 /// Why a summary cannot be used.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
 pub enum SummaryError {
     /// The summary hit the model's output limit, so it is incomplete.
+    #[error("the summary hit the model's output limit")]
     Truncated,
     /// The model called a tool instead of summarizing.
+    #[error("the model called a tool instead of summarizing")]
     CalledTool,
     /// The model returned no text.
+    #[error("the model returned no summary")]
     Empty,
     /// The reply failed or was filtered, for this reason.
+    #[error("{0}")]
     Failed(String),
 }
-
-impl fmt::Display for SummaryError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::Truncated => "the summary hit the model's output limit",
-            Self::CalledTool => "the model called a tool instead of summarizing",
-            Self::Empty => "the model returned no summary",
-            Self::Failed(why) => why,
-        })
-    }
-}
-
-impl std::error::Error for SummaryError {}
 
 /// Whether `spec` knows what bounds its output: its output limit or its
 /// window. A request to a model that knows neither is sent no output limit,

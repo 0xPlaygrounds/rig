@@ -41,11 +41,7 @@ pub(crate) fn turn_cut(
         return Ok(0);
     };
     read_header(name, first)?;
-    let refuse = |line, why| SessionError::Record {
-        log: name.to_owned(),
-        line,
-        why,
-    };
+    let refuse = |line, why| SessionError::record(name, line, why);
     let mut conversation = Conversation::new();
     let mut held = false;
     for (line, end, bytes) in records {
