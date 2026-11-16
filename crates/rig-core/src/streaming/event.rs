@@ -25,6 +25,8 @@
 //! # Ok::<(), rig_core::streaming::SequenceError>(())
 //! ```
 
+use std::collections::btree_map::Entry;
+
 use serde::{Deserialize, Serialize};
 
 use crate::message::{AssistantContent, ToolName};
@@ -262,7 +264,7 @@ pub enum SequenceError {
     Shape(String),
     /// An event names a part that has not started, or a start reuses a
     /// position.
-    #[error("item {0} names a part that has not started")]
+    #[error("item {0} names a part that has not started, or starts one twice")]
     UnknownPart(usize),
     /// A part ended twice, or grew after its end.
     #[error("item {0} touches a part that already ended")]
@@ -304,9 +306,10 @@ impl StreamRecord {
                     if (*kind == PartKind::ToolCall) != name.is_some() {
                         return Err(SequenceError::WrongKind(position));
                     }
-                    if self.parts.insert(index, (*kind, false)).is_some() {
+                    let Entry::Vacant(part) = self.parts.entry(index) else {
                         return Err(SequenceError::UnknownPart(position));
-                    }
+                    };
+                    part.insert((*kind, false));
                     None
                 }
                 StreamEvent::Text { .. } => Some(PartKind::Text),
