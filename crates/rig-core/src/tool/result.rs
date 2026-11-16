@@ -517,12 +517,13 @@ impl ToolResult {
         matches!(&self.disposition, ToolDisposition::Error(_))
     }
 
-    /// Whether the framework skipped execution before the tool body ran.
+    /// Whether the framework skipped execution before the tool body ran. A
+    /// policy denial (an `ErrorKind::Denied` report) is a refusal, not a skip.
     pub fn is_skipped(&self) -> bool {
         matches!(&self.disposition, ToolDisposition::Skipped(_))
     }
 
-    /// Whether a tool refused execution.
+    /// Whether the tool, or a policy that denied the call, refused execution.
     pub fn is_refused(&self) -> bool {
         matches!(&self.disposition, ToolDisposition::Refused(_))
     }

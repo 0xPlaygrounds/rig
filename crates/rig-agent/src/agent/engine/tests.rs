@@ -942,8 +942,8 @@ mod structured_tool_results {
 
     // A *tool-authored* refusal surfaces as a `Denied`
     // outcome — distinct from a hook `DispatchAction::skip`, which is `Skipped`. This
-    // pins the documented `Skipped` vs `Denied` split: `Denied` comes only
-    // from the tool, never from a hook skip.
+    // pins the documented `Skipped` vs `Denied` split: `Denied` comes from the
+    // tool or a `Denied` report, never from a hook skip.
     #[tokio::test]
     async fn tool_authored_denial_produces_denied_outcome() {
         let hook = OutcomeHook::default();

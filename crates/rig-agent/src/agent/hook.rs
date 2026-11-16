@@ -583,8 +583,9 @@ pub enum DispatchAction {
     Patch(EffectKind),
     /// Do not dispatch: the effect resolves failed with this report and
     /// never reaches a handler. For a tool call a report of kind
-    /// `Cancelled` cancels the run; any other kind becomes the skipped
-    /// result the model sees. For a completion any report fails the turn.
+    /// `Cancelled` cancels the run, one of kind `Denied` becomes a refused
+    /// result and any other kind the skipped result the model sees. For a
+    /// completion any report fails the turn.
     Deny(ErrorReport),
 }
 
