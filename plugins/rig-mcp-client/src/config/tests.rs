@@ -325,3 +325,15 @@ fn a_new_mcp_json_is_private() {
     fs::remove_dir_all(dir).ok();
     assert_eq!(mode.ok(), Some(0o600));
 }
+
+/// A default with paired braces is whole: with the variable set, none of
+/// it is left behind.
+#[test]
+fn a_default_with_braces_is_whole() {
+    let path = std::env::var("PATH").unwrap_or_default();
+    assert_eq!(expand(r#"${PATH:-{"a":{"b":1}}}"#, "env.K"), Ok(path));
+    assert_eq!(
+        expand(r#"${RIG_TEST_UNSET_B59:-{"a":1}}!"#, "env.K"),
+        Ok(r#"{"a":1}!"#.to_owned())
+    );
+}

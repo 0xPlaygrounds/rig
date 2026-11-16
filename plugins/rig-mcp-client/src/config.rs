@@ -209,7 +209,9 @@ fn refuse_fields(fields: &[(&str, bool)], whose: &str) -> Result<(), String> {
 
 /// `text` with each `${VAR}` replaced by the variable, and each
 /// `${VAR:-default}` by the variable unless it is unset or empty, else
-/// by `default`. Errors name `field`; a secret variable
+/// by `default`, as written. A `${` ends at the `}` that pairs with it, so
+/// a default may hold paired braces, such as `{"a":1}`; text after that `}`
+/// is kept as it is. Errors name `field`; a secret variable
 /// ([`SECRET_PREFIX`], in any case, as Windows reads names) is refused,
 /// set or not.
 fn expand(text: &str, field: &str) -> Result<String, String> {
@@ -218,7 +220,19 @@ fn expand(text: &str, field: &str) -> Result<String, String> {
     while let Some(start) = rest.find("${") {
         out.push_str(rest.get(..start).unwrap_or_default());
         let after = rest.get(start + 2..).unwrap_or_default();
-        let Some(end) = after.find('}') else {
+        let mut depth = 0_usize;
+        let end = after.bytes().position(|byte| match byte {
+            b'{' => {
+                depth += 1;
+                false
+            }
+            b'}' if depth > 0 => {
+                depth -= 1;
+                false
+            }
+            byte => byte == b'}',
+        });
+        let Some(end) = end else {
             return Err(format!("`{field}`: a `${{` is not closed"));
         };
         let inner = after.get(..end).unwrap_or_default();
