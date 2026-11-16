@@ -965,6 +965,44 @@ mod structured_tool_results {
         );
     }
 
+    // A hook's denial with a `Denied` report is a refusal the model sees as
+    // the tool's, as the kernel answers one: not a skip.
+    #[tokio::test]
+    async fn hook_denial_produces_denied_outcome() {
+        struct DenyHook;
+        impl AgentHook for DenyHook {
+            async fn on_dispatch(
+                &self,
+                _ctx: &HookContext,
+                event: DispatchEvent<'_>,
+            ) -> DispatchAction {
+                if event.tool_name().is_some() {
+                    DispatchAction::deny(rig_core::error::ErrorReport::new(
+                        rig_core::error::ErrorKind::Denied,
+                        "not allowed",
+                    ))
+                } else {
+                    DispatchAction::proceed()
+                }
+            }
+        }
+
+        let observer = OutcomeHook::default();
+        AgentBuilder::new(model_one_tool_then_text("add"))
+            .tool(MockAddTool)
+            .add_hook(DenyHook)
+            .add_hook(observer.clone())
+            .build()
+            .prompt("go")
+            .max_turns(3)
+            .run()
+            .await
+            .expect("a denial is not fatal");
+
+        assert_eq!(observer.outcomes(), vec!["denied".to_string()]);
+        assert_eq!(observer.results(), vec!["not allowed".to_string()]);
+    }
+
     #[tokio::test]
     async fn permission_denied_failure_is_not_a_tool_refusal() {
         let hook = OutcomeHook::default();
@@ -1521,6 +1559,55 @@ mod span_safety_net {
                 OutcomeAction::proceed()
             }
         }
+    }
+
+    /// A layer's denial on a tool's key is a refusal, as the kernel answers
+    /// one: the tool span records the `denied` outcome, not `skipped`.
+    #[tokio::test]
+    async fn layer_denial_is_a_denied_outcome() {
+        struct DenyLayer;
+        impl rig_core::serve::Intercept for DenyLayer {
+            fn name(&self) -> String {
+                "DenyLayer".to_owned()
+            }
+            async fn before(
+                &self,
+                _id: rig_core::effect::EffectId,
+                _kind: &rig_core::effect::EffectKind,
+            ) -> rig_core::serve::BeforeServe {
+                rig_core::serve::BeforeServe::deny("not allowed")
+            }
+        }
+
+        let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+        let capture = TraceCapture::default();
+        let _default = tracing::subscriber::set_default(capture.subscriber());
+        warm_blocking_callsites().await;
+        tracing::callsite::rebuild_interest_cache();
+        capture.clear();
+
+        let adder = rig_core::serve::ErasedHandler::new(
+            rig_core::serve::adapters::ToolAdapter::new(MockAddTool),
+        )
+        .layered(DenyLayer);
+        let server = crate::tool::server::ToolServer::new()
+            .registered_tool(
+                crate::tool::RegisteredTool::from_handler(adder).expect("a tool handler"),
+            )
+            .run();
+        AgentBuilder::new(tool_then_text_model())
+            .tool_server_handle(server)
+            .build()
+            .prompt("go")
+            .max_turns(3)
+            .run()
+            .await
+            .expect("a denial is not fatal");
+
+        assert_eq!(
+            capture.values_of("gen_ai.tool.call.outcome"),
+            vec![Value::from("denied")]
+        );
     }
 
     /// A `ToolResult` rewrite applies to both model presentation and
