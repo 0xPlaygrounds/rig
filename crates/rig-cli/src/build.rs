@@ -415,27 +415,12 @@ impl BuildLog {
     fn pass_on(&mut self, child: &mut Child) {
         // A wait of an earlier command is over.
         self.blocked_since = None;
-        let Some(mut stderr) = child.stderr.take() else {
+        let Some(stderr) = child.stderr.take() else {
             return;
         };
         // Read on a thread, so a wait for cargo's lock is announced once it
         // passes its time even while cargo prints nothing.
-        let (sender, chunks) = mpsc::channel();
-        // A thread that cannot start drops the pipe, which fails the build.
-        let reading = std::thread::Builder::new();
-        reading
-            .spawn(move || {
-                let mut buffer = [0_u8; 8192];
-                while let Ok(read @ 1..) = stderr.read(&mut buffer) {
-                    if sender
-                        .send(buffer.get(..read).unwrap_or_default().to_vec())
-                        .is_err()
-                    {
-                        return;
-                    }
-                }
-            })
-            .ok();
+        let chunks = chunks(stderr);
         let mut segment: Vec<u8> = Vec::new();
         loop {
             let chunk = match self.blocked_since {
@@ -699,6 +684,23 @@ fn describe(launch: &Launch, binary: &Path, settings: Option<&Path>) -> Result<S
     result
 }
 
+/// What `pipe` gives, in chunks read on a thread of its own until it ends
+/// or the receiver is gone. A thread that cannot start drops the pipe, so
+/// the child's writes to it fail and the receiver ends at once.
+fn chunks(mut pipe: impl Read + Send + 'static) -> mpsc::Receiver<Vec<u8>> {
+    let (sender, chunks) = mpsc::channel();
+    let reading = std::thread::Builder::new().spawn(move || {
+        let mut buffer = [0_u8; 8192];
+        while let Ok(read @ 1..) = pipe.read(&mut buffer)
+            && sender
+                .send(buffer.get(..read).unwrap_or_default().to_vec())
+                .is_ok()
+        {}
+    });
+    reading.ok();
+    chunks
+}
+
 /// Runs a describing build as a [`Build`] and waits for it, at most
 /// `timeout`, and returns its `report`, or what it said on stderr when it
 /// failed. Its group is killed once it exits or the time is up, so nothing
@@ -707,17 +709,7 @@ fn wait_described(mut command: Command, report: &Path, timeout: Duration) -> Res
     command.stderr(Stdio::piped());
     let mut build = Build::spawn(command)?;
     let child = &mut build.0;
-    let (send, said) = mpsc::channel();
-    if let Some(mut errors) = child.stderr.take() {
-        std::thread::spawn(move || {
-            let mut chunk = [0; 4096];
-            while let Ok(read @ 1..) = errors.read(&mut chunk)
-                && send
-                    .send(chunk.get(..read).unwrap_or_default().to_vec())
-                    .is_ok()
-            {}
-        });
-    }
+    let said = child.stderr.take().map(chunks);
     let deadline = Instant::now() + timeout;
     let status = loop {
         if let Some(status) = child.try_wait()? {
@@ -744,7 +736,7 @@ fn wait_described(mut command: Command, report: &Path, timeout: Duration) -> Res
     }
     let mut errors = Vec::new();
     while let Some(left) = deadline.checked_duration_since(Instant::now())
-        && let Ok(chunk) = said.recv_timeout(left)
+        && let Some(Ok(chunk)) = said.as_ref().map(|said| said.recv_timeout(left))
     {
         errors.extend(chunk);
     }
