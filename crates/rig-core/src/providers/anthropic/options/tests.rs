@@ -46,6 +46,18 @@ fn thinking_respects_the_callers_output_cap() {
     }
 }
 
+/// A request naming a model the dialect has no default for sends the wire's
+/// default `max_tokens`, so a thinking budget is checked against that cap.
+#[test]
+fn a_budget_is_checked_against_the_cap_the_body_sends() {
+    let mut wire = wire(CLAUDE_HAIKU_4_5);
+    wire.default_max_tokens = Some(2048);
+    let request = CompletionRequest::new("Answer the question")
+        .model("custom-model")
+        .options(GenerationOptions::default().reasoning(Reasoning::Budget { tokens: 4096 }));
+    assert_eq!(refused(sent(&wire, request, Mode::Unary)), "reasoning");
+}
+
 #[test]
 fn raw_fast_mode_and_context_management_are_opt_in() {
     for mode in [Mode::Unary, Mode::Streaming] {

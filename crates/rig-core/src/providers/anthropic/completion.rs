@@ -24,7 +24,7 @@ use std::sync::Arc;
 use super::wire::Messages;
 use crate::catalog::{ModelFacts, ModelSpec};
 use crate::completion::options::{BaseInput, FinalBody, RawAt, Rewrite, request_params};
-use crate::completion::{self, CompletionRequest, Replay};
+use crate::completion::{self, CompletionRequest, Replay, ReplayTarget};
 use crate::error::EncodeError;
 use crate::json_utils::Lenient;
 use crate::json_utils::remove_preserving_order;
@@ -151,9 +151,7 @@ pub(super) fn drops_unbound_thinking(
     thinking: Option<&Value>,
 ) -> bool {
     let adaptive = thinking.is_none_or(|thinking| thinking.str("type") == Some("adaptive"));
-    wire.provider.dialect.name == super::ANTHROPIC.name
-        && binds_context(&wire.facts, model)
-        && adaptive
+    wire.binds_context(model) && adaptive
 }
 
 /// `body`'s `thinking` with `drop_block` set: the caller's adaptive
@@ -190,20 +188,11 @@ pub(super) fn body(
     mode: Mode,
 ) -> Result<FinalBody, EncodeError> {
     let model = request.model.clone().unwrap_or_else(|| wire.model.clone());
-    // A request that addresses another model gets that model's default; the
-    // wire's own model keeps the one it was built with.
-    let max_tokens = match request.max_tokens {
-        Some(tokens) => Some(tokens),
-        None if model == wire.model => wire.default_max_tokens,
-        None => wire
-            .provider
-            .dialect
-            .default_max_tokens(&wire.facts, &model)
-            .or(wire.default_max_tokens),
-    }
-    .ok_or_else(|| EncodeError::request("`max_tokens` must be set for Anthropic"))?;
+    let max_tokens = wire
+        .max_tokens(request, &model)
+        .ok_or_else(|| EncodeError::request("`max_tokens` must be set for Anthropic"))?;
     let mut rewrites = Vec::new();
-    if wire.provider.dialect.name == super::ANTHROPIC.name && binds_context(&wire.facts, &model) {
+    if wire.binds_context(&model) {
         rewrites.push(Rewrite::DropUnboundThinking);
     }
     if wire.provider.addressing == super::wire::Addressing::Url {

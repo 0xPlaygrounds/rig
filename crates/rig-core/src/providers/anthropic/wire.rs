@@ -546,6 +546,18 @@ impl Messages {
         self
     }
 
+    /// The `max_tokens` a request to `model` sends: its own, else the
+    /// dialect's default for another model than the wire's, else the wire's.
+    pub(super) fn max_tokens(&self, request: &CompletionRequest, model: &str) -> Option<u64> {
+        let other_model = (model != self.model).then_some(model);
+        request
+            .max_tokens
+            .or_else(|| {
+                other_model.and_then(|m| self.provider.dialect.default_max_tokens(&self.facts, m))
+            })
+            .or(self.default_max_tokens)
+    }
+
     /// Enable cache breakpoints on the system prompt, final tool, and final message block.
     /// With a request [`cache`](crate::completion::GenerationOptions::cache), the
     /// provider owns the moving message breakpoint and the markers take its TTL.
