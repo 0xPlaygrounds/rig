@@ -63,13 +63,11 @@ fn every_encode_error_constructor_classifies_as_request_building() {
         .body(())
         .expect_err("bad uri");
     let boxed: BoxError = Box::new(std::io::Error::other("io"));
-    let message = crate::message::MessageError::ConversionError("nope".into());
     let cases: Vec<(&str, EncodeError)> = vec![
         ("request", EncodeError::request("no endpoint")),
         ("from json", json.into()),
         ("from http", http.into()),
         ("from boxed", boxed.into()),
-        ("from message", message.into()),
         (
             "unsupported option",
             EncodeError::unsupported(crate::completion::UnsupportedOption::new(

@@ -664,12 +664,6 @@ impl From<serde_json::Error> for EncodeError {
     }
 }
 
-impl From<crate::message::MessageError> for EncodeError {
-    fn from(error: crate::message::MessageError) -> Self {
-        Self::request(error)
-    }
-}
-
 impl From<BoxError> for EncodeError {
     fn from(error: BoxError) -> Self {
         Self(ProviderError::from(error))
