@@ -32,3 +32,12 @@ async fn end_of_input_before_a_prompt_ends_the_chat() {
     assert!(result.is_ok(), "{result:?}");
     assert_eq!(model.request_count(), 0);
 }
+
+/// `ChatBot::run`'s future can be spawned on a multi-threaded runtime.
+#[cfg(not(target_family = "wasm"))]
+#[test]
+fn run_is_send() {
+    fn assert_send<T: Send>(_: T) {}
+    let agent = AgentBuilder::new(MockCompletionModel::text("unused")).build();
+    assert_send(ChatBot::new(agent).run());
+}
