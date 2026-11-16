@@ -1099,7 +1099,7 @@ impl Summarizer {
             }
         };
         let conversation = self.serialize(older);
-        let budget = budget.saturating_sub(previous.len()).max(least);
+        let budget = budget.saturating_sub(previous.chars().count()).max(least);
         let conversation = keep_end(&conversation, budget);
         let mut record = format!("<conversation>\n{conversation}\n</conversation>");
         let mut asked = format!("{}\n\n{}", self.prompts.system, self.prompts.initial);
@@ -1269,15 +1269,16 @@ fn chars(tokens: u64) -> usize {
     usize::try_from(tokens.saturating_mul(3)).unwrap_or(usize::MAX)
 }
 
-/// The last `budget` bytes of `text`, cut at a character, with a note when
-/// the start is left out.
+/// The last `budget` characters of `text`, with a note when the start is
+/// left out.
 fn keep_end(text: &str, budget: usize) -> String {
-    if text.len() <= budget {
+    let left_out = text.chars().count().saturating_sub(budget);
+    if left_out == 0 {
         return text.to_owned();
     }
-    let start = text.ceil_char_boundary(text.len() - budget);
+    let start = (text.char_indices().nth(left_out)).map_or(text.len(), |(start, _)| start);
     let rest = text.get(start..).unwrap_or_default();
-    format!("[… {start} earlier characters left out]\n{rest}")
+    format!("[… {left_out} earlier characters left out]\n{rest}")
 }
 
 /// `text` cut to `chars` characters, saying how much was cut.
@@ -1286,7 +1287,7 @@ fn snippet(text: &str, chars: usize) -> String {
         Some((end, _)) => format!(
             "{}\n[… {} more characters]",
             text.get(..end).unwrap_or_default(),
-            text.len() - end
+            text.get(end..).unwrap_or_default().chars().count()
         ),
         None => text.to_owned(),
     }
