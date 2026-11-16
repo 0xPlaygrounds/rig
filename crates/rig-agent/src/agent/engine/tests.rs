@@ -5659,11 +5659,7 @@ async fn resume_of_a_part_answered_batch_runs_only_the_unanswered_call() {
     };
     let host =
         rig_core::tool::ToolResult::success(rig_core::tool::ToolOutput::text("from the host"));
-    let host_result = rig_core::tool::feedback::tool_result_output(
-        first.id().clone(),
-        first.name().clone(),
-        &host,
-    );
+    let host_result = UserContent::ToolResult(first.tool_call().answer(&host));
     run.answer(first.answer(host))
         .expect("the host answers tc1");
 
