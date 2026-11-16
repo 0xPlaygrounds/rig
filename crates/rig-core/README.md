@@ -38,6 +38,11 @@ The `reqwest` feature gives provider clients a default HTTP transport, so
 `OpenAI::from_env()` needs no client of yours. Without it, pass a transport
 with `OpenAIConfig::from_env()?.connect(http)`.
 
+For Sign in with ChatGPT inference, use
+`rig_core::providers::chatgpt::siwc::from_env()` with `CHATGPT_SIWC_ACCESS_TOKEN`.
+Your application must obtain and refresh the token through
+[OpenAI's sign-in flow](https://developers.openai.com/siwc/token-sharing-open-source/sign-in).
+
 `rig-core` no longer forces serde_json's `preserve_order` or
 `float_roundtrip` features. Without them, JSON object keys sort by name,
 including schema properties and JSON text embedded in prompts, embeddings

@@ -173,6 +173,9 @@ pub enum Rewrite {
     /// For rig's own crates; not covered by semver.
     #[doc(hidden)]
     CodexStore,
+    /// Official ChatGPT plan request constraints, applied after all caller options.
+    #[doc(hidden)]
+    Siwc,
     /// The Chat Completions dialect's own rewrite.
     ///
     /// For rig's own crates; not covered by semver.
@@ -937,6 +940,7 @@ fn apply(
         Rewrite::CodexStore => {
             body.insert("store".to_owned(), Value::Bool(false));
         }
+        Rewrite::Siwc => crate::providers::chatgpt::siwc::rewrite(body)?,
         Rewrite::ChatDialect(kind) => {
             crate::providers::openai::wire::chat::rewrite_body(*kind, body)?;
         }
