@@ -21,7 +21,7 @@ use crate::{
     completion::UnsupportedOption,
     effect::{Answered, EffectId, EffectKind, HandlerDescriptor, HandlerKey},
     error::{ErrorKind, ErrorReport},
-    streaming::{Item, Relayed, StreamEvent, StreamEvents},
+    streaming::{Relayed, StreamEvents},
     tool::Touches,
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
@@ -371,52 +371,6 @@ impl Serve for ErasedHandler {
     }
 }
 
-/// What an observer of one dispatch sees: its outcome and each streamed item.
-pub trait Observe: Send + Sync {
-    /// The completed handler response, or the fold of a streaming handler's
-    /// events. A resolved response retains content that has no stream block,
-    /// such as images emitted as unknown events.
-    fn outcome(&mut self, outcome: Result<Answered, ErrorReport>);
-    /// Whether streamed items are wanted verbatim, with the origin and
-    /// error items, beside each [`Self::event`].
-    fn keep_events(&self) -> bool;
-    /// One item pulled from the original handler stream, kept or not. This
-    /// is recording evidence, not acknowledgement that a consumer received
-    /// the item.
-    fn event(&mut self, item: &Item<StreamEvent>);
-    /// An error item in a kept stream.
-    fn stream_error(&mut self, _error: &ErrorReport) {}
-    /// Who a streamed reply is from, before its first item. Required, so a
-    /// recording observer cannot drop it: a replayed stream cut short needs
-    /// it to know its origin.
-    fn origin(&mut self, origin: &crate::message::Origin);
-    /// Observe one stream item together with its first folded outcome, if any.
-    /// Drivers that snapshot recording concurrently with cancellation can override
-    /// this operation to make the item and its answer one observation boundary.
-    fn stream_item(
-        &mut self,
-        item: &Result<Relayed, ErrorReport>,
-        outcome: Option<Result<Answered, ErrorReport>>,
-    ) {
-        match item {
-            Ok(Relayed::Item(item)) => self.event(item),
-            Ok(Relayed::Origin(origin)) if self.keep_events() => self.origin(origin),
-            Err(error) if self.keep_events() => self.stream_error(error),
-            _ => {}
-        }
-        if let Some(outcome) = outcome {
-            self.outcome(outcome);
-        }
-    }
-    /// The dispatch was decided before any handler served it, by the layer
-    /// named: the record it opened is forgotten.
-    fn discard(&mut self, layer: &str);
-    /// The layer named serves `kind` in place of the effect that began
-    /// (same family): the record's request is what the innermost handler
-    /// served.
-    fn patch(&mut self, kind: &EffectKind);
-}
-
 /// What a unary consumer, the record, or a layer's verdict takes from a
 /// stream: its outcome, the response the stream ends with or the first
 /// error item. The origin folded the response; the tap only watches for it.
@@ -643,47 +597,42 @@ impl Dispatch {
         self.scopes.clone()
     }
 
-    /// Observe the original handler answer independently of layer verdicts.
-    /// A handler that serves the dispatch through an inner one, passing it
-    /// on, is observed once it answered, with what it published by then;
-    /// a [`Layer`](super::Layer) hands the observer to the handler it wraps.
-    pub fn with_observer(mut self, observer: Box<dyn Observe>) -> Self {
-        self.observer = Some(Arc::new(Mutex::new(Some(Observed {
-            observer,
-            told: false,
-        }))));
-        self
-    }
-
     /// This dispatch observed by `recorder` under its id, as a recording
     /// driver installs it after [`begin`](super::Recorder::begin): its
     /// outcome, stream, origin and layer decisions, and the tool output its
     /// handler publishes into a [`PublishedContext`](crate::tool::PublishedContext)
-    /// scope. Add the scopes first.
-    pub fn recorded_by(self, recorder: Arc<dyn super::Recorder + Send + Sync>) -> Self {
-        let observer = super::recorder::RecordingObserver {
+    /// scope. Add the scopes first. A handler that serves the dispatch
+    /// through an inner one, passing it on, is recorded once it answered,
+    /// with what it published by then; a [`Layer`](super::Layer) hands the
+    /// recorder to the handler it wraps.
+    pub fn recorded_by(mut self, recorder: Arc<dyn super::Recorder + Send + Sync>) -> Self {
+        let published = self.scope::<crate::tool::PublishedContext>();
+        self.observer = Some(Arc::new(Mutex::new(Some(Observed {
             recorder,
             id: self.id,
-            published: self.scope::<crate::tool::PublishedContext>(),
+            published,
             streamed: false,
-        };
-        self.with_observer(Box::new(observer))
+            told: false,
+        }))));
+        self
     }
 
     pub(crate) fn patched(&mut self, kind: &EffectKind) {
         if let Some(slot) = &self.observer
             && let Some(seen) = lock(slot).as_mut()
         {
-            seen.observer.patch(kind);
+            seen.recorder.patch(seen.id, kind.clone());
         }
     }
 
-    pub(crate) fn discard(&mut self, layer: &str) {
+    /// A layer decided the dispatch before any handler saw it: the record
+    /// is dropped, since replay reruns the layers.
+    pub(crate) fn discard(&mut self) {
         if let Some(slot) = &self.observer
             && let Some(mut seen) = lock(slot).take()
         {
             seen.told = true;
-            seen.observer.discard(layer);
+            seen.recorder.discard(seen.id);
         }
     }
 
@@ -700,17 +649,30 @@ impl Dispatch {
     }
 }
 
+/// The recorder of one dispatch, told its outcome once.
 struct Observed {
-    observer: Box<dyn Observe>,
+    recorder: Arc<dyn super::Recorder + Send + Sync>,
+    id: EffectId,
+    published: Option<Arc<crate::tool::PublishedContext>>,
+    /// Whether an item streamed yet.
+    streamed: bool,
     told: bool,
 }
 
 impl Observed {
+    /// The outcome, after the tool output the handler published, if any.
     fn outcome(&mut self, outcome: Result<Answered, ErrorReport>) {
-        if !self.told {
-            self.told = true;
-            self.observer.outcome(outcome);
+        if std::mem::replace(&mut self.told, true) {
+            return;
         }
+        if let Some(output) = self
+            .published
+            .as_ref()
+            .and_then(|published| published.result_context())
+        {
+            self.recorder.tool_output(self.id, output);
+        }
+        self.recorder.resolve(self.id, outcome);
     }
 
     fn item(
@@ -718,9 +680,19 @@ impl Observed {
         item: &Result<Relayed, ErrorReport>,
         outcome: Option<Result<Answered, ErrorReport>>,
     ) {
-        let outcome = outcome.filter(|_| !self.told);
-        self.told |= outcome.is_some();
-        self.observer.stream_item(item, outcome);
+        let keep = self.recorder.keep_events();
+        match item {
+            // Past the first, an item matters only to a recorder that keeps them.
+            Ok(Relayed::Item(item)) if !std::mem::replace(&mut self.streamed, true) || keep => {
+                self.recorder.event(self.id, item);
+            }
+            Ok(Relayed::Origin(origin)) if keep => self.recorder.origin(self.id, origin),
+            Err(error) if keep => self.recorder.stream_error(self.id, error),
+            _ => {}
+        }
+        if let Some(outcome) = outcome {
+            self.outcome(outcome);
+        }
     }
 }
 

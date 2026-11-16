@@ -14,20 +14,20 @@ struct Seen {
 
 struct Observer(Arc<Mutex<Seen>>);
 
-impl Observe for Observer {
-    fn origin(&mut self, _origin: &crate::message::Origin) {}
-    fn outcome(&mut self, outcome: Result<Answered, ErrorReport>) {
-        self.0.lock().expect("seen").outcomes.push(outcome);
-    }
-
+impl crate::serve::Recorder for Observer {
+    fn handlers(&self, _: Vec<HandlerDescriptor>) {}
+    fn begin(&self, _: EffectId, _: HandlerKey, _: EffectKind, _: crate::serve::DispatchContext) {}
+    fn discard(&self, _: EffectId) {}
+    fn patch(&self, _: EffectId, _: EffectKind) {}
     fn keep_events(&self) -> bool {
         true
     }
-
-    fn event(&mut self, _: &Item<StreamEvent>) {}
-
-    fn discard(&mut self, _: &str) {}
-    fn patch(&mut self, _: &EffectKind) {}
+    fn event(&self, _: EffectId, _: &Item<StreamEvent>) {}
+    fn origin(&self, _: EffectId, _: &crate::message::Origin) {}
+    fn tool_output(&self, _: EffectId, _: crate::tool::ToolResultContext) {}
+    fn resolve(&self, _: EffectId, outcome: Result<Answered, ErrorReport>) {
+        self.0.lock().expect("seen").outcomes.push(outcome);
+    }
 }
 
 #[test]
@@ -245,7 +245,10 @@ fn an_observer_never_changes_what_the_consumer_receives() {
         for streaming in [true, false] {
             let seen = Arc::new(Mutex::new(Seen::default()));
             let observed = Observed {
-                observer: Box::new(Observer(seen.clone())),
+                recorder: Arc::new(Observer(seen.clone())),
+                id: EffectId::from_raw(0),
+                published: None,
+                streamed: false,
                 told: false,
             };
             if streaming {

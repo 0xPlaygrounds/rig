@@ -137,12 +137,11 @@ impl<I: Intercept> Serve for Layer<I> {
 
     async fn serve(&self, kind: EffectKind, mut dispatch: Dispatch) -> Reply {
         let id = dispatch.id();
-        let name = self.intercept.name();
         let kind = match self.intercept.before(id, &kind).await {
             BeforeServe::Proceed => kind,
             BeforeServe::Patch(patched) => {
                 if patched.family() != kind.family() {
-                    dispatch.discard(&name);
+                    dispatch.discard();
                     return Reply::Outcome(Err(self.internal(format!(
                         "patched a {} effect into a {} effect; a layer never changes the family",
                         kind.family(),
@@ -157,7 +156,7 @@ impl<I: Intercept> Serve for Layer<I> {
                 ) = (&kind, &patched)
                     && original != replacement
                 {
-                    dispatch.discard(&name);
+                    dispatch.discard();
                     return Reply::Outcome(Err(self.internal(format!(
                         "patched tool target `{original}` into `{replacement}`; a layer never changes the bound tool"
                     ))));
@@ -166,7 +165,7 @@ impl<I: Intercept> Serve for Layer<I> {
                 patched
             }
             BeforeServe::Deny(report) => {
-                dispatch.discard(&name);
+                dispatch.discard();
                 return Reply::Outcome(Err(report));
             }
         };
