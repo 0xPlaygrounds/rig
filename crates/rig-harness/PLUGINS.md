@@ -499,12 +499,11 @@ fn build(app: &mut App) {
 }
 
 fn draw_count(mut batch: ResMut<RenderBatch>) {
-    for (input, output) in batch.tools_mut("word_count") {
-        let call = input.view();
+    for (call, output) in batch.tools_mut("word_count") {
         let header = call.header("Count", call.argument("path").unwrap_or_default());
         let mut lines = vec![LookLine::from(header)];
         lines.extend(call.result_lines());
-        for child in call.children {
+        for child in &call.children {
             let indent = "  ".repeat(child.depth + 1);
             lines.push(Line::from(format!("{indent}↳ {} {:?}", child.name, child.state)).into());
         }
@@ -2326,14 +2325,14 @@ what it is, from the `Theme` resource (mixed from the terminal's background):
 a user message on `user`, a tool call and what a plugin added on `tool`, a
 reply on none; a look's line with a background of its own keeps it, as a
 diff's `added` and `removed` lines do
-(`rig_tui::diff::unified_lines(text, &theme)`, also `ToolCallView::theme`). A
+(`rig_tui::diff::unified_lines(text, &theme)`, also `ToolRender::theme`). A
 look's lines are `LookLine`s: a ratatui `Line`, or a line of code, which is
 laid out plain and colored in the terminal's palette when its rows are
 drawn, so a long history costs only the code on screen. A look draws code
 with `rig_tui::highlight::code_rows(code, Language::File(path))`, or a
 `Code::new(code, language)` and `code.line(index, prefix)` for each line
 after a prefix of its own, such as a line number
-(`ToolCallView::header_code` for a header's; `Language::Named("rust")` for a
+(`ToolRender::header_code` for a header's; `Language::Named("rust")` for a
 language by name). Lines drawn outside the transcript, such as markdown or
 a diff in a panel of a plugin's own, are drawn as `LookLine::colored()`
 gives them.
@@ -2356,7 +2355,7 @@ from an exclusive system or an exclusive command.
 
 A message's images, audio, videos and documents, the user's or the
 model's, are drawn by systems selecting `contents_mut(ContentKind::Image)`.
-The input's `view()` gives a `ContentView` (`default_lines()` is `[image]`),
+The input is a `ContentRender` (`default_lines()` is `[image]`),
 each block an item `TranscriptItem::Content(id, index)` with its rows.
 `RenderOutput::decorate(name, lines)` appends named lines after a call, an item
 `Decoration(call, name)`. `TuiFrame`, written in `TuiSystems::Render`,
@@ -2391,7 +2390,7 @@ fn draw_marks(mut batch: ResMut<RenderBatch>) {
         output.lines = lines.into_iter().map(LookLine::from).collect();
     }
     for (image, output) in batch.contents_mut(ContentKind::Image) {
-        let lines = [image.view().default_lines(), vec![Line::default(); 3]].concat();
+        let lines = [image.default_lines(), vec![Line::default(); 3]].concat();
         output.lines = lines.into_iter().map(LookLine::from).collect();
     }
 }

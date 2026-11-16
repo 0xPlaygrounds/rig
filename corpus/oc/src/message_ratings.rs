@@ -18,9 +18,9 @@ use rig_tui::crossterm::event::{KeyCode, KeyModifiers};
 use rig_tui::ratatui::style::{Style, Stylize};
 use rig_tui::ratatui::text::Line;
 use rig_tui::{
-    AppKeyBindingsExt, EntryView, InputAction, ItemRow, KeyBinding, KeyPress, KeyPressed, KeyScope,
-    MainPane, RenderBatch, RenderSystems, ScrollTo, ShowAgent, TranscriptItem, TranscriptRender,
-    TranscriptView, TuiPlugin, run_command,
+    AppKeyBindingsExt, EntryRender, InputAction, ItemRow, KeyBinding, KeyPress, KeyPressed,
+    KeyScope, MainPane, RenderBatch, RenderSystems, ScrollTo, ShowAgent, TranscriptItem,
+    TranscriptRender, TranscriptView, TuiPlugin, run_command,
 };
 use serde::{Deserialize, Serialize};
 
@@ -148,12 +148,12 @@ fn bind_keys(app: &mut App) {
 /// Draws the ratings' notes as markers.
 fn draw(mut batch: ResMut<RenderBatch>) {
     for (entry, output) in batch.entries_mut(AUTHOR) {
-        output.lines = marker(&entry.view()).into_iter().map(Into::into).collect();
+        output.lines = marker(entry).into_iter().map(Into::into).collect();
     }
 }
 
 /// The marker's look: the verdict and reason, then the model.
-fn marker(entry: &EntryView<'_>) -> Vec<Line<'static>> {
+fn marker(entry: &EntryRender) -> Vec<Line<'static>> {
     let style = if entry.title.starts_with("good") {
         Style::new().green()
     } else {

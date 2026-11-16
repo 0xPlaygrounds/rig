@@ -31,7 +31,7 @@ use super::panel::{
 };
 use super::pick::{Choices, InlineStrip, Item, Listing, PickerInput, Row, detail_column};
 use super::renderers::{
-    CallState, LookLine, Place, Renderers, ToolCallView, UNNAMED_HOLD, reasoning_lines, reply_lines,
+    CallState, LookLine, Place, Renderers, ToolRender, UNNAMED_HOLD, reasoning_lines, reply_lines,
 };
 use super::status::{AppStatus, StatusItems, StatusLine};
 use super::terminal::{CopyToClipboard, Tui, TuiTestScreen};
@@ -397,7 +397,7 @@ fn asides(conversation: &conversation::Conversation) -> Vec<ShownAside<'_>> {
 }
 
 /// An effect not settled yet, a tool or model call or any other, as
-/// [`TranscriptLayout`] reads it for [`ToolCallView::children`].
+/// [`TranscriptLayout`] reads it for [`ToolRender::children`].
 type LiveEffect = (
     Entity,
     &'static Effect,
@@ -786,11 +786,14 @@ pub(crate) fn lay_out_transcript(
                 .flat_map(|(_, partial)| &partial.calls);
             for (at, call) in streaming.map(PartialCall::shown).enumerate() {
                 sources.renderers.at(Place::Outside(at));
-                let mut view = ToolCallView::new(&call, None, CallState::Streaming);
-                view.theme = *sources.theme;
-                let start = extra.len();
                 let item = CallItem::Streaming(at);
-                let (drawn, decorated) = sources.renderers.call_decorated(&view, Some(item));
+                let call = ToolRender {
+                    theme: *sources.theme,
+                    item: Some(item),
+                    ..ToolRender::new(call, None, CallState::Streaming)
+                };
+                let start = extra.len();
+                let (drawn, decorated) = sources.renderers.call_decorated(call);
                 extra.extend(on_band(drawn, sources.theme.tool));
                 marks.push((TranscriptItem::Call(item), start..extra.len()));
                 for (name, rows) in decorated {

@@ -208,18 +208,19 @@ fn reset(
 #[cfg(feature = "tui")]
 fn draw(mut batch: ResMut<rig_tui::RenderBatch>) {
     for (call, output) in batch.tools_mut(TOOL) {
-        output.lines = render(&call.view());
+        output.lines = render(call);
     }
 }
 
 /// How the terminal view draws a `word_count` call: its file, then the
 /// words it counted, or its result while it has no count (a refusal).
 #[cfg(feature = "tui")]
-pub fn render(call: &rig_tui::ToolCallView<'_>) -> Vec<rig_tui::LookLine> {
+pub fn render(call: &rig_tui::ToolRender) -> Vec<rig_tui::LookLine> {
     let header = call.header("Count", call.argument("path").unwrap_or_default());
     let mut lines = vec![header.into()];
     let counted = call
         .facts
+        .as_ref()
         .and_then(|facts| facts.get::<Counted>().ok().flatten());
     match counted {
         Some(Counted { words }) => {

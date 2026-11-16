@@ -4,23 +4,18 @@ use rig_harness::rig_core::tool::{
     ContentHash, FileChange, FileRead, FilesChanged, FilesRead, Hunk, HunkLine, Lines, LinesShown,
     ToolContext, ToolResult, ToolResultContext,
 };
-use rig_tui::{CallState, LookLine, ToolCallView};
+use rig_tui::{CallState, LookLine, ToolRender};
 
 use super::{edit, read, shell, write};
 
 /// What `look` draws for a `tool` call with `args` that answered `output`.
-fn drawn(
-    look: fn(&ToolCallView<'_>) -> Vec<LookLine>,
-    tool: &str,
-    args: Value,
-    output: &str,
-) -> String {
+fn drawn(look: fn(&ToolRender) -> Vec<LookLine>, tool: &str, args: Value, output: &str) -> String {
     drawn_with(look, tool, args, output, None)
 }
 
 /// [`drawn`], for a call that published `facts`.
 fn drawn_with(
-    look: fn(&ToolCallView<'_>) -> Vec<LookLine>,
+    look: fn(&ToolRender) -> Vec<LookLine>,
     tool: &str,
     args: Value,
     output: &str,
@@ -31,8 +26,8 @@ fn drawn_with(
     };
     let call = ToolCall::from_wire("c1", ToolFunction::new(name, args));
     let result = call.answer(&ToolResult::success(output.to_owned().into()));
-    let mut view = ToolCallView::new(&call, Some(&result), CallState::Done);
-    view.facts = facts;
+    let mut view = ToolRender::new(call, Some(result), CallState::Done);
+    view.facts = facts.cloned();
     let lines: Vec<String> = look(&view).iter().map(ToString::to_string).collect();
     lines.join("\n")
 }
@@ -105,7 +100,7 @@ fn a_read_file_is_drawn_in_its_languages_colors() {
     let call = ToolCall::from_wire("c1", ToolFunction::new(name, json!({ "path": "a.rs" })));
     let output = "fn main() {}\n";
     let result = call.answer(&ToolResult::success(output.to_owned().into()));
-    let view = ToolCallView::new(&call, Some(&result), CallState::Done);
+    let view = ToolRender::new(call, Some(result), CallState::Done);
     let lines = read(&view);
     let code = lines
         .get(1)
@@ -185,7 +180,7 @@ fn a_stopped_call_draws_its_answer_not_its_proposal() {
     ] {
         let stopped = ToolResult::failed(ToolExecutionError::other(said.to_owned()));
         let result = call.answer(&stopped);
-        let view = ToolCallView::new(&call, Some(&result), CallState::Stopped);
+        let view = ToolRender::new(call.clone(), Some(result), CallState::Stopped);
         let lines: Vec<String> = write(&view).iter().map(ToString::to_string).collect();
         let drawn = lines.join("\n");
         assert!(drawn.contains("· stopped"), "{drawn}");

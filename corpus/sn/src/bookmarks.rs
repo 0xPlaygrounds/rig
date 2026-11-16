@@ -18,7 +18,7 @@ use rig_tui::ratatui::layout::Constraint;
 use rig_tui::ratatui::style::Style;
 use rig_tui::ratatui::text::Line;
 use rig_tui::{
-    AsideView, ItemRow, KeyBinding, KeyFocus, KeyPress, KeyPressed, KeyScope, MainPane, PaneKeys,
+    AsideRender, ItemRow, KeyBinding, KeyFocus, KeyPress, KeyPressed, KeyScope, MainPane, PaneKeys,
     Placement, RenderBatch, RenderSystems, ScrollTo, ShowAgent, TranscriptItem, TranscriptPane,
     TranscriptRender, TranscriptSource, TranscriptView, TuiPanel,
 };
@@ -78,13 +78,13 @@ struct HistoryPane;
 /// Draws the bookmarks' asides.
 fn draw(mut batch: ResMut<RenderBatch>) {
     for (aside, output) in batch.asides_mut(KIND) {
-        output.lines = marker(&aside.view()).into_iter().map(Into::into).collect();
+        output.lines = marker(aside).into_iter().map(Into::into).collect();
     }
 }
 
 /// The marker's look: a line naming the bookmark.
-fn marker(view: &AsideView<'_>) -> Vec<Line<'static>> {
-    let label = Bookmark::of(view.aside).map(|bookmark| bookmark.label);
+fn marker(view: &AsideRender) -> Vec<Line<'static>> {
+    let label = Bookmark::of(&view.aside).map(|bookmark| bookmark.label);
     let label = label.unwrap_or_default();
     vec![Line::styled(
         format!("◆ bookmark: {label}"),

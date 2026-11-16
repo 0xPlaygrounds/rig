@@ -3,7 +3,7 @@ use rig_core::message::{ToolCall, ToolFunction, ToolName};
 use rig_core::tool::{ExitStatus, ToolContext};
 use rig_harness::main_agent::ShownAgent;
 use rig_tui::{
-    KeyFocus, PaneKeys, RenderInput, RenderKey, RenderOutput, RenderRequest, ToolCallView,
+    KeyFocus, PaneKeys, RenderInput, RenderKey, RenderOutput, RenderRequest, ToolRender,
     TranscriptPane, TranscriptSource, TuiViewPlugin,
 };
 use serde_json::json;
@@ -78,22 +78,13 @@ fn shell(index: u32, count: usize, end: End) -> Option<RenderRequest> {
         context.insert_result(ExitStatus::Exited(code)).ok()?;
     }
     let facts = context.result_context();
-    let mut view = ToolCallView::new(&call, Some(&result), state.clone());
-    view.facts = Some(&facts);
-    let lines = view.default_lines();
     let input = ToolRender {
-        call: call.clone(),
-        result: Some(result),
-        state,
-        theme: Default::default(),
         facts: Some(facts),
-        took: None,
-        output: None,
-        children: Vec::new(),
         item: item(index),
+        ..ToolRender::new(call, Some(result), state)
     };
     let output = RenderOutput {
-        lines,
+        lines: input.default_lines(),
         decorations: Vec::new(),
     };
     Some(RenderRequest {

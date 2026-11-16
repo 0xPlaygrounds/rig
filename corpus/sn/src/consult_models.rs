@@ -10,7 +10,7 @@
 //! The consultants' requests are effects under the `consult` call, so the session's effect log
 //! keeps their work under it, and their model calls count toward the session's spending per model.
 //! With the default `tui` feature the call draws each consultant's model and tool calls nested
-//! under it ([`ToolCallView::children`](rig_tui::ToolCallView::children)), live and after a resume.
+//! under it ([`ToolRender::children`](rig_tui::ToolRender::children)), live and after a resume.
 //! Interrupting the asking agent, or the call ending any other way, retires every consultant still
 //! at work.
 //!

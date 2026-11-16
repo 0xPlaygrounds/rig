@@ -88,10 +88,9 @@ pub use pick::{ChoiceAction, ChoiceKeys, ChoiceSystems, InlineStrip, PickerInput
 pub use ratatui;
 pub use render::{TranscriptLayout, TuiFrame};
 pub use renderers::{
-    AsideRender, AsideView, CallState, ChildCall, ContentBlock, ContentKind, ContentRender,
-    ContentView, EntryRender, EntryView, LookLine, OUTPUT_INDENT, RenderBatch, RenderContent,
-    RenderInput, RenderKey, RenderOutput, RenderRequest, RenderRevision, RenderSystems,
-    ToolCallView, ToolRender, TranscriptRender, text_rows,
+    AsideRender, CallState, ChildCall, ContentKind, ContentRender, EntryRender, LookLine,
+    OUTPUT_INDENT, RenderBatch, RenderContent, RenderInput, RenderKey, RenderOutput, RenderRequest,
+    RenderRevision, RenderSystems, ToolRender, TranscriptRender, text_rows,
 };
 pub use screen::DefaultScreenPlugin;
 pub use status::{AppStatus, Side, StatusItem, StatusItems, StatusLine, StatusSystems, Tone};
@@ -366,20 +365,20 @@ pub fn add_view(app: &mut App) {
 pub struct BuildFailedLooks;
 
 /// The look of a failed build's note, which the model reads too.
-fn build_failed(entry: &EntryView<'_>) -> Vec<ratatui::text::Line<'static>> {
+fn build_failed(entry: &EntryRender) -> Vec<ratatui::text::Line<'static>> {
     use ratatui::style::Style;
     let mut lines = vec![ratatui::text::Line::styled(
         "✗ build failed (noted for the agent)",
         Style::new().red().bold(),
     )];
-    lines.extend(text_rows(entry.text, Style::new().red().dim()));
+    lines.extend(text_rows(&entry.text, Style::new().red().dim()));
     lines
 }
 
 /// Draws the notes of failed builds.
 fn render_build_failed(mut batch: ResMut<RenderBatch>) {
     for (entry, output) in batch.entries_mut(BUILD_ORIGIN) {
-        output.lines = build_failed(&entry.view())
+        output.lines = build_failed(entry)
             .into_iter()
             .map(LookLine::from)
             .collect();

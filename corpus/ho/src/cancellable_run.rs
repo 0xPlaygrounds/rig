@@ -20,7 +20,7 @@ use rig_harness::prelude::*;
 use rig_tui::ratatui::style::{Style, Stylize};
 use rig_tui::ratatui::text::Line;
 use rig_tui::{
-    AppKeyBindingsExt, CallState, KeyBinding, KeyPress, LookLine, RenderBatch, ToolCallView,
+    AppKeyBindingsExt, CallState, KeyBinding, KeyPress, LookLine, RenderBatch, ToolRender,
     run_command, text_rows,
 };
 use schemars::JsonSchema;
@@ -378,13 +378,13 @@ fn show_progress(
 /// Draws the `run` calls.
 fn draw(mut batch: ResMut<RenderBatch>) {
     for (call, output) in batch.tools_mut(RUN) {
-        output.lines = look(&call.view());
+        output.lines = look(call);
     }
 }
 
 /// The terminal view's look of a `run` call: the command, then its output
 /// while it runs, or its result.
-fn look(view: &ToolCallView<'_>) -> Vec<LookLine> {
+fn look(view: &ToolRender) -> Vec<LookLine> {
     let command = view.argument("command").unwrap_or_default();
     let mut lines = vec![view.header(RUN, command).into()];
     match &view.state {

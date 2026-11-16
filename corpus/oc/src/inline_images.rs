@@ -35,10 +35,10 @@ use rig_tui::ratatui::layout::Rect;
 use rig_tui::ratatui::style::{Color, Style, Stylize};
 use rig_tui::ratatui::text::{Line, Span};
 use rig_tui::{
-    AppKeyBindingsExt, CallItem, ContentBlock, ContentKind, CopyToClipboard, DrawnTranscript,
-    KeyBinding, KeyPress, KeyPressed, KeyScope, MainPane, RedrawArea, RenderBatch, RenderRevision,
-    RenderSystems, TerminalSize, TerminalWrite, TranscriptItem, TranscriptRender, TranscriptView,
-    TuiFrame, TuiSystems,
+    AppKeyBindingsExt, CallItem, ContentKind, CopyToClipboard, DrawnTranscript, KeyBinding,
+    KeyPress, KeyPressed, KeyScope, MainPane, RedrawArea, RenderBatch, RenderContent,
+    RenderRevision, RenderSystems, TerminalSize, TerminalWrite, TranscriptItem, TranscriptRender,
+    TranscriptView, TuiFrame, TuiSystems,
 };
 use serde::Deserialize;
 
@@ -520,7 +520,7 @@ fn follow_look(
 fn draw_images(mut images: ResMut<Images>, mut batch: ResMut<RenderBatch>) {
     let width = batch.width;
     for (content, output) in batch.contents_mut(ContentKind::Image) {
-        if let ContentBlock::Image(image) = content.view().block {
+        if let RenderContent::Image(image) = &content.content {
             let lines = images.lines(image, width).0;
             output.lines = lines.into_iter().map(Into::into).collect();
         }

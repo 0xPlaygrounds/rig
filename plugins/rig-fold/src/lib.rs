@@ -247,8 +247,7 @@ fn fold(
 
 /// Whether `call` is answered and neither failed nor was stopped.
 fn folds(call: &ToolRender) -> bool {
-    let view = call.view();
-    call.state == CallState::Done && call.result.is_some() && !view.failed()
+    call.state == CallState::Done && call.result.is_some() && !call.failed()
 }
 
 /// `lines`, a call's look, as its first line, the `head` lines after it, a

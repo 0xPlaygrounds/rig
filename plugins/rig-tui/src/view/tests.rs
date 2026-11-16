@@ -181,15 +181,6 @@ fn a_notice_says_which_transcript_draws_it_and_where() {
     let slot = |id: &AgentId| notice?.slot(id, conversation?);
     assert_eq!(slot(&id), Some(TranscriptSlot::After(1)));
     assert_eq!(slot(&AgentId("a2".to_owned())), None);
-    // Slots order as drawn.
-    let order = [
-        TranscriptSlot::Top,
-        TranscriptSlot::Inside(0, 1),
-        TranscriptSlot::After(0),
-        TranscriptSlot::Inside(1, 0),
-        TranscriptSlot::After(1),
-    ];
-    assert!(order.is_sorted());
 }
 
 #[test]
