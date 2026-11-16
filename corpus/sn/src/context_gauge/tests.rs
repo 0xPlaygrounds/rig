@@ -130,7 +130,9 @@ fn the_gauge_follows_tokens_models_and_focus_and_warns_once() {
         gauge(app.world(), agent)
     );
 
-    app.world_mut().entity_mut(agent).insert(ContextStale::default());
+    app.world_mut()
+        .entity_mut(agent)
+        .insert(ContextStale::default());
     app.update();
     assert!(shows(app.world(), agent, "ctx ?/200k", Tone::Dim));
     app.world_mut().entity_mut(agent).remove::<ContextStale>();
