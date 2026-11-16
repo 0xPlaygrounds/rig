@@ -149,4 +149,23 @@ fn protected_files_are_neither_read_nor_written_nor_found() {
     assert_eq!(counts.hidden.get("deny_read keys/**"), Some(&1));
 }
 
+/// A dangling link is checked where a write through it lands: on its
+/// target, as the file tools resolve it.
+#[cfg(unix)]
+#[test]
+fn a_dangling_link_is_checked_at_its_target() {
+    let project = std::env::temp_dir().join(format!(
+        "corpus-protected-paths-link-{}",
+        std::process::id()
+    ));
+    let made = std::fs::create_dir_all(&project)
+        .and_then(|()| std::os::unix::fs::symlink(".git/config", project.join("alias")));
+    let denied = PathPolicy::load(&project, &[])
+        .check(Access::Write, "alias")
+        .map(|rule| rule.glob.clone());
+    std::fs::remove_dir_all(&project).ok();
+    assert!(made.is_ok(), "{made:?}");
+    assert_eq!(denied.as_deref(), Some(".git/**"));
+}
+
 rig_defaults_test_support::stages_ordered_test!(ProtectedPathsPlugin);
