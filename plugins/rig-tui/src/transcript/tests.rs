@@ -354,7 +354,7 @@ fn an_aside_is_drawn_by_its_look() {
         TranscriptRender,
         (|mut batch: ResMut<RenderBatch>| {
             for (input, output) in batch.asides_mut("test.mark") {
-                let view = input.view();
+                let view = input;
                 output.lines = {
                     let text = view.aside.value.as_str().unwrap_or_default();
                     vec![Line::from(format!("↳ {text}")).into()]
@@ -391,7 +391,7 @@ fn a_plugin_note_is_drawn_after_its_message_by_its_plugins_look() {
         TranscriptRender,
         (|mut batch: ResMut<RenderBatch>| {
             for (input, output) in batch.entries_mut("btw") {
-                let entry = input.view();
+                let entry = input;
                 output.lines = {
                     vec![
                         Line::from(format!("btw: {}", entry.title)).into(),
@@ -441,7 +441,7 @@ fn content_renderers_draw_both_sides_blocks_and_decorators_every_call() {
         TranscriptRender,
         (|mut batch: ResMut<RenderBatch>| {
             for (input, output) in batch.contents_mut(ContentKind::Image) {
-                let view = input.view();
+                let view = input;
                 output.lines = {
                     let by = if view.assistant { "model" } else { "user" };
                     vec![
@@ -457,7 +457,7 @@ fn content_renderers_draw_both_sides_blocks_and_decorators_every_call() {
         TranscriptRender,
         (|mut batch: ResMut<RenderBatch>| {
             for (input, output) in batch.tools_mut("shell") {
-                let call = input.view();
+                let call = input;
                 output.lines = vec![call.header("shell", "").into()];
             }
         })
@@ -467,7 +467,7 @@ fn content_renderers_draw_both_sides_blocks_and_decorators_every_call() {
         TranscriptRender,
         (|mut batch: ResMut<RenderBatch>| {
             for (input, output) in batch.calls_mut() {
-                let call = input.view();
+                let call = input;
                 output.decorate("names", {
                     vec![Line::from(format!("  ~ {}", call.name()))]
                 });
@@ -1157,7 +1157,7 @@ fn a_highlight_lights_a_renderers_text_and_draws_again() {
         TranscriptRender,
         (|mut batch: ResMut<RenderBatch>| {
             for (input, output) in batch.tools_mut("shell") {
-                let call = input.view();
+                let call = input;
                 output.lines = vec![
                     call.header("shell", call.argument("command").unwrap_or_default())
                         .into(),
@@ -1209,7 +1209,7 @@ fn a_tool_call_is_drawn_while_its_arguments_stream() {
         TranscriptRender,
         (|mut batch: ResMut<RenderBatch>| {
             for (input, output) in batch.tools_mut("write") {
-                let call = input.view();
+                let call = input;
                 output.lines = {
                     let path = call.argument("path").unwrap_or("…");
                     vec![Line::from(format!("{:?} write {path}", call.state)).into()]
@@ -1380,7 +1380,7 @@ fn a_renderer_sees_the_calls_under_its_call_through_any_effect_and_after_a_resum
             TranscriptRender,
             (|mut batch: ResMut<RenderBatch>| {
                 for (input, output) in batch.tools_mut("consult") {
-                    let view = input.view();
+                    let view = input;
                     output.lines = {
                         let children = view.children.iter().map(|child| {
                             let agent = child.agent.as_deref().unwrap_or("-");
@@ -1458,7 +1458,7 @@ fn timing(app: &mut App) {
         TranscriptRender,
         (|mut batch: ResMut<RenderBatch>| {
             for (input, output) in batch.tools_mut("wait") {
-                let view = input.view();
+                let view = input;
                 let line = format!("⏱ {:?} {}", view.took, view.children.len());
                 output.lines = vec![LookLine::from(Line::from(line))];
             }
@@ -1679,7 +1679,7 @@ fn each_decorators_rows_are_an_item_inside_its_call() {
         TranscriptRender,
         (|mut batch: ResMut<RenderBatch>| {
             for (input, output) in batch.tools_mut("shell") {
-                let call = input.view();
+                let call = input;
                 output.lines = vec![call.header("shell", "").into()];
             }
         })
@@ -1688,8 +1688,7 @@ fn each_decorators_rows_are_an_item_inside_its_call() {
     .add_systems(
         TranscriptRender,
         (|mut batch: ResMut<RenderBatch>| {
-            for (input, output) in batch.calls_mut() {
-                let _ = input.view();
+            for (_, output) in batch.calls_mut() {
                 output.decorate("late", {
                     vec![Line::from("  late one"), Line::from("  late two")]
                 });
@@ -1700,8 +1699,7 @@ fn each_decorators_rows_are_an_item_inside_its_call() {
     .add_systems(
         TranscriptRender,
         (|mut batch: ResMut<RenderBatch>| {
-            for (input, output) in batch.calls_mut() {
-                let _ = input.view();
+            for (_, output) in batch.calls_mut() {
                 output.decorate("early", vec![Line::from("  early")]);
             }
         })

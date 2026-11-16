@@ -127,7 +127,7 @@ mod tui {
     use rig_harness::prelude::*;
     use rig_tui::ratatui::style::{Color, Stylize};
     use rig_tui::ratatui::text::{Line, Span};
-    use rig_tui::{AsideView, RenderBatch, RenderSystems, Theme, TranscriptRender};
+    use rig_tui::{AsideRender, RenderBatch, RenderSystems, Theme, TranscriptRender};
 
     use super::{WELCOME, Welcome};
 
@@ -182,13 +182,13 @@ mod tui {
     /// Draws the welcome asides.
     fn draw(mut batch: ResMut<RenderBatch>) {
         for (aside, output) in batch.asides_mut(WELCOME) {
-            output.lines = lines(&aside.view()).into_iter().map(Into::into).collect();
+            output.lines = lines(aside).into_iter().map(Into::into).collect();
         }
     }
 
     /// The mark in grays, and beside it rig's version, the model and the
     /// directory, on the terminal's own background.
-    pub(super) fn lines(view: &AsideView<'_>) -> Vec<Line<'static>> {
+    pub(super) fn lines(view: &AsideRender) -> Vec<Line<'static>> {
         let says: Welcome = serde_json::from_value(view.aside.value.clone()).unwrap_or_default();
         let model = match says.model {
             Some(model) => vec![

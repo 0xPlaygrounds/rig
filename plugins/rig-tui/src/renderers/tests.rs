@@ -20,8 +20,8 @@ fn drawn(tool: &str, args: Value, output: &str, cut: Option<OutputCut>) -> Vec<S
         context.insert_result(cut).ok();
     }
     let facts = context.result_context();
-    let mut view = ToolCallView::new(&call, Some(&result), CallState::Done);
-    view.facts = Some(&facts);
+    let mut view = ToolRender::new(call, Some(result), CallState::Done);
+    view.facts = Some(facts);
     let lines = view.default_lines();
     lines.iter().map(ToString::to_string).collect()
 }
@@ -96,8 +96,8 @@ fn a_calls_row_is_tinted_by_where_it_stands_and_has_no_marker() {
     let mut failed = done.clone();
     failed.is_error = true;
     let theme = Theme::default();
-    let header = |result, state| {
-        let mut view = ToolCallView::new(&call, result, state);
+    let header = |result: Option<&ToolResult>, state| {
+        let mut view = ToolRender::new(call.clone(), result.cloned(), state);
         view.theme = theme;
         view.header("shell", "ls")
     };
@@ -147,7 +147,7 @@ fn a_line_of_code_is_drawn_in_its_colors_under_the_styles_around_and_over_it() {
         return;
     };
     let call = ToolCall::from_wire("c1", ToolFunction::new(name, json!({})));
-    let view = ToolCallView::new(&call, None, CallState::Running(None));
+    let view = ToolRender::new(call, None, CallState::Running(None));
     let header = view.header_code("$", &code, 0);
     let drawn = header.colored();
     assert_eq!(drawn.to_string(), header.to_string());
@@ -205,8 +205,8 @@ fn a_command_that_exits_non_zero_is_a_failed_call() {
         let mut context = ToolContext::default();
         context.insert_result(status).ok();
         let facts = context.result_context();
-        let mut view = ToolCallView::new(&call, Some(&result), CallState::Done);
-        view.facts = Some(&facts);
+        let mut view = ToolRender::new(call.clone(), Some(result.clone()), CallState::Done);
+        view.facts = Some(facts);
         (view.failed(), view.header("ls", ""))
     };
     let theme = Theme::default();

@@ -5,7 +5,7 @@ use rig_basics::compaction::{SummaryLooks, summary_author};
 use rig_harness::prelude::*;
 use rig_tui::ratatui::style::Style;
 use rig_tui::ratatui::text::Line;
-use rig_tui::{EntryView, RenderBatch, RenderSystems, TranscriptRender, text_rows};
+use rig_tui::{EntryRender, RenderBatch, RenderSystems, TranscriptRender, text_rows};
 
 /// Draws summaries as a "Summary" entry, after `rig_basics::compaction`'s
 /// look, so its lines are the ones drawn.
@@ -22,14 +22,14 @@ fn draw(mut batch: ResMut<RenderBatch>) {
         return;
     };
     for (entry, output) in batch.entries_mut(&origin) {
-        output.lines = summary(&entry.view()).into_iter().map(Into::into).collect();
+        output.lines = summary(entry).into_iter().map(Into::into).collect();
     }
 }
 
 /// "Summary", then the summary.
-fn summary(entry: &EntryView<'_>) -> Vec<Line<'static>> {
+fn summary(entry: &EntryRender) -> Vec<Line<'static>> {
     let style = Style::new().magenta();
     let mut lines = vec![Line::styled("Summary", style.bold())];
-    lines.extend(text_rows(entry.text, style.dim()));
+    lines.extend(text_rows(&entry.text, style.dim()));
     lines
 }

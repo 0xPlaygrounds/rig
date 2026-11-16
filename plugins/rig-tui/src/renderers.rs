@@ -24,13 +24,14 @@ use crate::highlight::Code;
 use crate::{CallItem, Theme};
 
 /// A tool call and its result, if it has one yet, as a render system sees
-/// them through [`ToolRender::view`].
-pub struct ToolCallView<'a> {
+/// them: a saved call, a live one or one streaming in.
+#[derive(Clone, PartialEq)]
+pub struct ToolRender {
     /// The call. While it streams, its arguments are what has come of them,
     /// and its id is not the final one.
-    pub call: &'a ToolCall,
+    pub call: ToolCall,
     /// Its result, once it is in the conversation.
-    pub result: Option<&'a ToolResult>,
+    pub result: Option<ToolResult>,
     /// Where the call stands.
     pub state: CallState,
     /// The transcript's colors.
@@ -39,7 +40,7 @@ pub struct ToolCallView<'a> {
     /// `FilesChanged`, as the session keeps it with the call's result:
     /// once the result is in the conversation, in this run or an earlier
     /// one alike.
-    pub facts: Option<&'a ToolResultContext>,
+    pub facts: Option<ToolResultContext>,
     /// How long it ran, once it settled: in this run, or in an earlier one
     /// of a resumed session whose effect log was kept.
     pub took: Option<Duration>,
@@ -49,18 +50,21 @@ pub struct ToolCallView<'a> {
     /// `None` once the call answered, and before it printed anything.
     ///
     /// [`CallOutput`]: rig_harness::prelude::CallOutput
-    pub output: Option<&'a str>,
+    pub output: Option<String>,
     /// The tool and model calls the call started, and those they started,
     /// in order, each after the one that started it, through any effect
     /// between that is no call: such as a subagent's calls under the call
     /// that spawned it, through the spawn and the brief it was sent. Also
     /// after a resume, from the session's effect log
     /// ([`PastEffects`](crate::PastEffects)).
-    pub children: &'a [ChildCall],
+    pub children: Vec<ChildCall>,
+    /// The call as [`TranscriptView::selected`](crate::TranscriptView::selected)
+    /// names it; `None` for a call of an archived entry, which has no items.
+    pub item: Option<CallItem>,
 }
 
 /// A tool or model call that a tool call started, or one of those
-/// started, as a render system sees it ([`ToolCallView::children`]).
+/// started, as a render system sees it ([`ToolRender::children`]).
 #[derive(Clone, Debug, PartialEq)]
 pub struct ChildCall {
     /// How far below the call it is: 0 for one the call started itself.
@@ -108,10 +112,10 @@ pub enum CallState {
 /// What a hold without a [`Name`] is called.
 pub(crate) const UNNAMED_HOLD: &str = "unnamed hold";
 
-impl<'a> ToolCallView<'a> {
+impl ToolRender {
     /// `call`, answered by `result` if it was, standing as `state`, with
-    /// no facts or output known, in the default colors.
-    pub fn new(call: &'a ToolCall, result: Option<&'a ToolResult>, state: CallState) -> Self {
+    /// no facts, output or item known, in the default colors.
+    pub fn new(call: ToolCall, result: Option<ToolResult>, state: CallState) -> Self {
         Self {
             call,
             result,
@@ -120,7 +124,8 @@ impl<'a> ToolCallView<'a> {
             facts: None,
             took: None,
             output: None,
-            children: &[],
+            children: Vec::new(),
+            item: None,
         }
     }
 
@@ -136,14 +141,14 @@ impl<'a> ToolCallView<'a> {
 
     /// The result's text, joined, if the tool answered.
     pub fn result_text(&self) -> Option<String> {
-        self.result.map(result_text)
+        self.result.as_ref().map(result_text)
     }
 
     /// Whether the call failed: the tool answered with an error, or the
     /// process it ran did not exit with 0 ([`ExitStatus`]). A stopped
     /// call's result is an error too, which a look draws as its result.
     pub fn failed(&self) -> bool {
-        self.result.is_some_and(|result| result.is_error)
+        self.result.as_ref().is_some_and(|result| result.is_error)
             || self.exit().is_some_and(|exit| !exit.success())
     }
 
@@ -154,7 +159,7 @@ impl<'a> ToolCallView<'a> {
 
     /// How the process the call ran ended, if the tool said.
     fn exit(&self) -> Option<ExitStatus> {
-        self.facts?.get::<ExitStatus>().ok().flatten()
+        self.facts.as_ref()?.get::<ExitStatus>().ok().flatten()
     }
 
     /// The header line: `title` in bold and `detail` dimmed on a band
@@ -196,7 +201,7 @@ impl<'a> ToolCallView<'a> {
             Some(_) => "stopped while it streamed; nothing ran",
             None => "stopped before it ran",
         };
-        let (band, state) = match (self.result, &self.state) {
+        let (band, state) = match (&self.result, &self.state) {
             (None, CallState::Stopped) => (self.theme.call_waiting, cut.to_owned()),
             (_, CallState::Stopped) => (self.theme.call_waiting, "stopped".to_owned()),
             (Some(_), _) if self.failed() => (self.theme.call_failed, failure()),
@@ -253,6 +258,7 @@ impl<'a> ToolCallView<'a> {
         let mut lines: Vec<&str> = text.lines().collect();
         let cut = self
             .facts
+            .as_ref()
             .and_then(|facts| facts.get::<OutputCut>().ok().flatten());
         let marker = cut.and_then(|cut| {
             let line = match cut.kept {
@@ -289,20 +295,21 @@ impl<'a> ToolCallView<'a> {
 /// A note or a delivered text, as a render system sees it: a plugin's
 /// [`Note`](rig_harness::rig_core::conversation::Note), or a text of an entry of the
 /// conversation another author wrote, such as a compaction summary.
-pub struct EntryView<'a> {
+#[derive(Clone, PartialEq)]
+pub struct EntryRender {
     /// The conversation entry, when this is delivered text.
     pub id: Option<MessageId>,
     /// The plugin whose look draws it: the name of the plugin that wrote
     /// it, or empty when no plugin did (an agent, rig).
-    pub plugin: &'a str,
+    pub plugin: String,
     /// What a collapsed one shows in a line: the note's title, or the
     /// author's label.
-    pub title: &'a str,
+    pub title: String,
     /// What it holds; a delivered text without the header the model reads.
-    pub text: &'a str,
+    pub text: String,
 }
 
-impl EntryView<'_> {
+impl EntryRender {
     /// The look of a plugin's entry no render system draws: `⤶` and the title, then
     /// the text.
     pub fn default_lines(&self) -> Vec<Line<'static>> {
@@ -310,7 +317,7 @@ impl EntryView<'_> {
             format!("⤶ {}", self.title),
             Style::new().magenta().bold(),
         )];
-        lines.extend(text_rows(self.text, Style::new().dim()));
+        lines.extend(text_rows(&self.text, Style::new().dim()));
         lines
     }
 }
@@ -342,40 +349,40 @@ impl ContentKind {
 
 /// A content block of a message that is not text, a tool call or a
 /// result.
-#[derive(Clone, Copy, Debug)]
-pub enum ContentBlock<'a> {
+#[derive(Clone, Debug, PartialEq)]
+pub enum RenderContent {
     /// An image, the user's or one the model made.
-    Image(&'a Image),
+    Image(Image),
     /// Audio.
-    Audio(&'a Audio),
+    Audio(Audio),
     /// A video.
-    Video(&'a Video),
+    Video(Video),
     /// A document.
-    Document(&'a DocumentContent),
+    Document(DocumentContent),
 }
 
-impl<'a> ContentBlock<'a> {
+impl RenderContent {
     /// A user's block, if it is one.
-    pub(crate) fn of_user(content: &'a UserContent) -> Option<Self> {
+    pub(crate) fn of_user(content: &UserContent) -> Option<Self> {
         match content {
-            UserContent::Image(image) => Some(Self::Image(image)),
-            UserContent::Audio(audio) => Some(Self::Audio(audio)),
-            UserContent::Video(video) => Some(Self::Video(video)),
-            UserContent::Document(document) => Some(Self::Document(document)),
+            UserContent::Image(image) => Some(Self::Image(image.clone())),
+            UserContent::Audio(audio) => Some(Self::Audio(audio.clone())),
+            UserContent::Video(video) => Some(Self::Video(video.clone())),
+            UserContent::Document(document) => Some(Self::Document(document.clone())),
             UserContent::Text(_) | UserContent::ToolResult(_) => None,
         }
     }
 
     /// A reply's block, if it is one.
-    pub(crate) fn of_assistant(content: &'a AssistantContent) -> Option<Self> {
+    pub(crate) fn of_assistant(content: &AssistantContent) -> Option<Self> {
         match content {
-            AssistantContent::Image(image) => Some(Self::Image(image)),
+            AssistantContent::Image(image) => Some(Self::Image(image.clone())),
             _ => None,
         }
     }
 
     /// Its kind.
-    pub fn kind(self) -> ContentKind {
+    pub fn kind(&self) -> ContentKind {
         match self {
             Self::Image(_) => ContentKind::Image,
             Self::Audio(_) => ContentKind::Audio,
@@ -393,22 +400,23 @@ impl<'a> ContentBlock<'a> {
 ///
 /// [`TranscriptItem::Content`]: crate::TranscriptItem::Content
 /// [`DrawnTranscript`]: crate::DrawnTranscript
-pub struct ContentView<'a> {
+#[derive(Clone, PartialEq)]
+pub struct ContentRender {
     /// The message it is in, if the message has an id.
     pub message: Option<MessageId>,
     /// Its place among the message's blocks.
     pub index: usize,
     /// The block.
-    pub block: ContentBlock<'a>,
+    pub content: RenderContent,
     /// Whether the message was written by the model.
     pub assistant: bool,
 }
 
-impl ContentView<'_> {
+impl ContentRender {
     /// The look of a kind no render system draws: its name in brackets, such as
     /// `[image]`.
     pub fn default_lines(&self) -> Vec<Line<'static>> {
-        let name = self.block.kind().name();
+        let name = self.content.kind().name();
         vec![Line::from(format!("  [{name}]")).dim()]
     }
 }
@@ -481,7 +489,7 @@ fn result_rows<'t>(
 }
 
 /// A line a look draws: styled text, from a [`Line`], or a line of
-/// [`Code`] ([`Code::line`], [`ToolCallView::header_code`]) laid out plain
+/// [`Code`] ([`Code::line`], [`ToolRender::header_code`]) laid out plain
 /// and colored when the line is drawn.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct LookLine {
@@ -586,11 +594,12 @@ impl LookLine {
 pub(crate) type Decorated = Vec<(String, std::ops::Range<usize>)>;
 
 /// An aside of a conversation, as a render system sees it.
-pub struct AsideView<'a> {
+#[derive(Clone, PartialEq)]
+pub struct AsideRender {
     /// Its id.
     pub id: AsideId,
     /// The aside.
-    pub aside: &'a Aside,
+    pub aside: Aside,
     /// The colors it is drawn in.
     pub theme: Theme,
 }
@@ -685,143 +694,6 @@ impl RenderOutput {
             }
         }
         (lines, ranges)
-    }
-}
-
-/// Owned tool input, including synthetic streaming calls and saved calls.
-#[derive(Clone, PartialEq)]
-pub struct ToolRender {
-    /// The tool call.
-    pub call: ToolCall,
-    /// Its result, when available.
-    pub result: Option<ToolResult>,
-    /// Current execution state.
-    pub state: CallState,
-    /// Presentation colors.
-    pub theme: Theme,
-    /// Published tool facts.
-    pub facts: Option<ToolResultContext>,
-    /// Execution duration.
-    pub took: Option<Duration>,
-    /// Live output.
-    pub output: Option<String>,
-    /// Descendant calls.
-    pub children: Vec<ChildCall>,
-    /// The call as [`TranscriptView::selected`](crate::TranscriptView::selected)
-    /// names it; `None` for a call of an archived entry, which has no items.
-    pub item: Option<CallItem>,
-}
-
-impl ToolRender {
-    /// Borrow this input for the formatting helpers.
-    pub fn view(&self) -> ToolCallView<'_> {
-        ToolCallView {
-            call: &self.call,
-            result: self.result.as_ref(),
-            state: self.state.clone(),
-            theme: self.theme,
-            facts: self.facts.as_ref(),
-            took: self.took,
-            output: self.output.as_deref(),
-            children: &self.children,
-        }
-    }
-}
-
-/// Owned note or delivered text.
-#[derive(Clone, PartialEq)]
-pub struct EntryRender {
-    /// The conversation entry, when this is delivered text.
-    pub id: Option<MessageId>,
-    /// Author plugin.
-    pub plugin: String,
-    /// Display title.
-    pub title: String,
-    /// Body text.
-    pub text: String,
-}
-
-impl EntryRender {
-    /// Borrow this input for the formatting helpers.
-    pub fn view(&self) -> EntryView<'_> {
-        EntryView {
-            id: self.id,
-            plugin: &self.plugin,
-            title: &self.title,
-            text: &self.text,
-        }
-    }
-}
-
-/// An owned non-text content block.
-#[derive(Clone, PartialEq)]
-pub enum RenderContent {
-    /// An image.
-    Image(Image),
-    /// Audio.
-    Audio(Audio),
-    /// Video.
-    Video(Video),
-    /// A document.
-    Document(DocumentContent),
-}
-
-impl RenderContent {
-    /// Borrow the content block.
-    pub fn block(&self) -> ContentBlock<'_> {
-        match self {
-            Self::Image(v) => ContentBlock::Image(v),
-            Self::Audio(v) => ContentBlock::Audio(v),
-            Self::Video(v) => ContentBlock::Video(v),
-            Self::Document(v) => ContentBlock::Document(v),
-        }
-    }
-}
-
-/// Owned content input.
-#[derive(Clone, PartialEq)]
-pub struct ContentRender {
-    /// Message identity, when available.
-    pub message: Option<MessageId>,
-    /// Block index.
-    pub index: usize,
-    /// Content to draw.
-    pub content: RenderContent,
-    /// Whether the model wrote the message.
-    pub assistant: bool,
-}
-
-impl ContentRender {
-    /// Borrow this input for the formatting helpers.
-    pub fn view(&self) -> ContentView<'_> {
-        ContentView {
-            message: self.message,
-            index: self.index,
-            block: self.content.block(),
-            assistant: self.assistant,
-        }
-    }
-}
-
-/// Owned aside input.
-#[derive(Clone, PartialEq)]
-pub struct AsideRender {
-    /// Aside identity.
-    pub id: AsideId,
-    /// Aside value and author.
-    pub aside: Aside,
-    /// Presentation colors.
-    pub theme: Theme,
-}
-
-impl AsideRender {
-    /// Borrow this input for the formatting helpers.
-    pub fn view(&self) -> AsideView<'_> {
-        AsideView {
-            id: self.id,
-            aside: &self.aside,
-            theme: self.theme,
-        }
     }
 }
 
@@ -921,9 +793,7 @@ impl RenderBatch {
         self.requests
             .values_mut()
             .filter_map(move |r| match &r.input {
-                RenderInput::Content(v) if v.content.block().kind() == kind => {
-                    Some((v, &mut r.output))
-                }
+                RenderInput::Content(v) if v.content.kind() == kind => Some((v, &mut r.output)),
                 _ => None,
             })
     }
@@ -1110,35 +980,21 @@ impl Renderers {
         }
     }
 
-    /// The lines of `view`, the call `item`, and its decorations.
-    pub(crate) fn call_decorated(
-        &self,
-        view: &ToolCallView<'_>,
-        item: Option<CallItem>,
-    ) -> (Vec<LookLine>, Decorated) {
-        let input = ToolRender {
-            call: view.call.clone(),
-            result: view.result.cloned(),
-            state: view.state.clone(),
-            theme: view.theme,
-            facts: view.facts.cloned(),
-            took: view.took,
-            output: view.output.map(str::to_owned),
-            children: view.children.to_vec(),
-            item,
-        };
+    /// The lines of `call` and its decorations.
+    pub(crate) fn call_decorated(&self, call: ToolRender) -> (Vec<LookLine>, Decorated) {
         let key = match self.place.get() {
             Place::Message { index, block } => RenderKey::Tool(index, block),
             Place::Outside(at) => RenderKey::Streaming(at),
         };
-        self.output(key, RenderInput::Tool(input), view.default_lines())
+        let lines = call.default_lines();
+        self.output(key, RenderInput::Tool(call), lines)
     }
 
     /// A delivered text's lines; only messages hold one.
-    pub(crate) fn entry(&self, view: &EntryView<'_>) -> Vec<LookLine> {
+    pub(crate) fn entry(&self, entry: EntryRender) -> Vec<LookLine> {
         match self.in_message() {
-            Some((index, block)) => self.entry_at(RenderKey::Entry(index, block), view),
-            None => view
+            Some((index, block)) => self.entry_at(RenderKey::Entry(index, block), entry),
+            None => entry
                 .default_lines()
                 .into_iter()
                 .map(LookLine::from)
@@ -1146,21 +1002,15 @@ impl Renderers {
         }
     }
 
-    fn entry_at(&self, key: RenderKey, view: &EntryView<'_>) -> Vec<LookLine> {
-        let input = EntryRender {
-            id: view.id,
-            plugin: view.plugin.to_owned(),
-            title: view.title.to_owned(),
-            text: view.text.to_owned(),
-        };
-        let lines = view.default_lines().into_iter().map(LookLine::from);
-        self.output(key, RenderInput::Entry(input), lines.collect())
+    fn entry_at(&self, key: RenderKey, entry: EntryRender) -> Vec<LookLine> {
+        let lines = entry.default_lines().into_iter().map(LookLine::from);
+        self.output(key, RenderInput::Entry(entry), lines.collect())
             .0
     }
 
     /// A content block's lines; only messages hold one.
-    pub(crate) fn content(&self, view: &ContentView<'_>) -> Vec<LookLine> {
-        let lines = view
+    pub(crate) fn content(&self, content: ContentRender) -> Vec<LookLine> {
+        let lines = content
             .default_lines()
             .into_iter()
             .map(LookLine::from)
@@ -1168,45 +1018,28 @@ impl Renderers {
         let Some((index, _)) = self.in_message() else {
             return lines;
         };
-        let content = match view.block {
-            ContentBlock::Image(v) => RenderContent::Image(v.clone()),
-            ContentBlock::Audio(v) => RenderContent::Audio(v.clone()),
-            ContentBlock::Video(v) => RenderContent::Video(v.clone()),
-            ContentBlock::Document(v) => RenderContent::Document(v.clone()),
-        };
-        let input = ContentRender {
-            message: view.message,
-            index: view.index,
-            content,
-            assistant: view.assistant,
-        };
-        self.output(
-            RenderKey::Content(index, view.index),
-            RenderInput::Content(input),
-            lines,
-        )
-        .0
+        let key = RenderKey::Content(index, content.index);
+        self.output(key, RenderInput::Content(content), lines).0
     }
 
-    pub(crate) fn aside(&self, view: &AsideView<'_>) -> Option<Vec<LookLine>> {
-        let key = RenderKey::Aside(view.id);
-        if let Some(note) = Note::of(view.aside) {
-            return Some(self.entry_at(
-                key,
-                &EntryView {
-                    id: None,
-                    plugin: plugin_name(&view.aside.author),
-                    title: &note.title,
-                    text: &note.text,
-                },
-            ));
+    /// The lines of the aside `id` in `theme`'s colors: a note's as an entry's.
+    pub(crate) fn aside(&self, id: AsideId, aside: &Aside, theme: Theme) -> Vec<LookLine> {
+        let key = RenderKey::Aside(id);
+        if let Some(note) = Note::of(aside) {
+            let entry = EntryRender {
+                id: None,
+                plugin: plugin_name(&aside.author).to_owned(),
+                title: note.title,
+                text: note.text,
+            };
+            return self.entry_at(key, entry);
         }
         let input = AsideRender {
-            id: view.id,
-            aside: view.aside.clone(),
-            theme: view.theme,
+            id,
+            aside: aside.clone(),
+            theme,
         };
-        Some(self.output(key, RenderInput::Aside(input), Vec::new()).0)
+        self.output(key, RenderInput::Aside(input), Vec::new()).0
     }
 }
 

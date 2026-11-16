@@ -42,7 +42,7 @@ impl Plugin for RichToolRenderingPlugin {
 fn draw(mut batch: ResMut<RenderBatch>) {
     for tool in TOOLS {
         for (call, output) in batch.tools_mut(tool) {
-            output.lines = looks::render(&call.view());
+            output.lines = looks::render(call);
         }
     }
 }

@@ -14,7 +14,7 @@ use rig_memory::{Compacted, Summarized, SummaryState, summarized_in_log};
 use rig_tui::ratatui::style::Style;
 use rig_tui::ratatui::text::Line;
 use rig_tui::{
-    EntryView, LookLine, RenderBatch, RenderSystems, Replaced, Theme, TranscriptRender, text_rows,
+    EntryRender, LookLine, RenderBatch, RenderSystems, Replaced, Theme, TranscriptRender, text_rows,
 };
 
 use crate::compaction::summary_author;
@@ -153,13 +153,13 @@ fn draw(
         let state = states
             .iter()
             .find(|state| Some(state.summary) == summary.id);
-        output.lines = summary_lines(&summary.view(), state.map(|it| &it.state), &theme, width);
+        output.lines = summary_lines(summary, state.map(|it| &it.state), &theme, width);
     }
 }
 
 /// A summary's banner, markdown and tracked paths, or its plain text without a record.
 fn summary_lines(
-    entry: &EntryView<'_>,
+    entry: &EntryRender,
     state: Option<&SummaryState>,
     theme: &Theme,
     width: usize,
@@ -171,7 +171,7 @@ fn summary_lines(
     ))];
     let Some(state) = state else {
         lines.extend(
-            text_rows(entry.text, style.dim())
+            text_rows(&entry.text, style.dim())
                 .into_iter()
                 .map(LookLine::from),
         );

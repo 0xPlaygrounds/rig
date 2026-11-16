@@ -87,7 +87,7 @@ pub enum TranscriptItem {
     Notice(usize),
     /// A content block of a message, an image, audio, a video or a
     /// document, by the message's id and the block's place in it
-    /// ([`ContentView`](crate::ContentView)).
+    /// ([`ContentRender`](crate::ContentRender)).
     Content(MessageId, usize),
     /// The rows a named decoration drew under a call, by the call's place
     /// and the decoration's name

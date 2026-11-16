@@ -24,8 +24,8 @@ use rig_core::message::{AssistantMessage, ToolFunction, ToolName, ToolResult, Us
 use super::markdown;
 use super::render::{Lights, light, lit};
 use super::renderers::{
-    AsideView, CallState, ChildCall, ContentBlock, ContentView, EntryView, LookLine, Pass, Place,
-    Renderers, ToolCallView, plugin_name, reasoning_lines, reply_lines, result_style, result_text,
+    CallState, ChildCall, ContentRender, EntryRender, LookLine, Pass, Place, RenderContent,
+    Renderers, ToolRender, plugin_name, reasoning_lines, reply_lines, result_style, result_text,
     text_rows, user_lines,
 };
 use super::theme::Theme;
@@ -50,7 +50,7 @@ pub(crate) type Marks = Vec<(TranscriptItem, Range<usize>)>;
 /// What the view knows of the effects that settled, in this run and, once
 /// [`PastEffects`] brought them, before it: how long each tool call ran,
 /// by its agent and [`CallRef`]; and which calls each effect started,
-/// through any effect between, for [`ToolCallView::children`]. All of it
+/// through any effect between, for [`ToolRender::children`]. All of it
 /// comes from the kernel's effect records. What a call published comes
 /// from its result's entry ([`ShownEntry::facts`]), which the session
 /// keeps.
@@ -397,7 +397,7 @@ pub(crate) fn answer(
 }
 
 /// A tool or model call not settled yet as one of
-/// [`ToolCallView::children`], standing as `state`, `depth` 0; `None` for
+/// [`ToolRender::children`], standing as `state`, `depth` 0; `None` for
 /// any other effect.
 pub(crate) fn live_call(
     (request, model, sent): (Option<&ToolRequest>, Option<&ModelRequest>, Option<&SentTo>),
@@ -424,7 +424,7 @@ pub(crate) fn live_call(
 }
 
 /// Effects that settled before this run, such as a resumed session's, for
-/// [`ToolCallView::children`] and each call's running time: read as the
+/// [`ToolRender::children`] and each call's running time: read as the
 /// kernel's [`EffectRecorded`] records are. `rig_basics::telemetry` sends
 /// the session's effect log once it was restored. [`PastEffects::new`]
 /// does all the work per record, so make it where the records are read,
@@ -589,18 +589,9 @@ impl ShownAside<'_> {
         TranscriptItem::Aside(self.id)
     }
 
-    /// The aside as a render system sees it, in `theme`'s colors.
-    pub(crate) fn view(&self, theme: Theme) -> AsideView<'_> {
-        AsideView {
-            id: self.id,
-            aside: self.aside,
-            theme,
-        }
-    }
-
     /// Its lines in `theme`'s colors; none for a kind nothing draws.
     pub(crate) fn lines(&self, renderers: &Renderers, theme: &Theme) -> Vec<LookLine> {
-        renderers.aside(&self.view(*theme)).unwrap_or_default()
+        renderers.aside(self.id, self.aside, *theme)
     }
 }
 
@@ -1610,7 +1601,7 @@ fn message_lines(
                         lines.extend(on_band(rows, look.theme.tool));
                     }
                     other => {
-                        if let Some(block) = ContentBlock::of_user(other) {
+                        if let Some(block) = RenderContent::of_user(other) {
                             let view = (id, item_at, block, false);
                             content_lines(view, look, (&mut lines, &mut marks));
                         }
@@ -1648,19 +1639,20 @@ fn message_lines(
                         let ((index, result), facts) = calls.next().unwrap_or_default();
                         let at = id.map(|reply| CallRef { reply, index });
                         let from = at.and_then(|at| look.forked_call(at));
-                        let view = ToolCallView {
-                            call,
-                            result,
-                            state: look.state(at, result),
-                            theme: *look.theme,
-                            facts,
-                            took: at.and_then(|at| look.facts.took(from.or(look.agent), at)),
-                            output: at.and_then(|at| look.outputs.get(&at)).map(String::as_str),
-                            children: look.children.get(at, from).map_or(&[], Vec::as_slice),
-                        };
                         // Only an archived entry has no id, and no items.
                         let item = at.map(CallItem::Reply);
-                        let (drawn, decorated) = look.renderers.call_decorated(&view, item);
+                        let call = ToolRender {
+                            call: call.clone(),
+                            result: result.cloned(),
+                            state: look.state(at, result),
+                            theme: *look.theme,
+                            facts: facts.cloned(),
+                            took: at.and_then(|at| look.facts.took(from.or(look.agent), at)),
+                            output: at.and_then(|at| look.outputs.get(&at)).cloned(),
+                            children: look.children.get(at, from).cloned().unwrap_or_default(),
+                            item,
+                        };
+                        let (drawn, decorated) = look.renderers.call_decorated(call);
                         let start = lines.len();
                         lines.extend(on_band(drawn, look.theme.tool));
                         if let Some(at) = item {
@@ -1673,7 +1665,7 @@ fn message_lines(
                     }
                     // A provider item with no meaning here shows nothing.
                     other => {
-                        if let Some(block) = ContentBlock::of_assistant(other) {
+                        if let Some(block) = RenderContent::of_assistant(other) {
                             let view = (id, item_at, block, true);
                             content_lines(view, look, (&mut lines, &mut marks));
                         }
@@ -1716,18 +1708,18 @@ fn stop_lines(message: &Message, theme: &Theme) -> Vec<LookLine> {
 /// (by `assistant` or not), by its kind's look, and marks its rows when
 /// the message has an id.
 fn content_lines(
-    (id, index, block, assistant): (Option<MessageId>, usize, ContentBlock<'_>, bool),
+    (id, index, block, assistant): (Option<MessageId>, usize, RenderContent, bool),
     look: &Look<'_>,
     (lines, marks): (&mut Vec<LookLine>, &mut Marks),
 ) {
-    let view = ContentView {
+    let content = ContentRender {
         message: id,
         index,
-        block,
+        content: block,
         assistant,
     };
     let start = lines.len();
-    lines.extend(look.renderers.content(&view));
+    lines.extend(look.renderers.content(content));
     if let Some(id) = id {
         marks.push((TranscriptItem::Content(id, index), start..lines.len()));
     }
@@ -1746,14 +1738,13 @@ fn delivered_lines(
         .header()
         .and_then(|header| text.strip_prefix(&header))
         .map_or(text, |body| body.trim_start_matches('\n'));
-    let label = author.label();
-    let view = EntryView {
+    let entry = EntryRender {
         id,
-        plugin: plugin_name(author),
-        title: &label,
-        text: body,
+        plugin: plugin_name(author).to_owned(),
+        title: author.label(),
+        text: body.to_owned(),
     };
-    look.renderers.entry(&view)
+    look.renderers.entry(entry)
 }
 
 /// The lines of the notice `at` in the notices shown, coloured by its

@@ -27,7 +27,7 @@ fn drawn(app: &mut App, agent: Entity, id: Option<MessageId>, text: String) -> S
         title: "compaction".to_owned(),
         text,
     };
-    assert_eq!(input.view().id, id);
+    assert_eq!(input.id, id);
     let key = RenderKey::Entry(0, 0);
     let mut batch = app.world_mut().resource_mut::<RenderBatch>();
     batch.agent = Some(agent);
@@ -113,16 +113,16 @@ fn a_summary_a_later_compaction_took_out_is_still_drawn_from_its_state() {
 
 #[test]
 fn a_summary_without_a_record_keeps_its_plain_text() {
-    let entry = EntryView {
+    let entry = EntryRender {
         id: None,
-        plugin: "compaction",
-        title: "compaction",
-        text: "<summary>old</summary>",
+        plugin: "compaction".to_owned(),
+        title: "compaction".to_owned(),
+        text: "<summary>old</summary>".to_owned(),
     };
     let lines = summary_lines(&entry, None, &Theme::default(), 80);
     assert!(
         lines
             .iter()
-            .any(|line| line.to_string().contains(entry.text))
+            .any(|line| line.to_string().contains(&entry.text))
     );
 }

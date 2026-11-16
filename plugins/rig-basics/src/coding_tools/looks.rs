@@ -11,12 +11,12 @@ use rig_tools::{Edit, Read, Shell, Write};
 use rig_tui::highlight::{Code, Language, code_rows};
 use rig_tui::ratatui::style::{Style, Stylize};
 use rig_tui::ratatui::text::{Line, Span};
-use rig_tui::{LookLine, OUTPUT_INDENT, RenderBatch, ToolCallView, text_rows};
+use rig_tui::{LookLine, OUTPUT_INDENT, RenderBatch, ToolRender, text_rows};
 
 /// Draws the calls of `tool` with `look`.
-fn draw(batch: &mut RenderBatch, tool: &str, look: fn(&ToolCallView<'_>) -> Vec<LookLine>) {
+fn draw(batch: &mut RenderBatch, tool: &str, look: fn(&ToolRender) -> Vec<LookLine>) {
     for (call, output) in batch.tools_mut(tool) {
-        output.lines = look(&call.view());
+        output.lines = look(call);
     }
 }
 
@@ -36,7 +36,7 @@ pub(super) fn draw_shell(mut batch: ResMut<RenderBatch>) {
     draw(&mut batch, Shell::NAME, shell);
 }
 
-pub(super) fn read(view: &ToolCallView<'_>) -> Vec<LookLine> {
+pub(super) fn read(view: &ToolRender) -> Vec<LookLine> {
     let path = view.argument("path").unwrap_or_default().to_owned();
     let number = |key: &str| usize::try_from(view.call.function.arguments.get(key)?.as_u64()?).ok();
     let range = match (number("offset"), number("limit")) {
@@ -47,6 +47,7 @@ pub(super) fn read(view: &ToolCallView<'_>) -> Vec<LookLine> {
     };
     let shown = view
         .facts
+        .as_ref()
         .and_then(|facts| facts.get::<FilesRead>().ok().flatten());
     let shown = shown.and_then(|read| read.0.first().and_then(|file| file.lines));
     let detail = shown.map_or(range, span);
@@ -96,11 +97,12 @@ fn span(shown: LinesShown) -> String {
 /// change the call published, as a diff under the header that names the
 /// file; just the reply when it published no hunks, such as for a change
 /// too large for the session to keep or one with a secret across lines.
-pub(super) fn edit(view: &ToolCallView<'_>) -> Vec<LookLine> {
+pub(super) fn edit(view: &ToolRender) -> Vec<LookLine> {
     let path = view.argument("path").unwrap_or_default().to_owned();
     let mut lines = vec![view.header(format!("edit {path}"), "").into()];
     let changed = view
         .facts
+        .as_ref()
         .and_then(|facts| facts.get::<FilesChanged>().ok().flatten())
         .filter(|changed| changed.0.iter().any(|change| !change.hunks.is_empty()));
     match (view.result_text(), changed) {
@@ -121,7 +123,7 @@ pub(super) fn edit(view: &ToolCallView<'_>) -> Vec<LookLine> {
     lines
 }
 
-pub(super) fn write(view: &ToolCallView<'_>) -> Vec<LookLine> {
+pub(super) fn write(view: &ToolRender) -> Vec<LookLine> {
     let path = view.argument("path").unwrap_or_default().to_owned();
     let content = view.argument("content").unwrap_or_default();
     let header = view.header(format!("write {path}"), lines(content.lines().count()));
@@ -134,7 +136,7 @@ pub(super) fn write(view: &ToolCallView<'_>) -> Vec<LookLine> {
     rows
 }
 
-pub(super) fn shell(view: &ToolCallView<'_>) -> Vec<LookLine> {
+pub(super) fn shell(view: &ToolRender) -> Vec<LookLine> {
     let command = view.argument("command").unwrap_or_default();
     let code = Code::new(command, Language::Named("bash"));
     let mut lines = Vec::new();

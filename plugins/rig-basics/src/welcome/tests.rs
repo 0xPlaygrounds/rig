@@ -92,11 +92,7 @@ fn the_welcome_is_the_mark_beside_the_version_model_and_directory() {
         return;
     };
     let theme = rig_tui::Theme::on((0x1c, 0x1c, 0x1c), true);
-    let lines = tui::lines(&rig_tui::AsideView {
-        id,
-        aside: &aside,
-        theme,
-    });
+    let lines = tui::lines(&rig_tui::AsideRender { id, aside, theme });
     let rows: Vec<String> = lines.iter().map(ToString::to_string).collect();
     let row = |at: usize| rows.get(at).map(String::as_str).unwrap_or_default();
     assert!(
