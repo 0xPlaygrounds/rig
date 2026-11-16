@@ -1278,14 +1278,18 @@ impl HookStack {
 /// Generate the `HookStack` methods that dispatch to each hook in registration
 /// order and return the first action that is not `Continue`, without invoking
 /// the remaining hooks: `(on_* name, erased name, event type, action type)`,
+/// then the [`StepEventKind`] a hook must observe to be called, if any,
 /// mirroring `for_each_boxed_hook_event!`. The genuinely chaining events
 /// (`on_model_select`, `on_completion_call`, `on_invalid_tool_call`,
 /// `on_dispatch`, `on_outcome`) stay hand-written.
 macro_rules! stack_first_non_continue {
-    ($($on:ident, $erased:ident, $event:ident, $action:ident;)+) => {
+    ($($on:ident, $erased:ident, $event:ident, $action:ident $(, $kind:ident)?;)+) => {
         $(
             async fn $on(&self, ctx: &HookContext, event: $event<'_>) -> $action {
                 for hook in &self.hooks {
+                    $(if !hook.observes(StepEventKind::$kind) {
+                        continue;
+                    })?
                     let action = hook.$erased(ctx, event).await;
                     if !matches!(action, $action::Continue) {
                         return action;
@@ -1301,6 +1305,9 @@ impl AgentHook for HookStack {
     async fn on_run_start(&self, ctx: &HookContext, event: RunStart<'_>) -> RunStartAction {
         let mut rewritten: Option<Message> = None;
         for hook in &self.hooks {
+            if !hook.observes(StepEventKind::RunStart) {
+                continue;
+            }
             let current = RunStart {
                 prompt: rewritten.as_ref().unwrap_or(event.prompt),
                 ..event
@@ -1316,7 +1323,9 @@ impl AgentHook for HookStack {
 
     async fn on_run_settled(&self, ctx: &HookContext, event: RunSettled<'_>) {
         for hook in &self.hooks {
-            hook.run_settled(ctx, event).await;
+            if hook.observes(StepEventKind::RunSettled) {
+                hook.run_settled(ctx, event).await;
+            }
         }
     }
 
@@ -1372,9 +1381,9 @@ impl AgentHook for HookStack {
 
     stack_first_non_continue! {
         on_model_turn_finished, model_turn_finished, ModelTurnFinished, ModelTurnAction;
-        on_text_delta, text_delta, TextDelta, ObservationAction;
-        on_reasoning_delta, reasoning_delta, ReasoningDelta, ObservationAction;
-        on_tool_call_delta, tool_call_delta, ToolCallDelta, ObservationAction;
+        on_text_delta, text_delta, TextDelta, ObservationAction, TextDelta;
+        on_reasoning_delta, reasoning_delta, ReasoningDelta, ObservationAction, ReasoningDelta;
+        on_tool_call_delta, tool_call_delta, ToolCallDelta, ObservationAction, ToolCallDelta;
     }
     async fn on_invalid_tool_call(
         &self,
