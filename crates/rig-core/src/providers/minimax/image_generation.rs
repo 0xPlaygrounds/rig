@@ -79,10 +79,8 @@ pub(crate) fn request_body(
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct ImageGenerationReply {
     /// MiniMax's trace id.
-    #[serde(default)]
     pub id: Option<String>,
     /// The generated images. MiniMax may send `null` here.
-    #[serde(default)]
     pub data: Option<ImageGenerationData>,
 }
 

@@ -95,6 +95,5 @@ pub struct RerankApiUsage {
 pub struct RerankApiData {
     pub index: usize,
     pub relevance_score: f64,
-    #[serde(default)]
     pub document: Option<String>,
 }

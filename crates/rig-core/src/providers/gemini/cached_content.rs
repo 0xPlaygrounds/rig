@@ -253,7 +253,6 @@ pub struct CachedContentPage {
     /// The cursor naming the next page, when the listing has one. The
     /// decoder takes it before the page reaches the fold, so a folded
     /// reply's is always `None`.
-    #[serde(default)]
     pub next_page_token: Option<String>,
 }
 

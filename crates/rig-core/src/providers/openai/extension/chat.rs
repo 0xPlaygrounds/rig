@@ -277,13 +277,10 @@ impl ApproximateLocation {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
 pub struct PromptTokensDetails {
     /// Tokens read from the prompt cache.
-    #[serde(default)]
     pub cached_tokens: Option<u64>,
     /// Audio input tokens.
-    #[serde(default)]
     pub audio_tokens: Option<u64>,
     /// Tokens written to the prompt cache.
-    #[serde(default)]
     pub cache_write_tokens: Option<u64>,
 }
 
@@ -292,15 +289,11 @@ pub struct PromptTokensDetails {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
 pub struct CompletionTokensDetails {
     /// Tokens spent reasoning.
-    #[serde(default)]
     pub reasoning_tokens: Option<u64>,
     /// Audio output tokens.
-    #[serde(default)]
     pub audio_tokens: Option<u64>,
     /// Predicted tokens that appeared in the output.
-    #[serde(default)]
     pub accepted_prediction_tokens: Option<u64>,
     /// Predicted tokens that did not, billed as output.
-    #[serde(default)]
     pub rejected_prediction_tokens: Option<u64>,
 }

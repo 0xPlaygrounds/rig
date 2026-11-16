@@ -236,7 +236,6 @@ fn usage_of(meta: Option<&Meta>) -> crate::completion::Usage {
 pub struct EmbeddingResponse {
     pub id: String,
     pub embeddings: Vec<Vec<f64>>,
-    #[serde(default)]
     pub meta: Option<Meta>,
 }
 
@@ -268,10 +267,8 @@ pub struct BilledUnits {
 /// Cohere Embed v3 accepts a single image per call.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageEmbeddingResponse {
-    #[serde(default)]
     pub id: Option<String>,
     pub embeddings: FloatEmbeddings,
-    #[serde(default)]
     pub meta: Option<Meta>,
 }
 

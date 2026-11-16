@@ -319,7 +319,6 @@ pub struct ItemPhase {
     /// The item's `id`.
     pub id: String,
     /// The item's `phase`, such as `final_answer`, when it names one.
-    #[serde(default)]
     pub phase: Option<String>,
 }
 
