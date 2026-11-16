@@ -386,7 +386,7 @@ macro_rules! forward_provider_response_helpers {
             pub fn provider_request_id(&self) -> Option<&str> {
                 match self {
                     Self::$variant(error) => error.provider_request_id(),
-                    $(Self::$report(report) => report.request_id.as_deref(),)?
+                    $(Self::$report(report) => report.provider_request_id(),)?
                     _ => None,
                 }
             }
@@ -395,9 +395,7 @@ macro_rules! forward_provider_response_helpers {
             pub fn provider_response_status(&self) -> Option<http::StatusCode> {
                 match self {
                     Self::$variant(error) => error.provider_response_status(),
-                    $(Self::$report(report) => report
-                        .http_status
-                        .and_then(|status| http::StatusCode::from_u16(status).ok()),)?
+                    $(Self::$report(report) => report.provider_response_status(),)?
                     _ => None,
                 }
             }
