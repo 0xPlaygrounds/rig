@@ -53,7 +53,7 @@ impl CacheCost {
         let cache_reads = usage.cached_input_tokens.unwrap_or(0);
         let cache_writes = usage.cache_creation_input_tokens.unwrap_or(0);
         Self {
-            uncached_input: input.saturating_sub(cache_reads + cache_writes),
+            uncached_input: input.saturating_sub(cache_reads.saturating_add(cache_writes)),
             cache_reads,
             cache_writes,
             storage_token_hours: 0.0,
@@ -62,7 +62,9 @@ impl CacheCost {
 
     /// Every input token, however it was billed.
     pub fn prompt_tokens(&self) -> u64 {
-        self.uncached_input + self.cache_reads + self.cache_writes
+        self.uncached_input
+            .saturating_add(self.cache_reads)
+            .saturating_add(self.cache_writes)
     }
 
     /// Input cost in USD at `rates`: uncached, read, written and stored.
@@ -115,9 +117,9 @@ impl Add for CacheCost {
 
 impl AddAssign for CacheCost {
     fn add_assign(&mut self, other: Self) {
-        self.uncached_input += other.uncached_input;
-        self.cache_reads += other.cache_reads;
-        self.cache_writes += other.cache_writes;
+        self.uncached_input = self.uncached_input.saturating_add(other.uncached_input);
+        self.cache_reads = self.cache_reads.saturating_add(other.cache_reads);
+        self.cache_writes = self.cache_writes.saturating_add(other.cache_writes);
         self.storage_token_hours += other.storage_token_hours;
     }
 }
