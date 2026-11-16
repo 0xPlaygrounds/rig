@@ -13,6 +13,7 @@ use rig_harness::rig_core::conversation::{Change, Conversation as Saved};
 use rig_harness::rig_core::message::{Message, UserContent};
 use rig_harness::rig_ecs::session_log::SessionStore;
 use rig_harness::rig_memory::{LogRecord, SessionError, as_of, history};
+use rig_harness::rig_tools::ago;
 use rig_tui::crossterm::event::KeyCode;
 use rig_tui::ratatui::layout::Constraint;
 use rig_tui::ratatui::style::Style;
@@ -194,16 +195,6 @@ fn bookmark(
     notices.write(Notice::info(args.agent, format!("Bookmarked `{label}`.")));
 }
 
-/// How long ago, roughly.
-fn age(elapsed_ms: u64) -> String {
-    match elapsed_ms / 1000 {
-        0..60 => "just now".to_owned(),
-        seconds @ 60..3600 => format!("{}m ago", seconds / 60),
-        seconds @ 3600..86_400 => format!("{}h ago", seconds / 3600),
-        seconds => format!("{}d ago", seconds / 86_400),
-    }
-}
-
 /// `/bookmarks`: a picker of every bookmark, with when it was made, the
 /// agent and the first line of its message.
 fn list(
@@ -226,7 +217,7 @@ fn list(
         let name = agents.get(*agent).map_or("", |(_, _, id, name)| {
             name.map_or(id.0.as_str(), Name::as_str)
         });
-        let when = age(now.saturating_sub(bookmark.at_ms));
+        let when = ago(Duration::from_millis(now.saturating_sub(bookmark.at_ms)));
         let detail = format!("{when} · {name} · {}", bookmark.first_line);
         picker
             .items
