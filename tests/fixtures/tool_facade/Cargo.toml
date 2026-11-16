@@ -41,8 +41,6 @@ all_root = [
     "rig/surrealdb",
     "rig/vectorize",
     "rig/vertexai",
-    "rig/audio",
-    "rig/image",
     "rig/derive",
     "rig/pdf",
     "rig/epub",

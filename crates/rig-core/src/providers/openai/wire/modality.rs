@@ -257,19 +257,16 @@ impl OpenAIConfig {
     }
 
     /// The image-generation wire for `model`.
-    #[cfg(feature = "image")]
     pub(crate) fn image_generation(&self, model: impl Into<String>) -> Images {
         Images::new(self.clone(), model)
     }
 
     /// The speech wire for `model`.
-    #[cfg(feature = "audio")]
     pub(crate) fn audio_generation(&self, model: impl Into<String>) -> Speech {
         Speech::new(self.clone(), model)
     }
 
     /// The `api-version` a speech request carries.
-    #[cfg(feature = "audio")]
     pub(crate) fn speech_api_version(&self) -> Option<&str> {
         self.audio_api_version
             .as_deref()
@@ -847,7 +844,6 @@ impl Wire for Transcriptions {
 }
 
 /// The image-generation wire.
-#[cfg(feature = "image")]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Images {
     /// Which provider, and how to reach it.
@@ -856,7 +852,6 @@ pub struct Images {
     pub model: String,
 }
 
-#[cfg(feature = "image")]
 impl Images {
     /// The image-generation wire for `model`.
     pub fn new(provider: OpenAIConfig, model: impl Into<String>) -> Self {
@@ -872,7 +867,6 @@ impl Images {
 /// Carries the dialect's [`ImageBody`] because the request shape names the
 /// reply shape: most of this family answers with a JSON envelope, and
 /// Hugging Face's router answers with the image bytes themselves.
-#[cfg(feature = "image")]
 #[derive(Default)]
 pub struct ImagesDecoder {
     /// Which reply shape this dialect answers with.
@@ -880,7 +874,6 @@ pub struct ImagesDecoder {
 }
 
 /// One generated image, as every dialect on this wire returns it.
-#[cfg(feature = "image")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageDatum {
     /// The image, base64-encoded.
@@ -888,7 +881,6 @@ pub struct ImageDatum {
 }
 
 /// Base64 image represented as a string or an object with an `image` field.
-#[cfg(feature = "image")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum ImagesReplyImage {
@@ -901,7 +893,6 @@ pub enum ImagesReplyImage {
     Bare(String),
 }
 
-#[cfg(feature = "image")]
 impl ImagesReplyImage {
     /// The image's base64 payload, whichever form the dialect sent.
     pub fn base64(&self) -> &str {
@@ -913,7 +904,6 @@ impl ImagesReplyImage {
 }
 
 /// JSON image reply accepting `data` and `images` arrays with optional metadata.
-#[cfg(feature = "image")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImagesReply {
     /// The generated images, as OpenAI and xAI key them.
@@ -929,7 +919,6 @@ pub struct ImagesReply {
     pub extra: serde_json::Map<String, serde_json::Value>,
 }
 
-#[cfg(feature = "image")]
 impl ImagesReply {
     /// The first image's base64 payload, whichever key the dialect used.
     pub fn first_base64(&self) -> Option<&str> {
@@ -942,7 +931,6 @@ impl ImagesReply {
 }
 
 /// Generated images in a decoded JSON envelope or as raw bytes.
-#[cfg(feature = "image")]
 #[derive(Debug, Clone)]
 pub enum ImagesEvent {
     /// A JSON envelope, as OpenAI, xAI and Hyperbolic answer.
@@ -953,7 +941,6 @@ pub enum ImagesEvent {
     MiniMax(Vec<u8>),
 }
 
-#[cfg(feature = "image")]
 impl<'id> Decoder<'id, crate::operation::ImageGeneration> for ImagesDecoder {
     type Event = ImagesEvent;
 
@@ -1009,7 +996,6 @@ impl<'id> Decoder<'id, crate::operation::ImageGeneration> for ImagesDecoder {
     }
 }
 
-#[cfg(feature = "image")]
 impl Wire for Images {
     type Op = crate::operation::ImageGeneration;
     type Payload = crate::wire::Encoded;
@@ -1099,7 +1085,6 @@ impl Wire for Images {
 }
 
 /// The speech wire.
-#[cfg(feature = "audio")]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Speech {
     /// Which provider, and how to reach it.
@@ -1108,7 +1093,6 @@ pub struct Speech {
     pub model: String,
 }
 
-#[cfg(feature = "audio")]
 impl Speech {
     /// The speech wire for `model`.
     pub fn new(provider: OpenAIConfig, model: impl Into<String>) -> Self {
@@ -1120,7 +1104,6 @@ impl Speech {
 }
 
 /// Decode raw audio or the dialect's base64 JSON envelope.
-#[cfg(feature = "audio")]
 #[derive(Default)]
 pub struct SpeechDecoder {
     /// Which reply shape this dialect answers with.
@@ -1129,14 +1112,12 @@ pub struct SpeechDecoder {
 
 /// Hyperbolic's speech reply: base64 in a JSON envelope rather than the
 /// audio bytes themselves.
-#[cfg(feature = "audio")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpeechReply {
     /// The audio, base64-encoded.
     pub audio: String,
 }
 
-#[cfg(feature = "audio")]
 impl<'id> Decoder<'id, crate::operation::AudioGeneration> for SpeechDecoder {
     type Event = Vec<u8>;
 
@@ -1184,7 +1165,6 @@ impl<'id> Decoder<'id, crate::operation::AudioGeneration> for SpeechDecoder {
     }
 }
 
-#[cfg(feature = "audio")]
 impl Wire for Speech {
     type Op = crate::operation::AudioGeneration;
     type Payload = crate::wire::Encoded;

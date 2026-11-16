@@ -12,7 +12,7 @@ workspace = true
 doctest = false
 
 [dependencies]
-rig-core = { path = "../../crates/rig-core", default-features = false, features = ["test-utils", "image", "audio"] }
+rig-core = { path = "../../crates/rig-core", default-features = false, features = ["test-utils"] }
 rig-agent = { path = "../../crates/rig-agent", default-features = false, features = ["test-utils"] }
 rig-reqwest = { path = "../../crates/rig-reqwest", default-features = false }
 rig-cassette = { path = "../../crates/rig-cassette", features = ["agent", "bedrock"] }

@@ -87,11 +87,9 @@ url = { workspace = true, optional = true }
 [dev-dependencies]
 rig = { path = "../..", default-features = false, features = [
   "agent",
-  "audio",
   "bedrock",
   "cassette",
   "derive",
-  "image",
   "reqwest",
   "rustls",
   "test-utils",

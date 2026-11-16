@@ -50,7 +50,5 @@ tokio-test = { workspace = true }
 
 [features]
 default = ["derive"]
-audio = ["rig-core/audio"]
-image = ["rig-core/image"]
 derive = ["dep:rig-derive", "rig-core/derive"]
 test-utils = ["rig-core/test-utils"]

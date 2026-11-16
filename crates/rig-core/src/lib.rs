@@ -40,8 +40,6 @@
 
 extern crate self as rig;
 
-#[cfg(feature = "audio")]
-#[cfg_attr(docsrs, doc(cfg(feature = "audio")))]
 pub mod audio_generation;
 pub mod catalog;
 pub mod client;
@@ -53,8 +51,6 @@ pub mod embeddings;
 pub mod error;
 pub use rig_http::http_client;
 pub mod id;
-#[cfg(feature = "image")]
-#[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 pub mod image_generation;
 /// Internal JSON helpers shared with sibling runtime crates (e.g. `rig-agent`).
 /// Not part of rig-core's stable public API.

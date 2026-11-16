@@ -13,15 +13,11 @@
 //! # }
 //! ```
 
-#[cfg(feature = "audio")]
 pub mod audio_generation;
 pub mod extension;
-#[cfg(feature = "image")]
 pub mod image_generation;
 
-#[cfg(feature = "audio")]
 pub use audio_generation::TTS_1;
-#[cfg(feature = "image")]
 pub use image_generation::{GROK_IMAGINE_IMAGE, GROK_IMAGINE_IMAGE_PRO};
 
 pub const GROK_3: &str = "grok-3";

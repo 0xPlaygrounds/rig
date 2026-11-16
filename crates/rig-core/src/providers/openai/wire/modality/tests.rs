@@ -259,7 +259,6 @@ fn a_transcription_request_is_multipart() {
 
 /// xAI's image endpoint takes no `size` and must be asked for base64, which
 /// is the only form this wire decodes.
-#[cfg(feature = "image")]
 #[tokio::test]
 async fn the_xai_image_body_and_reply_differ_from_openais() {
     use crate::providers::xai::DIALECT as XAI;
@@ -309,7 +308,6 @@ async fn the_xai_image_body_and_reply_differ_from_openais() {
 }
 
 /// xAI spells its speech endpoint `/v1/tts` and takes a body of its own.
-#[cfg(feature = "audio")]
 #[test]
 fn the_xai_speech_body_differs_from_openais() {
     use crate::providers::xai::DIALECT as XAI;
@@ -352,7 +350,6 @@ fn the_xai_speech_body_differs_from_openais() {
 
 /// Azure versions its speech endpoint separately from every other route, so
 /// a speech request must not carry the general `api-version`.
-#[cfg(feature = "audio")]
 #[test]
 fn azure_speech_carries_its_own_api_version() {
     let provider = OpenAIConfig::with_key(&AZURE, "k")
@@ -476,7 +473,6 @@ fn a_rerank_request_is_the_jina_shape() {
 /// Hyperbolic's image endpoint names the model `model_name`, takes the size
 /// as two fields, and answers under `images[].image` — none of which the
 /// OpenAI shape would have matched.
-#[cfg(feature = "image")]
 #[tokio::test]
 async fn the_hyperbolic_image_body_and_reply_differ_from_openais() {
     use crate::providers::openai::wire::HYPERBOLIC;
@@ -522,7 +518,6 @@ async fn the_hyperbolic_image_body_and_reply_differ_from_openais() {
 /// Hugging Face's router takes the prompt as `inputs` and the size nested
 /// under `parameters`, and the model is the path rather than a body field —
 /// the OpenAI body would have been rejected outright.
-#[cfg(feature = "image")]
 #[test]
 fn the_huggingface_image_body_is_the_routers_own_shape() {
     use crate::providers::openai::wire::HUGGINGFACE;
@@ -564,7 +559,6 @@ fn the_huggingface_image_body_is_the_routers_own_shape() {
 
 /// No wire of this family sends reference images, so a request with one is
 /// refused before anything is sent.
-#[cfg(feature = "image")]
 #[test]
 fn reference_images_are_refused() {
     let request = crate::image_generation::ImageGenerationRequestBuilder::new("a cat")
@@ -578,7 +572,6 @@ fn reference_images_are_refused() {
 
 /// The router answers with the image bytes and no JSON envelope at all, so
 /// the reply neither classifies nor decodes as JSON: the frame is the image.
-#[cfg(feature = "image")]
 #[tokio::test]
 async fn the_huggingface_image_reply_is_the_image_bytes() {
     use crate::providers::openai::wire::HUGGINGFACE;
@@ -607,7 +600,6 @@ async fn the_huggingface_image_reply_is_the_image_bytes() {
 
 /// Hyperbolic addresses speech by language and answers with base64 in a JSON
 /// envelope rather than the audio bytes OpenAI's endpoint returns.
-#[cfg(feature = "audio")]
 #[tokio::test]
 async fn the_hyperbolic_speech_body_and_reply_differ_from_openais() {
     use crate::providers::openai::wire::HYPERBOLIC;
