@@ -313,3 +313,21 @@ fn a_quoted_string_reads_back_as_written() {
         assert_eq!(read, Some((Some(text), Some(text))), "{toml}");
     }
 }
+
+/// A RIG_HOME with a line break stays on the header line of the generated
+/// Cargo.toml and main.rs, so both still parse.
+#[test]
+fn a_home_with_a_line_break_still_generates_a_manifest_that_parses() {
+    let source = RigSource::Local(checkout());
+    let plugins = home_with("[tui]\n").unwrap_or_default();
+    let home = Home::at("/home/r\nig");
+    let manifest = manifest(&home, &plugins, &source).unwrap_or_default();
+    let parsed = manifest
+        .parse::<rig_harness_protocol::config::toml_edit::DocumentMut>()
+        .map(|_| ())
+        .map_err(|why| why.to_string());
+    let main = main_rs(&home, &plugins, &source);
+    let second = main.lines().nth(1).unwrap_or_default().to_owned();
+    assert_eq!(parsed, Ok(()), "{manifest}");
+    assert!(second.starts_with("fn main"), "main.rs line 2: {second}");
+}
