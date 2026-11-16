@@ -3562,7 +3562,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
                             panic!("the replayer recognised the request: {report:?}")
                         }
                     };
-                    ModelTurn::from_response(&response, &prepared)
+                    ModelTurn::from_policy(&response, prepared.policy.clone())
                 };
                 let choice = turn.choice.clone();
                 let mut outcome = run.model_response(turn).expect("a model turn");

@@ -440,7 +440,6 @@ fn streamed_turn_rejects_unknown_tool_calls_fail_fast() {
         head: AssistantMessage::default(),
         choice: vec![AssistantContent::ToolCall(tool_call("tc_1", "unknown"))],
         policy: add_policy(),
-        finish_reason: None,
         cut_off: Vec::new(),
     };
     let err = run
