@@ -2604,14 +2604,14 @@ fn a_summary_estimates_the_context_from_the_figure_that_measured_it() {
     let reported = 50_000;
     let estimates = summarized(reported, false, 2);
     let [(Some(first), own), (Some(second), left)] = estimates.as_slice() else {
-        return assert!(false, "{estimates:?}");
+        return assert_eq!(estimates.len(), 2, "both estimated: {estimates:?}");
     };
     assert!(first > own && *first < reported, "{estimates:?}");
     // The same system prompt and tools around each conversation.
     assert_eq!(first - own, second - left, "{estimates:?}");
     let estimates = summarized(reported, true, 1);
     let [(Some(estimate), own)] = estimates.as_slice() else {
-        return assert!(false, "{estimates:?}");
+        return assert_eq!(estimates.len(), 1, "estimated: {estimates:?}");
     };
     assert_eq!(estimate, own);
 }
