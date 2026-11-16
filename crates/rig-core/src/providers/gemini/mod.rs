@@ -127,6 +127,18 @@ impl GeminiConfig {
     }
 }
 
+/// Merges a request's `additional_params` over `body`: objects deep merge,
+/// and any other value replaces the body.
+fn apply_params(body: &mut serde_json::Value, params: Option<serde_json::Value>) {
+    match (body, params) {
+        (serde_json::Value::Object(body), Some(serde_json::Value::Object(params))) => {
+            crate::json_utils::deep_merge(body, params);
+        }
+        (body, Some(params)) => *body = params,
+        (_, None) => {}
+    }
+}
+
 /// The size of a generated image. Each model takes some of them; the
 /// API refuses the others.
 #[non_exhaustive]
