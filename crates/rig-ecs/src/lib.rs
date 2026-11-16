@@ -119,7 +119,7 @@ use agent::{Agent, Notice};
 use session_log::{
     SaveConversations, SaveFrame, SavedOne, SessionLog, save_conversations, save_now,
 };
-use tasks::{PollTasks, Wake, poll_tasks, run_settle_frames};
+use tasks::{PollTasks, Wake, finish, run_settle_frames};
 
 /// The system in `Last`, on exit, that stops the running turns as the
 /// user's stop does, for the [`Exiting`](turn::Exiting) reason, in Bevy's
@@ -238,7 +238,7 @@ impl Plugin for AgentPlugin {
             )
             // A reply that came in this frame has its calls started in it.
             .configure_sets(Update, PollTasks.before(stage::AgentLoop))
-            .add_systems(Update, poll_tasks.in_set(PollTasks))
+            .add_systems(Update, finish::<Without<stage::Effect>>.in_set(PollTasks))
             .add_systems(
                 PreUpdate,
                 model::reconnect.run_if(resource_changed::<model::Models>),

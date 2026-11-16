@@ -70,7 +70,7 @@ use super::inbox::{Incoming, accept, carry_on_accepted, message_kind, settle_uns
 use super::requests::RequestOf;
 use super::restore::{Interrupted, answer_interrupted, mark_started, stop_restored};
 use super::session_log::{Drain, SessionLog, save_now};
-use super::tasks::{Running, Wake, arrive};
+use super::tasks::{Running, Wake, finish};
 use super::tools::{
     CallHandler, Footprint, InReply, ToolRequest, ToolStart, ToolStarts, complete_calls,
     compute_footprints, refuse_calls,
@@ -757,7 +757,7 @@ pub(crate) fn build(app: &mut App) {
         .add_systems(
             AgentPass,
             (
-                (arrive, stream_partials, judge_failures)
+                (finish::<With<Effect>>, stream_partials, judge_failures)
                     .chain()
                     .in_set(Stage::Arrive),
                 (
