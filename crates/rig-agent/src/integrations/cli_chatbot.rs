@@ -12,8 +12,7 @@ use rig_core::message::Message;
 use std::io::{self, Write};
 
 use crate::{
-    agent::{Agent, MultiTurnStreamItem, StreamToStdoutError},
-    completion::{PromptError, Usage},
+    agent::{Agent, MultiTurnStreamItem, PromptResponse, StreamToStdoutError},
     streaming::{Item, StreamEvent},
 };
 
@@ -23,7 +22,6 @@ pub struct ChatBot {
     agent: Agent,
     max_turns: usize,
     show_usage: bool,
-    usage: Usage,
 }
 
 impl ChatBot {
@@ -33,7 +31,6 @@ impl ChatBot {
             agent,
             max_turns: 1,
             show_usage: false,
-            usage: Usage::default(),
         }
     }
 
@@ -52,7 +49,9 @@ impl ChatBot {
     }
 
     /// Read prompts from stdin and print answers until `exit` or end of input.
-    /// Returns prompt failures and stdout flush errors; input read errors are printed.
+    /// Returns prompt failures, stdout flush errors, and
+    /// [`StreamToStdoutError::Incomplete`] when a stream ends without a final
+    /// response; input read errors are printed.
     pub async fn run(self) -> Result<(), StreamToStdoutError> {
         self.run_on(|line| io::stdin().read_line(line)).await
     }
@@ -60,7 +59,7 @@ impl ChatBot {
     /// [`Self::run`] reading each prompt with `read_line`, which appends one
     /// line to its buffer. Stdin is locked only while a line is read.
     async fn run_on(
-        mut self,
+        self,
         mut read_line: impl FnMut(&mut String) -> io::Result<usize>,
     ) -> Result<(), StreamToStdoutError> {
         let mut stdout = io::stdout();
@@ -84,16 +83,17 @@ impl ChatBot {
                     println!();
                     println!("========================== Response ============================");
 
-                    self.request(input, &mut history).await?;
+                    let response = self.request(input, &history).await?;
 
                     println!("================================================================");
                     println!();
 
                     if self.show_usage {
-                        let input_tokens = self.usage.input_tokens.unwrap_or(0);
-                        let output_tokens = self.usage.output_tokens.unwrap_or(0);
+                        let input_tokens = response.usage.input_tokens.unwrap_or(0);
+                        let output_tokens = response.usage.output_tokens.unwrap_or(0);
                         println!("Input {input_tokens} tokens\nOutput {output_tokens} tokens");
                     }
+                    history.extend(response.messages);
                 }
                 Err(e) => println!("Error reading request: {e}"),
             }
@@ -102,36 +102,33 @@ impl ChatBot {
         Ok(())
     }
 
-    /// Stream one answer to stdout and append its committed messages to `history`.
+    /// Stream one answer's text to stdout and return the run's response.
     async fn request(
-        &mut self,
+        &self,
         prompt: &str,
-        history: &mut Vec<Message>,
-    ) -> Result<(), PromptError> {
+        history: &[Message],
+    ) -> Result<PromptResponse, StreamToStdoutError> {
         let mut response_stream = self
             .agent
             .prompt(prompt)
-            .history(history.clone())
+            .history(history.to_vec())
             .max_turns(self.max_turns)
             .stream();
 
-        let mut messages = Vec::new();
         while let Some(chunk) = response_stream.next().await {
             match chunk? {
                 MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text {
                     text,
                     ..
                 })) => print!("{text}"),
-                MultiTurnStreamItem::FinalResponse(final_response) => {
-                    self.usage = final_response.usage();
-                    messages = final_response.messages;
+                MultiTurnStreamItem::FinalResponse(response) => {
+                    println!();
+                    return Ok(response);
                 }
                 _ => {}
             }
         }
-        println!();
-        history.extend(messages);
-        Ok(())
+        Err(StreamToStdoutError::Incomplete)
     }
 }
 
