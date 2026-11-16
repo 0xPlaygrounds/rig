@@ -19,6 +19,22 @@ pub(crate) struct RequestPolicy {
     pub(crate) max_output_tokens: Option<u32>,
 }
 
+/// The request's additional parameters as an object, made empty when unset.
+fn object_params(request: &mut CompletionRequest) -> Option<&mut Map<String, Value>> {
+    request
+        .additional_params
+        .get_or_insert_with(|| Value::Object(Map::new()))
+        .as_object_mut()
+}
+
+/// The private `_omp` object in `params`, made empty when unset.
+fn control(params: &mut Map<String, Value>) -> Option<&mut Map<String, Value>> {
+    params
+        .entry("_omp")
+        .or_insert_with(|| Value::Object(Map::new()))
+        .as_object_mut()
+}
+
 fn annotate(request: &mut CompletionRequest) -> bool {
     let explicit = request.tool_choice.is_some()
         || request
@@ -47,17 +63,11 @@ fn annotate(request: &mut CompletionRequest) -> bool {
             Some(Reasoning::Off) => Some(false),
             _ => None,
         });
-    let params = request
-        .additional_params
-        .get_or_insert_with(|| Value::Object(Map::new()));
-    let Some(params) = params.as_object_mut() else {
+    let Some(params) = object_params(request) else {
         return false;
     };
     let explicit_cache_control = params.contains_key("cache_control");
-    let control = params
-        .entry("_omp")
-        .or_insert_with(|| Value::Object(Map::new()));
-    let Some(control) = control.as_object_mut() else {
+    let Some(control) = control(params) else {
         return false;
     };
     control.insert("tool_choice_explicit".into(), explicit.into());
@@ -90,12 +100,7 @@ impl Intercept for RequestPolicy {
                 "Anthropic OAuth requires object request parameters and supported cache retention",
             );
         }
-        if let Some(control) = request
-            .additional_params
-            .as_mut()
-            .and_then(|p| p.get_mut("_omp"))
-            .and_then(Value::as_object_mut)
-        {
+        if let Some(control) = object_params(&mut request).and_then(control) {
             control.insert("adaptive_only".into(), self.adaptive_only.into());
             control.insert("sampling_allowed".into(), self.sampling_allowed.into());
             control.insert(
@@ -245,16 +250,10 @@ impl Intercept for AgentIdentity {
         if self.default_cache {
             request.options.cache = Some(crate::profile::CACHE);
         }
-        let params = request
-            .additional_params
-            .get_or_insert_with(|| Value::Object(Map::new()));
-        let Some(params) = params.as_object_mut() else {
+        let Some(params) = object_params(&mut request) else {
             return BeforeServe::deny("Anthropic OAuth requires object request parameters");
         };
-        let control = params
-            .entry("_omp")
-            .or_insert_with(|| Value::Object(Map::new()));
-        let Some(control) = control.as_object_mut() else {
+        let Some(control) = control(params) else {
             return BeforeServe::deny("Anthropic OAuth requires object private parameters");
         };
         control.insert("session_id".into(), self.session.clone().into());

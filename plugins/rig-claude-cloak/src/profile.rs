@@ -3,6 +3,7 @@
 pub(crate) mod checksum;
 
 use rig_harness::rig_core::completion::CacheRetention;
+use rig_harness::rig_core::tool::content_hash;
 
 pub(crate) const VERSION: &str = "2.1.307";
 pub(crate) const SDK: &str = "0.128.0";
@@ -24,20 +25,11 @@ pub(crate) fn seed(text: &str) -> [u16; 3] {
 }
 
 pub(crate) fn suffix_from_seed(selected: &[u16; 3]) -> String {
-    let hash = sha256_hex(format!(
+    let salted = format!(
         "{SUFFIX_SALT}{}{VERSION}",
         String::from_utf16_lossy(selected)
-    ));
-    hash.chars().take(3).collect()
-}
-
-/// The SHA-256 digest of `input` in lowercase hex.
-pub(crate) fn sha256_hex(input: impl AsRef<[u8]>) -> String {
-    use sha2::{Digest, Sha256};
-    Sha256::digest(input)
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
+    );
+    content_hash(salted.as_bytes()).0.chars().take(3).collect()
 }
 
 pub(crate) fn suffix(text: &str) -> String {

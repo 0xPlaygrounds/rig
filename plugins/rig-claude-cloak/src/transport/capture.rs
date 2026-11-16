@@ -290,10 +290,14 @@ fn current_profile_projection(
         .map(|index| units.get(index).copied().unwrap_or(u16::from(b'0')))
         .collect();
     let version = if current { "2.1.307" } else { "2.1.280" };
-    let fingerprint = profile::sha256_hex(format!(
-        "59cf53e54c78{}{version}",
-        String::from_utf16_lossy(&selected)
-    ));
+    let fingerprint = content_hash(
+        format!(
+            "59cf53e54c78{}{version}",
+            String::from_utf16_lossy(&selected)
+        )
+        .as_bytes(),
+    )
+    .0;
     let billing = value.pointer_mut("/system/0/text").ok_or("billing block")?;
     let text = billing.as_str().ok_or("billing text")?;
     if !text.starts_with(&format!(
