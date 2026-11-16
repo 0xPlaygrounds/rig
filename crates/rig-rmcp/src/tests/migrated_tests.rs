@@ -749,8 +749,8 @@ async fn builder_rmcp_tools_thread_timeout_into_registered_tools() {
 
     // The default, and a disabled timeout, both reach the built tool verbatim.
     let built = McpTool::new(tool("a"), &client);
-    assert_eq!(built.timeout(), Some(DEFAULT_MCP_TOOL_TIMEOUT));
-    assert_eq!(built.with_timeout(None).timeout(), None);
+    assert_eq!(built.timeout, Some(DEFAULT_MCP_TOOL_TIMEOUT));
+    assert_eq!(built.with_timeout(None).timeout, None);
 
     // Every requested tool is registered against the shared client...
     let agent = AgentBuilder::new(MockCompletionModel::text("ok"))

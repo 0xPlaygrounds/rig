@@ -344,10 +344,7 @@ impl Launch {
         };
         let secrets = vars
             .iter()
-            .filter(|(name, _)| {
-                name.to_str()
-                    .is_some_and(|name| name.starts_with(env::SECRET_PREFIX))
-            })
+            .filter(|(name, _)| crate::is_secret_variable(name))
             .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
             .collect();
         let source = path(env::SOURCE)?;

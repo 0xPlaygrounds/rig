@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use ignore::WalkBuilder;
-use ignore::overrides::OverrideBuilder;
+use ignore::overrides::{Override, OverrideBuilder};
 use rig_core::tool::{ContentHash, ToolExecutionError, content_hash};
 
 use crate::fs::{Previous, io_error, real_path, write_atomic, write_atomic_if, write_new};
@@ -209,26 +209,17 @@ pub enum Listing {
 }
 
 impl Listing {
-    /// The listing of a tool call's `hidden` and `glob` arguments.
+    /// The listing of a tool call's `hidden` and `glob` arguments: `Hidden`
+    /// when `hidden` is set or the glob names a hidden file or directory,
+    /// such as `.github/**` or `**/.env*`, so asking for one finds it.
     pub(crate) fn from_options(hidden: bool, glob: Option<&str>) -> Self {
-        match hidden {
-            true => Self::Hidden,
-            false => Self::Visible,
-        }
-        .for_glob(glob)
-    }
-
-    /// The listing a search or listing for `glob` uses: `Visible` becomes
-    /// `Hidden` when the glob names a hidden file or directory, such as
-    /// `.github/**` or `**/.env*`, so asking for one finds it.
-    pub fn for_glob(self, glob: Option<&str>) -> Self {
         let names_hidden = glob.is_some_and(|glob| {
             glob.split(['/', '\\'])
                 .any(|part| part.starts_with('.') && part != "." && part != "..")
         });
-        match self {
-            Self::Visible if names_hidden => Self::Hidden,
-            other => other,
+        match hidden || names_hidden {
+            true => Self::Hidden,
+            false => Self::Visible,
         }
     }
 
@@ -259,16 +250,6 @@ pub enum Observation<T> {
     Excluded,
     /// The look failed, so whether something is there is not known.
     Failed(io::Error),
-}
-
-impl<T> Observation<T> {
-    /// What was found, if it was.
-    pub fn found(self) -> Option<T> {
-        match self {
-            Self::Found(found) => Some(found),
-            Self::Missing | Self::Excluded | Self::Failed(_) => None,
-        }
-    }
 }
 
 /// What [`Workspace::files`] listed.
@@ -474,6 +455,27 @@ pub(crate) fn not_text() -> io::Error {
     io::Error::new(ErrorKind::InvalidData, "stream did not contain valid UTF-8")
 }
 
+/// The error for a path the tools only treat as a regular file.
+pub(crate) fn not_a_file() -> io::Error {
+    io::Error::new(ErrorKind::InvalidInput, "not a regular file")
+}
+
+/// The error for a write to a read-only file.
+pub(crate) fn read_only() -> io::Error {
+    io::Error::new(
+        ErrorKind::PermissionDenied,
+        "the file is read-only; leave it unchanged or ask the user",
+    )
+}
+
+/// The matcher for `glob` below `root`, or `InvalidInput` naming why it is bad.
+pub(crate) fn globbed(root: &Path, glob: &str) -> io::Result<Override> {
+    OverrideBuilder::new(root)
+        .add(glob)
+        .and_then(|builder| builder.build())
+        .map_err(|error| io::Error::new(ErrorKind::InvalidInput, format!("bad glob: {error}")))
+}
+
 /// A model-visible error for a failed text read of `shown`
 /// (`read_text`, [`Workspace::excerpt`]).
 pub(crate) fn text_error(shown: &str, error: io::Error) -> ToolExecutionError {
@@ -640,10 +642,7 @@ impl Workspace for Local {
 
     fn read(&self, path: &Path, limit: u64) -> io::Result<Contents> {
         if !fs::metadata(path)?.is_file() {
-            return Err(io::Error::new(
-                ErrorKind::InvalidInput,
-                "not a regular file",
-            ));
+            return Err(not_a_file());
         }
         let file = File::open(path)?;
         let size = file.metadata()?.len();
@@ -713,13 +712,7 @@ impl Workspace for Local {
     fn files(&self, root: &Path, glob: Option<&str>, listing: Listing) -> io::Result<Listed> {
         let mut walk = walk(root, listing, |_| true);
         if let Some(glob) = glob {
-            let overrides = OverrideBuilder::new(root)
-                .add(glob)
-                .and_then(|builder| builder.build())
-                .map_err(|error| {
-                    io::Error::new(ErrorKind::InvalidInput, format!("bad glob: {error}"))
-                })?;
-            walk.overrides(overrides);
+            walk.overrides(globbed(root, glob)?);
         }
         Ok(listed(&walk))
     }

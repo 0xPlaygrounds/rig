@@ -5,12 +5,13 @@
 use std::collections::BTreeMap;
 use std::fmt;
 use std::fs::{self, File, OpenOptions};
-use std::io::{ErrorKind, Write};
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use rig_core::json_utils::remove_preserving_order;
+use rig_harness::harness_protocol::config::linked;
 use rig_harness::harness_protocol::env::SECRET_PREFIX;
+use rig_harness::harness_protocol::fs as harness_fs;
 use serde::{Deserialize, Serialize};
 use serde_json::ser::PrettyFormatter;
 use serde_json::{Map, Value};
@@ -361,52 +362,20 @@ impl McpFile {
         lock(&self.lock)
     }
 
-    /// Replaces the file with `bytes`, atomically, through a new file of
-    /// its own beside it, with the old one's permissions and group: never through a
-    /// file that was there, such as a link a checkout planted. The user's
-    /// own file, when it is a link, is replaced where it points.
+    /// Replaces the file with `bytes` by [`harness_fs::replace`]: never
+    /// through a file that was there, such as a link a checkout planted. The
+    /// user's own file, when it is a link, is replaced where it points.
     fn write(&self, bytes: &[u8]) -> Result<(), String> {
         let path = match self.scope {
-            Scope::User => followed(self.path()),
+            Scope::User => linked(&self.path()).map_err(|error| error.to_string())?,
             Scope::Project | Scope::Client => self.path(),
         };
         let failed = |error: std::io::Error| format!("could not write {}: {error}", path.display());
-        let dir = path.parent().unwrap_or(&self.dir);
-        fs::create_dir_all(dir).map_err(failed)?;
+        fs::create_dir_all(path.parent().unwrap_or(&self.dir)).map_err(failed)?;
         if self.scope == Scope::Project {
             self.inside_project()?;
         }
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_or(0, |since| since.as_nanos());
-        let part = dir.join(format!(".{FILE}.{}-{nanos}.part", std::process::id()));
-        let kept = fs::symlink_metadata(&path)
-            .ok()
-            .filter(|metadata| metadata.is_file());
-        let written = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&part)
-            .and_then(|mut file| {
-                if let Some(kept) = &kept {
-                    // Its group too, as a directory may give a new file
-                    // another; a group that cannot be kept fails the write.
-                    #[cfg(unix)]
-                    std::os::unix::fs::fchown(
-                        &file,
-                        None,
-                        Some(std::os::unix::fs::MetadataExt::gid(kept)),
-                    )?;
-                    file.set_permissions(kept.permissions())?;
-                }
-                file.write_all(bytes)?;
-                file.sync_all()
-            })
-            .and_then(|()| fs::rename(&part, &path));
-        if written.is_err() {
-            fs::remove_file(&part).ok();
-        }
-        written.map_err(failed)
+        harness_fs::replace(&path, bytes).map_err(failed)
     }
 
     /// Refuses a project's `.rig` that leads out of the project, such as a
@@ -453,22 +422,6 @@ impl McpFile {
     fn not_servers(&self) -> String {
         format!("{}: `{SERVERS}` is not an object", self.path().display())
     }
-}
-
-/// Where the links from `path` lead, the last one's target even when it
-/// does not exist yet; `path` itself when it is no link.
-fn followed(mut path: PathBuf) -> PathBuf {
-    // Bounded, as a loop of links never ends.
-    for _ in 0..40 {
-        let Ok(target) = fs::read_link(&path) else {
-            return path;
-        };
-        path = match path.parent() {
-            Some(dir) => dir.join(target),
-            None => target,
-        };
-    }
-    path
 }
 
 /// The lock file at `path`, locked until it is dropped: what every change of

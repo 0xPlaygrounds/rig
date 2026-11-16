@@ -19,12 +19,12 @@ use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::mpsc;
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
-use rig_harness_protocol::config::toml_edit::{Item, TableLike};
+use rig_harness_protocol::config::toml_edit::Item;
 use rig_harness_protocol::fs;
 use rig_harness_protocol::launch::{Launch, Purpose};
 use rig_harness_protocol::{AgentDescription, Home, RunDir, config, first_errors};
 
-use super::project::{self, PACKAGE, RigSource};
+use super::project::{self, Manifest, PACKAGE, RigSource};
 use super::{BEVY_VERSION, COMMIT, Result, locks};
 
 /// Whether a build that is already known gets staged again.
@@ -225,7 +225,7 @@ fn compile_logged(
 fn local_crates(home: &Home, plugins: &config::Plugins) -> Result<()> {
     for extra in plugins.extras_on() {
         if let config::Source::Path(path) = &extra.source
-            && let Err(why) = project::read_manifest(path)
+            && let Err(why) = Manifest::read(path)
         {
             return Err(format!(
                 "{} [[plugins.extra]] `{}`: {why}; fix the crate or its `path`, \
@@ -415,27 +415,12 @@ impl BuildLog {
     fn pass_on(&mut self, child: &mut Child) {
         // A wait of an earlier command is over.
         self.blocked_since = None;
-        let Some(mut stderr) = child.stderr.take() else {
+        let Some(stderr) = child.stderr.take() else {
             return;
         };
         // Read on a thread, so a wait for cargo's lock is announced once it
         // passes its time even while cargo prints nothing.
-        let (sender, chunks) = mpsc::channel();
-        // A thread that cannot start drops the pipe, which fails the build.
-        let reading = std::thread::Builder::new();
-        reading
-            .spawn(move || {
-                let mut buffer = [0_u8; 8192];
-                while let Ok(read @ 1..) = stderr.read(&mut buffer) {
-                    if sender
-                        .send(buffer.get(..read).unwrap_or_default().to_vec())
-                        .is_err()
-                    {
-                        return;
-                    }
-                }
-            })
-            .ok();
+        let chunks = chunks(stderr);
         let mut segment: Vec<u8> = Vec::new();
         loop {
             let chunk = match self.blocked_since {
@@ -699,6 +684,23 @@ fn describe(launch: &Launch, binary: &Path, settings: Option<&Path>) -> Result<S
     result
 }
 
+/// What `pipe` gives, in chunks read on a thread of its own until it ends
+/// or the receiver is gone. A thread that cannot start drops the pipe, so
+/// the child's writes to it fail and the receiver ends at once.
+fn chunks(mut pipe: impl Read + Send + 'static) -> mpsc::Receiver<Vec<u8>> {
+    let (sender, chunks) = mpsc::channel();
+    let reading = std::thread::Builder::new().spawn(move || {
+        let mut buffer = [0_u8; 8192];
+        while let Ok(read @ 1..) = pipe.read(&mut buffer)
+            && sender
+                .send(buffer.get(..read).unwrap_or_default().to_vec())
+                .is_ok()
+        {}
+    });
+    reading.ok();
+    chunks
+}
+
 /// Runs a describing build as a [`Build`] and waits for it, at most
 /// `timeout`, and returns its `report`, or what it said on stderr when it
 /// failed. Its group is killed once it exits or the time is up, so nothing
@@ -707,17 +709,7 @@ fn wait_described(mut command: Command, report: &Path, timeout: Duration) -> Res
     command.stderr(Stdio::piped());
     let mut build = Build::spawn(command)?;
     let child = &mut build.0;
-    let (send, said) = mpsc::channel();
-    if let Some(mut errors) = child.stderr.take() {
-        std::thread::spawn(move || {
-            let mut chunk = [0; 4096];
-            while let Ok(read @ 1..) = errors.read(&mut chunk)
-                && send
-                    .send(chunk.get(..read).unwrap_or_default().to_vec())
-                    .is_ok()
-            {}
-        });
-    }
+    let said = child.stderr.take().map(chunks);
     let deadline = Instant::now() + timeout;
     let status = loop {
         if let Some(status) = child.try_wait()? {
@@ -744,7 +736,7 @@ fn wait_described(mut command: Command, report: &Path, timeout: Duration) -> Res
     }
     let mut errors = Vec::new();
     while let Some(left) = deadline.checked_duration_since(Instant::now())
-        && let Ok(chunk) = said.recv_timeout(left)
+        && let Some(Ok(chunk)) = said.as_ref().map(|said| said.recv_timeout(left))
     {
         errors.extend(chunk);
     }
@@ -887,10 +879,12 @@ fn bevy_pins<'a>(
 ) -> Vec<String> {
     let mut pins = Vec::new();
     for directory in crates {
-        let Some(manifest) = Manifest::read(directory) else {
+        let Ok(manifest) = Manifest::read(directory) else {
             continue;
         };
-        for (table, dependencies) in manifest.dependency_tables() {
+        for (table, dependencies) in
+            manifest.dependency_tables(&["dependencies", "build-dependencies"])
+        {
             for (key, item) in dependencies.iter() {
                 let pin = if item.get("workspace").and_then(Item::as_bool) == Some(true) {
                     workspace_dependency(&manifest, directory, key).and_then(|(workspace, item)| {
@@ -940,44 +934,7 @@ fn bevy_crates(lock: &str) -> BTreeSet<String> {
 /// writes or its comments name.
 const NAMED_BEVY: [&str; 4] = ["bevy", "bevy_app", "bevy_ecs", "bevy_reflect"];
 
-/// A crate's `Cargo.toml`, parsed with where each value is written.
-struct Manifest {
-    file: PathBuf,
-    text: String,
-    document: config::toml_edit::Document<String>,
-}
-
-impl Manifest {
-    /// The `Cargo.toml` of `directory`; `None` when it does not read.
-    fn read(directory: &Path) -> Option<Self> {
-        let file = directory.join("Cargo.toml");
-        let text = fs::read_to_string(&file).ok()?;
-        let document = config::toml_edit::Document::parse(text.clone()).ok()?;
-        Some(Self {
-            file,
-            text,
-            document,
-        })
-    }
-
-    /// Its dependency and build-dependency tables, every target's too,
-    /// each with its name as a header writes it.
-    fn dependency_tables(&self) -> Vec<(String, &dyn TableLike)> {
-        let kinds = ["dependencies", "build-dependencies"];
-        let mut tables: Vec<(String, &dyn TableLike)> = (kinds.iter())
-            .filter_map(|kind| Some((kind.to_string(), self.document.get(kind)?.as_table_like()?)))
-            .collect();
-        let targets = self.document.get("target").and_then(Item::as_table_like);
-        for (target, item) in targets.into_iter().flat_map(|targets| targets.iter()) {
-            for kind in kinds {
-                if let Some(table) = item.get(kind).and_then(Item::as_table_like) {
-                    tables.push((format!("target.{}.{kind}", quoted_key(target)), table));
-                }
-            }
-        }
-        tables
-    }
-
+impl project::Manifest {
     /// The requirement `item` of `key` in `table` writes, as
     /// `<file>:<line>: [<table>] <the line>`, when it is of one of `bevy`
     /// (by its `package`, else `key`) and [`BEVY_VERSION`] does not meet
@@ -1002,25 +959,14 @@ impl Manifest {
             return None;
         }
         let at = version.span()?.start;
-        let line = self.text.get(..at)?.matches('\n').count();
-        let written = self.text.lines().nth(line)?.trim();
+        let text = self.document.raw();
+        let line = text.get(..at)?.matches('\n').count();
+        let written = text.lines().nth(line)?.trim();
         Some(format!(
             "{}:{}: [{table}] {written}",
             self.file.display(),
             line + 1
         ))
-    }
-}
-
-/// `key` as a dotted header writes it: quoted when it is not bare.
-fn quoted_key(key: &str) -> String {
-    let bare = key
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
-    if bare {
-        key.to_owned()
-    } else {
-        format!("'{key}'")
     }
 }
 
@@ -1050,10 +996,10 @@ fn workspace_dependency(
         .and_then(|package| package.get("workspace"))
         .and_then(Item::as_str);
     let workspace = match named {
-        Some(path) => Manifest::read(&lexical(&directory.join(path)))?,
+        Some(path) => Manifest::read(&lexical(&directory.join(path))).ok()?,
         None => directory
             .ancestors()
-            .filter_map(Manifest::read)
+            .filter_map(|directory| Manifest::read(directory).ok())
             .find(|manifest| manifest.document.get("workspace").is_some())?,
     };
     let item = workspace

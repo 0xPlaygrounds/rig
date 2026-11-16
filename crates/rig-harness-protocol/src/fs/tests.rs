@@ -1,7 +1,7 @@
 use std::io::ErrorKind;
 use std::path::Path;
 
-use super::{optional, read_to_string, rename};
+use super::{optional, read_to_string, rename, replace};
 
 /// A failure names its step and its path and keeps the kind of the
 /// failure under it, so a caller still tells a missing file apart.
@@ -39,4 +39,44 @@ fn only_a_missing_file_is_absent() {
     let unreadable = optional(read_to_string(Path::new("/")));
     assert_eq!(missing.ok(), Some(None));
     assert!(unreadable.is_err(), "{unreadable:?}");
+}
+
+/// Two threads replacing one file each finish, and every read, the last
+/// included, sees one whole version.
+#[test]
+fn concurrent_replaces_each_land_whole() {
+    let dir = std::env::temp_dir().join(format!("rig-fs-replace-{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
+    let target = dir.join("file");
+    let versions = [vec![b'a'; 1 << 18], vec![b'b'; 1 << 18]];
+    let whole = |bytes: &[u8]| versions.iter().any(|version| version.as_slice() == bytes);
+    let made = std::fs::create_dir_all(&dir)
+        .and_then(|()| replace(&target, versions.first().map_or(&[][..], Vec::as_slice)));
+    let (failed, torn) = std::thread::scope(|scope| {
+        let writers: Vec<_> = versions
+            .iter()
+            .map(|version| {
+                let target = &target;
+                scope.spawn(move || {
+                    (0..50)
+                        .filter(|_| replace(target, version).is_err())
+                        .count()
+                })
+            })
+            .collect();
+        let mut torn = 0;
+        while !writers.iter().all(|writer| writer.is_finished()) {
+            torn += usize::from(std::fs::read(&target).is_ok_and(|bytes| !whole(&bytes)));
+        }
+        let failed: usize = writers
+            .into_iter()
+            .filter_map(|writer| writer.join().ok())
+            .sum();
+        (failed, torn)
+    });
+    let last = std::fs::read(&target).unwrap_or_default();
+    std::fs::remove_dir_all(&dir).ok();
+    assert!(made.is_ok(), "{made:?}");
+    assert_eq!((failed, torn), (0, 0));
+    assert!(whole(&last));
 }

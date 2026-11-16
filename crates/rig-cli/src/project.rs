@@ -11,7 +11,7 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use rig_harness_protocol::Home;
-use rig_harness_protocol::config::toml_edit::{DocumentMut, Item};
+use rig_harness_protocol::config::toml_edit::{Document, Item, TableLike, Value};
 use rig_harness_protocol::config::{BUILT_IN, Extra, Plugins, Source, built_in};
 use rig_harness_protocol::fs;
 
@@ -148,33 +148,63 @@ pub fn rig_crates(plugins: &Plugins, source: &RigSource) -> Result<BTreeSet<Stri
     Ok(used)
 }
 
-/// The manifest of the crate in `directory`. The error names the file and
-/// says why: the operating system's error, or the TOML error.
-pub fn read_manifest(directory: &Path) -> Result<DocumentMut> {
-    let path = directory.join("Cargo.toml");
-    let text = fs::read_to_string(&path)?;
-    Ok((text.parse()).map_err(|error| format!("{} is not TOML: {error}", path.display()))?)
+/// A crate's `Cargo.toml`, parsed with where each value is written.
+pub struct Manifest {
+    /// The file it was read from.
+    pub file: PathBuf,
+    /// Its text, parsed.
+    pub document: Document<String>,
+}
+
+impl Manifest {
+    /// The `Cargo.toml` of `directory`. The error names the file and says
+    /// why: the operating system's error, or the TOML error.
+    pub fn read(directory: &Path) -> Result<Self> {
+        let file = directory.join("Cargo.toml");
+        let text = fs::read_to_string(&file)?;
+        let document = (Document::parse(text))
+            .map_err(|error| format!("{} is not TOML: {error}", file.display()))?;
+        Ok(Self { file, document })
+    }
+
+    /// Its tables of each of `kinds`, such as `dependencies`, every
+    /// target's too, each with its name as a header writes it.
+    pub fn dependency_tables(&self, kinds: &[&str]) -> Vec<(String, &dyn TableLike)> {
+        let mut tables: Vec<(String, &dyn TableLike)> = (kinds.iter())
+            .filter_map(|kind| Some((kind.to_string(), self.document.get(kind)?.as_table_like()?)))
+            .collect();
+        let targets = self.document.get("target").and_then(Item::as_table_like);
+        for (target, item) in targets.into_iter().flat_map(|targets| targets.iter()) {
+            for kind in kinds {
+                if let Some(table) = item.get(kind).and_then(Item::as_table_like) {
+                    tables.push((format!("target.{}.{kind}", quoted_key(target)), table));
+                }
+            }
+        }
+        tables
+    }
+}
+
+/// `key` as a dotted header writes it: quoted when it is not bare.
+fn quoted_key(key: &str) -> String {
+    let bare = key
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+    if bare {
+        key.to_owned()
+    } else {
+        format!("'{key}'")
+    }
 }
 
 /// The names of the dependencies the crate in `directory` always has: the
 /// keys of its `[dependencies]` tables, its target-specific ones included,
 /// without the optional ones.
 fn dependencies(directory: &Path) -> Result<Vec<String>> {
-    let manifest = read_manifest(directory)?;
-    let targets = (manifest.get("target").and_then(Item::as_table_like))
-        .into_iter()
-        .flat_map(|targets| targets.iter().map(|(_, target)| target.get("dependencies")));
-    let tables = [manifest.get("dependencies")]
-        .into_iter()
-        .chain(targets)
-        .flatten()
-        .filter_map(Item::as_table_like);
-    let required = |item: &Item| {
-        let optional = item.get("optional").and_then(Item::as_bool);
-        optional != Some(true)
-    };
-    Ok(tables
-        .flat_map(|table| {
+    let manifest = Manifest::read(directory)?;
+    let required = |item: &Item| item.get("optional").and_then(Item::as_bool) != Some(true);
+    Ok((manifest.dependency_tables(&["dependencies"]).into_iter())
+        .flat_map(|(_, table)| {
             (table.iter())
                 .filter(|(_, item)| required(item))
                 .map(|(name, _)| name.to_owned())
@@ -241,9 +271,9 @@ pub fn rig_version(source: &RigSource) -> String {
     let RigSource::Local(checkout) = source else {
         return VERSION.to_owned();
     };
-    let manifest = read_manifest(checkout).ok();
+    let manifest = Manifest::read(checkout).ok();
     let version = manifest.as_ref().and_then(|manifest| {
-        let workspace = manifest.get("workspace")?.get("package")?;
+        let workspace = manifest.document.get("workspace")?.get("package")?;
         workspace.get("version")?.as_str().map(str::to_owned)
     });
     version.unwrap_or_else(|| VERSION.to_owned())
@@ -464,24 +494,14 @@ pub fn write_if_changed(path: &Path, contents: &str) -> Result<()> {
     Ok(())
 }
 
-/// `path` as a TOML basic string.
+/// `path` as a TOML string.
 pub fn quoted_path(path: &Path) -> String {
     quoted(&path.to_string_lossy())
 }
 
-/// A TOML basic string.
+/// `text` as a TOML string.
 pub fn quoted(text: &str) -> String {
-    let mut quoted = String::from("\"");
-    for c in text.chars() {
-        match c {
-            '"' => quoted.push_str("\\\""),
-            '\\' => quoted.push_str("\\\\"),
-            c if c.is_control() => quoted.push_str(&format!("\\u{:04X}", u32::from(c))),
-            c => quoted.push(c),
-        }
-    }
-    quoted.push('"');
-    quoted
+    Value::from(text).to_string()
 }
 
 #[cfg(test)]

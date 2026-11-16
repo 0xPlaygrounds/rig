@@ -179,12 +179,6 @@ impl McpConnection {
     }
 }
 
-impl<S: Service<RoleClient>> From<RunningService<RoleClient, S>> for McpConnection {
-    fn from(service: RunningService<RoleClient, S>) -> Self {
-        Self::new(service)
-    }
-}
-
 /// [`McpConnection::list_tools`] on a server's handle.
 pub(crate) async fn list_tools(
     peer: &ServerSink,

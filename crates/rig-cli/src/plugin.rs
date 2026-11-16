@@ -12,7 +12,7 @@
 use std::path::Path;
 use std::process::ExitCode;
 
-use rig_harness_protocol::config::toml_edit::{ArrayOfTables, DocumentMut, Item, Table, value};
+use rig_harness_protocol::config::toml_edit::{ArrayOfTables, Item, Table, value};
 use rig_harness_protocol::config::{
     self, BUILT_IN, Extra, Source, built_in, essential, set_on, table,
 };
@@ -22,8 +22,8 @@ use rig_harness_protocol::{Home, REFUSED_EXIT_CODE};
 
 use super::Result;
 use super::project::{
-    CORE_CRATES, PACKAGE, RigSource, crate_dir, foreign_rig_crate, quoted, quoted_path,
-    read_manifest, rig_patch, rig_version,
+    CORE_CRATES, Manifest, PACKAGE, RigSource, crate_dir, foreign_rig_crate, quoted, quoted_path,
+    rig_patch, rig_version,
 };
 
 /// The `src/lib.rs` of a new plugin crate, with `ScaffoldPlugin` and
@@ -338,8 +338,8 @@ fn extra(file: &config::SettingsFile, plugin: &str) -> bool {
 }
 
 /// The string at `keys` in `manifest`, such as its `package.name`.
-fn manifest_string(manifest: &DocumentMut, keys: &[&str]) -> Option<String> {
-    let mut item = manifest.as_item();
+fn manifest_string(manifest: &Manifest, keys: &[&str]) -> Option<String> {
+    let mut item = manifest.document.as_item();
     for key in keys {
         item = item.get(key)?;
     }
@@ -502,7 +502,7 @@ fn check_plugin(extra: &Extra, source: &RigSource) -> Option<String> {
         return None;
     };
     let what = format!("`{}` ({})", extra.plugin, directory.display());
-    let manifest = match read_manifest(directory) {
+    let manifest = match Manifest::read(directory) {
         Ok(manifest) => manifest,
         Err(why) => return Some(format!("{what}: {why}")),
     };

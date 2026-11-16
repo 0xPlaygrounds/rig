@@ -3,6 +3,7 @@
 //! as `write /home/u/.rig/bin/rig-agent: No space left on device`, keeping
 //! the [`io::ErrorKind`] of the failure. [`optional`] reads only a missing
 //! file as absent, so a file that cannot be read is an error, never nothing.
+//! [`replace`] replaces a file whole.
 //!
 //! ```
 //! use std::path::Path;
@@ -20,8 +21,11 @@
 )]
 
 use std::fs::{DirBuilder, DirEntry, File, Metadata, OpenOptions, Permissions};
-use std::io;
+use std::io::{self, Write as _};
+#[cfg(unix)]
+use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// `Ok(None)` for a [`io::ErrorKind::NotFound`] failure, the value for
 /// success, and every other failure as it is.
@@ -230,6 +234,63 @@ pub fn set_permissions(path: impl AsRef<Path>, permissions: Permissions) -> io::
 pub fn open(options: &OpenOptions, path: impl AsRef<Path>) -> io::Result<File> {
     let path = path.as_ref();
     options.open(path).map_err(named("open", path))
+}
+
+/// Replaces the file `target` with `bytes` whole, so a reader sees the old
+/// file or the new one. The bytes go to a new file beside it, named for this
+/// call alone and never one that was there (such as a planted link), which
+/// is private from creation, takes the old file's permissions and group, and
+/// is synced before it is renamed over `target`; the folder is synced after
+/// where the system allows. A new `target` gets the default mode.
+///
+/// # Errors
+///
+/// When `target` names no file, or a step fails, naming it and its path,
+/// the old file's group that cannot be kept included. The staged file is
+/// removed.
+pub fn replace(target: &Path, bytes: &[u8]) -> io::Result<()> {
+    static CALLS: AtomicU64 = AtomicU64::new(0);
+    let (Some(folder), Some(name)) = (target.parent(), target.file_name()) else {
+        let why = format!("replace {}: not a file's path", target.display());
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, why));
+    };
+    let call = CALLS.fetch_add(1, Ordering::Relaxed);
+    let name = name.to_string_lossy();
+    let staged = folder.join(format!(".{name}.{}.{call}", std::process::id()));
+    let kept = optional(symlink_metadata(target))?.filter(Metadata::is_file);
+    // A leftover of a crashed process with the same id, or a link planted
+    // here, must not become this copy.
+    optional(remove_file(&staged))?;
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    if kept.is_some() {
+        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    }
+    let replaced = open(&options, &staged)
+        .and_then(|mut file| {
+            if let Some(kept) = &kept {
+                // A folder may give a new file another group.
+                #[cfg(unix)]
+                std::os::unix::fs::fchown(&file, None, Some(MetadataExt::gid(kept)))
+                    .map_err(named("keep the group of", &staged))?;
+                (file.set_permissions(kept.permissions()))
+                    .map_err(named("set permissions of", &staged))?;
+            }
+            file.write_all(bytes).map_err(named("write", &staged))?;
+            file.sync_all().map_err(named("sync", &staged))
+        })
+        .and_then(|()| rename(&staged, target));
+    if replaced.is_err() {
+        std::fs::remove_file(&staged).ok();
+    }
+    replaced?;
+    // The rename lasts a power loss once the folder is synced. The `.` turns
+    // a bare file name's empty folder into the current one.
+    open(OpenOptions::new().read(true), folder.join("."))
+        .and_then(|folder| folder.sync_all())
+        .ok();
+    Ok(())
 }
 
 #[cfg(test)]

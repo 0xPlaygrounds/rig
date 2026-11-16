@@ -288,21 +288,70 @@ fn a_private_settings_file_is_never_staged_readable() {
     assert_eq!(open, None, "staged readable by others");
     assert_eq!(mode(&path).ok(), Some(0o600));
 
-    let staged = dir.join(format!(".settings.toml.{}", std::process::id()));
+    // Links at every staged name the next edit may take, as each call has
+    // its own.
+    let staged: Vec<_> = (0..1024)
+        .map(|call| dir.join(format!(".settings.toml.{}.{call}", std::process::id())))
+        .collect();
     let outside = dir.join("outside");
-    assert!(std::fs::write(&outside, "").is_ok() && symlink(&outside, &staged).is_ok());
+    assert!(std::fs::write(&outside, "").is_ok());
+    assert!(
+        staged
+            .iter()
+            .all(|staged| symlink(&outside, staged).is_ok())
+    );
     assert_eq!(set_key(&path, -1), Ok((true, ())));
     assert_eq!(std::fs::read_to_string(&outside).ok().as_deref(), Some(""));
     assert_eq!(mode(&path).ok(), Some(0o600));
-    assert!(
-        std::fs::symlink_metadata(&staged).is_err(),
-        "staged copy left"
+    let left = staged
+        .iter()
+        .filter(|staged| std::fs::symlink_metadata(staged).is_ok())
+        .count();
+    assert_eq!(
+        left,
+        staged.len() - 1,
+        "the edit's own staged name is cleared"
     );
 
     let fresh = dir.join("fresh.toml");
     assert_eq!(set_key(&fresh, 1), Ok((true, ())));
     assert_eq!(mode(&fresh).ok(), mode(&outside).ok());
     std::fs::remove_dir_all(&dir).ok();
+}
+
+/// An edit keeps the file's group, which a new file in its folder may not
+/// get.
+#[cfg(unix)]
+#[test]
+fn an_edit_keeps_the_files_group() {
+    use std::os::unix::fs::MetadataExt;
+
+    let dir = std::env::temp_dir().join(format!("rig-config-group-{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
+    let path = dir.join("settings.toml");
+    assert!(std::fs::create_dir_all(&dir).is_ok() && std::fs::write(&path, "key = 0\n").is_ok());
+    let own = std::fs::metadata(&path).map(|meta| meta.gid()).ok();
+    // Another group the user is in, if any.
+    let groups = std::process::Command::new("id").arg("-G").output();
+    let groups = groups.map(|out| String::from_utf8_lossy(&out.stdout).into_owned());
+    let other = groups
+        .unwrap_or_default()
+        .split_whitespace()
+        .filter_map(|gid| gid.parse().ok())
+        .find(|gid: &u32| Some(*gid) != own);
+    let Some(other) = other else {
+        std::fs::remove_dir_all(&dir).ok();
+        return;
+    };
+    assert!(std::os::unix::fs::chown(&path, None, Some(other)).is_ok());
+    let edited = edit::<_, Error>(&path, |file| {
+        file.document.insert("key", toml_edit::value(1));
+        Ok((true, ()))
+    });
+    let gid = std::fs::metadata(&path).map(|meta| meta.gid()).ok();
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(edited, Ok((true, ())));
+    assert_eq!(gid, Some(other));
 }
 
 /// A link whose target does not exist yet is written through, absolute,

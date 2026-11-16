@@ -12,6 +12,7 @@ use std::path::Path;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::{FileChange, FilesChanged, FilesRead, content_hash};
 use rig_harness::rig_memory::summary_in;
+use rig_tools::workspace::{Local, Workspace};
 use rig_tools::{Edit, Read, Write};
 
 /// The content hash of each file the agent last read or wrote itself, by
@@ -82,7 +83,7 @@ fn unread(read: Option<&ReadFiles>, path: &Path) -> Option<String> {
             "Read {shown} first: it has not been read in this conversation."
         ));
     };
-    let now = rig_tools::fs::read_text(&path.to_string_lossy())
+    let now = <dyn Workspace>::read_text(&Local, path)
         .ok()
         .map(|text| content_hash(text.as_bytes()).0);
     (now.as_ref() != Some(seen))
