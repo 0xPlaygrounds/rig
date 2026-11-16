@@ -193,3 +193,30 @@ fn what_the_user_typed_leaves_out_attached_files_and_delivered_notes() {
     assert_eq!(typed(&conversation, 4).as_deref(), Some("and test"));
     assert_eq!(first_typed(&conversation).as_deref(), Some("fix it"));
 }
+
+/// A path not attached is noted for the model in a form of its own, which
+/// no view takes for an attached file and what the user typed leaves out.
+#[test]
+fn a_path_not_attached_is_noted_in_a_form_of_its_own() {
+    let attached = attachments("see @gone/x.rs", &base(), &Local);
+    let notes: Vec<&str> = attached.unattached.iter().map(String::as_str).collect();
+    let [note] = notes.as_slice() else {
+        return assert_eq!(notes.len(), 1, "{notes:?}");
+    };
+    assert!(attached_file(note).is_none(), "{note}");
+    let (label, why) = rig_core::conversation::unattached(note).unwrap_or_default();
+    assert_eq!(
+        (label, why.trim_end()),
+        ("gone/x.rs", "@gone/x.rs: no such file")
+    );
+    let mut conversation = Conversation::new();
+    let content = vec![
+        UserContent::text("see @gone/x.rs"),
+        UserContent::text(*note),
+    ];
+    conversation.push(Message::User { content });
+    assert_eq!(
+        first_typed(&conversation).as_deref(),
+        Some("see @gone/x.rs")
+    );
+}

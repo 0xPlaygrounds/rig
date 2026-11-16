@@ -302,8 +302,8 @@ fn there(process: &Process) -> String {
 
 /// The line before the status line when a job the command left in the
 /// background still held the call's output and was ended with it.
-pub(crate) const JOBS_ENDED: &str = "A job this command left in the background still wrote to \
-     this call's output, so it was ended with the call. To keep one running between calls, \
+pub(crate) const JOBS_ENDED: &str = "A job this command left in the background still held this \
+     call's output open, so it was ended with the call. To keep one running between calls, \
      send its output elsewhere (`server > log 2>&1 &`); `setsid server > log 2>&1 &` keeps it \
      running after rig too.";
 

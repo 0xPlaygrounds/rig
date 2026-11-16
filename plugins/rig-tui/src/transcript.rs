@@ -35,7 +35,7 @@ use super::view::{
 };
 use super::wrap::wrap;
 use rig_core::conversation::pairing::answered_by;
-use rig_core::conversation::{CallRef, ResultFacts, TurnEnd, attached_file};
+use rig_core::conversation::{CallRef, ResultFacts, TurnEnd, attached_file, unattached};
 use rig_core::effect::{self, EffectId, EffectKind, EffectRecord};
 use rig_ecs::agent::{AgentId, NoticeLevel};
 use rig_ecs::fork::ForkedFrom;
@@ -1573,6 +1573,11 @@ fn message_lines(
                                 std::iter::once(header).chain(body),
                                 look.theme.user,
                             ));
+                            continue;
+                        }
+                        if let Some((_, why)) = unattached(&text.text) {
+                            let rows = text_rows(why.trim_end(), Style::new().dim());
+                            lines.extend(on_band(rows, look.theme.user));
                             continue;
                         }
                         if note {
