@@ -36,14 +36,9 @@ pub mod wire;
 pub use crate::client::openai::OpenAI;
 pub use wire::{OpenAIConfig, Route};
 
-#[cfg(feature = "audio")]
-#[cfg_attr(docsrs, doc(cfg(feature = "audio")))]
 pub mod audio_generation;
 
-#[cfg(feature = "image")]
-#[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 pub mod image_generation;
-#[cfg(feature = "image")]
 pub use image_generation::*;
 
 pub mod transcription;
@@ -100,7 +95,6 @@ pub(crate) fn structured_output_schema(schema: schemars::Schema) -> (String, ser
     (name, value)
 }
 
-#[cfg(feature = "audio")]
 pub use audio_generation::{TTS_1, TTS_1_HD};
 
 pub use transcription::*;

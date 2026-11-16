@@ -23,14 +23,11 @@
 //! # }
 //! ```
 
-#[cfg(feature = "audio")]
-#[cfg_attr(docsrs, doc(cfg(feature = "audio")))]
 pub mod audio_generation;
 pub mod completion;
 pub mod extension;
 pub mod transcription;
 
-#[cfg(feature = "audio")]
 pub use audio_generation::{GPT_4O_MINI_TTS, KOKORO_82M, VOXTRAL_MINI_TTS};
 pub use completion::*;
 pub use transcription::{

@@ -539,7 +539,6 @@ async fn no_gemini_wire_puts_the_key_in_its_url() {
             Models::new(gemini.clone()).encode(None, Mode::Unary),
         ),
     ];
-    #[cfg(feature = "image")]
     encoded.push((
         "image generation",
         gemini.image_generation(MODEL).encode(

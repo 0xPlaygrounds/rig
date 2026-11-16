@@ -13,16 +13,12 @@
 //!
 //! Pair a wire with a transport in a [`Model`](crate::driver::Model) to call it.
 
-#[cfg(feature = "audio")]
-#[cfg_attr(docsrs, doc(cfg(feature = "audio")))]
 pub mod audio_generation;
 pub mod cached_content;
 pub mod caching;
 pub mod completion;
 pub mod embedding;
 pub mod extension;
-#[cfg(feature = "image")]
-#[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 pub mod image_generation;
 pub mod interactions_api;
 pub mod model_listing;
@@ -32,13 +28,11 @@ pub mod transcription;
 
 pub use crate::client::gemini::Gemini;
 pub use crate::client::gemini_caching::Caching;
-#[cfg(feature = "audio")]
 pub use audio_generation::{GEMINI_3_8_FLASH_LITE_TTS, GEMINI_3_8_FLASH_TTS};
 pub use cached_content::{CacheExpiry, CachedContent, CachedContents, NewCachedContent};
 pub use caching::{AutoCache, CacheBook, CacheEvent, CacheReport, Clock, CreatedCache, Lease};
 pub use completion::ThoughtReplay;
 pub use embedding::{EMBEDDING_001, EMBEDDING_004};
-#[cfg(feature = "image")]
 pub use image_generation::{
     GEMINI_2_5_FLASH_IMAGE, GEMINI_3_1_FLASH_IMAGE, GEMINI_3_1_FLASH_LITE_IMAGE,
     GEMINI_3_PRO_IMAGE, GEMINI_NANO_BANANA_2_1,

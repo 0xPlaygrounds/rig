@@ -134,9 +134,7 @@ stamp!(
     crate::rerank::RerankResponse,
     crate::transcription::TranscriptionResponse
 );
-#[cfg(feature = "image")]
 stamp!(crate::image_generation::ImageGenerationResponse);
-#[cfg(feature = "audio")]
 stamp!(crate::audio_generation::AudioGenerationResponse);
 
 modality_operation!(
@@ -186,7 +184,6 @@ modality_operation!(
     }
 );
 
-#[cfg(feature = "image")]
 modality_operation!(
     /// Generating an image.
     ImageGeneration {
@@ -198,7 +195,6 @@ modality_operation!(
     }
 );
 
-#[cfg(feature = "audio")]
 modality_operation!(
     /// Generating speech.
     AudioGeneration {

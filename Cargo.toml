@@ -63,7 +63,6 @@ include = [
 [package.metadata.docs.rs]
 features = [
     "agent",
-    "audio",
     "bedrock",
     "candle",
     "cassette",
@@ -74,7 +73,6 @@ features = [
     "fastembed-ort-download-binaries",
     "gemini-grpc",
     "helixdb",
-    "image",
     "lancedb",
     "memory",
     "milvus",
@@ -510,8 +508,6 @@ sqlite = ["dep:rig-sqlite"]
 surrealdb = ["dep:rig-surrealdb"]
 vectorize = ["dep:rig-vectorize"]
 vertexai = ["dep:rig-vertexai"]
-audio = ["rig-core/audio", "rig-agent?/audio"]
-image = ["rig-core/image", "rig-agent?/image"]
 derive = ["dep:rig-derive", "rig-core/derive", "rig-agent?/derive"]
 pdf = ["rig-core/pdf"]
 epub = ["rig-core/epub"]

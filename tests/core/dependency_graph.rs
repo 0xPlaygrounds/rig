@@ -27,7 +27,7 @@ const GRAPHS: &[Graph] = &[
     ),
     (
         "rig-core",
-        "--no-default-features --features derive,rustls,audio,image,pdf,epub,websocket",
+        "--no-default-features --features derive,rustls,pdf,epub,websocket",
         "tokio reqwest rig-reqwest rig-tungstenite rig-cassette",
         "rig-http",
     ),

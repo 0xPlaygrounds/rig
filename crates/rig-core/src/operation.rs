@@ -24,9 +24,7 @@ mod verify;
 
 pub use completion::{Block, CallFragment, Completion, Finish, ReplyFold, merge};
 pub use listing::{ModelListing, ModelPage};
-#[cfg(feature = "audio")]
 pub use modality::AudioGeneration;
-#[cfg(feature = "image")]
 pub use modality::ImageGeneration;
 pub use modality::{Embedding, ImageEmbedding, Rerank, RerankRequest, Transcription};
 pub use verify::{Verify, VerifyDecoder};
