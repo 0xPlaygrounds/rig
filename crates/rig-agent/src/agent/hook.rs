@@ -1223,10 +1223,9 @@ impl std::fmt::Debug for HookStack {
 /// name a [`HookStack`] records for it.
 fn short_type_name<H>() -> &'static str {
     let full = std::any::type_name::<H>();
-    let generics = full.find('<').unwrap_or(full.len());
-    let path = &full[..generics];
+    let path = full.split('<').next().unwrap_or(full);
     match path.rfind("::") {
-        Some(at) => &full[at + 2..],
+        Some(at) => full.get(at + 2..).unwrap_or(full),
         None => full,
     }
 }
