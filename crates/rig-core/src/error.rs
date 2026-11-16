@@ -26,6 +26,7 @@ use crate::{
 mod rate_limits;
 mod retry;
 
+pub(crate) use rate_limits::rfc3339;
 pub use rate_limits::{Allowance, RateLimits};
 
 /// Normalized classification of an [`ErrorReport`].
