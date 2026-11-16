@@ -508,9 +508,10 @@ impl<'id> Decoder<'id, Completion> for ChatDecoder {
                     .map(|fields| ChatEvent { fields })
             },
         )
-        // A `message` string is Cohere's error body, reported as sent.
+        // An untagged frame with a `message` string is Cohere's error body,
+        // reported as sent.
         .map(|event| match event.fields.get("message") {
-            Some(Value::String(_)) => ChatEvent {
+            Some(Value::String(_)) if event.kind().is_empty() => ChatEvent {
                 fields: Value::String(data.into_owned()),
             },
             _ => event,

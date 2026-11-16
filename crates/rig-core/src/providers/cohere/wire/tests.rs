@@ -93,6 +93,25 @@ fn each_wire_reads_its_own_apis_frames() {
     assert_eq!(native.response_id(), Some("n1"));
 }
 
+/// A native stream event is read by its `type`, so a `message` string it
+/// also carries is not Cohere's error body.
+#[test]
+fn a_tagged_native_event_with_a_message_string_still_decodes() {
+    let native = folded(
+        &cohere().native_completion("command-a-03-2025"),
+        Mode::Streaming,
+        &[
+            r#"{"id":"n1","type":"message-start","delta":{"message":{"role":"assistant"}}}"#,
+            r#"{"type":"content-start","index":0,"delta":{"message":{"content":{"type":"text","text":""}}}}"#,
+            r#"{"type":"content-delta","index":0,"delta":{"message":{"content":{"text":"hi"}}}}"#,
+            r#"{"type":"content-end","index":0}"#,
+            r#"{"type":"message-end","message":"extra","delta":{"finish_reason":"COMPLETE"}}"#,
+        ],
+    )
+    .expect("the native stream folds");
+    assert_eq!(native.choice.len(), 1);
+}
+
 /// Frames that run out before the API ends its reply are truncated.
 #[test]
 fn a_reply_cut_short_on_either_api_is_truncated() {
