@@ -1241,6 +1241,21 @@ pub const INVOCATION_USAGE: &str =
                          --<option>=<value>.
 ";
 
+/// The words of a command line as text.
+///
+/// # Errors
+///
+/// The first word that is not UTF-8, named with its invalid bytes replaced.
+pub fn text_words(words: &[OsString]) -> Result<Vec<&str>, String> {
+    words
+        .iter()
+        .map(|word| {
+            word.to_str()
+                .ok_or_else(|| format!("`{}` is not UTF-8", word.to_string_lossy()))
+        })
+        .collect()
+}
+
 impl Invocation {
     /// Reads the agent's arguments in their canonical form, without the
     /// program name: a plugin option's value comes after `=`. Without
@@ -1255,8 +1270,8 @@ impl Invocation {
 
     /// The agent's own arguments, from the process's.
     pub fn from_env() -> Result<Self, String> {
-        let args: Vec<String> = std::env::args().skip(1).collect();
-        Self::parse(&args)
+        let args: Vec<OsString> = std::env::args_os().skip(1).collect();
+        Self::parse(&text_words(&args)?)
     }
 
     /// Whether nobody sits at a terminal view, and the run ends by itself.

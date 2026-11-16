@@ -780,3 +780,19 @@ fn a_secret_name_that_is_not_utf8_is_still_a_secret() {
     assert!(is_secret_variable(OsStr::new("RIG_SECRET_CRYPT")));
     assert!(!is_secret_variable(OsStr::from_bytes(b"RIG_\xffSECRET_")));
 }
+
+/// A word that is not UTF-8 is refused by name, not a panic.
+#[cfg(unix)]
+#[test]
+fn a_word_that_is_not_utf8_is_refused_by_name() {
+    use std::ffi::OsString;
+    use std::os::unix::ffi::OsStringExt;
+    let words = [
+        OsString::from("-p"),
+        OsString::from_vec(b"caf\xe9".to_vec()),
+    ];
+    assert_eq!(
+        super::text_words(&words),
+        Err("`caf\u{fffd}` is not UTF-8".to_owned())
+    );
+}
