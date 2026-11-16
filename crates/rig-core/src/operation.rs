@@ -24,9 +24,10 @@ mod verify;
 
 pub use completion::{Block, CallFragment, Completion, Finish, ReplyFold, merge};
 pub use listing::{ModelListing, ModelPage};
-pub use modality::AudioGeneration;
-pub use modality::ImageGeneration;
-pub use modality::{Embedding, ImageEmbedding, Rerank, RerankRequest, Transcription};
+pub use modality::{
+    AudioGeneration, Embedding, ImageEmbedding, ImageGeneration, Rerank, RerankRequest,
+    Transcription,
+};
 pub use verify::{Verify, VerifyDecoder};
 
 /// The fold of an operation whose reply is one whole answer: it has no

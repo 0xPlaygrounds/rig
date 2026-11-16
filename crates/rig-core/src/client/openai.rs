@@ -6,12 +6,9 @@ use crate::driver::Model;
 use crate::error::ProviderError;
 use crate::model::ModelList;
 use crate::providers::openai::responses_api::wire::Responses;
-use crate::providers::openai::wire::HookedModels;
-
-use crate::providers::openai::wire::Images;
-use crate::providers::openai::wire::Speech;
 use crate::providers::openai::wire::{
-    Chat, Embeddings, OpenAIConfig, OpenAiWire, Rerank, Transcriptions,
+    Chat, Embeddings, HookedModels, Images, OpenAIConfig, OpenAiWire, Rerank, Speech,
+    Transcriptions,
 };
 
 http_client!(
