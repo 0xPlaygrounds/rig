@@ -376,3 +376,26 @@ fn tilde_is_the_home_directory() {
     let ran = ran.unwrap_or_default();
     assert_eq!(ran.lines().next(), home.to_str(), "{ran}");
 }
+
+/// The `target` rule of [`Listing::Visible`] takes only a directory: a file
+/// named `target` is listed, the files in a `target` directory are not.
+#[test]
+fn a_file_named_target_is_listed() {
+    let dir = std::env::temp_dir().join(format!("rig-tools-target-{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
+    std::fs::create_dir_all(dir.join("docs/target")).ok();
+    std::fs::write(dir.join("target"), "a plain file\n").ok();
+    std::fs::write(dir.join("docs/target/built.md"), "built\n").ok();
+    std::fs::write(dir.join("kept.txt"), "kept\n").ok();
+    let listed = super::Local.files(&dir, None, Listing::Visible);
+    let mut names: Vec<String> = listed
+        .map(|listed| listed.files)
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|path| path.strip_prefix(&dir).ok())
+        .map(|path| path.display().to_string())
+        .collect();
+    names.sort();
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(names, ["kept.txt", "target"]);
+}

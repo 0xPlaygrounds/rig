@@ -582,7 +582,7 @@ impl Tree {
         }
         let below = dir.strip_prefix(&self.root).ok()?;
         let near = self.recursive || below.components().count() == 1;
-        (near && self.listing.keeps(below)).then(|| dir.to_path_buf())
+        (near && self.listing.keeps(below, dir.is_dir())).then(|| dir.to_path_buf())
     }
 
     /// The top of the git work tree the root is in, as the walk finds it:

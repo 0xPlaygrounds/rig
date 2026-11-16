@@ -228,7 +228,7 @@ impl Workspace for Overlay {
                 .any(|(kept, bytes)| kept == path && bytes.is_none())
         };
         let created = kept.iter().filter_map(|(path, bytes)| {
-            let visible = listing.keeps(path.strip_prefix(root).ok()?);
+            let visible = listing.keeps(path.strip_prefix(root).ok()?, false);
             let matches = matcher
                 .as_ref()
                 .is_none_or(|matcher| matcher.matched(path, false).is_whitelist());
