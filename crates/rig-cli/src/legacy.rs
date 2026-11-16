@@ -25,7 +25,7 @@ pub fn warnings(home: &Home) -> Vec<String> {
     let mut warnings = Vec::new();
     let plugins = home.root().join("plugins.toml");
     if lacks("plugins")
-        && let Some(text) = read(&plugins)
+        && let Ok(text) = fs::read_to_string(&plugins)
     {
         let moves = plugin_moves(&text, &settings);
         warnings.push(warning(
@@ -38,7 +38,7 @@ pub fn warnings(home: &Home) -> Vec<String> {
     }
     let defaults = home.root().join("defaults.json");
     if lacks("model")
-        && let Some(text) = read(&defaults)
+        && let Ok(text) = fs::read_to_string(&defaults)
     {
         let moves = match model(&text) {
             Some(model) => {
@@ -61,12 +61,6 @@ pub fn warnings(home: &Home) -> Vec<String> {
         warnings.push(warning(&defaults, "model", "model", &settings, &moves));
     }
     warnings
-}
-
-/// The text of the file at `path`; `None` when there is none, or it does
-/// not read.
-fn read(path: &Path) -> Option<String> {
-    fs::read_to_string(path).ok()
 }
 
 /// The warning about `old`, whose `what` moves to `[table]` of `settings`
