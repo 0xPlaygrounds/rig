@@ -1185,7 +1185,7 @@ fn transcript_helpers_build_no_message_from_nothing() {
     assert_eq!(
         transcript::invalid_tool_retry_user_message(
             &[AssistantContent::text("no calls here")],
-            &rig_core::message::CallId::from_wire("call_1"),
+            0,
             "feedback",
         ),
         None

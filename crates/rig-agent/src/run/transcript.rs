@@ -1,16 +1,17 @@
 //! Invalid-call feedback and assistant-turn classification.
 
-use rig_core::message::{AssistantContent, AssistantMessage, CallId, Message};
+use rig_core::message::{AssistantContent, AssistantMessage, Message};
 use rig_core::tool::feedback::invalid_call_feedback;
 
-/// Build tool-result feedback for an invalid call and skipped-peer notices for
-/// other calls, in content order. Returns `None` when there are no tool calls.
+/// Build tool-result feedback for the invalid call at `invalid_at` and
+/// skipped-peer notices for other calls, in content order. Returns `None`
+/// when there are no tool calls.
 pub(crate) fn invalid_tool_retry_user_message(
     assistant_content: &[AssistantContent],
-    invalid_tool_call_id: &CallId,
+    invalid_at: usize,
     feedback: &str,
 ) -> Option<Message> {
-    let content = invalid_call_feedback(assistant_content, invalid_tool_call_id, feedback);
+    let content = invalid_call_feedback(assistant_content, invalid_at, feedback);
     (!content.is_empty()).then_some(Message::User { content })
 }
 

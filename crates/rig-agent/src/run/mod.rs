@@ -225,6 +225,15 @@ struct ResolvingState {
     has_tool_calls: bool,
 }
 
+impl ResolvingState {
+    /// The position in `original_choice` of the item at `next_index`. Ignored
+    /// calls are removed from `items` only at `next_index`, so each one came
+    /// before it.
+    fn original_position(&self) -> usize {
+        self.next_index + self.original_choice.len().saturating_sub(self.items.len())
+    }
+}
+
 /// The invalid tool call resolution is currently parked on, if any: the item
 /// at `next_index` when it is a tool call outside the allowed set.
 fn pending_invalid_call(resolving: &ResolvingState) -> Option<&ToolCall> {
@@ -931,7 +940,6 @@ impl AgentRun {
                         })
                         .count();
                     let args = tool_call.function.arguments_value();
-                    let tool_call_id = tool_call.id.clone();
                     let output = args.to_string();
 
                     // A call the reply was cut off in is no answer, whatever
@@ -987,7 +995,7 @@ impl AgentRun {
                         }
                         self.history.commit(assistant_message(head, items.clone()));
                         if let Some(user_message) =
-                            invalid_tool_retry_user_message(&items, &tool_call_id, &feedback)
+                            invalid_tool_retry_user_message(&items, position, &feedback)
                         {
                             self.history.commit([user_message]);
                         }
@@ -1340,7 +1348,7 @@ impl AgentRun {
                 ));
                 let Some(user_message) = invalid_tool_retry_user_message(
                     &resolving.original_choice,
-                    &tool_call.id,
+                    resolving.original_position(),
                     &feedback,
                 ) else {
                     return Err(self.fail("invalid tool call retry produced no retry messages"));
