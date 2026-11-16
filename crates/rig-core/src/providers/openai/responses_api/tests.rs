@@ -1120,3 +1120,15 @@ fn a_request_with_no_input_item_is_refused() {
         .expect_err("blank text encodes no item");
     assert!(error.to_string().contains("at least one item"), "{error}");
 }
+
+#[test]
+fn accepts_reads_the_tools_rule_past_a_vendor_prefix() {
+    use crate::completion::ReplayTarget;
+    let wire = openai_wire("o1-mini");
+    assert!(!wire.accepts("o1-mini").tools, "control: bare id");
+    assert!(!wire.accepts("o1-preview").tools, "control: bare id");
+    assert!(
+        !wire.accepts("openai/o1-mini").tools,
+        "openai/o1-mini reports tools: true"
+    );
+}
