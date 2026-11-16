@@ -119,3 +119,36 @@ fn hosted_tools_are_advertised_but_not_executable() {
     )
     .expect("raw hosted tools satisfy Required");
 }
+
+/// With provider tools, `additional_params` that is a string, array or number
+/// cannot carry them in `tools`: preparing the request fails instead of
+/// dropping the caller's value.
+#[test]
+fn non_object_additional_params_with_provider_tools_fail() {
+    for params in [
+        serde_json::json!("oops"),
+        serde_json::json!(["a", "b"]),
+        serde_json::json!(7),
+    ] {
+        let spec = RunSpec {
+            additional_params: Some(params.clone()),
+            provider_tools: vec![rig_core::completion::ProviderToolDefinition::new(
+                "web_search",
+            )],
+            ..RunSpec::default()
+        };
+        let prepared = prepare_request(
+            &spec,
+            &ProviderCapabilities::default(),
+            "hi",
+            &[],
+            vec![],
+            None,
+            None,
+        );
+        assert!(
+            matches!(prepared, Err(PrepareError::Request(_))),
+            "{params}: {prepared:?}"
+        );
+    }
+}
