@@ -262,13 +262,17 @@ impl AppPerCallExt for App {
         let own = Touches::from_annotations(&definition.annotations);
         let own = options.footprint.is_none().then_some(Footprint(own));
         let handler = ErasedHandler::new(ToolAdapter::new(tool.clone()));
-        let tool = Arc::new(tool);
+        let build = Arc::new(move |place| {
+            CallHandler(Handler(ErasedHandler::new(ToolAdapter::new(
+                tool.at(place),
+            ))))
+        });
         let world = self.world_mut();
         if let Some(entity) = world.spawn_tool(definition, handler, options) {
             let mut entity = world.entity_mut(entity);
             entity.insert(PerCall {
                 live: T::LIVE,
-                tool,
+                build,
             });
             if let Some(own) = own {
                 entity.insert(own);
@@ -322,28 +326,7 @@ impl Plugin for PerCallPlugin {
 pub struct PerCall {
     /// Whether its calls report their output as they run.
     pub live: bool,
-    tool: Arc<dyn BuildAt>,
-}
-
-impl PerCall {
-    /// The handler of a call of this tool working at `place`. It runs
-    /// nothing.
-    pub fn build(&self, place: CallPlace) -> CallHandler {
-        self.tool.build(place)
-    }
-}
-
-/// A [`PerCallTool`] whose type is erased.
-trait BuildAt: Send + Sync {
-    fn build(&self, place: CallPlace) -> CallHandler;
-}
-
-impl<T: PerCallTool> BuildAt for T {
-    fn build(&self, place: CallPlace) -> CallHandler {
-        CallHandler(Handler(ErasedHandler::new(ToolAdapter::new(
-            self.at(place),
-        ))))
-    }
+    build: Arc<dyn Fn(CallPlace) -> CallHandler + Send + Sync>,
 }
 
 /// The tools registered per call, and where a call of an agent's works:
@@ -428,7 +411,7 @@ impl PerCallTools<'_, '_> {
     /// `place`; `None` when no enabled tool of that name is registered per
     /// call. It runs nothing.
     pub fn build(&self, name: &str, place: CallPlace) -> Option<CallHandler> {
-        self.find(name).map(|tool| tool.build(place))
+        self.find(name).map(|tool| (tool.build)(place))
     }
 
     /// The per-call tool named `name`.
