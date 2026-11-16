@@ -304,15 +304,7 @@ fn save_typed_key(
     entries: Query<&KeyEntry>,
     keys: Res<Keys>,
     mut models: ResMut<Models>,
-    agents: Query<
-        (
-            Entity,
-            Option<&Connection>,
-            Option<&ModelChoice>,
-            Has<ActiveTurn>,
-        ),
-        With<Agent>,
-    >,
+    agents: KeyAgents<'_, '_>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -377,15 +369,7 @@ fn remove_key(
     remove: On<RemoveKey>,
     keys: Res<Keys>,
     mut models: ResMut<Models>,
-    agents: Query<
-        (
-            Entity,
-            Option<&Connection>,
-            Option<&ModelChoice>,
-            Has<ActiveTurn>,
-        ),
-        With<Agent>,
-    >,
+    agents: KeyAgents<'_, '_>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -413,22 +397,23 @@ fn remove_key(
     });
 }
 
+/// The agents a saved or removed key may reconnect.
+type KeyAgents<'w, 's> = Query<
+    'w,
+    's,
+    (
+        Entity,
+        Option<&'static Connection>,
+        Option<&'static ModelChoice>,
+        Has<ActiveTurn>,
+    ),
+    With<Agent>,
+>;
+
 /// Drops the connections of the idle agents on `vendor`'s models, which
 /// the kernel connects again once [`Models`] changed, with the key now
 /// saved or none.
-fn reconnect(
-    vendor: &str,
-    agents: &Query<
-        (
-            Entity,
-            Option<&Connection>,
-            Option<&ModelChoice>,
-            Has<ActiveTurn>,
-        ),
-        With<Agent>,
-    >,
-    commands: &mut Commands,
-) {
+fn reconnect(vendor: &str, agents: &KeyAgents<'_, '_>, commands: &mut Commands) {
     for (agent, connection, _, busy) in agents {
         if !busy && connection.is_some_and(|connection| connection.spec.provider.vendor() == vendor)
         {
