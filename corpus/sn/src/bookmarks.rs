@@ -47,9 +47,7 @@ pub struct Bookmark {
 impl Bookmark {
     /// The bookmark `aside` holds, if it holds one.
     pub fn of(aside: &Aside) -> Option<Self> {
-        (aside.kind == KIND)
-            .then(|| serde_json::from_value(aside.value.clone()).ok())
-            .flatten()
+        aside.read(KIND)
     }
 }
 

@@ -49,9 +49,6 @@ impl Note {
 
     /// The note `aside` holds, when it holds one.
     pub fn of(aside: &Aside) -> Option<Self> {
-        if aside.kind != Self::KIND {
-            return None;
-        }
-        Self::deserialize(&aside.value).ok()
+        aside.read(Self::KIND)
     }
 }

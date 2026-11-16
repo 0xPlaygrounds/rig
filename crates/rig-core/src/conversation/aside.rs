@@ -67,6 +67,14 @@ impl Aside {
             ..self
         }
     }
+
+    /// The `T` this aside holds when it is of `kind`; `None` for another
+    /// kind or a value that is not a `T`.
+    pub fn read<T: serde::de::DeserializeOwned>(&self, kind: &str) -> Option<T> {
+        (self.kind == kind)
+            .then(|| T::deserialize(&self.value).ok())
+            .flatten()
+    }
 }
 
 /// An aside's identity in its conversation, kept while it is replaced and
