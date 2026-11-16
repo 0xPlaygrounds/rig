@@ -55,8 +55,8 @@ pub struct CallPlace {
     pub base: PathBuf,
     /// Whether `base` is a `WorkDir`, outside which the call refuses paths.
     pub confine: bool,
-    /// Where the call reports its output as it comes, for a tool
-    /// registered with [`add_live_tool_per_call`](AppPerCallExt::add_live_tool_per_call);
+    /// Where the call reports its output as it comes, for a
+    /// [`LIVE`](PerCallTool::LIVE) tool;
     /// read by the front as the call's [`CallOutput`]. `None` from
     /// [`PerCallTools::place`]; the harness sets it for a call it runs.
     pub live: Option<Live>,
@@ -91,6 +91,10 @@ pub struct FilesSeen(pub Seen);
 
 /// A tool built anew for each call, for where the call works.
 pub trait PerCallTool: Tool + Clone + 'static {
+    /// Whether its calls report their output as they run: each gets a
+    /// [`CallOutput`], and its place the [`Live`] that fills it.
+    const LIVE: bool = false;
+
     /// This tool, as a call at `place` runs it: `self` is the tool as
     /// registered, so what is not about the place comes from it.
     fn at(&self, place: CallPlace) -> Self;
@@ -147,7 +151,7 @@ file_tools_per_call!(Search, List, Delete);
 ///
 /// let mut app = App::new();
 /// let shell = PerCallShell::new(Shell::default(), app.world_mut());
-/// app.add_live_tool_per_call(shell, ToolOptions::default());
+/// app.add_tool_per_call(shell, ToolOptions::default());
 /// ```
 ///
 /// A bare `Shell` is no per-call tool, so it cannot skip the `Processes`:
@@ -157,7 +161,7 @@ file_tools_per_call!(Search, List, Delete);
 /// use rig_harness::rig_tools::Shell;
 ///
 /// let mut app = App::new();
-/// app.add_live_tool_per_call(Shell::default(), ToolOptions::default());
+/// app.add_tool_per_call(Shell::default(), ToolOptions::default());
 /// ```
 #[derive(Clone)]
 pub struct PerCallShell {
@@ -180,6 +184,8 @@ impl PerCallShell {
 }
 
 impl PerCallTool for PerCallShell {
+    const LIVE: bool = true;
+
     fn at(&self, place: CallPlace) -> Self {
         Self {
             shell: Shell {
@@ -243,56 +249,33 @@ pub trait AppPerCallExt {
     /// previewed (rig-basics' `Preview`), as it is built on an overlay of
     /// the workspace.
     fn add_tool_per_call<T: PerCallTool>(&mut self, tool: T, options: ToolOptions) -> &mut Self;
-
-    /// As [`add_tool_per_call`](Self::add_tool_per_call), for a tool that
-    /// reports its output as it runs: each call gets a [`CallOutput`], and
-    /// its place the [`Live`] that fills it.
-    fn add_live_tool_per_call<T: PerCallTool>(
-        &mut self,
-        tool: T,
-        options: ToolOptions,
-    ) -> &mut Self;
 }
 
 impl AppPerCallExt for App {
     fn add_tool_per_call<T: PerCallTool>(&mut self, tool: T, options: ToolOptions) -> &mut Self {
-        add_per_call(self, tool, options, false)
-    }
-
-    fn add_live_tool_per_call<T: PerCallTool>(
-        &mut self,
-        tool: T,
-        options: ToolOptions,
-    ) -> &mut Self {
-        add_per_call(self, tool, options, true)
-    }
-}
-
-fn add_per_call<T: PerCallTool>(
-    app: &mut App,
-    tool: T,
-    options: ToolOptions,
-    live: bool,
-) -> &mut App {
-    if !app.is_plugin_added::<PerCallPlugin>() {
-        app.add_plugins(PerCallPlugin);
-    }
-    let definition = tool_definition(&tool);
-    // The annotations are the tool's own code's, so they give its default
-    // footprint, as `add_tool_with` takes them, not as hints.
-    let own = Touches::from_annotations(&definition.annotations);
-    let own = options.footprint.is_none().then_some(Footprint(own));
-    let handler = ErasedHandler::new(ToolAdapter::new(tool.clone()));
-    let tool = Arc::new(tool);
-    let world = app.world_mut();
-    if let Some(entity) = world.spawn_tool(definition, handler, options) {
-        let mut entity = world.entity_mut(entity);
-        entity.insert(PerCall { live, tool });
-        if let Some(own) = own {
-            entity.insert(own);
+        if !self.is_plugin_added::<PerCallPlugin>() {
+            self.add_plugins(PerCallPlugin);
         }
+        let definition = tool_definition(&tool);
+        // The annotations are the tool's own code's, so they give its default
+        // footprint, as `add_tool_with` takes them, not as hints.
+        let own = Touches::from_annotations(&definition.annotations);
+        let own = options.footprint.is_none().then_some(Footprint(own));
+        let handler = ErasedHandler::new(ToolAdapter::new(tool.clone()));
+        let tool = Arc::new(tool);
+        let world = self.world_mut();
+        if let Some(entity) = world.spawn_tool(definition, handler, options) {
+            let mut entity = world.entity_mut(entity);
+            entity.insert(PerCall {
+                live: T::LIVE,
+                tool,
+            });
+            if let Some(own) = own {
+                entity.insert(own);
+            }
+        }
+        self
     }
-    app
 }
 
 /// The phases, in [`PrepareSystems::Compose`], in which each call of a tool

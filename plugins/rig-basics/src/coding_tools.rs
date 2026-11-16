@@ -108,7 +108,7 @@ impl Plugin for ShellTool {
             shell: PerCallShell::new(Shell::default(), app.world_mut()),
             output,
         };
-        app.add_live_tool_per_call(shell, ToolOptions::default());
+        app.add_tool_per_call(shell, ToolOptions::default());
         #[cfg(feature = "tui")]
         add_look(app, looks::draw_shell);
     }
@@ -159,6 +159,8 @@ struct SharedShell {
 }
 
 impl PerCallTool for SharedShell {
+    const LIVE: bool = PerCallShell::LIVE;
+
     fn at(&self, place: CallPlace) -> Self {
         Self {
             shell: self.shell.at(place),
