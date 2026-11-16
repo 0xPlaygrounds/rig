@@ -375,8 +375,9 @@ fn a_write_there_replaces_only_what_was_read() {
 /// A write there never replaces a file that changed between its check
 /// and the moment it is put in place: here `mktemp`, which runs between
 /// them for a write's temporary file, writes the user's text to
-/// `raced.rs`. A new file is refused and
-/// the user's kept, as is a file read before.
+/// `raced.rs` and makes a directory `dir.rs`. A new file is refused and
+/// the user's kept, as is a file read before; a name a directory took is
+/// refused, with nothing left in the directory.
 #[cfg(unix)]
 #[test]
 fn a_write_there_keeps_a_file_that_changed_meanwhile() {
@@ -388,7 +389,8 @@ fn a_write_there_keeps_a_file_that_changed_meanwhile() {
     let shim = bin.join("mktemp");
     std::fs::write(
         &shim,
-        "#!/bin/sh\ncase \"$1\" in *.rig-write.*) printf 'user\\n' > \"$HOME/strata/src/raced.rs\";; esac\n\
+        "#!/bin/sh\ncase \"$1\" in *.rig-write.*) printf 'user\\n' > \"$HOME/strata/src/raced.rs\"; \
+         mkdir -p \"$HOME/strata/src/dir.rs\";; esac\n\
          PATH=${PATH#*:} exec mktemp \"$@\"\n",
     )
     .ok();
@@ -410,6 +412,11 @@ fn a_write_there_keeps_a_file_that_changed_meanwhile() {
         root: Root::from(workspace),
         seen,
     };
+    let (into_dir, _) = call(
+        &write,
+        crate::WriteArgs::new("bench:~/strata/src/dir.rs", "x\n"),
+    );
+    let in_dir = std::fs::read_dir(home.join("strata/src/dir.rs")).map_or(0, Iterator::count);
     let file = "bench:~/strata/src/raced.rs";
     let on_disk = home.join("strata/src/raced.rs");
     let (created, _) = call(&write, crate::WriteArgs::new(file, "fn new() {}\n"));
@@ -423,6 +430,11 @@ fn a_write_there_keeps_a_file_that_changed_meanwhile() {
         result.map_err(|error| error.to_string())
     };
     assert!(shown.is_ok());
+    assert!(
+        said(into_dir).is_err(),
+        "a directory that appeared was written into"
+    );
+    assert_eq!(in_dir, 0, "the directory that appeared is left empty");
     assert!(said(created).is_err(), "a file that appeared was replaced");
     assert!(
         said(replaced).is_err_and(|why| why.contains("changed since")),
@@ -432,6 +444,80 @@ fn a_write_there_keeps_a_file_that_changed_meanwhile() {
         (created_text.as_deref(), replaced_text.as_deref()),
         (Some("user\n"), Some("user\n"))
     );
+}
+
+/// Where `ln` cannot make a hard link, as on vfat or some network mounts,
+/// a new file is still created there, by a create that refuses a name a
+/// file has; one there is kept.
+#[cfg(unix)]
+#[test]
+fn a_new_file_there_is_created_where_links_fail() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let dir = scratch("nolink");
+    let home = dir.join("home");
+    let bin = home.join("bin");
+    std::fs::create_dir_all(&bin).ok();
+    let shim = bin.join("ln");
+    std::fs::write(
+        &shim,
+        "#!/bin/sh\necho 'ln: Operation not permitted' >&2\nexit 1\n",
+    )
+    .ok();
+    std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755)).ok();
+    // Once `race` exists, a write's `mktemp` makes `kept.rs` first.
+    let shim = bin.join("mktemp");
+    std::fs::write(
+        &shim,
+        "#!/bin/sh\n[ -e \"$HOME/race\" ] && printf 'user\\n' > \"$HOME/strata/src/kept.rs\"\n\
+         PATH=${PATH#*:} exec mktemp \"$@\"\n",
+    )
+    .ok();
+    std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755)).ok();
+    let linkless = vec![
+        "sh".to_owned(),
+        "-c".to_owned(),
+        "cd \"$0\" && PATH=\"$0/bin:$PATH\" HOME=\"$0\" exec sh -c \"$1\"".to_owned(),
+        home.display().to_string(),
+    ];
+    let bench = Remote::new("bench", linkless, Launcher::default);
+    let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
+    let write = crate::Write {
+        root: Root::from(workspace),
+        seen: crate::Seen::default(),
+    };
+    let (created, _) = call(
+        &write,
+        crate::WriteArgs::new("bench:~/strata/src/new.rs", "fn new() {}\n"),
+    );
+    let made = std::fs::read_to_string(home.join("strata/src/new.rs")).ok();
+    std::fs::write(home.join("race"), "").ok();
+    let (raced, _) = call(
+        &write,
+        crate::WriteArgs::new("bench:~/strata/src/kept.rs", "model\n"),
+    );
+    let kept = std::fs::read_to_string(home.join("strata/src/kept.rs")).ok();
+    let left = std::fs::read_dir(home.join("strata/src"))
+        .map(|entries| {
+            entries
+                .flatten()
+                .filter(|entry| {
+                    entry
+                        .file_name()
+                        .to_string_lossy()
+                        .starts_with(".rig-write")
+                })
+                .count()
+        })
+        .unwrap_or(0);
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(
+        created.map_err(|error| error.to_string()).as_deref(),
+        Ok("Created bench:~/strata/src/new.rs.")
+    );
+    assert_eq!(made.as_deref(), Some("fn new() {}\n"));
+    assert!(raced.is_err(), "a file that appeared was replaced");
+    assert_eq!(kept.as_deref(), Some("user\n"));
+    assert_eq!(left, 0, "a temporary file was left");
 }
 
 /// [`transport`], first appending to `log` how many bytes each call sent

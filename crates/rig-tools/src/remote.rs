@@ -604,7 +604,10 @@ impl Workspace for Remote {
     /// A machine with neither `sha256sum` nor `shasum` always sends it
     /// back. With no `held`, a new file is filled beside the name and
     /// linked to it (`ln`), which never replaces a file that appeared
-    /// meanwhile; a file there is sent back.
+    /// meanwhile, and a directory that took the name is refused, with the
+    /// link `ln` made in it removed; where `ln` cannot link, it is copied
+    /// there with `set -C`, which refuses an existing file. A file there
+    /// is sent back.
     fn write_if(
         &self,
         path: &Path,
@@ -615,13 +618,17 @@ impl Workspace for Remote {
         let Some(held) = held else {
             let script = format!(
                 "p={}; [ -L \"$p\" ] && {{ readlink -- \"$p\" >&2; exit {A_LINK}; }}; \
-                 back() {{ [ -f \"$p\" ] || exit {NOT_A_FILE}; \
+                 back() {{ [ -f \"$p\" ] && [ ! -L \"$p\" ] || exit {NOT_A_FILE}; \
                  wc -c < \"$p\" && head -c {MAX_FILE_BYTES} -- \"$p\"; }}; \
                  [ -e \"$p\" ] && {{ back; exit; }}; d=$(dirname -- \"$p\"); \
                  mkdir -p -- \"$d\" && t=$(mktemp \"$d/.rig-write.XXXXXX\") || exit 1; \
                  chmod \"$(printf %o $((0666 & ~$(umask))))\" \"$t\" && \
                  cat > \"$t\" && [ $(wc -c < \"$t\") -eq {size} ] || {{ rm -f -- \"$t\"; exit 1; }}; \
-                 if ln -- \"$t\" \"$p\" 2>/dev/null; then rm -f -- \"$t\"; echo =; \
+                 if ln -- \"$t\" \"$p\" 2>/dev/null; then \
+                 if [ -d \"$p\" ]; then rm -f -- \"$p/${{t##*/}}\" \"$t\"; exit {NOT_A_FILE}; fi; \
+                 rm -f -- \"$t\"; echo =; \
+                 elif [ -e \"$p\" ] || [ -L \"$p\" ]; then rm -f -- \"$t\"; back; \
+                 elif (set -C; cat -- \"$t\" > \"$p\") 2>/dev/null; then rm -f -- \"$t\"; echo =; \
                  else rm -f -- \"$t\"; [ -e \"$p\" ] || exit 1; back; fi",
                 quote_path(path)
             );
