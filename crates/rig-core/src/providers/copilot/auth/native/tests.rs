@@ -57,8 +57,8 @@ fn api_key_record_reuse_requires_matching_bootstrap_token_for_explicit_auth() {
         bootstrap_token_fingerprint: Some(bootstrap_token_fingerprint("github-token-a")),
     };
 
-    assert!(record.can_reuse_for_bootstrap_token("github-token-a"));
-    assert!(!record.can_reuse_for_bootstrap_token("github-token-b"));
+    assert!(record.reusable_for(Some("github-token-a")));
+    assert!(!record.reusable_for(Some("github-token-b")));
 }
 
 #[test]
@@ -71,9 +71,9 @@ fn api_key_record_oauth_reuse_requires_match_when_bootstrap_token_is_available()
         bootstrap_token_fingerprint: Some(bootstrap_token_fingerprint("github-token-a")),
     };
 
-    assert!(record.can_reuse_for_oauth(Some("github-token-a")));
-    assert!(!record.can_reuse_for_oauth(Some("github-token-b")));
-    assert!(record.can_reuse_for_oauth(None));
+    assert!(record.reusable_for(Some("github-token-a")));
+    assert!(!record.reusable_for(Some("github-token-b")));
+    assert!(record.reusable_for(None));
 }
 
 #[test]
@@ -86,9 +86,8 @@ fn api_key_record_without_fingerprint_forces_refresh_when_bootstrap_token_is_kno
         bootstrap_token_fingerprint: None,
     };
 
-    assert!(!record.can_reuse_for_bootstrap_token("github-token-a"));
-    assert!(!record.can_reuse_for_oauth(Some("github-token-a")));
-    assert!(record.can_reuse_for_oauth(None));
+    assert!(!record.reusable_for(Some("github-token-a")));
+    assert!(record.reusable_for(None));
 }
 
 #[test]

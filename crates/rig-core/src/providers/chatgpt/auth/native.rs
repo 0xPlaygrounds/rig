@@ -535,17 +535,11 @@ where
 
 /// The originator the ChatGPT dialect sends, named to the sign-in page too.
 fn originator() -> String {
-    let identity = crate::providers::chatgpt::DIALECT.quirks.identity;
-    identity
-        .and_then(|identity| std::env::var(identity.originator_env).ok())
+    let identity = crate::providers::chatgpt::IDENTITY;
+    std::env::var(identity.originator_env)
+        .ok()
         .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| {
-            identity
-                .map_or(crate::providers::chatgpt::DEFAULT_ORIGINATOR, |identity| {
-                    identity.originator
-                })
-                .to_owned()
-        })
+        .unwrap_or_else(|| identity.originator.to_owned())
 }
 
 fn build_auth_record(

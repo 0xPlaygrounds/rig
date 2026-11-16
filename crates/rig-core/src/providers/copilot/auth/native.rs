@@ -39,7 +39,7 @@ impl Authenticator {
         }
         let _held = self.0.hold(STORE_KEY).await?;
         let mut record: ApiKeyRecord = load_record(&*self.0.store, STORE_KEY).await?;
-        if record.can_reuse_for_oauth(record.github_token.as_deref()) {
+        if record.reusable_for(record.github_token.as_deref()) {
             return Ok(self.remember(record));
         }
 
@@ -147,16 +147,6 @@ impl Authenticator {
         Err(AuthError::Message(
             "Timed out waiting for GitHub Copilot device authorization".into(),
         ))
-    }
-}
-
-impl ApiKeyRecord {
-    fn can_reuse_for_oauth(&self, bootstrap_token: Option<&str>) -> bool {
-        if !self.has_live_api_key() {
-            return false;
-        }
-
-        bootstrap_token.is_none_or(|bootstrap_token| self.matches_bootstrap_token(bootstrap_token))
     }
 }
 

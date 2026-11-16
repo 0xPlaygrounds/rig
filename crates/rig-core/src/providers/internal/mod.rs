@@ -158,9 +158,8 @@ pub(crate) mod named_dialect {
 /// Append `pairs` to `path` as a percent-encoded query string.
 /// Encoding preserves cursor delimiters and prevents query-parameter injection.
 pub(crate) fn with_query_pairs(path: &str, pairs: &[(&str, &str)]) -> String {
-    let mut serializer = url::form_urlencoded::Serializer::new(String::new());
-    for (name, value) in pairs {
-        serializer.append_pair(name, value);
-    }
-    format!("{path}?{}", serializer.finish())
+    let query = url::form_urlencoded::Serializer::new(String::new())
+        .extend_pairs(pairs)
+        .finish();
+    format!("{path}?{query}")
 }
