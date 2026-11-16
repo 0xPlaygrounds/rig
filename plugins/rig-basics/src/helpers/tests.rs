@@ -609,3 +609,32 @@ fn a_helper_past_its_timeout_says_which_key_set_it() {
         "{said}"
     );
 }
+
+/// A caller's directory reached through a symlink still holds its helpers.
+#[cfg(unix)]
+#[test]
+fn a_helper_runs_in_a_base_reached_through_a_symlink() {
+    let real = scratch_home("rig-basics-helpers-b48-real")
+        .root()
+        .to_path_buf();
+    let link = scratch_home("rig-basics-helpers-b48-link")
+        .root()
+        .to_path_buf();
+    std::fs::create_dir_all(&real).ok();
+    std::fs::remove_file(&link).ok();
+    assert!(std::os::unix::fs::symlink(&real, &link).is_ok());
+    let lent = Lent {
+        model: None,
+        access: ToolAccess::all(),
+        lendable: Vec::new(),
+        base: link.clone(),
+    };
+    let job = Job {
+        task: "look around".into(),
+        dir: None,
+        tools: None,
+    };
+    let child = lent.child(&job);
+    std::fs::remove_file(&link).ok();
+    assert_eq!(child.err(), None);
+}

@@ -312,7 +312,12 @@ impl Lent {
         let dir = dir
             .canonicalize()
             .map_err(|error| format!("no directory {}: {error}", dir.display()))?;
-        if !dir.starts_with(&self.base) {
+        // Resolved as `dir` is, so a base reached through a symlink holds it.
+        let base = self
+            .base
+            .canonicalize()
+            .unwrap_or_else(|_| self.base.clone());
+        if !dir.starts_with(base) {
             return Err(format!("{} is outside your directory", dir.display()));
         }
         let mut args: Vec<OsString> = vec!["-p".into(), "--json".into()];
