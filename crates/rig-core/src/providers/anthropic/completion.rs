@@ -1005,8 +1005,8 @@ fn spot_block<'a>(
 /// take the markers left, ahead of manual caching's last-message marker:
 /// when too few are left, the points furthest into the request win, and a
 /// block already marked takes no second one. Markers a tool already
-/// carries are kept and count toward the budget, and every one-hour marker
-/// must precede the five-minute ones.
+/// carries are kept and count toward the budget. `validate_cache_control`
+/// checks the order of the markers the final body sends.
 fn apply_cache_control(
     wire: &Messages,
     Markers {
@@ -1095,23 +1095,6 @@ fn apply_cache_control(
             .and_then(Value::as_object_mut);
         if let Some(block) = block {
             block.insert("cache_control".into(), ephemeral(None));
-        }
-    }
-    let mut short_seen = false;
-    let markers = tools
-        .iter()
-        .chain(system.iter())
-        .chain(messages.iter().flat_map(|message| message.arr("content")))
-        .filter_map(|block| block.get("cache_control"))
-        .chain(top);
-    for marker in markers {
-        if !is_1h(marker) {
-            short_seen = true;
-        } else if short_seen {
-            return Err(EncodeError::request(
-                "Anthropic cache_control markers with ttl `1h` must appear before markers with \
-                 the default 5-minute TTL",
-            ));
         }
     }
     Ok(())
