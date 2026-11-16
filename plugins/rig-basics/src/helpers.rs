@@ -604,12 +604,12 @@ impl Runner {
                 return (Err(why), note.to_owned());
             }
         };
-        let mut read = Read::new(self.reports.clone());
+        let mut read = Read::default();
         let ended = process.run(Some(deadline), |piece| {
-            read.piece(piece);
+            read.piece(piece, &self.reports);
             true
         });
-        read.flush();
+        read.flush(&self.reports);
         let note = read.note();
         // It stays unsettled until how it ended is recorded, after the
         // spend it reported.
@@ -632,6 +632,7 @@ impl Runner {
 /// many came before them, its session, and the spend it reported, each
 /// `usage` line recorded as it is read. A line comes in pieces past 64 KB,
 /// so a line of stdout is held until it ends.
+#[derive(Default)]
 struct Read {
     version: Option<u64>,
     exit: Option<(u64, Option<String>)>,
@@ -645,30 +646,13 @@ struct Read {
     held: Vec<u8>,
     session: Option<String>,
     spent: UsageTotals,
-    reports: Reports,
 }
 
 impl Read {
-    fn new(reports: Reports) -> Self {
-        Self {
-            version: None,
-            exit: None,
-            complete: false,
-            unread: false,
-            error: None,
-            stderr: Vec::new(),
-            dropped: 0,
-            held: Vec::new(),
-            session: None,
-            spent: UsageTotals::default(),
-            reports,
-        }
-    }
-
     /// Takes a piece of output: a piece of stderr as a line of its own, so
     /// at most [`STDERR_LINES`] pieces are held, and stdout's pieces until
     /// its line ended.
-    fn piece(&mut self, piece: OutputLine) {
+    fn piece(&mut self, piece: OutputLine, reports: &Reports) {
         if let OutputLine::Err(_) = piece {
             self.stderr.push(piece.text().trim_end().to_owned());
             let cut = self.stderr.len().saturating_sub(STDERR_LINES);
@@ -678,12 +662,12 @@ impl Read {
         }
         self.held.extend_from_slice(piece.bytes());
         if self.held.ends_with(b"\n") {
-            self.flush();
+            self.flush(reports);
         }
     }
 
     /// Takes the line of stdout held, as one ended or the child did.
-    fn flush(&mut self) {
+    fn flush(&mut self, reports: &Reports) {
         let line = std::mem::take(&mut self.held);
         if line.is_empty() {
             return;
@@ -700,7 +684,7 @@ impl Read {
                 match serde_json::from_value::<Usage>(usage) {
                     Ok(usage) => {
                         self.spent.record(&usage);
-                        self.reports.send(field("model"), usage);
+                        reports.send(field("model"), usage);
                     }
                     Err(_) => self.unread = true,
                 }
