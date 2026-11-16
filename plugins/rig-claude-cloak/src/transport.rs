@@ -16,12 +16,14 @@ use serde_json::{Value, json};
 use std::{
     future::Future,
     io::Write,
+    os::unix::fs::{OpenOptionsExt, PermissionsExt},
     path::{Path, PathBuf},
     sync::OnceLock,
 };
 
 use rig_harness::rig_core::json_utils::remove_preserving_order;
 
+use crate::auth;
 use crate::profile::{self, BETAS, VERSION};
 const MARKER: &str = "\"system\":[{\"type\":\"text\",\"text\":\"x-anthropic-billing-header:";
 
@@ -65,8 +67,6 @@ struct OAuthTransport {
 fn platform() -> (&'static str, &'static str) {
     let os = match std::env::consts::OS {
         "macos" => "MacOS",
-        "windows" => "Windows",
-        "freebsd" => "FreeBSD",
         _ => "Linux",
     };
     let arch = match std::env::consts::ARCH {
@@ -102,32 +102,12 @@ pub(crate) fn new(home: PathBuf, wrappers: &Transport) -> Result<DynHttpClient, 
 }
 
 fn device_id(home: &Path) -> Result<String, Error> {
-    let dir = home.join("anthropic-oauth");
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
-        let mut builder = std::fs::DirBuilder::new();
-        builder.mode(0o700);
-        match builder.create(&dir) {
-            Ok(()) => (),
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => (),
-            Err(e) => return Err(e.into()),
-        }
-        let metadata = std::fs::symlink_metadata(&dir)?;
-        if !metadata.is_dir() || metadata.permissions().mode() & 0o077 != 0 {
-            return Err(Error::Identity);
-        }
-    }
-    #[cfg(not(unix))]
-    std::fs::create_dir_all(&dir)?;
+    let dir = home.join(auth::DIRECTORY);
+    auth::create_private(&dir)?;
+    auth::checked_dir(&dir).map_err(|_| Error::Identity)?;
     let path = dir.join("device-id");
     let mut options = std::fs::OpenOptions::new();
-    options.write(true).create_new(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
+    options.write(true).create_new(true).mode(0o600);
     match options.open(&path) {
         Ok(mut file) => {
             let id = profile::sha256_hex(uuid::Uuid::new_v4().as_bytes());
@@ -137,15 +117,8 @@ fn device_id(home: &Path) -> Result<String, Error> {
         }
         Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
             let metadata = std::fs::symlink_metadata(&path)?;
-            if !metadata.is_file() {
+            if !metadata.is_file() || metadata.permissions().mode() & 0o077 != 0 {
                 return Err(Error::Identity);
-            }
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                if metadata.permissions().mode() & 0o077 != 0 {
-                    return Err(Error::Identity);
-                }
             }
             let id = std::fs::read_to_string(path)?;
             if id.len() != 64 || !id.bytes().all(|b| b.is_ascii_hexdigit()) {

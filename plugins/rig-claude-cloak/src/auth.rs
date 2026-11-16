@@ -104,7 +104,7 @@ fn now() -> Result<u64, AuthError> {
 const KEY: &str = "credentials";
 
 /// This plugin's directory in the agent's home.
-const DIRECTORY: &str = "anthropic-oauth";
+pub(crate) const DIRECTORY: &str = "anthropic-oauth";
 
 /// This plugin's directory under the agent's home, created private when
 /// missing.
@@ -115,18 +115,23 @@ fn directory(home: &Path) -> Result<PathBuf, AuthError> {
 }
 
 fn private_dir(path: &Path) -> Result<(), AuthError> {
-    match fs::DirBuilder::new().mode(0o700).create(path) {
-        Ok(()) => (),
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => (),
-        Err(_) => return Err(AuthError::Storage),
-    }
+    create_private(path).map_err(|_| AuthError::Storage)?;
     checked_dir(path)
+}
+
+/// Creates the directory `path` that only its owner may access, unless it
+/// is there.
+pub(crate) fn create_private(path: &Path) -> std::io::Result<()> {
+    match fs::DirBuilder::new().mode(0o700).create(path) {
+        Err(e) if e.kind() != std::io::ErrorKind::AlreadyExists => Err(e),
+        _ => Ok(()),
+    }
 }
 
 /// Refuses a credential directory that is a symlink or that others may
 /// access, since they could replace the credential or lock files in it. A
 /// missing directory is `NotLoggedIn`.
-fn checked_dir(path: &Path) -> Result<(), AuthError> {
+pub(crate) fn checked_dir(path: &Path) -> Result<(), AuthError> {
     let metadata = fs::symlink_metadata(path).map_err(|e| match e.kind() {
         std::io::ErrorKind::NotFound => AuthError::NotLoggedIn,
         _ => AuthError::Storage,
@@ -190,9 +195,7 @@ async fn response_json<T: serde::de::DeserializeOwned>(
 
 struct OAuthClient {
     http: reqwest::Client,
-    #[cfg(test)]
     token_url: String,
-    #[cfg(test)]
     bootstrap_url: String,
 }
 
@@ -200,33 +203,9 @@ impl OAuthClient {
     fn production() -> Result<Self, AuthError> {
         Ok(Self {
             http: client()?,
-            #[cfg(test)]
             token_url: TOKEN_URL.into(),
-            #[cfg(test)]
             bootstrap_url: BOOTSTRAP_URL.into(),
         })
-    }
-
-    fn token_url(&self) -> &str {
-        #[cfg(test)]
-        {
-            &self.token_url
-        }
-        #[cfg(not(test))]
-        {
-            TOKEN_URL
-        }
-    }
-
-    fn bootstrap_url(&self) -> &str {
-        #[cfg(test)]
-        {
-            &self.bootstrap_url
-        }
-        #[cfg(not(test))]
-        {
-            BOOTSTRAP_URL
-        }
     }
 }
 
@@ -238,7 +217,7 @@ async fn exchange(
     body: serde_json::Value,
     refresh: bool,
 ) -> Result<TokenResponse, AuthError> {
-    let mut request = client.http.post(client.token_url()).json(&body);
+    let mut request = client.http.post(&client.token_url).json(&body);
     if refresh {
         request = request
             .header("anthropic-beta", crate::profile::OAUTH_BETA)
@@ -292,7 +271,7 @@ async fn fill_account(client: &OAuthClient, credentials: &mut Credentials, login
     }
     let Ok(response) = client
         .http
-        .get(client.bootstrap_url())
+        .get(&client.bootstrap_url)
         .bearer_auth(&credentials.access_token)
         .header("anthropic-beta", crate::profile::OAUTH_BETA)
         .header(
