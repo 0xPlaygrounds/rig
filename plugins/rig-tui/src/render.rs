@@ -787,7 +787,7 @@ pub(crate) fn lay_out_transcript(
             for (at, call) in streaming.map(PartialCall::shown).enumerate() {
                 sources.renderers.at(Place::Outside(at));
                 let item = CallItem::Streaming(at);
-                let call = ToolRender {
+                let call = || ToolRender {
                     theme: *sources.theme,
                     item: Some(item),
                     ..ToolRender::new(call, None, CallState::Streaming)

@@ -1632,7 +1632,7 @@ fn message_lines(
                         let from = at.and_then(|at| look.forked_call(at));
                         // Only an archived entry has no id, and no items.
                         let item = at.map(CallItem::Reply);
-                        let call = ToolRender {
+                        let call = || ToolRender {
                             call: call.clone(),
                             result: result.cloned(),
                             state: look.state(at, result),
@@ -1729,7 +1729,7 @@ fn delivered_lines(
         .header()
         .and_then(|header| text.strip_prefix(&header))
         .map_or(text, |body| body.trim_start_matches('\n'));
-    let entry = EntryRender {
+    let entry = || EntryRender {
         id,
         plugin: plugin_name(author).to_owned(),
         title: author.label(),

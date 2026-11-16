@@ -200,3 +200,23 @@ fn the_tools_table_sets_the_unavailable_call_limit() {
     assert_eq!(limit("[tools]\nmax_unavailable_calls = 8\n"), (8, 0));
     assert_eq!(limit("[tools]\nmax_unavailable_calls = 0\n").1, 1);
 }
+
+/// A run refused at build that also waits for its start exits once, not
+/// once for each exit system.
+#[test]
+fn a_refused_run_that_waits_for_its_start_exits_once() {
+    #[derive(Resource, Default)]
+    struct Exits(Vec<AppExit>);
+    let (mut app, _held) = app(Front::new("view").on_terminal(), true, Some("read"));
+    app.init_resource::<Exits>().add_systems(
+        Last,
+        |mut read: MessageReader<AppExit>, mut exits: ResMut<Exits>| {
+            exits.0.extend(read.read().cloned());
+        },
+    );
+    app.refuse_run("no".to_owned());
+    app.update();
+    app.update();
+    let exits = &app.world().resource::<Exits>().0;
+    assert_eq!(exits.len(), 1, "{exits:?}");
+}

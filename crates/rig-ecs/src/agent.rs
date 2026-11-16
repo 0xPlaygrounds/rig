@@ -923,6 +923,12 @@ impl TurnOutcome {
             Self::Stopped(stop) => Some(stop.cause.to_string()),
         }
     }
+
+    /// Whether a turn that ends this way stops its calls, as
+    /// [`stops`](Self::stops) is `Some`, without forming the text.
+    pub(crate) fn is_stopping(&self) -> bool {
+        !matches!(self, Self::Answered(_))
+    }
 }
 
 #[cfg(test)]

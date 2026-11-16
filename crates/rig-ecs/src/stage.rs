@@ -1203,7 +1203,7 @@ fn start(
         .iter_mut()
         .filter(|item| {
             let ending = item.of.and_then(|of| turns.get(of.0).ok());
-            let stopping = ending.and_then(TurnOutcome::stops).is_some();
+            let stopping = ending.is_some_and(TurnOutcome::is_stopping);
             !item.message && !item.decision.is_decided() && !stopping
         })
         .collect();

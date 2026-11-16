@@ -234,3 +234,18 @@ fn each_terminal_is_as_wide_as_itself() {
     });
     assert_eq!(widths, [columns.or(Some(80)), columns.or(Some(20))]);
 }
+
+/// A tab in wrapped text is drawn as wide as the same tab in a shell
+/// command line (`code::shown`, four spaces, as the terminal view draws it).
+#[test]
+fn a_tab_in_text_is_as_wide_as_in_a_command() {
+    let row = "name\tsize";
+    let code = code::shown(row, 0..row.len());
+    assert_eq!(code, "name    size");
+    let text = visible(&at(80).text(row, Style::new()));
+    let markdown = visible(&at(80).markdown(row));
+    assert_eq!(
+        (text.as_str(), markdown.as_str()),
+        (code.as_str(), code.as_str())
+    );
+}

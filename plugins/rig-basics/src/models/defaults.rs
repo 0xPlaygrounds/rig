@@ -159,10 +159,8 @@ fn apply_defaults(
         return;
     }
     let defaults = Defaults::read(&home.0);
-    let Some(model) = defaults.model else {
-        return;
-    };
     let named = invoked.is_some_and(|invoked| invoked.args.model.is_some());
+    let model = defaults.model.filter(|_| !named);
     for agent in &agents {
         let mut agent = commands.entity(agent);
         // A text no model reads has refused the run already ([`effort_word`]).
@@ -170,7 +168,7 @@ fn apply_defaults(
         if let Some(effort) = effort.filter(|effort| ReasoningSupport::reads(effort)) {
             agent.insert(SavedEffort(effort.clone()));
         }
-        if !named {
+        if let Some(model) = &model {
             agent.insert(model.clone());
         }
     }

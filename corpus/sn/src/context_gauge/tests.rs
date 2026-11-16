@@ -135,6 +135,20 @@ fn the_gauge_follows_tokens_models_and_focus_and_warns_once() {
         .insert(ContextStale::default());
     app.update();
     assert!(shows(app.world(), agent, "ctx ?/200k", Tone::Dim));
+    // With an estimate, as after a summary, the gauge shows it, not `ctx ?`.
+    let estimate = Some(ContextEstimate {
+        tokens: 50_000,
+        through: rig_core::conversation::MessageId::default(),
+    });
+    app.world_mut()
+        .entity_mut(agent)
+        .insert(ContextStale { estimate });
+    app.update();
+    assert!(
+        shows(app.world(), agent, "ctx ~25% · 50k/200k", Tone::Dim),
+        "{:?}",
+        gauge(app.world(), agent)
+    );
     app.world_mut().entity_mut(agent).remove::<ContextStale>();
     app.update();
     assert!(shows(app.world(), agent, at_75, Tone::Yellow));

@@ -1015,3 +1015,23 @@ fn a_stopped_replys_call_is_summarized_as_never_run() {
         "{text}"
     );
 }
+
+/// `keep_end` keeps `budget` characters and counts what it left out in characters.
+#[test]
+fn keep_end_counts_characters() {
+    let text = "é".repeat(100);
+    let kept = keep_end(&text, 50);
+    assert_eq!(
+        kept,
+        format!("[… 50 earlier characters left out]\n{}", "é".repeat(50))
+    );
+}
+
+/// `snippet` says how many characters it cut.
+#[test]
+fn snippet_counts_characters() {
+    assert_eq!(
+        snippet(&"é".repeat(10), 4),
+        format!("{}\n[… 6 more characters]", "é".repeat(4))
+    );
+}

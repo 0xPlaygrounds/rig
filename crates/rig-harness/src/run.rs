@@ -51,7 +51,7 @@ use rig_ecs::tools::{ToolDef, UnavailableCalls};
 
 use crate::host::cli::{self, AppCliExt, Cli, Flag};
 use crate::host::exit::{ExitReason, ExitRequest};
-use crate::host::launcher::{self, Invoked};
+use crate::host::launcher::{self, Invoked, Refused};
 use crate::settings::AppSettingsExt;
 
 /// The option that leaves the run only the tools named ([`RunTools`]):
@@ -256,7 +256,13 @@ impl AppRunExt for App {
         start(self);
         self.insert_resource(LoopAfterStart)
             .configure_sets(Update, AgentLoop.run_if(|start: Res<RunStart>| start.over))
-            .add_systems(PostUpdate, exit_unstarted.after(refuse_untaken))
+            // A run refused at build exits through the launcher's own system.
+            .add_systems(
+                PostUpdate,
+                exit_unstarted
+                    .after(refuse_untaken)
+                    .run_if(not(resource_exists::<Refused>)),
+            )
             .add_systems(
                 Last,
                 keep_restored

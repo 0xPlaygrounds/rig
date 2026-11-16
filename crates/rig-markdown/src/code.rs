@@ -22,5 +22,10 @@ pub fn lines(code: &str) -> impl Iterator<Item = &str> {
 pub fn shown(line: &str, range: Range<usize>) -> String {
     let end = line.trim_end_matches(['\n', '\r']).len();
     let text = line.get(range.start.min(end)..range.end.min(end));
-    text.unwrap_or_default().replace('\t', "    ")
+    untabbed(text.unwrap_or_default())
+}
+
+/// `text` with each tab as four spaces, as code and plain text are drawn.
+pub fn untabbed(text: &str) -> String {
+    text.replace('\t', "    ")
 }

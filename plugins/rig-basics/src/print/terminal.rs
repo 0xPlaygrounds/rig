@@ -99,12 +99,12 @@ impl Terminal {
         self.escaped([Line::styled(summary, dim)])
     }
 
-    /// `line` wrapped to the width, each tab in it a space first, as the
-    /// wrap drops control characters.
+    /// `line` wrapped to the width, each tab in it four spaces first, as in
+    /// code, since the wrap drops control characters.
     fn wrapped(&self, mut line: Line<'static>) -> Vec<Line<'static>> {
         for span in &mut line.spans {
             if span.content.contains('\t') {
-                span.content = span.content.replace('\t', " ").into();
+                span.content = code::untabbed(&span.content).into();
             }
         }
         match self.width {

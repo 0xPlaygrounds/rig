@@ -114,7 +114,8 @@ pub fn label(context: Option<ContextUse>) -> String {
 /// Each agent's gauge, whenever its tokens, its model, its line or whether
 /// its context is known changed (another plugin may have put its item at
 /// the same place). Writes only when the item differs, so its own write
-/// does not make it run again. Unknown after a compaction: `ctx ?`.
+/// does not make it run again. After a compaction it shows the estimate
+/// marked `~`, as `ctx ~25% · 50k/200k`, or `ctx ?` without one.
 fn show(
     mut agents: Query<
         (
@@ -133,19 +134,27 @@ fn show(
         let changed = items.is_changed()
             || last.is_changed()
             || connection.as_ref().is_some_and(Ref::is_changed)
-            || stale.as_ref().is_some_and(Ref::is_added)
+            || stale.as_ref().is_some_and(Ref::is_changed)
             || known.contains(&agent);
         if !changed {
             continue;
         }
         let connection = connection.as_deref();
-        let context = context_of(&last, connection).filter(|_| stale.is_none());
-        let text = if stale.is_some() {
-            let limit = connection.and_then(|connection| connection.spec.input_limit());
-            let limit = limit.map(|limit| format!("/{}", tokens_label(u64::from(limit))));
-            format!("ctx ?{}", limit.unwrap_or_default())
-        } else {
-            label(context)
+        let limit = connection.and_then(|connection| connection.spec.input_limit());
+        let context = match stale.as_deref() {
+            Some(stale) => (stale.estimate).map(|estimate| ContextUse {
+                tokens: estimate.tokens,
+                limit,
+            }),
+            None => context_of(&last, connection),
+        };
+        let text = match (stale.is_some(), context) {
+            (true, Some(_)) => label(context).replacen("ctx ", "ctx ~", 1),
+            (true, None) => {
+                let limit = limit.map(|limit| format!("/{}", tokens_label(u64::from(limit))));
+                format!("ctx ?{}", limit.unwrap_or_default())
+            }
+            (false, _) => label(context),
         };
         let item = GAUGE.says(text, Fill::of(context).tone());
         if !items.iter().any(|shown| *shown == item) {
