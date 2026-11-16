@@ -71,3 +71,34 @@ fn sums_a_run() {
         }
     );
 }
+
+#[test]
+fn absurd_counters_saturate() {
+    let cost = CacheCost::from_usage(&usage(10, Some(u64::MAX), Some(1)));
+    assert_eq!(cost.uncached_input, 0);
+}
+
+#[test]
+fn prompt_tokens_saturates() {
+    let cost = CacheCost {
+        uncached_input: u64::MAX,
+        cache_reads: 1,
+        cache_writes: 0,
+        storage_token_hours: 0.0,
+    };
+    assert_eq!(cost.prompt_tokens(), u64::MAX);
+}
+
+#[test]
+fn adding_absurd_costs_saturates() {
+    let huge = CacheCost {
+        uncached_input: u64::MAX,
+        cache_reads: u64::MAX,
+        cache_writes: u64::MAX,
+        storage_token_hours: 0.0,
+    };
+    let sum = huge + huge;
+    assert_eq!(sum.uncached_input, u64::MAX);
+    assert_eq!(sum.cache_reads, u64::MAX);
+    assert_eq!(sum.cache_writes, u64::MAX);
+}

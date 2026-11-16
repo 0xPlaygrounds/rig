@@ -93,7 +93,7 @@ fn echoed(raw: &str) -> String {
         Some((end, _)) => format!(
             "{}… ({} more characters)",
             raw.get(..end).unwrap_or_default(),
-            raw.len().saturating_sub(end)
+            raw.get(end..).map_or(0, |rest| rest.chars().count())
         ),
         None => raw.to_owned(),
     }

@@ -1020,3 +1020,25 @@ async fn an_unfinished_calls_end_comes_with_the_replys_end() {
         );
     }
 }
+
+#[tokio::test]
+async fn a_streamed_reply_with_another_2xx_status_is_read() {
+    for status in [http::StatusCode::OK, http::StatusCode::ACCEPTED] {
+        let http = NonSuccessStreamingClient {
+            status,
+            headers: http::HeaderMap::new(),
+            body: Bytes::from_static(
+                b"data: {\"type\":\"delta\",\"text\":\"hi\"}\n\ndata: {\"type\":\"stop\",\"usage\":{\"output_tokens\":1}}\n\n",
+            ),
+        };
+        let response = stream(&Echo::streaming().relaxed(), &http, prompt())
+            .expect("the stream opens")
+            .finish()
+            .await;
+        assert_eq!(
+            response.as_ref().ok().and_then(text_of),
+            Some("hi"),
+            "status {status}: {response:?}"
+        );
+    }
+}

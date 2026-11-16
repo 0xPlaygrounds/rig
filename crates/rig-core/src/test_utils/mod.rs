@@ -6,13 +6,13 @@ pub mod history;
 pub mod history_conformance;
 #[cfg(test)]
 pub(crate) mod provider_extensions;
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 pub mod raw_parity;
 mod relay;
 mod streaming;
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 pub mod streaming_conformance;
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 mod streaming_conformance_suite;
 mod trace_capture;
 mod tracing_isolation;

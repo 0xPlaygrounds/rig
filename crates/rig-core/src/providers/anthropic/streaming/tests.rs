@@ -12,7 +12,7 @@ use crate::wire::Mode;
 use serde_json::json;
 
 mod envelope_regressions;
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 mod held_open;
 
 /// A fresh decoder, for its classifier.
@@ -545,7 +545,7 @@ fn message_start_with_null_message_is_a_known_noop() {
     );
 }
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 mod terminal_emission {
     use super::super::super::completion::CLAUDE_SONNET_4_6;
     use crate::providers::anthropic::wire::AnthropicConfig;
