@@ -78,10 +78,10 @@ pub fn project(committed: &[Arc<Message>]) -> impl Iterator<Item = CommittedItem
             Message::User { content } => (&[], content),
             Message::System { .. } => (&[], &[]),
         };
-        let calls = calls.iter().filter_map(|item| match item {
-            AssistantContent::ToolCall(call) => Some(CommittedItem::ToolCall(call)),
-            _ => None,
-        });
+        let calls = calls
+            .iter()
+            .filter_map(AssistantContent::as_tool_call)
+            .map(CommittedItem::ToolCall);
         calls.chain(results.iter().filter_map(|item| match item {
             UserContent::ToolResult(result) => Some(CommittedItem::ToolResult(result)),
             _ => None,

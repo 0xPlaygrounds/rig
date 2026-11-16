@@ -701,10 +701,7 @@ fn user_text(conversation: &Conversation, start: MessageId) -> Option<(MessageId
             _ => None,
         })
         .flatten()
-        .filter_map(|item| match item {
-            UserContent::Text(text) => Some(text.text.as_str()),
-            _ => None,
-        })
+        .filter_map(UserContent::as_text)
         .collect();
     (!texts.is_empty()).then(|| (id, texts.join("\n")))
 }

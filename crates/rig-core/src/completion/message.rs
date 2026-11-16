@@ -107,21 +107,14 @@ impl AssistantMessage {
 
     /// The tool calls, in order.
     pub fn tool_calls(&self) -> impl Iterator<Item = &ToolCall> {
-        self.content.iter().filter_map(|part| match part {
-            AssistantContent::ToolCall(call) => Some(call),
-            _ => None,
-        })
+        self.content
+            .iter()
+            .filter_map(AssistantContent::as_tool_call)
     }
 
     /// The text parts, concatenated.
     pub fn text(&self) -> String {
-        self.content
-            .iter()
-            .filter_map(|part| match part {
-                AssistantContent::Text(text) => Some(text.text.as_str()),
-                _ => None,
-            })
-            .collect()
+        AssistantContent::concat_text(&self.content)
     }
 
     /// Whether this generated turn is empty: every part is blank
@@ -217,6 +210,27 @@ pub enum AssistantContent {
 }
 
 impl AssistantContent {
+    /// Borrow the text of a text block.
+    pub fn as_text(&self) -> Option<&str> {
+        match self {
+            Self::Text(text) => Some(&text.text),
+            _ => None,
+        }
+    }
+
+    /// Borrow the call of a tool-call block.
+    pub fn as_tool_call(&self) -> Option<&ToolCall> {
+        match self {
+            Self::ToolCall(call) => Some(call),
+            _ => None,
+        }
+    }
+
+    /// The text blocks of `parts`, concatenated in order.
+    pub fn concat_text(parts: &[Self]) -> String {
+        parts.iter().filter_map(Self::as_text).collect()
+    }
+
     /// This block without its provider item: what a different provider can
     /// use, and what its fingerprint covers. The item is not copied.
     pub fn canonical(&self) -> Self {
@@ -444,6 +458,16 @@ impl ToolResultContent {
         match self {
             Self::Json { value } => Some(value),
             Self::Text(_) | Self::Image(_) => None,
+        }
+    }
+
+    /// The content as text: literal text, JSON as its compact text, and an
+    /// image as `image`.
+    pub fn to_text(&self, image: &str) -> String {
+        match self {
+            Self::Text(text) => text.text.clone(),
+            Self::Json { value } => value.to_string(),
+            Self::Image(_) => image.to_owned(),
         }
     }
 
@@ -1250,6 +1274,14 @@ macro_rules! media_ctors {
 }
 
 impl UserContent {
+    /// Borrow the text of a text block.
+    pub fn as_text(&self) -> Option<&str> {
+        match self {
+            Self::Text(text) => Some(&text.text),
+            _ => None,
+        }
+    }
+
     /// Creates user text content.
     pub fn text(text: impl Into<String>) -> Self {
         UserContent::Text(text.into().into())

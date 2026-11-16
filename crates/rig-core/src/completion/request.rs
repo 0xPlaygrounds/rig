@@ -535,13 +535,7 @@ impl CompletionResponse {
 
     /// The text parts of [`Self::choice`], concatenated in order.
     pub fn text(&self) -> String {
-        self.choice
-            .iter()
-            .filter_map(|part| match part {
-                AssistantContent::Text(text) => Some(text.text.as_str()),
-                _ => None,
-            })
-            .collect()
+        AssistantContent::concat_text(&self.choice)
     }
 
     /// The reasoning text of [`Self::choice`], concatenated in order.
@@ -602,18 +596,14 @@ impl CompletionResponse {
 
     /// The tool calls in [`Self::choice`], in order.
     pub fn tool_calls(&self) -> impl Iterator<Item = &ToolCall> {
-        self.choice.iter().filter_map(|part| match part {
-            AssistantContent::ToolCall(call) => Some(call),
-            _ => None,
-        })
+        self.choice
+            .iter()
+            .filter_map(AssistantContent::as_tool_call)
     }
 
     /// Sets or clears the finish reason, reconciling a present reason with the choice.
     pub fn with_optional_finish_reason(mut self, finish_reason: Option<FinishReason>) -> Self {
-        let has_tool_call = self
-            .choice
-            .iter()
-            .any(|content| matches!(content, AssistantContent::ToolCall(_)));
+        let has_tool_call = self.tool_calls().next().is_some();
         self.finish_reason =
             finish_reason.map(|reason| reason.reconcile_with_output(has_tool_call));
         self

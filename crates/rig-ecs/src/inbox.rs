@@ -318,12 +318,9 @@ fn mark(conversation: &mut Conversation, message: &Incoming) -> InboxMark {
 
 /// The messages kept in the inbox of `conversation`, with their marks.
 pub(crate) fn kept(conversation: &Conversation) -> Vec<(InboxMark, Incoming)> {
-    let marks = conversation
+    conversation
         .asides()
-        .filter(|(_, aside)| aside.kind == INBOX_MARK);
-    let read = |aside: &Aside| Incoming::deserialize(&aside.value).ok();
-    marks
-        .filter_map(|(id, aside)| Some((InboxMark(id), read(aside)?)))
+        .filter_map(|(id, aside)| Some((InboxMark(id), aside.read(INBOX_MARK)?)))
         .collect()
 }
 

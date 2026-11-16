@@ -288,13 +288,7 @@ fn excerpt(message: &Message) -> Excerpt {
     let (role, text) = match message {
         Message::System { content } => ("system", content.clone()),
         Message::User { content } => {
-            let texts: Vec<&str> = content
-                .iter()
-                .filter_map(|item| match item {
-                    UserContent::Text(text) => Some(text.text()),
-                    _ => None,
-                })
-                .collect();
+            let texts: Vec<&str> = content.iter().filter_map(UserContent::as_text).collect();
             if texts.is_empty() {
                 let results = content.iter().filter_map(|item| match item {
                     UserContent::ToolResult(result) => {

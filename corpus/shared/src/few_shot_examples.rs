@@ -221,13 +221,7 @@ fn latest_user_text(messages: &[std::sync::Arc<Message>]) -> Option<String> {
         let Message::User { content } = &**message else {
             return None;
         };
-        let texts: Vec<&str> = content
-            .iter()
-            .filter_map(|part| match part {
-                UserContent::Text(text) => Some(text.text.as_str()),
-                _ => None,
-            })
-            .collect();
+        let texts: Vec<&str> = content.iter().filter_map(UserContent::as_text).collect();
         (!texts.is_empty()).then(|| texts.join("\n"))
     })
 }

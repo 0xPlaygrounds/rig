@@ -318,13 +318,11 @@ fn first_human_text(conversation: &rig_harness::rig_core::conversation::Conversa
         .entries()
         .find(|entry| entry.is_users_own())
         .and_then(|entry| match entry.message {
-            Message::User { content } => content.iter().find_map(|item| match item {
-                UserContent::Text(text) => Some(text.text.clone()),
-                _ => None,
-            }),
+            Message::User { content } => content.iter().find_map(UserContent::as_text),
             _ => None,
         })
         .unwrap_or_default()
+        .to_owned()
 }
 
 #[cfg(test)]

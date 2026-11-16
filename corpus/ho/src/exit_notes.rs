@@ -9,7 +9,7 @@ use std::path::Path;
 
 use rig_basics::sessions::SessionTitle;
 use rig_harness::prelude::*;
-use rig_harness::rig_core::message::{AssistantContent, Message};
+use rig_harness::rig_core::message::Message;
 use rig_harness::rig_core::tool::FilesChanged;
 use rig_tui::{AppKeyBindingsExt, KeyBinding, KeyPress, run_command};
 use serde::Deserialize;
@@ -338,14 +338,7 @@ fn take_notes(
         }
     }
     let summary = outcome.completion().and_then(|response| {
-        let text: String = response
-            .choice
-            .iter()
-            .filter_map(|item| match item {
-                AssistantContent::Text(text) => Some(text.text.as_str()),
-                _ => None,
-            })
-            .collect();
+        let text = response.text();
         let text = text.trim();
         (response.error.is_none() && !text.is_empty()).then(|| text.to_owned())
     });

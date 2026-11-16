@@ -194,10 +194,7 @@ fn first_line(message: &Said) -> String {
     let Said::User { content } = message else {
         return String::new();
     };
-    let texts = content.iter().filter_map(|item| match item {
-        UserContent::Text(text) => Some(text.text.as_str()),
-        _ => None,
-    });
+    let texts = content.iter().filter_map(UserContent::as_text);
     let mut lines = texts.flat_map(str::lines).map(str::trim);
     lines
         .find(|line| !line.is_empty())

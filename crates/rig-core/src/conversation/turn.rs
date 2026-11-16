@@ -99,9 +99,7 @@ impl TurnRecord {
     /// The record `aside` holds, when it is one: of kind [`TURN`], its
     /// value a record.
     pub fn of(aside: &Aside) -> Option<Self> {
-        (aside.kind == TURN)
-            .then(|| Self::deserialize(&aside.value).ok())
-            .flatten()
+        aside.read(TURN)
     }
 }
 

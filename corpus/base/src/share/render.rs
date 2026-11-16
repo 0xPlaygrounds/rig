@@ -3,7 +3,7 @@
 
 use std::fmt::Write as _;
 
-use rig_harness::rig_core::message::{AssistantContent, Message, ToolResultContent, UserContent};
+use rig_harness::rig_core::message::{AssistantContent, Message, UserContent};
 use rig_harness::rig_core::redact;
 
 /// A rendered session: the page and the secrets it no longer holds, each
@@ -28,8 +28,11 @@ pub fn render(title: &str, messages: &[std::sync::Arc<Message>]) -> Rendered {
                     match item {
                         UserContent::Text(text) => page.section("user", "User", &text.text),
                         UserContent::ToolResult(result) => {
-                            let text: Vec<String> =
-                                result.content.iter().map(result_text).collect();
+                            let text: Vec<String> = result
+                                .content
+                                .iter()
+                                .map(|item| item.to_text("(image)"))
+                                .collect();
                             let heading = format!("Result of {}", result.name.as_str());
                             page.section("result", &heading, &text.join("\n"));
                         }
@@ -62,15 +65,6 @@ pub fn render(title: &str, messages: &[std::sync::Arc<Message>]) -> Rendered {
         html: page.finish(title),
         messages: messages.len(),
         secrets: page.secrets,
-    }
-}
-
-/// A tool result item as text.
-fn result_text(item: &ToolResultContent) -> String {
-    match item {
-        ToolResultContent::Text(text) => text.text.clone(),
-        ToolResultContent::Json { value } => value.to_string(),
-        ToolResultContent::Image(_) => "(image)".to_owned(),
     }
 }
 

@@ -207,10 +207,7 @@ fn first_line(message: &Message) -> String {
     let Message::Assistant(reply) = message else {
         return String::new();
     };
-    let text = reply.content.iter().find_map(|part| match part {
-        AssistantContent::Text(text) => Some(text.text.as_str()),
-        _ => None,
-    });
+    let text = reply.content.iter().find_map(AssistantContent::as_text);
     text.and_then(|text| text.trim().lines().next())
         .unwrap_or_default()
         .to_owned()

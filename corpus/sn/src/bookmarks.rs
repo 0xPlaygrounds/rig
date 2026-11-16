@@ -47,9 +47,7 @@ pub struct Bookmark {
 impl Bookmark {
     /// The bookmark `aside` holds, if it holds one.
     pub fn of(aside: &Aside) -> Option<Self> {
-        (aside.kind == KIND)
-            .then(|| serde_json::from_value(aside.value.clone()).ok())
-            .flatten()
+        aside.read(KIND)
     }
 }
 
@@ -116,10 +114,7 @@ fn text_of(message: &Message) -> String {
         Message::System { content } => content.clone(),
         Message::User { content } => content
             .iter()
-            .filter_map(|item| match item {
-                UserContent::Text(text) => Some(text.text.as_str()),
-                _ => None,
-            })
+            .filter_map(UserContent::as_text)
             .collect::<Vec<_>>()
             .join("\n"),
         Message::Assistant(reply) => reply.text(),

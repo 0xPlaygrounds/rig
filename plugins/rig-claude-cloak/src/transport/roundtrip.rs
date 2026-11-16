@@ -181,14 +181,7 @@ async fn roundtrip() -> TestResult<()> {
     let Answered::Completion(first) = first else {
         return Err("expected completion".into());
     };
-    let calls: Vec<_> = first
-        .choice
-        .iter()
-        .filter_map(|block| match block {
-            AssistantContent::ToolCall(call) => Some(call),
-            _ => None,
-        })
-        .collect();
+    let calls: Vec<_> = first.tool_calls().collect();
     let decoded = calls.iter().map(|call| json!({"id":call.id.wire(),"name":call.function.name,"arguments":call.function.arguments})).collect::<Vec<_>>();
     if decoded
         != vec![

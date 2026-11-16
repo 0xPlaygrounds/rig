@@ -120,11 +120,9 @@ impl CallMark {
 
 /// The `rig.call` marks of `conversation`.
 fn marks(conversation: &rig_core::conversation::Conversation) -> Vec<(AsideId, CallMark)> {
-    let marks = conversation
+    conversation
         .asides()
-        .filter(|(_, aside)| aside.kind == CALL_MARK);
-    marks
-        .filter_map(|(id, aside)| Some((id, CallMark::deserialize(&aside.value).ok()?)))
+        .filter_map(|(id, aside)| Some((id, aside.read(CALL_MARK)?)))
         .collect()
 }
 

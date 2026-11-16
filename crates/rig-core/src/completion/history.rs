@@ -1753,11 +1753,7 @@ fn result_text(result: &ToolResult) -> String {
     let text: Vec<String> = result
         .content
         .iter()
-        .map(|part| match part {
-            ToolResultContent::Text(text) => text.text.clone(),
-            ToolResultContent::Json { value } => value.to_string(),
-            ToolResultContent::Image(_) => TOOL_IMAGE_OMITTED.to_owned(),
-        })
+        .map(|part| part.to_text(TOOL_IMAGE_OMITTED))
         .collect();
     let kind = if result.is_error { "error" } else { "result" };
     format!("[tool {} {kind}] {}", result.name, text.join("\n"))

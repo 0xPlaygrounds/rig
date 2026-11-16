@@ -321,14 +321,8 @@ fn preview(message: &Message) -> String {
     let text = match message {
         Message::System { content } => format!("system: {content}"),
         Message::User { content } => {
-            let text = content.iter().find_map(|part| match part {
-                UserContent::Text(text) => Some(text.text.clone()),
-                _ => None,
-            });
-            format!(
-                "user: {}",
-                text.unwrap_or_else(|| "[tool results]".to_owned())
-            )
+            let text = content.iter().find_map(UserContent::as_text);
+            format!("user: {}", text.unwrap_or("[tool results]"))
         }
         Message::Assistant(assistant) => {
             let calls: Vec<&str> = assistant

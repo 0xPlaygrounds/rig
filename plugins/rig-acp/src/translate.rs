@@ -79,14 +79,6 @@ pub(crate) fn call_id_at(agent: &str, at: CallRef) -> String {
     call_id(agent, at.reply, at.index as usize)
 }
 
-/// The calls a reply asks for, in order.
-fn calls_of(reply: &message::AssistantMessage) -> impl Iterator<Item = &ToolCall> {
-    reply.content.iter().filter_map(|part| match part {
-        AssistantContent::ToolCall(call) => Some(call),
-        _ => None,
-    })
-}
-
 /// A call the model asked for, as ACP announces it under `id`: pending.
 pub(crate) fn tool_call(call: &ToolCall, id: String, cwd: &Path) -> acp::ToolCall {
     let name = call.function.name.as_str();
@@ -154,11 +146,7 @@ pub(crate) fn tool_done(id: &str, failed: bool, output: String) -> acp::ToolCall
 /// What a tool result's `content` says, as text: the same for a call live
 /// and loaded.
 pub(crate) fn tool_output(content: &[ToolResultContent]) -> String {
-    let parts = content.iter().map(|part| match part {
-        ToolResultContent::Text(text) => text.text.clone(),
-        ToolResultContent::Json { value } => value.to_string(),
-        ToolResultContent::Image(_) => "[image]".to_owned(),
-    });
+    let parts = content.iter().map(|part| part.to_text("[image]"));
     parts.collect::<Vec<_>>().join("\n")
 }
 
@@ -213,7 +201,7 @@ pub(crate) fn replay(
         match &**message {
             message::Message::Assistant(reply) => {
                 let ran = !reply.stop.as_ref().is_some_and(StopReason::is_failure);
-                for (n, call) in calls_of(reply).enumerate() {
+                for (n, call) in reply.tool_calls().enumerate() {
                     let acp_id = match id {
                         Some(id) => call_id(agent, *id, n),
                         None => {

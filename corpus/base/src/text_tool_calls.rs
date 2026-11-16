@@ -14,7 +14,7 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{CompletionResponse, Message, ToolDefinition};
 use rig_harness::rig_core::effect::{Answered, EffectId, EffectKind};
 use rig_harness::rig_core::error::ErrorReport;
-use rig_harness::rig_core::message::{ToolFunction, ToolName, ToolResultContent};
+use rig_harness::rig_core::message::{ToolFunction, ToolName};
 use rig_harness::rig_core::serve::{AfterServe, BeforeServe, Intercept};
 use rig_harness::rig_core::streaming::{Item, Part, Relayed, StreamEvent};
 use rig_harness::rig_ecs::effects::Handler;
@@ -192,11 +192,7 @@ fn result_text(result: &message::ToolResult) -> String {
     let body: Vec<String> = result
         .content
         .iter()
-        .map(|content| match content {
-            ToolResultContent::Text(text) => text.text().to_owned(),
-            ToolResultContent::Json { value } => value.to_string(),
-            _ => "[an image]".to_owned(),
-        })
+        .map(|content| content.to_text("[an image]"))
         .collect();
     let (name, body) = (result.name.as_str(), body.join("\n"));
     match result.is_error {

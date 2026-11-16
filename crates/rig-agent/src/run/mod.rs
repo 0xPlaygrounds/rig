@@ -60,7 +60,7 @@ pub use response::{CompletionCall, PromptError, PromptResponse};
 use rig_core::completion::message::turn_failure;
 use rig_core::structured_output;
 use rig_core::tool::validate::Problem;
-use transcript::{assistant_message, assistant_turn, choice_text, invalid_tool_retry_user_message};
+use transcript::{assistant_message, assistant_turn, invalid_tool_retry_user_message};
 
 pub use streamed::{
     PartialStreamedTurn, StreamedInvalidToolCall, StreamedResolution, StreamedTurn,
@@ -1051,13 +1051,12 @@ impl AgentRun {
                     items
                         .iter()
                         .enumerate()
-                        .filter_map(|(index, item)| match item {
-                            AssistantContent::ToolCall(tool_call) => Some(ToolSlot::classify(
-                                tool_call.clone(),
+                        .filter_map(|(index, item)| {
+                            Some(ToolSlot::classify(
+                                item.as_tool_call()?.clone(),
                                 skipped.remove(&index),
                                 cut_off.contains(&index),
-                            )),
-                            _ => None,
+                            ))
                         })
                         .collect()
                 });
@@ -1091,7 +1090,7 @@ impl AgentRun {
                                 )
                             })
                         });
-                    let text = choice_text(&items);
+                    let text = AssistantContent::concat_text(&items);
                     let refusal = reprompt.zip(
                         structured_output::validate_text(self.output_schema.as_ref(), &text).err(),
                     );

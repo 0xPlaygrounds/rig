@@ -46,15 +46,10 @@ use rig_core::{
     effect::{EffectFamily, EffectRecord, HandlerKey},
     error::{ErrorKind, ErrorReport},
     message::ToolChoice,
-    message::{AssistantContent, AssistantMessage, Message},
+    message::{AssistantContent, Message},
     streaming::{Item, StreamEvent},
     tool::{ToolContext, ToolOutput},
 };
-
-/// The text parts of a choice, concatenated.
-fn choice_text(choice: &[AssistantContent]) -> String {
-    AssistantMessage::new(choice.to_vec()).text()
-}
 
 /// A hook the producer added, by type: the header names hooks by their
 /// type's last path segment, so the replay's hook is a type of the same
@@ -637,7 +632,7 @@ impl AgentHook for DemandDone {
         _ctx: &HookContext,
         event: ModelTurnFinished<'_>,
     ) -> ModelTurnAction {
-        if choice_text(event.content).contains("DONE") {
+        if AssistantContent::concat_text(event.content).contains("DONE") {
             ModelTurnAction::continue_run()
         } else {
             ModelTurnAction::retry_with_feedback(DONE_FEEDBACK)
@@ -3639,7 +3634,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
                 }
                 if program.hooks.contains(&Hook::DemandDone)
                     && !has_tool_calls
-                    && !choice_text(&choice).contains("DONE")
+                    && !AssistantContent::concat_text(&choice).contains("DONE")
                 {
                     run.retry_model_turn(RetryRequest::Feedback(DONE_FEEDBACK.to_owned()))
                         .expect("a text turn is retryable");

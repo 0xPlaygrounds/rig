@@ -314,10 +314,8 @@ impl Request {
             let text = this_turn.iter().flat_map(|message| match &**message {
                 Message::User { content } => content
                     .iter()
-                    .filter_map(|item| match item {
-                        UserContent::Text(text) => Some(text.text.to_lowercase()),
-                        _ => None,
-                    })
+                    .filter_map(UserContent::as_text)
+                    .map(str::to_lowercase)
                     .collect(),
                 _ => Vec::new(),
             });

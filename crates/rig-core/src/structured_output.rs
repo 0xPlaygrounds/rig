@@ -113,7 +113,7 @@ pub fn validate_text(
     schema: Option<&serde_json::Value>,
     text: &str,
 ) -> Result<(), Vec<crate::tool::validate::Problem>> {
-    let value = json_in_text(text).ok_or_else(|| {
+    let value = json_in_text::<serde_json::Value>(text).map_err(|_| {
         vec![crate::tool::validate::Problem {
             at: String::new(),
             what: "no JSON value".to_owned(),
@@ -124,13 +124,26 @@ pub fn validate_text(
     })
 }
 
-fn json_in_text(text: &str) -> Option<serde_json::Value> {
+/// Reads `T` from `text` as typed prompts read it: the whole trimmed text,
+/// else one value starting at its first `{` or `[` (JSON wrapped in prose or
+/// a markdown fence).
+///
+/// # Errors
+///
+/// The error of parsing the whole text when it has no `{` or `[`, else the
+/// error of parsing the value that starts there.
+pub fn json_in_text<T: serde::de::DeserializeOwned>(text: &str) -> Result<T, serde_json::Error> {
     let text = text.trim();
-    serde_json::from_str(text).ok().or_else(|| {
-        let start = text.find(['{', '['])?;
-        serde_json::Deserializer::from_str(text.get(start..)?)
+    serde_json::from_str(text).or_else(|direct| {
+        let Some(rest) = text.find(['{', '[']).and_then(|start| text.get(start..)) else {
+            return Err(direct);
+        };
+        serde_json::Deserializer::from_str(rest)
             .into_iter()
-            .next()?
-            .ok()
+            .next()
+            .unwrap_or(Err(direct))
     })
 }
+
+#[cfg(test)]
+mod tests;
