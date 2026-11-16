@@ -164,7 +164,7 @@ fn edit(
         && let Ok(applied) = apply_to(&path, &text, &args.edits, false)
     {
         let now = workspace
-            .write_if(&resolved, applied.text.as_bytes(), &hash)
+            .write_if(&resolved, applied.text.as_bytes(), Some(&hash))
             .map_err(|error| {
                 seen.forget(&resolved);
                 text_error(&path, error)

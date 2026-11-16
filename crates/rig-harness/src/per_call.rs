@@ -29,11 +29,11 @@ use rig_core::serve::adapters::ToolAdapter;
 use rig_core::tool::{ToolContext, Touches, tool_definition};
 use rig_ecs::effects::Handler;
 use rig_ecs::prelude::{
-    Admitted, AgentPass, CallHandler, Footprint, ForAgent, PrepareSystems, Tool, ToolCalls,
+    Admitted, Agent, AgentPass, CallHandler, Footprint, ForAgent, PrepareSystems, Tool, ToolCalls,
     ToolDef, ToolOptions, ToolRequest, Wake, WorldToolsExt,
 };
 use rig_tools::workspace::{Root, Workspace};
-use rig_tools::{Delete, Edit, LineFilter, List, Live, Read, Search, Shell, Spill, Write};
+use rig_tools::{Delete, Edit, LineFilter, List, Live, Read, Search, Seen, Shell, Spill, Write};
 
 use crate::host::session::Scratch;
 use crate::progress::CallOutput;
@@ -68,7 +68,26 @@ pub struct CallPlace {
     /// ([`Scratch::spill`]). `None` from [`PerCallTools::place`]; the
     /// harness sets it for a call it runs.
     pub spill: Option<Spill>,
+    /// The calling agent's [`FilesSeen`], where the file tools note what
+    /// the call reads and writes; `None` for a call of no agent, whose
+    /// tools keep the `Seen` they were registered with.
+    pub seen: Option<Seen>,
+    /// Whether `workspace` keeps the call's writes from the files, as an
+    /// overlay does for a call previewed: the file tools then note what
+    /// the call reads and writes in a [`fork`](Seen::fork) of that `Seen`,
+    /// so what it wrote there is not taken as on disk.
+    pub overlaid: bool,
 }
+
+/// The files an agent's file tools saw: what `read` showed it and `edit`
+/// and `write` left, so its `edit` asks for a new read only of a file that
+/// changed since it saw it, and its `write` replaces only a file it saw as
+/// it is now. Each agent has its own, as each has its own model context;
+/// it is empty when the agent is made, a fork's and a subagent's too (a
+/// fork may start before reads its parent made since), and after a
+/// restart.
+#[derive(Component, Clone, Debug, Default)]
+pub struct FilesSeen(pub Seen);
 
 /// A tool built anew for each call, for where the call works.
 pub trait PerCallTool: Tool + Clone + 'static {
@@ -88,29 +107,33 @@ impl From<CallPlace> for Root {
     }
 }
 
-/// The file tools work in the place's workspace, from its base, keeping
-/// the fields named from the tool as registered.
+/// The file tools work in the place's workspace, from its base, noting
+/// what they see in the calling agent's [`FilesSeen`], else as registered.
 macro_rules! file_tools_per_call {
-    ($($tool:ty { $($keep:ident),* }),*) => {$(
+    ($($tool:ty),*; seen) => {$(
         impl PerCallTool for $tool {
             fn at(&self, place: CallPlace) -> Self {
                 Self {
+                    seen: {
+                        let seen = place.seen.as_ref().unwrap_or(&self.seen);
+                        if place.overlaid { seen.fork() } else { seen.clone() }
+                    },
                     root: place.into(),
-                    $($keep: self.$keep.clone(),)*
                 }
+            }
+        }
+    )*};
+    ($($tool:ty),*) => {$(
+        impl PerCallTool for $tool {
+            fn at(&self, place: CallPlace) -> Self {
+                Self { root: place.into() }
             }
         }
     )*};
 }
 
-file_tools_per_call!(
-    Read { seen },
-    Edit { seen },
-    Write { seen },
-    Search {},
-    List {},
-    Delete {}
-);
+file_tools_per_call!(Read, Edit, Write; seen);
+file_tools_per_call!(Search, List, Delete);
 
 /// [`Shell`] registered per call, starting each command as the app's
 /// [`Processes`] say when it starts: under their wrapper and without a
@@ -289,6 +312,8 @@ struct PerCallPlugin;
 
 impl Plugin for PerCallPlugin {
     fn build(&self, app: &mut App) {
+        app.try_register_required_components::<Agent, FilesSeen>()
+            .ok();
         app.init_resource::<ProjectRoot>()
             .init_resource::<ProjectWorkspace>()
             .configure_sets(
@@ -363,7 +388,10 @@ impl<T: PerCallTool> BuildAt for T {
 /// let overlay = Arc::new(Overlay::new(project));
 /// let on = overlay.clone();
 /// let ran = app.world_mut().run_system_once(move |tools: PerCallTools| {
-///     let place = tools.place(Some(agent), on.clone());
+///     let place = CallPlace {
+///         overlaid: true,
+///         ..tools.place(Some(agent), on.clone())
+///     };
 ///     let (base, confine) = (place.base.clone(), place.confine);
 ///     let quiet = place.live.is_none() && place.spill.is_none();
 ///     let missing = tools.build("read", tools.place(None, on.clone()));
@@ -385,6 +413,7 @@ impl<T: PerCallTool> BuildAt for T {
 pub struct PerCallTools<'w, 's> {
     tools: Query<'w, 's, (&'static ToolDef, &'static PerCall)>,
     dirs: Query<'w, 's, &'static WorkDir>,
+    seen: Query<'w, 's, &'static FilesSeen>,
     root: Res<'w, ProjectRoot>,
 }
 
@@ -405,6 +434,10 @@ impl PerCallTools<'_, '_> {
             live: None,
             filter: None,
             spill: None,
+            seen: agent
+                .and_then(|agent| self.seen.get(agent).ok())
+                .map(|FilesSeen(seen)| seen.clone()),
+            overlaid: false,
         }
     }
 

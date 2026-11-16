@@ -29,7 +29,7 @@ use rig_harness::prelude::{
 use rig_harness::rig_core::completion::ToolAnnotations;
 use rig_harness::rig_core::tool::{ToolContext, ToolExecutionError};
 use rig_tools::attach::{Attached, Reference, attachments};
-use rig_tools::{Edit, OutputLimit, Read, Seen, Shell, Write};
+use rig_tools::{Edit, OutputLimit, Read, Shell, Write};
 #[cfg(feature = "tui")]
 use rig_tui::{RenderSystems, TranscriptRender};
 
@@ -48,26 +48,13 @@ pub mod remote;
 /// under it, in the terminal view's look and in `-p`'s line for the call.
 pub(crate) const COMMAND_INDENT: &str = "    ";
 
-/// The files `read` showed and `edit` left, which [`ReadTool`] and
-/// [`EditTool`] share, so an edit whose text is not found asks for a new
-/// read only of a file that changed since one.
-#[derive(Resource, Clone, Debug, Default)]
-pub struct SeenFiles(pub Seen);
-
 /// The `read` tool.
 #[derive(Default)]
 pub struct ReadTool;
 
 impl Plugin for ReadTool {
     fn build(&self, app: &mut App) {
-        let seen = seen_files(app);
-        app.add_tool_per_call(
-            Read {
-                seen,
-                ..Read::default()
-            },
-            ToolOptions::default(),
-        );
+        app.add_tool_per_call(Read::default(), ToolOptions::default());
         #[cfg(feature = "tui")]
         add_look(app, looks::draw_read);
     }
@@ -79,14 +66,7 @@ pub struct EditTool;
 
 impl Plugin for EditTool {
     fn build(&self, app: &mut App) {
-        let seen = seen_files(app);
-        app.add_tool_per_call(
-            Edit {
-                seen,
-                ..Edit::default()
-            },
-            ToolOptions::default(),
-        );
+        app.add_tool_per_call(Edit::default(), ToolOptions::default());
         #[cfg(feature = "tui")]
         add_look(app, looks::draw_edit);
     }
@@ -98,14 +78,7 @@ pub struct WriteTool;
 
 impl Plugin for WriteTool {
     fn build(&self, app: &mut App) {
-        let seen = seen_files(app);
-        app.add_tool_per_call(
-            Write {
-                seen,
-                ..Write::default()
-            },
-            ToolOptions::default(),
-        );
+        app.add_tool_per_call(Write::default(), ToolOptions::default());
         #[cfg(feature = "tui")]
         add_look(app, looks::draw_write);
     }
@@ -139,14 +112,6 @@ impl Plugin for ShellTool {
         #[cfg(feature = "tui")]
         add_look(app, looks::draw_shell);
     }
-}
-
-/// The app's [`SeenFiles`], added if missing.
-fn seen_files(app: &mut App) -> Seen {
-    app.world_mut()
-        .get_resource_or_init::<SeenFiles>()
-        .0
-        .clone()
 }
 
 /// Draws a tool's calls with `look`, in [`CodingToolLooks`].

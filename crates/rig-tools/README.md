@@ -5,7 +5,7 @@ Coding tools for [Rig](https://github.com/0xPlaygrounds/rig) agents:
 | Tool     | What it does                                                        |
 |----------|---------------------------------------------------------------------|
 | `read`   | A text file's lines, with an offset and limit, a note on how to read on in a line cut short and one when its lines end in CRLF; a PNG, JPEG, GIF or WebP image as the image |
-| `write`  | A whole file, written atomically                                    |
+| `write`  | A whole file, written atomically; an existing one only if it was read and has not changed since |
 | `edit`   | Several exact (or whitespace- and quote-tolerant) replacements, applied in order, all or nothing, answered with the changed lines' numbers and those lines, with a few around each, as they now are |
 | `search` | A regex over the tree as git ignores it, hidden files too when asked or when the glob names one, or the names of the files with a match (every file for an empty pattern); `find` returns the hits as data, `render` shows them; a hit cut before its match says where the match is, and the paths it could not read are named |
 | `list`   | A directory's files as git ignores them, down to a depth, optionally matching a glob, hidden files as for `search`, and the directories it could not read |

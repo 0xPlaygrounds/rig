@@ -80,6 +80,87 @@ pub fn read_prefix(path: &Path, cap: usize) -> io::Result<Prefix> {
 /// text) and makes this process the file's owner. A crash between create
 /// and rename can leave a `.name.<pid>-<n>.tmp` beside the file.
 pub fn write_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
+    publish(path, contents, |temporary, target| {
+        fs::rename(temporary, target).map(|()| true)
+    })
+    .map(drop)
+}
+
+/// [`write_atomic`], but only while the file still holds what `still`
+/// checks for, asked once the new text is in place beside it, just
+/// before the rename: `false`, and nothing written, when it does not. A
+/// save landing between that check and the rename is still replaced; no
+/// portable call compares and replaces a file in one step.
+pub fn write_atomic_if(
+    path: &Path,
+    contents: &[u8],
+    still: impl FnOnce() -> io::Result<bool>,
+) -> io::Result<bool> {
+    publish(path, contents, |temporary, target| {
+        if !still()? {
+            return Ok(false);
+        }
+        fs::rename(temporary, target).map(|()| true)
+    })
+}
+
+/// Creates the file at `path` with `contents` as [`write_atomic`] writes
+/// it, but only while there is no file there: the temporary file is
+/// linked to its name, which fails with an
+/// [`AlreadyExists`](ErrorKind::AlreadyExists) error, the file there kept,
+/// when one appeared at any moment before.
+pub fn write_new(path: &Path, contents: &[u8]) -> io::Result<()> {
+    publish(path, contents, link_new).map(drop)
+}
+
+/// Gives the file `temporary` the name `target` only while nothing has
+/// it, by [`place_new`] with a hard link.
+fn link_new(temporary: &Path, target: &Path) -> io::Result<bool> {
+    place_new(temporary, target, |from, to| fs::hard_link(from, to))
+}
+
+/// Gives the file `temporary` the name `target` with `link` only while
+/// nothing has it, then drops the temporary name. Where `link` fails for
+/// another reason, as hard links do on vfat or some network mounts, the
+/// file is copied to `target` by a create that refuses a name anything
+/// has; one the copy fails to fill is removed, but a crash during it can
+/// leave `target` short.
+fn place_new(
+    temporary: &Path,
+    target: &Path,
+    link: impl FnOnce(&Path, &Path) -> io::Result<()>,
+) -> io::Result<bool> {
+    match link(temporary, target) {
+        Err(error) if error.kind() == ErrorKind::AlreadyExists => return Err(error),
+        Err(_) => {
+            let mut created = fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(target)?;
+            let copied = fs::File::open(temporary)
+                .and_then(|mut from| io::copy(&mut from, &mut created))
+                .and_then(|_| created.sync_all());
+            // The file made here holds less than all of it: it goes.
+            copied.inspect_err(|_| {
+                fs::remove_file(target).ok();
+            })?;
+        }
+        Ok(()) => {}
+    }
+    // The file is made; a temporary name left behind is only clutter.
+    fs::remove_file(temporary).ok();
+    Ok(true)
+}
+
+/// Writes `contents` to a temporary file beside `path`'s target, as
+/// [`write_atomic`] says, then hands it and the target to `place`, which
+/// puts it there and says whether it did; the temporary file is removed
+/// when it did not.
+fn publish(
+    path: &Path,
+    contents: &[u8],
+    place: impl FnOnce(&Path, &Path) -> io::Result<bool>,
+) -> io::Result<bool> {
     let target = real_path(path);
     let permissions = match fs::symlink_metadata(&target) {
         Ok(meta) if !meta.is_file() => {
@@ -121,11 +202,12 @@ pub fn write_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
         if let Some(permissions) = permissions {
             file.set_permissions(permissions)?;
         }
-        fs::rename(&temporary, &target)
+        place(&temporary, &target)
     });
-    written.inspect_err(|_| {
+    if !matches!(written, Ok(true)) {
         fs::remove_file(&temporary).ok();
-    })
+    }
+    written
 }
 
 /// A temporary file's path beside `target`, whose file name is `name`:

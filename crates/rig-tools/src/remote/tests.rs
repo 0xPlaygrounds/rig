@@ -313,6 +313,237 @@ fn each_file_operation_is_one_transport_call() {
     );
 }
 
+/// A write there over a file the model never read, or one changed since
+/// it read it, is refused in one transport call and leaves the file as it
+/// was; after a read, the write goes through.
+#[test]
+fn a_write_there_replaces_only_what_was_read() {
+    let dir = scratch("unseen");
+    let home = dir.join("home");
+    let log = dir.join("calls.log");
+    let on_disk = home.join("strata/src/lib.rs");
+    std::fs::write(&on_disk, "fn old() {}\n").ok();
+    let bench = Remote::new("bench", counted(&home, &log), Launcher::default);
+    let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
+    let seen = crate::Seen::default();
+    let read = Read {
+        root: Root::from(workspace.clone()),
+        seen: seen.clone(),
+    };
+    let write = crate::Write {
+        root: Root::from(workspace),
+        seen,
+    };
+    let file = "bench:~/strata/src/lib.rs";
+    let (unread, _) = call(&write, crate::WriteArgs::new(file, "fn new() {}\n"));
+    let unread_calls = calls(&log);
+    let unread_text = std::fs::read_to_string(&on_disk).ok();
+    let (shown, _) = call(&read, ReadArgs::new(file));
+    std::fs::write(&on_disk, "fn users() {}\n").ok();
+    calls(&log);
+    let (stale, _) = call(&write, crate::WriteArgs::new(file, "fn new() {}\n"));
+    let stale_calls = calls(&log);
+    let stale_text = std::fs::read_to_string(&on_disk).ok();
+    let (again, _) = call(&read, ReadArgs::new(file));
+    let (wrote, _) = call(&write, crate::WriteArgs::new(file, "fn new() {}\n"));
+    let wrote_text = std::fs::read_to_string(&on_disk).ok();
+    std::fs::remove_dir_all(&dir).ok();
+    let said = |result: Result<String, rig_core::tool::ToolExecutionError>| {
+        result.map_err(|error| error.to_string())
+    };
+    assert!(shown.is_ok() && again.is_ok());
+    assert!(
+        said(unread).is_err_and(|why| why.contains("has not been read by you")),
+        "an unread file was replaced"
+    );
+    assert!(
+        said(stale).is_err_and(|why| why.contains("changed since")),
+        "a changed file was replaced"
+    );
+    assert_eq!(
+        (unread_text.as_deref(), stale_text.as_deref()),
+        (Some("fn old() {}\n"), Some("fn users() {}\n"))
+    );
+    assert_eq!((unread_calls, stale_calls), (1, 1));
+    assert_eq!(
+        said(wrote).ok().as_deref(),
+        Some("Replaced bench:~/strata/src/lib.rs, which had 1 line.")
+    );
+    assert_eq!(wrote_text.as_deref(), Some("fn new() {}\n"));
+}
+
+/// A write there never replaces a file that changed between its check
+/// and the moment it is put in place: here `mktemp`, which runs between
+/// them for a write's temporary file, writes the user's text to
+/// `raced.rs` and makes a directory `dir.rs`. A new file is refused and
+/// the user's kept, as is a file read before; a name a directory took is
+/// refused, with nothing left in the directory.
+#[cfg(unix)]
+#[test]
+fn a_write_there_keeps_a_file_that_changed_meanwhile() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let dir = scratch("raced");
+    let home = dir.join("home");
+    let bin = home.join("bin");
+    std::fs::create_dir_all(&bin).ok();
+    let shim = bin.join("mktemp");
+    std::fs::write(
+        &shim,
+        "#!/bin/sh\ncase \"$1\" in *.rig-write.*) printf 'user\\n' > \"$HOME/strata/src/raced.rs\"; \
+         mkdir -p \"$HOME/strata/src/dir.rs\";; esac\n\
+         PATH=${PATH#*:} exec mktemp \"$@\"\n",
+    )
+    .ok();
+    std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755)).ok();
+    let racing = vec![
+        "sh".to_owned(),
+        "-c".to_owned(),
+        "cd \"$0\" && PATH=\"$0/bin:$PATH\" HOME=\"$0\" exec sh -c \"$1\"".to_owned(),
+        home.display().to_string(),
+    ];
+    let bench = Remote::new("bench", racing, Launcher::default);
+    let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
+    let seen = crate::Seen::default();
+    let read = Read {
+        root: Root::from(workspace.clone()),
+        seen: seen.clone(),
+    };
+    let write = crate::Write {
+        root: Root::from(workspace),
+        seen,
+    };
+    let (into_dir, _) = call(
+        &write,
+        crate::WriteArgs::new("bench:~/strata/src/dir.rs", "x\n"),
+    );
+    let in_dir = std::fs::read_dir(home.join("strata/src/dir.rs")).map_or(0, Iterator::count);
+    let file = "bench:~/strata/src/raced.rs";
+    let on_disk = home.join("strata/src/raced.rs");
+    let (created, _) = call(&write, crate::WriteArgs::new(file, "fn new() {}\n"));
+    let created_text = std::fs::read_to_string(&on_disk).ok();
+    std::fs::write(&on_disk, "fn old() {}\n").ok();
+    let (shown, _) = call(&read, ReadArgs::new(file));
+    let (replaced, _) = call(&write, crate::WriteArgs::new(file, "fn new() {}\n"));
+    let replaced_text = std::fs::read_to_string(&on_disk).ok();
+    std::fs::remove_dir_all(&dir).ok();
+    let said = |result: Result<String, rig_core::tool::ToolExecutionError>| {
+        result.map_err(|error| error.to_string())
+    };
+    assert!(shown.is_ok());
+    assert!(
+        said(into_dir).is_err(),
+        "a directory that appeared was written into"
+    );
+    assert_eq!(in_dir, 0, "the directory that appeared is left empty");
+    assert!(said(created).is_err(), "a file that appeared was replaced");
+    assert!(
+        said(replaced).is_err_and(|why| why.contains("changed since")),
+        "a file that changed was replaced"
+    );
+    assert_eq!(
+        (created_text.as_deref(), replaced_text.as_deref()),
+        (Some("user\n"), Some("user\n"))
+    );
+}
+
+/// Where `ln` cannot make a hard link, as on vfat or some network mounts,
+/// a new file is still created there, by a create that refuses a name a
+/// file has; one there is kept, and one the copy fails to fill is
+/// removed and the write fails.
+#[cfg(unix)]
+#[test]
+fn a_new_file_there_is_created_where_links_fail() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let dir = scratch("nolink");
+    let home = dir.join("home");
+    let bin = home.join("bin");
+    std::fs::create_dir_all(&bin).ok();
+    let shim = bin.join("ln");
+    std::fs::write(
+        &shim,
+        "#!/bin/sh\necho 'ln: Operation not permitted' >&2\nexit 1\n",
+    )
+    .ok();
+    std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755)).ok();
+    // Once `race` exists, a write's `mktemp` makes `kept.rs` first.
+    let shim = bin.join("mktemp");
+    std::fs::write(
+        &shim,
+        "#!/bin/sh\n[ -e \"$HOME/race\" ] && printf 'user\\n' > \"$HOME/strata/src/kept.rs\"\n\
+         PATH=${PATH#*:} exec mktemp \"$@\"\n",
+    )
+    .ok();
+    std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755)).ok();
+    // Once `copyfail` exists, copying a write's temporary file fails, as
+    // on a full disk.
+    let shim = bin.join("cat");
+    std::fs::write(
+        &shim,
+        "#!/bin/sh\ncase \"$*\" in *.rig-write.*) [ -e \"$HOME/copyfail\" ] && exit 1;; esac\n\
+         PATH=${PATH#*:} exec cat \"$@\"\n",
+    )
+    .ok();
+    std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755)).ok();
+    let linkless = vec![
+        "sh".to_owned(),
+        "-c".to_owned(),
+        "cd \"$0\" && PATH=\"$0/bin:$PATH\" HOME=\"$0\" exec sh -c \"$1\"".to_owned(),
+        home.display().to_string(),
+    ];
+    let bench = Remote::new("bench", linkless, Launcher::default);
+    let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
+    let write = crate::Write {
+        root: Root::from(workspace),
+        seen: crate::Seen::default(),
+    };
+    let (created, _) = call(
+        &write,
+        crate::WriteArgs::new("bench:~/strata/src/new.rs", "fn new() {}\n"),
+    );
+    let made = std::fs::read_to_string(home.join("strata/src/new.rs")).ok();
+    std::fs::write(home.join("race"), "").ok();
+    let (raced, _) = call(
+        &write,
+        crate::WriteArgs::new("bench:~/strata/src/kept.rs", "model\n"),
+    );
+    let kept = std::fs::read_to_string(home.join("strata/src/kept.rs")).ok();
+    std::fs::write(home.join("copyfail"), "").ok();
+    let (half, _) = call(
+        &write,
+        crate::WriteArgs::new("bench:~/strata/src/half.rs", "model\n"),
+    );
+    let half_left = home.join("strata/src/half.rs").exists();
+    let left = std::fs::read_dir(home.join("strata/src"))
+        .map(|entries| {
+            entries
+                .flatten()
+                .filter(|entry| {
+                    entry
+                        .file_name()
+                        .to_string_lossy()
+                        .starts_with(".rig-write")
+                })
+                .count()
+        })
+        .unwrap_or(0);
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(
+        created.map_err(|error| error.to_string()).as_deref(),
+        Ok("Created bench:~/strata/src/new.rs.")
+    );
+    assert_eq!(made.as_deref(), Some("fn new() {}\n"));
+    assert!(raced.is_err(), "a file that appeared was replaced");
+    let half = half.map_err(|error| error.to_string());
+    assert!(
+        half.as_ref()
+            .is_err_and(|why| !why.contains("has not been read")),
+        "a failed copy is a failed write: {half:?}"
+    );
+    assert!(!half_left, "a half-written file was left");
+    assert_eq!(kept.as_deref(), Some("user\n"));
+    assert_eq!(left, 0, "a temporary file was left");
+}
+
 /// [`transport`], first appending to `log` how many bytes each call sent
 /// back.
 fn metered(home: &Path, log: &Path) -> Vec<String> {

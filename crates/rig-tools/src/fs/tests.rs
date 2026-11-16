@@ -272,3 +272,75 @@ fn a_private_file_is_never_staged_readable() {
     assert_eq!(mode(&new).ok(), mode(&default).ok());
     std::fs::remove_dir_all(dir.parent().unwrap_or(&dir)).ok();
 }
+
+/// A new file is created only while no file has its name: one that
+/// appears after the temporary file was written, just before it is put in
+/// place, is kept and the creation fails, leaving no temporary file. A
+/// replace whose check finds the file changed writes nothing.
+#[test]
+fn a_new_file_never_replaces_one_that_appeared() {
+    let dir = scratch("create-new");
+    let path = dir.join("a.txt");
+    let raced = super::publish(&path, b"model\n", |temporary, target| {
+        std::fs::write(target, "user\n")?;
+        super::link_new(temporary, target)
+    });
+    assert_eq!(
+        raced.map_err(|error| error.kind()),
+        Err(std::io::ErrorKind::AlreadyExists)
+    );
+    assert_eq!(
+        std::fs::read_to_string(&path).ok().as_deref(),
+        Some("user\n")
+    );
+    let created = super::write_new(&dir.join("b.txt"), b"new\n");
+    assert!(created.is_ok(), "{created:?}");
+    let stale = super::write_atomic_if(&path, b"model\n", || Ok(false));
+    assert!(matches!(stale, Ok(false)), "{stale:?}");
+    assert_eq!(
+        std::fs::read_to_string(&path).ok().as_deref(),
+        Some("user\n")
+    );
+    let left: Vec<_> = std::fs::read_dir(&dir)
+        .map(|entries| entries.flatten().map(|entry| entry.file_name()).collect())
+        .unwrap_or_default();
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(left.len(), 3, "{left:?}");
+}
+
+/// Where a hard link cannot be made, as on vfat or some network mounts, a
+/// new file is created by an exclusive create instead, which still
+/// refuses a name a file has; no temporary file is left.
+#[test]
+fn a_new_file_is_created_where_links_fail() {
+    let dir = scratch("no-links");
+    let unlinkable =
+        |_: &std::path::Path, _: &std::path::Path| Err(std::io::ErrorKind::PermissionDenied.into());
+    let new = dir.join("new.txt");
+    let created = super::publish(&new, b"new\n", |temporary, target| {
+        super::place_new(temporary, target, unlinkable)
+    });
+    assert!(matches!(created, Ok(true)), "{created:?}");
+    let kept = dir.join("kept.txt");
+    std::fs::write(&kept, "user\n").ok();
+    let refused = super::publish(&kept, b"model\n", |temporary, target| {
+        super::place_new(temporary, target, unlinkable)
+    });
+    let texts = (
+        std::fs::read_to_string(&new).ok(),
+        std::fs::read_to_string(&kept).ok(),
+    );
+    let left: Vec<_> = std::fs::read_dir(&dir)
+        .map(|entries| entries.flatten().map(|entry| entry.file_name()).collect())
+        .unwrap_or_default();
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(
+        refused.map_err(|error| error.kind()),
+        Err(std::io::ErrorKind::AlreadyExists)
+    );
+    assert_eq!(
+        (texts.0.as_deref(), texts.1.as_deref()),
+        (Some("new\n"), Some("user\n"))
+    );
+    assert_eq!(left.len(), 3, "{left:?}");
+}

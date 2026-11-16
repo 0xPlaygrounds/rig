@@ -14,7 +14,9 @@ use rig_tools::workspace::{Contents, Stat, Workspace};
 use rig_tools::{Shell, ShellArgs};
 
 use super::remote::RemoteHostsPlugin;
-use super::{AttachPlugin, AttachSystems, ReadTool, SharedShell, ShellOutput, ShellTool};
+use super::{
+    AttachPlugin, AttachSystems, EditTool, ReadTool, SharedShell, ShellOutput, ShellTool, WriteTool,
+};
 
 /// The shell tool on `processes`, cutting as `output` says.
 fn shell(processes: &Processes, output: &ShellOutput) -> SharedShell {
@@ -851,4 +853,68 @@ fn a_host_path_that_cannot_be_read_says_why() {
                 .all(|text| text.starts_with("could not read bench:~/locked/x.txt: ")),
         "{warned:?}"
     );
+}
+
+/// What counts as read is each agent's own: an agent replaces a file only
+/// if it read or wrote that version itself. One agent's edit of a file the
+/// other read, and a file only the other read, are refused to the other
+/// until it reads them.
+#[test]
+fn each_agent_replaces_only_files_it_saw_itself() {
+    let exe = std::env::current_exe().unwrap_or_default();
+    let dir = exe.with_file_name(format!("seen-per-agent-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).ok();
+    std::fs::write(dir.join("shared.txt"), "one\n").ok();
+    std::fs::write(dir.join("theirs.txt"), "theirs\n").ok();
+    let (mut app, wakes) = app_on(&MemoryStore::default());
+    app.insert_resource(ProjectRoot(dir.clone()))
+        .add_plugins((AgentPlugin, ReadTool, EditTool, WriteTool))
+        .init_resource::<ToolOutputs>()
+        .add_observer(log_tool_outputs);
+    app.finish();
+    app.update();
+    let world = app.world_mut();
+    let main = spawn_root(world).id();
+    let helper = spawn_root(world).id();
+    let edit = json!({ "path": "shared.txt", "edits": [{ "old_text": "one", "new_text": "two" }] });
+    let steps = [
+        (main, "read", "1", json!({ "path": "shared.txt" })),
+        (helper, "read", "2", json!({ "path": "shared.txt" })),
+        (helper, "edit", "3", edit),
+        (
+            main,
+            "write",
+            "4",
+            json!({ "path": "shared.txt", "content": "main\n" }),
+        ),
+        (helper, "read", "5", json!({ "path": "theirs.txt" })),
+        (
+            main,
+            "write",
+            "6",
+            json!({ "path": "theirs.txt", "content": "main\n" }),
+        ),
+        (main, "read", "7", json!({ "path": "shared.txt" })),
+        (
+            main,
+            "write",
+            "8",
+            json!({ "path": "shared.txt", "content": "main\n" }),
+        ),
+    ];
+    for (agent, tool, id, args) in steps {
+        start_call(app.world_mut(), agent, (tool, id), args);
+        let done = |world: &World| world.resource::<ToolOutputs>().0.contains_key(id);
+        run_until(&mut app, &wakes, done);
+    }
+    let outputs = app.world().resource::<ToolOutputs>().0.clone();
+    let text = |name: &str| std::fs::read_to_string(dir.join(name)).ok();
+    let (theirs, shared) = (text("theirs.txt"), text("shared.txt"));
+    std::fs::remove_dir_all(&dir).ok();
+    let said = |id: &str| outputs.get(id).cloned().unwrap_or_default();
+    assert!(said("4").contains("changed since"), "{}", said("4"));
+    assert!(said("6").contains("not been read"), "{}", said("6"));
+    assert_eq!(theirs.as_deref(), Some("theirs\n"));
+    assert!(said("8").starts_with("Replaced"), "{}", said("8"));
+    assert_eq!(shared.as_deref(), Some("main\n"));
 }

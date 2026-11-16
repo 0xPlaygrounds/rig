@@ -402,6 +402,25 @@ pub fn reply(text: &str) -> Vec<MockStreamEvent> {
     ]
 }
 
+/// A model reply that reads the file `path` in call `{id}-read`, then
+/// writes `content` to it in call `id`, as a model replaces a file: `write`
+/// replaces only a file read as it is now.
+pub fn rewrites(id: &str, path: &str, content: &str) -> Vec<MockStreamEvent> {
+    vec![
+        MockStreamEvent::tool_call(
+            format!("{id}-read"),
+            "read",
+            serde_json::json!({ "path": path }),
+        ),
+        MockStreamEvent::tool_call(
+            id,
+            "write",
+            serde_json::json!({ "path": path, "content": content }),
+        ),
+        MockStreamEvent::final_response_with_default_usage(),
+    ]
+}
+
 /// A model reply that calls `tool` with `args` in call `id`.
 pub fn calls(id: &str, tool: &str, args: serde_json::Value) -> Vec<MockStreamEvent> {
     vec![

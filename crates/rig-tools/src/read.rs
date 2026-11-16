@@ -41,7 +41,7 @@ const SEEN_TEXT_BYTES: usize = 8 * 1024 * 1024;
 /// it or [`Edit`](crate::Edit) or [`Write`](crate::Write) last left it, by
 /// resolved path; shared by its clones. With it, an edit whose `old_text`
 /// is not found says whether the file changed since, and so needs reading
-/// again.
+/// again, and a write replaces only a file it holds as it is now.
 ///
 /// It also keeps the whole text of the files last seen whole, up to 8 MB
 /// of them, so an edit starts from it and only writes, if the file still
@@ -50,7 +50,7 @@ const SEEN_TEXT_BYTES: usize = 8 * 1024 * 1024;
 pub struct Seen(Arc<Mutex<Files>>);
 
 /// What a [`Seen`] holds.
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 struct Files {
     hashes: HashMap<PathBuf, ContentHash>,
     /// The texts kept, oldest first, each with its hash.
@@ -74,6 +74,14 @@ impl Files {
 }
 
 impl Seen {
+    /// A `Seen` holding what this one holds now, whose notes from then on
+    /// are its own: for a call whose writes do not reach the files, such
+    /// as one run on an overlay to preview it.
+    pub fn fork(&self) -> Self {
+        let seen = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        Self(Arc::new(Mutex::new(seen.clone())))
+    }
+
     /// Notes that the file `path` held the text with `hash`.
     pub fn saw(&self, path: &Path, hash: ContentHash) {
         let mut seen = self.0.lock().unwrap_or_else(PoisonError::into_inner);

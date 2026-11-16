@@ -15,7 +15,7 @@ use ignore::WalkBuilder;
 use ignore::overrides::OverrideBuilder;
 use rig_core::tool::{ContentHash, ToolExecutionError, content_hash};
 
-use crate::fs::{Previous, io_error, real_path, write_atomic};
+use crate::fs::{Previous, io_error, real_path, write_atomic, write_atomic_if, write_new};
 use crate::process::{Launcher, Process, Spawn};
 pub use crate::watch::{Watch, WatchEvent};
 use crate::{MAX_BYTES, MAX_FILE_BYTES, shell_path};
@@ -92,37 +92,36 @@ pub trait Workspace: Send + Sync + fmt::Debug + 'static {
     /// anything but a regular file (see [`write_atomic`]).
     fn write(&self, path: &Path, bytes: &[u8]) -> io::Result<()>;
 
-    /// [`write`](Self::write)s `bytes` to `path` and says what the file
-    /// held before, as [`read`](Self::read) with `limit` reads it: a
-    /// [`NotFound`](ErrorKind::NotFound) error when there was no file, the
-    /// file's own when it could not be read. What a tool that writes a
-    /// file diffs against; a workspace where each call costs a round trip,
-    /// such as a remote one, does both in one.
+    /// [`write`](Self::write)s `bytes` to `path` only while it is the
+    /// regular file holding the text whose [`content_hash`] is `held`, or,
+    /// with no `held`, while there is no file there: `None` when it wrote.
+    /// Otherwise nothing is written and it says what the file holds
+    /// instead, as [`read`](Self::read) with a limit of [`MAX_FILE_BYTES`]
+    /// reads it; with a `held`, no file there is a
+    /// [`NotFound`](ErrorKind::NotFound) error. What a tool that writes
+    /// over text seen before, or only a new file, writes with.
     ///
-    /// By default it reads, then writes.
-    fn replace(&self, path: &Path, bytes: &[u8], limit: u64) -> io::Result<io::Result<Contents>> {
-        let before = self.read(path, limit);
-        self.write(path, bytes)?;
-        Ok(before)
-    }
-
-    /// [`write`](Self::write)s `bytes` to the regular file `path` only
-    /// while it holds the text whose [`content_hash`] is `held`: `None`
-    /// when it did. Otherwise nothing is written and it says what the file
-    /// holds instead, as [`read`](Self::read) with a limit of
-    /// [`MAX_FILE_BYTES`] reads it. What an edit made from text seen
-    /// before writes with; a workspace where each call costs a round trip,
-    /// such as a remote one, checks and writes in one.
-    ///
-    /// By default it reads, then writes.
+    /// By default it reads, then writes, so a file changed between the two
+    /// is replaced. [`Local`] and a remote workspace create a new file in a
+    /// step that never replaces one ([`write_new`]),
+    /// and check the text again just before replacing it
+    /// ([`write_atomic_if`]).
     fn write_if(
         &self,
         path: &Path,
         bytes: &[u8],
-        held: &ContentHash,
+        held: Option<&ContentHash>,
     ) -> io::Result<Option<Contents>> {
-        let now = self.read(path, MAX_FILE_BYTES)?;
-        if now.size > MAX_FILE_BYTES || content_hash(&now.bytes) != *held {
+        let now = match self.read(path, MAX_FILE_BYTES) {
+            Err(error) if held.is_none() && error.kind() == ErrorKind::NotFound => {
+                self.write(path, bytes)?;
+                return Ok(None);
+            }
+            now => now?,
+        };
+        let holds =
+            |held: &ContentHash| now.size <= MAX_FILE_BYTES && content_hash(&now.bytes) == *held;
+        if !held.is_some_and(holds) {
             return Ok(Some(now));
         }
         self.write(path, bytes)?;
@@ -655,6 +654,28 @@ impl Workspace for Local {
 
     fn write(&self, path: &Path, bytes: &[u8]) -> io::Result<()> {
         write_atomic(path, bytes)
+    }
+
+    fn write_if(
+        &self,
+        path: &Path,
+        bytes: &[u8],
+        held: Option<&ContentHash>,
+    ) -> io::Result<Option<Contents>> {
+        let wrote = match held {
+            None => match write_new(path, bytes) {
+                Err(error) if error.kind() == ErrorKind::AlreadyExists => false,
+                created => created.map(|()| true)?,
+            },
+            Some(held) => write_atomic_if(path, bytes, || {
+                let now = self.read(path, MAX_FILE_BYTES)?;
+                Ok(now.size <= MAX_FILE_BYTES && content_hash(&now.bytes) == *held)
+            })?,
+        };
+        if wrote {
+            return Ok(None);
+        }
+        self.read(path, MAX_FILE_BYTES).map(Some)
     }
 
     fn remove(&self, path: &Path) -> io::Result<()> {

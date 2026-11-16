@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Receiver;
 
-use rig_basics::coding_tools::{EditTool, WriteTool};
+use rig_basics::coding_tools::{EditTool, ReadTool, WriteTool};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::ask::AskPlugin;
 use rig_harness::rig_ecs::AgentPlugin;
@@ -9,7 +9,7 @@ use rig_harness::rig_ecs::session_log::SessionLogPlugin;
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     AnswerAsks, Answers, Ended, ToolOutputs, answer_open, app_on, calls, connect, first_agent,
-    log_ended, log_tool_outputs, reply, run_until, scratch_dir,
+    log_ended, log_tool_outputs, reply, rewrites, run_until, scratch_dir,
 };
 use serde_json::json;
 
@@ -58,7 +58,7 @@ fn start(
     let (mut app, wakes) = app_on(store);
     app.insert_resource(ProjectRoot(dir.to_path_buf()))
         .add_plugins((AgentPlugin, SessionLogPlugin, AskPlugin))
-        .add_plugins((WriteTool, EditTool))
+        .add_plugins((ReadTool, WriteTool, EditTool))
         .add_plugins(LargeChangeGuardPlugin)
         .init_resource::<Ended>()
         .add_observer(log_ended)
@@ -92,6 +92,7 @@ fn a_large_change_waits_for_the_user_and_small_ones_do_not() {
     let edit = json!({ "path": small_rs, "edits": [{ "old_text": "c", "new_text": "C" }] });
     let model = MockCompletionModel::from_stream_turns([
         vec![
+            MockStreamEvent::tool_call("0", "read", json!({ "path": big_rs })),
             write_call("1", &big_rs, &rewrite()),
             MockStreamEvent::tool_call("2", "edit", edit),
             MockStreamEvent::final_response_with_default_usage(),
@@ -162,12 +163,9 @@ fn a_large_change_waits_for_the_user_and_small_ones_do_not() {
 fn a_run_nobody_answers_denies_a_large_change() {
     let dir = project("sn-large-change-guard-headless");
     let big_rs = dir.join("big.rs");
+    let big_path = big_rs.display().to_string();
     let model = MockCompletionModel::from_stream_turns([
-        calls(
-            "1",
-            "write",
-            json!({ "path": big_rs, "content": rewrite() }),
-        ),
+        rewrites("1", &big_path, &rewrite()),
         reply("Could not."),
     ]);
     let (mut app, wakes, agent) = start(&MemoryStore::default(), &dir, &model, None);

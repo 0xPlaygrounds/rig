@@ -15,7 +15,9 @@
 //! from, so every other plugin's rule on those (approvals, protected paths,
 //! formatting) applies to each file. They are gated as a group, in
 //! [`GateSystems::After`]: they start together once every one is past its
-//! gates, or none does. Register rig-tools' `Delete` beside it
+//! gates, or none does. The text each file was patched from is noted in the
+//! calling agent's [`FilesSeen`], so its `write` refuses a file changed since.
+//! Register rig-tools' `Delete` beside it
 //! ([`AppPerCallExt::add_tool_per_call`]) for patches that delete or move
 //! files.
 
@@ -223,21 +225,34 @@ fn start_patch(
     called: On<ToolCalled<PatchArgs>>,
     dirs: Query<&WorkDir>,
     (root, workspace): (Res<ProjectRoot>, Res<ProjectWorkspace>),
+    seen: Query<&FilesSeen>,
     wake: Res<Wake>,
     mut commands: Commands,
 ) {
     let dir = dirs.get(called.agent).ok();
     let (base, confine) = dir.map_or_else(|| (root.0.clone(), false), |dir| (dir.0.clone(), true));
     let (input, workspace) = (called.args.input.clone(), workspace.0.clone());
+    let seen = seen
+        .get(called.agent)
+        .map(|FilesSeen(seen)| seen.clone())
+        .ok();
     let checking = Checking {
         call: called.call,
         agent: called.agent,
         effect: called.effect,
     };
     let work = async move {
-        blocking(move || Ok(check(&input, workspace.as_ref(), &base, confine)))
-            .await
-            .unwrap_or_else(|error| Err(error.to_string()))
+        blocking(move || {
+            let plan = check(&input, workspace.as_ref(), &base, confine);
+            if let Some(seen) = &seen {
+                for (path, text) in plan.iter().flat_map(|plan| &plan.read) {
+                    seen.saw_whole(path, text);
+                }
+            }
+            Ok(plan)
+        })
+        .await
+        .unwrap_or_else(|error| Err(error.to_string()))
     };
     commands.spawn((checking, Running::spawn(pool(), &wake, work)));
 }
