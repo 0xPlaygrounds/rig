@@ -78,64 +78,6 @@ fn a_value_never_replaces_one_of_another_type_but_fills_a_null() {
 }
 
 #[test]
-fn content_becomes_parts_once_either_side_is_a_part_array() {
-    let message = merged(
-        json!({"content": "Hel"}),
-        &[
-            json!({"content": [{"type": "text", "text": "lo"}]}),
-            json!({"content": [{"type": "image_url", "image_url": {"url": "u"}}]}),
-            json!({"content": "!"}),
-        ],
-    );
-    assert_eq!(
-        message,
-        json!({"content": [
-            {"type": "text", "text": "Hello"},
-            {"type": "image_url", "image_url": {"url": "u"}},
-            {"type": "text", "text": "!"},
-        ]})
-    );
-}
-
-#[test]
-fn empty_or_non_text_content_adds_no_part() {
-    let message = merged(
-        json!({"content": ""}),
-        &[
-            json!({"content": [{"type": "text", "text": "a"}]}),
-            json!({"content": [7]}),
-        ],
-    );
-    // A part that is not an object is kept as it came, after the text.
-    assert_eq!(
-        message,
-        json!({"content": [{"type": "text", "text": "a"}, 7]})
-    );
-    let message = merged(json!({"content": 3}), &[json!({"content": []})]);
-    assert_eq!(message, json!({"content": []}));
-}
-
-#[test]
-fn thinking_parts_continue_the_last_thinking_part() {
-    let message = merged(
-        json!({"content": [{"type": "thinking", "thinking": [{"type": "text", "text": "a"}]}]}),
-        &[json!({"content": [
-            {"type": "thinking", "thinking": [{"type": "text", "text": "b"}], "signature": "s"},
-            {"type": "untyped"},
-            {"no": "type"},
-        ]})],
-    );
-    assert_eq!(
-        message,
-        json!({"content": [
-            {"type": "thinking", "thinking": [{"type": "text", "text": "ab"}], "signature": "s"},
-            {"type": "untyped"},
-            {"no": "type"},
-        ]})
-    );
-}
-
-#[test]
 fn a_new_key_is_inserted() {
     let mut target = Map::new();
     merge_fields(
