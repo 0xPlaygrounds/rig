@@ -448,7 +448,8 @@ fn a_write_there_keeps_a_file_that_changed_meanwhile() {
 
 /// Where `ln` cannot make a hard link, as on vfat or some network mounts,
 /// a new file is still created there, by a create that refuses a name a
-/// file has; one there is kept.
+/// file has; one there is kept, and one the copy fails to fill is
+/// removed and the write fails.
 #[cfg(unix)]
 #[test]
 fn a_new_file_there_is_created_where_links_fail() {
@@ -470,6 +471,16 @@ fn a_new_file_there_is_created_where_links_fail() {
         &shim,
         "#!/bin/sh\n[ -e \"$HOME/race\" ] && printf 'user\\n' > \"$HOME/strata/src/kept.rs\"\n\
          PATH=${PATH#*:} exec mktemp \"$@\"\n",
+    )
+    .ok();
+    std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755)).ok();
+    // Once `copyfail` exists, copying a write's temporary file fails, as
+    // on a full disk.
+    let shim = bin.join("cat");
+    std::fs::write(
+        &shim,
+        "#!/bin/sh\ncase \"$*\" in *.rig-write.*) [ -e \"$HOME/copyfail\" ] && exit 1;; esac\n\
+         PATH=${PATH#*:} exec cat \"$@\"\n",
     )
     .ok();
     std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755)).ok();
@@ -496,6 +507,12 @@ fn a_new_file_there_is_created_where_links_fail() {
         crate::WriteArgs::new("bench:~/strata/src/kept.rs", "model\n"),
     );
     let kept = std::fs::read_to_string(home.join("strata/src/kept.rs")).ok();
+    std::fs::write(home.join("copyfail"), "").ok();
+    let (half, _) = call(
+        &write,
+        crate::WriteArgs::new("bench:~/strata/src/half.rs", "model\n"),
+    );
+    let half_left = home.join("strata/src/half.rs").exists();
     let left = std::fs::read_dir(home.join("strata/src"))
         .map(|entries| {
             entries
@@ -516,6 +533,13 @@ fn a_new_file_there_is_created_where_links_fail() {
     );
     assert_eq!(made.as_deref(), Some("fn new() {}\n"));
     assert!(raced.is_err(), "a file that appeared was replaced");
+    let half = half.map_err(|error| error.to_string());
+    assert!(
+        half.as_ref()
+            .is_err_and(|why| !why.contains("has not been read")),
+        "a failed copy is a failed write: {half:?}"
+    );
+    assert!(!half_left, "a half-written file was left");
     assert_eq!(kept.as_deref(), Some("user\n"));
     assert_eq!(left, 0, "a temporary file was left");
 }

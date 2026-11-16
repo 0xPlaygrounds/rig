@@ -605,9 +605,10 @@ impl Workspace for Remote {
     /// back. With no `held`, a new file is filled beside the name and
     /// linked to it (`ln`), which never replaces a file that appeared
     /// meanwhile, and a directory that took the name is refused, with the
-    /// link `ln` made in it removed; where `ln` cannot link, it is copied
-    /// there with `set -C`, which refuses an existing file. A file there
-    /// is sent back.
+    /// link `ln` made in it removed; where `ln` cannot link, the name is
+    /// claimed with `set -C`, which refuses an existing file, and the text
+    /// copied in, the file it claimed removed when the copy fails. A file
+    /// there is sent back.
     fn write_if(
         &self,
         path: &Path,
@@ -628,7 +629,9 @@ impl Workspace for Remote {
                  if [ -d \"$p\" ]; then rm -f -- \"$p/${{t##*/}}\" \"$t\"; exit {NOT_A_FILE}; fi; \
                  rm -f -- \"$t\"; echo =; \
                  elif [ -e \"$p\" ] || [ -L \"$p\" ]; then rm -f -- \"$t\"; back; \
-                 elif (set -C; cat -- \"$t\" > \"$p\") 2>/dev/null; then rm -f -- \"$t\"; echo =; \
+                 elif (set -C; exec > \"$p\") 2>/dev/null; then \
+                 cat -- \"$t\" > \"$p\" || {{ rm -f -- \"$p\" \"$t\"; exit 1; }}; \
+                 rm -f -- \"$t\"; echo =; \
                  else rm -f -- \"$t\"; [ -e \"$p\" ] || exit 1; back; fi",
                 quote_path(path)
             );
