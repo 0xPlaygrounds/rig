@@ -1368,16 +1368,9 @@ fn stopped(turn: &AssistantMessage, answered: &HashSet<&CallId>) -> Option<Arc<M
 /// last message again, so a turn's look changes only while it is last.
 fn results_after(history: &[Arc<Message>], at: usize) -> HashSet<&CallId> {
     let next = history.get(at.saturating_add(1)).map(|message| &**message);
-    let content = match next {
-        Some(Message::User { content }) => content.as_slice(),
-        _ => &[],
-    };
-    content
-        .iter()
-        .filter_map(|item| match item {
-            UserContent::ToolResult(result) => Some(&result.call),
-            _ => None,
-        })
+    next.into_iter()
+        .flat_map(Message::results)
+        .map(|result| &result.call)
         .collect()
 }
 

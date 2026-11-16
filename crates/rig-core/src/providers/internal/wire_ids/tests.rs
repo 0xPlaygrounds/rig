@@ -3,7 +3,7 @@
 
 use super::*;
 use crate::completion::{Accepts, ReplayTarget};
-use crate::message::{Api, ToolCall, ToolFunction, ToolResult};
+use crate::message::{Api, ToolCall, ToolFunction, ToolResult, UserContent};
 
 #[derive(Debug)]
 struct Target;

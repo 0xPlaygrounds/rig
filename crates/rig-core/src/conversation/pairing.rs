@@ -633,10 +633,8 @@ fn parting_turns(history: &[Option<Message>]) -> Vec<(usize, PairingError)> {
         match message {
             Some(Message::System { .. }) => {}
             Some(Message::User { content }) => {
-                let found = content.iter().find_map(|part| match part {
-                    UserContent::ToolResult(found) => Some((index, found.call.clone())),
-                    _ => None,
-                });
+                let found = content.iter().find_map(UserContent::as_tool_result);
+                let found = found.map(|found| (index, found.call.clone()));
                 result = found.or(result);
             }
             Some(Message::Assistant(turn)) if turn.content.is_empty() => {
@@ -868,14 +866,8 @@ pub(crate) fn pending<M: Borrow<Message>>(
     let results = messages
         .iter()
         .skip(at + 1)
-        .flat_map(|message| match message.borrow() {
-            Message::User { content } => content.as_slice(),
-            _ => &[],
-        })
-        .filter_map(|item| match item {
-            UserContent::ToolResult(result) => Some((&result.call, ())),
-            _ => None,
-        });
+        .flat_map(|message| message.borrow().results())
+        .map(|result| (&result.call, ()));
     let answered = answered_by(reply.tool_calls().map(|call| &call.id), results);
     let calls = (0..).zip(reply.tool_calls()).zip(answered);
     let calls = calls.filter_map(|(call, answer)| answer.is_none().then_some(call));

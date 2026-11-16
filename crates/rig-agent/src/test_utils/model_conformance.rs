@@ -321,15 +321,8 @@ const PING_OUTPUT: &str = "pong-crimson-7423";
 const MOTTO_OUTPUT: &str = "steady hands\ncalm waters";
 
 fn tool_result_values(message: &Message) -> Vec<serde_json::Value> {
-    let Message::User { content } = message else {
-        return Vec::new();
-    };
-    content
-        .iter()
-        .filter_map(|item| match item {
-            UserContent::ToolResult(result) => Some(result),
-            _ => None,
-        })
+    message
+        .results()
         .flat_map(|result| result.content.iter())
         .filter_map(|content| match content {
             rig_core::message::ToolResultContent::Text(text) => {
@@ -361,14 +354,10 @@ fn validate_tool_correlation(
                     _ => None,
                 }));
             }
-            Message::User { content } => {
-                results.extend(content.iter().filter_map(|item| match item {
-                    UserContent::ToolResult(result) => Some((
-                        turn,
-                        &result.call,
-                        result.call.provider().map(|provider| provider.as_str()),
-                    )),
-                    _ => None,
+            Message::User { .. } => {
+                results.extend(message.results().map(|result| {
+                    let provider = result.call.provider().map(|provider| provider.as_str());
+                    (turn, &result.call, provider)
                 }));
             }
             Message::System { .. } => {}

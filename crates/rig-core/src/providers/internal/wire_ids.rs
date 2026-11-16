@@ -8,7 +8,7 @@
 use std::borrow::{Borrow, Cow};
 use std::collections::{HashMap, HashSet};
 
-use crate::message::{AssistantContent, CallId, Message, UserContent};
+use crate::message::{AssistantContent, CallId, Message};
 
 /// The wire spelling of every tool call and result of one request's
 /// history, borrowed from it: only an alias is allocated.
@@ -47,11 +47,8 @@ impl<'h> WireIds<'h> {
                         }
                     }
                 }
-                Message::User { content } => {
-                    ids.extend(content.iter().filter_map(|part| match part {
-                        UserContent::ToolResult(result) => Some(&result.call),
-                        _ => None,
-                    }))
+                user @ Message::User { .. } => {
+                    ids.extend(user.results().map(|result| &result.call))
                 }
                 Message::System { .. } => {}
             }

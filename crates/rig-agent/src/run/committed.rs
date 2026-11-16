@@ -82,10 +82,8 @@ pub fn project(committed: &[Arc<Message>]) -> impl Iterator<Item = CommittedItem
             .iter()
             .filter_map(AssistantContent::as_tool_call)
             .map(CommittedItem::ToolCall);
-        calls.chain(results.iter().filter_map(|item| match item {
-            UserContent::ToolResult(result) => Some(CommittedItem::ToolResult(result)),
-            _ => None,
-        }))
+        let results = results.iter().filter_map(UserContent::as_tool_result);
+        calls.chain(results.map(CommittedItem::ToolResult))
     })
 }
 
