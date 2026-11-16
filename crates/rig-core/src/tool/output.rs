@@ -97,27 +97,17 @@ impl ToolOutput {
 
     /// Return literal text when this output is exactly one plain text block.
     pub fn as_text(&self) -> Option<&str> {
-        if self.content.len() != 1 {
-            return None;
-        }
-
-        match self.content.first()? {
-            ToolResultContent::Text(text) if text.native.is_none() => Some(&text.text),
-            ToolResultContent::Text(_)
-            | ToolResultContent::Image(_)
-            | ToolResultContent::Json { .. } => None,
+        match self.content.as_slice() {
+            [ToolResultContent::Text(text)] if text.native.is_none() => Some(&text.text),
+            _ => None,
         }
     }
 
     /// Return structured JSON when this output is exactly one JSON block.
     pub fn as_json(&self) -> Option<&serde_json::Value> {
-        if self.content.len() != 1 {
-            return None;
-        }
-
-        match self.content.first()? {
-            ToolResultContent::Json { value } => Some(value),
-            ToolResultContent::Text(_) | ToolResultContent::Image(_) => None,
+        match self.content.as_slice() {
+            [ToolResultContent::Json { value }] => Some(value),
+            _ => None,
         }
     }
 

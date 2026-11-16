@@ -21,9 +21,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use super::{DispatchContext, Recorder};
 use crate::{
-    effect::{
-        Answered, Disposition, EffectId, EffectKind, EffectRecord, HandlerDescriptor, HandlerKey,
-    },
+    effect::{Answered, EffectId, EffectKind, EffectRecord, HandlerDescriptor, HandlerKey},
     error::ErrorReport,
     streaming::{Item, StreamEvent, StreamRecord},
     tool::ToolResultContext,
@@ -39,7 +37,7 @@ use crate::{
 ///
 /// It keeps no handler descriptions and no delivery boundaries: an owner
 /// that writes a log keeps those itself. Its records are
-/// [`Disposition::Ran`] with no reviewed outcome; a host that answers,
+/// [`Disposition::Ran`](crate::effect::Disposition::Ran) with no reviewed outcome; a host that answers,
 /// reviews or cancels effects itself sets those on the records it takes.
 #[derive(Clone, Default)]
 pub struct RecordBuffer {
@@ -67,12 +65,9 @@ struct Slot {
 impl Slot {
     /// The record, once the dispatch resolved.
     fn into_record(self) -> Option<EffectRecord> {
+        let outcome = self.outcome?;
         Some(EffectRecord {
             published: self.tool_output,
-            id: self.id,
-            key: self.key,
-            kind: self.kind,
-            outcome: self.outcome?,
             events: self
                 .events
                 .and_then(|items| StreamRecord::from_items(items).ok()),
@@ -80,14 +75,10 @@ impl Slot {
             parent: self.origin.parent,
             scope: self.origin.scope,
             purpose: self.origin.purpose,
-            turn: None,
-            call: None,
             started_ms: self.started_ms,
             first_item_ms: self.first_item_ms,
             finished_ms: self.finished_ms,
-            reviewed: None,
-            disposition: Disposition::Ran,
-            decided_by: None,
+            ..EffectRecord::new(self.id, self.key, self.kind, outcome)
         })
     }
 }

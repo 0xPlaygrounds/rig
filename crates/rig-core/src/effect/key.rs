@@ -19,7 +19,7 @@ use super::{Family, HandlerKey};
 /// string without the family tag. Deserialization and [`Self::new_unchecked`]
 /// do not validate a registration; hosts must ensure the key serves `F`.
 /// Implements `Send + Sync` independently of `F`.
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(transparent, bound = "")]
 pub struct Key<F: Family> {
     raw: HandlerKey,
@@ -67,12 +67,7 @@ impl<F: Family> AsRef<HandlerKey> for Key<F> {
     }
 }
 
-// Written by hand: a derive would demand `F: Clone` and friends.
-impl<F: Family> Clone for Key<F> {
-    fn clone(&self) -> Self {
-        Self::new_unchecked(self.raw.clone())
-    }
-}
+// Written by hand: a derive would demand `F: PartialEq` and friends.
 impl<F: Family> PartialEq for Key<F> {
     fn eq(&self, other: &Self) -> bool {
         self.raw == other.raw
