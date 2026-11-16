@@ -165,6 +165,31 @@ pub(crate) struct Held<'a> {
     _refresh: futures::lock::MutexGuard<'a, ()>,
 }
 
+impl<'a> Held<'a> {
+    /// Run `wait` with the store's lock let go, so other processes can use
+    /// the store meanwhile, and the refresh lock kept, so clones still wait.
+    /// The store's lock on `key` is taken again before returning.
+    #[cfg_attr(target_family = "wasm", allow(dead_code))]
+    pub(crate) async fn store_free_during<S, T>(
+        self,
+        shell: &Shell<S>,
+        key: &str,
+        wait: impl Future<Output = T>,
+    ) -> Result<(T, Held<'a>), AuthError> {
+        let Held { _store, _refresh } = self;
+        drop(_store);
+        let out = wait.await;
+        let store = shell.store.lock(key).await.map_err(AuthError::Store)?;
+        Ok((
+            out,
+            Held {
+                _store: store,
+                _refresh,
+            },
+        ))
+    }
+}
+
 impl<S: std::fmt::Debug> std::fmt::Debug for Shell<S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Authenticator")

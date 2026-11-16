@@ -573,6 +573,39 @@ async fn device_flow_does_not_hold_the_store_lock() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Two clones signing in at once run one device flow: the second waits for
+/// the first and takes the credential it kept.
+#[tokio::test]
+async fn concurrent_device_sign_ins_on_clones_run_one_flow() -> anyhow::Result<()> {
+    // An access token whose JWT `exp` is in 2100.
+    let token = "h.eyJleHAiOjQxMDI0NDQ4MDB9.s";
+    let http = SequencedHttpClient::new([
+        MockHttpResponse::success(r#"{"device_auth_id":"d1","user_code":"UC-1","interval":1}"#),
+        // The first flow waits a poll, so the second call runs meanwhile.
+        MockHttpResponse::error(StatusCode::FORBIDDEN, "pending"),
+        MockHttpResponse::success(r#"{"authorization_code":"code","code_verifier":"verifier"}"#),
+        MockHttpResponse::success(format!(
+            r#"{{"access_token":"{token}","refresh_token":"fresh-refresh"}}"#
+        )),
+    ]);
+    let shown = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let count = shown.clone();
+    let auth = Authenticator::new(
+        AuthSource::OAuth,
+        MemoryTokenStore::default(),
+        DeviceCodeHandler::new(move |_| {
+            count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }),
+        true,
+    );
+    let other = auth.clone();
+    let (first, second) = tokio::join!(auth.auth_context(&http), other.auth_context(&http));
+    anyhow::ensure!(first?.api_key.expose() == token);
+    anyhow::ensure!(second?.api_key.expose() == token);
+    anyhow::ensure!(shown.load(std::sync::atomic::Ordering::SeqCst) == 1);
+    Ok(())
+}
+
 /// A device-code `interval` of 0 must not poll in a tight loop.
 #[tokio::test]
 async fn a_zero_interval_is_clamped() -> anyhow::Result<()> {

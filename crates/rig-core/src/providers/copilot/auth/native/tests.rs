@@ -356,6 +356,37 @@ async fn device_flow_does_not_hold_the_store_lock() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Two clones signing in at once run one device flow: the second waits for
+/// the first and takes the session it kept.
+#[tokio::test]
+async fn concurrent_device_sign_ins_on_clones_run_one_flow() -> anyhow::Result<()> {
+    let http = SequencedHttpClient::new([
+        MockHttpResponse::success(
+            r#"{"device_code":"dc","user_code":"UC-1","verification_uri":"https://github.com/login/device","interval":1}"#,
+        ),
+        // The first flow waits a poll, so the second call runs meanwhile.
+        MockHttpResponse::success(r#"{"error":"authorization_pending"}"#),
+        MockHttpResponse::success(r#"{"access_token":"gho_fresh"}"#),
+        MockHttpResponse::success(r#"{"token":"tid=fresh","expires_at":4102444800}"#),
+    ]);
+    let shown = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let count = shown.clone();
+    let auth = Authenticator::new(
+        AuthSource::OAuth,
+        MemoryTokenStore::default(),
+        DeviceCodeHandler::new(move |_| {
+            count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }),
+        true,
+    );
+    let other = auth.clone();
+    let (first, second) = tokio::join!(auth.auth_context(&http), other.auth_context(&http));
+    anyhow::ensure!(first?.api_key.expose() == "tid=fresh");
+    anyhow::ensure!(second?.api_key.expose() == "tid=fresh");
+    anyhow::ensure!(shown.load(std::sync::atomic::Ordering::SeqCst) == 1);
+    Ok(())
+}
+
 /// The stored fingerprint is a SHA-256 prefix, so it reads the same after a
 /// toolchain update.
 #[test]

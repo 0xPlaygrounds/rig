@@ -189,9 +189,10 @@ impl Authenticator {
             ));
         }
 
-        // The user may take minutes, so the store stays free meanwhile.
-        drop(held);
-        self.sign_in_with_device_code(http).await
+        let (fresh, _held) = held
+            .store_free_during(&self.0, STORE_KEY, self.login_device_flow(http))
+            .await?;
+        self.keep(fresh?).await
     }
 
     /// Sign in again by `method`, whatever is cached, telling `prompt` what

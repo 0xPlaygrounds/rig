@@ -69,9 +69,9 @@ impl Authenticator {
         Ok(self.remember(session))
     }
 
-    /// Run the device flow when allowed, without `held`, since the user may
-    /// take minutes, then take the store again and keep the GitHub token it
-    /// gets in the stored record before the exchange that may fail.
+    /// Run the device flow when allowed, with the store free meanwhile since
+    /// the user may take minutes, then keep the GitHub token it gets in the
+    /// stored record, read again, before the exchange that may fail.
     async fn sign_in_to_github<'a, H>(
         &'a self,
         http: &H,
@@ -86,9 +86,10 @@ impl Authenticator {
                     .into(),
             ));
         }
-        drop(held);
-        let token = self.login_device_flow(http).await?;
-        let held = self.0.hold(STORE_KEY).await?;
+        let (token, held) = held
+            .store_free_during(&self.0, STORE_KEY, self.login_device_flow(http))
+            .await?;
+        let token = token?;
         let mut record: ApiKeyRecord = load_record(&*self.0.store, STORE_KEY).await?;
         record.github_token = Some(token.clone());
         save_record(&*self.0.store, STORE_KEY, &record).await?;
