@@ -14,18 +14,14 @@ use rig_tools::workspace::{Contents, Stat, Workspace};
 use rig_tools::{Shell, ShellArgs};
 
 use super::remote::RemoteHostsPlugin;
-use super::{
-    AttachPlugin, AttachSystems, EditTool, ReadTool, SharedShell, ShellOutput, ShellTool, WriteTool,
-};
+use super::{AttachPlugin, AttachSystems, EditTool, ReadTool, ShellTool, WriteTool};
 
 /// The shell tool on `processes`, cutting as `output` says.
-fn shell(processes: &Processes, output: &ShellOutput) -> SharedShell {
+fn shell(processes: &Processes, output: &ShellOutput) -> PerCallShell {
     let mut world = World::new();
     world.insert_resource(processes.clone());
-    SharedShell {
-        shell: PerCallShell::new(Shell::default(), &mut world),
-        output: output.clone(),
-    }
+    world.insert_resource(output.clone());
+    PerCallShell::new(Shell::default(), &mut world)
 }
 
 #[test]
@@ -358,7 +354,7 @@ fn a_slow_read_holds_the_message_and_a_stop_recalls_it() {
 }
 
 /// What `shell` answers `command`.
-fn run(shell: &SharedShell, command: &str) -> String {
+fn run(shell: &PerCallShell, command: &str) -> String {
     let args = ShellArgs::new(command);
     bevy_tasks::block_on(shell.call(&mut ToolContext::new(), args)).unwrap_or_default()
 }

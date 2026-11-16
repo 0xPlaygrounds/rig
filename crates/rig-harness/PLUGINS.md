@@ -1787,7 +1787,8 @@ rig-tools `Launcher` (a wrapper command, a directory, environment): the
 shell tool reads it for each command, so a sandbox plugin that sets it
 (`processes.set(..)`) wraps every later process. A shell of a plugin's
 own, registered per call as `PerCallShell::new(shell, app.world_mut())`,
-does the same; a bare `Shell` is no `PerCallTool`. A plugin builds its own
+does the same, and cuts its output as the app's `ShellOutput` says, not
+by its own `shell.cut`; a bare `Shell` is no `PerCallTool`. A plugin builds its own
 process with `processes.launcher().command(program)`, or `.spawn(program, args,
 Spawn { stdin, merge_stderr, grace })`, a `Process`; `grace` is how long a
 stop gives it to end before it is killed, for one that stops processes of
@@ -2130,7 +2131,7 @@ one of a taken name is refused), in `Plugin::finish`, which runs once every
 (`Res<PluginEntity<MyPlugin>>`). Changing how another plugin's tool runs is
 rarely a replacement: a Prepare or Gate system on its calls does it, a Review
 system changes its results, and a default tool may have a switch, such as
-`rig_basics::coding_tools::ShellOutput`. A plugin's stage systems in a public
+`ShellOutput`, which every `PerCallShell` reads. A plugin's stage systems in a public
 set are turned off with a run condition
 (`configure_sets(AgentPass, AttachSystems.run_if(|| false))` in `finish`).
 A shipped transcript look is replaced by a render system ordered after its

@@ -15,21 +15,18 @@
 //! the transports `[remote.hosts]` names ([`remote::RemoteSettings`]).
 
 use std::path::Path;
-use std::sync::{Arc, PoisonError, RwLock};
 
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::{
-    Added, Admitted, AgentPass, App, AppPerCallExt, Attachment, Author, AuthorKind, CallPlace,
-    Commands, Component, Decider, Decision, Effect, Entity, EntityEvent, ForAgent, HoldOf,
-    Incoming, Insert, IntoScheduleConfigs, MessagePart, MessageWriter, Name, Notice, On, Outcome,
-    PerCallShell, PerCallTool, Plugin, PrepareSystems, ProjectRoot, ProjectWorkspace, Query,
-    Recalled, Remove, Res, Resource, Running, Started, StopReached, SystemSet, Tool, ToolOptions,
-    Wake, Without, WorkDir, blocking,
+    Added, Admitted, AgentPass, App, AppPerCallExt, Attachment, Author, AuthorKind, Commands,
+    Component, Decider, Decision, Effect, Entity, EntityEvent, ForAgent, HoldOf, Incoming, Insert,
+    IntoScheduleConfigs, MessagePart, MessageWriter, Name, Notice, On, Outcome, PerCallShell,
+    Plugin, PrepareSystems, ProjectRoot, ProjectWorkspace, Query, Recalled, Remove, Res, Running,
+    Started, StopReached, SystemSet, ToolOptions, Wake, Without, WorkDir, blocking,
 };
-use rig_harness::rig_core::completion::ToolAnnotations;
-use rig_harness::rig_core::tool::{ToolContext, ToolExecutionError};
+use rig_harness::rig_core::tool::ToolExecutionError;
 use rig_tools::attach::{Attached, Reference, attachments};
-use rig_tools::{Edit, OutputLimit, Read, Shell, Write};
+use rig_tools::{Edit, Read, Shell, Write};
 #[cfg(feature = "tui")]
 use rig_tui::{RenderSystems, TranscriptRender};
 
@@ -88,7 +85,8 @@ impl Plugin for WriteTool {
 /// [`Processes`](rig_harness::prelude::Processes), so a sandbox plugin's
 /// policy applies ([`PerCallShell`]). It runs in its agent's [`WorkDir`],
 /// else the directory the `Processes` name, else the [`ProjectRoot`].
-/// Output is cut as [`ShellOutput`] says, with the whole of it kept in the
+/// Output is cut as [`ShellOutput`](rig_harness::prelude::ShellOutput)
+/// says, with the whole of it kept in the
 /// session's
 /// [`spill`](rig_harness::prelude::Scratch::spill) directory. While the
 /// call runs, its output streams as its
@@ -100,14 +98,7 @@ pub struct ShellTool;
 
 impl Plugin for ShellTool {
     fn build(&self, app: &mut App) {
-        let output = app
-            .world_mut()
-            .get_resource_or_init::<ShellOutput>()
-            .clone();
-        let shell = SharedShell {
-            shell: PerCallShell::new(Shell::default(), app.world_mut()),
-            output,
-        };
+        let shell = PerCallShell::new(Shell::default(), app.world_mut());
         app.add_tool_per_call(shell, ToolOptions::default());
         #[cfg(feature = "tui")]
         add_look(app, looks::draw_shell);
@@ -121,81 +112,6 @@ fn add_look<M>(app: &mut App, look: impl IntoScheduleConfigs<bevy_ecs::system::S
         TranscriptRender,
         look.in_set(CodingToolLooks).in_set(RenderSystems::Render),
     );
-}
-
-/// How much of a command's output the `shell` tool gives the model, read
-/// as each call runs: [`OutputLimit::default`] unless set. A plugin that cuts or
-/// summarizes output itself turns the cut off with `set(None)`, such as
-/// from its `finish`, and then holds all of it.
-/// Shared by its clones: change it with [`set`](Self::set), not by
-/// inserting a new one.
-#[derive(Resource, Clone, Debug)]
-pub struct ShellOutput(Arc<RwLock<Option<OutputLimit>>>);
-
-impl ShellOutput {
-    /// How the next call cuts its output; `None` keeps all of it.
-    pub fn cut(&self) -> Option<OutputLimit> {
-        *self.0.read().unwrap_or_else(PoisonError::into_inner)
-    }
-
-    /// Cuts every call's output from now on as `cut` says.
-    pub fn set(&self, cut: Option<OutputLimit>) {
-        *self.0.write().unwrap_or_else(PoisonError::into_inner) = cut;
-    }
-}
-
-impl Default for ShellOutput {
-    fn default() -> Self {
-        Self(Arc::new(RwLock::new(Some(OutputLimit::default()))))
-    }
-}
-
-/// [`PerCallShell`], cutting its output as [`ShellOutput`] says when each
-/// call runs.
-#[derive(Clone)]
-struct SharedShell {
-    shell: PerCallShell,
-    output: ShellOutput,
-}
-
-impl PerCallTool for SharedShell {
-    const LIVE: bool = PerCallShell::LIVE;
-
-    fn at(&self, place: CallPlace) -> Self {
-        Self {
-            shell: self.shell.at(place),
-            output: self.output.clone(),
-        }
-    }
-}
-
-impl Tool for SharedShell {
-    const NAME: &'static str = Shell::NAME;
-    type Args = <Shell as Tool>::Args;
-    type Output = <Shell as Tool>::Output;
-    type Error = <Shell as Tool>::Error;
-
-    fn description(&self) -> String {
-        self.shell.description()
-    }
-
-    fn parameters(&self) -> rig_harness::rig_core::serde_json::Value {
-        self.shell.parameters()
-    }
-
-    fn annotations(&self) -> ToolAnnotations {
-        self.shell.annotations()
-    }
-
-    async fn call(
-        &self,
-        context: &mut ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
-        let mut shell = self.shell.clone();
-        shell.shell.cut = self.output.cut();
-        shell.call(context, args).await
-    }
 }
 
 /// Files the user names as `@path` go with the message, before its text,
