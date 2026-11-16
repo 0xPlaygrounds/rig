@@ -655,3 +655,16 @@ fn a_resume_keeps_the_facts_it_is_given() {
         Some(1_234)
     );
 }
+
+#[test]
+fn resume_refuses_an_id_that_retargets_the_path() {
+    let gemini = crate::providers::gemini::GeminiConfig::new("test-key");
+    for id in ["../cachedContents/abc", "abc?alt=json", "a/b", "abc#frag"] {
+        let encoded = InteractionResume::new(gemini.clone(), id).encode(probe(), Mode::Unary);
+        assert!(
+            encoded.is_err(),
+            "id `{id}` encoded to {:?}",
+            encoded.as_ref().map(|e| e.request.uri().to_string())
+        );
+    }
+}

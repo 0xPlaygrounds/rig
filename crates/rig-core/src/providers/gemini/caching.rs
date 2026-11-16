@@ -389,11 +389,22 @@ impl CacheBook {
         leases
     }
 
-    /// Put checkpointed leases back. Call [`Self::prove`] next.
+    /// Put checkpointed leases back. Call [`Self::prove`] next. A lease
+    /// whose name is not `cachedContents/<id>` is reported lost, since the
+    /// requests that delete or extend it would put its name in their path.
     pub fn restore(&self, leases: Vec<Lease>) {
         let now = self.now();
         let mut book = self.book();
+        let mut bad = Vec::new();
         for lease in leases {
+            if !lease
+                .name
+                .strip_prefix("cachedContents/")
+                .is_some_and(super::cached_content::is_resource_id)
+            {
+                bad.push(lease);
+                continue;
+            }
             book.lives.entry(lease.name.clone()).or_insert(Life {
                 tokens: lease.tokens,
                 created: now,
@@ -405,6 +416,10 @@ impl CacheBook {
                 line_gap: 0,
             });
             book.hold(lease);
+        }
+        drop(book);
+        for lease in &bad {
+            self.lost(lease);
         }
     }
 

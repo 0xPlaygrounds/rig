@@ -390,6 +390,12 @@ impl crate::wire::Wire for InteractionResume {
             ));
         }
         let id = &self.interaction_id;
+        if !super::cached_content::is_resource_id(id) {
+            return Err(EncodeError::request(format!(
+                "`{id}` is not an interaction id: expected letters, digits, `-` and `_`, since \
+                 the id is spliced into the request path"
+            )));
+        }
         let (path, framing) = match mode {
             Mode::Unary => (
                 format!("/v1beta/interactions/{id}"),
