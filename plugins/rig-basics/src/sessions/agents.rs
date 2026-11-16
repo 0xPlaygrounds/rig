@@ -263,18 +263,13 @@ impl Agents<'_, '_> {
                 .iter()
                 .map(|column| format!(" · {}", column.text))
                 .collect();
-            items.push(PickItem {
-                label: format!(
-                    "{}{} {} · {model} · {state}{current}{from}{own}",
-                    "  ".repeat(depth),
-                    listed.name,
-                    listed.id.short(),
-                ),
-                command: format!("agents {}", listed.id.0),
-                detail: None,
-                more: None,
-                checked: false,
-            });
+            let label = format!(
+                "{}{} {} · {model} · {state}{current}{from}{own}",
+                "  ".repeat(depth),
+                listed.name,
+                listed.id.short(),
+            );
+            items.push(PickItem::new(label, format!("agents {}", listed.id.0)));
         }
         (items, selected)
     }

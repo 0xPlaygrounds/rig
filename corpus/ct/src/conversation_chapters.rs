@@ -576,17 +576,14 @@ fn chapters_command(
             (false, true) => "current",
             (false, false) => "open",
         };
-        picker.items.push(PickItem {
-            label: format!("{}. {}", line.number, line.chapter.shown_title()),
-            command: format!("chapter goto {}", line.number),
-            detail: Some(format!(
+        let label = format!("{}. {}", line.number, line.chapter.shown_title());
+        picker.items.push(
+            PickItem::new(label, format!("chapter goto {}", line.number)).detail(format!(
                 "{} · {state} · ~{} tokens in context",
                 line.turn_range(),
                 line.tokens
             )),
-            more: None,
-            checked: false,
-        });
+        );
     }
     picker.selected = last.saturating_sub(1);
     commands.spawn((picker, OutlinePicker));

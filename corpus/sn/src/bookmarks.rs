@@ -227,13 +227,10 @@ fn list(
             name.map_or(id.0.as_str(), Name::as_str)
         });
         let when = age(now.saturating_sub(bookmark.at_ms));
-        picker.items.push(PickItem {
-            label: bookmark.label.clone(),
-            command: String::new(),
-            detail: Some(format!("{when} · {name} · {}", bookmark.first_line)),
-            more: None,
-            checked: false,
-        });
+        let detail = format!("{when} · {name} · {}", bookmark.first_line);
+        picker
+            .items
+            .push(PickItem::new(bookmark.label.clone(), "").detail(detail));
     }
     let choices = bookmarks.iter().map(|(agent, id, ..)| (*agent, *id));
     commands

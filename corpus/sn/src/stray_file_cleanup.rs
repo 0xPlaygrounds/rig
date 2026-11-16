@@ -301,11 +301,8 @@ fn measured(
             .multiple();
         for file in files {
             picker.items.push(PickItem {
-                label: file.path.clone(),
-                command: String::new(),
-                detail: Some(size(file.size)),
-                more: None,
                 checked: looks_scratch(&settings.scratch, &file.path),
+                ..PickItem::new(file.path.clone(), "").detail(size(file.size))
             });
         }
         let files = files.clone();
@@ -470,13 +467,10 @@ fn batches_listed(
     }
     let mut picker = Picker::new(RESTORE_TITLE).for_agent(agent);
     for batch in recent {
-        picker.items.push(PickItem {
-            label: batch.files.join(", "),
-            command: format!("{RESTORE} {}", batch.id),
-            detail: Some(format!("batch {}", batch.id)),
-            more: None,
-            checked: false,
-        });
+        let item = PickItem::new(batch.files.join(", "), format!("{RESTORE} {}", batch.id));
+        picker
+            .items
+            .push(item.detail(format!("batch {}", batch.id)));
     }
     commands.spawn(picker);
 }

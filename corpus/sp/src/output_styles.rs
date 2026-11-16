@@ -428,11 +428,11 @@ fn picker(styles: &Styles, agent: Entity, current: &str) -> Picker {
     for (at, style) in styles.styles.iter().enumerate() {
         let mark = if style.name == current { "● " } else { "  " };
         picker.items.push(PickItem {
-            label: format!("{mark}{}", style.name),
-            command: format!("style {}", style.name),
             detail: Some(style.description.clone()).filter(|text| !text.is_empty()),
-            more: None,
-            checked: false,
+            ..PickItem::new(
+                format!("{mark}{}", style.name),
+                format!("style {}", style.name),
+            )
         });
         if style.name == current {
             picker.selected = at;

@@ -293,17 +293,15 @@ fn picker(agent: Entity) -> Picker {
             .as_deref()
             .and_then(Path::file_name)
             .map(|name| name.to_string_lossy().into_owned());
-        picker.items.push(PickItem {
-            label: format!(
-                "{date} · {} · {}",
-                project.unwrap_or_default(),
-                first_line(&parsed)
-            ),
-            command: format!("{COMMAND} {} {}", source.name(), file.display()),
-            detail: Some(source.label().to_owned()),
-            more: None,
-            checked: false,
-        });
+        let label = format!(
+            "{date} · {} · {}",
+            project.unwrap_or_default(),
+            first_line(&parsed)
+        );
+        let command = format!("{COMMAND} {} {}", source.name(), file.display());
+        picker
+            .items
+            .push(PickItem::new(label, command).detail(source.label()));
     }
     picker
 }
