@@ -138,16 +138,9 @@ mod tui {
         let left = SHADES.iter().map(|shade| panel(&LEFT, *shade));
         let right = SHADES.iter().rev().map(|shade| panel(&RIGHT, *shade));
         let mut spans = vec![Span::from(" ")];
-        for (at, span) in left.enumerate() {
+        for (at, span) in left.chain(right).enumerate() {
             if at > 0 {
-                spans.push(Span::from(" "));
-            }
-            spans.push(span);
-        }
-        spans.push(Span::from("  "));
-        for (at, span) in right.enumerate() {
-            if at > 0 {
-                spans.push(Span::from(" "));
+                spans.push(Span::from(if at == SHADES.len() { "  " } else { " " }));
             }
             spans.push(span);
         }

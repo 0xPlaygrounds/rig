@@ -461,30 +461,18 @@ pub(super) fn refuse_unoffered(
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    for (agent, connection) in &agents {
-        refuse(agent, connection, &session, &mut commands, &mut notices);
+    for (agent, Connection { spec, .. }) in &agents {
+        if spec.provider.vendor() != PROVIDER {
+            continue;
+        }
+        let Some(why) = session.offered.known_refusal(&spec.id) else {
+            continue;
+        };
+        let why = format!("Cannot use {}: {}.", spec.reference(), why.reason());
+        commands
+            .entity(agent)
+            .remove::<Connection>()
+            .insert(ModelRefused(why.clone()));
+        notices.write(Notice::error(agent, why));
     }
-}
-
-/// Refuses `agent`'s `connection` if it is one of the plan's models the
-/// answer refuses.
-fn refuse(
-    agent: Entity,
-    Connection { spec, .. }: &Connection,
-    session: &super::Session,
-    commands: &mut Commands,
-    notices: &mut MessageWriter<Notice>,
-) {
-    if spec.provider.vendor() != PROVIDER {
-        return;
-    }
-    let Some(why) = session.offered.known_refusal(&spec.id) else {
-        return;
-    };
-    let why = format!("Cannot use {}: {}.", spec.reference(), why.reason());
-    commands
-        .entity(agent)
-        .remove::<Connection>()
-        .insert(ModelRefused(why.clone()));
-    notices.write(Notice::error(agent, why));
 }
