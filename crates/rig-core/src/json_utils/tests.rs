@@ -161,3 +161,12 @@ mod partial_arguments {
         }
     }
 }
+
+#[test]
+fn json_len_counts_the_serialized_bytes_and_is_zero_on_failure() {
+    let value = serde_json::json!({"text": "héllo", "list": [1, 2.5, null]});
+    assert_eq!(json_len(&value), value.to_string().len());
+
+    let unserializable: std::collections::BTreeMap<(u8, u8), u8> = [((1, 2), 3)].into();
+    assert_eq!(json_len(&unserializable), 0);
+}

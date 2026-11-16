@@ -196,6 +196,24 @@ pub fn deep_merge(
     }
 }
 
+/// The byte length of `value`'s JSON text, counted as it is written without
+/// building the string; 0 when `value` does not serialize.
+pub fn json_len(value: &impl serde::Serialize) -> usize {
+    struct Len(usize);
+    impl std::io::Write for Len {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0 += bytes.len();
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut len = Len(0);
+    serde_json::to_writer(&mut len, value).map_or(0, |()| len.0)
+}
+
 /// The field names `T`'s derived `Deserialize` reads, as the input spells
 /// them. Empty for a type that does not deserialize as a plain struct, such
 /// as an enum or a struct with a flattened field.
