@@ -47,7 +47,6 @@ use crate::run::{
     ToolAnswer, UnhandledInvalidToolCall,
     response::{CompletionCall, PromptResponse, finalize_output_tool_choice},
     streamed::{StreamedResolution, StreamedTurnAssembler, StreamedTurnEvent},
-    transcript::choice_text,
 };
 use crate::{
     completion::PromptError,
@@ -845,7 +844,7 @@ impl StreamingTurnSource {
         choice: &[AssistantContent],
     ) {
         if self.created_agent_span && self.record_telemetry_content {
-            agent_span.record("gen_ai.completion", choice_text(choice));
+            agent_span.record("gen_ai.completion", AssistantContent::concat_text(choice));
         }
         rig_core::telemetry::record_model_output(chat_span, choice, self.record_telemetry_content);
     }

@@ -53,18 +53,6 @@ fn transcription_thinking(budget: u32, include: bool) -> Value {
     json!({ "thinkingConfig": { "thinkingBudget": budget, "includeThoughts": include } })
 }
 
-/// The text of a normalized choice, concatenated: the decoder's text blocks
-/// are the turn's text parts, and a part boundary is not a separator the
-/// provider sent.
-fn choice_text(choice: &[AssistantContent]) -> String {
-    choice
-        .iter()
-        .filter_map(|content| match content {
-            AssistantContent::Text(text) => Some(text.text.as_str()),
-            _ => None,
-        })
-        .collect()
-}
 
 fn has_reasoning(choice: &[AssistantContent]) -> bool {
     choice
@@ -287,7 +275,7 @@ async fn text_response_body(client: GeminiModels, scenario: &'static str, cell: 
 
     // The one reader: the normalized text of the turn is exactly its visible
     // text parts, and none of the chain-of-thought.
-    let text = choice_text(&response.choice);
+    let text = AssistantContent::concat_text(&response.choice);
     for thought in &recorded_thoughts {
         assert!(
             !text.contains(thought.as_str()),
@@ -424,7 +412,7 @@ async fn text_response_across_two_candidates() {
                  {per_candidate:?}"
             );
 
-            let text = choice_text(&response.choice);
+            let text = AssistantContent::concat_text(&response.choice);
             for thought in &thoughts {
                 assert!(
                     !text.contains(thought.as_str()),

@@ -116,10 +116,7 @@ fn text_of(message: &Message) -> String {
         Message::System { content } => content.clone(),
         Message::User { content } => content
             .iter()
-            .filter_map(|item| match item {
-                UserContent::Text(text) => Some(text.text.as_str()),
-                _ => None,
-            })
+            .filter_map(UserContent::as_text)
             .collect::<Vec<_>>()
             .join("\n"),
         Message::Assistant(reply) => reply.text(),

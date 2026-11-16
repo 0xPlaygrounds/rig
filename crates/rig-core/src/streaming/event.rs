@@ -162,10 +162,7 @@ impl StreamEvent {
     /// assert_eq!(names, ["Start", "Text", "End"]);
     /// ```
     pub fn whole(part: Part, content: &AssistantContent) -> Vec<Self> {
-        let name = match content {
-            AssistantContent::ToolCall(call) => Some(call.function.name.clone()),
-            _ => None,
-        };
+        let name = content.as_tool_call().map(|call| call.function.name.clone());
         let start = Self::Start {
             part,
             kind: PartKind::of(content),

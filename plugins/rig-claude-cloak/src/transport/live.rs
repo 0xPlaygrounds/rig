@@ -293,14 +293,7 @@ async fn probes() -> ProbeResult<()> {
     )
     .tools([echo()?]);
     let first = complete(&handler, tool_request.clone(), true, 1).await?;
-    let calls: Vec<_> = first
-        .choice
-        .iter()
-        .filter_map(|block| match block {
-            AssistantContent::ToolCall(call) => Some(call),
-            _ => None,
-        })
-        .collect();
+    let calls: Vec<_> = first.tool_calls().collect();
     let call = calls
         .first()
         .ok_or("model did not call echo; no retries permitted")?;

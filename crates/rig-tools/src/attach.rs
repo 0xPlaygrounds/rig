@@ -450,10 +450,9 @@ fn typed_in(entry: EntryRef<'_>) -> Option<String> {
     }
     let typed: Vec<&str> = content
         .iter()
-        .filter_map(|content| match content {
-            UserContent::Text(text) if !is_attachment_text(&text.text) => Some(text.text.trim()),
-            _ => None,
-        })
+        .filter_map(UserContent::as_text)
+        .filter(|text| !is_attachment_text(text))
+        .map(str::trim)
         .filter(|text| !text.is_empty())
         .collect();
     (!typed.is_empty()).then(|| typed.join("\n\n"))

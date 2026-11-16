@@ -9,7 +9,7 @@ use std::io;
 
 use rig_core::completion::Message;
 use rig_core::conversation::EntryRef;
-use rig_core::message::{AssistantContent, UserContent};
+use rig_core::message::UserContent;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -123,13 +123,7 @@ pub fn excerpt(entry: &EntryRef<'_>) -> String {
     let (who, text) = match entry.message {
         Message::System { content } => ("system", content.clone()),
         Message::User { content } => {
-            let text: Vec<&str> = content
-                .iter()
-                .filter_map(|part| match part {
-                    UserContent::Text(text) => Some(text.text.as_str()),
-                    _ => None,
-                })
-                .collect();
+            let text: Vec<&str> = content.iter().filter_map(UserContent::as_text).collect();
             match text.is_empty() {
                 true => ("tool results", String::new()),
                 false => ("user", text.join(" ")),
@@ -137,14 +131,7 @@ pub fn excerpt(entry: &EntryRef<'_>) -> String {
         }
         Message::Assistant(turn) => {
             let text = turn.text();
-            let calls: Vec<&str> = turn
-                .content
-                .iter()
-                .filter_map(|part| match part {
-                    AssistantContent::ToolCall(call) => Some(call.function.name.as_str()),
-                    _ => None,
-                })
-                .collect();
+            let calls: Vec<&str> = turn.tool_calls().map(|call| call.function.name.as_str()).collect();
             match (text.trim().is_empty(), calls.is_empty()) {
                 (true, false) => ("calls", calls.join(", ")),
                 _ => ("assistant", text),

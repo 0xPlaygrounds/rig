@@ -164,7 +164,7 @@ impl PromptResponse {
     /// The concatenated text parts of [`content`](Self::content). In
     /// output-tool mode this is the serialized structured output.
     pub fn output(&self) -> String {
-        super::transcript::choice_text(&self.content)
+        AssistantContent::concat_text(&self.content)
     }
 
     /// Aggregated token usage across the whole run.

@@ -453,13 +453,7 @@ fn recall(
 
 /// The text of a message's content.
 fn text_of(content: &[UserContent]) -> String {
-    let texts: Vec<&str> = content
-        .iter()
-        .filter_map(|item| match item {
-            UserContent::Text(text) => Some(text.text()),
-            _ => None,
-        })
-        .collect();
+    let texts: Vec<&str> = content.iter().filter_map(UserContent::as_text).collect();
     texts.join("\n")
 }
 

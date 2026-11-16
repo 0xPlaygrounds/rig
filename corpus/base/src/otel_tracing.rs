@@ -347,10 +347,8 @@ fn end_turn(
     if let Some(message::Message::User { content }) = asked {
         let len: usize = content
             .iter()
-            .filter_map(|item| match item {
-                UserContent::Text(text) => Some(text.text.len()),
-                _ => None,
-            })
+            .filter_map(UserContent::as_text)
+            .map(str::len)
             .sum();
         span.set_attribute(size("rig.user_message.length", len));
     }

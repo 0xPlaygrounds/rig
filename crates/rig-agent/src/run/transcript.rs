@@ -35,15 +35,3 @@ pub(crate) fn assistant_turn(
     let turn = head.with_content(choice);
     (!turn.is_empty_turn()).then_some(Message::Assistant(turn))
 }
-
-/// The text parts of a choice, concatenated, as [`AssistantMessage::text`]
-/// reads a turn.
-pub(crate) fn choice_text(choice: &[AssistantContent]) -> String {
-    choice
-        .iter()
-        .filter_map(|part| match part {
-            AssistantContent::Text(text) => Some(text.text.as_str()),
-            _ => None,
-        })
-        .collect()
-}
