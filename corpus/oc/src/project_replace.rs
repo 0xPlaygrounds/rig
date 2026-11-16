@@ -16,9 +16,9 @@ use bevy_tasks::{IoTaskPool, TaskPool};
 use regex::{NoExpand, Regex};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::ToolAnnotations;
-use rig_harness::rig_core::effect::{Answered, EffectId, EffectKind};
+use rig_harness::rig_core::effect::{EffectId, EffectKind};
 use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
-use rig_harness::rig_core::serve::{AfterServe, BeforeServe as Dispatch, Intercept};
+use rig_harness::rig_core::serve::{BeforeServe as Dispatch, Intercept};
 use rig_harness::rig_core::tool::{
     ContentHash, ContextValue, FileRead, FilesChanged, FilesRead, ToolContext, content_hash,
 };
@@ -543,15 +543,6 @@ impl Intercept for Previewed {
             name: name.clone(),
             args: serde_json::Value::Object(fields).to_string(),
         })
-    }
-
-    async fn after(
-        &self,
-        _: EffectId,
-        _: &EffectKind,
-        _: &Result<Answered, ErrorReport>,
-    ) -> AfterServe {
-        AfterServe::Keep
     }
 }
 

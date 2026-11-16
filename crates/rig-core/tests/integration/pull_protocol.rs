@@ -236,17 +236,6 @@ fn a_layer_does_not_repoll_an_exhausted_non_fused_stream() {
         fn name(&self) -> String {
             "keep".into()
         }
-        async fn before(&self, _: EffectId, _: &EffectKind) -> BeforeServe {
-            BeforeServe::Proceed
-        }
-        async fn after(
-            &self,
-            _: EffectId,
-            _: &EffectKind,
-            _: &Result<Answered, ErrorReport>,
-        ) -> AfterServe {
-            AfterServe::Keep
-        }
     }
     block_on(async {
         let handler = ErasedHandler::new(Empty).layered(Keep);

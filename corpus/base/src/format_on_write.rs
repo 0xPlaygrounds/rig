@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::{Answered, EffectId, EffectKind};
 use rig_harness::rig_core::error::ErrorReport;
-use rig_harness::rig_core::serve::{AfterServe, BeforeServe, Intercept};
+use rig_harness::rig_core::serve::{AfterServe, Intercept};
 use rig_harness::rig_core::tool::{ExitStatus, ToolOutput, content_hash};
 use rig_harness::rig_ecs::effects::Handler;
 use rig_tools::fs::write_atomic;
@@ -138,10 +138,6 @@ struct Target {
 impl Intercept for Formatting {
     fn name(&self) -> String {
         "format-on-write".to_owned()
-    }
-
-    async fn before(&self, _: EffectId, _: &EffectKind) -> BeforeServe {
-        BeforeServe::Proceed
     }
 
     async fn after(

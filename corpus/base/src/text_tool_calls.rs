@@ -12,10 +12,9 @@ use std::sync::Arc;
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{CompletionResponse, Message, ToolDefinition};
-use rig_harness::rig_core::effect::{Answered, EffectId, EffectKind};
-use rig_harness::rig_core::error::ErrorReport;
+use rig_harness::rig_core::effect::{EffectId, EffectKind};
 use rig_harness::rig_core::message::{ToolFunction, ToolName};
-use rig_harness::rig_core::serve::{AfterServe, BeforeServe, Intercept};
+use rig_harness::rig_core::serve::{BeforeServe, Intercept};
 use rig_harness::rig_core::streaming::{Item, Part, Relayed, StreamEvent};
 use rig_harness::rig_ecs::effects::Handler;
 use serde::Deserialize;
@@ -126,15 +125,6 @@ impl Intercept for WriteAsText {
             request: request.into(),
             stream: *stream,
         })
-    }
-
-    async fn after(
-        &self,
-        _id: EffectId,
-        _kind: &EffectKind,
-        _outcome: &Result<Answered, ErrorReport>,
-    ) -> AfterServe {
-        AfterServe::Keep
     }
 }
 

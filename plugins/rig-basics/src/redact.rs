@@ -29,7 +29,7 @@ use rig_harness::rig_core::effect::{Answered, EffectId, EffectKind};
 use rig_harness::rig_core::error::ErrorReport;
 use rig_harness::rig_core::message;
 use rig_harness::rig_core::redact::{self, Streamed};
-use rig_harness::rig_core::serve::{AfterServe, BeforeServe, Intercept};
+use rig_harness::rig_core::serve::{BeforeServe, Intercept};
 use rig_harness::rig_core::streaming::{Item, Relayed};
 use rig_harness::rig_core::tool::{ContextValue, FilesChanged, Hunk, HunkLine};
 use rig_harness::rig_ecs::StopTurnsOnExit;
@@ -812,15 +812,6 @@ impl Intercept for AsSent {
             kind => self.0.redacted(kind),
         };
         ready(sent.map_or(BeforeServe::Proceed, BeforeServe::Patch))
-    }
-
-    fn after(
-        &self,
-        _: EffectId,
-        _: &EffectKind,
-        _: &Result<Answered, ErrorReport>,
-    ) -> impl Future<Output = AfterServe> + Send {
-        ready(AfterServe::Keep)
     }
 }
 

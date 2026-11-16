@@ -43,7 +43,7 @@ use rig_core::completion::ToolDefinition;
 use rig_core::effect::{Answered as Answer, EffectId, EffectKind};
 use rig_core::error::ErrorReport;
 use rig_core::message::ToolName;
-use rig_core::serve::{self, BeforeServe, ErasedHandler, Intercept};
+use rig_core::serve::{self, ErasedHandler, Intercept};
 use rig_core::tool::{DynamicTool, Touches};
 use rig_harness::host::cli::Cli;
 use rig_harness::host::pipes::{Limited, TooLarge};
@@ -1153,10 +1153,6 @@ struct Disconnected {
 impl Intercept for Disconnected {
     fn name(&self) -> String {
         "mcp-disconnected".to_owned()
-    }
-
-    async fn before(&self, _: EffectId, _: &EffectKind) -> BeforeServe {
-        BeforeServe::Proceed
     }
 
     async fn after(

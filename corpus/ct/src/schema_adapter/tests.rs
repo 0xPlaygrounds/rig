@@ -114,15 +114,6 @@ impl Intercept for StrictProvider {
             None => serve::BeforeServe::Proceed,
         }
     }
-
-    async fn after(
-        &self,
-        _id: EffectId,
-        _kind: &EffectKind,
-        _outcome: &Result<Answered, ErrorReport>,
-    ) -> AfterServe {
-        AfterServe::Keep
-    }
 }
 
 /// `model` as the catalog's model `id`, behind `provider` when given.

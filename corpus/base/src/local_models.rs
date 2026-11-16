@@ -24,7 +24,7 @@ use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::{Catalog, ModelSpec, Pricing, Transport};
 use rig_harness::rig_core::completion::Message;
-use rig_harness::rig_core::effect::{Answered, EffectId, EffectKind};
+use rig_harness::rig_core::effect::{EffectId, EffectKind};
 use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
 use rig_harness::rig_core::http_client::{
     Bytes, DynHttpClient, HttpClientExt, LazyBody, Method, Request, Response,
@@ -33,7 +33,7 @@ use rig_harness::rig_core::operation::Completion;
 use rig_harness::rig_core::providers::registry::{ConnectError, ConnectOptions, ProviderId};
 use rig_harness::rig_core::providers::{llamacpp, ollama};
 use rig_harness::rig_core::serve::adapters::ModelAdapter;
-use rig_harness::rig_core::serve::{AfterServe, BeforeServe, ErasedHandler, Intercept};
+use rig_harness::rig_core::serve::{BeforeServe, ErasedHandler, Intercept};
 use rig_harness::rig_ecs::effects::Handler;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -512,15 +512,6 @@ impl Intercept for Local {
             request,
             stream: *stream,
         })
-    }
-
-    async fn after(
-        &self,
-        _id: EffectId,
-        _kind: &EffectKind,
-        _outcome: &Result<Answered, ErrorReport>,
-    ) -> AfterServe {
-        AfterServe::Keep
     }
 }
 
