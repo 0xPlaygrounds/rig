@@ -1280,12 +1280,38 @@ pub struct ModelsReply {
     pub data: Vec<ModelEntry>,
 }
 
+/// Reads a listing reply with the dialect's `model_listing` hook, or as
+/// the `{ "data": [...] }` envelope when the dialect has none.
+pub struct ModelsDecoder(Option<super::ModelCatalogue>);
+
+impl<'id> Decoder<'id, ModelListing> for ModelsDecoder {
+    type Event = ModelList;
+
+    fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
+        let body = frame.as_str();
+        match self.0 {
+            Some(read) => classify_untyped_line(body.as_bytes()).map(read),
+            None => classify_untyped_line::<ModelsReply>(body.as_bytes())
+                .map(|reply| reply.data.into_iter().map(ModelInfo::from).collect())
+                .map(ModelList::new),
+        }
+    }
+
+    fn decode(
+        &mut self,
+        models: Self::Event,
+        out: Out<'id, ModelListing>,
+    ) -> Result<Flow, ProviderError> {
+        Ok(out.end(ModelPage { models, next: None }))
+    }
+}
+
 impl Wire for Models {
     type Op = ModelListing;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Event = ModelsReply;
-    type Decoder<'id> = DocumentDecoder<ModelListing, Self::Event>;
+    type Event = ModelList;
+    type Decoder<'id> = ModelsDecoder;
     type Reassembler = crate::wire::document::Unreassembled;
 
     fn describe(&self) -> Descriptor<'_> {
@@ -1297,68 +1323,14 @@ impl Wire for Models {
         get(&self.provider, self.provider.dialect.quirks.models_path)
     }
 
-    /// Decode a complete model catalogue without pagination.
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        DocumentDecoder::new(
-            |body| classify_untyped_line(body.as_bytes()),
-            |event| {
-                let models = event.data.into_iter().map(ModelInfo::from).collect();
-                Ok(ModelPage {
-                    models: ModelList::new(models),
-                    next: None,
-                })
-            },
+        ModelsDecoder(
+            self.provider
+                .dialect
+                .quirks
+                .hooks
+                .and_then(|hooks| hooks.model_listing),
         )
-    }
-}
-
-/// The shared listing request, its reply read by the dialect's `model_listing` hook.
-#[derive(Clone, Debug)]
-pub(crate) struct HookedModels {
-    pub(crate) models: Models,
-    pub(crate) catalogue: super::ModelCatalogue,
-}
-
-/// Reads a listing reply with a dialect's `model_listing` hook.
-pub(crate) struct HookedModelsDecoder(super::ModelCatalogue);
-
-impl<'id> Decoder<'id, ModelListing> for HookedModelsDecoder {
-    type Event = serde_json::Value;
-
-    fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
-        classify_untyped_line(frame.as_str().as_bytes())
-    }
-
-    fn decode(
-        &mut self,
-        event: Self::Event,
-        out: Out<'id, ModelListing>,
-    ) -> Result<Flow, ProviderError> {
-        Ok(out.end(ModelPage {
-            models: (self.0)(event),
-            next: None,
-        }))
-    }
-}
-
-impl Wire for HookedModels {
-    type Op = ModelListing;
-    type Payload = crate::wire::Encoded;
-    type Frame = crate::wire::WireFrame;
-    type Event = serde_json::Value;
-    type Decoder<'id> = HookedModelsDecoder;
-    type Reassembler = crate::wire::document::Unreassembled;
-
-    fn describe(&self) -> Descriptor<'_> {
-        self.models.describe()
-    }
-
-    fn encode(&self, cursor: Option<String>, mode: Mode) -> Result<Encoded, EncodeError> {
-        self.models.encode(cursor, mode)
-    }
-
-    fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        HookedModelsDecoder(self.catalogue)
     }
 }
 
