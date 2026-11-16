@@ -885,7 +885,7 @@ fn a_session_with_a_logged_conversation_outlives_the_leave_and_the_sweep() {
         let swept = home.session(&id);
         drop(swept.hold()?.ok_or("held elsewhere")?);
         log_a_conversation(&swept)?;
-        locks::sweep(&home)?;
+        locks::sweep(&home);
         Ok((left.path().exists(), swept.path().exists()))
     });
     fs::remove_dir_all(&root).ok();

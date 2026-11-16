@@ -57,55 +57,53 @@ pub fn builds(run: &RunDir) -> PathBuf {
 /// Removes what launchers that are gone, such as one killed with its
 /// terminal, left: the jobs an agent of theirs left listed, their staged
 /// and held builds, their run directories but the logs of failed runs,
-/// and the directories of their sessions that saved nothing. Call it holding [`lock`].
-pub fn sweep(home: &Home) -> Result<()> {
-    if let Ok(entries) = fs::read_dir(home.bin()) {
-        for entry in entries {
-            let entry = entry?;
-            let Some(session) = entry.file_name().to_str().and_then(Home::owner_of) else {
-                continue;
-            };
-            if is_free(&home.session(&session).launcher_lock()) {
-                fs::remove_file(entry.path())?;
+/// and the directories of their sessions that saved nothing. Call it holding
+/// [`lock`]. Each removal is best effort, as [`Run`]'s drop is, so one
+/// leftover that cannot be removed does not refuse the start.
+pub fn sweep(home: &Home) {
+    for entry in fs::read_dir(home.bin()).into_iter().flatten().flatten() {
+        let Some(session) = entry.file_name().to_str().and_then(Home::owner_of) else {
+            continue;
+        };
+        if is_free(&home.session(&session).launcher_lock()) {
+            fs::remove_file(entry.path()).ok();
+        }
+    }
+    for entry in fs::read_dir(home.runs()).into_iter().flatten().flatten() {
+        let Some(launcher) = entry.file_name().to_str().and_then(|id| id.parse().ok()) else {
+            continue;
+        };
+        let run = home.run(launcher);
+        if is_free(&run.lock()) {
+            // Jobs a reload kept, when that launcher was killed before
+            // the restart.
+            run.kill_left_groups().ok();
+            fs::remove_dir_all(builds(&run)).ok();
+            if !run.log().exists() {
+                fs::remove_dir_all(run.path()).ok();
             }
         }
     }
-    if let Ok(entries) = fs::read_dir(home.runs()) {
-        for entry in entries {
-            let Some(launcher) = entry?.file_name().to_str().and_then(|id| id.parse().ok()) else {
-                continue;
-            };
-            let run = home.run(launcher);
-            if is_free(&run.lock()) {
-                // Jobs a reload kept, when that launcher was killed before
-                // the restart.
-                run.kill_left_groups().ok();
-                fs::remove_dir_all(builds(&run)).ok();
-                if !run.log().exists() {
-                    fs::remove_dir_all(run.path())?;
-                }
-            }
+    for entry in fs::read_dir(home.sessions())
+        .into_iter()
+        .flatten()
+        .flatten()
+    {
+        let session = SessionDir::at(entry.path());
+        // Only a launcher's own session: a fork or an import being
+        // written has no launcher lock, and a session being deleted
+        // is finished by an agent, which can reach its store. One whose
+        // agent logs hold anything is kept, though it is not marked.
+        let lock = session.launcher_lock();
+        if lock.exists()
+            && is_free(&lock)
+            && !session.is_saved()
+            && !session.holds_logs()
+            && !session.is_deleting()
+        {
+            fs::remove_dir_all(session.path()).ok();
         }
     }
-    if let Ok(entries) = fs::read_dir(home.sessions()) {
-        for entry in entries {
-            let session = SessionDir::at(entry?.path());
-            // Only a launcher's own session: a fork or an import being
-            // written has no launcher lock, and a session being deleted
-            // is finished by an agent, which can reach its store. One whose
-            // agent logs hold anything is kept, though it is not marked.
-            let lock = session.launcher_lock();
-            if lock.exists()
-                && is_free(&lock)
-                && !session.is_saved()
-                && !session.holds_logs()
-                && !session.is_deleting()
-            {
-                fs::remove_dir_all(session.path())?;
-            }
-        }
-    }
-    Ok(())
 }
 
 /// How long a headless start waits for the build lock before it says so:

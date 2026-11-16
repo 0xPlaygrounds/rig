@@ -27,7 +27,7 @@ fn the_sweep_removes_the_unsaved_sessions_of_gone_launchers() {
         drop(lock);
         let (running, _held) = session()?;
         let (forking, _) = home.new_session()?;
-        sweep(&home)?;
+        sweep(&home);
         Ok([killed, saved, running, forking].map(|id| home.session(&id).path().exists()))
     })();
     fs::remove_dir_all(&root).ok();
@@ -56,7 +56,7 @@ fn the_sweep_ends_the_jobs_gone_launchers_left() {
         return assert!(job.is_ok());
     };
     fs::write(run.groups(), format!("{}\n", job.id())).ok();
-    let swept = sweep(&home);
+    sweep(&home);
     let ended = job.try_wait().ok().flatten().is_some() || {
         std::thread::sleep(std::time::Duration::from_millis(200));
         job.try_wait().ok().flatten().is_some()
@@ -64,10 +64,7 @@ fn the_sweep_ends_the_jobs_gone_launchers_left() {
     job.kill().ok();
     job.wait().ok();
     fs::remove_dir_all(&root).ok();
-    assert!(
-        swept.is_ok() && ended,
-        "the job outlived its launcher's sweep"
-    );
+    assert!(ended, "the job outlived its launcher's sweep");
 }
 
 /// A wait for the build lock shorter than its quiet time says nothing; a
@@ -104,4 +101,28 @@ fn a_short_wait_for_the_build_lock_is_quiet() {
     })();
     fs::remove_file(&path).ok();
     assert_eq!((short.ok(), long.ok()), (Some(false), Some(true)));
+}
+
+/// One dead launcher's run directory that cannot be removed does not stop
+/// the sweep: another dead launcher's run directory still goes. Before, the
+/// sweep failed, and the start with it.
+#[cfg(unix)]
+#[test]
+fn the_sweep_goes_on_past_a_run_directory_it_cannot_remove() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = std::env::temp_dir().join(format!("rig-sweep-stuck-{}", std::process::id()));
+    fs::remove_dir_all(&root).ok();
+    let home = Home::at(&root);
+    let [stuck, other] = [u32::MAX - 9, u32::MAX - 8].map(|id| home.run(id));
+    let locked = stuck.path().join("locked");
+    fs::create_dir_all(&locked).ok();
+    fs::create_dir_all(other.path()).ok();
+    fs::write(locked.join("file"), "x").ok();
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o555)).ok();
+    sweep(&home);
+    let left = (stuck.path().exists(), other.path().exists());
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).ok();
+    fs::remove_dir_all(&root).ok();
+    assert_eq!(left, (true, false), "(the stuck one kept, the other swept)");
 }

@@ -104,7 +104,7 @@ pub fn run(mut launch: Launch, args: &[String]) -> Result<ExitCode> {
         let _lock = locks::hold_build_lock(home, output)?;
         // Before claiming, so a resumed session's leftover builds from its
         // dead launcher are removed too.
-        locks::sweep(home)?;
+        locks::sweep(home);
         let run = locks::hold_run(home)?;
         let (claimed, claim_notice) = claim(home, start, launch.here.as_deref())?;
         let failure = rebuild(&launch, &claimed.id, output, print)?;
