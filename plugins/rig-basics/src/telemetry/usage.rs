@@ -35,7 +35,7 @@ use rig_core::error::ErrorKind;
 use rig_core::streaming::StreamEvent;
 use rig_ecs::session_log::Reset;
 use rig_harness::prelude::*;
-use rig_memory::{HeuristicTokenCounter, TokenCounter, request_estimate};
+use rig_memory::{HeuristicTokenCounter, request_estimate};
 use serde::{Deserialize, Serialize};
 
 use crate::sessions::agents::{AgentColumn, ColumnOf};

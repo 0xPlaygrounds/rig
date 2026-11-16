@@ -29,7 +29,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::blobs::sha256_hex;
 use crate::session::replay;
-use crate::{HeuristicTokenCounter, SessionError, Store, TokenCounter};
+use crate::{HeuristicTokenCounter, SessionError, Store};
 
 /// A summary of a conversation's older messages and the values tracked
 /// across compactions (such as the files a coding agent read). The default
@@ -185,8 +185,8 @@ fn cut_at(
     from: usize,
     keep_tokens: usize,
     force: bool,
-    counter: &impl TokenCounter,
 ) -> Option<usize> {
+    let counter = HeuristicTokenCounter::default();
     let mut kept = 0;
     let mut newest = None;
     let mut answering = false;
@@ -225,6 +225,17 @@ pub enum CompactReason {
     Threshold,
     /// The model refused the request as too long.
     Overflow,
+}
+
+impl CompactReason {
+    /// What the user asked the summary to focus on, trimmed; empty when
+    /// they named nothing or did not ask.
+    pub fn focus(&self) -> &str {
+        match self {
+            Self::Asked { focus } => focus.trim(),
+            Self::Threshold | Self::Overflow => "",
+        }
+    }
 }
 
 /// Tokens of the newest messages an automatic compaction keeps unless
@@ -416,7 +427,6 @@ impl CompactionPolicy {
             from,
             self.keep(reason, spec),
             !matches!(reason, CompactReason::Threshold),
-            &HeuristicTokenCounter::default(),
         )
     }
 
@@ -1079,10 +1089,7 @@ impl Summarizer {
         spec: &ModelSpec,
     ) -> Result<CompletionRequest, UnsupportedOption> {
         let limits = &self.limits;
-        let focus = match reason {
-            CompactReason::Asked { focus } => focus.trim(),
-            _ => "",
-        };
+        let focus = reason.focus();
         let (most, budget, least) = match spec.input_limit().map(u64::from) {
             None => (
                 self.max_tokens(spec),
@@ -1299,7 +1306,7 @@ fn snippet(text: &str, chars: usize) -> String {
     }
 }
 
-/// What [`ClearToolOutputs::clear`] took out.
+/// What [`ClearToolOutputs::clear_conversation`] took out.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Cleared {
     /// Tool results cleared.
@@ -1359,20 +1366,9 @@ impl ClearToolOutputs {
         }
     }
 
-    /// Clears older tool outputs of `messages` in place.
-    pub fn clear(&self, messages: &mut [Arc<Message>]) -> Cleared {
-        let (targets, cleared) = self.targets(messages);
-        for (at, items) in targets {
-            if let Some(message) = messages.get_mut(at) {
-                clear_items(Arc::make_mut(message), &items);
-            }
-        }
-        cleared
-    }
-
-    /// Clears older tool outputs of `conversation`, as [`Self::clear`]
-    /// does, rewriting the entries that change in place by `by`
-    /// ([`Conversation::edit_each`]), so they keep their ids.
+    /// Clears older tool outputs of `conversation`, rewriting the entries
+    /// that change in place by `by` ([`Conversation::edit_each`]), so they
+    /// keep their ids.
     pub fn clear_conversation(&self, conversation: &mut Conversation, by: Author) -> Cleared {
         self.plan(conversation).apply(conversation, None, by)
     }

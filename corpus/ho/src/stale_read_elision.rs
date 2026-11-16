@@ -12,7 +12,7 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::tokens_label;
 use rig_harness::rig_core::message::{CallId, Message, ToolResult, ToolResultContent};
 use rig_harness::rig_core::tool::Tool;
-use rig_memory::{HeuristicTokenCounter, TokenCounter};
+use rig_memory::HeuristicTokenCounter;
 use rig_tools::workspace::{Local, Workspace};
 use rig_tools::{Edit, EditArgs, Read, ReadArgs, Write, WriteArgs};
 use serde_json::{Map, Value};
