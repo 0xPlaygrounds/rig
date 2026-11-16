@@ -211,7 +211,9 @@ fn refuse_fields(fields: &[(&str, bool)], whose: &str) -> Result<(), String> {
 /// `${VAR:-default}` by the variable unless it is unset or empty, else
 /// by `default`, as written. A `${` ends at the `}` that pairs with it, so
 /// a default may hold paired braces, such as `{"a":1}`; text after that `}`
-/// is kept as it is. Errors name `field`; a secret variable
+/// is kept as it is, and a `${` whose braces never pair, such as one with
+/// an unpaired `{` in its default, is refused as not closed. Errors name
+/// `field`; a secret variable
 /// ([`SECRET_PREFIX`], in any case, as Windows reads names) is refused,
 /// set or not.
 fn expand(text: &str, field: &str) -> Result<String, String> {

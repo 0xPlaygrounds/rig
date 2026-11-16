@@ -327,7 +327,7 @@ fn a_new_mcp_json_is_private() {
 }
 
 /// A default with paired braces is whole: with the variable set, none of
-/// it is left behind.
+/// it is left behind. An unpaired `{` leaves the `${` unclosed.
 #[test]
 fn a_default_with_braces_is_whole() {
     let path = std::env::var("PATH").unwrap_or_default();
@@ -335,5 +335,9 @@ fn a_default_with_braces_is_whole() {
     assert_eq!(
         expand(r#"${RIG_TEST_UNSET_B59:-{"a":1}}!"#, "env.K"),
         Ok(r#"{"a":1}!"#.to_owned())
+    );
+    assert_eq!(
+        expand("${PATH:-{a}", "env.K"),
+        Err("`env.K`: a `${` is not closed".to_owned())
     );
 }
