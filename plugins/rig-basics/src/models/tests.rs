@@ -855,3 +855,27 @@ fn an_effort_no_setting_is_named_refuses_the_run() {
         "{problems}"
     );
 }
+
+/// A hand-written `effort` with no `default` reaches the model `--model`
+/// names.
+#[test]
+fn an_effort_without_a_default_reaches_the_model_named_with_model() {
+    use rig_harness::rig_core::completion::Reasoning;
+    let model = MockCompletionModel::from_stream_turns([reply("hi")]);
+    let (mut app, wakes, _, agent) = remembering(
+        "defaults-effort-no-default",
+        &model,
+        (
+            Some("anthropic/claude-sonnet-4-5"),
+            Some("[model]\neffort = \"high\"\n"),
+        ),
+        |app| {
+            app.insert_resource(sonnet(&model));
+            tell(app);
+        },
+    );
+    ask(&mut app, &wakes, agent, "Hello.");
+    assert_eq!(model_of(&app, agent), Some("anthropic/claude-sonnet-4-5"));
+    let high = ReasoningSetting(Some(Reasoning::Budget { tokens: 16384 }));
+    assert_eq!(app.world().get::<ReasoningSetting>(agent), Some(&high));
+}
