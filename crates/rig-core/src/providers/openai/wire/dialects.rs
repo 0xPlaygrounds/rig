@@ -411,7 +411,7 @@ pub const ZAI: Dialect = Dialect {
 
 /// Z.AI's coding endpoint: the same dialect at a different base URL.
 pub const ZAI_CODING: Dialect = Dialect {
-    base_url: "https://api.z.ai/api/coding/paas/v4",
+    base_url: crate::providers::zai::CODING_API_BASE_URL,
     ..ZAI
 };
 
@@ -439,7 +439,7 @@ pub const MINIMAX: Dialect = Dialect {
 
 /// MiniMax's China endpoint.
 pub const MINIMAX_CHINA: Dialect = Dialect {
-    base_url: "https://api.minimax.cn/v1",
+    base_url: crate::providers::minimax::CHINA_API_BASE_URL,
     ..MINIMAX
 };
 
@@ -469,7 +469,7 @@ pub const MOONSHOT: Dialect = Dialect {
 
 /// Moonshot's China endpoint.
 pub const MOONSHOT_CHINA: Dialect = Dialect {
-    base_url: "https://api.moonshot.cn/v1",
+    base_url: crate::providers::moonshot::CHINA_API_BASE_URL,
     ..MOONSHOT
 };
 
