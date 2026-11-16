@@ -11,7 +11,6 @@ use anyhow::Result;
 use futures::StreamExt;
 use rig::completion::Message;
 use rig::message::{AssistantContent, ToolChoice};
-use rig::providers::openai;
 use rig::streaming::StreamEvent;
 use rig::tool::Tool;
 use schemars::JsonSchema;
@@ -67,7 +66,16 @@ struct RawResponseMetadata {
     model: String,
     system_fingerprint: Option<String>,
     finish_reasons: Vec<String>,
-    usage: Option<openai::Usage>,
+    usage: Option<RawUsage>,
+}
+
+/// The Groq usage counters the parity assertions read.
+#[derive(Deserialize)]
+struct RawUsage {
+    completion_tokens: Option<u64>,
+    total_tokens: u64,
+    queue_time: Option<f64>,
+    total_time: Option<f64>,
 }
 
 impl RawResponseMetadata {
@@ -132,12 +140,9 @@ fn assert_response_metadata(
         "usage should include input tokens"
     );
     if let Some(completion_tokens) = raw_usage.completion_tokens {
-        assert_eq!(response.usage.output_tokens, Some(completion_tokens as u64));
+        assert_eq!(response.usage.output_tokens, Some(completion_tokens));
     }
-    assert_eq!(
-        response.usage.total_tokens,
-        Some(raw_usage.total_tokens as u64)
-    );
+    assert_eq!(response.usage.total_tokens, Some(raw_usage.total_tokens));
     if let Some(queue_time) = raw_usage.queue_time {
         assert!(queue_time >= 0.0);
     }

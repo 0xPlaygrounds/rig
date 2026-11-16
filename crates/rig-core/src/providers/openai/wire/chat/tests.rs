@@ -978,3 +978,34 @@ fn chat_forces_one_named_tool_at_most() {
     };
     assert!(tool_choice_value(choice).is_err());
 }
+
+/// Mistral's Voxtral models report audio beside `prompt_tokens`, so the
+/// input count is the sum; a text turn's detail block is unaffected. The
+/// numbers are a live Voxtral turn's, quoted verbatim.
+#[test]
+fn usage_counts_audio_tokens_reported_beside_the_prompt_as_input() {
+    let voxtral = normalized_usage(
+        &serde_json::json!({
+            "prompt_audio_seconds": 0,
+            "prompt_tokens": 6,
+            "completion_tokens": 2,
+            "total_tokens": 383,
+            "prompt_tokens_details": {"cached_tokens": 0, "audio_tokens": 375}
+        }),
+        &Quirks::openai(),
+    );
+    assert_eq!(voxtral.input_tokens, Some(381));
+    assert_eq!(voxtral.output_tokens, Some(2));
+    assert_eq!(voxtral.total_tokens, Some(381 + 2));
+
+    let text = normalized_usage(
+        &serde_json::json!({
+            "prompt_tokens": 19,
+            "completion_tokens": 2,
+            "total_tokens": 21,
+            "prompt_tokens_details": {"cached_tokens": 0}
+        }),
+        &Quirks::openai(),
+    );
+    assert_eq!(text.input_tokens, Some(19));
+}

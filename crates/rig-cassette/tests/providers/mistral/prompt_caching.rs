@@ -8,7 +8,7 @@
 //! on the blocking and streaming paths alike.
 //!
 //! Rig reads the count from `prompt_tokens_details.cached_tokens`, falling back to the
-//! top-level `num_cached_tokens` (`Usage::to_normalized` in the OpenAI completion module); it is
+//! top-level `num_cached_tokens` (`normalized_usage` in the OpenAI Chat wire); it is
 //! a subset of `prompt_tokens`, so the denominator is `input_tokens`.
 //!
 //! There is no `agent_loop` cell: the model returns an empty response through the agent

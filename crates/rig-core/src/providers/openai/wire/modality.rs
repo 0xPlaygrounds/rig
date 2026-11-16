@@ -17,7 +17,6 @@ use crate::operation::{
     Embedding, ModelListing, ModelPage, Rerank as RerankOp, Transcription, Verify as VerifyOp,
 };
 use crate::providers::internal::wire::classify_untyped_line;
-use crate::providers::openai::embedding::Usage;
 use crate::providers::openai::embedding::{
     CompatibleEmbeddingResponse, EncodingFormat, model_dimensions_from_identifier,
 };
@@ -575,11 +574,7 @@ impl<'id> Decoder<'id, Embedding> for EmbeddingsDecoder {
                 self.provider
             )));
         }
-        let usage = event
-            .usage
-            .as_ref()
-            .map(Usage::to_normalized)
-            .unwrap_or_default();
+        let usage = event.usage.as_ref().map(Into::into).unwrap_or_default();
         let vectors = event.data.into_iter().map(|datum| datum.embedding);
         let model = if event.model.is_empty() {
             self.model.clone()
