@@ -178,3 +178,18 @@ fn an_image_part_reads_back_and_names_its_events() {
     let items: Vec<Item<StreamEvent>> = transcript.into();
     assert_eq!(serde_json::to_value(&items).expect("serializes"), value);
 }
+
+#[test]
+fn a_refused_second_start_leaves_the_record_as_it_was() {
+    let start = json!({"item": "event", "value": {"event": "start", "part": 0, "kind": "text"}});
+    let mut record = StreamRecord::parse(json!([start.clone(), text_end(0, "hi")]))
+        .expect("a closed transcript");
+    let again: Item<StreamEvent> = serde_json::from_value(start).expect("an item");
+    assert_eq!(record.push(again), Err(SequenceError::UnknownPart(2)));
+    let late: Item<StreamEvent> = serde_json::from_value(
+        json!({"item": "event", "value": {"event": "text", "part": 0, "text": "late"}}),
+    )
+    .expect("an item");
+    assert_eq!(record.check_closed(), Ok(()), "the ended part reopened");
+    assert_eq!(record.push(late), Err(SequenceError::EndedTwice(2)));
+}
