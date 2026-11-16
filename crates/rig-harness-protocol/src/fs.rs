@@ -262,7 +262,11 @@ pub fn replace_private(target: &Path, bytes: &[u8]) -> io::Result<()> {
     staged_replace(target, bytes, true)
 }
 
-fn staged_replace(target: &Path, bytes: &[u8], private: bool) -> io::Result<()> {
+fn staged_replace(
+    target: &Path,
+    bytes: &[u8],
+    #[cfg_attr(not(unix), allow(unused_variables))] private: bool,
+) -> io::Result<()> {
     static CALLS: AtomicU64 = AtomicU64::new(0);
     let (Some(folder), Some(name)) = (target.parent(), target.file_name()) else {
         let why = format!("replace {}: not a file's path", target.display());
