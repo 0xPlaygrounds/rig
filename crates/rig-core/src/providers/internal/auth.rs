@@ -208,6 +208,23 @@ pub(crate) fn request(method: http::Method, url: &str) -> http::request::Builder
     http::Request::builder().method(method).uri(url)
 }
 
+/// `builder` finished with `pairs` as a form-encoded body.
+#[cfg(not(target_family = "wasm"))]
+pub(crate) fn form(
+    builder: http::request::Builder,
+    pairs: &[(&str, &str)],
+) -> http::Result<http::Request<bytes::Bytes>> {
+    let body = url::form_urlencoded::Serializer::new(String::new())
+        .extend_pairs(pairs)
+        .finish();
+    builder
+        .header(
+            http::header::CONTENT_TYPE,
+            "application/x-www-form-urlencoded",
+        )
+        .body(body.into())
+}
+
 /// Send `req` and decode its JSON response.
 /// Request and transport failures return [`AuthError::Http`], preserving HTTP
 /// status when available. Invalid JSON returns [`AuthError::Json`].

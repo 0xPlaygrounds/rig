@@ -7,7 +7,7 @@ use super::{
 use crate::http_client::HttpClientExt;
 use crate::json_utils::Lenient;
 use crate::providers::internal::auth::{
-    load_record, request, save_record, send_bytes, send_json, token_expired,
+    form, load_record, request, save_record, send_bytes, send_json, token_expired,
 };
 use crate::providers::internal::loopback::LoopbackError;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
@@ -436,25 +436,17 @@ impl Authenticator {
     where
         H: HttpClientExt,
     {
-        let form = [
-            ("client_id", CHATGPT_CLIENT_ID),
-            ("grant_type", "refresh_token"),
-            ("refresh_token", refresh_token),
-            ("scope", "openid profile email"),
-        ];
-
-        let body = url::form_urlencoded::Serializer::new(String::new())
-            .extend_pairs(form)
-            .finish();
-
         let response = send_json::<_, OAuthTokenResponse>(
             http,
-            request(Method::POST, CHATGPT_OAUTH_TOKEN_URL)
-                .header(
-                    http::header::CONTENT_TYPE,
-                    "application/x-www-form-urlencoded",
-                )
-                .body(Bytes::from(body)),
+            form(
+                request(Method::POST, CHATGPT_OAUTH_TOKEN_URL),
+                &[
+                    ("client_id", CHATGPT_CLIENT_ID),
+                    ("grant_type", "refresh_token"),
+                    ("refresh_token", refresh_token),
+                    ("scope", "openid profile email"),
+                ],
+            ),
         )
         .await;
 
@@ -501,22 +493,16 @@ async fn revoke<H>(http: &H, token: &str, hint: &str) -> Result<(), AuthError>
 where
     H: HttpClientExt,
 {
-    let form = [
-        ("token", token),
-        ("token_type_hint", hint),
-        ("client_id", CHATGPT_CLIENT_ID),
-    ];
-    let body = url::form_urlencoded::Serializer::new(String::new())
-        .extend_pairs(form)
-        .finish();
     send_bytes(
         http,
-        request(Method::POST, CHATGPT_OAUTH_REVOKE_URL)
-            .header(
-                http::header::CONTENT_TYPE,
-                "application/x-www-form-urlencoded",
-            )
-            .body(Bytes::from(body)),
+        form(
+            request(Method::POST, CHATGPT_OAUTH_REVOKE_URL),
+            &[
+                ("token", token),
+                ("token_type_hint", hint),
+                ("client_id", CHATGPT_CLIENT_ID),
+            ],
+        ),
     )
     .await
     .map(drop)
@@ -532,25 +518,18 @@ async fn exchange_authorization_code<H>(
 where
     H: HttpClientExt,
 {
-    let form = [
-        ("grant_type", "authorization_code"),
-        ("code", code),
-        ("redirect_uri", redirect_uri),
-        ("client_id", CHATGPT_CLIENT_ID),
-        ("code_verifier", code_verifier),
-    ];
-    let body = url::form_urlencoded::Serializer::new(String::new())
-        .extend_pairs(form)
-        .finish();
-
     let tokens: OAuthTokenResponse = send_json(
         http,
-        request(Method::POST, CHATGPT_OAUTH_TOKEN_URL)
-            .header(
-                http::header::CONTENT_TYPE,
-                "application/x-www-form-urlencoded",
-            )
-            .body(Bytes::from(body)),
+        form(
+            request(Method::POST, CHATGPT_OAUTH_TOKEN_URL),
+            &[
+                ("grant_type", "authorization_code"),
+                ("code", code),
+                ("redirect_uri", redirect_uri),
+                ("client_id", CHATGPT_CLIENT_ID),
+                ("code_verifier", code_verifier),
+            ],
+        ),
     )
     .await?;
 

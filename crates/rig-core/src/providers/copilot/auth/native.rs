@@ -3,8 +3,7 @@ use super::{
     refresh_api_key,
 };
 use crate::http_client::HttpClientExt;
-use crate::providers::internal::auth::{load_record, request, save_record, send_json};
-use bytes::Bytes;
+use crate::providers::internal::auth::{form, load_record, request, save_record, send_json};
 use http::Method;
 use serde::Deserialize;
 
@@ -92,20 +91,13 @@ impl Authenticator {
     where
         H: HttpClientExt,
     {
-        let body = url::form_urlencoded::Serializer::new(String::new())
-            .append_pair("client_id", GITHUB_CLIENT_ID)
-            .append_pair("scope", "read:user")
-            .finish();
-
         let device: DeviceCodeResponse = send_json(
             http,
-            request(Method::POST, GITHUB_DEVICE_CODE_URL)
-                .header(http::header::ACCEPT, "application/json")
-                .header(
-                    http::header::CONTENT_TYPE,
-                    "application/x-www-form-urlencoded",
-                )
-                .body(Bytes::from(body)),
+            form(
+                request(Method::POST, GITHUB_DEVICE_CODE_URL)
+                    .header(http::header::ACCEPT, "application/json"),
+                &[("client_id", GITHUB_CLIENT_ID), ("scope", "read:user")],
+            ),
         )
         .await?;
 
@@ -127,21 +119,17 @@ impl Authenticator {
         let mut interval = normalize_poll_interval_seconds(device.interval);
 
         while std::time::Instant::now() < deadline {
-            let body = url::form_urlencoded::Serializer::new(String::new())
-                .append_pair("client_id", GITHUB_CLIENT_ID)
-                .append_pair("device_code", &device.device_code)
-                .append_pair("grant_type", "urn:ietf:params:oauth:grant-type:device_code")
-                .finish();
-
             let response: AccessTokenResponse = send_json(
                 http,
-                request(Method::POST, GITHUB_ACCESS_TOKEN_URL)
-                    .header(http::header::ACCEPT, "application/json")
-                    .header(
-                        http::header::CONTENT_TYPE,
-                        "application/x-www-form-urlencoded",
-                    )
-                    .body(Bytes::from(body)),
+                form(
+                    request(Method::POST, GITHUB_ACCESS_TOKEN_URL)
+                        .header(http::header::ACCEPT, "application/json"),
+                    &[
+                        ("client_id", GITHUB_CLIENT_ID),
+                        ("device_code", &device.device_code),
+                        ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
+                    ],
+                ),
             )
             .await?;
 
