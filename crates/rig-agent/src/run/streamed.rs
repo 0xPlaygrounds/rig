@@ -15,7 +15,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use rig_core::completion::{FinishReason, Message};
+use rig_core::completion::Message;
 use rig_core::error::ProviderError;
 use rig_core::message::{AssistantContent, AssistantMessage, ToolCall, ToolName};
 use rig_core::streaming::{Item, PartKind, StreamEvent};
@@ -167,8 +167,6 @@ pub struct StreamedTurn {
     pub choice: Vec<AssistantContent>,
     /// The tool policy the turn was prepared with.
     pub policy: TurnPolicy,
-    /// Provider-reported terminal reason for this turn, when available.
-    pub finish_reason: Option<FinishReason>,
     /// The positions in [`Self::choice`] of the calls the reply was cut off
     /// in the middle of
     /// ([`CompletionResponse::cut_off_calls`](rig_core::completion::CompletionResponse::cut_off_calls)).
@@ -490,7 +488,6 @@ impl StreamedTurnAssembler {
             head: response.head(),
             choice,
             policy: self.policy,
-            finish_reason: response.finish_reason(),
             cut_off,
         }
     }

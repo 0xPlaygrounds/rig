@@ -39,7 +39,6 @@ use rig_core::completion::{CompletionResponse, FinishReason, ToolDefinition};
 use rig_core::error::ProviderError;
 
 use rig_core::conversation::Aside;
-use rig_core::conversation::pairing::{PairingError, validate};
 use rig_core::message::{AssistantContent, AssistantMessage, ToolCall, ToolName, UserContent};
 use rig_core::tool::feedback::{
     invalid_arguments_feedback, not_executed, output_limit_feedback, tool_result_message,
@@ -122,16 +121,10 @@ pub struct ModelTurn {
 
 impl ModelTurn {
     /// Convert a response using the same attempt's prepared policy and the
-    /// response's normalized finish reason. `prepared` must describe this call.
-    pub fn from_response(resp: &CompletionResponse, prepared: &prepare::PreparedRequest) -> Self {
-        Self::from_policy(resp, prepared.policy.clone())
-    }
-
-    /// [`from_response`](Self::from_response) for a driver that carries the
-    /// turn's [`TurnPolicy`] by value instead of the whole prepared request.
-    /// `policy` must be the [`PreparedRequest::policy`](prepare::PreparedRequest::policy)
-    /// of this attempt: it alone carries the turn's tool choice to the Skip
-    /// gate and the invalid-call context.
+    /// response's normalized finish reason. `policy` must be the
+    /// [`PreparedRequest::policy`](prepare::PreparedRequest::policy) of this
+    /// attempt: it alone carries the turn's tool choice to the Skip gate and
+    /// the invalid-call context.
     pub fn from_policy(resp: &CompletionResponse, policy: TurnPolicy) -> Self {
         Self::new(
             resp.head(),
@@ -460,16 +453,6 @@ impl AgentRun {
         &self.entries
     }
 
-    /// The records of one `kind`, in append order.
-    pub fn entries_of<'a>(&'a self, kind: &'a str) -> impl Iterator<Item = &'a Aside> {
-        self.entries.iter().filter(move |entry| entry.kind == kind)
-    }
-
-    /// The most recently appended record of `kind`, if present.
-    pub fn last_entry_of(&self, kind: &str) -> Option<&Aside> {
-        self.entries.iter().rev().find(|entry| entry.kind == kind)
-    }
-
     /// Record the tool definitions advertised to the model for `turn` (the
     /// `turn` of the [`AgentRunStep::CallModel`] being served). Replaces any
     /// earlier record; the run keeps only the latest turn's advertisement.
@@ -486,7 +469,9 @@ impl AgentRun {
         self.turn_tools.as_ref()
     }
 
-    /// Set the input chat history preceding the prompt.
+    /// Set the input chat history preceding the prompt. It is not checked: a
+    /// history from outside the run (another store, a run resumed in another
+    /// process) goes through `rig_core::conversation::pairing::validate` first.
     pub fn with_history(
         mut self,
         history: impl IntoIterator<Item = impl Into<Arc<Message>>>,
@@ -1831,18 +1816,6 @@ impl AgentRun {
             run = run.with_output_tool_name(name);
         }
         run
-    }
-}
-
-impl AgentRun {
-    /// [`with_history`](AgentRun::with_history), rejecting a history that is
-    /// not a canonical transcript. Use this when the history comes from
-    /// outside the protocol (a store of its own, a resumed run from another
-    /// process); `with_history` stays unchecked for callers that built the
-    /// history themselves.
-    pub fn with_validated_history(self, history: Vec<Message>) -> Result<Self, PairingError> {
-        validate(&history)?;
-        Ok(self.with_history(history))
     }
 }
 

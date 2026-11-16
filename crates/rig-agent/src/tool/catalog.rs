@@ -12,10 +12,7 @@ use std::sync::Arc;
 
 use indexmap::IndexMap;
 
-use rig_core::{
-    completion::ToolDefinition,
-    effect::{Key, family},
-};
+use rig_core::completion::ToolDefinition;
 
 use super::registry::RegisteredTool;
 
@@ -63,11 +60,6 @@ impl ToolCatalog {
     /// The registration behind `name`.
     pub fn get(&self, name: &str) -> Option<&RegisteredTool> {
         self.tools.get(name)
-    }
-
-    /// The key behind `name`, when the catalog has it.
-    pub fn key(&self, name: &str) -> Option<&Key<family::Tool>> {
-        self.tools.get(name).map(RegisteredTool::key)
     }
 
     /// Every registration, in advertisement order.

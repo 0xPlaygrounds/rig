@@ -386,7 +386,12 @@ fn checkpoints(
     let mut out = Vec::new();
     loop {
         match run.next_step().map_err(rig)? {
-            AgentRunStep::CallModel { history, turn, .. } => {
+            AgentRunStep::CallModel {
+                prompt,
+                history,
+                turn,
+                ..
+            } => {
                 let Some((at, record)) = records.next() else {
                     return Ok(out);
                 };
@@ -400,13 +405,14 @@ fn checkpoints(
                 let prepared = prepare_request(
                     &spec,
                     &capabilities,
+                    prompt,
                     &history,
                     request.tools.clone(),
                     run.output_tool_name(),
                     None,
                 )
                 .map_err(rig)?;
-                run.advertise_tools(turn, prepared.tools.clone());
+                run.advertise_tools(turn, prepared.request.tools);
                 run.model_response(ModelTurn::from_policy(response, prepared.policy))
                     .map_err(rig)?;
                 out.push((turn, log.checkpoint(at + 1, run.clone()).0));

@@ -1,20 +1,19 @@
-//! Pure request preparation from run settings, model capabilities, history, tools,
-//! and per-turn overrides. Retrieval and model execution remain driver responsibilities.
+//! Pure request preparation from run settings, model capabilities, the prompt,
+//! history, tools, and per-turn overrides. Retrieval and model execution remain
+//! driver responsibilities.
 //!
 //! ```
 //! use rig_agent::run::{prepare::prepare_request, spec::RunSpec};
-//! let request = prepare_request(&RunSpec::new(), &Default::default(), &[], vec![], None, None)?;
-//! assert!(request.tools.is_empty());
+//! let prepared =
+//!     prepare_request(&RunSpec::new(), &Default::default(), "hi", &[], vec![], None, None)?;
+//! assert!(prepared.request.tools.is_empty());
 //! # Ok::<(), rig_agent::run::prepare::PrepareError>(())
 //! ```
 
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use rig_core::completion::{
-    CompletionRequest, Document, GenerationOptions, Message, ProviderCapabilities, ProviderOptions,
-    ProviderToolDefinition, ToolDefinition,
-};
+use rig_core::completion::{CompletionRequest, Message, ProviderCapabilities, ToolDefinition};
 use rig_core::error::ProviderError;
 use rig_core::message::ToolName;
 use rig_core::structured_output::{
@@ -23,7 +22,7 @@ use rig_core::structured_output::{
 };
 
 use super::output::OutputMode;
-use super::patch::RequestPatch;
+use super::patch::{RequestPatch, overlay_params};
 use super::policy::TurnPolicy;
 use super::spec::RunSpec;
 
@@ -45,124 +44,59 @@ impl From<PrepareError> for ProviderError {
 
 /// Everything a model call carries that the protocol decides, as owned data.
 ///
-/// Apply it to a provider's request builder with [`apply`](Self::apply); the
-/// driver adds only what is its own (telemetry flags), then sends. The
-/// turn's [`policy`](Self::policy) is what the driver feeds back into the run
-/// when the response arrives.
+/// The driver adds only what is its own (telemetry flags) to
+/// [`request`](Self::request), then sends it. The turn's
+/// [`policy`](Self::policy) is what the driver feeds back into the run when
+/// the response arrives.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PreparedRequest {
-    /// Prior messages to send: the effective (possibly augmented) preamble as a
-    /// leading system message, then the history (the patch's `history` when
-    /// set, else the caller's).
-    pub chat_history: Vec<Arc<Message>>,
-    /// Static context documents followed by the patch's `extra_context`.
-    pub documents: Vec<Document>,
-    /// The tools advertised to the model this turn, in order: the executable
-    /// tools (after any `active_tools` allow-list) plus, in Tool output mode,
-    /// the synthetic output tool last.
-    pub tools: Vec<Arc<ToolDefinition>>,
-    /// Effective sampling temperature (patch over spec).
-    pub temperature: Option<f64>,
-    /// Effective output-token cap, with patch values overriding the spec.
-    pub max_tokens: Option<u64>,
-    /// Effective provider passthrough parameters (patch shallow-merged over
-    /// spec when both are objects).
-    pub additional_params: Option<serde_json::Value>,
-    /// The spec's provider-hosted tools, appended to
-    /// `additional_params.tools` by [`apply`](Self::apply).
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub provider_tools: Vec<ProviderToolDefinition>,
-    /// The spec's portable generation options.
-    #[serde(default, skip_serializing_if = "GenerationOptions::is_default")]
-    pub options: GenerationOptions,
-    /// The spec's typed per-provider options.
-    #[serde(default, skip_serializing_if = "ProviderOptions::is_empty")]
-    pub provider_options: ProviderOptions,
-    /// The provider-native structured-output constraint, set only when the
-    /// resolved mode is [`OutputMode::Native`].
-    pub output_schema: Option<rig_core::schemars::Schema>,
+    /// The request to send. Its history is the effective (possibly augmented)
+    /// preamble as a leading system message, then the patch's `history` when
+    /// set (else the caller's), then the prompt. Its documents are the static
+    /// context followed by the patch's `extra_context`. Its tools are the
+    /// executable tools (after any `active_tools` allow-list) plus, in Tool
+    /// output mode, the synthetic output tool last. Temperature, output-token
+    /// cap and tool choice take the patch over the spec; `additional_params`
+    /// shallow-merge the patch over the spec when both are objects and carry
+    /// the spec's provider-hosted tools in `tools`. The output schema is set
+    /// only when the resolved mode is [`OutputMode::Native`].
+    pub request: CompletionRequest,
     /// The mode this turn actually runs in (never [`OutputMode::Auto`]).
     pub output_mode: OutputMode,
     /// The turn's tool policy: executable tools, effective tool choice
     /// (patch over spec), output tool and the names the choice allows.
     pub policy: TurnPolicy,
-    /// The spec's [`RunSpec::accept_unknown_finish_reasons`].
-    #[serde(default)]
-    pub accept_unknown_finish_reasons: bool,
 }
 
-impl PreparedRequest {
-    /// Apply every prepared field to `request`, in the protocol's canonical
-    /// order. The request keeps its prompt last; the prepared sampling fields
-    /// (`temperature`, `max_tokens`, `output_schema`) and
-    /// `accept_unknown_finish_reasons` overwrite whatever the driver set on
-    /// it, while messages, documents, tools and additional parameters
-    /// accumulate.
-    pub fn apply(self, mut request: CompletionRequest) -> CompletionRequest {
-        request.accept_unknown_finish_reasons = self.accept_unknown_finish_reasons;
-        let request = request
-            .messages(self.chat_history)
-            .temperature(self.temperature)
-            .max_tokens(self.max_tokens)
-            .additional_params(self.additional_params)
-            .options(self.options)
-            .provider_options(self.provider_options)
-            .documents(self.documents)
-            .tools(self.tools)
-            .provider_tools(self.provider_tools)
-            .output_schema(self.output_schema);
-        match self.policy.tool_choice() {
-            Some(tool_choice) => request.tool_choice(tool_choice.clone()),
-            None => request,
-        }
-    }
-}
-
-/// Prepare one model call from settings, capability snapshot, ordered history,
-/// retrieved tools in advertisement order, and an optional merged patch.
+/// Prepare one model call from settings, capability snapshot, the prompt,
+/// ordered history, retrieved tools in advertisement order, and an optional
+/// merged patch.
 /// A committed output-tool name pins tool mode while a schema is present.
 /// Returns errors for incompatible tool choices, unavailable allow-list names,
 /// output-tool collisions, or invalid native schemas. Performs no I/O.
 pub fn prepare_request(
     spec: &RunSpec,
     capabilities: &ProviderCapabilities,
+    prompt: impl Into<Message>,
     history: &[Arc<Message>],
     tools: Vec<Arc<ToolDefinition>>,
     committed_output_tool: Option<&str>,
     patch: Option<&RequestPatch>,
 ) -> Result<PreparedRequest, PrepareError> {
-    let request_patch = patch;
-    let chat_history = history;
-    let preamble = spec.preamble.as_deref();
-    let static_context = &spec.static_context;
-    let temperature = spec.temperature;
-    let max_tokens = spec.max_tokens;
-    let additional_params = spec.additional_params.as_ref();
-    let tool_choice = spec.tool_choice.as_ref();
     let output_schema = spec.output_schema.as_ref();
-    let output_mode = &spec.output_mode;
-    let output_tool_description = spec.output_tool_description.as_deref();
-    let augment_output_preamble = spec.augment_output_preamble;
-    let preamble = request_patch
+    let preamble = patch
         .and_then(|o| o.preamble.as_deref())
-        .or(preamble);
-    let temperature = request_patch.and_then(|o| o.temperature).or(temperature);
-    let max_tokens = request_patch.and_then(|o| o.max_tokens).or(max_tokens);
-    let tool_choice = request_patch
+        .or(spec.preamble.as_deref());
+    let temperature = patch.and_then(|o| o.temperature).or(spec.temperature);
+    let max_tokens = patch.and_then(|o| o.max_tokens).or(spec.max_tokens);
+    let tool_choice = patch
         .and_then(|o| o.tool_choice.as_ref())
-        .or(tool_choice);
-    // Non-object patches must replace the baseline; the object merge helper
-    // otherwise retains its first argument for these inputs.
-    let additional_params: Option<serde_json::Value> = match (
-        additional_params,
-        request_patch.and_then(|o| o.additional_params.as_ref()),
-    ) {
-        (Some(base), Some(patch)) if base.is_object() && patch.is_object() => {
-            Some(rig_core::json_utils::merge(base.clone(), patch.clone()))
-        }
-        (base, patch) => patch.or(base).cloned(),
-    };
-    let active_tools = request_patch.and_then(|o| o.active_tools.as_deref());
+        .or(spec.tool_choice.as_ref());
+    let additional_params = overlay_params(
+        spec.additional_params.clone(),
+        patch.and_then(|o| o.additional_params.clone()),
+    );
+    let active_tools = patch.and_then(|o| o.active_tools.as_deref());
     // Hosted tools also arrive as raw `additional_params.tools`; providers
     // advertise both after the function tools.
     let hosted = !spec.provider_tools.is_empty()
@@ -216,7 +150,7 @@ pub fn prepare_request(
             hosted || !executable_tool_names.is_empty(),
             output_tool_callable(tool_choice, &candidate_output_tool),
             capabilities.composes_native_output_with_tools,
-            output_mode,
+            &spec.output_mode,
         )
     };
 
@@ -251,7 +185,7 @@ pub fn prepare_request(
     let effective_preamble: Option<String> = {
         let base = preamble.map(str::to_owned);
         let instruction = match &resolved_mode {
-            OutputMode::Tool if augment_output_preamble => {
+            OutputMode::Tool if spec.augment_output_preamble => {
                 output_tool_name.as_deref().map(output_tool_augmentation)
             }
             OutputMode::Tool => None,
@@ -271,9 +205,8 @@ pub fn prepare_request(
     };
 
     // Request history replacement must not mutate persisted conversation history.
-    let messages_history: &[Arc<Message>] = request_patch
-        .and_then(|o| o.history.as_deref())
-        .unwrap_or(chat_history);
+    let messages_history: &[Arc<Message>] =
+        patch.and_then(|o| o.history.as_deref()).unwrap_or(history);
     let preamble = effective_preamble.map(|preamble| Arc::new(Message::system(preamble)));
     let chat_history: Vec<Arc<Message>> = preamble
         .into_iter()
@@ -285,7 +218,9 @@ pub fn prepare_request(
             name: ToolName::new(name.clone()).map_err(|_| {
                 PrepareError::Request("the output tool name cannot be empty".to_string())
             })?,
-            description: output_tool_description
+            description: spec
+                .output_tool_description
+                .as_deref()
                 .unwrap_or(OUTPUT_TOOL_DESCRIPTION)
                 .to_string(),
             parameters: schema.as_value().clone(),
@@ -298,8 +233,8 @@ pub fn prepare_request(
         _ => None,
     };
 
-    let mut documents = static_context.clone();
-    if let Some(patch) = request_patch {
+    let mut documents = spec.static_context.clone();
+    if let Some(patch) = patch {
         documents.extend(patch.extra_context.iter().cloned());
     }
 
@@ -312,20 +247,28 @@ pub fn prepare_request(
         hosted,
     )?;
 
+    let mut request = CompletionRequest::new(prompt);
+    request.accept_unknown_finish_reasons = spec.accept_unknown_finish_reasons;
+    let request = request
+        .messages(chat_history)
+        .temperature(temperature)
+        .max_tokens(max_tokens)
+        .additional_params(additional_params)
+        .options(spec.options.clone())
+        .provider_options(spec.provider_options.clone())
+        .documents(documents)
+        .tools(tooldefs)
+        .provider_tools(spec.provider_tools.clone())
+        .output_schema(native_schema);
+    let request = match policy.tool_choice() {
+        Some(tool_choice) => request.tool_choice(tool_choice.clone()),
+        None => request,
+    };
+
     Ok(PreparedRequest {
-        chat_history,
-        documents,
-        tools: tooldefs,
-        temperature,
-        max_tokens,
-        additional_params,
-        provider_tools: spec.provider_tools.clone(),
-        options: spec.options.clone(),
-        provider_options: spec.provider_options.clone(),
-        output_schema: native_schema,
+        request,
         output_mode: resolved_mode,
         policy,
-        accept_unknown_finish_reasons: spec.accept_unknown_finish_reasons,
     })
 }
 

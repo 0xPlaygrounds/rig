@@ -17,10 +17,7 @@ use crate::run::{AgentRun, OutputMode};
 use crate::{
     completion::{CompletionRequest, Message, PromptError, ToolDefinition},
     run::response::PromptResponse,
-    tool::{
-        ToolCatalog,
-        server::{ToolServerError, ToolServerHandle},
-    },
+    tool::{ToolCatalog, server::ToolServerHandle},
 };
 use rig_core::completion::ModelRef;
 use rig_core::effect::{HandlerDescriptor, HandlerKey, Key, family};
@@ -100,9 +97,12 @@ pub(crate) async fn build_prepared_completion_request(
         None => (&*runner.config.spec, committed_output_tool),
     };
 
-    let prepared = crate::run::prepare::prepare_request(
+    let crate::run::PreparedRequest {
+        request, policy, ..
+    } = crate::run::prepare::prepare_request(
         spec,
         &capabilities,
+        prompt,
         chat_history,
         tool_snapshot.take_definitions(),
         committed_output_tool,
@@ -112,14 +112,12 @@ pub(crate) async fn build_prepared_completion_request(
     // Narrow dispatch to the tools actually advertised this turn (a per-turn
     // `active_tools` allow-list), so the implementation behind every definition
     // the provider received is the one that runs.
-    tool_snapshot.retain_names(prepared.policy.executable());
+    tool_snapshot.retain_names(policy.executable());
 
-    let advertised_tools = prepared.tools.clone();
-    let policy = prepared.policy.clone();
-    let max_tokens = prepared.max_tokens;
+    let advertised_tools = request.tools.clone();
+    let max_tokens = request.max_tokens;
     // The agent records the input itself, so the request the provider sees
     // carries the telemetry flag off: one span, no double recording.
-    let request = prepared.apply(CompletionRequest::new(prompt));
     let telemetry_messages = if record_telemetry_content {
         request.messages_for_telemetry()
     } else {
@@ -491,21 +489,6 @@ impl Agent {
         &self.config.handlers
     }
 
-    /// [`Agent::set_model_label`] by value.
-    pub fn with_model_label(mut self, label: impl Into<ModelRef>) -> Self {
-        self.set_model_label(label);
-        self
-    }
-
-    /// [`Agent::set_model`] by value.
-    pub fn with_model(
-        mut self,
-        model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
-    ) -> Self {
-        self.set_model(model);
-        self
-    }
-
     /// The effect row this program can dispatch to: its model, every tool
     /// the registry serves and its retrieval indexes,
     /// each with the family it needs, from the registry rather than what a
@@ -556,7 +539,7 @@ impl Agent {
     pub async fn tool_definitions(
         &self,
         prompt: Option<String>,
-    ) -> Result<Vec<Arc<ToolDefinition>>, ToolServerError> {
+    ) -> Result<Vec<Arc<ToolDefinition>>, ProviderError> {
         self.tool_server_handle.tool_defs(prompt).await
     }
 }

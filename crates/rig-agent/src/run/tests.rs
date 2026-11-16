@@ -1,5 +1,6 @@
 use super::*;
 use rig_core::conversation::Author;
+use rig_core::conversation::pairing::validate;
 use rig_core::json_utils::remove_preserving_order;
 use rig_core::message::ToolChoice;
 use rig_core::message::{StopReason, ToolFunction, ToolResultContent};
@@ -54,17 +55,15 @@ fn entries_round_trip_through_serialization_in_append_order() {
     let serialized = serde_json::to_string(&run).expect("run serializes");
     let restored: AgentRun = serde_json::from_str(&serialized).expect("run deserializes");
     assert_eq!(restored.entries(), run.entries());
-    assert_eq!(
-        restored.entries_of("counter").count(),
-        2,
-        "kind filter sees both counter snapshots"
-    );
+    let counters = || {
+        restored
+            .entries()
+            .iter()
+            .filter(|entry| entry.kind == "counter")
+    };
+    assert_eq!(counters().count(), 2, "both counter snapshots survive");
     // Last-wins: the snapshot pattern reads the most recent entry.
-    assert_eq!(
-        restored.last_entry_of("counter"),
-        Some(&entry("counter", json!(2)))
-    );
-    assert_eq!(restored.last_entry_of("absent"), None);
+    assert_eq!(counters().next_back(), Some(&entry("counter", json!(2))));
 
     // A cloned ("forked") run carries the entries verbatim.
     assert_eq!(restored.entries(), run.entries());
@@ -1122,24 +1121,6 @@ fn a_run_of_another_format_or_with_an_unknown_key_is_refused() {
     assert!(error.to_string().contains("retired_field"), "{error}");
 }
 
-fn assistant(content: Vec<AssistantContent>) -> Message {
-    Message::Assistant(rig_core::message::AssistantMessage::new(content))
-}
-
-#[test]
-fn with_validated_history_gates_construction() {
-    let bad = vec![
-        assistant(vec![AssistantContent::text("a")]),
-        assistant(vec![AssistantContent::text("b")]),
-    ];
-    assert!(AgentRun::new("x").with_validated_history(bad).is_err());
-    assert!(
-        AgentRun::new("x")
-            .with_validated_history(vec![Message::user("ok")])
-            .is_ok()
-    );
-}
-
 /// The model a run last asked survives a suspension: a resumed run's
 /// selection hook is shown it as `previous_model`, as a fresh run's is.
 #[test]
@@ -1468,6 +1449,7 @@ fn a_provider_error_retry_still_pins_and_intercepts_the_output_tool() {
         prepare_request(
             &spec,
             &Default::default(),
+            "go",
             &history,
             tools.clone(),
             run.output_tool_name(),
@@ -1525,10 +1507,10 @@ fn an_older_format_run_is_refused_by_name() {
 }
 
 /// Transcript well-formedness has one meaning: whatever a run commits to
-/// its own history must be accepted by `with_validated_history`, the
-/// documented way to resume a run in another process (a `/reload`).
+/// its own history must pass `pairing::validate`, which a host resuming a
+/// run in another process (a `/reload`) runs before `with_history`.
 fn assert_resumable(history: Vec<Message>) {
-    let result = AgentRun::new("continue").with_validated_history(history.clone());
+    let result = validate(&history);
     assert!(
         result.is_ok(),
         "a history the run produced is refused on resume: {:?}\nhistory: {history:#?}",

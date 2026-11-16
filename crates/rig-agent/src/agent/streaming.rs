@@ -202,17 +202,6 @@ impl From<LiveTool> for MultiTurnStreamItem {
     }
 }
 
-impl MultiTurnStreamItem {
-    /// Build a final response from structured content and aggregate usage.
-    /// Concatenates text for output; completion details and history remain empty.
-    pub fn final_response(
-        content: Vec<AssistantContent>,
-        aggregated_usage: crate::completion::Usage,
-    ) -> Self {
-        Self::FinalResponse(PromptResponse::from_content(content, aggregated_usage))
-    }
-}
-
 impl AgentRunner {
     /// Drive the agent loop as a stream of assistant content, tool activity
     /// and, last, the [`FinalResponse`](MultiTurnStreamItem::FinalResponse).

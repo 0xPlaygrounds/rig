@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use rig::integrations::cli_chatbot::ChatBotBuilder;
+use rig::integrations::cli_chatbot::ChatBot;
 use rig::prelude::*;
 use rig::providers::ollama::OllamaConfig;
 use rig::{
@@ -98,7 +98,7 @@ async fn main() -> Result<()> {
     println!("Starting CLI chatbot...");
 
     // Start interactive CLI
-    let chatbot = ChatBotBuilder::new().agent(rag_agent).max_turns(10).build();
+    let chatbot = ChatBot::new(rag_agent).max_turns(10);
 
     chatbot.run().await?;
 

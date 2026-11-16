@@ -43,7 +43,7 @@ use rig_agent::{
 use rig_cassette::effect_log::{EffectLog, EffectLogRecorder, EffectLogReplayer, RequestCheck};
 use rig_core::{
     completion::{CompletionRequest, Document},
-    effect::{EffectFamily, EffectRecord, HandlerKey},
+    effect::{EffectFamily, EffectRecord, HandlerKey, Key, family},
     error::{ErrorKind, ErrorReport},
     message::ToolChoice,
     message::{AssistantContent, Message},
@@ -645,7 +645,9 @@ struct LookupBeforeRun;
 impl AgentHook for LookupBeforeRun {
     async fn on_run_start(&self, ctx: &HookContext, _event: RunStart<'_>) -> RunStartAction {
         let tool = ctx
-            .tool(&HandlerKey::from(LOOKUP_KEY))
+            .bind(&Key::<family::Tool>::new_unchecked(HandlerKey::from(
+                LOOKUP_KEY,
+            )))
             .expect("the run's bus serves add");
         let answer = tool
             .dispatch(rig_core::effect::ToolCallRequest {
@@ -3342,6 +3344,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
                 let prepared = prepare_request(
                     &spec,
                     &model.capabilities(),
+                    prompt,
                     &history,
                     definitions,
                     run.output_tool_name(),
@@ -3353,8 +3356,8 @@ async fn hand_drive(program: &Program, resume: Resume) {
                 // preparation failure leaves it unchanged — so a resumed
                 // engine's selection hook sees it.
                 run.set_previous_model(rig_core::completion::ModelRef::new(label));
-                run.advertise_tools(turn, prepared.tools.clone());
-                let request = prepared.clone().apply(CompletionRequest::new(prompt));
+                run.advertise_tools(turn, prepared.request.tools.clone());
+                let request = prepared.request.clone();
                 // The completion-call hook's dispatch, before the completion.
                 if program.hooks.contains(&Hook::NoteAtCompletionCall) {
                     note("completion_call").await;
@@ -3559,7 +3562,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
                             panic!("the replayer recognised the request: {report:?}")
                         }
                     };
-                    ModelTurn::from_response(&response, &prepared)
+                    ModelTurn::from_policy(&response, prepared.policy.clone())
                 };
                 let choice = turn.choice.clone();
                 let mut outcome = run.model_response(turn).expect("a model turn");

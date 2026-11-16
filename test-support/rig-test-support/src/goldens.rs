@@ -363,7 +363,11 @@ impl rig_agent::agent::AgentHook for LookupBeforeRun {
         _event: rig_agent::agent::RunStart<'_>,
     ) -> rig_agent::agent::RunStartAction {
         let tool = ctx
-            .tool(&rig_core::effect::HandlerKey::from(LOOKUP_KEY))
+            .bind(
+                &rig_core::effect::Key::<rig_core::effect::family::Tool>::new_unchecked(
+                    rig_core::effect::HandlerKey::from(LOOKUP_KEY),
+                ),
+            )
             .expect("the run's bus serves add");
         let answer = tool
             .dispatch(rig_core::effect::ToolCallRequest {

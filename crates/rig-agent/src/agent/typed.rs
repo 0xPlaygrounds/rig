@@ -51,22 +51,6 @@ pub struct TypedPromptResponse<T> {
 }
 
 impl<T> TypedPromptResponse<T> {
-    /// A response of `output` with the run's `usage`.
-    pub fn new(output: T, usage: Usage) -> Self {
-        Self {
-            output,
-            usage,
-            completion_calls: Vec::new(),
-            messages: Vec::new(),
-        }
-    }
-
-    /// Attach completion call details to this response.
-    pub fn with_completion_calls(mut self, completion_calls: Vec<CompletionCall>) -> Self {
-        self.completion_calls = completion_calls;
-        self
-    }
-
     /// Returns successfully completed completion requests made by this agent run.
     ///
     /// An entry whose counters are all `None` means the provider reported no

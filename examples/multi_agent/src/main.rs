@@ -1,5 +1,5 @@
 use anyhow::Result;
-use rig::integrations::cli_chatbot::ChatBotBuilder;
+use rig::integrations::cli_chatbot::ChatBot;
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
 use rig::{
@@ -95,10 +95,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     // Spin up a CLI chatbot using the multi-agent system
-    let chatbot = ChatBotBuilder::new()
-        .agent(multi_agent_system)
-        .max_turns(2)
-        .build();
+    let chatbot = ChatBot::new(multi_agent_system).max_turns(2);
 
     chatbot.run().await?;
 
