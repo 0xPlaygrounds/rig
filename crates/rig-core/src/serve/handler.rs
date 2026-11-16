@@ -680,14 +680,17 @@ impl Observed {
         item: &Result<Relayed, ErrorReport>,
         outcome: Option<Result<Answered, ErrorReport>>,
     ) {
-        let keep = self.recorder.keep_events();
         match item {
             // Past the first, an item matters only to a recorder that keeps them.
-            Ok(Relayed::Item(item)) if !std::mem::replace(&mut self.streamed, true) || keep => {
-                self.recorder.event(self.id, item);
+            Ok(Relayed::Item(item)) => {
+                if !std::mem::replace(&mut self.streamed, true) || self.recorder.keep_events() {
+                    self.recorder.event(self.id, item);
+                }
             }
-            Ok(Relayed::Origin(origin)) if keep => self.recorder.origin(self.id, origin),
-            Err(error) if keep => self.recorder.stream_error(self.id, error),
+            Ok(Relayed::Origin(origin)) if self.recorder.keep_events() => {
+                self.recorder.origin(self.id, origin);
+            }
+            Err(error) if self.recorder.keep_events() => self.recorder.stream_error(self.id, error),
             _ => {}
         }
         if let Some(outcome) = outcome {
