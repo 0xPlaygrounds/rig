@@ -47,7 +47,7 @@ impl Authenticator {
         let from_cache = record.github_token.is_some();
         let (github_token, held) = match record.github_token.clone() {
             Some(token) => (token, held),
-            None => self.sign_in_to_github(http, held).await?,
+            None => self.sign_in_to_github(http, &mut record, held).await?,
         };
         let (session, _held) = match refresh_api_key(http, &github_token).await {
             Ok(session) => (
@@ -57,7 +57,7 @@ impl Authenticator {
             Err(err) if from_cache && should_retry_with_fresh_access_token(&err) => {
                 record.github_token = None;
                 save_record(&*self.0.store, STORE_KEY, &record).await?;
-                let (fresh, held) = self.sign_in_to_github(http, held).await?;
+                let (fresh, held) = self.sign_in_to_github(http, &mut record, held).await?;
                 let session = refresh_api_key(http, &fresh)
                     .await?
                     .bound_to(&fresh, Some(fresh.clone()));
@@ -70,11 +70,13 @@ impl Authenticator {
     }
 
     /// Run the device flow when allowed, with the store free meanwhile since
-    /// the user may take minutes, then keep the GitHub token it gets in the
-    /// stored record, read again, before the exchange that may fail.
+    /// the user may take minutes, then keep the GitHub token it gets in
+    /// `record` and the store before the exchange that may fail. The last
+    /// sign-in to finish wins, as two sign-ins one after the other would.
     async fn sign_in_to_github<'a, H>(
         &'a self,
         http: &H,
+        record: &mut ApiKeyRecord,
         held: Held<'a>,
     ) -> Result<(String, Held<'a>), AuthError>
     where
@@ -90,9 +92,8 @@ impl Authenticator {
             .store_free_during(&self.0, STORE_KEY, self.login_device_flow(http))
             .await?;
         let token = token?;
-        let mut record: ApiKeyRecord = load_record(&*self.0.store, STORE_KEY).await?;
         record.github_token = Some(token.clone());
-        save_record(&*self.0.store, STORE_KEY, &record).await?;
+        save_record(&*self.0.store, STORE_KEY, record).await?;
         Ok((token, held))
     }
 
