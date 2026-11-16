@@ -19,12 +19,12 @@ use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::mpsc;
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
-use rig_harness_protocol::config::toml_edit::{Item, TableLike};
+use rig_harness_protocol::config::toml_edit::Item;
 use rig_harness_protocol::fs;
 use rig_harness_protocol::launch::{Launch, Purpose};
 use rig_harness_protocol::{AgentDescription, Home, RunDir, config, first_errors};
 
-use super::project::{self, PACKAGE, RigSource};
+use super::project::{self, Manifest, PACKAGE, RigSource};
 use super::{BEVY_VERSION, COMMIT, Result, locks};
 
 /// Whether a build that is already known gets staged again.
@@ -225,7 +225,7 @@ fn compile_logged(
 fn local_crates(home: &Home, plugins: &config::Plugins) -> Result<()> {
     for extra in plugins.extras_on() {
         if let config::Source::Path(path) = &extra.source
-            && let Err(why) = project::read_manifest(path)
+            && let Err(why) = Manifest::read(path)
         {
             return Err(format!(
                 "{} [[plugins.extra]] `{}`: {why}; fix the crate or its `path`, \
@@ -887,10 +887,12 @@ fn bevy_pins<'a>(
 ) -> Vec<String> {
     let mut pins = Vec::new();
     for directory in crates {
-        let Some(manifest) = Manifest::read(directory) else {
+        let Ok(manifest) = Manifest::read(directory) else {
             continue;
         };
-        for (table, dependencies) in manifest.dependency_tables() {
+        for (table, dependencies) in
+            manifest.dependency_tables(&["dependencies", "build-dependencies"])
+        {
             for (key, item) in dependencies.iter() {
                 let pin = if item.get("workspace").and_then(Item::as_bool) == Some(true) {
                     workspace_dependency(&manifest, directory, key).and_then(|(workspace, item)| {
@@ -940,44 +942,7 @@ fn bevy_crates(lock: &str) -> BTreeSet<String> {
 /// writes or its comments name.
 const NAMED_BEVY: [&str; 4] = ["bevy", "bevy_app", "bevy_ecs", "bevy_reflect"];
 
-/// A crate's `Cargo.toml`, parsed with where each value is written.
-struct Manifest {
-    file: PathBuf,
-    text: String,
-    document: config::toml_edit::Document<String>,
-}
-
-impl Manifest {
-    /// The `Cargo.toml` of `directory`; `None` when it does not read.
-    fn read(directory: &Path) -> Option<Self> {
-        let file = directory.join("Cargo.toml");
-        let text = fs::read_to_string(&file).ok()?;
-        let document = config::toml_edit::Document::parse(text.clone()).ok()?;
-        Some(Self {
-            file,
-            text,
-            document,
-        })
-    }
-
-    /// Its dependency and build-dependency tables, every target's too,
-    /// each with its name as a header writes it.
-    fn dependency_tables(&self) -> Vec<(String, &dyn TableLike)> {
-        let kinds = ["dependencies", "build-dependencies"];
-        let mut tables: Vec<(String, &dyn TableLike)> = (kinds.iter())
-            .filter_map(|kind| Some((kind.to_string(), self.document.get(kind)?.as_table_like()?)))
-            .collect();
-        let targets = self.document.get("target").and_then(Item::as_table_like);
-        for (target, item) in targets.into_iter().flat_map(|targets| targets.iter()) {
-            for kind in kinds {
-                if let Some(table) = item.get(kind).and_then(Item::as_table_like) {
-                    tables.push((format!("target.{}.{kind}", quoted_key(target)), table));
-                }
-            }
-        }
-        tables
-    }
-
+impl project::Manifest {
     /// The requirement `item` of `key` in `table` writes, as
     /// `<file>:<line>: [<table>] <the line>`, when it is of one of `bevy`
     /// (by its `package`, else `key`) and [`BEVY_VERSION`] does not meet
@@ -1002,25 +967,14 @@ impl Manifest {
             return None;
         }
         let at = version.span()?.start;
-        let line = self.text.get(..at)?.matches('\n').count();
-        let written = self.text.lines().nth(line)?.trim();
+        let text = self.document.raw();
+        let line = text.get(..at)?.matches('\n').count();
+        let written = text.lines().nth(line)?.trim();
         Some(format!(
             "{}:{}: [{table}] {written}",
             self.file.display(),
             line + 1
         ))
-    }
-}
-
-/// `key` as a dotted header writes it: quoted when it is not bare.
-fn quoted_key(key: &str) -> String {
-    let bare = key
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
-    if bare {
-        key.to_owned()
-    } else {
-        format!("'{key}'")
     }
 }
 
@@ -1050,10 +1004,10 @@ fn workspace_dependency(
         .and_then(|package| package.get("workspace"))
         .and_then(Item::as_str);
     let workspace = match named {
-        Some(path) => Manifest::read(&lexical(&directory.join(path)))?,
+        Some(path) => Manifest::read(&lexical(&directory.join(path))).ok()?,
         None => directory
             .ancestors()
-            .filter_map(Manifest::read)
+            .filter_map(|directory| Manifest::read(directory).ok())
             .find(|manifest| manifest.document.get("workspace").is_some())?,
     };
     let item = workspace
