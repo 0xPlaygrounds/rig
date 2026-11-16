@@ -494,15 +494,20 @@ pub struct ToolCall {
 }
 
 impl ToolCall {
-    fn fingerprint(&self) -> Fingerprint {
-        let id = match &self.id {
+    /// The id the fingerprint and the projection see: every local id is one
+    /// placeholder.
+    fn fingerprint_id(&self) -> &str {
+        match &self.id {
             CallId::Provider(id) => id.as_str(),
             CallId::Local(_) => "~local",
-        };
+        }
+    }
+
+    fn fingerprint(&self) -> Fingerprint {
         Fingerprint::of_canonical(&(
             "v1",
             "call",
-            id,
+            self.fingerprint_id(),
             self.function.name.as_str(),
             native::Canonical(&self.function.arguments),
             &self.function.invalid_arguments,
@@ -534,14 +539,10 @@ impl ToolCall {
     }
 
     fn projection(&self) -> serde_json::Value {
-        let id = match &self.id {
-            CallId::Provider(id) => id.as_str(),
-            CallId::Local(_) => "~local",
-        };
         serde_json::json!([
             "v1",
             "call",
-            id,
+            self.fingerprint_id(),
             self.function.name.as_str(),
             self.function.arguments,
             self.function.invalid_arguments,

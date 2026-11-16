@@ -56,15 +56,8 @@ impl ModelInfo {
     /// Creates a model with an ID and display name; other metadata is absent.
     pub fn new(id: impl Into<String>, name: impl Into<String>) -> Self {
         Self {
-            id: id.into(),
             name: Some(name.into()),
-            description: None,
-            r#type: None,
-            created_at: None,
-            owned_by: None,
-            context_length: None,
-            max_output_tokens: None,
-            supports_tool_calls: None,
+            ..Self::from_id(id)
         }
     }
 
