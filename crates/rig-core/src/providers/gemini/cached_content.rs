@@ -18,7 +18,7 @@
 
 use std::time::Duration;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 
 use serde_json::{Value, json};
 
@@ -62,10 +62,12 @@ pub(crate) fn on_handle(error: ProviderError, name: &str) -> ProviderError {
 }
 
 /// A relative lifetime or absolute expiry time for cached content.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub enum CacheExpiry {
     /// Expire this long after creation. Serialized as Gemini's duration string
-    /// (`"600s"`).
+    /// (`"600.000000000s"`).
+    #[serde(serialize_with = "ttl_string")]
     Ttl(Duration),
     /// Expire at an absolute RFC 3339 timestamp.
     ExpireTime(String),
@@ -79,16 +81,19 @@ impl CacheExpiry {
     pub fn expire_time(timestamp: impl Into<String>) -> Self {
         Self::ExpireTime(timestamp.into())
     }
+}
 
-    /// Gemini's duration encoding: fractional seconds with an `s` suffix.
-    fn ttl_string(ttl: Duration) -> String {
-        format!("{}.{:09}s", ttl.as_secs(), ttl.subsec_nanos())
-    }
+/// Gemini's duration encoding: fractional seconds with an `s` suffix.
+fn ttl_string<S: Serializer>(ttl: &Duration, serializer: S) -> Result<S::Ok, S::Error> {
+    serializer.collect_str(&format_args!(
+        "{}.{:09}s",
+        ttl.as_secs(),
+        ttl.subsec_nanos()
+    ))
 }
 
 /// Content and configuration for creating a cache.
-/// Supply content or a system instruction before creation. The expiry builder
-/// keeps relative and absolute expiry mutually exclusive.
+/// Supply content or a system instruction before creation.
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NewCachedContent {
@@ -105,10 +110,8 @@ pub struct NewCachedContent {
     tool_config: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     display_name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    ttl: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    expire_time: Option<String>,
+    #[serde(flatten)]
+    expiry: Option<CacheExpiry>,
 }
 
 impl NewCachedContent {
@@ -171,16 +174,7 @@ impl NewCachedContent {
     /// Set the expiry. Setting it twice replaces the previous value rather than
     /// sending both, which the API rejects.
     pub fn expiry(mut self, expiry: CacheExpiry) -> Self {
-        match expiry {
-            CacheExpiry::Ttl(ttl) => {
-                self.ttl = Some(CacheExpiry::ttl_string(ttl));
-                self.expire_time = None;
-            }
-            CacheExpiry::ExpireTime(at) => {
-                self.expire_time = Some(at);
-                self.ttl = None;
-            }
-        }
+        self.expiry = Some(expiry);
         self
     }
 
@@ -558,12 +552,11 @@ fn as_resource(data: &str) -> WireEvent<CachedContentReply> {
 
 /// Serialize the expiry patch with an update mask naming its only field.
 fn expiry_patch(expiry: CacheExpiry) -> Result<(Vec<u8>, &'static str), EncodeError> {
-    let (field, value) = match expiry {
-        CacheExpiry::Ttl(ttl) => ("ttl", CacheExpiry::ttl_string(ttl)),
-        CacheExpiry::ExpireTime(at) => ("expireTime", at),
+    let field = match expiry {
+        CacheExpiry::Ttl(_) => "ttl",
+        CacheExpiry::ExpireTime(_) => "expireTime",
     };
-    let patch = serde_json::Map::from_iter([(field.to_owned(), serde_json::Value::String(value))]);
-    Ok((serde_json::to_vec(&patch)?, field))
+    Ok((serde_json::to_vec(&expiry)?, field))
 }
 
 /// `models/x` from `x`, idempotently.

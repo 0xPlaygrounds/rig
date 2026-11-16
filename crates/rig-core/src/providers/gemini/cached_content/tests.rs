@@ -48,8 +48,8 @@ async fn a_mis_targeting_handle_never_reaches_the_socket() {
 #[test]
 fn ttl_serializes_in_geminis_duration_form() {
     assert_eq!(
-        CacheExpiry::ttl_string(Duration::from_secs(600)),
-        "600.000000000s"
+        serde_json::to_value(CacheExpiry::ttl(Duration::from_secs(600))).ok(),
+        Some(json!({ "ttl": "600.000000000s" }))
     );
 }
 

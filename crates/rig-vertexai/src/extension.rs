@@ -256,7 +256,8 @@ pub enum ModelRoutingPreference {
 
 /// How a safety threshold is measured.
 #[non_exhaustive]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum HarmBlockMethod {
     /// `SEVERITY`: by probability and severity.
     Severity,
@@ -264,25 +265,16 @@ pub enum HarmBlockMethod {
     Probability,
 }
 
-impl HarmBlockMethod {
-    /// Vertex AI's spelling.
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Severity => "SEVERITY",
-            Self::Probability => "PROBABILITY",
-        }
-    }
-}
-
 /// Block `category` at `threshold`, measured by `method` when set.
 #[non_exhaustive]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub struct VertexSafetySetting {
     /// The category.
     pub category: HarmCategory,
     /// The threshold.
     pub threshold: HarmBlockThreshold,
     /// The method, Vertex AI's default when `None`.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub method: Option<HarmBlockMethod>,
 }
 
@@ -300,18 +292,6 @@ impl VertexSafetySetting {
     pub fn method(mut self, method: HarmBlockMethod) -> Self {
         self.method = Some(method);
         self
-    }
-}
-
-impl Serialize for VertexSafetySetting {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let mut map = serializer.serialize_map(None)?;
-        map.serialize_entry("category", self.category.as_str())?;
-        map.serialize_entry("threshold", self.threshold.as_str())?;
-        if let Some(method) = self.method {
-            map.serialize_entry("method", method.as_str())?;
-        }
-        map.end()
     }
 }
 
