@@ -710,6 +710,19 @@ pub enum RenderInput {
     Aside(AsideRender),
 }
 
+impl RenderInput {
+    /// The lines it is drawn as without a render system.
+    fn default_lines(&self) -> Vec<LookLine> {
+        let lines = match self {
+            Self::Tool(call) => return call.default_lines(),
+            Self::Entry(entry) => entry.default_lines(),
+            Self::Content(content) => content.default_lines(),
+            Self::Aside(_) => Vec::new(),
+        };
+        lines.into_iter().map(LookLine::from).collect()
+    }
+}
+
 /// An item's identity within one batch. Message ordinals distinguish values
 /// without persisted ids. These are presentation keys, not effect entities.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -943,14 +956,17 @@ impl Renderers {
         changed
     }
 
+    /// The lines of the item `key` and its decorations. Only the collect
+    /// pass builds its `input`, the finish pass draws the batch's output.
     fn output(
         &self,
         key: RenderKey,
-        input: RenderInput,
-        lines: Vec<LookLine>,
+        input: impl FnOnce() -> RenderInput,
     ) -> (Vec<LookLine>, Decorated) {
         match self.pass {
             Pass::Collect => {
+                let input = input();
+                let lines = input.default_lines();
                 let place = self.place.get();
                 if matches!(place, Place::Outside(_))
                     && let Some(previous) = self
@@ -972,54 +988,49 @@ impl Renderers {
                 (lines, Vec::new())
             }
             Pass::Finish => {
-                let batch = self.batch.borrow();
-                let cached = self.cached.borrow();
-                let request = batch.requests.get(&key).or_else(|| cached.get(&key));
-                request.map_or((lines, Vec::new()), |request| request.output.drawn())
+                let drawn = {
+                    let batch = self.batch.borrow();
+                    let cached = self.cached.borrow();
+                    let request = batch.requests.get(&key).or_else(|| cached.get(&key));
+                    request.map(|request| request.output.drawn())
+                };
+                drawn.unwrap_or_else(|| (input().default_lines(), Vec::new()))
             }
         }
     }
 
-    /// The lines of `call` and its decorations.
-    pub(crate) fn call_decorated(&self, call: ToolRender) -> (Vec<LookLine>, Decorated) {
+    /// The lines of the call `call` builds and its decorations.
+    pub(crate) fn call_decorated(
+        &self,
+        call: impl FnOnce() -> ToolRender,
+    ) -> (Vec<LookLine>, Decorated) {
         let key = match self.place.get() {
             Place::Message { index, block } => RenderKey::Tool(index, block),
             Place::Outside(at) => RenderKey::Streaming(at),
         };
-        let lines = call.default_lines();
-        self.output(key, RenderInput::Tool(call), lines)
+        self.output(key, || RenderInput::Tool(call()))
     }
 
-    /// A delivered text's lines; only messages hold one.
-    pub(crate) fn entry(&self, entry: EntryRender) -> Vec<LookLine> {
+    /// The lines of the delivered text `entry` builds; only messages hold
+    /// one.
+    pub(crate) fn entry(&self, entry: impl FnOnce() -> EntryRender) -> Vec<LookLine> {
         match self.in_message() {
             Some((index, block)) => self.entry_at(RenderKey::Entry(index, block), entry),
-            None => entry
-                .default_lines()
-                .into_iter()
-                .map(LookLine::from)
-                .collect(),
+            None => RenderInput::Entry(entry()).default_lines(),
         }
     }
 
-    fn entry_at(&self, key: RenderKey, entry: EntryRender) -> Vec<LookLine> {
-        let lines = entry.default_lines().into_iter().map(LookLine::from);
-        self.output(key, RenderInput::Entry(entry), lines.collect())
-            .0
+    fn entry_at(&self, key: RenderKey, entry: impl FnOnce() -> EntryRender) -> Vec<LookLine> {
+        self.output(key, || RenderInput::Entry(entry())).0
     }
 
     /// A content block's lines; only messages hold one.
     pub(crate) fn content(&self, content: ContentRender) -> Vec<LookLine> {
-        let lines = content
-            .default_lines()
-            .into_iter()
-            .map(LookLine::from)
-            .collect();
         let Some((index, _)) = self.in_message() else {
-            return lines;
+            return RenderInput::Content(content).default_lines();
         };
         let key = RenderKey::Content(index, content.index);
-        self.output(key, RenderInput::Content(content), lines).0
+        self.output(key, || RenderInput::Content(content)).0
     }
 
     /// The lines of the aside `id` in `theme`'s colors: a note's as an entry's.
@@ -1032,14 +1043,16 @@ impl Renderers {
                 title: note.title,
                 text: note.text,
             };
-            return self.entry_at(key, entry);
+            return self.entry_at(key, || entry);
         }
-        let input = AsideRender {
-            id,
-            aside: aside.clone(),
-            theme,
+        let input = || {
+            RenderInput::Aside(AsideRender {
+                id,
+                aside: aside.clone(),
+                theme,
+            })
         };
-        self.output(key, RenderInput::Aside(input), Vec::new()).0
+        self.output(key, input).0
     }
 }
 
