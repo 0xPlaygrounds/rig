@@ -9,7 +9,7 @@
 //! rules and what each blocked.
 
 use std::collections::HashMap;
-use std::path::{Component as Part, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::confirm_destructive::ConfirmSystems;
@@ -18,6 +18,7 @@ use glob::{MatchOptions, Pattern};
 use rig_core::effect::Answered;
 use rig_core::tool::ToolOutput;
 use rig_harness::prelude::*;
+use rig_tools::workspace::{Local, Workspace};
 use rig_tools::{Found, SearchHits, render};
 use serde::Deserialize;
 
@@ -185,8 +186,8 @@ impl PathPolicy {
     /// The default rules for the project at `root`, then those of each of
     /// `files` that exists, in order.
     pub fn load(root: &Path, files: &[PathBuf]) -> Self {
-        let root = real(&std::path::absolute(root).unwrap_or_else(|_| root.to_path_buf()));
-        let home = std::env::home_dir().map(|home| real(&home));
+        let root = Local.canonical(root);
+        let home = std::env::home_dir().map(|home| Local.canonical(&home));
         let mut policy = Policy {
             root,
             home,
@@ -261,9 +262,8 @@ impl Policy {
         Ok(Matcher::Root(Pattern::new(glob)?, anywhere))
     }
 
-    /// `raw` as the file system sees it: `~` expanded, relative to the
-    /// root, symbolic links followed as far as the path exists, and `..`
-    /// and `.` taken out of the rest.
+    /// `raw` as the file tools see it: `~` expanded, relative to the root,
+    /// and resolved as [`Workspace::canonical`] does.
     fn resolve(&self, raw: &str) -> PathBuf {
         let home = self.home.as_deref().unwrap_or(Path::new("/"));
         // The coding tools' rule: a first component `~`.
@@ -271,32 +271,8 @@ impl Policy {
             Ok(rest) => home.join(rest),
             Err(_) => PathBuf::from(raw),
         };
-        real(&self.root.join(path))
+        Local.canonical(&self.root.join(path))
     }
-}
-
-/// `path` (absolute) with its longest existing prefix canonicalized and
-/// the rest normalized without the file system.
-fn real(path: &Path) -> PathBuf {
-    let parts: Vec<Part> = path.components().collect();
-    for split in (0..=parts.len()).rev() {
-        let (head, tail) = parts.split_at(split);
-        let head: PathBuf = head.iter().collect();
-        let Ok(mut resolved) = head.canonicalize() else {
-            continue;
-        };
-        for part in tail {
-            match part {
-                Part::ParentDir => {
-                    resolved.pop();
-                }
-                Part::Normal(name) => resolved.push(name),
-                Part::CurDir | Part::RootDir | Part::Prefix(_) => {}
-            }
-        }
-        return resolved;
-    }
-    path.to_path_buf()
 }
 
 /// How many calls each rule blocked, and how many `search` matches it
