@@ -2,7 +2,7 @@
 
 use assert_fs::TempDir;
 use rig::http_client::DynHttpClient;
-use rig::providers::auth::FileTokenStore;
+use rig::providers::auth::{DeviceCodeHandler, FileTokenStore};
 use rig::providers::chatgpt;
 use rig::providers::openai::OpenAIConfig;
 use rig_test_support::cassette_models::OpenAiModels;
@@ -26,7 +26,7 @@ async fn oauth_provider_in(dir: &Path, http: &DynHttpClient) -> OpenAIConfig {
     let context = chatgpt::auth::Authenticator::new(
         chatgpt::auth::AuthSource::OAuth,
         FileTokenStore::new(dir),
-        rig::providers::auth::DeviceCodeHandler::default(),
+        DeviceCodeHandler::default(),
         true,
     )
     .auth_context(http)

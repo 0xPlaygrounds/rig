@@ -1,5 +1,6 @@
-//! Shared OAuth errors, device-code callbacks, token stores, and
-//! authentication transport helpers.
+//! The sign-in types the ChatGPT and Copilot authenticators share: errors,
+//! device-code callbacks, token stores, and the browser sign-in's loopback
+//! listener.
 //!
 //! ```
 //! use rig_core::providers::auth::DeviceCodeHandler;

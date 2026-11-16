@@ -29,6 +29,7 @@ mod streaming;
 mod streaming_tools;
 
 use rig::http_client::DynHttpClient;
+use rig::providers::auth::{DeviceCodeHandler, FileTokenStore, MemoryTokenStore, TokenStore};
 use rig::providers::chatgpt;
 use rig::providers::openai::OpenAIConfig;
 use serde::Deserialize;
@@ -59,14 +60,14 @@ async fn live_provider(http: &DynHttpClient) -> OpenAIConfig {
             .expect("the ChatGPT environment should describe a provider");
     }
 
-    let store: std::sync::Arc<dyn rig::providers::auth::TokenStore> = match default_auth_dir() {
-        Some(dir) => std::sync::Arc::new(rig::providers::auth::FileTokenStore::new(dir)),
-        None => std::sync::Arc::new(rig::providers::auth::MemoryTokenStore::default()),
+    let store: std::sync::Arc<dyn TokenStore> = match default_auth_dir() {
+        Some(dir) => std::sync::Arc::new(FileTokenStore::new(dir)),
+        None => std::sync::Arc::new(MemoryTokenStore::default()),
     };
     let authenticator = chatgpt::auth::Authenticator::new(
         chatgpt::auth::AuthSource::OAuth,
         store,
-        rig::providers::auth::DeviceCodeHandler::default(),
+        DeviceCodeHandler::default(),
         true,
     );
     let context = authenticator
@@ -97,8 +98,8 @@ pub(crate) async fn live_client() -> OpenAiModels {
 }
 
 fn has_usable_oauth_cache() -> bool {
-    let Some(path) = default_auth_dir()
-        .map(|dir| rig::providers::auth::FileTokenStore::new(dir).path(chatgpt::PROVIDER_NAME))
+    let Some(path) =
+        default_auth_dir().map(|dir| FileTokenStore::new(dir).path(chatgpt::PROVIDER_NAME))
     else {
         return false;
     };
