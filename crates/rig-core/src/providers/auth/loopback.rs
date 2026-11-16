@@ -5,10 +5,10 @@
 //! provider and the app to return to. Native only.
 //!
 //! ```no_run
-//! use rig_core::providers::internal::loopback::{Loopback, LoopbackHost};
+//! use rig_core::providers::auth::loopback::{Loopback, LoopbackHost};
 //! use std::time::{Duration, Instant};
 //!
-//! # async fn sign_in() -> Result<(), rig_core::providers::internal::loopback::LoopbackError> {
+//! # async fn sign_in() -> Result<(), rig_core::providers::auth::loopback::LoopbackError> {
 //! let listener = Loopback::new("Example", LoopbackHost::Localhost, [0], "/callback")
 //!     .listen("state".into(), Instant::now() + Duration::from_secs(300))?;
 //! // Send the user to the provider with `listener.redirect_uri()`, then:

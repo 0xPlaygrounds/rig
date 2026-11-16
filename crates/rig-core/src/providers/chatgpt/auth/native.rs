@@ -1,15 +1,13 @@
 //! Native ChatGPT OAuth and token cache implementation.
 
-use super::{
-    AuthContext, AuthError, Authenticator, BrowserSignInPrompt, DeviceCodePrompt, STORE_KEY,
-    SignInMethod, SignInPrompt, SignedOut,
-};
+use super::{Authenticator, BrowserSignInPrompt, STORE_KEY, SignInMethod, SignInPrompt, SignedOut};
 use crate::http_client::HttpClientExt;
 use crate::json_utils::Lenient;
-use crate::providers::internal::auth::{
-    form, load_record, request, save_record, send_bytes, send_json, token_expired,
+use crate::providers::auth::loopback::LoopbackError;
+use crate::providers::auth::{
+    AuthContext, AuthError, DeviceCodePrompt, form, load_record, request, save_record, send_bytes,
+    send_json, token_expired,
 };
-use crate::providers::internal::loopback::LoopbackError;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use base64::Engine;
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;

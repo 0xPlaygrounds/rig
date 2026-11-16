@@ -98,7 +98,7 @@ impl crate::client::signed_in::CredentialSource for FixedContext {
     async fn auth_context(
         &self,
         _: &DynHttpClient,
-    ) -> Result<AuthContext, crate::providers::chatgpt::auth::AuthError> {
+    ) -> Result<AuthContext, crate::providers::auth::AuthError> {
         Ok(self.0.clone())
     }
 }

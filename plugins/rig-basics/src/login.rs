@@ -35,12 +35,10 @@ use bevy_tasks::{IoTaskPool, TaskPool};
 use crossbeam_channel::{Receiver, Sender};
 use rig_core::catalog::{ModelSpec, ModelStatus, SignIn, Transport};
 use rig_core::client::signed_in::SignedInModel;
+use rig_core::providers::auth::{AuthError, DeviceCodeHandler, DeviceCodePrompt, FileTokenStore};
 use rig_core::providers::chatgpt::{
     self,
-    auth::{
-        AuthError, AuthSource, Authenticator, DeviceCodeHandler, DeviceCodePrompt, FileTokenStore,
-        SignInMethod, SignInPrompt, SignedOut,
-    },
+    auth::{AuthSource, Authenticator, SignInMethod, SignInPrompt, SignedOut},
 };
 use rig_core::providers::registry::ConnectError;
 use rig_core::serve::ErasedHandler;

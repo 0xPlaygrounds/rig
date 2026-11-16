@@ -11,7 +11,7 @@ use crate::effect::{EffectKind, HandlerDescriptor, family};
 use crate::error::{ErrorKind, ErrorReport, ProviderError};
 use crate::http_client::DynHttpClient;
 use crate::operation::Completion;
-use crate::providers::internal::auth::{AuthContext, AuthError};
+use crate::providers::auth::{AuthContext, AuthError};
 use crate::providers::registry::{ConnectError, ConnectOptions, ProviderConfig};
 use crate::providers::{chatgpt, copilot};
 use crate::serve::adapters::ModelAdapter;
@@ -57,7 +57,8 @@ impl CredentialSource for copilot::auth::Authenticator {
 ///
 /// ```no_run
 /// use rig_core::catalog::Catalog;
-/// use rig_core::providers::chatgpt::auth::{AuthSource, Authenticator, DeviceCodeHandler, FileTokenStore};
+/// use rig_core::providers::auth::{DeviceCodeHandler, FileTokenStore};
+/// use rig_core::providers::chatgpt::auth::{AuthSource, Authenticator};
 /// use rig_core::client::signed_in::SignedInModel;
 /// use rig_core::serve::ErasedHandler;
 ///

@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rig_core::error::BoxError;
-use rig_core::providers::chatgpt::auth::{MemoryTokenStore, StoreLock, TokenStore};
+use rig_core::providers::auth::{MemoryTokenStore, StoreLock, TokenStore};
 use rig_core::wasm_compat::WasmBoxedFuture;
 
 /// Counts the locks taken and released, as a lock table in a database would.

@@ -20,7 +20,8 @@ use std::sync::{Arc, Mutex};
 /// client or process saved there, before asking for a new sign-in.
 ///
 /// ```
-/// use rig_core::providers::chatgpt::auth::{AuthSource, Authenticator, DeviceCodeHandler, MemoryTokenStore};
+/// use rig_core::providers::auth::{DeviceCodeHandler, MemoryTokenStore};
+/// use rig_core::providers::chatgpt::auth::{AuthSource, Authenticator};
 /// use std::sync::Arc;
 ///
 /// let store = Arc::new(MemoryTokenStore::default());

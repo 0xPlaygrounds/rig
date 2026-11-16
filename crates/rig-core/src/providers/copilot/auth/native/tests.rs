@@ -4,10 +4,8 @@ use super::{
     should_retry_with_fresh_access_token_status,
 };
 use crate::error::BoxError;
-use crate::providers::copilot::auth::{
-    AuthError, AuthSource, Authenticator, DeviceCodeHandler, MemoryTokenStore, STORE_KEY,
-    TokenStore,
-};
+use crate::providers::auth::{AuthError, DeviceCodeHandler, MemoryTokenStore, TokenStore};
+use crate::providers::copilot::auth::{AuthSource, Authenticator, STORE_KEY};
 use crate::test_utils::{MockHttpResponse, RecordingHttpClient, SequencedHttpClient};
 use crate::wasm_compat::WasmBoxedFuture;
 use http::StatusCode;

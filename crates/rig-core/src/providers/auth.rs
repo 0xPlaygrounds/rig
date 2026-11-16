@@ -2,7 +2,7 @@
 //! authentication transport helpers.
 //!
 //! ```
-//! use rig_core::providers::chatgpt::auth::DeviceCodeHandler;
+//! use rig_core::providers::auth::DeviceCodeHandler;
 //! let handler = DeviceCodeHandler::new(|prompt| {
 //!     println!("Visit {} and enter {}", prompt.verification_uri, prompt.user_code);
 //! });

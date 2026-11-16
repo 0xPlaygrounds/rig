@@ -3,7 +3,7 @@
 //! ```no_run
 //! use rig_core::http_client::DynHttpClient;
 //! use rig_core::client::chatgpt_models::account_models;
-//! use rig_core::providers::chatgpt::auth::AuthContext;
+//! use rig_core::providers::auth::AuthContext;
 //!
 //! # async fn example(context: &AuthContext, http: &DynHttpClient)
 //! # -> Result<(), rig_core::error::ProviderError> {
@@ -21,7 +21,7 @@ use serde::Deserialize;
 
 use crate::error::ProviderError;
 use crate::http_client::{DynHttpClient, HttpClientExt};
-use crate::providers::chatgpt::auth::AuthContext;
+use crate::providers::auth::AuthContext;
 use crate::providers::chatgpt::signed_in_config;
 
 /// The Codex release whose request contract the ChatGPT dialect follows.

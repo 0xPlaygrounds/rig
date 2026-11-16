@@ -1,8 +1,9 @@
 //! Copilot OAuth and bootstrap smoke tests.
 
 use assert_fs::TempDir;
+use rig::providers::auth::FileTokenStore;
 use rig::providers::copilot::PROVIDER_NAME;
-use rig::providers::copilot::auth::{AuthSource, FileTokenStore};
+use rig::providers::copilot::auth::AuthSource;
 use rig_test_support::cassette_models::CopilotModels;
 use serde_json::json;
 use std::fs;

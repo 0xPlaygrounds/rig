@@ -25,7 +25,8 @@
 /// Device login, session-token exchange, refresh, and the token store that keeps them.
 ///
 /// ```no_run
-/// use rig_core::providers::copilot::auth::{AuthSource, Authenticator, DeviceCodeHandler, MemoryTokenStore};
+/// use rig_core::providers::auth::{DeviceCodeHandler, MemoryTokenStore};
+/// use rig_core::providers::copilot::auth::{AuthSource, Authenticator};
 ///
 /// let auth = Authenticator::new(AuthSource::OAuth, MemoryTokenStore::default(), DeviceCodeHandler::default(), true);
 /// ```
