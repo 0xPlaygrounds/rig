@@ -168,7 +168,7 @@ where
 #[test]
 fn auth_context_debug_redacts_retained_credential() {
     let key = "synthetic-context-token";
-    let context = crate::providers::internal::auth::AuthContext {
+    let context = crate::providers::auth::AuthContext {
         api_key: key.into(),
         account_id: Some("synthetic-account".into()),
         api_base: Some("https://copilot.example.invalid".into()),

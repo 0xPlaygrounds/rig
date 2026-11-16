@@ -2,7 +2,7 @@
 //! listener's place, and launching the default browser.
 
 use super::{CHATGPT_AUTH_BASE, CHATGPT_CLIENT_ID};
-use crate::providers::internal::loopback::{Loopback, LoopbackHost};
+use crate::providers::auth::loopback::{Loopback, LoopbackHost};
 use base64::Engine;
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use sha2::{Digest, Sha256};

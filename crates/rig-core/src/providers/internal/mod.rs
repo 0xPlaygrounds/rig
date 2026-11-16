@@ -1,6 +1,6 @@
-//! Shared frame classification, tool-call id spelling, and the loopback
-//! listener of a browser sign-in. Companion providers use these helpers from
-//! their [`Decoder`](crate::wire::Decoder)s, encoders, and sign-ins.
+//! Shared frame classification and tool-call id spelling. Companion providers
+//! use these helpers from their [`Decoder`](crate::wire::Decoder)s and
+//! encoders.
 //!
 //! ```
 //! use rig_core::providers::internal::wire::classify_untyped_line;
@@ -10,9 +10,6 @@
 //! assert!(matches!(event, WireEvent::Known(_)));
 //! ```
 
-pub(crate) mod auth;
-#[cfg(not(target_family = "wasm"))]
-pub use auth::loopback;
 pub(crate) mod schema;
 /// The frame classifiers every JSON wire's decoder delegates to.
 pub mod wire;

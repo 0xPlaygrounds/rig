@@ -2,9 +2,8 @@ use super::*;
 use crate::completion::CompletionRequest;
 use crate::effect::EffectId;
 use crate::http_client;
-use crate::providers::chatgpt::auth::{
-    AuthSource, Authenticator, DeviceCodeHandler, MemoryTokenStore, TokenStore,
-};
+use crate::providers::auth::{DeviceCodeHandler, MemoryTokenStore, TokenStore};
+use crate::providers::chatgpt::auth::{AuthSource, Authenticator};
 use crate::test_utils::{MockHttpResponse, SequencedHttpClient};
 use http::StatusCode;
 use std::time::{Duration, SystemTime};

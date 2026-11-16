@@ -1,17 +1,12 @@
 use crate::http_client::HttpClientExt;
-use crate::providers::internal::auth::{
-    Shell, load_record, request, save_record, send_json, token_expired,
+use crate::providers::auth::{
+    AuthContext, AuthError, DeviceCodeHandler, Shell, TokenStore, load_record, request,
+    save_record, send_json, token_expired,
 };
 use http::Method;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::hash::{DefaultHasher, Hash, Hasher};
-
-pub use crate::providers::internal::auth::{
-    DeviceCodeHandler, DeviceCodePrompt, MemoryTokenStore, StoreLock, TokenStore,
-};
-#[cfg(not(target_family = "wasm"))]
-pub use crate::providers::internal::auth::{FileStoreError, FileTokenStore};
 
 #[cfg(not(target_family = "wasm"))]
 mod native;
@@ -101,8 +96,6 @@ impl fmt::Debug for Authenticator {
         self.0.fmt(f)
     }
 }
-
-pub use crate::providers::internal::auth::{AuthContext, AuthError};
 
 impl Authenticator {
     /// An authenticator over `source`, keeping the GitHub token and the

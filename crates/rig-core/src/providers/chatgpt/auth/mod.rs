@@ -1,20 +1,16 @@
 //! ChatGPT access-token configuration and native OAuth authentication.
 //!
 //! ```no_run
-//! use rig_core::providers::chatgpt::auth::{AuthSource, Authenticator, DeviceCodeHandler, FileTokenStore};
+//! use rig_core::providers::auth::{DeviceCodeHandler, FileTokenStore};
+//! use rig_core::providers::chatgpt::auth::{AuthSource, Authenticator};
 //!
 //! let store = FileTokenStore::new("/path/to/credentials");
 //! let auth = Authenticator::new(AuthSource::OAuth, store, DeviceCodeHandler::default(), true);
 //! ```
 
 use crate::http_client::HttpClientExt;
+use crate::providers::auth::{AuthContext, AuthError, DeviceCodeHandler, Shell, TokenStore};
 use std::fmt;
-
-pub use crate::providers::internal::auth::{
-    DeviceCodeHandler, DeviceCodePrompt, MemoryTokenStore, StoreLock, TokenStore,
-};
-#[cfg(not(target_family = "wasm"))]
-pub use crate::providers::internal::auth::{FileStoreError, FileTokenStore};
 
 #[cfg(not(target_family = "wasm"))]
 mod native;
@@ -104,9 +100,6 @@ impl fmt::Debug for Authenticator {
         self.0.fmt(f)
     }
 }
-
-use crate::providers::internal::auth::Shell;
-pub use crate::providers::internal::auth::{AuthContext, AuthError};
 
 impl Authenticator {
     /// An authenticator over `source`, keeping an OAuth sign-in in `store`

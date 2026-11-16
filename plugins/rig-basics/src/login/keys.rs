@@ -13,7 +13,7 @@ use std::path::PathBuf;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use rig_core::catalog::{Catalog, Connector, ModelSpec, ModelStatus, Provide, Transport};
-use rig_core::providers::chatgpt::auth::{FileTokenStore, TokenStore};
+use rig_core::providers::auth::{FileTokenStore, TokenStore};
 use rig_core::providers::registry::{ConnectError, ConnectOptions, ProviderId};
 use rig_core::serve::ErasedHandler;
 use rig_ecs::agent::{ActiveTurn, Agent, Notice};

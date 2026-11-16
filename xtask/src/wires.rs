@@ -42,12 +42,12 @@ const CREDENTIAL_EXCHANGES: &[&str] = &[
     "chatgpt/auth/mod.rs",
     "chatgpt/auth/native.rs",
     // The request/send helpers both exchanges round-trip through.
-    "internal/auth.rs",
+    "auth.rs",
     // The token stores both exchanges keep their credentials in.
-    "internal/auth/store.rs",
+    "auth/store.rs",
     // The browser sign-in's loopback listener: its socket is served on a
     // thread of its own, and only the wait for the returned code is async.
-    "internal/auth/loopback.rs",
+    "auth/loopback.rs",
 ];
 
 /// Run the check over `crates/rig-core/src/providers/`.

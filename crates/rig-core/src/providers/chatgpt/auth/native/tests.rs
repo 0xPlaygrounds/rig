@@ -3,10 +3,8 @@ use super::{
     format_refresh_error, should_reauthenticate_after_refresh,
 };
 use crate::error::BoxError;
-use crate::providers::chatgpt::auth::{
-    AuthError, AuthSource, Authenticator, DeviceCodeHandler, MemoryTokenStore, STORE_KEY,
-    TokenStore,
-};
+use crate::providers::auth::{AuthError, DeviceCodeHandler, MemoryTokenStore, TokenStore};
+use crate::providers::chatgpt::auth::{AuthSource, Authenticator, STORE_KEY};
 use crate::test_utils::{MockHttpResponse, RecordingHttpClient, SequencedHttpClient};
 use crate::wasm_compat::WasmBoxedFuture;
 use http::StatusCode;

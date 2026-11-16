@@ -18,11 +18,11 @@ mod structured_output;
 mod typed_prompt_tools;
 
 use assert_fs::TempDir;
-use rig::providers::copilot;
-use rig::providers::copilot::auth::{
-    AuthError, AuthSource, Authenticator, DeviceCodeHandler, FileTokenStore, MemoryTokenStore,
-    TokenStore,
+use rig::providers::auth::{
+    AuthError, DeviceCodeHandler, FileTokenStore, MemoryTokenStore, TokenStore,
 };
+use rig::providers::copilot;
+use rig::providers::copilot::auth::{AuthSource, Authenticator};
 use rig::providers::openai::OpenAIConfig;
 use std::borrow::Cow;
 use std::future::Future;

@@ -1,5 +1,5 @@
 use super::*;
-use rig_harness::rig_core::providers::chatgpt::auth::StoreLock;
+use rig_harness::rig_core::providers::auth::StoreLock;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};

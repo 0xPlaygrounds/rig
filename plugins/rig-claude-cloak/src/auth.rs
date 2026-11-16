@@ -3,8 +3,8 @@
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use rand::RngCore;
 use rig_harness::rig_core::error::{BoxError, retryable_status};
-use rig_harness::rig_core::providers::chatgpt::auth::{FileStoreError, FileTokenStore, TokenStore};
-use rig_harness::rig_core::providers::internal::loopback::{Loopback, LoopbackError, LoopbackHost};
+use rig_harness::rig_core::providers::auth::loopback::{Loopback, LoopbackError, LoopbackHost};
+use rig_harness::rig_core::providers::auth::{FileStoreError, FileTokenStore, TokenStore};
 use rig_harness::rig_tools::process::Process;
 use rig_harness::secrets::browser_opener;
 use serde::{Deserialize, Serialize};

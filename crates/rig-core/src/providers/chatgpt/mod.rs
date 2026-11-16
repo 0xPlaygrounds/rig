@@ -93,7 +93,7 @@ pub fn requested_model(request: &crate::completion::CompletionRequest) -> Option
 /// The dialect's environment settings with the signed-in credential,
 /// account, and endpoint taking precedence.
 pub(crate) fn signed_in_config(
-    context: &auth::AuthContext,
+    context: &crate::providers::auth::AuthContext,
 ) -> Result<crate::providers::openai::OpenAIConfig, crate::client::env::EnvError> {
     let mut config = crate::providers::openai::OpenAIConfig::from_env_with_credential(
         &DIALECT,

@@ -5,6 +5,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
+use crate::providers::auth::{DeviceCodeHandler, MemoryTokenStore};
 use crate::providers::{anthropic, cohere, gemini, ollama, openai, voyageai};
 
 fn round_trips<T>(config: &T, expected: Value)
@@ -127,8 +128,8 @@ async fn a_chatgpt_sign_in_sends_the_token_and_account() {
             access_token: "chatgpt-token".into(),
             account_id: Some("acct_1".into()),
         },
-        chatgpt::auth::MemoryTokenStore::default(),
-        chatgpt::auth::DeviceCodeHandler::default(),
+        MemoryTokenStore::default(),
+        DeviceCodeHandler::default(),
         false,
     );
     let requests = signed_in_requests("chatgpt/gpt-6.1-sol", authenticator, "{}").await;
@@ -145,8 +146,8 @@ async fn a_copilot_sign_in_sends_to_the_api_root_its_exchange_names() {
     use crate::providers::copilot;
     let authenticator = copilot::auth::Authenticator::new(
         copilot::auth::AuthSource::GitHubAccessToken("gho_token".into()),
-        copilot::auth::MemoryTokenStore::default(),
-        copilot::auth::DeviceCodeHandler::default(),
+        MemoryTokenStore::default(),
+        DeviceCodeHandler::default(),
         false,
     );
     let exchange = r#"{"token":"tid=session","expires_at":4102444800,"endpoints":{"api":"https://api.enterprise.githubcopilot.com"}}"#;
@@ -174,8 +175,8 @@ fn a_signed_in_model_checks_without_a_credential() {
     use crate::serve::ErasedHandler;
     let authenticator = chatgpt::auth::Authenticator::new(
         chatgpt::auth::AuthSource::OAuth,
-        chatgpt::auth::MemoryTokenStore::default(),
-        chatgpt::auth::DeviceCodeHandler::default(),
+        MemoryTokenStore::default(),
+        DeviceCodeHandler::default(),
         false,
     );
     let spec = crate::catalog::Catalog::builtin()

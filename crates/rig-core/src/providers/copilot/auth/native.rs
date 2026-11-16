@@ -1,9 +1,8 @@
-use super::{
-    ApiKeyRecord, AuthContext, AuthError, Authenticator, DeviceCodePrompt, STORE_KEY,
-    refresh_api_key,
-};
+use super::{ApiKeyRecord, Authenticator, STORE_KEY, refresh_api_key};
 use crate::http_client::HttpClientExt;
-use crate::providers::internal::auth::{form, load_record, request, save_record, send_json};
+use crate::providers::auth::{
+    AuthContext, AuthError, DeviceCodePrompt, form, load_record, request, save_record, send_json,
+};
 use http::Method;
 use serde::Deserialize;
 
