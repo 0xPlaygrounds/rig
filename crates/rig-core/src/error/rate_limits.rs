@@ -172,7 +172,7 @@ fn since_epoch(time: SystemTime) -> Option<i128> {
 /// The instant an RFC 3339 date names, in nanoseconds since the Unix epoch:
 /// `2026-01-01T00:00:00Z`, with an optional fraction of a second (digits
 /// past the ninth dropped, not rounded) and a `Z` or `+hh:mm` offset.
-fn rfc3339(text: &str) -> Option<i128> {
+pub(crate) fn rfc3339(text: &str) -> Option<i128> {
     let (date, time) = text.split_once(['T', 't', ' '])?;
     let mut date = date.split('-');
     let year = digits(date.next()?, 4)?;

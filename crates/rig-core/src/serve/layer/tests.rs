@@ -138,31 +138,30 @@ struct Tapped {
     patched: Mutex<Vec<EffectKind>>,
 }
 
-impl super::super::Observe for Arc<Tapped> {
-    fn origin(&mut self, _origin: &crate::message::Origin) {}
-    fn outcome(&mut self, outcome: Result<Answered, ErrorReport>) {
-        self.outcomes.lock().expect("outcomes").push(outcome);
+impl crate::serve::Recorder for Tapped {
+    fn handlers(&self, _: Vec<HandlerDescriptor>) {}
+    fn begin(&self, _: EffectId, _: HandlerKey, _: EffectKind, _: crate::serve::DispatchContext) {}
+    fn discard(&self, _: EffectId) {
+        self.discarded.fetch_add(1, Ordering::SeqCst);
     }
-
+    fn patch(&self, _: EffectId, kind: EffectKind) {
+        self.patched.lock().expect("patched").push(kind);
+    }
     fn keep_events(&self) -> bool {
         true
     }
-
-    fn event(&mut self, event: &Item<StreamEvent>) {
+    fn event(&self, _: EffectId, event: &Item<StreamEvent>) {
         self.events.lock().expect("events").push(event.clone());
     }
-
-    fn discard(&mut self, _: &str) {
-        self.discarded.fetch_add(1, Ordering::SeqCst);
-    }
-
-    fn patch(&mut self, kind: &EffectKind) {
-        self.patched.lock().expect("patched").push(kind.clone());
+    fn origin(&self, _: EffectId, _: &crate::message::Origin) {}
+    fn tool_output(&self, _: EffectId, _: crate::tool::ToolResultContext) {}
+    fn resolve(&self, _: EffectId, outcome: Result<Answered, ErrorReport>) {
+        self.outcomes.lock().expect("outcomes").push(outcome);
     }
 }
 
 fn tapped(dispatch: Dispatch, tapped: &Arc<Tapped>) -> Dispatch {
-    dispatch.with_observer(Box::new(Arc::clone(tapped)))
+    dispatch.recorded_by(Arc::clone(tapped) as Arc<dyn crate::serve::Recorder + Send + Sync>)
 }
 
 fn echo() -> (ErasedHandler, Arc<AtomicUsize>) {

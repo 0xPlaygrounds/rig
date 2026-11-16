@@ -1,6 +1,5 @@
-//! What the model reads about its tool calls: a tool's result shaped as a
-//! tool result, the error result of a call that never ran, what a call
-//! that did not finish says ([`not_finished`]), and the feedback for
+//! What the model reads about its tool calls: the error result of a call
+//! that never ran, what a call that did not finish says ([`not_finished`]), and the feedback for
 //! unavailable tool names and arguments that do not fit a tool.
 //!
 //! ```
@@ -12,18 +11,7 @@
 use crate::message::{
     self, AssistantContent, CallId, ToolCall, ToolName, ToolResultContent, UserContent,
 };
-use crate::tool::{ToolResult, Touches};
-
-/// Shape a tool's result as the tool result the model reads, without
-/// reparsing text. Anything but a success is an error result.
-pub fn tool_result_output(call: CallId, name: ToolName, result: &ToolResult) -> UserContent {
-    UserContent::ToolResult(message::ToolResult {
-        call,
-        name,
-        content: result.output().clone().into_content(),
-        is_error: !result.is_success(),
-    })
-}
+use crate::tool::Touches;
 
 /// Constructs the error result of a call that never ran, its text verbatim,
 /// such as recovery feedback or a skip reason. JSON-shaped text is not

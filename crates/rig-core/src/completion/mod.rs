@@ -24,7 +24,7 @@ pub mod request;
 
 pub use handle::ModelRef;
 pub use history::{Accepts, LaterSystem, Media, Pairing, Place, Replay, ReplayTarget, adapt};
-pub use message::{AssistantContent, AssistantMessage, Message, MessageError};
+pub use message::{AssistantContent, AssistantMessage, Message};
 pub use options::{
     CacheRetention, CheckError, Effort, GenerationOptions, OnUnsupported, Reasoning, ServiceTier,
     UnsupportedOption, Verbosity,

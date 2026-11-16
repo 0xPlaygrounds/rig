@@ -1,7 +1,5 @@
-use crate::error::ProviderError;
 use serde::{Deserialize, Serialize};
 use std::{convert::Infallible, str::FromStr};
-use thiserror::Error;
 
 /// A provider-agnostic chat message.
 ///
@@ -1600,19 +1598,6 @@ pub enum ToolChoice {
         /// The tools' names.
         function_names: Vec<ToolName>,
     },
-}
-
-/// Error type to represent issues with converting messages to and from specific provider messages.
-#[derive(Debug, Error)]
-pub enum MessageError {
-    #[error("Message conversion error: {0}")]
-    ConversionError(String),
-}
-
-impl From<MessageError> for ProviderError {
-    fn from(error: MessageError) -> Self {
-        ProviderError::request(error)
-    }
 }
 
 #[cfg(test)]

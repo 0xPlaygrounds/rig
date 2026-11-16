@@ -26,6 +26,7 @@ use crate::{
 mod rate_limits;
 mod retry;
 
+pub(crate) use rate_limits::rfc3339;
 pub use rate_limits::{Allowance, RateLimits};
 
 /// Normalized classification of an [`ErrorReport`].
@@ -659,12 +660,6 @@ impl From<http::Error> for EncodeError {
 
 impl From<serde_json::Error> for EncodeError {
     fn from(error: serde_json::Error) -> Self {
-        Self::request(error)
-    }
-}
-
-impl From<crate::message::MessageError> for EncodeError {
-    fn from(error: crate::message::MessageError) -> Self {
         Self::request(error)
     }
 }

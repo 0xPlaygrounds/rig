@@ -10,8 +10,12 @@ use rig_core::{
     error::{ErrorKind, ErrorReport},
     message::{AssistantContent, DocumentSourceKind, Image},
     operation::Finish,
-    serve::{AfterServe, BeforeServe, Dispatch, ErasedHandler, Intercept, Observe, Reply, Serve},
+    serve::{
+        AfterServe, BeforeServe, Dispatch, DispatchContext, ErasedHandler, Intercept, Recorder,
+        Reply, Serve,
+    },
     streaming::{Item, Relayed, StreamEvent},
+    tool::ToolResultContext,
 };
 use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
@@ -31,9 +35,12 @@ struct Seen {
     discarded: usize,
 }
 struct Observer(Arc<Mutex<Seen>>);
-impl Observe for Observer {
-    fn origin(&mut self, _origin: &rig_core::message::Origin) {}
-    fn outcome(&mut self, outcome: Result<Answered, ErrorReport>) {
+impl Recorder for Observer {
+    fn handlers(&self, _: Vec<HandlerDescriptor>) {}
+    fn begin(&self, _: EffectId, _: HandlerKey, _: EffectKind, _: DispatchContext) {}
+    fn origin(&self, _: EffectId, _: &rig_core::message::Origin) {}
+    fn tool_output(&self, _: EffectId, _: ToolResultContext) {}
+    fn resolve(&self, _: EffectId, outcome: Result<Answered, ErrorReport>) {
         self.0
             .lock()
             .unwrap()
@@ -43,24 +50,24 @@ impl Observe for Observer {
     fn keep_events(&self) -> bool {
         true
     }
-    fn event(&mut self, event: &Item<StreamEvent>) {
+    fn event(&self, _: EffectId, event: &Item<StreamEvent>) {
         self.0
             .lock()
             .unwrap()
             .events
             .push(serde_json::to_value(event).unwrap());
     }
-    fn stream_error(&mut self, error: &ErrorReport) {
+    fn stream_error(&self, _: EffectId, error: &ErrorReport) {
         self.0
             .lock()
             .unwrap()
             .events
             .push(serde_json::to_value(error).unwrap());
     }
-    fn discard(&mut self, _: &str) {
+    fn discard(&self, _: EffectId) {
         self.0.lock().unwrap().discarded += 1;
     }
-    fn patch(&mut self, kind: &EffectKind) {
+    fn patch(&self, _: EffectId, kind: EffectKind) {
         self.0
             .lock()
             .unwrap()
@@ -69,7 +76,7 @@ impl Observe for Observer {
     }
 }
 fn dispatch(streaming: bool, seen: &Arc<Mutex<Seen>>) -> Dispatch {
-    Dispatch::new(EffectId::from_raw(1), streaming).with_observer(Box::new(Observer(seen.clone())))
+    Dispatch::new(EffectId::from_raw(1), streaming).recorded_by(Arc::new(Observer(seen.clone())))
 }
 
 struct Answer {

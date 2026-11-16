@@ -43,7 +43,6 @@ use rig_core::conversation::pairing::{PairingError, validate};
 use rig_core::message::{AssistantContent, AssistantMessage, ToolCall, ToolName, UserContent};
 use rig_core::tool::feedback::{
     invalid_arguments_feedback, not_executed, output_limit_feedback, tool_result_message,
-    tool_result_output,
 };
 
 use calls::AnswerKind;
@@ -1475,7 +1474,7 @@ impl AgentRun {
                 (Some(ToolSlot::Execute(tool_call)), AnswerKind::Executed(result))
                     if tool_call.id == call =>
                 {
-                    tool_result_output(call, tool_call.function.name.clone(), &result)
+                    UserContent::ToolResult(tool_call.answer(&result))
                 }
                 (Some(ToolSlot::Malformed(tool_call)), AnswerKind::Malformed(action))
                     if tool_call.id == call =>
@@ -1881,7 +1880,7 @@ fn malformed_answer(
         Some(InvalidToolCallAction::Retry { feedback }) => feedback,
         Some(InvalidToolCallAction::Skip { reason }) => {
             let skipped = rig_core::tool::ToolResult::skipped(reason);
-            return Ok(tool_result_output(id, name, &skipped));
+            return Ok(UserContent::ToolResult(tool_call.answer(&skipped)));
         }
         Some(InvalidToolCallAction::Stop { reason }) => return Err(Ok(reason)),
         Some(InvalidToolCallAction::Fail | InvalidToolCallAction::Repair { .. }) => {

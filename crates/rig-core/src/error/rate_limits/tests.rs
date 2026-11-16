@@ -2,7 +2,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use http::{HeaderMap, HeaderName, HeaderValue};
 
-use super::{Allowance, RateLimits};
+use super::{Allowance, NANOS, RateLimits, rfc3339};
 
 /// 2026-01-01T00:00:00Z.
 const NEW_YEAR: u64 = 1_767_225_600;
@@ -214,4 +214,18 @@ fn an_allowance_needs_a_limit_and_a_remainder() {
     ]);
     let read = RateLimits::from_headers(&not_a_number, now);
     assert_eq!(read.requests, allowance(10, 5, None));
+}
+
+/// An RFC 3339 time reads as its instant since the epoch, across leap days
+/// and centuries.
+#[test]
+fn an_rfc_3339_time_is_its_instant_since_the_epoch() {
+    for (time, seconds) in [
+        ("1970-01-01T00:00:00Z", 0),
+        ("2000-03-01T00:00:00Z", 951_868_800),
+        ("2024-02-29T12:00:00Z", 1_709_208_000),
+        ("2026-10-07T06:50:11Z", 1_791_355_811),
+    ] {
+        assert_eq!(rfc3339(time), Some(i128::from(seconds) * NANOS), "{time}");
+    }
 }
