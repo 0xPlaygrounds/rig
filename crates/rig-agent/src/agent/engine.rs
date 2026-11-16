@@ -19,7 +19,7 @@ use tracing::{Instrument, span::Id};
 use rig_core::error::ProviderError;
 use rig_core::{
     completion::ModelRef,
-    effect::{Answered, EffectKind},
+    effect::{Answered, EffectKind, Family, family},
     error::{ErrorKind, ErrorReport},
     message::{
         self, AssistantContent, Message, ToolCall, ToolFunction, ToolName, ToolResultContent,
@@ -97,14 +97,6 @@ pub(crate) enum DriveItem {
 pub(crate) trait TurnSource: Sized + WasmCompatSend + WasmCompatSync {
     /// Whether this source's completions are dispatched as streams.
     const STREAMS: bool;
-
-    /// Build this medium's per-turn `chat` span (name + parenting + any
-    /// `follows_from` chaining differ between blocking and streaming).
-    fn open_chat_span(
-        &self,
-        runner: &AgentRunner,
-        effective_preamble: Option<&str>,
-    ) -> tracing::Span;
 
     /// Run one model turn: issue the provider call through the engine's open
     /// `scope`, feed the result into the sans-IO machine, and yield any
@@ -333,7 +325,8 @@ where
                         .and_then(|o| o.preamble.as_deref())
                         .or(runner.config.spec.preamble.as_deref());
 
-                    let chat_span = source.open_chat_span(&runner, effective_preamble);
+                    let chat_span =
+                        source.chain_span(build_chat_span!(runner, effective_preamble));
 
                     // Pin output mode across registry changes between turns.
                     let committed_output_tool = run.output_tool_name().map(str::to_owned);
@@ -853,14 +846,6 @@ impl StreamingTurnSource {
 impl TurnSource for StreamingTurnSource {
     const STREAMS: bool = true;
 
-    fn open_chat_span(
-        &self,
-        runner: &AgentRunner,
-        effective_preamble: Option<&str>,
-    ) -> tracing::Span {
-        build_chat_span!(runner, effective_preamble, "chat", "chat")
-    }
-
     fn run_model_turn<'a>(
         &'a mut self,
         runner: &'a AgentRunner,
@@ -871,19 +856,13 @@ impl TurnSource for StreamingTurnSource {
         agent_span: &'a tracing::Span,
         scope: &'a mut CompletionScope<Self>,
     ) -> DriveStream<'a> {
-        Box::pin(async_stream::stream! {
+        Box::pin(async_stream::try_stream! {
             // Bound before the builder is consumed: the cap this attempt was
             // prepared with, completion-call patches included.
             let attempt_max_tokens = prepared.max_tokens;
 
-            let stream = chat_span.in_scope(|| scope.dispatch_stream(runner, &prepared.model));
-            let mut stream = match stream {
-                Ok(stream) => stream,
-                Err(err) => {
-                    yield Err(err);
-                    return;
-                }
-            };
+            let mut stream =
+                chat_span.in_scope(|| scope.dispatch_stream(runner, &prepared.model))?;
             let mut assembler = StreamedTurnAssembler::new(prepared.policy);
             // What the delta hooks read as `aggregated`, kept only for them.
             let mut text = String::new();
@@ -903,30 +882,16 @@ impl TurnSource for StreamingTurnSource {
             // cut-off check below), taken before the stream is polled again.
             // `None` in it is the stream's end.
             let mut ahead = VecDeque::new();
-            'turn: while let Some(item) = match ahead.pop_front() {
+            while let Some(item) = match ahead.pop_front() {
                 Some(item) => item,
                 None => stream.next().await,
             } {
                 // A stream error ends the reply. At most one event per item
                 // forwards the item itself, so moving it out of the slot
                 // avoids cloning every streamed fragment.
-                let (mut item_slot, mut next, ended): (
-                    Option<Item<StreamEvent>>,
-                    Option<StreamedTurnEvent>,
-                    bool,
-                ) = match item {
-                    Ok(item) => match assembler.ingest(&item) {
-                        Ok(event) => (Some(item), Some(event), false),
-                        Err(err) => {
-                            yield Err(err.into());
-                            return;
-                        }
-                    },
-                    Err(err) => {
-                        yield Err(err.into());
-                        return;
-                    }
-                };
+                let item = item?;
+                let mut next = Some(assembler.ingest(&item)?);
+                let mut item_slot = Some(item);
                 while let Some(event) = next.take() {
                     match event {
                         StreamedTurnEvent::EmitIngested => {
@@ -950,8 +915,7 @@ impl TurnSource for StreamingTurnSource {
                                 )
                             {
                                 drop(stream);
-                                yield Err(run.cancel_error(reason));
-                                return;
+                                return Err(run.cancel_error(reason))?;
                             }
                             if self.observes_reasoning_delta
                                 && let Some(Item::Event(StreamEvent::Reasoning { part, text: delta })) =
@@ -976,11 +940,10 @@ impl TurnSource for StreamingTurnSource {
                                 )
                             {
                                 drop(stream);
-                                yield Err(run.cancel_error(reason));
-                                return;
+                                return Err(run.cancel_error(reason))?;
                             }
                             if let Some(item) = item_slot.take() {
-                                yield Ok(Surfaced::Provider(item));
+                                yield Surfaced::Provider(item);
                             }
                         }
                         StreamedTurnEvent::EmitToolCallDelta => {
@@ -1011,11 +974,10 @@ impl TurnSource for StreamingTurnSource {
                                 )
                             {
                                 drop(stream);
-                                yield Err(run.cancel_error(reason));
-                                return;
+                                return Err(run.cancel_error(reason))?;
                             }
                             if let Some(item) = item_slot.take() {
-                                yield Ok(Surfaced::Provider(item));
+                                yield Surfaced::Provider(item);
                             }
                         }
                         StreamedTurnEvent::HoldToolCall => {
@@ -1061,18 +1023,15 @@ impl TurnSource for StreamingTurnSource {
                                     )
                                 {
                                     drop(stream);
-                                    yield Err(run.cancel_error(reason));
-                                    return;
+                                    return Err(run.cancel_error(reason))?;
                                 }
-                                yield Ok(Surfaced::Provider(Item::Event(event)));
+                                yield Surfaced::Provider(Item::Event(event));
                             }
                             if let Some(part) = end {
-                                yield Ok(Surfaced::Provider(Item::Event(
-                                    StreamEvent::End {
-                                        part,
-                                        content: AssistantContent::ToolCall(call),
-                                    },
-                                )));
+                                yield Surfaced::Provider(Item::Event(StreamEvent::End {
+                                    part,
+                                    content: AssistantContent::ToolCall(call),
+                                }));
                             }
                         }
                         StreamedTurnEvent::InvalidToolCall(invalid) => {
@@ -1138,13 +1097,7 @@ impl TurnSource for StreamingTurnSource {
                                     }
                                 },
                             };
-                            let resolution = match resolved {
-                                Ok(resolution) => resolution,
-                                Err(err) => {
-                                    yield Err(err);
-                                    return;
-                                }
-                            };
+                            let resolution = resolved?;
 
                             match resolution {
                                 StreamedResolution::Ignored => {
@@ -1167,43 +1120,23 @@ impl TurnSource for StreamingTurnSource {
                                     // engine's projection of history.
                                     held.clear();
                                     // The abandoned reply still reports its usage
-                                    // when it ends; one that already ended with the
-                                    // rejected call's error has none to record.
-                                    if !ended {
-                                        match scope.finish_stream(stream, run, &chat_span).await {
-                                            Ok((_, call)) => {
-                                                yield Ok(Surfaced::CompletionCall(call));
-                                            }
-                                            Err(err) => {
-                                                yield Err(err);
-                                                return;
-                                            }
-                                        }
-                                    }
+                                    // when it ends.
+                                    let (_, call) =
+                                        scope.finish_stream(stream, run, &chat_span).await?;
+                                    yield Surfaced::CompletionCall(call);
                                     return;
                                 }
                             }
                         }
                     }
                 }
-                if ended {
-                    break 'turn;
-                }
             }
 
             // The reply's end: the response `call` would have returned for it.
             // A reply the provider did not end is truncated, and never a
             // successful zero-usage completion.
-            let response = match scope.finish_stream(stream, run, &chat_span).await {
-                Ok((response, call)) => {
-                    yield Ok(Surfaced::CompletionCall(call));
-                    response
-                }
-                Err(err) => {
-                    yield Err(err);
-                    return;
-                }
-            };
+            let (response, call) = scope.finish_stream(stream, run, &chat_span).await?;
+            yield Surfaced::CompletionCall(call);
 
             let streamed_turn = assembler.finish(response);
             self.last_response_id = response.response_id().map(str::to_owned);
@@ -1212,10 +1145,7 @@ impl TurnSource for StreamingTurnSource {
             // The final item keeps the provider's choice.
             let mut final_turn_content =
                 std::mem::replace(&mut response.choice, streamed_turn.choice.clone());
-            if let Err(err) = run.streamed_turn(streamed_turn) {
-                yield Err(err);
-                return;
-            }
+            run.streamed_turn(streamed_turn)?;
             let settlement = settle_model_turn(
                 runner,
                 hook_ctx,
@@ -1224,9 +1154,9 @@ impl TurnSource for StreamingTurnSource {
                 attempt_max_tokens,
                 turn_recovered,
             )
-            .await;
+            .await?;
             match settlement {
-                Ok(ModelTurnDecision::Advance { replaced }) => {
+                ModelTurnDecision::Advance { replaced } => {
                     // The run keeps the replacement, and so does the final
                     // item the consumer receives: the fragments it saw were
                     // the provider's, the answer is the hook's.
@@ -1234,13 +1164,13 @@ impl TurnSource for StreamingTurnSource {
                         final_turn_content = choice;
                     }
                 }
-                Ok(ModelTurnDecision::Retried) => {
-                    yield Ok(Surfaced::ModelTurnRetried {
+                ModelTurnDecision::Retried => {
+                    yield Surfaced::ModelTurnRetried {
                         turn: hook_ctx.turn(),
-                    });
+                    };
                     return;
                 }
-                Ok(ModelTurnDecision::Terminate(reason)) => {
+                ModelTurnDecision::Terminate(reason) => {
                     // A stop observes an already completed provider turn:
                     // its content telemetry stays visible before the
                     // cancellation.
@@ -1249,12 +1179,7 @@ impl TurnSource for StreamingTurnSource {
                         &chat_span,
                         scope.choice(),
                     );
-                    yield Err(run.cancel_error(reason));
-                    return;
-                }
-                Err(err) => {
-                    yield Err(err);
-                    return;
+                    return Err(run.cancel_error(reason))?;
                 }
             }
 
@@ -1361,7 +1286,7 @@ pub(crate) async fn settle_model_turn<M>(
             replaced = Some(replacement.choice);
         }
         OutcomeAction::Replace(Ok(other)) => {
-            return Err(PromptError::Report(wrong_outcome("a completion", &other)));
+            return Err(PromptError::Report(family::Completion::mismatch(&other)));
         }
         OutcomeAction::Replace(Err(report)) => {
             if report.kind == ErrorKind::Cancelled {
@@ -1422,16 +1347,6 @@ pub(crate) async fn dispatch_effect(
         OutcomeAction::Proceed => outcome,
         OutcomeAction::Replace(replaced) => replaced,
     }
-}
-
-pub(crate) fn wrong_outcome(expected: &str, outcome: &Answered) -> ErrorReport {
-    ErrorReport::new(
-        ErrorKind::Internal,
-        format!(
-            "expected {expected}, the handler answered with a {} outcome",
-            outcome.family()
-        ),
-    )
 }
 
 /// Why a tool call ended the run instead of answering: a hook stopped it,
@@ -1575,15 +1490,6 @@ impl TurnSource for UnaryTurnSource {
         span
     }
 
-    fn open_chat_span(
-        &self,
-        runner: &AgentRunner,
-        effective_preamble: Option<&str>,
-    ) -> tracing::Span {
-        let chat_span = build_chat_span!(runner, effective_preamble, "chat", "chat");
-        self.chain_span(chat_span)
-    }
-
     fn run_model_turn<'a>(
         &'a mut self,
         runner: &'a AgentRunner,
@@ -1594,7 +1500,8 @@ impl TurnSource for UnaryTurnSource {
         _agent_span: &'a tracing::Span,
         scope: &'a mut CompletionScope<Self>,
     ) -> DriveStream<'a> {
-        Box::pin(async_stream::stream! {
+        // A unary turn surfaces nothing but its error.
+        let turn = async move {
             // Content telemetry for the accepted provider turn. Called at each
             // terminal site (stop, terminate, accept) rather than hoisted: a
             // retried turn must not record output for the discarded attempt.
@@ -1612,47 +1519,26 @@ impl TurnSource for UnaryTurnSource {
             // silently drop a completion-call hook's patch.
             let attempt_max_tokens = prepared.max_tokens;
 
-            let dispatched = scope
+            let response = scope
                 .dispatch_response(runner, &prepared.model)
                 .instrument(chat_span.clone())
-                .await;
-            let response = match dispatched {
-                Ok(response) => response,
-                Err(err) => {
-                    yield Err(err);
-                    return;
-                }
-            };
-
-            let mut outcome = match run.model_response(ModelTurn::from_policy(
-                response,
-                prepared.policy,
-            )) {
-                Ok(outcome) => outcome,
-                Err(err) => {
-                    yield Err(err);
-                    return;
-                }
-            };
+                .await?;
+            let mut outcome =
+                run.model_response(ModelTurn::from_policy(response, prepared.policy))?;
 
             loop {
                 match outcome {
                     ModelTurnOutcome::NeedsResolution(context) => {
                         let action = runner
-                            .config.hooks
+                            .config
+                            .hooks
                             .on_invalid_tool_call(hook_ctx, &context)
                             .await;
                         let resolution = match action {
                             Some(action) => run.resolve_invalid_tool_call(action),
                             None => run.resolve_unhandled_invalid_tool_call(),
                         };
-                        outcome = match resolution {
-                            Ok(outcome) => outcome,
-                            Err(err) => {
-                                yield Err(err);
-                                return;
-                            }
-                        };
+                        outcome = resolution?;
                     }
                     ModelTurnOutcome::TurnRetried => break,
                     ModelTurnOutcome::Continue {
@@ -1666,18 +1552,13 @@ impl TurnSource for UnaryTurnSource {
                             attempt_max_tokens,
                             response_hook_suppressed,
                         )
-                        .await;
+                        .await?;
                         match settlement {
-                            Ok(ModelTurnDecision::Advance { .. }) => {}
-                            Ok(ModelTurnDecision::Retried) => break,
-                            Ok(ModelTurnDecision::Terminate(reason)) => {
+                            ModelTurnDecision::Advance { .. } => {}
+                            ModelTurnDecision::Retried => break,
+                            ModelTurnDecision::Terminate(reason) => {
                                 record_accepted_turn(run);
-                                yield Err(run.cancel_error(reason));
-                                return;
-                            }
-                            Err(err) => {
-                                yield Err(err);
-                                return;
+                                return Err(run.cancel_error(reason));
                             }
                         }
                         record_accepted_turn(run);
@@ -1685,7 +1566,12 @@ impl TurnSource for UnaryTurnSource {
                     }
                 }
             }
-        })
+            Ok(())
+        };
+        Box::pin(
+            futures::stream::once(turn)
+                .filter_map(|done| std::future::ready(done.err().map(Err::<Surfaced, _>))),
+        )
     }
 
     fn record_run_level_telemetry(
@@ -1804,12 +1690,8 @@ pub(crate) async fn dispatch_tool_call(
         OutcomeAction::Proceed => outcome,
         OutcomeAction::Replace(replaced) => replaced,
     };
-    let result = match outcome {
-        Ok(Answered::ToolResult { result }) => result,
-        Ok(other) => ToolResult::failed(crate::tool::ToolExecutionError::other(format!(
-            "the tool handler answered with a {} outcome",
-            other.family()
-        ))),
+    let result = match outcome.and_then(family::Tool::unwrap) {
+        Ok(result) => result,
         // A hook that observed the result stopped the run.
         Err(report) if report.kind == ErrorKind::Cancelled => {
             return Err(ToolExit::Stop(report.message));

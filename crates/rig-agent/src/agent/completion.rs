@@ -53,6 +53,14 @@ pub(crate) struct PreparedCompletionRequest {
     pub(crate) max_tokens: Option<u64>,
 }
 
+/// The text a retrieval searches with: the prompt's, else the latest history
+/// message's.
+pub(crate) fn retrieval_query(prompt: &Message, history: &[Arc<Message>]) -> Option<String> {
+    prompt
+        .rag_text()
+        .or_else(|| history.iter().rev().find_map(|message| message.rag_text()))
+}
+
 /// Retrieve tools and prepare a request from runner defaults and per-turn inputs.
 /// Pins executable registrations and the selected model for this attempt.
 /// Returns retrieval, preparation, and message-validation failures.
@@ -68,12 +76,7 @@ pub(crate) async fn build_prepared_completion_request(
     let record_telemetry_content = runner.config.record_telemetry_content;
     let tool_server_handle = &runner.tool_server_handle;
 
-    let retrieval_query = prompt.rag_text().or_else(|| {
-        chat_history
-            .iter()
-            .rev()
-            .find_map(|message| message.rag_text())
-    });
+    let retrieval_query = retrieval_query(&prompt, chat_history);
 
     // Tool retrieval is a `Retrieve` dispatch at the boundary (observe-only
     // for hooks unless one opts in), recorded like every other effect.
@@ -81,12 +84,7 @@ pub(crate) async fn build_prepared_completion_request(
     for (key, kind) in tool_server_handle.retrieval_effects(retrieval_query) {
         let ids = crate::agent::engine::dispatch_effect(runner, ctx, &key, kind)
             .await
-            .and_then(|outcome| match outcome {
-                rig_core::effect::Answered::Documents(
-                    rig_core::effect::RetrievedDocuments::Ids(ids),
-                ) => Ok(ids.into_iter().map(|(_, id)| id).collect::<Vec<String>>()),
-                other => Err(crate::agent::engine::wrong_outcome("retrieved ids", &other)),
-            })
+            .and_then(crate::tool::server::retrieved_ids)
             .map_err(|report| {
                 ProviderError::request(format!("Failed to get tool definitions: {report}"))
             })?;
@@ -324,23 +322,25 @@ impl AgentConfig {
         self.handlers.bind(&self.model_key)
     }
 
+    /// The default model's label as registered now, if a completion model
+    /// serves it.
+    pub(crate) fn registered_model_label(&self) -> Option<ModelRef> {
+        match self.handlers.descriptor(self.model_key.raw())?.family {
+            rig_core::effect::FamilyDescriptor::Completion { model, .. } => Some(model),
+            _ => None,
+        }
+    }
+
     /// The default model's label as registered now (the key's tail when
     /// nothing serves it).
     pub(crate) fn model_label(&self) -> ModelRef {
-        match self
-            .handlers
-            .descriptor(self.model_key.raw())
-            .map(|descriptor| descriptor.family)
-        {
-            Some(rig_core::effect::FamilyDescriptor::Completion { model, .. }) => model,
-            _ => {
-                let key = self.model_key.as_str();
-                let label = key
-                    .strip_prefix(&*self.owner)
-                    .and_then(|rest| rest.strip_prefix("/model:"));
-                ModelRef::new(label.unwrap_or(key))
-            }
-        }
+        self.registered_model_label().unwrap_or_else(|| {
+            let key = self.model_key.as_str();
+            let label = key
+                .strip_prefix(&*self.owner)
+                .and_then(|rest| rest.strip_prefix("/model:"));
+            ModelRef::new(label.unwrap_or(key))
+        })
     }
 
     /// Bind the model registered under `label`.
@@ -446,15 +446,7 @@ impl Agent {
 
     /// The label of this agent's default model, as registered now.
     pub fn model_label(&self) -> Option<ModelRef> {
-        self.model_descriptor()
-            .and_then(|descriptor| match descriptor.family {
-                rig_core::effect::FamilyDescriptor::Completion { model, .. } => Some(model),
-                rig_core::effect::FamilyDescriptor::Tool { .. }
-                | rig_core::effect::FamilyDescriptor::Embed { .. }
-                | rig_core::effect::FamilyDescriptor::Retrieve {}
-                | rig_core::effect::FamilyDescriptor::Rerank { .. }
-                | rig_core::effect::FamilyDescriptor::Custom { .. } => None,
-            })
+        self.config.registered_model_label()
     }
 
     /// Register `model` in this agent's table under `label` and return the

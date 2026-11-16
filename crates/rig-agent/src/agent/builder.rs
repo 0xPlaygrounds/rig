@@ -52,14 +52,7 @@ impl AgentHook for DynamicContext {
         ctx: &HookContext,
         event: CompletionCallEvent<'_>,
     ) -> CompletionCallAction {
-        let query = event.prompt.rag_text().or_else(|| {
-            event
-                .history
-                .iter()
-                .rev()
-                .find_map(|message| message.rag_text())
-        });
-        let Some(query) = query else {
+        let Some(query) = super::completion::retrieval_query(event.prompt, event.history) else {
             return CompletionCallAction::continue_run();
         };
         let Some(key) = self.key.get() else {
@@ -125,7 +118,6 @@ pub struct AgentBuilder {
     /// The dynamic-context hooks' key slots, by key suffix.
     dynamic_contexts: Vec<(String, Arc<OnceLock<Key<family::Retrieve>>>)>,
     recorder: Option<Arc<dyn Recorder + Send + Sync>>,
-    retrieval_indexes: usize,
     /// The labels `model_route` registered, in order.
     routes: Vec<String>,
 }
@@ -190,9 +182,7 @@ impl AgentBuilder {
         samples: usize,
         handler: impl rig_core::serve::Serve + 'static,
     ) -> Self {
-        let n = self.retrieval_indexes;
-        self.retrieval_indexes += 1;
-        let suffix = format!("retrieve:context#{n}");
+        let suffix = format!("retrieve:context#{}", self.dynamic_contexts.len());
         let key = Arc::new(OnceLock::new());
         self.pending
             .push((suffix.clone(), ErasedHandler::new(handler)));
@@ -469,7 +459,6 @@ impl AgentBuilder {
             mut pending,
             dynamic_contexts,
             recorder,
-            retrieval_indexes: _,
             routes,
         } = self;
         // Named agents need stable keys across processes for replay.
@@ -565,7 +554,6 @@ impl AgentBuilder {
             pending: Vec::new(),
             dynamic_contexts: Vec::new(),
             recorder: None,
-            retrieval_indexes: 0,
             routes: Vec::new(),
         }
     }

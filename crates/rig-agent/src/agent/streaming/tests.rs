@@ -326,13 +326,7 @@ async fn execution_commit_items_are_not_emitted_when_run_commit_fails() {
     let runner = AgentBuilder::new(MockCompletionModel::from_turns([]))
         .build()
         .prompt("go");
-    let tool_snapshot = Arc::new(
-        runner
-            .tool_server_handle
-            .snapshot_tool_defs(None)
-            .await
-            .expect("empty tool snapshot should build"),
-    );
+    let tool_snapshot = Arc::new(runner.tool_server_handle.snapshot_with_dynamic(&[]));
 
     let mut run = AgentRun::new("go").max_turns(2);
     assert!(matches!(

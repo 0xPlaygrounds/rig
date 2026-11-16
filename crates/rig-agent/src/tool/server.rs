@@ -24,7 +24,7 @@ use rig_core::error::ProviderError;
 use rig_core::serve::adapters::RetrieveAdapter;
 use rig_core::{
     effect::Key,
-    effect::{HandlerKey, family},
+    effect::{Family, HandlerKey, family},
     vector_store::{VectorStoreIndex, request::DynamicSearchFilter},
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
@@ -476,12 +476,31 @@ impl ToolServerHandle {
     }
 
     /// Retrieve advertised definitions for `prompt`, returning retrieval failures
-    /// or incompatible result shapes as definition errors.
+    /// or incompatible result shapes as definition errors. The retrieval
+    /// queries run inline on the registry's own handlers: this is a registry
+    /// read, while the engine dispatches the same queries through its handlers.
     pub async fn tool_defs(
         &self,
         prompt: Option<String>,
     ) -> Result<Vec<Arc<ToolDefinition>>, ToolServerError> {
-        Ok(self.snapshot_tool_defs(prompt).await?.take_definitions())
+        let searches = self
+            .retrieval_queries(prompt)
+            .into_iter()
+            .map(|(index, kind)| async move {
+                rig_core::serve::serve_inline(&index.handler, kind)
+                    .await
+                    .and_then(retrieved_ids)
+                    .map_err(|report| {
+                        rig_core::vector_store::VectorStoreError::DatastoreError(Box::new(report))
+                    })
+            });
+        let dynamic_tool_ids = futures::future::try_join_all(searches)
+            .await
+            .map_err(|e| ToolServerError::DefinitionError(ProviderError::request(e)))?
+            .concat();
+        Ok(self
+            .snapshot_with_dynamic(&dynamic_tool_ids)
+            .take_definitions())
     }
 
     /// Return registered retrieval index keys in registration order.
@@ -500,13 +519,21 @@ impl ToolServerHandle {
         &self,
         prompt: Option<String>,
     ) -> Vec<(HandlerKey, rig_core::effect::EffectKind)> {
+        self.retrieval_queries(prompt)
+            .into_iter()
+            .map(|(index, kind)| (index.key, kind))
+            .collect()
+    }
+
+    /// One `TopNIds` retrieval per index for `prompt`, none without one.
+    fn retrieval_queries(
+        &self,
+        prompt: Option<String>,
+    ) -> Vec<(RetrievalIndex, rig_core::effect::EffectKind)> {
         let Some(text) = prompt else {
             return Vec::new();
         };
-        let retrieval_indexes = {
-            let state = self.state();
-            state.retrieval_indexes.clone()
-        };
+        let retrieval_indexes = self.state().retrieval_indexes.clone();
         retrieval_indexes
             .into_iter()
             .map(|index| {
@@ -514,14 +541,12 @@ impl ToolServerHandle {
                     .query(text.clone())
                     .samples(index.samples as u64)
                     .build();
-                (
-                    index.key,
-                    rig_core::effect::EffectKind::Retrieve {
-                        query: rig_core::effect::RetrieveQuery::TopNIds {
-                            req: req.map_filter(rig_core::vector_store::request::Filter::interpret),
-                        },
+                let kind = rig_core::effect::EffectKind::Retrieve {
+                    query: rig_core::effect::RetrieveQuery::TopNIds {
+                        req: req.map_filter(rig_core::vector_store::request::Filter::interpret),
                     },
-                )
+                };
+                (index, kind)
             })
             .collect()
     }
@@ -533,80 +558,21 @@ impl ToolServerHandle {
             self.with_registry(|state| snapshot_registered_tools(state, dynamic_tool_ids)),
         )
     }
+}
 
-    /// The registrations a request with `prompt` advertises, answering the
-    /// retrieval queries inline on the registry's own handlers. This is the
-    /// standalone registry read ([`ToolServerHandle::tool_defs`]); the
-    /// engine dispatches the same queries through its handlers instead.
-    pub(crate) async fn snapshot_tool_defs(
-        &self,
-        prompt: Option<String>,
-    ) -> Result<ToolCatalog, ToolServerError> {
-        let retrieval_indexes = {
-            let state = self.state();
-            state.retrieval_indexes.clone()
-        };
-
-        let dynamic_tool_ids = if let Some(ref text) = prompt {
-            let search_futures = retrieval_indexes.iter().map(|index| {
-                let text = text.clone();
-                let samples = index.samples;
-                let handler = index.handler.clone();
-
-                async move {
-                    let req = rig_core::vector_store::request::VectorSearchRequest::builder()
-                        .query(text)
-                        .samples(samples as u64)
-                        .build();
-                    // Retrieval for advertisement runs inline on the registry's
-                    // own handler: it is a registry read, not a run effect.
-                    let outcome = rig_core::serve::serve_inline(
-                        &handler,
-                        rig_core::effect::EffectKind::Retrieve {
-                            query: rig_core::effect::RetrieveQuery::TopNIds {
-                                req: req
-                                    .map_filter(rig_core::vector_store::request::Filter::interpret),
-                            },
-                        },
-                    )
-                    .await
-                    .map_err(|report| {
-                        rig_core::vector_store::VectorStoreError::DatastoreError(Box::new(report))
-                    })?;
-                    let ids = match outcome {
-                        rig_core::effect::Answered::Documents(
-                            rig_core::effect::RetrievedDocuments::Ids(ids),
-                        ) => ids.into_iter().map(|(_, id)| id).collect::<Vec<String>>(),
-                        other => {
-                            return Err(rig_core::vector_store::VectorStoreError::DatastoreError(
-                                Box::new(rig_core::error::ErrorReport::new(
-                                    rig_core::error::ErrorKind::Internal,
-                                    format!(
-                                        "tool retrieval answered with a {} outcome",
-                                        other.family()
-                                    ),
-                                )),
-                            ));
-                        }
-                    };
-
-                    Ok::<_, rig_core::vector_store::VectorStoreError>(ids)
-                }
-            });
-
-            futures::future::try_join_all(search_futures)
-                .await
-                .map_err(|e| ToolServerError::DefinitionError(ProviderError::request(e)))?
-                .into_iter()
-                .flatten()
-                .collect::<Vec<String>>()
-        } else {
-            Vec::new()
-        };
-
-        Ok(ToolCatalog::from_registered(self.with_registry(|state| {
-            snapshot_registered_tools(state, &dynamic_tool_ids)
-        })))
+/// The tool ids a `TopNIds` retrieval answered, or the report for any other
+/// answer.
+pub(crate) fn retrieved_ids(
+    outcome: rig_core::effect::Answered,
+) -> Result<Vec<String>, rig_core::error::ErrorReport> {
+    match family::Retrieve::unwrap(outcome)? {
+        rig_core::effect::RetrievedDocuments::Ids(ids) => {
+            Ok(ids.into_iter().map(|(_, id)| id).collect())
+        }
+        rig_core::effect::RetrievedDocuments::Scored(_) => Err(rig_core::error::ErrorReport::new(
+            rig_core::error::ErrorKind::Internal,
+            "expected retrieved ids, the handler answered scored documents",
+        )),
     }
 }
 

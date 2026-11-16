@@ -6,7 +6,6 @@
 //! # }
 //! ```
 
-use rig_core::error::ProviderError;
 use rig_core::{
     message::AssistantContent,
     wasm_compat::{WasmBoxedStream, WasmCompatSend},
@@ -414,11 +413,7 @@ impl AgentRunner {
                     }
                 }
             }
-            response.ok_or_else(|| {
-                PromptError::Provider(ProviderError::Response(
-                    "agent run ended without producing a final response".to_string(),
-                ))
-            })
+            response.ok_or_else(super::runner::no_final_response)
         };
         (future, RunEvents { receiver })
     }

@@ -598,11 +598,7 @@ impl AgentRunner {
                     }
                 }
             }
-            response.ok_or_else(|| {
-                PromptError::Provider(ProviderError::Response(
-                    "agent run ended without producing a final response".to_string(),
-                ))
-            })
+            response.ok_or_else(no_final_response)
         };
         fold.instrument(agent_span).await
     }
@@ -616,6 +612,13 @@ impl std::future::IntoFuture for AgentRunner {
     fn into_future(self) -> Self::IntoFuture {
         Box::pin(self.run())
     }
+}
+
+/// The error of a run that ended without a final response.
+pub(crate) fn no_final_response() -> PromptError {
+    PromptError::Provider(ProviderError::Response(
+        "agent run ended without producing a final response".to_string(),
+    ))
 }
 
 #[cfg(test)]

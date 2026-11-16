@@ -237,11 +237,7 @@ impl CompletionScope<UnaryTurnSource> {
             .config
             .handlers
             .serve(id, model.key().clone(), kind, Beside::default());
-        let answer = match served.await {
-            Ok(Answered::Completion(response)) => Ok(std::sync::Arc::unwrap_or_clone(response)),
-            Ok(other) => Err(wrong_outcome("a completion", &other)),
-            Err(report) => Err(report),
-        };
+        let answer = served.await.and_then(family::Completion::unwrap);
         let answer = self.answer.insert(answer).as_ref();
         answer.map_err(|report| PromptError::Report(report.clone()))
     }

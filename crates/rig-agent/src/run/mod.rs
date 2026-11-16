@@ -684,9 +684,7 @@ impl AgentRun {
         &mut self,
         choice: Vec<AssistantContent>,
     ) -> Result<(), PromptError> {
-        let replacement_has_tool_calls = choice
-            .iter()
-            .any(|item| matches!(item, AssistantContent::ToolCall(_)));
+        let replacement_has_tool_calls = has_tool_calls(&choice);
         let parked_has_tool_calls = match &self.state {
             RunState::AwaitingAdvance(turn) => turn.has_tool_calls,
             _ => {
@@ -954,70 +952,51 @@ impl AgentRun {
 
                     // A call the reply was cut off in is no answer, whatever
                     // its arguments: the model is told to send less while
-                    // the budget lasts.
-                    if cut_off.contains(&position) {
+                    // the budget lasts. Arguments that are not a JSON object
+                    // are no answer either, and missing fields keep their
+                    // own, more pointed reprompt.
+                    let refusal = if cut_off.contains(&position) {
                         let raw = tool_call.function.raw_arguments();
-                        if self.can_reprompt_for_output() {
-                            self.history.commit(assistant_message(head, items.clone()));
-                            let feedback = output_limit_feedback(&output_tool_name, &raw);
-                            if let Some(user_message) =
-                                invalid_tool_retry_user_message(&items, &tool_call_id, &feedback)
-                            {
-                                self.history.commit([user_message]);
-                            }
-                            return self.reprompt_for_output();
-                        }
-                        return Err(self.schema_mismatch(
+                        Some((
+                            output_limit_feedback(&output_tool_name, &raw),
                             raw,
-                            Some(output_tool_name),
                             vec![Problem {
                                 at: String::new(),
                                 what: "cut off at the output limit".to_owned(),
                             }],
-                        ));
-                    }
-
-                    // Arguments that are not a JSON object are no answer:
-                    // the model is told why while the budget lasts.
-                    if let Some(raw) = &tool_call.function.invalid_arguments {
-                        if self.can_reprompt_for_output() {
-                            self.history.commit(assistant_message(head, items.clone()));
-                            let feedback = invalid_arguments_feedback(&output_tool_name, raw);
-                            if let Some(user_message) =
-                                invalid_tool_retry_user_message(&items, &tool_call_id, &feedback)
-                            {
-                                self.history.commit([user_message]);
-                            }
-                            return self.reprompt_for_output();
-                        }
-                        return Err(self.schema_mismatch(
+                        ))
+                    } else if let Some(raw) = &tool_call.function.invalid_arguments {
+                        Some((
+                            invalid_arguments_feedback(&output_tool_name, raw),
                             raw.clone(),
-                            Some(output_tool_name),
                             vec![Problem {
                                 at: String::new(),
                                 what: "not a JSON object".to_owned(),
                             }],
-                        ));
-                    }
-
-                    // Missing fields keep their own, more pointed reprompt.
-                    let refusal = self.output_schema.as_ref().and_then(|schema| {
-                        let problems = rig_core::tool::validate::validate(schema, &args).err()?;
-                        let missing = structured_output::missing_required_fields(schema, &args);
-                        let feedback = if missing.is_empty() {
-                            structured_output::reprompt_schema_problems(
-                                &output_tool_name,
-                                &response::join_problems(&problems),
-                            )
-                        } else {
-                            structured_output::reprompt_missing_fields(&output_tool_name, &missing)
-                        };
-                        Some((feedback, problems))
-                    });
-                    if let Some((feedback, problems)) = refusal {
+                        ))
+                    } else {
+                        self.output_schema.as_ref().and_then(|schema| {
+                            let problems =
+                                rig_core::tool::validate::validate(schema, &args).err()?;
+                            let missing = structured_output::missing_required_fields(schema, &args);
+                            let feedback = if missing.is_empty() {
+                                structured_output::reprompt_schema_problems(
+                                    &output_tool_name,
+                                    &response::join_problems(&problems),
+                                )
+                            } else {
+                                structured_output::reprompt_missing_fields(
+                                    &output_tool_name,
+                                    &missing,
+                                )
+                            };
+                            Some((feedback, output.clone(), problems))
+                        })
+                    };
+                    if let Some((feedback, answer, problems)) = refusal {
                         if !self.can_reprompt_for_output() {
                             return Err(self.schema_mismatch(
-                                output,
+                                answer,
                                 Some(output_tool_name),
                                 problems,
                             ));
