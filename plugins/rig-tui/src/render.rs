@@ -414,20 +414,6 @@ type LiveEffect = (
     (Has<Started>, Has<Partial>),
 );
 
-/// What the transcript is drawn from besides the agent.
-pub(crate) struct Sources<'a> {
-    /// The pane's view as plugins steer it: what is marked.
-    pub(crate) view: &'a TranscriptView,
-    /// The notices shown.
-    pub(crate) notices: &'a Notices,
-    /// The looks plugins added.
-    pub(crate) renderers: &'a Renderers,
-    /// What settled calls published and how long they ran.
-    pub(crate) facts: &'a CallFacts,
-    /// The transcript's colors.
-    pub(crate) theme: &'a Theme,
-}
-
 /// Lays out an agent's transcript through [`crate::TranscriptRender`],
 /// including pane-less exports. Call from an exclusive system so render
 /// systems can access the world synchronously.
@@ -507,16 +493,10 @@ pub(crate) fn lay_out_rendered(
             }
             Showing::Nothing => None,
         };
-        let sources = Sources {
-            view,
-            notices: from.notices(),
-            renderers,
-            facts: from.facts(),
-            theme: from.theme(),
-        };
         Some(lay_out_transcript(
             transcript,
-            &sources,
+            &from,
+            (view, renderers),
             shown.as_ref(),
             width,
         ))
@@ -626,21 +606,6 @@ impl LayoutSources<'_, '_> {
         }
         live
     }
-
-    /// What settled calls published and how long they ran.
-    pub(crate) fn facts(&self) -> &CallFacts {
-        &self.facts
-    }
-
-    /// The notices shown.
-    pub(crate) fn notices(&self) -> &Notices {
-        &self.notices
-    }
-
-    /// The transcript's colors.
-    pub(crate) fn theme(&self) -> &Theme {
-        &self.theme
-    }
 }
 
 /// Brings `transcript` up to date with the shown agent and returns its
@@ -649,20 +614,22 @@ impl LayoutSources<'_, '_> {
 /// entries it stands for and a line saying how many; then those after the
 /// last message, the reply streaming in with the tool calls it streams,
 /// and the messages the agent accepted and has not sent yet. Without an
-/// agent, the notices about every agent.
+/// agent, the notices about every agent. `view` is what plugins mark and
+/// `renderers` the looks they added.
 pub(crate) fn lay_out_transcript(
     transcript: &mut Transcript,
-    sources: &Sources<'_>,
+    from: &LayoutSources<'_, '_>,
+    (view, renderers): (&TranscriptView, &Renderers),
     shown: Option<&ShownConversation<'_>>,
     width: u16,
 ) -> Vec<Part> {
-    sources.renderers.at(Place::default());
+    let (notices, facts, theme) = (&*from.notices, &*from.facts, &*from.theme);
+    renderers.at(Place::default());
     let wrap_width = usize::from(width.max(1));
     let mut parts = Vec::new();
-    let view = sources.view;
     let Some(shown) = shown else {
         let (mut extra, mut marks) = (Vec::new(), Marks::new());
-        let notices = sources.notices.numbered();
+        let notices = notices.numbered();
         for notice in notices.filter(|(_, notice)| notice.is_for_every_agent()) {
             notice_lines(notice, &mut extra, &mut marks);
         }
@@ -678,19 +645,19 @@ pub(crate) fn lay_out_transcript(
     let mut asides_after: Vec<Vec<&ShownAside<'_>>> = vec![Vec::new(); count + 1];
     let stops = Stops::of(conversation, &entries);
     let mut look = Look {
-        renderers: sources.renderers,
+        renderers,
         agent: shown.id.map(|id| id.0.as_str()),
         forked_from: shown.forked_from,
         calls: &shown.calls,
         outputs: &shown.outputs,
         inside: HashMap::new(),
-        facts: sources.facts,
-        theme: sources.theme,
+        facts,
+        theme,
         children: &shown.children,
         marks: &view.marks,
         stops: &stops,
     };
-    let notices = shown.id.map(|id| (id, sources.notices));
+    let notices = shown.id.map(|id| (id, notices));
     let notices = notices
         .into_iter()
         .flat_map(|(id, notices)| notices.numbered().map(move |(at, notice)| (id, at, notice)));
@@ -752,17 +719,17 @@ pub(crate) fn lay_out_transcript(
         }
     }
     transcript.update(shown.entity, &entries, shown.changed, &look, width);
-    sources.renderers.at(Place::default());
+    renderers.at(Place::default());
     let mut after = after.into_iter().zip(asides_after);
     for index in 0..=count {
         let (notices, asides) = after.next().unwrap_or_default();
         for aside in asides {
-            let drawn = aside.lines(sources.renderers, sources.theme);
+            let drawn = aside.lines(renderers, theme);
             if drawn.is_empty() {
                 continue;
             }
             let mut lines = vec![LookLine::default()];
-            lines.extend(on_band(drawn, sources.theme.tool));
+            lines.extend(on_band(drawn, theme.tool));
             let marks = [(aside.item(), 0..lines.len())];
             parts.push(Part::rows(&lines, &marks, wrap_width));
         }
@@ -772,7 +739,6 @@ pub(crate) fn lay_out_transcript(
         }
         if index == count {
             if let Some((call, partial)) = shown.partial {
-                let theme = sources.theme;
                 extra.extend(reasoning_lines(&partial.reasoning, wrap_width, theme));
                 if !partial.text.is_empty() {
                     extra.push(LookLine::default());
@@ -785,23 +751,23 @@ pub(crate) fn lay_out_transcript(
                 .into_iter()
                 .flat_map(|(_, partial)| &partial.calls);
             for (at, call) in streaming.map(PartialCall::shown).enumerate() {
-                sources.renderers.at(Place::Outside(at));
+                renderers.at(Place::Outside(at));
                 let item = CallItem::Streaming(at);
                 let call = || ToolRender {
-                    theme: *sources.theme,
+                    theme: *theme,
                     item: Some(item),
                     ..ToolRender::new(call, None, CallState::Streaming)
                 };
                 let start = extra.len();
-                let (drawn, decorated) = sources.renderers.call_decorated(call);
-                extra.extend(on_band(drawn, sources.theme.tool));
+                let (drawn, decorated) = renderers.call_decorated(call);
+                extra.extend(on_band(drawn, theme.tool));
                 marks.push((TranscriptItem::Call(item), start..extra.len()));
                 for (name, rows) in decorated {
                     let decoration = TranscriptItem::Decoration(item, name);
                     marks.push((decoration, start + rows.start..start + rows.end));
                 }
             }
-            inbox_lines(&shown.inbox, sources.theme, &mut extra);
+            inbox_lines(&shown.inbox, theme, &mut extra);
             parts.push(Part::rows(&extra, &marks, wrap_width));
             break;
         }
