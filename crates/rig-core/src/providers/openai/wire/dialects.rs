@@ -194,8 +194,6 @@ pub const TOGETHER: Dialect = Dialect {
         verify_path: "/models",
         embedding: EmbeddingQuirks {
             requires_usage: false,
-            supports_encoding_format: false,
-            supports_user: false,
             ..EmbeddingQuirks::openai()
         },
         ..Quirks::openai()
@@ -296,7 +294,6 @@ pub const MISTRAL: Dialect = Dialect {
         rewrite: BodyRewrite::Mistral,
         embedding: EmbeddingQuirks {
             max_documents: 256,
-            supports_user: false,
             // Codestral Embed takes its width as `output_dimension`.
             dimensions: DimensionsField::OutputDimension,
             widths: super::modality::MISTRAL_EMBEDDING_WIDTHS,
@@ -367,8 +364,6 @@ pub const DOUBLEWORD: Dialect = Dialect {
     quirks: Quirks {
         embedding: EmbeddingQuirks {
             requires_usage: false,
-            supports_encoding_format: false,
-            supports_user: false,
             widths: super::modality::DOUBLEWORD_EMBEDDING_WIDTHS,
             // Doubleword refuses a zero width itself, and stating it here
             // keeps the refusal ahead of a request that cannot succeed.

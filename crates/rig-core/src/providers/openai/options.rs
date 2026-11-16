@@ -499,65 +499,45 @@ pub(crate) fn chat_options(
     request: &CompletionRequest,
     fields: OptionFields<'_>,
 ) -> OptionMap {
-    use super::wire::{
-        AZURE, COHERE, DEEPSEEK, DOUBLEWORD, GROQ, HUGGINGFACE, HYPERBOLIC, LLAMACPP, MINIMAX,
-        MIRA, MISTRAL, MOONSHOT, OLLAMA, OPENAI, OPENROUTER, PERPLEXITY, TOGETHER, VENICE,
-        XIAOMIMIMO, ZAI,
+    use crate::providers::{
+        azure, cohere, copilot, deepseek, doubleword, groq, huggingface, hyperbolic, llamacpp,
+        minimax, mira, mistral, moonshot, ollama, openai, openrouter, perplexity, together, venice,
+        xai, xiaomimimo, zai,
     };
     let model = request.model.as_deref().unwrap_or(&chat.model);
     let facts = &chat.facts;
-    let name = chat.provider.dialect.name;
-    let is = |dialect: &super::wire::Dialect| name == dialect.name;
-    if is(&OPENAI) {
-        openai_chat(facts, model, fields, None)
-    } else if is(&AZURE) {
-        openai_chat(
+    match chat.provider.dialect.name {
+        openai::PROVIDER_NAME => openai_chat(facts, model, fields, None),
+        azure::PROVIDER_NAME => openai_chat(
             facts,
             model,
             fields,
             Some(chat.provider.api_version.as_deref()),
-        )
-    } else if is(&OPENROUTER) {
-        openrouter(facts, model, fields)
-    } else if is(&DEEPSEEK) {
-        deepseek(fields)
-    } else if is(&MISTRAL) {
-        mistral(facts, model, fields)
-    } else if is(&GROQ) {
-        groq(facts, model, fields)
-    } else if name == crate::providers::xai::DIALECT.name {
-        xai(facts, model, fields)
-    } else if is(&TOGETHER) {
-        together(fields)
-    } else if is(&VENICE) {
-        venice(facts, model, fields)
-    } else if is(&MOONSHOT) {
-        moonshot(model, fields)
-    } else if is(&ZAI) {
-        zai(model, fields)
-    } else if is(&LLAMACPP) {
-        llamacpp(fields)
-    } else if is(&OLLAMA) {
-        ollama(fields)
-    } else if is(&COHERE) {
-        cohere(facts, model, fields)
-    } else if is(&PERPLEXITY) {
-        perplexity(model, fields)
-    } else if is(&MINIMAX) {
-        minimax(model, fields)
-    } else if is(&XIAOMIMIMO) {
-        xiaomimimo(fields)
-    } else if is(&MIRA) {
-        refuse_all(fields, "Mira rejects every pass-through parameter")
-    } else if is(&HUGGINGFACE) || is(&HYPERBOLIC) || is(&DOUBLEWORD) {
-        refuse_all(fields, "unverified for this provider")
-    } else if name == crate::providers::copilot::wire::DIALECT.name {
-        refuse_all(fields, "unverified for copilot")
-    } else {
-        refuse_all(
+        ),
+        openrouter::PROVIDER_NAME => openrouter(facts, model, fields),
+        deepseek::PROVIDER_NAME => deepseek(fields),
+        mistral::PROVIDER_NAME => mistral(facts, model, fields),
+        groq::PROVIDER_NAME => groq(facts, model, fields),
+        xai::PROVIDER_NAME => xai(facts, model, fields),
+        together::PROVIDER_NAME => together(fields),
+        venice::PROVIDER_NAME => venice(facts, model, fields),
+        moonshot::PROVIDER_NAME => moonshot(model, fields),
+        zai::PROVIDER_NAME => zai(model, fields),
+        llamacpp::PROVIDER_NAME => llamacpp(fields),
+        ollama::PROVIDER_NAME => ollama(fields),
+        cohere::PROVIDER_NAME => cohere(facts, model, fields),
+        perplexity::PROVIDER_NAME => perplexity(model, fields),
+        minimax::PROVIDER_NAME => minimax(model, fields),
+        xiaomimimo::PROVIDER_NAME => xiaomimimo(fields),
+        mira::PROVIDER_NAME => refuse_all(fields, "Mira rejects every pass-through parameter"),
+        huggingface::PROVIDER_NAME | hyperbolic::PROVIDER_NAME | doubleword::PROVIDER_NAME => {
+            refuse_all(fields, "unverified for this provider")
+        }
+        copilot::PROVIDER_NAME => refuse_all(fields, "unverified for copilot"),
+        _ => refuse_all(
             fields,
             "no option mapping is known for this gateway; send it through `additional_params`",
-        )
+        ),
     }
 }
 

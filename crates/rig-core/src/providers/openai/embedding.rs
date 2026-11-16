@@ -20,13 +20,6 @@ pub struct CompatibleEmbeddingResponse {
     pub usage: Option<EmbeddingUsage>,
 }
 
-#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum EncodingFormat {
-    Float,
-    Base64,
-}
-
 /// One embedded input. Missing object and index fields default to empty and zero.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmbeddingData {

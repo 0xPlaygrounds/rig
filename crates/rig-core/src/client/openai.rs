@@ -7,8 +7,7 @@ use crate::error::ProviderError;
 use crate::model::ModelList;
 use crate::providers::openai::responses_api::wire::Responses;
 use crate::providers::openai::wire::{
-    Chat, Embeddings, HookedModels, Images, OpenAIConfig, OpenAiWire, Rerank, Speech,
-    Transcriptions,
+    Chat, Embeddings, Images, OpenAIConfig, OpenAiWire, Rerank, Speech, Transcriptions,
 };
 
 http_client!(
@@ -90,12 +89,7 @@ impl OpenAI {
 
     /// The models this provider serves, every page followed.
     pub async fn list_models(&self) -> Result<ModelList, ProviderError> {
-        let models = self.config.models();
-        let hooks = self.config.dialect.quirks.hooks;
-        match hooks.and_then(|hooks| hooks.model_listing) {
-            Some(catalogue) => self.model(HookedModels { models, catalogue }).list().await,
-            None => self.model(models).list().await,
-        }
+        self.model(self.config.models()).list().await
     }
 
     /// Check that the provider accepts the configured credential. A 401 or

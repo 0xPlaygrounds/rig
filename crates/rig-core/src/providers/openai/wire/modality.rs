@@ -16,9 +16,10 @@ use crate::model::{ModelInfo, ModelList};
 use crate::operation::{
     Embedding, ModelListing, ModelPage, Rerank as RerankOp, Transcription, Verify as VerifyOp,
 };
+use crate::providers::internal::set_fields;
 use crate::providers::internal::wire::classify_untyped_line;
 use crate::providers::openai::embedding::{
-    CompatibleEmbeddingResponse, EncodingFormat, model_dimensions_from_identifier,
+    CompatibleEmbeddingResponse, model_dimensions_from_identifier,
 };
 use crate::transcription::TranscriptionRequest;
 use crate::wire::{
@@ -180,10 +181,6 @@ pub struct EmbeddingQuirks {
     pub max_documents: usize,
     /// Whether a successful reply must carry usage.
     pub requires_usage: bool,
-    /// Whether the provider accepts `encoding_format`.
-    pub supports_encoding_format: bool,
-    /// Whether the provider accepts `user`.
-    pub supports_user: bool,
     /// Whether the model is a body field (false for Azure, which addresses a
     /// deployment through the URL).
     pub sends_model_field: bool,
@@ -204,8 +201,6 @@ impl EmbeddingQuirks {
         Self {
             max_documents: 1024,
             requires_usage: true,
-            supports_encoding_format: true,
-            supports_user: true,
             sends_model_field: true,
             dimensions: DimensionsField::Dimensions,
             // Shared OpenAI model widths are resolved separately.
@@ -425,10 +420,6 @@ pub struct Embeddings {
     /// The width the caller asked for, when they named one rather than
     /// taking the model's default.
     pub ndims: Option<usize>,
-    /// The encoding the caller asked the provider to answer in.
-    pub encoding_format: Option<EncodingFormat>,
-    /// The end-user identifier the provider attributes the call to.
-    pub user: Option<String>,
 }
 
 impl Embeddings {
@@ -438,21 +429,7 @@ impl Embeddings {
             provider,
             model: model.into(),
             ndims,
-            encoding_format: None,
-            user: None,
         }
-    }
-
-    /// Ask the provider to answer in `encoding_format`.
-    pub fn with_encoding_format(mut self, encoding_format: EncodingFormat) -> Self {
-        self.encoding_format = Some(encoding_format);
-        self
-    }
-
-    /// Attribute the call to an end user.
-    pub fn with_user(mut self, user: impl Into<String>) -> Self {
-        self.user = Some(user.into());
-        self
     }
 
     /// This model's width contract on this dialect, or `None` for a model
@@ -609,52 +586,26 @@ impl Wire for Embeddings {
 
     fn encode(&self, request: Vec<String>, _mode: Mode) -> Result<Encoded, EncodeError> {
         let quirks = &self.provider.dialect.quirks.embedding;
-        // Base64 vectors are not decoded anywhere, so asking for them would
-        // answer 200 with a payload rig cannot read.
-        if self.encoding_format == Some(EncodingFormat::Base64) {
-            return Err(EncodeError::request(format!(
-                "Rig cannot decode {} embedding responses encoded as `base64`",
-                self.provider.dialect.name
-            )));
-        }
-        if self.encoding_format.is_some() && !quirks.supports_encoding_format {
-            return Err(unsupported_parameter(
-                self.provider.dialect.name,
-                "encoding_format",
-            ));
-        }
-        if self.user.is_some() && !quirks.supports_user {
-            return Err(unsupported_parameter(self.provider.dialect.name, "user"));
-        }
         self.refuse_unhonourable_width()?;
 
-        let mut body = serde_json::json!({ "input": request });
-        let Some(object) = body.as_object_mut() else {
-            return Err(EncodeError::request(
-                "embedding request body must be an object",
-            ));
-        };
-        if quirks.sends_model_field {
-            object.insert("model".to_owned(), serde_json::json!(self.model));
-        }
+        let mut body = set_fields([
+            ("input", Some(serde_json::json!(request))),
+            (
+                "model",
+                quirks
+                    .sends_model_field
+                    .then(|| serde_json::json!(self.model)),
+            ),
+        ]);
         if let Some((field, ndims)) = self.requested_width() {
-            object.insert(field.to_owned(), serde_json::json!(ndims));
-        }
-        if let Some(encoding_format) = self.encoding_format {
-            object.insert(
-                "encoding_format".to_owned(),
-                serde_json::to_value(encoding_format)?,
-            );
-        }
-        if let Some(user) = &self.user {
-            object.insert("user".to_owned(), serde_json::json!(user));
+            body.insert(field.to_owned(), serde_json::json!(ndims));
         }
 
         json_post(
             &self.provider,
             self.provider.dialect.quirks.embeddings_path,
             self.provider.deployment(&self.model),
-            &body,
+            &serde_json::Value::Object(body),
         )
     }
 
@@ -947,14 +898,8 @@ impl<'id> Decoder<'id, crate::operation::ImageGeneration> for ImagesDecoder {
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
         match self.body {
             // Preserve raw image bytes even when framing recognized valid UTF-8.
-            ImageBody::HuggingFace => WireEvent::Known(ImagesEvent::Raw(match frame {
-                WireFrame::Text(text) => text.into_bytes(),
-                WireFrame::Bytes(bytes) => bytes,
-            })),
-            ImageBody::MiniMax => WireEvent::Known(ImagesEvent::MiniMax(match frame {
-                WireFrame::Text(text) => text.into_bytes(),
-                WireFrame::Bytes(bytes) => bytes,
-            })),
+            ImageBody::HuggingFace => WireEvent::Known(ImagesEvent::Raw(frame.into_bytes())),
+            ImageBody::MiniMax => WireEvent::Known(ImagesEvent::MiniMax(frame.into_bytes())),
             ImageBody::OpenAi | ImageBody::Xai | ImageBody::Hyperbolic | ImageBody::Venice => {
                 classify_untyped_line(frame.as_str().as_bytes()).map(ImagesEvent::Json)
             }
@@ -986,12 +931,9 @@ impl<'id> Decoder<'id, crate::operation::ImageGeneration> for ImagesDecoder {
         let Some(encoded) = reply.first_base64() else {
             return Err(ProviderError::Response("missing image data".to_owned()));
         };
-        let image = match base64::prelude::BASE64_STANDARD.decode(encoded) {
-            Ok(image) => image,
-            Err(error) => {
-                return Err(ProviderError::Response(error.to_string()));
-            }
-        };
+        let image = base64::prelude::BASE64_STANDARD
+            .decode(encoded)
+            .map_err(|error| ProviderError::Response(error.to_string()))?;
         Ok(out.end(ImageGenerationResponse::new(image)))
     }
 }
@@ -1123,10 +1065,7 @@ impl<'id> Decoder<'id, crate::operation::AudioGeneration> for SpeechDecoder {
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
         // Interpretation selects raw audio or JSON decoding from the dialect.
-        WireEvent::Known(match frame {
-            WireFrame::Text(text) => text.into_bytes(),
-            WireFrame::Bytes(bytes) => bytes,
-        })
+        WireEvent::Known(frame.into_bytes())
     }
 
     fn decode(
@@ -1147,18 +1086,11 @@ impl<'id> Decoder<'id, crate::operation::AudioGeneration> for SpeechDecoder {
             }
             // Hyperbolic wraps it, base64-encoded, in a JSON envelope.
             SpeechBody::Hyperbolic => {
-                let reply = match serde_json::from_slice::<SpeechReply>(&event) {
-                    Ok(reply) => reply,
-                    Err(error) => {
-                        return Err(ProviderError::Response(error.to_string()));
-                    }
-                };
-                match base64::prelude::BASE64_STANDARD.decode(&reply.audio) {
-                    Ok(audio) => audio,
-                    Err(error) => {
-                        return Err(ProviderError::Response(error.to_string()));
-                    }
-                }
+                let reply = serde_json::from_slice::<SpeechReply>(&event)
+                    .map_err(|error| ProviderError::Response(error.to_string()))?;
+                base64::prelude::BASE64_STANDARD
+                    .decode(&reply.audio)
+                    .map_err(|error| ProviderError::Response(error.to_string()))?
             }
         };
         Ok(out.end(crate::audio_generation::AudioGenerationResponse::new(audio)))
@@ -1330,12 +1262,38 @@ pub struct ModelsReply {
     pub data: Vec<ModelEntry>,
 }
 
+/// Reads a listing reply with the dialect's `model_listing` hook, or as
+/// the `{ "data": [...] }` envelope when the dialect has none.
+pub struct ModelsDecoder(Option<super::ModelCatalogue>);
+
+impl<'id> Decoder<'id, ModelListing> for ModelsDecoder {
+    type Event = ModelList;
+
+    fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
+        let body = frame.as_str();
+        match self.0 {
+            Some(read) => classify_untyped_line(body.as_bytes()).map(read),
+            None => classify_untyped_line::<ModelsReply>(body.as_bytes())
+                .map(|reply| reply.data.into_iter().map(ModelInfo::from).collect())
+                .map(ModelList::new),
+        }
+    }
+
+    fn decode(
+        &mut self,
+        models: Self::Event,
+        out: Out<'id, ModelListing>,
+    ) -> Result<Flow, ProviderError> {
+        Ok(out.end(ModelPage { models, next: None }))
+    }
+}
+
 impl Wire for Models {
     type Op = ModelListing;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Event = ModelsReply;
-    type Decoder<'id> = DocumentDecoder<ModelListing, Self::Event>;
+    type Event = ModelList;
+    type Decoder<'id> = ModelsDecoder;
     type Reassembler = crate::wire::document::Unreassembled;
 
     fn describe(&self) -> Descriptor<'_> {
@@ -1347,68 +1305,14 @@ impl Wire for Models {
         get(&self.provider, self.provider.dialect.quirks.models_path)
     }
 
-    /// Decode a complete model catalogue without pagination.
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        DocumentDecoder::new(
-            |body| classify_untyped_line(body.as_bytes()),
-            |event| {
-                let models = event.data.into_iter().map(ModelInfo::from).collect();
-                Ok(ModelPage {
-                    models: ModelList::new(models),
-                    next: None,
-                })
-            },
+        ModelsDecoder(
+            self.provider
+                .dialect
+                .quirks
+                .hooks
+                .and_then(|hooks| hooks.model_listing),
         )
-    }
-}
-
-/// The shared listing request, its reply read by the dialect's `model_listing` hook.
-#[derive(Clone, Debug)]
-pub(crate) struct HookedModels {
-    pub(crate) models: Models,
-    pub(crate) catalogue: super::ModelCatalogue,
-}
-
-/// Reads a listing reply with a dialect's `model_listing` hook.
-pub(crate) struct HookedModelsDecoder(super::ModelCatalogue);
-
-impl<'id> Decoder<'id, ModelListing> for HookedModelsDecoder {
-    type Event = serde_json::Value;
-
-    fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
-        classify_untyped_line(frame.as_str().as_bytes())
-    }
-
-    fn decode(
-        &mut self,
-        event: Self::Event,
-        out: Out<'id, ModelListing>,
-    ) -> Result<Flow, ProviderError> {
-        Ok(out.end(ModelPage {
-            models: (self.0)(event),
-            next: None,
-        }))
-    }
-}
-
-impl Wire for HookedModels {
-    type Op = ModelListing;
-    type Payload = crate::wire::Encoded;
-    type Frame = crate::wire::WireFrame;
-    type Event = serde_json::Value;
-    type Decoder<'id> = HookedModelsDecoder;
-    type Reassembler = crate::wire::document::Unreassembled;
-
-    fn describe(&self) -> Descriptor<'_> {
-        self.models.describe()
-    }
-
-    fn encode(&self, cursor: Option<String>, mode: Mode) -> Result<Encoded, EncodeError> {
-        self.models.encode(cursor, mode)
-    }
-
-    fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        HookedModelsDecoder(self.catalogue)
     }
 }
 
@@ -1509,27 +1413,23 @@ impl Wire for Rerank {
                 self.provider.dialect.name
             )));
         }
-        let mut body = serde_json::json!({
-            "query": request.query,
-            "documents": request.documents,
-        });
-        let Some(object) = body.as_object_mut() else {
-            return Err(EncodeError::request(
-                "rerank request body must be an object",
-            ));
-        };
-        if quirks.sends_model_field {
-            object.insert("model".to_owned(), serde_json::json!(self.model));
-        }
-        if let Some(top_n) = self.top_n {
-            object.insert("top_n".to_owned(), serde_json::json!(top_n));
-        }
+        let body = set_fields([
+            ("query", Some(serde_json::json!(request.query))),
+            ("documents", Some(serde_json::json!(request.documents))),
+            (
+                "model",
+                quirks
+                    .sends_model_field
+                    .then(|| serde_json::json!(self.model)),
+            ),
+            ("top_n", self.top_n.map(|top_n| serde_json::json!(top_n))),
+        ]);
 
         json_post(
             &self.provider,
             quirks.path,
             self.provider.deployment(&self.model),
-            &body,
+            &serde_json::Value::Object(body),
         )
     }
 
