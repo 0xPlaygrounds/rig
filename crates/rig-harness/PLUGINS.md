@@ -969,8 +969,9 @@ caching), one it cannot take is left out.
   `PrepareSystems::Fit`), `dropped` the options its model leaves out; its
   system prompt in parts is `ModelRequest::prompt`. Start sends the request
   to the `Adapted` connection and moves it into `SentTo(connection)`; from
-  then on a call has its request as sent, and `DroppedOptions`, the options
-  left out (by the model's spec or a dry run, rig-core's `Serve::check`).
+  then on a call has its request as sent. `dropped` is the one way to learn
+  the options left out (by the model's spec or a dry run, rig-core's
+  `Serve::check`), so a plugin that needs them reads it in Prepare.
   A fact a `map_stream` closure inserts in the call's `PublishedContext`
   is its `Published` once answered.
 - **Caching.** A provider that caches by marker marks the prefixes a

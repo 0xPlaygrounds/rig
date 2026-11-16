@@ -208,14 +208,6 @@ impl ModelRequest {
 #[derive(Component, Clone)]
 pub struct SentTo(pub Connection);
 
-/// On a model call the kernel started, beside [`SentTo`]: the options its
-/// request asked for that the model it went to does not take, left out
-/// when it was fitted to the model's spec or named by a dry run of its
-/// handler (rig-core's `Serve::check`). [`Adapted::dropped`] gives the
-/// same list before Start, such as to warn about an option in Prepare.
-#[derive(Component, Clone, Debug, Default)]
-pub struct DroppedOptions(pub Vec<UnsupportedOption>);
-
 /// The connection a model call goes to, put on it by the kernel after
 /// [`PrepareSystems::Edit`](super::stage::PrepareSystems::Edit): its
 /// [`ModelRequest::connection`], else its agent's model at that moment, so
@@ -1231,11 +1223,10 @@ impl Adapted {
         self.sending(model).0
     }
 
-    /// The options the request Start sends for `model` leaves out, as
-    /// [`DroppedOptions`] will say: those this model does not take and
-    /// those its handler's check refuses. The check builds the provider's
-    /// request, so a caller that needs only [`sent`](Self::sent) does not
-    /// pay for it.
+    /// The options the request Start sends for `model` leaves out: those
+    /// this model does not take and those its handler's check refuses. The
+    /// check builds the provider's request, so a caller that needs only
+    /// [`sent`](Self::sent) does not pay for it.
     pub fn dropped(&self, model: &ModelRequest) -> Vec<UnsupportedOption> {
         let (request, mut dropped) = self.sending(model);
         let kind = EffectKind::Completion {

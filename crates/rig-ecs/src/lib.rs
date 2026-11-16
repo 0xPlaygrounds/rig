@@ -88,8 +88,8 @@ pub mod prelude {
         ToolOptions, ToolRequest, WorldToolsExt,
     };
     pub use crate::turn::{
-        Adapted, Backoff, DroppedOptions, Exiting, FirstStreamed, ModelRequest, Recovery,
-        ReportedUsage, RetryVerdict, SentTo, SideCall, StreamDelta, StreamTiming, TurnCall,
+        Adapted, Backoff, Exiting, FirstStreamed, ModelRequest, Recovery, ReportedUsage,
+        RetryVerdict, SentTo, SideCall, StreamDelta, StreamTiming, TurnCall,
     };
     pub use rig_core::conversation::{
         Aside, AsideId, Author, AuthorKind, CallRef, Change, ChangeRecord, Entry, EntryRef, Halt,

@@ -76,7 +76,7 @@ use super::tools::{
     compute_footprints, refuse_calls,
 };
 use super::turn::{
-    Adapted, DroppedOptions, ModelRequest, NO_MODEL, SentTo, StreamDelta, back_off, build_requests,
+    Adapted, ModelRequest, NO_MODEL, SentTo, StreamDelta, back_off, build_requests,
     carry_on_called, commit_replies, commit_turn_calls, end_turns, feed, judge_failures,
     keeps_settled, model_pool, route_calls, stop_calls, stream_partials, stream_reply,
     wait_in_order, write_unstreamed,
@@ -1279,13 +1279,12 @@ fn start(
                 started.try_insert_if_new(Outcome(Err(report)));
                 continue;
             };
-            let mut dropped = adapted.start(&mut model);
+            adapted.start(&mut model);
             let connection = adapted.0.clone();
             let kind = EffectKind::Completion {
                 request: model.request.clone(),
                 stream: true,
             };
-            dropped.extend(connection.handler.0.check(&kind));
             let reference = connection.spec.reference();
             let span =
                 info_span!("model_call", agent = scope, effect = %effect.id, model = reference);
@@ -1300,7 +1299,6 @@ fn start(
                 running,
                 feed,
                 SentTo(connection),
-                DroppedOptions(dropped),
             ));
             continue;
         }
