@@ -16,9 +16,8 @@
 
 use rig::AgentBuilder;
 use rig::agent::Agent;
-use rig::completion::{
-    CacheRates, CacheRetention, GenerationOptions, Message, ProviderOptions, Reasoning,
-};
+use rig::completion::{CacheRetention, GenerationOptions, Message, ProviderOptions, Reasoning};
+use rig_test_support::cache_cost::CacheRates;
 use rig_test_support::cache_longrun::{
     self, CacheWire, Limits, LongRun, LookupOrder, RunLog, SUPPORT_PREAMBLE, chat, question,
 };

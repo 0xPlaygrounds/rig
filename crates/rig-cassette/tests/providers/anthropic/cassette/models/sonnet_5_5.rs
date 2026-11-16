@@ -1,8 +1,8 @@
 //! Claude Sonnet 5.5's recorded session. Everything the model documents and rig supports without a
 //! model-specific setting, in one recording: see `rig_test_support::model_session`.
 
-use rig::completion::CacheRates;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_5_5;
+use rig_test_support::cache_cost::CacheRates;
 use rig_test_support::cache_longrun::CacheWire;
 use rig_test_support::model_session::{self, AnthropicProfile};
 

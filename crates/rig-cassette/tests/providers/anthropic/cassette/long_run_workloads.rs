@@ -11,8 +11,9 @@
 
 use rig::AgentBuilder;
 use rig::agent::Agent;
-use rig::completion::{CacheRates, CacheRetention, GenerationOptions};
+use rig::completion::{CacheRetention, GenerationOptions};
 use rig::providers::anthropic::completion::CLAUDE_OPUS_5_5;
+use rig_test_support::cache_cost::CacheRates;
 use rig_test_support::cache_longrun::workloads::{self, DOCUMENT_PREAMBLE};
 use rig_test_support::cache_longrun::{
     self, CacheWire, Figures, Limits, LongRun, LookupOrder, Recording, RunLog, SUPPORT_PREAMBLE,

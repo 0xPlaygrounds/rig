@@ -16,10 +16,12 @@ use std::time::Duration;
 
 use rig_agent::agent::{Agent, MultiTurnStreamItem};
 use rig_cassette::http::CassetteClock;
-use rig_core::completion::{CacheCost, CacheRates, Message, Usage};
+use rig_core::completion::{Message, Usage};
 use rig_core::json_utils::remove_preserving_order;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+
+use crate::cache_cost::{CacheCost, CacheRates};
 
 pub mod workloads;
 

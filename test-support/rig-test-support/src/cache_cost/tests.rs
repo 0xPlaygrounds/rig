@@ -13,12 +13,10 @@ const RATES: CacheRates = CacheRates {
 };
 
 fn usage(input: u64, cached: Option<u64>, written: Option<u64>) -> Usage {
-    Usage {
-        input_tokens: Some(input),
-        cached_input_tokens: cached,
-        cache_creation_input_tokens: written,
-        ..Usage::default()
-    }
+    Usage::default()
+        .input_tokens(input)
+        .cached_input_tokens(cached)
+        .cache_creation_input_tokens(written)
 }
 
 /// Absent counters are zero, and counters above input never underflow. Pure

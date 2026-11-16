@@ -38,7 +38,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 use sha2::{Digest, Sha256};
 
-use crate::completion::CacheCost;
 use crate::json_utils::remove_preserving_order;
 
 /// Unix seconds.
@@ -239,19 +238,6 @@ pub struct CacheReport {
     pub token_hours: f64,
     /// The caches requests read.
     pub live: Vec<Lease>,
-}
-
-/// The book's caches as billed beside the calls: every created token as a
-/// cache write (priced at the input price) and `token_hours` of storage. Add
-/// it to the calls' [`CacheCost::from_usage`] to price a run.
-impl From<&CacheReport> for CacheCost {
-    fn from(report: &CacheReport) -> Self {
-        Self {
-            cache_writes: report.created.iter().map(|created| created.tokens).sum(),
-            storage_token_hours: report.token_hours,
-            ..Self::default()
-        }
-    }
 }
 
 #[derive(Clone, Debug, Default)]

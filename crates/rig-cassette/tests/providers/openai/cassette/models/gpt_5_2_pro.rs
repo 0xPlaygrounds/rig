@@ -1,8 +1,8 @@
 //! `gpt-5.2-pro`'s recorded session: see `rig_test_support::model_session`. It is served on Responses
 //! only, and its page lists no structured outputs and no hosted tools.
 
-use rig::completion::CacheRates;
 use rig::providers::openai::GPT_5_2_PRO;
+use rig_test_support::cache_cost::CacheRates;
 use rig_test_support::cache_longrun::CacheWire;
 use rig_test_support::model_session::{self, ChatSupport, OpenAiProfile};
 
