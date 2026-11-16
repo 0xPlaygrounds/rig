@@ -2474,3 +2474,127 @@ fn a_schema_run_fails_on_an_answer_that_misses_the_schema() {
         [problem("/answer", "expected an integer, got a string")]
     );
 }
+
+/// The tool-result texts of the last message in `history` that answers
+/// tool calls, in order.
+fn last_result_texts(history: &[Message]) -> Vec<String> {
+    let texts = |content: &[UserContent]| -> Vec<String> {
+        content
+            .iter()
+            .filter_map(|item| match item {
+                UserContent::ToolResult(result) => Some(
+                    result
+                        .content
+                        .iter()
+                        .filter_map(|part| match part {
+                            ToolResultContent::Text(text) => Some(text.text.clone()),
+                            _ => None,
+                        })
+                        .collect::<String>(),
+                ),
+                _ => None,
+            })
+            .collect()
+    };
+    history
+        .iter()
+        .rev()
+        .find_map(|message| match message {
+            Message::User { content } => Some(texts(content)).filter(|t| !t.is_empty()),
+            _ => None,
+        })
+        .unwrap_or_default()
+}
+
+/// A retry's feedback answers the invalid call by position, so a valid peer
+/// that shares its id is told it did not run, and an ignored call before it
+/// does not shift the position.
+#[test]
+fn retry_feedback_answers_the_invalid_call_when_a_peer_shares_its_id() {
+    let not_run = rig_core::tool::feedback::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER;
+    let turn = |calls| {
+        ModelTurn::new(
+            AssistantMessage::default(),
+            calls,
+            Usage::default(),
+            policy(&["add"]),
+            hand_raw(),
+        )
+    };
+
+    let mut run = AgentRun::new("add things")
+        .max_turns(2)
+        .max_invalid_tool_call_retries(1);
+    expect_call_model(&mut run);
+    expect_needs_resolution(
+        run.model_response(turn(vec![tool_call("c1", "ghost"), tool_call("c1", "add")]))
+            .expect("model_response should succeed"),
+    );
+    run.resolve_invalid_tool_call(InvalidToolCallAction::retry("FIX"))
+        .expect("the retry is accepted");
+    assert_eq!(last_result_texts(&run.full_history()), ["FIX", not_run]);
+
+    let mut run = AgentRun::new("add things")
+        .max_turns(2)
+        .max_invalid_tool_call_retries(1);
+    expect_call_model(&mut run);
+    let calls = vec![
+        tool_call("c1", "ghost"),
+        tool_call("c1", "ghost"),
+        tool_call("c1", "add"),
+    ];
+    expect_needs_resolution(
+        run.model_response(turn(calls))
+            .expect("model_response should succeed"),
+    );
+    expect_needs_resolution(
+        run.ignore_invalid_tool_call()
+            .expect("the ignore is accepted"),
+    );
+    run.resolve_invalid_tool_call(InvalidToolCallAction::retry("FIX"))
+        .expect("the retry is accepted");
+    assert_eq!(
+        last_result_texts(&run.full_history()),
+        [not_run, "FIX", not_run]
+    );
+}
+
+/// An output-tool reprompt answers the refused output call by position, so a
+/// peer that shares its id is told it did not run.
+#[test]
+fn output_reprompt_feedback_answers_the_output_call_when_a_peer_shares_its_id() {
+    let mut run = AgentRun::new("summarize")
+        .max_turns(2)
+        .with_output_tool_name("final_result")
+        .with_output_validation(None, 1);
+    expect_call_model(&mut run);
+    let output_call = AssistantContent::ToolCall(ToolCall::from_wire(
+        "call_1",
+        ToolFunction::parse(
+            rig_core::message::ToolName::new("final_result").expect("tool name"),
+            "{\"x\":",
+        ),
+    ));
+    expect_continue(
+        run.model_response(ModelTurn::new(
+            AssistantMessage::default(),
+            vec![tool_call("call_1", "add"), output_call],
+            Usage::default(),
+            TurnPolicy::new(tool_names(&["add"]), None, Some("final_result".to_string()))
+                .expect("policy"),
+            hand_raw(),
+        ))
+        .expect("model_response should succeed"),
+    );
+    expect_call_model(&mut run);
+
+    let texts = last_result_texts(&run.full_history());
+    let [peer, output] = texts.as_slice() else {
+        panic!("two tool results expected: {texts:?}");
+    };
+    assert_eq!(
+        peer,
+        rig_core::tool::feedback::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER
+    );
+    assert!(output.contains("not a JSON object"), "{output}");
+}
