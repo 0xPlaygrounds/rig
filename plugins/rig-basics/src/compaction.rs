@@ -959,6 +959,29 @@ fn outputs(reason: &CompactReason, cleared: &Cleared) -> (&'static str, String, 
     )
 }
 
+/// What the figure that counts `conversation` as it is counted besides
+/// its messages, such as the system prompt and the tools: a stale one's
+/// estimate, else the last reply's, less the estimate of the entries it
+/// counts. `None` when no figure counts it, such as after outputs were
+/// cleared, or its entry is gone.
+fn counted_around(
+    conversation: &Conversation,
+    last: Option<&LastUsage>,
+    stale: Option<&ContextStale>,
+) -> Option<u64> {
+    let (tokens, through) = match stale {
+        Some(stale) => stale
+            .estimate
+            .map(|estimate| (estimate.tokens, estimate.through))?,
+        None => last
+            .and_then(|last| last.0.as_ref())
+            .and_then(|anchor| Some((anchor.usage.context_tokens()?, anchor.through)))?,
+    };
+    let at = conversation.index_of(through)?;
+    let counted = conversation.messages().get(..=at).unwrap_or_default();
+    Some(tokens.saturating_sub(estimate_tokens(counted)))
+}
+
 /// Says that `older` messages of so many tokens were summarized, `kept`
 /// were kept unchanged, and the model now gets `left` tokens.
 fn compacted_text(
@@ -1415,7 +1438,7 @@ fn compact_near_the_window(
                 ));
             } else {
                 let cleared = plan.apply(&mut compacting.conversation, None, summary_author());
-                commands.entity(agent).try_insert(ContextStale {});
+                commands.entity(agent).try_insert(ContextStale::default());
                 // The request's copy too, as cleared by compaction.
                 if let Some(history) = &mut model.history {
                     plan.apply(history, None, summary_author());
@@ -1560,7 +1583,7 @@ fn recover_from_overflow(
         }
         if proven {
             let cleared = plan.apply(&mut compacting.conversation, None, summary_author());
-            commands.entity(agent).try_insert(ContextStale {});
+            commands.entity(agent).try_insert(ContextStale::default());
             let then = ", as reading them again gave each back unchanged, and sending it again";
             notices.write(cleared_notice(
                 agent,
@@ -1852,7 +1875,7 @@ fn take_summary(
     )>,
     held: Query<&Effect>,
     ended: Query<(), With<TurnOutcome>>,
-    mut agents: Query<&mut Conversation>,
+    mut agents: Query<(&mut Conversation, Option<&LastUsage>, Option<&ContextStale>)>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -1861,9 +1884,10 @@ fn take_summary(
     else {
         return;
     };
-    let Ok(mut conversation) = agents.get_mut(agent) else {
+    let Ok((mut conversation, last, stale)) = agents.get_mut(agent) else {
         return;
     };
+    let around = counted_around(&conversation, last, stale);
     let revision = conversation.revision();
     let end = match summarizing.keep_from {
         None => Some(conversation.messages().len()),
@@ -1899,11 +1923,17 @@ fn take_summary(
             None => Err(failed("the summary was empty")),
         }
     });
+    let mut estimate = None;
     let (step, changed) = match summary {
         Ok(((older, older_tokens), (kept, kept_tokens))) => {
             let left = estimate_tokens(conversation.messages());
             let text = compacted_text((older, older_tokens), (kept, kept_tokens), left);
             notices.write(Notice::info(agent, text));
+            let through = conversation.entries().last().map(|entry| entry.id);
+            estimate = through.map(|through| ContextEstimate {
+                tokens: around.unwrap_or_default().saturating_add(left),
+                through,
+            });
             (Recovering::Compacted, true)
         }
         Err(NotTaken::Cancelled) => {
@@ -1916,7 +1946,7 @@ fn take_summary(
         }
     };
     if conversation.revision() != revision {
-        commands.entity(agent).try_insert(ContextStale {});
+        commands.entity(agent).try_insert(ContextStale { estimate });
     }
     match hold {
         // Built again unchanged, the refused call would be refused again:
@@ -2001,7 +2031,7 @@ fn take_notes(
         }
     };
     if conversation.revision() != revision {
-        commands.entity(agent).try_insert(ContextStale {});
+        commands.entity(agent).try_insert(ContextStale::default());
     }
     if let Some(&HoldOf(call)) = hold {
         let parent = held.get(call).ok().and_then(|effect| effect.parent);
@@ -2040,7 +2070,7 @@ fn on_uncompact(
     };
     match undo_summary(&mut conversation, &*store.0, &id.0, summary_author()) {
         Ok(undone) => {
-            commands.entity(agent).try_insert(ContextStale {});
+            commands.entity(agent).try_insert(ContextStale::default());
             let left = estimate_tokens(conversation.messages());
             let count = undone.restored.len();
             let text = format!(

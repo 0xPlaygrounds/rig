@@ -346,11 +346,15 @@ fn stale_context_survives_restore_and_unreported_replies_for_each_agent() {
         AgentSpec::default(),
     );
     let child = child.unwrap_or(Entity::PLACEHOLDER);
-    app.world_mut().entity_mut(child).insert(ContextStale {});
+    app.world_mut()
+        .entity_mut(child)
+        .insert(ContextStale::default());
     for message in [Message::user("child task"), Message::assistant("done")] {
         assert!(rig_harness_test_support::commit_message(app.world_mut(), child, message).is_ok());
     }
-    app.world_mut().entity_mut(agent).insert(ContextStale {});
+    app.world_mut()
+        .entity_mut(agent)
+        .insert(ContextStale::default());
     app.update();
     let ids = [agent, child].map(|agent| app.world().get::<AgentId>(agent).cloned());
     app.world_mut()
@@ -429,13 +433,13 @@ fn a_context_change_after_a_reply_in_the_same_pass_stays_stale() {
         return;
     };
     let agent = spawn_root(app.world_mut())
-        .insert((connection, ContextStale {}))
+        .insert((connection, ContextStale::default()))
         .id();
     app.add_systems(
         AgentPass,
         (|agents: Query<Entity, Changed<LastUsage>>, mut commands: Commands| {
             for agent in &agents {
-                commands.entity(agent).insert(ContextStale {});
+                commands.entity(agent).insert(ContextStale::default());
             }
         })
         .after(Stage::Commit)
@@ -490,9 +494,21 @@ fn the_meter_shows_unknown_until_the_stale_marker_is_removed() {
     app.update();
     assert_eq!(context(app.world()).as_deref(), Some("ctx 500/2.0k (25%)"));
     // The marker alone, with no usage changing, as after clearing outputs.
-    app.world_mut().entity_mut(agent).insert(ContextStale {});
+    app.world_mut()
+        .entity_mut(agent)
+        .insert(ContextStale::default());
     app.update();
     assert_eq!(context(app.world()).as_deref(), Some("ctx ?/2.0k"));
+    // With an estimate, as after a summary, the estimate marked as one.
+    let estimate = Some(rig_ecs::prelude::ContextEstimate {
+        tokens: 300,
+        through: MessageId::default(),
+    });
+    app.world_mut()
+        .entity_mut(agent)
+        .insert(ContextStale { estimate });
+    app.update();
+    assert_eq!(context(app.world()).as_deref(), Some("ctx ~300/2.0k (15%)"));
     app.world_mut().entity_mut(agent).remove::<ContextStale>();
     app.update();
     assert_eq!(context(app.world()).as_deref(), Some("ctx 500/2.0k (25%)"));

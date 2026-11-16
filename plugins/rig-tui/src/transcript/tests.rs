@@ -1909,3 +1909,27 @@ fn filling_what_a_summary_replaced_draws_a_frame() {
     let rows = screen(&app);
     assert!(line_of(&rows, "old question").is_some(), "{rows:#?}");
 }
+
+/// A note for the model that a path the message named is not attached is
+/// not drawn, neither as an attached file nor again beside the notice
+/// that told the user.
+#[test]
+fn a_note_for_the_model_on_a_path_not_attached_is_not_drawn() {
+    let (mut app, agent) = view_app();
+    let base = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let typed = "compare @gone/x.rs";
+    let attached = rig_tools::attach::attachments(typed, &base, &rig_tools::workspace::Local);
+    let content = std::iter::once(rig_core::message::UserContent::text(typed))
+        .chain(
+            attached
+                .unattached
+                .into_iter()
+                .map(rig_core::message::UserContent::text),
+        )
+        .collect();
+    say(&mut app, agent, Message::User { content });
+    let lines = super::super::tests::transcript(&mut app, agent);
+    assert!(line_of(&lines, "lines]").is_none(), "{lines:?}");
+    assert!(line_of(&lines, "no such file").is_none(), "{lines:?}");
+    assert!(line_of(&lines, "compare @gone/x.rs").is_some(), "{lines:?}");
+}

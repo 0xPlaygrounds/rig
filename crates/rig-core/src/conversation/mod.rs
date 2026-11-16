@@ -68,6 +68,29 @@ pub fn attached_file(text: &str) -> Option<(&str, &str)> {
     rest.split_once("\">\n")
 }
 
+/// How a note that a path a user's message named is not attached starts,
+/// followed by its label and `">`.
+pub const UNATTACHED_OPEN: &str = "<unattached path=\"";
+
+/// How a note that a path a user's message named is not attached ends.
+pub const UNATTACHED_CLOSE: &str = "</unattached>";
+
+/// The label and the reason of a note that a path a user's message named
+/// is not attached, when `text` is one.
+pub fn unattached(text: &str) -> Option<(&str, &str)> {
+    let rest = text
+        .strip_prefix(UNATTACHED_OPEN)?
+        .strip_suffix(UNATTACHED_CLOSE)?;
+    rest.split_once("\">\n")
+}
+
+/// Whether `text` is what attaching put in a user's message, an
+/// [`attached_file`] or an [`unattached`] note, rather than the user's
+/// own typing.
+pub fn is_attachment_text(text: &str) -> bool {
+    attached_file(text).is_some() || unattached(text).is_some()
+}
+
 /// A conversation: its entries (each a message with an id and, when it is
 /// not the user's own or the model's, an author), its asides, why its last
 /// user message is unanswered, and the changes made to it that nobody has

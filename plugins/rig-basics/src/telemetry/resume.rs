@@ -59,32 +59,36 @@ fn label_usage(spent: Res<SessionUsage>, mut labels: Query<&mut ResumeLabel, Wit
     }
 }
 
-/// Says the main agent's context, as its last reply left it, or `ctx ?`
-/// while a compaction left that figure stale ([`ContextStale`]); every
+/// Says the main agent's context, as its last reply left it, or its
+/// estimate (`ctx ~4.7k`), else `ctx ?`, while a compaction left that
+/// figure stale ([`ContextStale`]); every
 /// pass, so it follows a new main agent and the marker coming and going.
 /// Not the shown agent's: a label that changes rewrites the session's
 /// listing, so showing another agent would move the session to the top of
 /// `/resume`.
 fn label_context(
     agents: MainAgentQuery,
-    usage: Query<(&LastUsage, Has<ContextStale>)>,
+    usage: Query<(&LastUsage, Option<&ContextStale>)>,
     mut labels: Query<&mut ResumeLabel, With<Context>>,
 ) {
     let last = main_agent(&agents).and_then(|agent| usage.get(agent).ok());
-    let stale = last.is_some_and(|(_, stale)| stale);
+    let stale = last.and_then(|(_, stale)| stale);
     let text = context_label(last.and_then(|(usage, _)| usage.context()), stale);
     for mut label in &mut labels {
         label.set_if_neq(ResumeLabel::new(CONTEXT, text.clone()));
     }
 }
 
-/// The context label for `tokens` of context, as `ctx 4.7k`; `ctx ?` when
-/// the figure is `stale`; empty when no reply reported it.
-fn context_label(tokens: Option<u64>, stale: bool) -> String {
-    match (tokens, stale) {
-        (_, true) => "ctx ?".to_owned(),
-        (Some(tokens), false) => format!("ctx {}", tokens_label(tokens)),
-        (None, false) => String::new(),
+/// The context label for `tokens` of context, as `ctx 4.7k`; when the
+/// figure is `stale`, its estimate, as `ctx ~4.7k`, else `ctx ?`; empty
+/// when no reply reported it.
+fn context_label(tokens: Option<u64>, stale: Option<&ContextStale>) -> String {
+    let estimate = |stale: &ContextStale| stale.estimate.map(|estimate| estimate.tokens);
+    match (tokens, stale.map(estimate)) {
+        (_, Some(Some(estimate))) => format!("ctx ~{}", tokens_label(estimate)),
+        (_, Some(None)) => "ctx ?".to_owned(),
+        (Some(tokens), None) => format!("ctx {}", tokens_label(tokens)),
+        (None, None) => String::new(),
     }
 }
 

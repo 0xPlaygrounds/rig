@@ -39,7 +39,7 @@ use rig_core::completion::{
 use rig_core::conversation::pairing::close_pending_with;
 use rig_core::conversation::{
     Author, AuthorKind, CallRef, Entry, Halt, MessageId, ResultFacts, StopCause, TurnEnd,
-    attached_file,
+    is_attachment_text,
 };
 use rig_core::effect::{self, EffectId, EffectKind};
 use rig_core::error::{ErrorKind, ErrorReport};
@@ -502,7 +502,7 @@ fn take_unanswered(conversation: &mut Conversation) -> Option<Vec<String>> {
             let text: Vec<&str> = asked
                 .iter()
                 .filter_map(|item| match item {
-                    UserContent::Text(text) if attached_file(&text.text).is_none() => {
+                    UserContent::Text(text) if !is_attachment_text(&text.text) => {
                         Some(text.text.as_str())
                     }
                     _ => None,

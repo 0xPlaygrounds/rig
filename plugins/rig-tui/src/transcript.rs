@@ -35,7 +35,7 @@ use super::view::{
 };
 use super::wrap::wrap;
 use rig_core::conversation::pairing::answered_by;
-use rig_core::conversation::{CallRef, ResultFacts, TurnEnd, attached_file};
+use rig_core::conversation::{CallRef, ResultFacts, TurnEnd, attached_file, unattached};
 use rig_core::effect::{self, EffectId, EffectKind, EffectRecord};
 use rig_ecs::agent::{AgentId, NoticeLevel};
 use rig_ecs::fork::ForkedFrom;
@@ -1575,7 +1575,8 @@ fn message_lines(
                             ));
                             continue;
                         }
-                        if note {
+                        // An unattached note is the model's copy of a notice the user saw.
+                        if note || unattached(&text.text).is_some() {
                             continue;
                         }
                         lines.push(LookLine::default());

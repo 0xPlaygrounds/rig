@@ -487,7 +487,8 @@ fn in_order(parts: &mut [MessagePart], order: &[String]) {
 }
 
 /// Puts `attached` before the message's text, with a notice about each
-/// file that could not be attached and a warning for each other line.
+/// file that could not be attached and a warning for each other line, and
+/// the same lines for the model after the text.
 fn add_attached(
     typed: &mut Incoming,
     agent: Entity,
@@ -506,6 +507,9 @@ fn add_attached(
         .into_iter()
         .map(|(label, content)| MessagePart::Attachment(Attachment { label, content }));
     typed.parts.splice(0..0, attachments);
+    typed
+        .parts
+        .extend(attached.unattached.into_iter().map(MessagePart::Text));
 }
 
 #[cfg(test)]

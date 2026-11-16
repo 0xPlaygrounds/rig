@@ -918,3 +918,30 @@ fn each_agent_replaces_only_files_it_saw_itself() {
     assert!(said("8").starts_with("Replaced"), "{}", said("8"));
     assert_eq!(shared.as_deref(), Some("main\n"));
 }
+
+/// A file too large to attach is named to the model with the reason, as
+/// it is to the user, and a missing path too, so neither goes looking.
+#[test]
+fn the_model_is_told_which_files_were_not_attached_and_why() {
+    let exe = std::env::current_exe().unwrap_or_default();
+    let dir = exe.with_file_name(format!("unattached-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).ok();
+    let huge = std::fs::File::create(dir.join("huge.txt"));
+    assert!(huge.and_then(|file| file.set_len(17 * 1024 * 1024)).is_ok());
+    let (mut app, _, agent) = attaching(None, &dir, "");
+    let text = "how big is @huge.txt and @gone.txt?";
+    let world = app.world_mut();
+    world.entity_mut(agent).insert(WorkDir(dir.clone()));
+    world.spawn((Incoming::new(text, DeliveryMode::Steer), ForAgent(agent)));
+    app.update();
+    let said = said(app.world(), agent);
+    assert!(said.contains("huge.txt is not attached: "), "{said}");
+    assert!(said.contains("the tools open files up to 16 MB"), "{said}");
+    assert!(said.contains("@gone.txt: no such file"), "{said}");
+    let typed = app
+        .world()
+        .get::<Conversation>(agent)
+        .and_then(|conversation| rig_tools::attach::first_typed(conversation));
+    assert_eq!(typed.as_deref(), Some(text));
+    std::fs::remove_dir_all(&dir).ok();
+}

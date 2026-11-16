@@ -2590,6 +2590,26 @@ fn an_error_before_the_run_looked_fails_it_only_when_the_agent_never_connects() 
     assert_eq!(codes, [0], "{ends:?}");
 }
 
+/// A prompt that starts with a path, `//` or a `/` and a space goes to the
+/// model as it is, where it was refused as an unknown command.
+#[test]
+fn a_prompt_starting_with_a_path_goes_to_the_model() {
+    for prompt in [
+        "/etc/hostname: what kind of path? one line",
+        "//x",
+        "/ model",
+    ] {
+        let model = answering(&["a file"]);
+        let (app, _) = one_shot(prompt, Some(MODEL), &model, false, |app| {
+            app.add_command("echo", "Echoes", |_: In<CommandArgs>| {});
+        });
+        let ends = &app.world().resource::<Ends>().0;
+        let codes: Vec<u8> = ends.iter().map(|ended| ended.code).collect();
+        assert_eq!(codes, [0], "{prompt}: {ends:?}");
+        assert_eq!(model.request_count(), 1, "{prompt}");
+    }
+}
+
 /// Done item: `rig -p /model` and `/effort` exit 2 saying what to type,
 /// where they exited 0 having shown nothing.
 #[test]

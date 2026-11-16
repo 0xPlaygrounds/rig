@@ -63,7 +63,7 @@ pub(crate) struct TuiView {
     /// The keys pressed so far of a binding of several.
     pub(crate) pending: Vec<KeyPress>,
     /// A refused command put back in the input: sent again unchanged, it
-    /// goes to the model as a message.
+    /// goes to the model as a message. Forgotten once the input changes.
     pub(crate) refused: Option<String>,
     /// The open questions shown beside the work, oldest first; the first
     /// is shown.

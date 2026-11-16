@@ -443,7 +443,7 @@ fn a_descendant_that_keeps_printing_does_not_hold_the_wait() {
         sender.send(ended.ok()).ok();
     });
     let ended = ended.recv_timeout(Duration::from_secs(10));
-    assert!(matches!(ended, Ok(Some(Ended::Exited(_)))), "{ended:?}");
+    assert!(matches!(ended, Ok(Some(Ended::EndedJobs(_)))), "{ended:?}");
 }
 
 /// `output` keeps every byte as it was printed, not only text.

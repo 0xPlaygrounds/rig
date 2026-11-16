@@ -84,12 +84,21 @@ fn the_context_label_is_the_main_agents() {
     app.update();
     assert_eq!(label(&mut app), "ctx 12k");
     // After a compaction the figure is stale until a reply reports one.
-    app.world_mut().entity_mut(main).insert(ContextStale {});
+    app.world_mut()
+        .entity_mut(main)
+        .insert(ContextStale::default());
     app.update();
     assert_eq!(label(&mut app), "ctx ?");
     app.world_mut().entity_mut(main).remove::<ContextStale>();
     app.update();
     assert_eq!(label(&mut app), "ctx 12k");
-    assert_eq!(context_label(None, false), "");
-    assert_eq!(context_label(None, true), "ctx ?");
+    assert_eq!(context_label(None, None), "");
+    assert_eq!(context_label(None, Some(&ContextStale::default())), "ctx ?");
+    let estimated = ContextStale {
+        estimate: Some(rig_ecs::prelude::ContextEstimate {
+            tokens: 4_700,
+            through: rig_core::conversation::MessageId::default(),
+        }),
+    };
+    assert_eq!(context_label(Some(12_000), Some(&estimated)), "ctx ~4.7k");
 }

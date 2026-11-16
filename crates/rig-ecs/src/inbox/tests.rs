@@ -36,3 +36,22 @@ fn a_message_superseded_or_settled_is_not_on_its_way() {
     world.entity_mut(dropped).insert(Settled);
     assert!(!coming(&mut world, agent));
 }
+
+/// A user's `/` and a name is a command; a `/` and a space, or a first word
+/// with another `/` in it, such as a path, is text for the model.
+#[test]
+fn a_command_is_a_slash_and_a_name_with_no_other_slash() {
+    for (text, command) in [
+        ("/model x", Some("model x")),
+        ("  /help", Some("help")),
+        ("/", Some("")),
+        ("/ model", None),
+        ("/etc/hostname: what kind of path?", None),
+        ("//x", None),
+        ("/zzz/", None),
+        ("say /model", None),
+    ] {
+        let message = Incoming::new(text, DeliveryMode::Steer);
+        assert_eq!(message.command(), command, "{text}");
+    }
+}

@@ -610,7 +610,7 @@ impl Runner {
         // spend it reported.
         self.reports.ended(read.known());
         let answer = match ended {
-            Ok(Ended::Exited(status)) => read.answer(status.code()),
+            Ok(Ended::Exited(status) | Ended::EndedJobs(status)) => read.answer(status.code()),
             Ok(Ended::TimedOut) => Err(format!(
                 "it timed out after {} s (the call's `timeout`, else `[helpers] timeout_secs`)",
                 self.timeout.as_secs()
