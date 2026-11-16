@@ -615,18 +615,15 @@ pub(crate) struct MessagesStop {
 }
 
 impl MessagesStop {
-    /// The stop fields of `raw`, a reply on `api`, for `provider`'s extras.
+    /// The stop fields of `raw`, or `None` when `api` is not the Messages API.
     ///
     /// # Errors
     ///
-    /// When `api` is not the Messages API or `raw` is not an object.
-    pub(crate) fn read(provider: &str, api: &Api, raw: &Value) -> Result<Self, serde_json::Error> {
-        if api.as_str() != MESSAGES_API {
-            return Err(serde::de::Error::custom(format!(
-                "{provider} extras read a Messages reply, not one from `{api}`"
-            )));
-        }
-        Self::deserialize(raw)
+    /// When `raw` is a Messages reply but not an object.
+    pub(crate) fn of(api: &Api, raw: &Value) -> Result<Option<Self>, serde_json::Error> {
+        (api.as_str() == MESSAGES_API)
+            .then(|| Self::deserialize(raw))
+            .transpose()
     }
 }
 
