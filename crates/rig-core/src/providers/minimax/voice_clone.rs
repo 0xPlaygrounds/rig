@@ -324,10 +324,7 @@ impl<'id> Decoder<'id, VoiceCloning> for VoiceClonesDecoder {
     type Event = Vec<u8>;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
-        WireEvent::Known(match frame {
-            WireFrame::Text(text) => text.into_bytes(),
-            WireFrame::Bytes(bytes) => bytes,
-        })
+        WireEvent::Known(frame.into_bytes())
     }
 
     fn decode(

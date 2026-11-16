@@ -114,6 +114,14 @@ impl WireFrame {
         }
     }
 
+    /// The frame payload's bytes, owned.
+    pub fn into_bytes(self) -> Vec<u8> {
+        match self {
+            Self::Text(text) => text.into_bytes(),
+            Self::Bytes(bytes) => bytes,
+        }
+    }
+
     /// A frame of `bytes`: text when they are UTF-8.
     pub fn from_bytes(bytes: Vec<u8>) -> Self {
         match String::from_utf8(bytes) {

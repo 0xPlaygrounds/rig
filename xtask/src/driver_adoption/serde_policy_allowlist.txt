@@ -27,7 +27,7 @@ providers/openai/wire/chat.rs | serde_json::from_str::<Value>(&data) | `classify
 
 # --- openai modality wire: whole replies that have no frames ----------------
 providers/openai/wire/modality.rs | #[serde(untagged)] | `ImagesReplyImage` is the reply-side union of the two forms two dialects put under the `images` key (Hyperbolic `{"image": "<base64>"}`, Venice the bare base64); the image route answers with one whole reply and has no frames, so no inbound frame policy is decided here.
-providers/openai/wire/modality.rs | let reply = match serde_json::from_slice::<SpeechReply>(&event) | `SpeechDecoder::interpret` unwraps the JSON envelope Hyperbolic alone wraps its audio in; `classify` already returned the bytes as `Known` because the speech reply is audio rather than JSON, and a decode failure is pushed as a ProviderError rather than skipped.
+providers/openai/wire/modality.rs | let reply = serde_json::from_slice::<SpeechReply>(&event) | `SpeechDecoder::interpret` unwraps the JSON envelope Hyperbolic alone wraps its audio in; `classify` already returned the bytes as `Known` because the speech reply is audio rather than JSON, and a decode failure is pushed as a ProviderError rather than skipped.
 
 # --- openai responses websocket: envelope dispatch, not frame triage -------
 # The websocket carries the SAME Responses events the SSE path carries, and

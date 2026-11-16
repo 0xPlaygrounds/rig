@@ -16,6 +16,7 @@ use crate::model::{ModelInfo, ModelList};
 use crate::operation::{
     Embedding, ModelListing, ModelPage, Rerank as RerankOp, Transcription, Verify as VerifyOp,
 };
+use crate::providers::internal::set_fields;
 use crate::providers::internal::wire::classify_untyped_line;
 use crate::providers::openai::embedding::{
     CompatibleEmbeddingResponse, model_dimensions_from_identifier,
@@ -587,24 +588,24 @@ impl Wire for Embeddings {
         let quirks = &self.provider.dialect.quirks.embedding;
         self.refuse_unhonourable_width()?;
 
-        let mut body = serde_json::json!({ "input": request });
-        let Some(object) = body.as_object_mut() else {
-            return Err(EncodeError::request(
-                "embedding request body must be an object",
-            ));
-        };
-        if quirks.sends_model_field {
-            object.insert("model".to_owned(), serde_json::json!(self.model));
-        }
+        let mut body = set_fields([
+            ("input", Some(serde_json::json!(request))),
+            (
+                "model",
+                quirks
+                    .sends_model_field
+                    .then(|| serde_json::json!(self.model)),
+            ),
+        ]);
         if let Some((field, ndims)) = self.requested_width() {
-            object.insert(field.to_owned(), serde_json::json!(ndims));
+            body.insert(field.to_owned(), serde_json::json!(ndims));
         }
 
         json_post(
             &self.provider,
             self.provider.dialect.quirks.embeddings_path,
             self.provider.deployment(&self.model),
-            &body,
+            &serde_json::Value::Object(body),
         )
     }
 
@@ -897,14 +898,8 @@ impl<'id> Decoder<'id, crate::operation::ImageGeneration> for ImagesDecoder {
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
         match self.body {
             // Preserve raw image bytes even when framing recognized valid UTF-8.
-            ImageBody::HuggingFace => WireEvent::Known(ImagesEvent::Raw(match frame {
-                WireFrame::Text(text) => text.into_bytes(),
-                WireFrame::Bytes(bytes) => bytes,
-            })),
-            ImageBody::MiniMax => WireEvent::Known(ImagesEvent::MiniMax(match frame {
-                WireFrame::Text(text) => text.into_bytes(),
-                WireFrame::Bytes(bytes) => bytes,
-            })),
+            ImageBody::HuggingFace => WireEvent::Known(ImagesEvent::Raw(frame.into_bytes())),
+            ImageBody::MiniMax => WireEvent::Known(ImagesEvent::MiniMax(frame.into_bytes())),
             ImageBody::OpenAi | ImageBody::Xai | ImageBody::Hyperbolic | ImageBody::Venice => {
                 classify_untyped_line(frame.as_str().as_bytes()).map(ImagesEvent::Json)
             }
@@ -936,12 +931,9 @@ impl<'id> Decoder<'id, crate::operation::ImageGeneration> for ImagesDecoder {
         let Some(encoded) = reply.first_base64() else {
             return Err(ProviderError::Response("missing image data".to_owned()));
         };
-        let image = match base64::prelude::BASE64_STANDARD.decode(encoded) {
-            Ok(image) => image,
-            Err(error) => {
-                return Err(ProviderError::Response(error.to_string()));
-            }
-        };
+        let image = base64::prelude::BASE64_STANDARD
+            .decode(encoded)
+            .map_err(|error| ProviderError::Response(error.to_string()))?;
         Ok(out.end(ImageGenerationResponse::new(image)))
     }
 }
@@ -1073,10 +1065,7 @@ impl<'id> Decoder<'id, crate::operation::AudioGeneration> for SpeechDecoder {
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
         // Interpretation selects raw audio or JSON decoding from the dialect.
-        WireEvent::Known(match frame {
-            WireFrame::Text(text) => text.into_bytes(),
-            WireFrame::Bytes(bytes) => bytes,
-        })
+        WireEvent::Known(frame.into_bytes())
     }
 
     fn decode(
@@ -1097,18 +1086,11 @@ impl<'id> Decoder<'id, crate::operation::AudioGeneration> for SpeechDecoder {
             }
             // Hyperbolic wraps it, base64-encoded, in a JSON envelope.
             SpeechBody::Hyperbolic => {
-                let reply = match serde_json::from_slice::<SpeechReply>(&event) {
-                    Ok(reply) => reply,
-                    Err(error) => {
-                        return Err(ProviderError::Response(error.to_string()));
-                    }
-                };
-                match base64::prelude::BASE64_STANDARD.decode(&reply.audio) {
-                    Ok(audio) => audio,
-                    Err(error) => {
-                        return Err(ProviderError::Response(error.to_string()));
-                    }
-                }
+                let reply = serde_json::from_slice::<SpeechReply>(&event)
+                    .map_err(|error| ProviderError::Response(error.to_string()))?;
+                base64::prelude::BASE64_STANDARD
+                    .decode(&reply.audio)
+                    .map_err(|error| ProviderError::Response(error.to_string()))?
             }
         };
         Ok(out.end(crate::audio_generation::AudioGenerationResponse::new(audio)))
@@ -1431,27 +1413,23 @@ impl Wire for Rerank {
                 self.provider.dialect.name
             )));
         }
-        let mut body = serde_json::json!({
-            "query": request.query,
-            "documents": request.documents,
-        });
-        let Some(object) = body.as_object_mut() else {
-            return Err(EncodeError::request(
-                "rerank request body must be an object",
-            ));
-        };
-        if quirks.sends_model_field {
-            object.insert("model".to_owned(), serde_json::json!(self.model));
-        }
-        if let Some(top_n) = self.top_n {
-            object.insert("top_n".to_owned(), serde_json::json!(top_n));
-        }
+        let body = set_fields([
+            ("query", Some(serde_json::json!(request.query))),
+            ("documents", Some(serde_json::json!(request.documents))),
+            (
+                "model",
+                quirks
+                    .sends_model_field
+                    .then(|| serde_json::json!(self.model)),
+            ),
+            ("top_n", self.top_n.map(|top_n| serde_json::json!(top_n))),
+        ]);
 
         json_post(
             &self.provider,
             quirks.path,
             self.provider.deployment(&self.model),
-            &body,
+            &serde_json::Value::Object(body),
         )
     }
 
