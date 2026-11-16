@@ -91,7 +91,7 @@ pub(crate) enum DriveItem {
     Done(PromptResponse),
 }
 
-/// Medium-specific model turns, span chaining, telemetry, and final-item
+/// Medium-specific model turns, span chaining, and final-item
 /// construction. Implementations resolve invalid calls during model ingestion
 /// and feed accepted turns back into the run; the engine runs tool calls.
 pub(crate) trait TurnSource: Sized + WasmCompatSend + WasmCompatSync {
@@ -110,21 +110,11 @@ pub(crate) trait TurnSource: Sized + WasmCompatSend + WasmCompatSync {
         run: &'a mut AgentRun,
         prepared: PreparedCompletionRequest,
         chat_span: tracing::Span,
-        agent_span: &'a tracing::Span,
         scope: &'a mut CompletionScope<Self>,
     ) -> DriveStream<'a>;
 
     /// Chain a chat or tool execute span into this medium's span sequence.
     fn chain_span(&self, span: tracing::Span) -> tracing::Span;
-
-    /// Record run-level telemetry onto the agent span at `Done`. Gated on
-    /// `created_agent_span` so a caller-supplied outer span is never polluted.
-    fn record_run_level_telemetry(
-        &self,
-        agent_span: &tracing::Span,
-        response: &PromptResponse,
-        created_agent_span: bool,
-    );
 
     /// The item the run's response ends this medium's surface with: the
     /// final stream item, or the response the blocking fold returns.
@@ -137,21 +127,23 @@ pub(crate) fn store_error_usage(runner: &AgentRunner, run: &AgentRun) {
     }
 }
 
-/// Drive run steps, hooks and request preparation using `source`.
-/// Yields stream items and a terminal response, or settles and yields an error.
-/// Only engine-owned agent spans receive run-level telemetry.
+/// Drive `runner`'s run with `source` under an agent span opened now in
+/// `ambient`. Yields stream items and a terminal response, or settles and
+/// yields an error. Only an agent span the run created receives run-level
+/// telemetry, so a caller's span is never polluted.
 pub(crate) fn drive_agent<S>(
     runner: AgentRunner,
     mut source: S,
-    mut run: AgentRun,
-    agent_span: tracing::Span,
-    created_agent_span: bool,
-    hook_ctx: HookContext,
+    ambient: tracing::Span,
 ) -> impl Stream<Item = Result<DriveItem, PromptError>>
 where
     S: TurnSource,
 {
-    async_stream::stream! {
+    let (agent_span, created_agent_span) = runner.open_agent_span(ambient);
+    let hook_ctx = runner.hook_context(S::STREAMS);
+    let mut run = runner.build_run();
+    let driver_span = agent_span.clone();
+    let driver = async_stream::stream! {
         // Hooks must see resumed entries from their first invocation.
         hook_ctx.seed_entries(run.entries());
         // Step-boundary flushing includes hook state in serialization; settlement
@@ -169,20 +161,8 @@ where
             ($err:expr, $($exit:tt)+) => {{
                 let err: PromptError = $err;
                 store_error_usage(&runner, &run);
-                if runner.config.hooks.observes(StepEventKind::RunSettled) {
-                    let reason = err.to_string();
-                    runner
-                        .config
-                        .hooks
-                        .on_run_settled(
-                            &hook_ctx,
-                            RunSettled {
-                                outcome: SettledOutcome::Error(&reason),
-                                messages: Some(run.messages()),
-                            },
-                        )
-                        .await;
-                }
+                let reason = err.to_string();
+                settle_run(&runner, &hook_ctx, &run, SettledOutcome::Error(&reason)).await;
                 yield Err(err);
                 $($exit)+;
             }};
@@ -330,7 +310,7 @@ where
 
                     // Pin output mode across registry changes between turns.
                     let committed_output_tool = run.output_tool_name().map(str::to_owned);
-                    let (request, mut prepared) = match build_prepared_completion_request(
+                    let (request, prepared) = match build_prepared_completion_request(
                         &runner,
                         &hook_ctx,
                         &selected_model,
@@ -348,9 +328,11 @@ where
                     // What this request advertises becomes run data, so a
                     // resumed run or another driver can re-pair the calls
                     // that come back with the tools that were offered.
-                    run.advertise_tools(turn, std::mem::take(&mut prepared.advertised_tools));
+                    run.advertise_tools(turn, request.tools.clone());
+                    // The agent records the input itself, so the request the
+                    // provider sees carries the telemetry flag off.
                     if runner.config.record_telemetry_content {
-                        let input_messages = std::mem::take(&mut prepared.telemetry_messages);
+                        let input_messages = request.messages_for_telemetry();
                         rig_core::telemetry::record_model_input(&chat_span, &input_messages, true);
                     }
 
@@ -366,7 +348,6 @@ where
                         request,
                         prepared,
                         chat_span,
-                        &agent_span,
                     );
                     let turn_error = loop {
                         match turn_stream.next().await {
@@ -414,7 +395,6 @@ where
                             calls,
                             tool_snapshot,
                             |span| source.chain_span(span),
-                            S::STREAMS,
                             S::STREAMS.then_some(report),
                         );
                         loop {
@@ -449,26 +429,37 @@ where
                         max_turns = runner.config.max_turns(),
                         "Agent run finished"
                     );
-                    source.record_run_level_telemetry(&agent_span, &response, created_agent_span);
-                    if runner.config.hooks.observes(StepEventKind::RunSettled) {
-                        runner
-                            .config
-                            .hooks
-                            .on_run_settled(
-                                &hook_ctx,
-                                RunSettled {
-                                    outcome: SettledOutcome::Response(&response),
-                                    messages: Some(run.messages()),
-                                },
-                            )
-                            .await;
+                    if created_agent_span {
+                        if runner.config.record_telemetry_content {
+                            agent_span.record("gen_ai.completion", response.output());
+                        }
+                        agent_span.record_token_usage(&response.usage);
                     }
+                    settle_run(&runner, &hook_ctx, &run, SettledOutcome::Response(&response)).await;
                     yield Ok(source.finish(response));
                     break 'outer;
                 }
             }
         }
+    };
+    // Streams need tracing-futures' `Instrument`; futures here use tracing's.
+    tracing_futures::Instrument::instrument(driver, driver_span)
+}
 
+/// Call `on_run_settled` with `outcome` and the messages `run` committed,
+/// when a hook observes it.
+async fn settle_run(
+    runner: &AgentRunner,
+    hook_ctx: &HookContext,
+    run: &AgentRun,
+    outcome: SettledOutcome<'_>,
+) {
+    let hooks = &runner.config.hooks;
+    if hooks.observes(StepEventKind::RunSettled) {
+        let messages = Some(run.messages());
+        hooks
+            .on_run_settled(hook_ctx, RunSettled { outcome, messages })
+            .await;
     }
 }
 
@@ -497,7 +488,7 @@ where
 ///   (a preresolved invalid-recovery result, or one a host already fed).
 ///
 /// `chain_tool_span` lets the blocking surface chain spans into its linear
-/// `follows_from` sequence; `is_streaming` is reported to the invalid-call hook.
+/// `follows_from` sequence.
 /// With `live`, each call that is dispatched reports its start there before
 /// its hooks and body run, then its accepted output items once its outcome
 /// hooks ran, and waits until each report is taken.
@@ -508,7 +499,6 @@ pub(crate) fn drive_tool_calls<'a, F>(
     calls: Vec<PendingToolCall>,
     tool_snapshot: Arc<ToolCatalog>,
     chain_tool_span: F,
-    is_streaming: bool,
     live: Option<LiveSender>,
 ) -> WasmBoxedFuture<'a, Result<Vec<Option<ToolCall>>, PromptError>>
 where
@@ -525,7 +515,7 @@ where
                 let call = match call {
                     PendingToolCall::Execute(call) => Ok(call),
                     PendingToolCall::Malformed(call) => {
-                        let context = run.malformed_context(&call, is_streaming);
+                        let context = run.malformed_context(&call, hook_ctx.is_streaming());
                         Err((call, context))
                     }
                 };
@@ -790,11 +780,7 @@ pub(crate) struct StreamingTurnSource {
     last_response_id: Option<String>,
     /// Resolved agent name, kept only for the empty-turn diagnostic warning.
     agent_name: String,
-    /// Whether we created the agent span (vs. adopting a caller's ambient span);
-    /// gates recording `gen_ai.completion` onto it, matching the blocking source
-    /// so neither surface pollutes a caller-supplied span.
-    created_agent_span: bool,
-    /// Whether sensitive run-level prompt and completion content may be recorded.
+    /// Whether sensitive prompt and completion content may be recorded.
     record_telemetry_content: bool,
     /// Hot-path interest gates, computed once: skip building/dispatching the
     /// high-frequency delta events when no hook observes them.
@@ -810,7 +796,6 @@ impl StreamingTurnSource {
     pub(crate) fn new(
         hooks: &HookStack,
         agent_name: String,
-        created_agent_span: bool,
         record_telemetry_content: bool,
     ) -> Self {
         Self {
@@ -818,28 +803,12 @@ impl StreamingTurnSource {
             last_final_choice: Vec::new(),
             last_response_id: None,
             agent_name,
-            created_agent_span,
             record_telemetry_content,
             observes_text_delta: hooks.observes(StepEventKind::TextDelta),
             observes_reasoning_delta: hooks.observes(StepEventKind::ReasoningDelta),
             observes_tool_call_delta: hooks.observes(StepEventKind::ToolCallDelta),
             has_hooks: !hooks.is_empty(),
         }
-    }
-
-    /// Record a completed model turn's canonical output onto the agent and
-    /// chat spans. Only self-created agent spans receive `gen_ai.completion`,
-    /// so neither surface pollutes a caller-supplied span.
-    fn record_turn_telemetry(
-        &self,
-        agent_span: &tracing::Span,
-        chat_span: &tracing::Span,
-        choice: &[AssistantContent],
-    ) {
-        if self.created_agent_span && self.record_telemetry_content {
-            agent_span.record("gen_ai.completion", AssistantContent::concat_text(choice));
-        }
-        rig_core::telemetry::record_model_output(chat_span, choice, self.record_telemetry_content);
     }
 }
 
@@ -853,7 +822,6 @@ impl TurnSource for StreamingTurnSource {
         run: &'a mut AgentRun,
         prepared: PreparedCompletionRequest,
         chat_span: tracing::Span,
-        agent_span: &'a tracing::Span,
         scope: &'a mut CompletionScope<Self>,
     ) -> DriveStream<'a> {
         Box::pin(async_stream::try_stream! {
@@ -1174,20 +1142,20 @@ impl TurnSource for StreamingTurnSource {
                     // A stop observes an already completed provider turn:
                     // its content telemetry stays visible before the
                     // cancellation.
-                    self.record_turn_telemetry(
-                        agent_span,
+                    rig_core::telemetry::record_model_output(
                         &chat_span,
                         scope.choice(),
+                        self.record_telemetry_content,
                     );
                     return Err(run.cancel_error(reason))?;
                 }
             }
 
             // Only hook-accepted canonical output belongs in content telemetry.
-            self.record_turn_telemetry(
-                agent_span,
+            rig_core::telemetry::record_model_output(
                 &chat_span,
                 scope.choice(),
+                self.record_telemetry_content,
             );
 
             self.last_final_choice = final_turn_content;
@@ -1196,17 +1164,6 @@ impl TurnSource for StreamingTurnSource {
 
     fn chain_span(&self, span: tracing::Span) -> tracing::Span {
         span
-    }
-
-    fn record_run_level_telemetry(
-        &self,
-        agent_span: &tracing::Span,
-        response: &PromptResponse,
-        created_agent_span: bool,
-    ) {
-        if created_agent_span {
-            agent_span.record_token_usage(&response.usage);
-        }
     }
 
     fn finish(&mut self, mut response: PromptResponse) -> DriveItem {
@@ -1369,74 +1326,6 @@ pub(crate) struct ToolCallOutcome {
     pub executed: Option<ToolCall>,
 }
 
-/// Execute a single tool call through the dispatch boundary and shape the
-/// result. **Shared by the blocking and streaming drivers** so a tool call
-/// behaves identically in both: same hook events (`on_dispatch` before,
-/// `on_outcome` after), same fail-closed skip/terminate handling, and the
-/// same result shaping. A hook's skip becomes [`ToolResult::skipped`].
-/// Records `gen_ai.tool.*` on the current span. A hook that terminates the
-/// run returns [`ToolExit::Stop`]. Returns whether the tool body executed via
-/// [`ToolCallOutcome::executed`].
-pub(crate) async fn run_single_tool(
-    runner: &AgentRunner,
-    ctx: &HookContext,
-    tool_snapshot: &ToolCatalog,
-    tool_call: &ToolCall,
-) -> Result<ToolCallOutcome, ToolExit> {
-    let record_content = runner.config.record_telemetry_content;
-    let tool_name = tool_call.function.name.as_str();
-    let args = tool_call.function.arguments_json();
-
-    let tool_span = tracing::Span::current();
-    tool_span.record("gen_ai.tool.name", tool_name);
-    tool_span.record(
-        "gen_ai.tool.call.id",
-        tracing::field::display(&tool_call.id),
-    );
-    if record_content {
-        tool_span.record("gen_ai.tool.call.arguments", &args);
-    }
-
-    let ToolCallDispatch {
-        result: exec,
-        executed,
-        args: effective_args,
-    } = dispatch_tool_call(runner, ctx, tool_snapshot, tool_call, args.clone()).await?;
-
-    // A hook patched the arguments: re-record the span so the trace reflects
-    // what the tool actually received rather than what the model emitted.
-    if effective_args != args {
-        if record_content {
-            tool_span.record("gen_ai.tool.call.arguments", &effective_args);
-        }
-        tracing::debug!(
-            tool_name = tool_name,
-            "tool-call arguments rewritten by a hook"
-        );
-    }
-
-    // A skip runs nothing and surfaces no execution commit; a real execution
-    // carries the effective tool call (the model's call with any patch
-    // applied) so a redaction rewrite does not leak.
-    let executed = executed.then(|| {
-        let mut effective_tool_call = tool_call.clone();
-        effective_tool_call.function =
-            ToolFunction::parse(tool_call.function.name.clone(), &effective_args);
-        effective_tool_call
-    });
-    // Outcome metadata describes the execution itself, while result content
-    // follows the same presentation policy as the model: what the outcome
-    // hook let through is what telemetry records.
-    record_tool_result(&tool_span, &exec);
-    if record_content {
-        tool_span.record("gen_ai.tool.call.result", exec.output().render());
-    }
-    Ok(ToolCallOutcome {
-        result: exec,
-        executed,
-    })
-}
-
 fn record_tool_result(span: &tracing::Span, result: &ToolResult) {
     span.record("gen_ai.tool.call.outcome", result.status_name());
     if let Some(error) = result.error() {
@@ -1449,6 +1338,7 @@ fn record_tool_result(span: &tracing::Span, result: &ToolResult) {
 /// Emits no intermediate items (the blocking surface folds the engine to its
 /// final response), but keeps the blocking driver's linear `follows_from` span
 /// chain across chat and tool spans.
+#[derive(Default)]
 pub(crate) struct UnaryTurnSource {
     /// Sequences chat and tool spans into a linear `follows_from` chain (the
     /// streaming surface parents the same tree but does not chain).
@@ -1459,16 +1349,6 @@ pub(crate) struct UnaryTurnSource {
     /// borrows the source, so every `TurnSource` must be `Sync`, which
     /// `AtomicU64` provides and `Cell` does not.
     current_span_id: AtomicU64,
-    record_telemetry_content: bool,
-}
-
-impl UnaryTurnSource {
-    pub(crate) fn new(record_telemetry_content: bool) -> Self {
-        Self {
-            current_span_id: AtomicU64::new(0),
-            record_telemetry_content,
-        }
-    }
 }
 
 impl TurnSource for UnaryTurnSource {
@@ -1497,7 +1377,6 @@ impl TurnSource for UnaryTurnSource {
         run: &'a mut AgentRun,
         prepared: PreparedCompletionRequest,
         chat_span: tracing::Span,
-        _agent_span: &'a tracing::Span,
         scope: &'a mut CompletionScope<Self>,
     ) -> DriveStream<'a> {
         // A unary turn surfaces nothing but its error.
@@ -1574,23 +1453,6 @@ impl TurnSource for UnaryTurnSource {
         )
     }
 
-    fn record_run_level_telemetry(
-        &self,
-        agent_span: &tracing::Span,
-        response: &PromptResponse,
-        created_agent_span: bool,
-    ) {
-        // Record completion and usage onto the agent span only when this run
-        // created it, never onto a caller-supplied outer span. The blocking
-        // surface additionally records the final completion text.
-        if created_agent_span {
-            if self.record_telemetry_content {
-                agent_span.record("gen_ai.completion", response.output());
-            }
-            agent_span.record_token_usage(&response.usage);
-        }
-    }
-
     fn finish(&mut self, response: PromptResponse) -> DriveItem {
         DriveItem::Done(response)
     }
@@ -1599,31 +1461,33 @@ impl TurnSource for UnaryTurnSource {
 #[cfg(test)]
 mod tests;
 
-/// A tool call answered at the dispatch boundary: the result, whether the
-/// tool's body ran, and the arguments it ran with (after any hook's patch).
-pub(crate) struct ToolCallDispatch {
-    pub(crate) result: ToolResult,
-    /// Disposition at the dispatch boundary, before outcome presentation hooks.
-    pub(crate) executed: bool,
-    pub(crate) args: String,
-}
-
-/// Dispatch a tool call through the agent's handlers at the dispatch boundary:
-/// `on_dispatch` before (patch the arguments, skip with a reason, or stop),
-/// the catalog's handler, `on_outcome` after (replace what the run sees, or
-/// stop). A stop is [`ToolExit::Stop`], and a call no handler serves fails the run;
-/// every other failure is the tool result the model sees.
-pub(crate) async fn dispatch_tool_call(
+/// Execute a single tool call through the dispatch boundary, shared by the
+/// blocking and streaming drivers: `on_dispatch` before (patch the arguments,
+/// skip with a reason, or stop), the catalog's handler, `on_outcome` after
+/// (replace what the run sees, or stop). A hook's skip becomes
+/// [`ToolResult::skipped`], a stop is [`ToolExit::Stop`], and a call no handler
+/// serves fails the run; every other failure is the tool result the model
+/// sees. Records `gen_ai.tool.*` on the current span.
+pub(crate) async fn run_single_tool(
     runner: &AgentRunner,
     ctx: &HookContext,
     tool_snapshot: &ToolCatalog,
     tool_call: &ToolCall,
-    args: String,
-) -> Result<ToolCallDispatch, ToolExit> {
+) -> Result<ToolCallOutcome, ToolExit> {
+    let record_content = runner.config.record_telemetry_content;
     let (tool_name, call_id) = (tool_call.function.name.as_str(), &tool_call.id);
+    let model_args = tool_call.function.arguments_json();
+
+    let tool_span = tracing::Span::current();
+    tool_span.record("gen_ai.tool.name", tool_name);
+    tool_span.record("gen_ai.tool.call.id", tracing::field::display(call_id));
+    if record_content {
+        tool_span.record("gen_ai.tool.call.arguments", &model_args);
+    }
+
     let kind = EffectKind::ToolCall {
         name: tool_name.to_owned(),
-        args,
+        args: model_args.clone(),
     };
     // The context the tool runs with travels beside the effect, never in it
     // (format 5): the hooks see it on the event, the dispatch carries it to the
@@ -1724,9 +1588,33 @@ pub(crate) async fn dispatch_tool_call(
         }
         Err(report) => ToolResult::failed(report.into()),
     };
-    Ok(ToolCallDispatch {
-        result,
-        executed,
-        args,
-    })
+
+    // A hook patched the arguments: re-record the span so the trace reflects
+    // what the tool actually received rather than what the model emitted.
+    if args != model_args {
+        if record_content {
+            tool_span.record("gen_ai.tool.call.arguments", &args);
+        }
+        tracing::debug!(
+            tool_name = tool_name,
+            "tool-call arguments rewritten by a hook"
+        );
+    }
+
+    // A skip runs nothing and surfaces no execution commit; a real execution
+    // carries the effective tool call (the model's call with any patch
+    // applied) so a redaction rewrite does not leak.
+    let executed = executed.then(|| {
+        let mut effective_tool_call = tool_call.clone();
+        effective_tool_call.function = ToolFunction::parse(tool_call.function.name.clone(), &args);
+        effective_tool_call
+    });
+    // Outcome metadata describes the execution itself, while result content
+    // follows the same presentation policy as the model: what the outcome
+    // hook let through is what telemetry records.
+    record_tool_result(&tool_span, &result);
+    if record_content {
+        tool_span.record("gen_ai.tool.call.result", result.output().render());
+    }
+    Ok(ToolCallOutcome { result, executed })
 }

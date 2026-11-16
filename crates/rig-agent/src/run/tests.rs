@@ -361,17 +361,19 @@ fn tool_roundtrip_threads_history_and_usage() {
 
 /// A turn that calls `add` and ends with `stop` at `finish`.
 fn ended_call_turn(stop: StopReason, finish: FinishReason) -> ModelTurn {
-    ModelTurn::new(
-        AssistantMessage::default().with_stop(stop),
-        vec![
-            AssistantContent::text("checking"),
-            tool_call("call_1", "add"),
-        ],
-        Usage::default(),
-        policy(&["add"]),
-        hand_raw(),
-    )
-    .with_finish_reason(Some(finish))
+    ModelTurn {
+        finish_reason: Some(finish),
+        ..ModelTurn::new(
+            AssistantMessage::default().with_stop(stop),
+            vec![
+                AssistantContent::text("checking"),
+                tool_call("call_1", "add"),
+            ],
+            Usage::default(),
+            policy(&["add"]),
+            hand_raw(),
+        )
+    }
 }
 
 /// A turn that ends in an error runs none of its tool calls: the run ends
@@ -1142,16 +1144,18 @@ fn serde_round_trip_keeps_the_previous_model() {
 fn a_truncated_reasoning_only_turn_commits_nothing() {
     let mut run = AgentRun::new("solve this");
     let _ = expect_call_model(&mut run);
-    let turn = ModelTurn::new(
-        rig_core::message::AssistantMessage::default(),
-        vec![AssistantContent::Reasoning(
-            rig_core::message::Reasoning::new("thinking, never answering"),
-        )],
-        Usage::default(),
-        policy(&["add"]),
-        hand_raw(),
-    )
-    .with_finish_reason(Some(FinishReason::Length));
+    let turn = ModelTurn {
+        finish_reason: Some(FinishReason::Length),
+        ..ModelTurn::new(
+            rig_core::message::AssistantMessage::default(),
+            vec![AssistantContent::Reasoning(
+                rig_core::message::Reasoning::new("thinking, never answering"),
+            )],
+            Usage::default(),
+            policy(&["add"]),
+            hand_raw(),
+        )
+    };
     // The turn is accepted into resolution; the run fails when it is read.
     expect_continue(
         run.model_response(turn)
@@ -1170,8 +1174,7 @@ fn a_truncated_reasoning_only_turn_commits_nothing() {
     );
 }
 
-/// An empty choice, or a retry with no tool calls to answer, builds no
-/// message, so nothing empty is appended to history.
+/// An empty choice builds no message, so nothing empty is appended to history.
 #[test]
 fn transcript_helpers_build_no_message_from_nothing() {
     assert_eq!(
@@ -1180,14 +1183,6 @@ fn transcript_helpers_build_no_message_from_nothing() {
     );
     assert_eq!(
         transcript::assistant_turn(rig_core::message::AssistantMessage::default(), Vec::new()),
-        None
-    );
-    assert_eq!(
-        transcript::invalid_tool_retry_user_message(
-            &[AssistantContent::text("no calls here")],
-            0,
-            "feedback",
-        ),
         None
     );
 }
@@ -2003,20 +1998,22 @@ fn a_canonical_history_closes_an_unchecked_input_history() {
 /// A cut-off `write_file` call: the provider stopped at the token limit in
 /// the middle of the `content` string.
 fn truncated_write_turn(id: &str) -> ModelTurn {
-    ModelTurn::new(
-        AssistantMessage::default().with_stop(StopReason::Length),
-        vec![AssistantContent::ToolCall(ToolCall::from_wire(
-            id,
-            ToolFunction::parse(
-                rig_core::message::ToolName::new("write_file").expect("tool name"),
-                r#"{"path":"a.rs","content":"fn ma"#,
-            ),
-        ))],
-        Usage::default(),
-        policy(&["write_file"]),
-        hand_raw(),
-    )
-    .with_finish_reason(Some(FinishReason::Length))
+    ModelTurn {
+        finish_reason: Some(FinishReason::Length),
+        ..ModelTurn::new(
+            AssistantMessage::default().with_stop(StopReason::Length),
+            vec![AssistantContent::ToolCall(ToolCall::from_wire(
+                id,
+                ToolFunction::parse(
+                    rig_core::message::ToolName::new("write_file").expect("tool name"),
+                    r#"{"path":"a.rs","content":"fn ma"#,
+                ),
+            ))],
+            Usage::default(),
+            policy(&["write_file"]),
+            hand_raw(),
+        )
+    }
 }
 
 /// Persist a run mid-step and resume it from bytes, as a host does across a

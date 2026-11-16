@@ -596,18 +596,6 @@ impl AgentBuilder {
     {
         self.map_tools(|tools| tools.retrieved_tools(sample, index, toolset))
     }
-
-    /// Add retrievable tools chosen per request by `handler`, a
-    /// retrieval-family handler such as a replayer answering a recorded
-    /// index; see [`ToolServer::retrieved_tools_handler`].
-    pub fn retrieved_tools_handler(
-        self,
-        sample: usize,
-        handler: impl rig_core::serve::Serve + 'static,
-        toolset: ToolSet,
-    ) -> Self {
-        self.map_tools(|tools| tools.retrieved_tools_handler(sample, handler, toolset))
-    }
 }
 
 #[cfg(test)]

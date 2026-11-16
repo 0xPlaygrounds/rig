@@ -367,7 +367,7 @@ async fn execution_commit_items_are_not_emitted_when_run_commit_fails() {
     forged["Execute"]["tool_call"]["id"] = serde_json::json!({"provider": "mismatched_call"});
     calls[0] = serde_json::from_value(forged).expect("a forged call deserializes");
 
-    let hook_context = HookContext::new(true, None, crate::handlers::Handlers::default());
+    let hook_context = HookContext::new(true, crate::handlers::Handlers::default());
     hook_context.set_turn(1);
     let committed_before = run.messages().len();
     let settled = drive_tool_calls(
@@ -377,7 +377,6 @@ async fn execution_commit_items_are_not_emitted_when_run_commit_fails() {
         calls,
         tool_snapshot,
         |span| span,
-        true,
         None,
     )
     .await;
@@ -727,6 +726,65 @@ async fn unary_prompt_message_telemetry_records_accepted_output_when_opted_in() 
     );
 }
 
+/// A streamed run records `gen_ai.completion` on the agent span it created
+/// once, at the end, with the run's output, and not at all when
+/// `on_model_turn_finished` stops the run, as a blocking run does.
+#[tokio::test]
+async fn streamed_run_records_its_completion_once_at_the_end() {
+    struct StopAfterTurn;
+    impl AgentHook for StopAfterTurn {
+        async fn on_model_turn_finished(
+            &self,
+            _: &HookContext,
+            _: ModelTurnFinished<'_>,
+        ) -> ModelTurnAction {
+            ModelTurnAction::Stop("enough".to_owned())
+        }
+    }
+
+    let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+    let spans = TraceCapture::default();
+    let _default = tracing::subscriber::set_default(spans.subscriber());
+    let warmup = AgentBuilder::new(MockCompletionModel::text("warmup")).build();
+    warmup.prompt("warmup").await.expect("warmup prompt");
+    tracing::callsite::rebuild_interest_cache();
+
+    let one_turn = || {
+        MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text("streamed answer"),
+            MockStreamEvent::final_response(Usage::default()),
+        ]])
+    };
+    // (agent, the recorded completion: `None` for a stopped run)
+    let cases = [
+        (AgentBuilder::new(one_turn()), Some("streamed answer")),
+        (
+            AgentBuilder::new(streaming_tool_then_text_model()).tool(MockAddTool),
+            Some("done"),
+        ),
+        (AgentBuilder::new(one_turn()).add_hook(StopAfterTurn), None),
+    ];
+    for (builder, expected) in cases {
+        spans.clear();
+        let agent = builder.record_content_telemetry(true).build();
+        let mut stream = agent.prompt("question").max_turns(2).stream();
+        let mut failed = false;
+        while let Some(item) = stream.next().await {
+            failed |= item.is_err();
+        }
+        assert_eq!(failed, expected.is_none(), "only the stopped run fails");
+
+        let agent_span = spans
+            .spans()
+            .into_iter()
+            .find(|span| span.name == "invoke_agent")
+            .expect("invoke_agent span should be captured");
+        let recorded = usize::from(expected.is_some());
+        assert_eq!(agent_span.record_count("gen_ai.completion"), recorded);
+        assert_eq!(agent_span.text("gen_ai.completion").as_deref(), expected);
+    }
+}
+
 #[tokio::test]
 async fn streaming_rejected_message_telemetry_does_not_record_output() {
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
@@ -851,13 +909,13 @@ fn completion_calls_stream_item_serializes_and_deserializes_expected_shape() {
 
 #[test]
 fn final_response_serializes_completion_calls_with_missing_usage() {
-    let item = MultiTurnStreamItem::FinalResponse(
-        PromptResponse::from_content(vec![AssistantContent::text("done")], usage(3, 4))
-            .with_completion_calls(vec![
-                CompletionCall::new(0, Usage::default(), serde_json::json!({"id": "resp_0"})),
-                CompletionCall::new(1, usage(3, 4), serde_json::json!({"id": "resp_1"})),
-            ]),
-    );
+    let item = MultiTurnStreamItem::FinalResponse(PromptResponse {
+        completion_calls: vec![
+            CompletionCall::new(0, Usage::default(), serde_json::json!({"id": "resp_0"})),
+            CompletionCall::new(1, usage(3, 4), serde_json::json!({"id": "resp_1"})),
+        ],
+        ..PromptResponse::from_content(vec![AssistantContent::text("done")], usage(3, 4))
+    });
 
     if let MultiTurnStreamItem::FinalResponse(response) = &item {
         assert_eq!(response.requests(), 2);

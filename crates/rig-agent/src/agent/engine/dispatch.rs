@@ -113,7 +113,6 @@ pub(crate) fn model_step<'a, S: TurnSource>(
     request: CompletionRequest,
     prepared: PreparedCompletionRequest,
     chat_span: tracing::Span,
-    agent_span: &'a tracing::Span,
 ) -> DriveStream<'a> {
     Box::pin(async_stream::stream! {
         hook_ctx.set_output_tool(prepared.policy.output_tool());
@@ -143,7 +142,7 @@ pub(crate) fn model_step<'a, S: TurnSource>(
         let (answer, state, source_marker) = (None, State::Open, PhantomData);
         let mut scope = CompletionScope::<S> { scope, answer, state, source: source_marker };
         let mut turn =
-            source.run_model_turn(runner, hook_ctx, run, prepared, chat_span, agent_span, &mut scope);
+            source.run_model_turn(runner, hook_ctx, run, prepared, chat_span, &mut scope);
         let error = loop {
             match turn.next().await {
                 Some(Ok(item)) => yield Ok(item),

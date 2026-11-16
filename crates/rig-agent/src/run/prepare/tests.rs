@@ -147,7 +147,7 @@ fn non_object_additional_params_with_provider_tools_fail() {
             None,
         );
         assert!(
-            matches!(prepared, Err(PrepareError::Request(_))),
+            matches!(prepared, Err(ProviderError::Request(_))),
             "{params}: {prepared:?}"
         );
     }

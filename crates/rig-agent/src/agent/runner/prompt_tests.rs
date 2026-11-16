@@ -172,10 +172,13 @@ fn typed_prompt_response_deserializes_with_deserialize_only_output() {
 #[test]
 fn prompt_response_serializes_completion_calls_with_missing_usage() {
     let reported_usage = usage(3, 4);
-    let response = PromptResponse::new("ok", reported_usage).with_completion_calls(vec![
-        CompletionCall::new(0, Usage::default(), json!({"id": "resp_0"})),
-        CompletionCall::new(1, reported_usage, json!({"id": "resp_1"})),
-    ]);
+    let response = PromptResponse {
+        completion_calls: vec![
+            CompletionCall::new(0, Usage::default(), json!({"id": "resp_0"})),
+            CompletionCall::new(1, reported_usage, json!({"id": "resp_1"})),
+        ],
+        ..PromptResponse::new("ok", reported_usage)
+    };
 
     let value = serde_json::to_value(&response).expect("serialize prompt response");
 
@@ -346,8 +349,10 @@ fn prompt_response_serialize_and_deserialize_agree_on_wire_shape() {
     // is gone, so serialize and deserialize agree by construction. Pin
     // the shape: `content` present, `completion_calls` omitted only when
     // empty, and the value round-trips.
-    let response = PromptResponse::new("hi", usage(1, 2))
-        .with_completion_calls(vec![CompletionCall::new(0, usage(1, 2), json!({}))]);
+    let response = PromptResponse {
+        completion_calls: vec![CompletionCall::new(0, usage(1, 2), json!({}))],
+        ..PromptResponse::new("hi", usage(1, 2))
+    };
 
     let from_response = serde_json::to_value(&response).expect("serialize response");
     assert!(from_response.get("content").is_some());
@@ -806,17 +811,19 @@ fn completion_call_without_identity_fields_deserializes() {
     )
     .expect("a CompletionCall without identity fields should load");
     assert_eq!(call.call_index, 3);
-    assert_eq!(call.identity(), ResponseIdentity::default());
+    assert_eq!(call.identity, ResponseIdentity::default());
 }
 
 /// And a populated record round-trips the identity losslessly.
 #[test]
 fn completion_call_identity_round_trips() {
-    let call = CompletionCall::new(0, crate::completion::Usage::default(), json!({}))
-        .with_identity(ResponseIdentity {
+    let call = CompletionCall {
+        identity: ResponseIdentity {
             response_id: Some("resp_1".into()),
             provider_request_id: Some("req_1".into()),
-        });
+        },
+        ..CompletionCall::new(0, crate::completion::Usage::default(), json!({}))
+    };
     let json = serde_json::to_string(&call).expect("serialize");
     let restored: CompletionCall = serde_json::from_str(&json).expect("deserialize");
     assert_eq!(restored, call);

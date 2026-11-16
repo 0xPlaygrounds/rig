@@ -58,12 +58,11 @@ async fn hand_driven_single_turn_completes() {
 
             assert_nonempty_response(&response.output());
             assert!(run.is_done());
-            assert_eq!(
-                run.response()
-                    .expect("done run exposes its response")
-                    .output(),
-                response.output()
-            );
+            let AgentRunStep::Done(again) = run.next_step().expect("done run repeats its response")
+            else {
+                panic!("a done run stays done");
+            };
+            assert_eq!(again.output(), response.output());
             assert_eq!(run.turn(), 1);
             assert_eq!(response.completion_calls.len(), 1);
             assert_eq!(run.usage(), response.usage);

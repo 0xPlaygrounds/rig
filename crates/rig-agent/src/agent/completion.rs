@@ -34,15 +34,10 @@ use super::UNKNOWN_AGENT_NAME;
 /// What a completion request was prepared with, including the executable Rig
 /// tool names advertised to the provider for this turn.
 pub(crate) struct PreparedCompletionRequest {
-    /// The messages telemetry records for this attempt.
-    pub(crate) telemetry_messages: Vec<Arc<Message>>,
     /// The typed view the request is dispatched to.
     pub(crate) model: ModelHandle,
     /// Exact implementations behind this turn's provider definitions.
     pub(crate) tool_snapshot: Arc<ToolCatalog>,
-    /// The definitions the request carries (executable tools plus, in Tool
-    /// output mode, the synthetic output tool), for the run's `TurnTools`.
-    pub(crate) advertised_tools: Vec<Arc<ToolDefinition>>,
     /// The turn's tool policy, fed back to the run with the response.
     pub(crate) policy: crate::run::TurnPolicy,
     /// Effective structured output-token cap after runner overrides and request
@@ -70,7 +65,6 @@ pub(crate) async fn build_prepared_completion_request(
     committed_output_tool: Option<&str>,
     request_patch: Option<&RequestPatch>,
 ) -> Result<(CompletionRequest, PreparedCompletionRequest), ProviderError> {
-    let record_telemetry_content = runner.config.record_telemetry_content;
     let tool_server_handle = &runner.tool_server_handle;
 
     let retrieval_query = retrieval_query(&prompt, chat_history);
@@ -114,22 +108,11 @@ pub(crate) async fn build_prepared_completion_request(
     // the provider received is the one that runs.
     tool_snapshot.retain_names(policy.executable());
 
-    let advertised_tools = request.tools.clone();
-    let max_tokens = request.max_tokens;
-    // The agent records the input itself, so the request the provider sees
-    // carries the telemetry flag off: one span, no double recording.
-    let telemetry_messages = if record_telemetry_content {
-        request.messages_for_telemetry()
-    } else {
-        Vec::new()
-    };
     let prepared = PreparedCompletionRequest {
-        telemetry_messages,
         model: model.clone(),
         tool_snapshot: Arc::new(tool_snapshot),
-        advertised_tools,
         policy,
-        max_tokens,
+        max_tokens: request.max_tokens,
     };
     Ok((request, prepared))
 }
@@ -320,25 +303,22 @@ impl AgentConfig {
         self.handlers.bind(&self.model_key)
     }
 
-    /// The default model's label as registered now, if a completion model
-    /// serves it.
-    pub(crate) fn registered_model_label(&self) -> Option<ModelRef> {
-        match self.handlers.descriptor(self.model_key.raw())?.family {
-            rig_core::effect::FamilyDescriptor::Completion { model, .. } => Some(model),
-            _ => None,
-        }
-    }
-
     /// The default model's label as registered now (the key's tail when
     /// nothing serves it).
     pub(crate) fn model_label(&self) -> ModelRef {
-        self.registered_model_label().unwrap_or_else(|| {
-            let key = self.model_key.as_str();
-            let label = key
-                .strip_prefix(&*self.owner)
-                .and_then(|rest| rest.strip_prefix("/model:"));
-            ModelRef::new(label.unwrap_or(key))
-        })
+        match self.handlers.descriptor(self.model_key.raw()) {
+            Some(HandlerDescriptor {
+                family: rig_core::effect::FamilyDescriptor::Completion { model, .. },
+                ..
+            }) => model,
+            _ => {
+                let key = self.model_key.as_str();
+                let label = key
+                    .strip_prefix(&*self.owner)
+                    .and_then(|rest| rest.strip_prefix("/model:"));
+                ModelRef::new(label.unwrap_or(key))
+            }
+        }
     }
 
     /// Bind the model registered under `label`.
@@ -435,16 +415,6 @@ impl Agent {
     /// key; `.raw()` for the wire string).
     pub fn model_key(&self) -> &Key<family::Completion> {
         &self.config.model_key
-    }
-
-    /// The descriptor of this agent's default model, as registered now.
-    pub fn model_descriptor(&self) -> Option<HandlerDescriptor> {
-        self.config.handlers.descriptor(self.config.model_key.raw())
-    }
-
-    /// The label of this agent's default model, as registered now.
-    pub fn model_label(&self) -> Option<ModelRef> {
-        self.config.registered_model_label()
     }
 
     /// Register `model` in this agent's table under `label` and return the

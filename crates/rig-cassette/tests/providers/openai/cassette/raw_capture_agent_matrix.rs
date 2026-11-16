@@ -294,7 +294,7 @@ fn assert_calls_carry_recorded_raw(
             &format!("{scenario}: completion_calls[{index}] raw id vs fixture interaction {index}"),
         );
         assert_matches_recorded_token(
-            call.response_id.as_deref(),
+            call.identity.response_id.as_deref(),
             Some(recorded_id),
             &format!("{scenario}: completion_calls[{index}] response_id vs fixture"),
         );
@@ -337,7 +337,7 @@ fn assert_blocking_hooks_see_raw(
         "{scenario}: CompletionResponse hook sees the call's raw"
     );
     assert_eq!(
-        responses[0].identity.response_id, observation.calls[0].response_id,
+        responses[0].identity.response_id, observation.calls[0].identity.response_id,
         "{scenario}: CompletionResponse hook and record agree on the attempt"
     );
     let turns = probe.turns();
@@ -347,7 +347,7 @@ fn assert_blocking_hooks_see_raw(
         "{scenario}: ModelTurnFinished hook sees the call's raw"
     );
     assert_eq!(
-        turns[0].0.response_id, observation.calls[0].response_id,
+        turns[0].0.response_id, observation.calls[0].identity.response_id,
         "{scenario}: hook and record agree on the attempt"
     );
 }
@@ -378,7 +378,7 @@ fn assert_streamed_hooks_see_raw(
         "{scenario}: CompletionResponse hook sees the terminal's raw"
     );
     assert_eq!(
-        responses[0].identity.response_id, observation.calls[0].response_id,
+        responses[0].identity.response_id, observation.calls[0].identity.response_id,
         "{scenario}: CompletionResponse hook and record agree on the attempt"
     );
     let turns = probe.turns();

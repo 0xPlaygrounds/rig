@@ -14,7 +14,7 @@ use rig_core::vector_store::{
     VectorSearchIdResult, VectorSearchRequest, VectorSearchResult, VectorStoreError,
     VectorStoreIndex, request::Filter,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, PartialEq, Deserialize, Serialize, JsonSchema)]
 struct Person {

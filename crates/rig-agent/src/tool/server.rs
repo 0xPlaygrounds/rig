@@ -125,13 +125,7 @@ impl ToolServerState {
         }
         self.publish(&tool);
         self.bindings.insert(tool.key().raw().clone(), name.clone());
-        if always_exposed {
-            self.toolset.add_registered_tool(tool);
-        } else {
-            let mut set = ToolSet::default();
-            set.add_registered_tool(tool);
-            self.toolset.add_retrievable_tools(set);
-        }
+        self.toolset.insert(tool, always_exposed);
         name
     }
 
@@ -436,10 +430,8 @@ impl ToolServerHandle {
     /// Merge a tool set's registrations.
     pub fn add_tools(&self, toolset: ToolSet) {
         let mut state = self.state_mut();
-        let exposed: Vec<String> = toolset.always_exposed_names().map(str::to_owned).collect();
-        for (name, tool) in toolset.iter() {
-            let always_exposed = exposed.iter().any(|exposed| exposed == name);
-            let name = state.register(tool.clone(), always_exposed);
+        for registration in toolset.tools.into_values() {
+            let name = state.register(registration.tool, registration.always_exposed);
             state.managed_generations.remove(&name);
         }
     }

@@ -94,7 +94,7 @@ async fn repaired_invalid_call_keeps_call_identity() {
             assert!(!response.completion_calls.is_empty());
             for call in &response.completion_calls {
                 assert_transport_request_id(
-                    call.provider_request_id.as_deref(),
+                    call.identity.provider_request_id.as_deref(),
                     "recovered-run completion call",
                 );
             }

@@ -2,8 +2,8 @@
 //!
 //! ```
 //! use rig_agent::run::response::PromptResponse;
-//! let response = PromptResponse::empty();
-//! assert!(response.output().is_empty());
+//! let response = PromptResponse::new("done", Default::default());
+//! assert_eq!(response.output(), "done");
 //! ```
 
 use rig_core::completion::{FinishReason, ResponseIdentity, Usage};
@@ -22,12 +22,9 @@ pub struct CompletionCall {
     /// A counter the provider did not report is `None`; a reported zero is
     /// `Some(0)`. Every counter is `None` when no usage was reported at all.
     pub usage: Usage,
-    /// Provider-assigned response-scoped ID for this call, when reported.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub response_id: Option<String>,
-    /// Transport request ID for this call, or `None` if the provider reported none.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider_request_id: Option<String>,
+    /// The response and transport request ids this call reported.
+    #[serde(flatten)]
+    pub identity: ResponseIdentity,
     /// Why this call stopped generating, or `None` if unreported.
     /// Retained per call so callers can identify which attempt was truncated.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -40,37 +37,15 @@ pub struct CompletionCall {
 
 impl CompletionCall {
     /// Create details for one completion request in an agent run, carrying
-    /// the provider's own response `raw` (see [`Self::raw`]); identity
-    /// metadata starts unset and is attached with [`Self::with_identity`].
+    /// the provider's own response `raw` (see [`Self::raw`]); identity and
+    /// finish reason start unset.
     pub fn new(call_index: usize, usage: Usage, raw: serde_json::Value) -> Self {
         Self {
             call_index,
             usage,
-            response_id: None,
-            provider_request_id: None,
+            identity: ResponseIdentity::default(),
             finish_reason: None,
             raw,
-        }
-    }
-
-    /// Attach the response identity metadata this call's attempt reported.
-    pub fn with_identity(mut self, identity: ResponseIdentity) -> Self {
-        self.response_id = identity.response_id;
-        self.provider_request_id = identity.provider_request_id;
-        self
-    }
-
-    /// Attach the terminal finish reason reported by this attempt.
-    pub fn with_finish_reason(mut self, finish_reason: Option<FinishReason>) -> Self {
-        self.finish_reason = finish_reason;
-        self
-    }
-
-    /// This call's identity metadata as one [`ResponseIdentity`] carrier.
-    pub fn identity(&self) -> ResponseIdentity {
-        ResponseIdentity {
-            response_id: self.response_id.clone(),
-            provider_request_id: self.provider_request_id.clone(),
         }
     }
 }
@@ -106,7 +81,7 @@ pub struct PromptResponse {
     /// response. Kept crate-private because it is runner bookkeeping rather
     /// than provider-facing response content.
     #[serde(skip)]
-    output_tool_calls: usize,
+    pub(crate) output_tool_calls: usize,
 }
 
 impl std::fmt::Display for PromptResponse {
@@ -131,23 +106,6 @@ impl PromptResponse {
             messages: Vec::new(),
             output_tool_calls: 0,
         }
-    }
-
-    /// An empty run result (empty output, zero usage, no history).
-    pub fn empty() -> Self {
-        Self::new(String::new(), Usage::default())
-    }
-
-    /// Attach the run's transcript.
-    pub fn with_messages(mut self, messages: Vec<Message>) -> Self {
-        self.messages = messages;
-        self
-    }
-
-    /// Attach completion call details to this response.
-    pub fn with_completion_calls(mut self, completion_calls: Vec<CompletionCall>) -> Self {
-        self.completion_calls = completion_calls;
-        self
     }
 
     /// Record how many times the output tool was called.
