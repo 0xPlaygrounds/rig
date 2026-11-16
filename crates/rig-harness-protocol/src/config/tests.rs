@@ -305,6 +305,41 @@ fn a_private_settings_file_is_never_staged_readable() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
+/// An edit keeps the file's group, which a new file in its folder may not
+/// get.
+#[cfg(unix)]
+#[test]
+fn an_edit_keeps_the_files_group() {
+    use std::os::unix::fs::MetadataExt;
+
+    let dir = std::env::temp_dir().join(format!("rig-config-group-{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
+    let path = dir.join("settings.toml");
+    assert!(std::fs::create_dir_all(&dir).is_ok() && std::fs::write(&path, "key = 0\n").is_ok());
+    let own = std::fs::metadata(&path).map(|meta| meta.gid()).ok();
+    // Another group the user is in, if any.
+    let groups = std::process::Command::new("id").arg("-G").output();
+    let groups = groups.map(|out| String::from_utf8_lossy(&out.stdout).into_owned());
+    let other = groups
+        .unwrap_or_default()
+        .split_whitespace()
+        .filter_map(|gid| gid.parse().ok())
+        .find(|gid: &u32| Some(*gid) != own);
+    let Some(other) = other else {
+        std::fs::remove_dir_all(&dir).ok();
+        return;
+    };
+    assert!(std::os::unix::fs::chown(&path, None, Some(other)).is_ok());
+    let edited = edit::<_, Error>(&path, |file| {
+        file.document.insert("key", toml_edit::value(1));
+        Ok((true, ()))
+    });
+    let gid = std::fs::metadata(&path).map(|meta| meta.gid()).ok();
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(edited, Ok((true, ())));
+    assert_eq!(gid, Some(other));
+}
+
 /// A link whose target does not exist yet is written through, absolute,
 /// relative or chained: the target is made and the link stays.
 #[cfg(unix)]

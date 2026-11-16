@@ -19,7 +19,6 @@
 
 use std::collections::BTreeSet;
 use std::fmt;
-use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
 use crate::fs;
@@ -771,39 +770,7 @@ pub fn edit<T, E: From<Error>>(
     file.path = path.to_path_buf();
     let (changed, value) = change(&mut file)?;
     if changed {
-        let staged = directory.join(format!(".{name}.{}", std::process::id()));
-        let was = fs::optional(fs::metadata(&target))
-            .map_err(Error::io)?
-            .map(|meta| meta.permissions());
-        // A crash's leftover, or a link planted here, must not become this copy.
-        fs::optional(fs::remove_file(&staged)).map_err(Error::io)?;
-        let mut options = std::fs::OpenOptions::new();
-        options.write(true).create_new(true);
-        // Only a file that exists has a mode to protect; a new one gets the default.
-        #[cfg(unix)]
-        if was.is_some() {
-            std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-        }
-        let replaced = fs::open(&options, &staged)
-            .and_then(|mut opened| {
-                (opened.write_all(file.document.to_string().as_bytes()))
-                    .map_err(fs::named("write", &staged))?;
-                // A file the user made private stays so.
-                was.map_or(Ok(()), |was| opened.set_permissions(was))
-                    .map_err(fs::named("set permissions of", &staged))?;
-                opened.sync_all().map_err(fs::named("sync", &staged))
-            })
-            .and_then(|()| fs::rename(&staged, &target));
-        replaced.map_err(|failure| {
-            fs::remove_file(&staged).ok();
-            Error::io(failure)
-        })?;
-        // The rename lasts a power loss once the folder is synced; best
-        // effort, as not every system can open a folder to sync it. The
-        // `.` turns a bare file name's empty folder into the current one.
-        fs::open(std::fs::OpenOptions::new().read(true), directory.join("."))
-            .and_then(|folder| folder.sync_all())
-            .ok();
+        fs::replace(&target, file.document.to_string().as_bytes()).map_err(Error::io)?;
     }
     Ok((changed, value))
 }
@@ -816,7 +783,7 @@ pub fn edit<T, E: From<Error>>(
 ///
 /// When a link cannot be read, or the chain is longer than the kernel
 /// follows, naming `path`.
-fn linked(path: &Path) -> Result<PathBuf, Error> {
+pub fn linked(path: &Path) -> Result<PathBuf, Error> {
     // Linux's own limit on links followed in one lookup.
     const LINKS: usize = 40;
     let mut at = path.to_path_buf();

@@ -237,6 +237,56 @@ fn a_write_keeps_the_files_group() {
     fs::remove_dir_all(dir).ok();
 }
 
+/// A private file's staged copy is never readable by others, watched
+/// while writes run.
+#[cfg(unix)]
+#[test]
+fn a_private_file_is_never_staged_readable() {
+    use std::os::unix::fs::PermissionsExt;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    let dir = scratch("staged");
+    let user = user_file(&dir);
+    // Long enough that writing it outlasts one look at the directory.
+    let padded = json!({ "pad": "x".repeat(1 << 20), "mcpServers": {} });
+    fs::write(user.path(), padded.to_string()).ok();
+    fs::set_permissions(user.path(), fs::Permissions::from_mode(0o600)).ok();
+    let done = AtomicBool::new(false);
+    let (open, writes) = std::thread::scope(|scope| {
+        let watcher = scope.spawn(|| {
+            while !done.load(Ordering::Relaxed) {
+                for entry in fs::read_dir(&dir).into_iter().flatten().flatten() {
+                    if !entry
+                        .file_name()
+                        .to_string_lossy()
+                        .starts_with(".mcp.json.")
+                    {
+                        continue;
+                    }
+                    let seen = entry
+                        .metadata()
+                        .map(|meta| meta.permissions().mode() & 0o777);
+                    if let Some(open) = seen.ok().filter(|seen| seen & 0o077 != 0) {
+                        return Some(open);
+                    }
+                }
+            }
+            None
+        });
+        let writes: Vec<_> = (0..40)
+            .take_while(|_| !watcher.is_finished())
+            .map(|at| user.add(&format!("s{at}"), json!({ "command": "x" })))
+            .collect();
+        done.store(true, Ordering::Relaxed);
+        (watcher.join().ok().flatten(), writes)
+    });
+    let mode = fs::metadata(user.path()).map(|meta| meta.permissions().mode() & 0o777);
+    fs::remove_dir_all(&dir).ok();
+    assert!(writes.iter().all(Result::is_ok), "{writes:?}");
+    assert_eq!(open, None, "staged readable by others");
+    assert_eq!(mode.ok(), Some(0o600));
+}
+
 #[test]
 fn a_secret_variable_is_refused_by_name_and_never_expanded() {
     let header = json!({ "url": "https://h", "headers": { "X": "${RIG_SECRET_CRYPT}" } });
