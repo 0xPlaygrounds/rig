@@ -1,5 +1,6 @@
 use super::*;
 use crate::providers::gemini::GeminiConfig;
+use crate::wire::WireFrame;
 
 #[test]
 fn parse_models_page_reports_missing_model_id_when_name_is_omitted() {
@@ -64,10 +65,10 @@ fn models_sends_the_recorded_path_and_query() {
     assert_eq!(request.uri().query(), Some("pageSize=1000"));
 }
 
-/// The Interactions API reaches the same endpoint the same way.
+/// The listing sends the credential as a header only.
 #[test]
-fn interactions_models_sends_the_credential_as_a_header_only() {
-    let encoded = InteractionsModels::new(GeminiConfig::new("test-key"))
+fn models_sends_the_credential_as_a_header_only() {
+    let encoded = Models::new(GeminiConfig::new("test-key"))
         .encode(None, Mode::Unary)
         .expect("the request encodes");
     let request = &encoded.request;

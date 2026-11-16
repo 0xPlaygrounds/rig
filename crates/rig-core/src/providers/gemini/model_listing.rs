@@ -1,15 +1,11 @@
 use crate::error::EncodeError;
 use crate::error::ProviderError;
 use crate::json_utils::Lenient;
-use crate::wire::Flow;
 use crate::{
     model::{ModelInfo, ModelList, listing},
-    operation::{ModelListing, ModelPage, Verify},
+    operation::{ModelListing, ModelPage, Verify, VerifyDecoder},
     providers::internal::{wire::classify_marker_keyed_frame, with_query_pairs},
-    wire::{
-        Body, Decoder, Descriptor, DocumentDecoder, Encoded, Framing, Mode, Out, Wire, WireEvent,
-        WireFrame,
-    },
+    wire::{Body, Descriptor, DocumentDecoder, Encoded, Framing, Mode, Wire},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -45,13 +41,7 @@ fn list_models_path(page_token: Option<&str>) -> String {
 }
 
 /// A decoded model page with an optional nonempty continuation cursor.
-#[derive(Debug)]
-struct ListingPage {
-    models: Vec<ModelInfo>,
-    next_cursor: Option<String>,
-}
-
-fn parse_models_page(body: &[u8], path: &str) -> Result<ListingPage, ProviderError> {
+fn parse_models_page(body: &[u8], path: &str) -> Result<ModelPage, ProviderError> {
     let error =
         |details: &dyn std::fmt::Display| listing::parse_error("Gemini", path, details, body);
     let page: Value = serde_json::from_slice(body)
@@ -69,9 +59,9 @@ fn parse_models_page(body: &[u8], path: &str) -> Result<ListingPage, ProviderErr
         })
         .collect::<Result<Vec<_>, _>>()?;
     // Sending an empty cursor would repeatedly fetch the same page.
-    Ok(ListingPage {
-        models,
-        next_cursor: page
+    Ok(ModelPage {
+        models: ModelList::new(models),
+        next: page
             .str("nextPageToken")
             .filter(|token| !token.is_empty())
             .map(str::to_owned),
@@ -150,45 +140,6 @@ impl Wire for Models {
     }
 }
 
-/// The Interactions API model-listing wire: the same `GET /v1beta/models`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct InteractionsModels {
-    /// The provider this wire speaks to.
-    pub provider: super::GeminiConfig,
-}
-
-impl InteractionsModels {
-    /// Build the wire over `provider`.
-    pub fn new(provider: super::GeminiConfig) -> Self {
-        Self { provider }
-    }
-}
-
-impl Wire for InteractionsModels {
-    type Op = ModelListing;
-    type Payload = crate::wire::Encoded;
-    type Frame = crate::wire::WireFrame;
-    type Event = String;
-    type Decoder<'id> = DocumentDecoder<ModelListing, String>;
-    type Reassembler = crate::wire::document::Unreassembled;
-
-    fn describe(&self) -> Descriptor<'_> {
-        Descriptor::new(super::PROVIDER_NAME)
-    }
-
-    /// A listing never streams, so both modes send the one request.
-    fn encode(&self, cursor: Option<String>, _mode: Mode) -> Result<Encoded, EncodeError> {
-        Ok(Encoded::new(
-            list_models_request(&self.provider, cursor.as_deref())?,
-            Framing::Whole,
-        ))
-    }
-
-    fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        models_decoder()
-    }
-}
-
 /// Decode model pages and the cursor each names, keeping the page JSON for
 /// model-entry error context.
 fn models_decoder() -> DocumentDecoder<ModelListing, String> {
@@ -198,11 +149,7 @@ fn models_decoder() -> DocumentDecoder<ModelListing, String> {
         },
         |payload| {
             // Diagnostics identify the endpoint without retaining the previous page's cursor.
-            let page = parse_models_page(payload.as_bytes(), &list_models_path(None))?;
-            Ok(ModelPage {
-                models: ModelList::new(page.models),
-                next: page.next_cursor,
-            })
+            parse_models_page(payload.as_bytes(), &list_models_path(None))
         },
     )
 }
@@ -226,7 +173,7 @@ impl Wire for VerifyKey {
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
     type Event = ();
-    type Decoder<'id> = VerifyKeyDecoder;
+    type Decoder<'id> = VerifyDecoder;
     type Reassembler = crate::wire::document::Unreassembled;
 
     fn describe(&self) -> Descriptor<'_> {
@@ -242,31 +189,6 @@ impl Wire for VerifyKey {
     }
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        VerifyKeyDecoder
-    }
-}
-
-/// Verify a successful response without normalizing model entries.
-#[derive(Default)]
-pub struct VerifyKeyDecoder;
-
-impl<'id> Decoder<'id, Verify> for VerifyKeyDecoder {
-    type Event = ();
-
-    fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
-        classify_marker_keyed_frame::<Value>(&frame.as_str(), MODEL_PAGE_MARKERS).map(|_| ())
-    }
-
-    fn decode(
-        &mut self,
-        _event: Self::Event,
-        out: Out<'id, Verify>,
-    ) -> Result<Flow, ProviderError> {
-        Ok(out.end(()))
-    }
-
-    /// A success status verifies even when no recognized page arrived.
-    fn eof(&mut self, out: Out<'id, Verify>) -> Result<Flow, ProviderError> {
-        Ok(out.end(()))
+        VerifyDecoder
     }
 }

@@ -480,7 +480,7 @@ async fn no_gemini_wire_puts_the_key_in_its_url() {
     use crate::providers::gemini::cached_content::{
         CacheExpiry, CachedContentRequest, NewCachedContent,
     };
-    use crate::providers::gemini::model_listing::{InteractionsModels, Models};
+    use crate::providers::gemini::model_listing::Models;
     use crate::providers::gemini::{GeminiConfig, completion::GenerateContent};
     use crate::transcription::TranscriptionRequestBuilder;
     use crate::wire::{Mode, Wire};
@@ -549,10 +549,6 @@ async fn no_gemini_wire_puts_the_key_in_its_url() {
         (
             "model listing",
             Models::new(gemini.clone()).encode(None, Mode::Unary),
-        ),
-        (
-            "interactions model listing",
-            InteractionsModels::new(gemini.clone()).encode(None, Mode::Unary),
         ),
     ];
     #[cfg(feature = "image")]
