@@ -35,6 +35,7 @@ use super::exit::{Exit, ExitReason, reason_from_exit};
 use super::session::leave_session;
 use crate::describe::{Describing, describing};
 use crate::secrets::Secrets;
+use crate::services::RigHome;
 use crate::settings::Settings;
 use rig_core::conversation::Author;
 use rig_ecs::StopTurnsOnExit;
@@ -400,15 +401,15 @@ fn exit_held(
 struct StartBuildFailure(String);
 
 /// The message on a failed build of `what`, for the model: `summary` (the
-/// reason and the first errors) and where the whole output is. It does not
-/// point at the plugin list, the generated project or rig's source, which
-/// only the user changes.
-pub fn build_failure_message(what: &str, summary: &str) -> String {
+/// reason and the first errors) and where the whole output is, the build
+/// log of `home`. It does not point at the plugin list, the generated
+/// project or rig's source, which only the user changes.
+pub fn build_failure_message(home: &Home, what: &str, summary: &str) -> String {
     format!(
         "Building the agent ({what}) failed; the previous build keeps running.\n\n{}\n\n\
          Whole build output: {}",
         summary.trim(),
-        Home::from_env().build_log().display(),
+        home.build_log().display(),
     )
 }
 
@@ -462,17 +463,18 @@ fn launcher_notice(
 /// Puts the launcher's failed build in the primary agent's conversation,
 /// once the session is restored.
 fn deliver_build_failure(
-    failure: Res<StartBuildFailure>,
+    (failure, home): (Res<StartBuildFailure>, Option<Res<RigHome>>),
     agents: MainAgentQuery,
     mut commands: Commands,
 ) {
     let Some(agent) = main_agent(&agents) else {
         return;
     };
+    let home = home.map_or_else(Home::from_env, |home| home.0.clone());
     inform_build_failure(
         &mut commands,
         agent,
-        build_failure_message("before this start", &failure.0),
+        build_failure_message(&home, "before this start", &failure.0),
     );
     commands.remove_resource::<StartBuildFailure>();
 }

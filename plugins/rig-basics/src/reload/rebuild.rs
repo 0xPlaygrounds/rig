@@ -194,7 +194,7 @@ fn start_queued_reload(
 fn drain_reload(
     build: Option<ResMut<ReloadBuild>>,
     (invoked, launcher): (Option<Res<Invoked>>, Option<Res<LauncherFile>>),
-    mut status: ResMut<ReloadStatus>,
+    (mut status, home): (ResMut<ReloadStatus>, Option<Res<RigHome>>),
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -301,14 +301,16 @@ fn drain_reload(
     };
     // The notice is the one log line: the whole output is in the build log
     // it names.
+    let home = home.map_or_else(Home::from_env, |home| home.0.clone());
     notices.write(Notice::error(
         None,
         format!(
             "The rebuild failed ({exit}){first}; this build keeps running. Whole output: {}",
-            Home::from_env().build_log().display()
+            home.build_log().display()
         ),
     ));
     let text = launcher::build_failure_message(
+        &home,
         what,
         &format!(
             "`{command}` exited with {exit}. Its output from the first error:\n{}",

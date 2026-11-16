@@ -203,6 +203,7 @@ fn failed_update(name: &str, script: &str) -> Said {
     let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
     let (mut app, wakes) = app_on(&MemoryStore::default());
     app.insert_resource(scripted_models([("test/model", &model)]))
+        .insert_resource(RigHome(update_home(name)))
         .add_plugins((AgentPlugin, SessionLogPlugin, ReloadPlugin))
         .init_resource::<Said>()
         .add_systems(
@@ -288,6 +289,32 @@ exit 1";
         }),
         "{notes:?}"
     );
+}
+
+/// The app's own home of the `/update` test named `name`, which is not
+/// the environment's.
+fn update_home(name: &str) -> Home {
+    Home::at(scratch(name).join("home"))
+}
+
+/// A failed build names the build log of the app's home, in its notice
+/// and in the note to the model.
+#[test]
+fn a_failed_build_names_the_build_log_of_the_apps_home() {
+    let script = "cp \"$0\" \"$0.new\"; echo '# new' >> \"$0.new\"; mv \"$0.new\" \"$0\"
+echo 'error: could not compile `rig-harness`' >&2
+exit 1";
+    let Said { notices, notes } = failed_update("own-home", script);
+    let log = update_home("own-home").build_log().display().to_string();
+    let notice = notices
+        .iter()
+        .find(|notice| notice.starts_with("The rebuild failed"));
+    assert!(
+        notice.is_some_and(|notice| notice.ends_with(&log)),
+        "{notices:?}"
+    );
+    assert!(notes.iter().all(|note| note.ends_with(&log)), "{notes:?}");
+    assert_eq!(notes.len(), 1);
 }
 
 /// The exits asked for, how the headless runs ended, and the notices.
