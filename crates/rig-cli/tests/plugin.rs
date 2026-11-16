@@ -186,6 +186,52 @@ fn a_print_run_refuses_a_build_that_does_not_compile_and_other_runs_start_the_pr
     assert!(result.is_ok(), "{result:?}");
 }
 
+/// A build cargo cannot resolve is refused by `-p` and starts the previous
+/// build otherwise, as one that does not compile does.
+#[test]
+fn a_build_cargo_cannot_resolve_starts_the_previous_one_except_under_print() {
+    let result = (|| -> anyhow::Result<()> {
+        let root = assert_fs::TempDir::new()?;
+        let home = root.path().join("home");
+        let tools = root.path().join("tools");
+        script(
+            &tools.join("cargo"),
+            "case \"$1\" in build|tree) ;; *) exit 0;; esac\n\
+             echo 'error: failed to select a version for `bevy_ecs`.' >&2\nexit 101",
+        )?;
+        script(
+            &home.join("bin/good"),
+            "[ -z \"$RIG_DESCRIBE\" ] || { printf 'rig-describe 1\\nflag\\tjson\\t-\\tJSON\\n' \
+             > \"$RIG_DESCRIBE\"; exit 0; }\necho good >> \"$RIG_HOME/ran\"",
+        )?;
+        let path = std::env::join_paths(std::iter::once(tools).chain(std::env::split_paths(
+            &std::env::var_os("PATH").unwrap_or_default(),
+        )))?;
+        let start = |args: &[&str]| {
+            Command::new(env!("CARGO_BIN_EXE_rig"))
+                .env("RIG_HOME", &home)
+                .env("PATH", &path)
+                .env_remove("RIG_SOURCE")
+                .current_dir(root.path())
+                .args(args)
+                .stdin(Stdio::null())
+                .output()
+        };
+        let printed = start(&["-p", "hi"])?;
+        let said = String::from_utf8(printed.stderr)?;
+        anyhow::ensure!(!printed.status.success(), "{said}");
+        anyhow::ensure!(said.contains("failed to select a version"), "{said}");
+        anyhow::ensure!(!home.join("ran").exists(), "{said}");
+        let started = start(&[])?;
+        let said = String::from_utf8(started.stderr)?;
+        anyhow::ensure!(said.contains("starting the previous build"), "{said}");
+        let ran = fs::read_to_string(home.join("ran")).unwrap_or_default();
+        anyhow::ensure!(ran == "good\n", "{said}");
+        Ok(())
+    })();
+    assert!(result.is_ok(), "{result:?}");
+}
+
 /// A start refused over a plugin name rig does not know names the command
 /// that takes it out, `rig plugin disable`, which works while the name is
 /// in either list.

@@ -319,10 +319,8 @@ fn fake_build(
         .args(["-c", "printf \"$0\" >&2", stderr])
         .stderr(Stdio::piped());
     let ran = log.run(cargo).map(|status| status.success());
-    let told = log.fail(
-        FailedAt::Build,
-        "cargo could not build the agent".to_owned(),
-    );
+    let reason: Box<dyn std::error::Error> = "cargo could not build the agent".into();
+    let told = log.fail(FailedAt::Build, &*reason);
     let logged = fs::read_to_string(home.build_log()).unwrap_or_default();
     fs::remove_dir_all(&root).ok();
     assert!(matches!(ran, Ok(true)), "{ran:?}");
@@ -359,6 +357,32 @@ fn a_log_only_build_shows_one_line_while_cargo_works_and_its_errors_once_it_fail
     let (shown, logged, _) = fake_build("blocked", (BuildOutput::LogOnly, false), &blocked);
     assert_eq!(shown, "");
     assert!(logged.contains("Blocking"), "{logged:?}");
+}
+
+/// A failure rig explains, such as a Bevy pin, points to the log but does
+/// not repeat cargo's error after rig's words.
+#[test]
+fn a_failure_rig_explains_does_not_repeat_cargos_error() {
+    let root = std::env::temp_dir().join(format!("rig-build-explained-{}", std::process::id()));
+    fs::remove_dir_all(&root).ok();
+    let home = Home::at(&root);
+    let mut log = BuildLog::create(&home, BuildOutput::Live, Box::new(Shown::default()));
+    let mut cargo = Command::new("sh");
+    cargo
+        .args([
+            "-c",
+            "echo 'error: failed to select a version for `bevy_ecs`.' >&2",
+        ])
+        .stderr(Stdio::piped());
+    assert!(log.run(cargo).is_ok());
+    let why = Explained("a plugin asks for a Bevy that is not this agent's.".to_owned());
+    let failure = log.fail(FailedAt::Build, &why);
+    fs::remove_dir_all(&root).ok();
+    for told in [failure.to_string(), failure.told(BuildOutput::LogOnly)] {
+        assert!(told.starts_with("a plugin asks for a Bevy"), "{told}");
+        assert!(!told.contains("failed to select"), "{told}");
+        assert!(told.contains("(whole output: "), "{told}");
+    }
 }
 
 /// A short wait for cargo's lock in one command says nothing when a later

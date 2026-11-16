@@ -127,6 +127,19 @@ impl fmt::Display for BuildFailure {
 
 impl std::error::Error for BuildFailure {}
 
+/// A failed build rig says the cause of in its own words, so cargo's
+/// errors, in the build log, are not repeated after it.
+#[derive(Debug)]
+struct Explained(String);
+
+impl fmt::Display for Explained {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for Explained {}
+
 /// Writes the agent project with the plugins `settings.toml` turns on,
 /// checks its Bevy version, builds it, and copies the binary to `staged` as
 /// `staging` says. The build's output goes to [`Home::build_log`], and to
@@ -146,14 +159,14 @@ pub fn compile(
     })();
     let (plugins, source) = match wanted {
         Ok(wanted) => wanted,
-        Err(failure) => return Err(log.fail(FailedAt::Settings, failure.to_string())),
+        Err(failure) => return Err(log.fail(FailedAt::Settings, &*failure)),
     };
     match compile_logged(launch, &plugins, &source, staged, staging, &mut log) {
         Ok(()) => {
             log.record("build succeeded");
             Ok(())
         }
-        Err(failure) => Err(log.fail(FailedAt::Build, failure.to_string())),
+        Err(failure) => Err(log.fail(FailedAt::Build, &*failure)),
     }
 }
 
@@ -513,12 +526,17 @@ impl BuildLog {
         }
     }
 
-    /// Ends the log with `reason` and makes it the [`BuildFailure`].
-    fn fail(mut self, at: FailedAt, reason: String) -> BuildFailure {
-        let errors = first_errors(self.lines.iter().map(String::as_str), ERROR_LINES)
-            .into_iter()
-            .map(str::to_owned)
-            .collect();
+    /// Ends the log with `failure` and makes it the [`BuildFailure`],
+    /// with cargo's first errors unless rig [`Explained`] it.
+    fn fail(mut self, at: FailedAt, failure: &(dyn std::error::Error + 'static)) -> BuildFailure {
+        let reason = failure.to_string();
+        let errors = match failure.is::<Explained>() {
+            true => Vec::new(),
+            false => first_errors(self.lines.iter().map(String::as_str), ERROR_LINES)
+                .into_iter()
+                .map(str::to_owned)
+                .collect(),
+        };
         self.record(&format!("build failed: {reason}"));
         BuildFailure {
             at,
@@ -813,14 +831,14 @@ fn check_bevy(
         if pins.is_empty() {
             return failure;
         }
-        format!(
+        Explained(format!(
             "{failure}: a plugin asks for a Bevy that is not this agent's {BEVY_VERSION}:\n  \
              {}\nWrite its Bevy requirements as \"{range}\", such as `bevy_ecs = {{ version = \
              \"{range}\", default-features = false }}`, or remove it from [[plugins.extra]] in \
              settings.toml.",
             pins.join("\n  "),
             range = super::bevy_range(),
-        )
+        ))
         .into()
     })?;
     check_rig(&packages, rig_crates, rig_version)?;
@@ -836,7 +854,7 @@ fn check_bevy(
     let culprit = plugins.extras_on().map(|extra| &extra.krate).find(|krate| {
         (dependents.iter()).any(|line| package(line).is_some_and(|(name, _)| name == *krate))
     });
-    Err(match culprit {
+    Err(Explained(match culprit {
         Some(plugin) => format!(
             "plugin `{name}` uses Bevy {version}, but this rig agent is built on Bevy \
              {BEVY_VERSION}. A Bevy plugin only works with the exact Bevy version of its app. \
@@ -851,7 +869,7 @@ fn check_bevy(
              {BEVY_VERSION}. Every Bevy crate must take {BEVY_VERSION}, as \"{}\" does.",
             super::bevy_range()
         ),
-    }
+    })
     .into())
 }
 
