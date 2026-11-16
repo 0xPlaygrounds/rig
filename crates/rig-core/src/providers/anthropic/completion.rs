@@ -69,8 +69,6 @@ pub const CLAUDE_SONNET_4_6: &str = "claude-sonnet-4-6";
 pub const CLAUDE_HAIKU_4_5: &str = "claude-haiku-4-5";
 
 /// An `anthropic-version` header value.
-pub const ANTHROPIC_VERSION_2023_01_01: &str = "2023-01-01";
-/// An `anthropic-version` header value.
 pub const ANTHROPIC_VERSION_2023_06_01: &str = "2023-06-01";
 /// The `anthropic-version` header value rig sends.
 pub const ANTHROPIC_VERSION_LATEST: &str = ANTHROPIC_VERSION_2023_06_01;

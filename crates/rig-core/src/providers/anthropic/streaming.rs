@@ -260,7 +260,6 @@ fn replayed_start(
 /// Decodes Messages replies, a whole message or a stream of events.
 /// `content_block_stop` states a block complete; a stop reason states every
 /// block still open complete, but a call whose input is not yet JSON.
-/// [`Default`] decodes Anthropic's own dialect.
 #[derive(Debug)]
 pub struct MessagesDecoder {
     /// Each open block's kind and the input JSON streamed to it.
@@ -285,12 +284,6 @@ pub struct MessagesDecoder {
     message_id: Option<String>,
     response_model: Option<String>,
     container: Option<Value>,
-}
-
-impl Default for MessagesDecoder {
-    fn default() -> Self {
-        Self::new(super::wire::Quirks::anthropic())
-    }
 }
 
 impl MessagesDecoder {

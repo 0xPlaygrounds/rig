@@ -536,20 +536,13 @@ pub struct Messages {
 impl Messages {
     /// The same wire, encoding with `facts` and pricing its replies by
     /// them. The `max_tokens` a request without one defaults to becomes the
-    /// dialect's default for the model under `facts`; set another with
-    /// [`Self::with_default_max_tokens`] after this.
+    /// dialect's default for the model under `facts`.
     pub fn with_facts(mut self, facts: ModelFacts) -> Self {
         self.default_max_tokens = self
             .provider
             .dialect
             .default_max_tokens(&facts, &self.model);
         self.facts = facts;
-        self
-    }
-
-    /// Set the `max_tokens` a request without one defaults to.
-    pub fn with_default_max_tokens(mut self, tokens: u64) -> Self {
-        self.default_max_tokens = Some(tokens);
         self
     }
 
