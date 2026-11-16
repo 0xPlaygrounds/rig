@@ -402,8 +402,8 @@ impl BuildLog {
     /// of its lines.
     fn run(&mut self, command: Command) -> Result<ExitStatus> {
         let mut build = Build::spawn(command)?;
-        self.pass_on(&mut build.0);
-        Ok(build.0.wait()?)
+        self.pass_on(&mut build.child);
+        Ok(build.child.wait()?)
     }
 
     /// Passes `child`'s stderr on when the output is live, and logs its
@@ -708,7 +708,7 @@ fn chunks(mut pipe: impl Read + Send + 'static) -> mpsc::Receiver<Vec<u8>> {
 fn wait_described(mut command: Command, report: &Path, timeout: Duration) -> Result<String> {
     command.stderr(Stdio::piped());
     let mut build = Build::spawn(command)?;
-    let child = &mut build.0;
+    let child = &mut build.child;
     let said = child.stderr.take().map(chunks);
     let deadline = Instant::now() + timeout;
     let status = loop {
@@ -1070,7 +1070,7 @@ fn tree(launch: &Launch, args: &[&str], log: &mut BuildLog) -> Result<Vec<String
         .args(args)
         .stdout(Stdio::piped());
     let mut build = Build::spawn(command)?;
-    let child = &mut build.0;
+    let child = &mut build.child;
     // Read on its own thread, so neither pipe fills while the other is read.
     let out = child.stdout.take();
     let reader = std::thread::spawn(move || {
@@ -1104,24 +1104,30 @@ fn package(line: &str) -> Option<(&str, &str)> {
 /// killed should the launcher be told to end (`SIGTERM`, `SIGINT`, `SIGHUP`)
 /// meanwhile, so nothing it started outlives it. Elsewhere than unix, the
 /// child alone.
-struct Build(Child);
+struct Build {
+    child: Child,
+    /// The actions the build's signal handler replaced, put back when it
+    /// drops.
+    #[cfg(unix)]
+    replaced: Vec<(libc::c_int, libc::sigaction)>,
+}
 
 impl Build {
     /// Starts `command`; an error names its program.
     fn spawn(mut command: Command) -> std::io::Result<Self> {
         let program = PathBuf::from(command.get_program());
         #[cfg(unix)]
-        let child = stop::spawn(&mut command);
+        let build = stop::spawn(&mut command);
         #[cfg(not(unix))]
-        let child = command.spawn();
-        child.map(Self).map_err(fs::named("start", &program))
+        let build = command.spawn().map(|child| Self { child });
+        build.map_err(fs::named("start", &program))
     }
 }
 
 impl Drop for Build {
     fn drop(&mut self) {
         #[cfg(unix)]
-        stop::forget();
+        stop::forget(&self.replaced);
     }
 }
 
@@ -1131,12 +1137,11 @@ impl Drop for Build {
 #[cfg(unix)]
 mod stop {
     use std::os::unix::process::CommandExt;
-    use std::process::{Child, Command};
-    use std::sync::Mutex;
+    use std::process::Command;
     use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 
-    /// The signals a terminal or a supervisor ends the launcher with.
-    const ENDING: [libc::c_int; 3] = [libc::SIGTERM, libc::SIGINT, libc::SIGHUP];
+    use super::Build;
+    use crate::run::stop::unix::{listen, restore};
 
     /// The build's process group; 0 while none runs.
     static GROUP: AtomicI32 = AtomicI32::new(0);
@@ -1147,41 +1152,31 @@ mod stop {
     /// cargo's own id, killed outright when the group is the launcher's.
     static CARGO: AtomicI32 = AtomicI32::new(0);
 
-    /// The actions [`spawn`] replaced, which [`forget`] puts back.
-    static BEFORE: Mutex<Vec<(libc::c_int, libc::sigaction)>> = Mutex::new(Vec::new());
-
     /// Starts `command` as the leader of a new process group and makes it
     /// the group the ending signals kill. A launcher that leads a session of
     /// its own, as an agent's `/reload` starts it, keeps cargo in its own
     /// group instead, which the agent kills as a whole. The signals wait
-    /// while it starts, so one that comes meanwhile finds the group.
-    pub(super) fn spawn(command: &mut Command) -> std::io::Result<Child> {
+    /// while it starts, so one that comes meanwhile finds the group. The
+    /// actions it replaced go with the build; when it does not start they
+    /// are not put back.
+    pub(super) fn spawn(command: &mut Command) -> std::io::Result<Build> {
         // SAFETY: plain calls without arguments that can fail.
         let (leads, own) = unsafe { (libc::getsid(0) == libc::getpid(), libc::getpgrp()) };
         if !leads {
             command.process_group(0);
         }
-        let mut replaced = Vec::new();
-        // SAFETY: plain calls on zeroed signal sets and actions this
-        // function owns; the closure runs in the forked child before `exec`
-        // and only calls `pthread_sigmask`, which is async-signal-safe. The
-        // child gets the default action for every caught signal (exec does).
+        // SAFETY: plain calls on zeroed signal sets this function owns;
+        // `on_signal` only calls async-signal-safe functions. The closure
+        // runs in the forked child before `exec` and only calls
+        // `pthread_sigmask`, which is async-signal-safe. The child gets the
+        // default action for every caught signal (exec does).
         let mut ending: libc::sigset_t = unsafe { std::mem::zeroed() };
         let mut mask: libc::sigset_t = unsafe { std::mem::zeroed() };
+        let replaced = unsafe { listen(on_signal, 0) };
         unsafe {
             libc::sigemptyset(&raw mut ending);
-            for signal in ENDING {
-                let mut before: libc::sigaction = std::mem::zeroed();
-                libc::sigaction(signal, std::ptr::null(), &raw mut before);
-                if before.sa_sigaction == libc::SIG_IGN {
-                    continue;
-                }
-                let mut action: libc::sigaction = std::mem::zeroed();
-                action.sa_sigaction = on_signal as *const () as libc::sighandler_t;
-                libc::sigemptyset(&raw mut action.sa_mask);
-                libc::sigaction(signal, &raw const action, std::ptr::null_mut());
-                libc::sigaddset(&raw mut ending, signal);
-                replaced.push((signal, before));
+            for (signal, _) in &replaced {
+                libc::sigaddset(&raw mut ending, *signal);
             }
             libc::pthread_sigmask(libc::SIG_BLOCK, &raw const ending, &raw mut mask);
             // std keeps the parent's mask in the child: cargo gets the one
@@ -1191,9 +1186,6 @@ mod stop {
                 Ok(())
             });
         }
-        *BEFORE
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = replaced;
         let spawned = command.spawn();
         if let Ok(child) = &spawned {
             let group = if leads {
@@ -1209,24 +1201,15 @@ mod stop {
         unsafe {
             libc::pthread_sigmask(libc::SIG_SETMASK, &raw const mask, std::ptr::null_mut());
         }
-        spawned
+        spawned.map(|child| Build { child, replaced })
     }
 
-    /// The build ended: the ending signals act as they did before it.
-    pub(super) fn forget() {
+    /// The build ended: the ending signals act as they did before it,
+    /// `replaced` put back.
+    pub(super) fn forget(replaced: &[(libc::c_int, libc::sigaction)]) {
         GROUP.store(0, Ordering::SeqCst);
         CARGO.store(0, Ordering::SeqCst);
-        let replaced = std::mem::take(
-            &mut *BEFORE
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner),
-        );
-        for (signal, before) in replaced {
-            // SAFETY: puts back the action `spawn` read for this signal.
-            unsafe {
-                libc::sigaction(signal, &raw const before, std::ptr::null_mut());
-            }
-        }
+        restore(replaced);
     }
 
     /// Kills the build's group, if one runs and is not the launcher's own.

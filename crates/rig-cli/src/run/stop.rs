@@ -66,7 +66,8 @@ impl Watch {
             passed: 0,
             killed: false,
             #[cfg(unix)]
-            replaced: unix::listen(),
+            // SAFETY: the handler only stores to atomics.
+            replaced: unsafe { unix::listen(unix::on_signal, libc::SA_RESTART) },
         }
     }
 
@@ -136,7 +137,7 @@ pub(super) fn end_as_heard() {
 }
 
 #[cfg(unix)]
-mod unix {
+pub(crate) mod unix {
     use std::process::Child;
     use std::sync::atomic::Ordering;
 
@@ -145,20 +146,21 @@ mod unix {
     /// The signals a terminal or a supervisor ends the launcher with.
     const ENDING: [libc::c_int; 3] = [libc::SIGTERM, libc::SIGINT, libc::SIGHUP];
 
-    /// Notes the first ending signal and counts each; only atomics, which
-    /// are async-signal-safe.
-    extern "C" fn on_signal(signal: libc::c_int) {
-        let _ = HEARD.compare_exchange(0, signal, Ordering::SeqCst, Ordering::SeqCst);
-        TIMES.fetch_add(1, Ordering::SeqCst);
-    }
-
-    /// Hears each ending signal the launcher was not started ignoring; the
-    /// actions it replaced.
-    pub(super) fn listen() -> Vec<(libc::c_int, libc::sigaction)> {
+    /// Hears each ending signal the launcher was not started ignoring with
+    /// `handler`, under `flags`, for the agent or a build; the actions it
+    /// replaced.
+    ///
+    /// # Safety
+    ///
+    /// `handler` must be async-signal-safe.
+    pub(crate) unsafe fn listen(
+        handler: extern "C" fn(libc::c_int),
+        flags: libc::c_int,
+    ) -> Vec<(libc::c_int, libc::sigaction)> {
         let mut replaced = Vec::new();
         for signal in ENDING {
             // SAFETY: plain calls on zeroed actions this function owns; the
-            // handler only stores to an atomic.
+            // caller vouches for the handler.
             unsafe {
                 let mut before: libc::sigaction = std::mem::zeroed();
                 libc::sigaction(signal, std::ptr::null(), &raw mut before);
@@ -166,8 +168,8 @@ mod unix {
                     continue;
                 }
                 let mut action: libc::sigaction = std::mem::zeroed();
-                action.sa_sigaction = on_signal as *const () as libc::sighandler_t;
-                action.sa_flags = libc::SA_RESTART;
+                action.sa_sigaction = handler as *const () as libc::sighandler_t;
+                action.sa_flags = flags;
                 libc::sigemptyset(&raw mut action.sa_mask);
                 libc::sigaction(signal, &raw const action, std::ptr::null_mut());
                 replaced.push((signal, before));
@@ -177,13 +179,20 @@ mod unix {
     }
 
     /// Puts back the actions [`listen`] replaced.
-    pub(super) fn restore(replaced: &[(libc::c_int, libc::sigaction)]) {
+    pub(crate) fn restore(replaced: &[(libc::c_int, libc::sigaction)]) {
         for (signal, before) in replaced {
             // SAFETY: puts back an action read by `listen`.
             unsafe {
                 libc::sigaction(*signal, before, std::ptr::null_mut());
             }
         }
+    }
+
+    /// Notes the first ending signal and counts each; only atomics, which
+    /// are async-signal-safe.
+    pub(super) extern "C" fn on_signal(signal: libc::c_int) {
+        let _ = HEARD.compare_exchange(0, signal, Ordering::SeqCst, Ordering::SeqCst);
+        TIMES.fetch_add(1, Ordering::SeqCst);
     }
 
     /// Sends `signal` to `child`.
