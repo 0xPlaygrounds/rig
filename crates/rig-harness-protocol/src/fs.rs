@@ -249,6 +249,20 @@ pub fn open(options: &OpenOptions, path: impl AsRef<Path>) -> io::Result<File> {
 /// the old file's group that cannot be kept included. The staged file is
 /// removed.
 pub fn replace(target: &Path, bytes: &[u8]) -> io::Result<()> {
+    staged_replace(target, bytes, false)
+}
+
+/// [`replace`] for a file that may hold secrets: a new `target` is private
+/// too.
+///
+/// # Errors
+///
+/// As [`replace`].
+pub fn replace_private(target: &Path, bytes: &[u8]) -> io::Result<()> {
+    staged_replace(target, bytes, true)
+}
+
+fn staged_replace(target: &Path, bytes: &[u8], private: bool) -> io::Result<()> {
     static CALLS: AtomicU64 = AtomicU64::new(0);
     let (Some(folder), Some(name)) = (target.parent(), target.file_name()) else {
         let why = format!("replace {}: not a file's path", target.display());
@@ -264,7 +278,7 @@ pub fn replace(target: &Path, bytes: &[u8]) -> io::Result<()> {
     let mut options = OpenOptions::new();
     options.write(true).create_new(true);
     #[cfg(unix)]
-    if kept.is_some() {
+    if private || kept.is_some() {
         std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
     }
     let replaced = open(&options, &staged)

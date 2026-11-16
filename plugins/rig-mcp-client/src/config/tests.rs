@@ -310,3 +310,18 @@ fn a_secret_variable_is_refused_by_name_and_never_expanded() {
         refusal("url", "rig_secret_crypt")
     );
 }
+
+/// A new mcp.json, whose headers may hold a token, is private.
+#[cfg(unix)]
+#[test]
+fn a_new_mcp_json_is_private() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = scratch("new-mode");
+    fs::create_dir_all(dir.join("home")).ok();
+    let user = user_file(&dir.join("home"));
+    let server = json!({ "url": "https://h", "headers": { "Authorization": "Bearer sk-secret" } });
+    assert_eq!(user.add("x", server), Ok(()));
+    let mode = fs::metadata(user.path()).map(|metadata| metadata.permissions().mode() & 0o777);
+    fs::remove_dir_all(dir).ok();
+    assert_eq!(mode.ok(), Some(0o600));
+}
