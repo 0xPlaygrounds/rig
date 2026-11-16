@@ -49,7 +49,6 @@ struct DeviceCodeResponse {
     #[serde(alias = "usercode")]
     user_code: String,
     /// Seconds between polls, a number or a numeric string.
-    #[serde(default)]
     interval: Option<serde_json::Value>,
 }
 

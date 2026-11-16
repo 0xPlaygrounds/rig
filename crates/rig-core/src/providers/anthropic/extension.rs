@@ -492,10 +492,8 @@ pub struct StopDetails {
     #[serde(rename = "type", default)]
     pub kind: String,
     /// The policy category, such as `"cyber"`.
-    #[serde(default)]
     pub category: Option<String>,
     /// A readable explanation.
-    #[serde(default)]
     pub explanation: Option<String>,
 }
 
@@ -538,15 +536,10 @@ pub struct Container {
 /// The reply fields [`AnthropicExtras`] reads.
 #[derive(Deserialize)]
 struct Reply {
-    #[serde(default)]
     stop_reason: Option<String>,
-    #[serde(default)]
     stop_sequence: Option<String>,
-    #[serde(default)]
     stop_details: Option<StopDetails>,
-    #[serde(default)]
     usage: Option<ReplyUsage>,
-    #[serde(default)]
     container: Option<Container>,
     /// Read for its shape only; the first block is read from the reply.
     #[serde(default, rename = "content")]
@@ -555,15 +548,10 @@ struct Reply {
 
 #[derive(Default, Deserialize)]
 struct ReplyUsage {
-    #[serde(default)]
     cache_creation: Option<CacheCreation>,
-    #[serde(default)]
     service_tier: Option<String>,
-    #[serde(default)]
     inference_geo: Option<String>,
-    #[serde(default)]
     speed: Option<String>,
-    #[serde(default)]
     server_tool_use: Option<ServerToolUse>,
 }
 
@@ -608,9 +596,7 @@ impl ReplyExtras for AnthropicExtras {
 /// dialects' extras read on this route.
 #[derive(Deserialize)]
 pub(crate) struct MessagesStop {
-    #[serde(default)]
     pub(crate) stop_reason: Option<String>,
-    #[serde(default)]
     pub(crate) stop_sequence: Option<String>,
 }
 
