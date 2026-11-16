@@ -106,3 +106,12 @@ fn the_prompt_and_language_reach_the_wire() {
         Some(&json!({ "text": "Use fr as the output language.", "thought": false }))
     );
 }
+
+#[test]
+fn transcript_without_response_id_reports_none() {
+    let reply = serde_json::json!({
+        "candidates": [{"content": {"parts": [{"text": "hello"}]}}]
+    });
+    let transcript = transcript_of(&reply).expect("a transcript");
+    assert_eq!(transcript.response_id, None);
+}

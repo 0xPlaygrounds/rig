@@ -666,3 +666,15 @@ fn field_setters_compose_with_the_section() {
         .generate_content(section.clone());
     assert_eq!(replaced.generate_content, section);
 }
+
+#[test]
+fn an_empty_list_reads_none_as_reply_field_documents() {
+    let raw = json!({
+        "candidates": [{"safetyRatings": []}],
+        "usageMetadata": {"promptTokensDetails": []}
+    });
+    let extras = GeminiExtras::from_reply(&Api::from_static(GENERATE_CONTENT), &raw)
+        .expect("a generateContent reply");
+    assert_eq!(extras.prompt_tokens_details, None);
+    assert_eq!(extras.safety_ratings, None);
+}

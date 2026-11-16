@@ -143,7 +143,7 @@ impl Authenticator {
         if let Some(context) = self.0.remembered.live(TOKEN_EXPIRY_SKEW_SECONDS) {
             return Ok(context);
         }
-        let _held = self.0.hold(STORE_KEY).await?;
+        let held = self.0.hold(STORE_KEY).await?;
         let mut record: AuthRecord = load_record(&*self.0.store, STORE_KEY).await?;
 
         if let Some(access_token) = record.access_token.clone()
@@ -189,8 +189,10 @@ impl Authenticator {
             ));
         }
 
-        let fresh = self.login_device_flow(http).await?;
-        self.keep(fresh).await
+        let (fresh, _held) = held
+            .store_free_during(&self.0, STORE_KEY, self.login_device_flow(http))
+            .await?;
+        self.keep(fresh?).await
     }
 
     /// Sign in again by `method`, whatever is cached, telling `prompt` what
@@ -372,7 +374,8 @@ impl Authenticator {
             .interval
             .as_ref()
             .and_then(Lenient::as_u64_lenient)
-            .unwrap_or(DEVICE_CODE_POLL_SLEEP_SECONDS);
+            .unwrap_or(DEVICE_CODE_POLL_SLEEP_SECONDS)
+            .max(1);
         let start = std::time::Instant::now();
         let code = loop {
             if start.elapsed().as_secs() as i64 >= DEVICE_CODE_TIMEOUT_SECONDS {

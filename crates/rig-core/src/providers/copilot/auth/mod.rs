@@ -6,7 +6,6 @@ use crate::providers::auth::{
 use http::Method;
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use std::hash::{DefaultHasher, Hash, Hasher};
 
 #[cfg(not(target_family = "wasm"))]
 mod native;
@@ -231,10 +230,14 @@ impl ApiKeyRecord {
     }
 }
 
+/// The first 16 hex digits of the token's SHA-256, stable across builds.
 fn bootstrap_token_fingerprint(bootstrap_token: &str) -> String {
-    let mut hasher = DefaultHasher::new();
-    bootstrap_token.hash(&mut hasher);
-    format!("{:016x}", hasher.finish())
+    let digest = <sha2::Sha256 as sha2::Digest>::digest(bootstrap_token);
+    digest
+        .iter()
+        .take(8)
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 /// Exchange a GitHub access token for a Copilot API key.

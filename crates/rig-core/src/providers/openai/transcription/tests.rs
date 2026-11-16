@@ -29,7 +29,7 @@ fn usage_decodes_both_billing_shapes_and_keeps_unknown_ones() {
                 text_tokens: 0,
             }),
             output_tokens: 16,
-            total_tokens: 70,
+            total_tokens: Some(70),
         })
     );
     // The breakdown is optional: a provider that omits it still decodes as
@@ -43,7 +43,7 @@ fn usage_decodes_both_billing_shapes_and_keeps_unknown_ones() {
             input_tokens: 54,
             input_token_details: None,
             output_tokens: 16,
-            total_tokens: 70,
+            total_tokens: Some(70),
         })
     );
     // The tag decides, not which optional keys are present: a token-billed
@@ -55,7 +55,7 @@ fn usage_decodes_both_billing_shapes_and_keeps_unknown_ones() {
                    "output_tokens":16,"total_tokens":70}}"#
         ),
         Some(TranscriptionUsage::Tokens {
-            total_tokens: 70,
+            total_tokens: Some(70),
             ..
         })
     ));
@@ -63,7 +63,7 @@ fn usage_decodes_both_billing_shapes_and_keeps_unknown_ones() {
         usage(r#"{"text":"hi","usage":{"type":"credits","spent":3}}"#),
         Some(TranscriptionUsage::Other(_))
     ));
-    // A token-shaped payload missing a required total degrades to the
+    // A token-shaped payload missing a required count degrades to the
     // catch-all rather than failing the transcription.
     assert!(matches!(
         usage(r#"{"text":"hi","usage":{"type":"tokens","input_tokens":54}}"#),
@@ -189,4 +189,15 @@ fn verbose_shapes_normalize_to_segments_words_and_speakers() {
 
     let plain = normalize(r#"{"text":"hi","segments":null,"words":null}"#);
     assert!(plain.segments.is_empty() && plain.words.is_empty());
+}
+
+#[test]
+fn token_usage_without_a_total_keeps_its_counts() {
+    let response: TranscriptionResponse = serde_json::from_str(
+        r#"{"text":"hi","usage":{"type":"tokens","input_tokens":10,"output_tokens":5}}"#,
+    )
+    .expect("response should decode");
+    let normalized = response.normalize().expect("normalizes");
+    assert_eq!(normalized.usage.input_tokens, Some(10));
+    assert_eq!(normalized.usage.output_tokens, Some(5));
 }

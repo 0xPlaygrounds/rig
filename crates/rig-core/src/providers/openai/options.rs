@@ -37,9 +37,9 @@ pub(crate) fn reasons(facts: &ModelFacts, model: &str) -> Option<bool> {
     }
 }
 
-/// Whether `model` reasons by its id alone: `Some(true)` for GPT-5 and
-/// later and the o-series, `Some(false)` for an earlier numbered GPT,
-/// `None` for an id that names neither.
+/// Whether `model` reasons by its id alone: `Some(true)` for a single-digit
+/// GPT major of 5 or more and the o-series, `Some(false)` for any other
+/// numbered GPT, `None` for an id that names neither.
 fn named_reasons(model: &str) -> Option<bool> {
     match named_reasoning(model) {
         true => Some(true),

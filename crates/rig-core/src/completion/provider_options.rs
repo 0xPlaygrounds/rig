@@ -97,8 +97,8 @@ pub trait ReplyExtras: Sized {
 
 /// The value at `pointer` in a reply document, read as `T`: `None` when it
 /// is absent, `null` or an empty list, which a unary body may state where
-/// the document a stream rebuilds omits it. The one reader every `Extras`
-/// type's `from_reply` goes through.
+/// the document a stream rebuilds omits it. Every `Extras` type's
+/// `from_reply` reads its fields this way.
 ///
 /// # Errors
 ///

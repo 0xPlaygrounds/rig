@@ -300,3 +300,12 @@ fn the_aspect_ratio_names_the_width_first() {
         );
     }
 }
+
+#[test]
+fn image_without_response_id_reports_none() {
+    let reply = serde_json::json!({
+        "candidates": [{"content": {"parts": [{"inlineData": {"mimeType": "image/png", "data": "aGk="}}]}}]
+    });
+    let image = image_of(&reply).expect("an image");
+    assert_eq!(image.response_id, None);
+}

@@ -189,7 +189,7 @@ pub fn image_of(reply: &Value) -> Result<image_generation::ImageGenerationRespon
         })?;
     Ok(image_generation::ImageGenerationResponse {
         model: reply.str("modelVersion").map(str::to_owned),
-        response_id: Some(reply.str("responseId").unwrap_or_default().to_owned()),
+        response_id: reply.str("responseId").map(str::to_owned),
         usage: reply.get("usageMetadata").map(usage_of).unwrap_or_default(),
         ..image_generation::ImageGenerationResponse::new(image)
     })

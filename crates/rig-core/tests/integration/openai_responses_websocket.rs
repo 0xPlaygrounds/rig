@@ -551,3 +551,34 @@ async fn websocket_conformance_replays_sse_fixture_frames() {
     // maps to `ToolCalls` on every transport.
     assert_eq!(normalized.finish_reason(), Some(FinishReason::ToolCalls));
 }
+
+#[tokio::test]
+async fn null_additional_params_still_chain_the_session() {
+    for raw in [None, Some(json!({})), Some(json!(null))] {
+        let script = Script::turns([
+            completed_turn_with_late_done("resp_1", 1),
+            completed_turn_with_late_done("resp_2", 3),
+        ]);
+        let client = test_client();
+        let mut session = session(&client, &script);
+        session
+            .completion(CompletionRequest::new("first"))
+            .await
+            .expect("first response should complete");
+        assert_eq!(session.previous_response_id(), Some("resp_1"));
+        let mut second = CompletionRequest::new("second");
+        second.additional_params = raw.clone();
+        session
+            .completion(second)
+            .await
+            .expect("second response should complete");
+        let sent = script.sent();
+        let frame: serde_json::Value =
+            serde_json::from_str(sent.get(1).expect("second frame")).expect("json");
+        assert_eq!(
+            frame.get("previous_response_id"),
+            Some(&json!("resp_1")),
+            "additional_params = {raw:?}; frame = {frame}"
+        );
+    }
+}

@@ -540,3 +540,161 @@ fn denied_callback(authorize_url: &str) -> Option<(std::net::SocketAddr, String)
         format!("{}?error=access_denied&state={state}", redirect.path()),
     ))
 }
+
+/// While the device flow waits for the user, the store's lock is free.
+#[tokio::test]
+async fn device_flow_does_not_hold_the_store_lock() -> anyhow::Result<()> {
+    use crate::providers::auth::FileTokenStore;
+    let dir = assert_fs::TempDir::new()?;
+    let store = FileTokenStore::new(dir.path());
+    let mut replies = vec![MockHttpResponse::success(
+        r#"{"device_auth_id":"d1","user_code":"UC-1","interval":1}"#,
+    )];
+    replies.extend((0..10).map(|_| MockHttpResponse::error(StatusCode::FORBIDDEN, "pending")));
+    let http = SequencedHttpClient::new(replies);
+    let auth = Authenticator::new(
+        AuthSource::OAuth,
+        store.clone(),
+        DeviceCodeHandler::new(|_| {}),
+        true,
+    );
+    let other_process = store.with_lock_wait(std::time::Duration::from_millis(200));
+    tokio::select! {
+        ended = auth.auth_context(&http) => anyhow::bail!("the flow ended early: {:?}", ended.map(|_| ())),
+        lock = async {
+            tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+            other_process.lock(STORE_KEY).await
+        } => {
+            if let Err(error) = lock {
+                anyhow::bail!("lock refused while the device flow waits for the user: {error}");
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Two clones signing in at once run one device flow: the second waits for
+/// the first and takes the credential it kept.
+#[tokio::test]
+async fn concurrent_device_sign_ins_on_clones_run_one_flow() -> anyhow::Result<()> {
+    // An access token whose JWT `exp` is in 2100.
+    let token = "h.eyJleHAiOjQxMDI0NDQ4MDB9.s";
+    let http = SequencedHttpClient::new([
+        MockHttpResponse::success(r#"{"device_auth_id":"d1","user_code":"UC-1","interval":1}"#),
+        // The first flow waits a poll, so the second call runs meanwhile.
+        MockHttpResponse::error(StatusCode::FORBIDDEN, "pending"),
+        MockHttpResponse::success(r#"{"authorization_code":"code","code_verifier":"verifier"}"#),
+        MockHttpResponse::success(format!(
+            r#"{{"access_token":"{token}","refresh_token":"fresh-refresh"}}"#
+        )),
+    ]);
+    let shown = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let count = shown.clone();
+    let auth = Authenticator::new(
+        AuthSource::OAuth,
+        MemoryTokenStore::default(),
+        DeviceCodeHandler::new(move |_| {
+            count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }),
+        true,
+    );
+    let other = auth.clone();
+    let (first, second) = tokio::join!(auth.auth_context(&http), other.auth_context(&http));
+    anyhow::ensure!(first?.api_key.expose() == token);
+    anyhow::ensure!(second?.api_key.expose() == token);
+    anyhow::ensure!(shown.load(std::sync::atomic::Ordering::SeqCst) == 1);
+    Ok(())
+}
+
+/// A device-code `interval` of 0 must not poll in a tight loop.
+#[tokio::test]
+async fn a_zero_interval_is_clamped() -> anyhow::Result<()> {
+    let http = SequencedHttpClient::new([
+        MockHttpResponse::success(r#"{"device_auth_id":"d1","user_code":"UC-1","interval":0}"#),
+        MockHttpResponse::error(StatusCode::FORBIDDEN, "pending"),
+        MockHttpResponse::error(StatusCode::FORBIDDEN, "pending"),
+        MockHttpResponse::success(r#"{"authorization_code":"code","code_verifier":"verifier"}"#),
+        MockHttpResponse::success(r#"{"access_token":"fresh","refresh_token":"fresh-refresh"}"#),
+    ]);
+    let auth = Authenticator::new(
+        AuthSource::OAuth,
+        MemoryTokenStore::default(),
+        DeviceCodeHandler::new(|_| {}),
+        true,
+    );
+    let started = std::time::Instant::now();
+    auth.auth_context(&http).await?;
+    let elapsed = started.elapsed();
+    anyhow::ensure!(
+        elapsed >= std::time::Duration::from_secs(2),
+        "two pending polls with interval 0 took {elapsed:?}; expected at least 1 s between polls"
+    );
+    Ok(())
+}
+
+/// A transport that hands back a non-success reply as `Ok`, which the
+/// `HttpClientExt` contract does not forbid.
+struct OkWithStatus(StatusCode, &'static str);
+
+impl crate::http_client::HttpClientExt for OkWithStatus {
+    fn send(
+        &self,
+        _req: http::Request<bytes::Bytes>,
+    ) -> impl Future<
+        Output = crate::http_client::Result<http::Response<crate::http_client::LazyBody>>,
+    > + crate::wasm_compat::WasmCompatSend
+    + 'static {
+        let (status, body) = (self.0, self.1);
+        async move {
+            let body: crate::http_client::LazyBody =
+                Box::pin(async move { Ok(bytes::Bytes::from_static(body.as_bytes())) });
+            http::Response::builder()
+                .status(status)
+                .body(body)
+                .map_err(crate::http_client::Error::Protocol)
+        }
+    }
+
+    fn send_multipart(
+        &self,
+        _req: http::Request<crate::http_client::MultipartForm>,
+    ) -> impl Future<
+        Output = crate::http_client::Result<http::Response<crate::http_client::LazyBody>>,
+    > + crate::wasm_compat::WasmCompatSend
+    + 'static {
+        std::future::ready(Err(crate::http_client::Error::StreamEnded))
+    }
+
+    fn send_streaming(
+        &self,
+        _req: http::Request<bytes::Bytes>,
+    ) -> impl Future<Output = crate::http_client::Result<crate::http_client::StreamingResponse>>
+    + crate::wasm_compat::WasmCompatSend {
+        std::future::ready(Err(crate::http_client::Error::StreamEnded))
+    }
+}
+
+/// A refresh refused with HTTP 400 `invalid_grant` asks for a sign-in.
+#[tokio::test]
+async fn invalid_grant_asks_for_sign_in() -> anyhow::Result<()> {
+    let store = Arc::new(MemoryTokenStore::default());
+    let expired = serde_json::json!({
+        "access_token": "synthetic-expired-token",
+        "refresh_token": "synthetic-old-refresh",
+        "expires_at": 0
+    });
+    store
+        .save(STORE_KEY, &expired.to_string())
+        .await
+        .map_err(anyhow::Error::from_boxed)?;
+    let http = OkWithStatus(
+        StatusCode::BAD_REQUEST,
+        r#"{"error":"invalid_grant","error_description":"refresh token already used"}"#,
+    );
+    let error = match stored(&store).auth_context(&http).await {
+        Ok(_) => anyhow::bail!("a refused refresh succeeded"),
+        Err(error) => error.to_string(),
+    };
+    anyhow::ensure!(error.contains("ChatGPT sign-in required"), "got: {error}");
+    Ok(())
+}

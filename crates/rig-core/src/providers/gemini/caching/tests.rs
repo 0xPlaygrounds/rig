@@ -575,3 +575,30 @@ async fn no_gemini_wire_puts_the_key_in_its_url() {
         check("caching transport", uri, header.as_deref());
     }
 }
+
+/// A restored lease whose name would retarget the delete or extend path is
+/// reported lost instead of held.
+#[test]
+fn restore_reports_a_lease_with_a_retargeting_name_lost() {
+    let book = CacheBook::new(AutoCache::default()).with_clock(|| 1000);
+    let good = Lease {
+        name: "cachedContents/abc".to_owned(),
+        digest: "prefix".to_owned(),
+        covers: 0,
+        tokens: 2048,
+        expires_at: 4600,
+        model: "gemini-2.5-flash".to_owned(),
+    };
+    let bad: Vec<Lease> = ["cachedContents/../files/x", "files/x", "cachedContents/a?b"]
+        .into_iter()
+        .map(|name| Lease {
+            name: name.to_owned(),
+            digest: name.to_owned(),
+            ..good.clone()
+        })
+        .collect();
+    book.restore(bad.iter().cloned().chain([good.clone()]).collect());
+    assert_eq!(book.leases(), vec![good]);
+    let lost: Vec<String> = bad.into_iter().map(|lease| lease.name).collect();
+    assert_eq!(book.report().lost, lost);
+}

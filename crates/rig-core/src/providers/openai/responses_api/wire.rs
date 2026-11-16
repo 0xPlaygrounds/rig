@@ -251,14 +251,19 @@ impl crate::completion::ReplayTarget for Responses {
 
     /// Responses reads images in user input and in function outputs, never
     /// in assistant messages, and only on a model with vision input. Every
-    /// documented model calls tools except `o1-mini` and `o1-preview`.
+    /// documented model calls tools except `o1-mini` and `o1-preview`, past
+    /// a `vendor/` prefix.
     fn accepts(&self, model: &str) -> crate::completion::Accepts {
         let images = reads_images(
             &self.facts,
             self.provider.dialect.quirks.responses.contract,
             model,
         );
-        let model = model.to_ascii_lowercase();
+        let model = model
+            .rsplit('/')
+            .next()
+            .unwrap_or(model)
+            .to_ascii_lowercase();
         crate::completion::Accepts {
             user_images: images,
             assistant_images: false,

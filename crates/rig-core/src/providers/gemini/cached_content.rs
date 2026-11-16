@@ -580,8 +580,7 @@ fn qualify_model(model: &str) -> String {
 /// `_` to prevent path traversal, query injection, or resource retargeting.
 fn resource_path(name: &str) -> Result<String, EncodeError> {
     let id = name.strip_prefix("cachedContents/").unwrap_or(name);
-    let is_id_char = |ch: char| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_');
-    if id.is_empty() || !id.chars().all(is_id_char) {
+    if !is_resource_id(id) {
         return Err(EncodeError::request(format!(
             "`{name}` is not a cached content handle; expected `cachedContents/<id>` or a bare \
                  `<id>` of letters, digits, `-` and `_`. The id is spliced into the request path, \
@@ -590,6 +589,15 @@ fn resource_path(name: &str) -> Result<String, EncodeError> {
         )));
     }
     Ok(format!("{CACHED_CONTENTS_PATH}/{id}"))
+}
+
+/// Whether `id` is a non-empty run of ASCII letters, digits, `-` and `_`,
+/// so it is one path segment that cannot retarget a request.
+pub(super) fn is_resource_id(id: &str) -> bool {
+    !id.is_empty()
+        && id
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_'))
 }
 
 #[cfg(test)]

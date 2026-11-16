@@ -371,13 +371,14 @@ impl ResponsesWebSocketSession {
         // session's chain, so the history is shaped as a stored
         // continuation's.
         let mut completion_request = completion_request;
+        // Null params are no params, so the session's own fields can be added.
+        completion_request
+            .additional_params
+            .take_if(|params| params.is_null());
         if let Some(generate) = options.generate {
             let params = completion_request
                 .additional_params
                 .get_or_insert_with(|| Value::Object(Map::new()));
-            if params.is_null() {
-                *params = Value::Object(Map::new());
-            }
             if let Some(params) = params.as_object_mut() {
                 params.insert("generate".to_owned(), Value::Bool(generate));
             }

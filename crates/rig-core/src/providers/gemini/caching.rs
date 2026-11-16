@@ -41,7 +41,11 @@ use sha2::{Digest, Sha256};
 use crate::json_utils::remove_preserving_order;
 
 /// Unix seconds.
+#[cfg(not(target_family = "wasm"))]
 pub type Clock = Arc<dyn Fn() -> u64 + Send + Sync>;
+/// Unix seconds (browser wasm: no `Send + Sync`, no threads).
+#[cfg(target_family = "wasm")]
+pub type Clock = Arc<dyn Fn() -> u64>;
 
 /// Seconds since the Unix epoch, also on the web.
 fn system_now() -> u64 {
@@ -349,7 +353,13 @@ impl CacheBook {
     }
 
     /// The same book reading time from `clock` (Unix seconds).
-    pub fn with_clock(mut self, clock: impl Fn() -> u64 + Send + Sync + 'static) -> Self {
+    pub fn with_clock(
+        mut self,
+        clock: impl Fn() -> u64
+        + crate::wasm_compat::WasmCompatSend
+        + crate::wasm_compat::WasmCompatSync
+        + 'static,
+    ) -> Self {
         self.clock = Arc::new(clock);
         self
     }
@@ -389,11 +399,22 @@ impl CacheBook {
         leases
     }
 
-    /// Put checkpointed leases back. Call [`Self::prove`] next.
+    /// Put checkpointed leases back. Call [`Self::prove`] next. A lease
+    /// whose name is not `cachedContents/<id>` is reported lost, since the
+    /// requests that delete or extend it would put its name in their path.
     pub fn restore(&self, leases: Vec<Lease>) {
         let now = self.now();
         let mut book = self.book();
+        let mut bad = Vec::new();
         for lease in leases {
+            if !lease
+                .name
+                .strip_prefix("cachedContents/")
+                .is_some_and(super::cached_content::is_resource_id)
+            {
+                bad.push(lease);
+                continue;
+            }
             book.lives.entry(lease.name.clone()).or_insert(Life {
                 tokens: lease.tokens,
                 created: now,
@@ -405,6 +426,10 @@ impl CacheBook {
                 line_gap: 0,
             });
             book.hold(lease);
+        }
+        drop(book);
+        for lease in &bad {
+            self.lost(lease);
         }
     }
 
