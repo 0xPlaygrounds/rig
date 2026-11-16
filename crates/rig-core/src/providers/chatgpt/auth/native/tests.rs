@@ -598,3 +598,70 @@ async fn a_zero_interval_is_clamped() -> anyhow::Result<()> {
     );
     Ok(())
 }
+
+/// A transport that hands back a non-success reply as `Ok`, which the
+/// `HttpClientExt` contract does not forbid.
+struct OkWithStatus(StatusCode, &'static str);
+
+impl crate::http_client::HttpClientExt for OkWithStatus {
+    fn send(
+        &self,
+        _req: http::Request<bytes::Bytes>,
+    ) -> impl Future<
+        Output = crate::http_client::Result<http::Response<crate::http_client::LazyBody>>,
+    > + crate::wasm_compat::WasmCompatSend
+    + 'static {
+        let (status, body) = (self.0, self.1);
+        async move {
+            let body: crate::http_client::LazyBody =
+                Box::pin(async move { Ok(bytes::Bytes::from_static(body.as_bytes())) });
+            http::Response::builder()
+                .status(status)
+                .body(body)
+                .map_err(crate::http_client::Error::Protocol)
+        }
+    }
+
+    fn send_multipart(
+        &self,
+        _req: http::Request<crate::http_client::MultipartForm>,
+    ) -> impl Future<
+        Output = crate::http_client::Result<http::Response<crate::http_client::LazyBody>>,
+    > + crate::wasm_compat::WasmCompatSend
+    + 'static {
+        std::future::ready(Err(crate::http_client::Error::StreamEnded))
+    }
+
+    fn send_streaming(
+        &self,
+        _req: http::Request<bytes::Bytes>,
+    ) -> impl Future<Output = crate::http_client::Result<crate::http_client::StreamingResponse>>
+    + crate::wasm_compat::WasmCompatSend {
+        std::future::ready(Err(crate::http_client::Error::StreamEnded))
+    }
+}
+
+/// A refresh refused with HTTP 400 `invalid_grant` asks for a sign-in.
+#[tokio::test]
+async fn invalid_grant_asks_for_sign_in() -> anyhow::Result<()> {
+    let store = Arc::new(MemoryTokenStore::default());
+    let expired = serde_json::json!({
+        "access_token": "synthetic-expired-token",
+        "refresh_token": "synthetic-old-refresh",
+        "expires_at": 0
+    });
+    store
+        .save(STORE_KEY, &expired.to_string())
+        .await
+        .map_err(anyhow::Error::from_boxed)?;
+    let http = OkWithStatus(
+        StatusCode::BAD_REQUEST,
+        r#"{"error":"invalid_grant","error_description":"refresh token already used"}"#,
+    );
+    let error = match stored(&store).auth_context(&http).await {
+        Ok(_) => anyhow::bail!("a refused refresh succeeded"),
+        Err(error) => error.to_string(),
+    };
+    anyhow::ensure!(error.contains("ChatGPT sign-in required"), "got: {error}");
+    Ok(())
+}

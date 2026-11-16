@@ -241,7 +241,9 @@ where
     Ok(serde_json::from_slice(&bytes)?)
 }
 
-/// Send `req` through the transport and return the raw success body.
+/// Send `req` through the transport and return the raw success body. A
+/// non-success reply the transport returned as `Ok` is the same
+/// [`AuthError::Http`] the bundled transport reports for it.
 pub(crate) async fn send_bytes<H>(
     http: &H,
     req: http::Result<http::Request<bytes::Bytes>>,
@@ -250,8 +252,17 @@ where
     H: HttpClientExt,
 {
     let req = req.map_err(http_client::Error::Protocol)?;
-    let response = http.send(req).await?;
-    Ok(response.into_body().await?)
+    let (parts, body) = http.send(req).await?.into_parts();
+    let body = body.await?;
+    if !parts.status.is_success() {
+        return Err(http_client::Error::InvalidStatusCodeWithDetails {
+            status: parts.status,
+            body: String::from_utf8_lossy(&body).into_owned(),
+            headers: parts.headers,
+        }
+        .into());
+    }
+    Ok(body)
 }
 
 /// Returns true when the token is expired (or has no expiry), treating the
