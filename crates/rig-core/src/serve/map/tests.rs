@@ -36,6 +36,12 @@ impl Serve for Streamer {
             _ => written(),
         }
     }
+
+    fn footprint(&self, _kind: &EffectKind) -> Option<crate::tool::Touches> {
+        Some(crate::tool::Touches::Reads(crate::tool::Scope::Paths(
+            vec!["/notes".into()],
+        )))
+    }
 }
 
 /// "hel", "lo", and the end.
@@ -173,4 +179,15 @@ async fn a_unary_completion_is_rewritten_and_other_outcomes_pass() {
         matches!(&outcome, Ok(Answered::Custom { payload }) if payload == "as is"),
         "{outcome:?}"
     );
+}
+
+/// A rewrite changes no footprint: what its handler reads and changes is
+/// still what the wrapped one does.
+#[test]
+fn a_rewrite_keeps_its_handlers_footprint() {
+    let handler = ErasedHandler::new(Streamer);
+    let kind = completion(false);
+    let before = handler.footprint(&kind);
+    assert!(before.is_some());
+    assert_eq!(handler.map_stream("shout", shout).footprint(&kind), before);
 }

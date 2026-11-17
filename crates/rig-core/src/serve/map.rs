@@ -45,6 +45,10 @@ where
         self.inner.key().clone()
     }
 
+    fn footprint(&self, kind: &EffectKind) -> Option<crate::tool::Touches> {
+        self.inner.footprint(kind)
+    }
+
     fn check(&self, kind: &EffectKind) -> Vec<crate::completion::UnsupportedOption> {
         self.inner.check(kind)
     }
