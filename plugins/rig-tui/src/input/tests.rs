@@ -550,8 +550,14 @@ fn enter_after_a_pasted_partial_command_does_not_complete_it() {
     assert!(app.world().resource::<TuiView>().completion.is_none());
     press(&mut app, "enter");
     assert_eq!(typed(&app), "/comp");
-    // Typed by hand, the same word still opens the list.
+    // Typed by hand, the same word still opens the list, and so does a key
+    // typed into a pasted one.
     press(&mut app, "ctrl+c");
     type_text(&mut app, "/comp");
     assert!(app.world().resource::<TuiView>().completion.is_some());
+    press(&mut app, "ctrl+c");
+    paste(&mut app, "/com");
+    type_text(&mut app, "p");
+    press(&mut app, "tab");
+    assert_eq!(typed(&app), "/compact ");
 }

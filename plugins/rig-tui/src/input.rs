@@ -529,6 +529,9 @@ pub(crate) fn read_input(
                 if view.selection.is_some() {
                     view.selection = None;
                 }
+                if main && view.paste_dismissed {
+                    (view.dismissed, view.paste_dismissed) = (None, false);
+                }
                 // A question answered in the input leaves the keys to it.
                 let picking = showing.iter_mut().find(|(_, c)| c.draft.is_none());
                 if let Some((entity, mut choosing)) = picking {

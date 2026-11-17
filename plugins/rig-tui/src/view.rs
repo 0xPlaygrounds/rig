@@ -61,6 +61,9 @@ pub(crate) struct TuiView {
     /// Text was pasted into the main input since the completion last
     /// followed it: the word the paste ends in opens no list.
     pub(crate) pasted: bool,
+    /// `dismissed` was set by a paste, not Esc: the next key typed into the
+    /// main input opens lists again.
+    pub(crate) paste_dismissed: bool,
     /// The pickers and questions to show, in the order they came; the
     /// first is shown over the transcript and takes the keys.
     pub(crate) queue: Vec<Entity>,
