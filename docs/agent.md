@@ -674,15 +674,16 @@ crate's plugin is a `[[plugins.extra]]` table you write.
 
 In the agent, `/plugins` reads `settings.toml` itself and opens at once. It
 lists every plugin by a short name, such as "Terminal view", in groups, and
-your extras last by crate. The pane beside the list shows the highlighted
-plugin's group, crate, type path (what `settings.toml` and `rig plugin
-enable` take), default, state in `settings.toml`, whether it runs now, and
-what it adds. Typing filters by name or type path. Tick and untick plugins
+your extras last by crate, each with its state: on, off, or either with
+"next reload" while the running agent differs. The pane beside the list
+shows the highlighted plugin's group, crate, type path (what `settings.toml`
+and `rig plugin enable` take), default, state in `settings.toml`, whether it
+runs now, what an essential one takes away when off, and what it adds. Typing filters by name or type path. Tick and untick plugins
 and press Enter: every change goes into `settings.toml` in one edit, or none
 when one is refused, and the agent rebuilds and restarts with them; a failed
 build keeps the running one. Without a terminal it prints each plugin's name,
 type path and state. When `settings.toml` does not read, `/plugins` names the
-file and the error instead of opening.
+file, the error and its fix instead of opening.
 
 `rig plugin check` checks the list. With `--build` it also builds the agent
 with its plugins in `$RIG_HOME/target` without staging it, and names the
