@@ -217,7 +217,7 @@ impl Serve for ModelAdapter<Embedding> {
             key: crate::effect::embed_key(self.label.as_str()),
             family: FamilyDescriptor::Embed {
                 model: self.label.to_string(),
-                dims: Some(capabilities.ndims),
+                dims: (capabilities.ndims != 0).then_some(capabilities.ndims),
                 max_documents: capabilities.max_documents,
                 modality: EmbedModality::Text,
             },

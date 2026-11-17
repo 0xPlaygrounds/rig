@@ -476,3 +476,61 @@ fn a_recorder_is_asked_to_keep_events_only_where_it_decides() {
     }
     assert_eq!(asked.0.load(std::sync::atomic::Ordering::SeqCst), 3);
 }
+
+/// Says its key without its descriptor, and counts the descriptors built.
+#[derive(Default)]
+struct CheapKey(std::sync::atomic::AtomicUsize);
+
+impl Serve for CheapKey {
+    type Family = crate::effect::family::Dynamic;
+
+    fn descriptor(&self) -> HandlerDescriptor {
+        self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        HandlerDescriptor {
+            key: HandlerKey::from("cheap"),
+            family: crate::effect::FamilyDescriptor::Custom {
+                kind: "test".into(),
+            },
+            layers: Vec::new(),
+        }
+    }
+
+    fn key(&self) -> HandlerKey {
+        HandlerKey::from("cheap")
+    }
+
+    async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply {
+        Reply::Outcome(Ok(Answered::Custom {
+            payload: serde_json::Value::Null,
+        }))
+    }
+}
+
+/// Sharing and erasing a handler, again and again, keeps its cheap key:
+/// no descriptor is built to learn it.
+#[test]
+fn sharing_and_erasing_keep_a_cheap_key() {
+    let handler = Arc::new(CheapKey::default());
+    let erased = ErasedHandler::new(Arc::clone(&handler));
+    let again = ErasedHandler::new(Arc::new(erased.clone()));
+    assert_eq!(Serve::key(&erased), HandlerKey::from("cheap"));
+    assert_eq!(again.key(), &HandlerKey::from("cheap"));
+    assert_eq!(handler.0.load(std::sync::atomic::Ordering::SeqCst), 0);
+}
+
+/// An embedding model of unknown width is described without one, not as
+/// zero wide, in the descriptor a record keeps.
+#[test]
+fn an_embedding_model_of_unknown_width_has_no_dims() {
+    let described = |ndims| {
+        let model = crate::driver::Model::new(
+            crate::driver::Local::new("mock")
+                .with_capabilities(crate::wire::Capabilities::embedding(5, ndims)),
+            crate::test_utils::MockEmbeddings,
+        );
+        let handler = ErasedHandler::new(crate::serve::adapters::ModelAdapter::new("mock", model));
+        serde_json::to_value(handler.descriptor().family).expect("serializes")
+    };
+    assert_eq!(described(10)["dims"], 10);
+    assert_eq!(described(0).get("dims"), None);
+}

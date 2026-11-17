@@ -76,14 +76,21 @@ where
     ///
     /// Propagates provider and transport errors, including a reply whose
     /// embedding count differs from the texts sent. Returns an error
-    /// identifying the document if it produces no text; empty embedded
-    /// collections produce no text.
+    /// identifying the document, before sending anything, if it produces no
+    /// text; empty embedded collections produce no text.
     pub async fn build(self) -> Result<Vec<(T, Vec<Embedding>)>, ProviderError> {
         use stream::TryStreamExt;
 
         let mut docs: Vec<(T, usize)> = Vec::with_capacity(self.documents.len());
         let mut texts: Vec<String> = Vec::new();
-        for (doc, doc_texts) in self.documents {
+        for (index, (doc, doc_texts)) in self.documents.into_iter().enumerate() {
+            if doc_texts.is_empty() {
+                return Err(crate::error::ProviderError::Response(format!(
+                    "document {index} produced no text to embed, so it has no \
+                     embeddings to return; an empty collection in an `#[embed]` \
+                     field embeds nothing"
+                )));
+            }
             docs.push((doc, doc_texts.len()));
             texts.extend(doc_texts);
         }
@@ -105,19 +112,10 @@ where
         batches.sort_unstable_by_key(|(at, _)| *at);
         let mut embeddings = batches.into_iter().flat_map(|(_, batch)| batch);
 
-        let mut result = Vec::with_capacity(docs.len());
-        for (index, (doc, len)) in docs.into_iter().enumerate() {
-            if len == 0 {
-                return Err(crate::error::ProviderError::Response(format!(
-                    "document {index} produced no text to embed, so it has no \
-                     embeddings to return; an empty collection in an `#[embed]` \
-                     field embeds nothing"
-                )));
-            }
-            result.push((doc, embeddings.by_ref().take(len).collect()));
-        }
-
-        Ok(result)
+        Ok(docs
+            .into_iter()
+            .map(|(doc, len)| (doc, embeddings.by_ref().take(len).collect()))
+            .collect())
     }
 }
 

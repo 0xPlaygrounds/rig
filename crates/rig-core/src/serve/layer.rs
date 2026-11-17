@@ -39,9 +39,13 @@ pub enum BeforeServe {
 }
 
 impl BeforeServe {
-    /// A denial by policy: `ErrorKind::Denied`, never retryable.
+    /// A denial by policy: an `ErrorKind::Denied` refusal, never retryable.
     pub fn deny(reason: impl Into<String>) -> Self {
-        Self::Deny(ErrorReport::new(ErrorKind::Denied, reason).with_retryable(false))
+        Self::Deny(
+            ErrorReport::new(ErrorKind::Denied, reason)
+                .refused()
+                .with_retryable(false),
+        )
     }
 }
 
