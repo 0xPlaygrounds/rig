@@ -44,6 +44,7 @@
 use std::collections::HashSet;
 use std::io::{IsTerminal, Read};
 use std::sync::mpsc::RecvTimeoutError;
+use std::thread::Builder;
 
 use async_channel::Receiver;
 use bevy_ecs::message::{MessageCursor, Messages};
@@ -437,7 +438,7 @@ fn full_prompt(
         None if std::io::stdin().is_terminal() => return Ok(Some(prompt.to_owned())),
         None => Box::new(std::io::stdin()),
     };
-    with_piped(prompt, piped, PIPED_LIMIT, interrupted)
+    with_piped(prompt, piped, PIPED_LIMIT, Builder::new(), interrupted)
 }
 
 /// How often a wait for what is piped in looks whether the run was
@@ -447,16 +448,17 @@ const INTERRUPT_CHECK: Duration = Duration::from_millis(50);
 /// `prompt` with what `piped` holds after it, read to its end. At most
 /// `limit` bytes are read: more is refused ([`Unpiped::TooLarge`])
 /// without holding more than one byte past it, as are a failed read and
-/// bytes that are not UTF-8. `None` once `interrupted` says the run is,
-/// however long the wait was.
+/// bytes that are not UTF-8, and a `reader` thread that could not start.
+/// `None` once `interrupted` says the run is, however long the wait was.
 fn with_piped(
     prompt: &str,
     piped: impl Read + Send + 'static,
     limit: usize,
+    reader: Builder,
     interrupted: impl Fn() -> bool,
 ) -> Result<Option<String>, Unpiped> {
     let (sender, read) = std::sync::mpsc::channel();
-    std::thread::spawn(move || {
+    let started = reader.spawn(move || {
         let mut text = Vec::new();
         let room = u64::try_from(limit).unwrap_or(u64::MAX).saturating_add(1);
         let read = match piped.take(room).read_to_end(&mut text) {
@@ -470,6 +472,7 @@ fn with_piped(
         };
         sender.send(read).ok();
     });
+    started.map_err(|error| Unpiped::Failed(error.to_string()))?;
     let piped = loop {
         if interrupted() {
             return Ok(None);
