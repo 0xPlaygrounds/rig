@@ -109,13 +109,14 @@ impl Default for Limits {
 }
 
 const DESCRIPTION: &str = "Run a Steel program (Scheme) that orchestrates agents and tools, and \
-    return the value of its last expression (a string as it is, anything else as JSON) with \
-    what it printed. Use it when the work needs several agents or many tool calls tied \
-    together by logic: a relay between agents, a fan-out with all replies gathered, a loop \
-    until a check passes; for one subagent or one tool call, call it directly. A program waits \
-    for its agents' replies, so its result holds their real answers. Never invent, simulate or \
-    paraphrase as fact another agent's reply; if the requested interaction is not supported, \
-    say so before offering an alternative.\n\n\
+    return the value of its last expression (a string as it is, anything else as JSON) with what \
+    it printed. Every agent it starts costs more than doing the work yourself. Use it only when \
+    the user asks for it, or when the work needs several agents tied together by logic that one \
+    subagent cannot do: a relay between agents, a fan-out over independent parts with all replies \
+    gathered, a loop until a check passes. Not for tool calls you can make directly, and not for \
+    one agent. A program waits for its agents' replies, so its result holds their real answers. \
+    Never invent, simulate or paraphrase as fact another agent's reply; if the requested \
+    interaction is not supported, say so before offering an alternative.\n\n\
     The program is Steel, an R7RS-style Scheme: define, let, lambda, if, cond, when, let loop, \
     named lets, map, for-each, filter, foldl, lists, vectors, hash maps (hash, hash-ref), \
     strings (string-append, string-join, string-length), number->string, display and \
@@ -136,12 +137,10 @@ const DESCRIPTION: &str = "Run a Steel program (Scheme) that orchestrates agents
     (call-tool name [args]) -> string\n    \
     Calls one of your own tools with args, a hash such as (hash 'path \"src/lib.rs\"), and \
     returns its text output; raises an error when the tool fails.\n\n\
-    Fan out over three agents at once and keep the shortest answer:\n\
-    (define agents (map (lambda (i) (spawn-agent (string-append \"solver-\" (number->string i)))) (range 0 3)))\n\
-    (define requests (map (lambda (agent) (send agent \"How does src/lib.rs load plugins? Three sentences.\")) agents))\n\
-    (define answers (map reply requests))\n\
-    (foldl (lambda (answer best) (if (< (string-length answer) (string-length best)) answer best))\n       \
-           (car answers) (cdr answers))";
+    Review three independent crates at once and gather the findings:\n\
+    (define dirs (list \"crates/a\" \"crates/b\" \"crates/c\"))\n\
+    (define requests (map (lambda (dir) (send (spawn-agent \"reviewer\") (string-append \"Review the error handling in \" dir \". List each finding as file:line and one sentence.\"))) dirs))\n\
+    (string-join (map reply requests) \"\\n\\n\")";
 
 /// Adds the `run_steel` tool.
 #[derive(Default)]

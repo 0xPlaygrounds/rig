@@ -733,14 +733,15 @@ with `rig plugin enable rig_steel::SteelPlugin`, or:
 enable = ["rig_steel::SteelPlugin"]
 ```
 
-A fan-out that asks three agents at once and keeps the shortest answer:
+Use it when the user asks for it, or when several agents must be tied
+together by logic: a relay, a fan-out over independent parts, a loop until a
+check passes. A review of three independent crates at once, with the findings
+gathered:
 
 ```scheme
-(define agents (map (lambda (i) (spawn-agent (string-append "solver-" (number->string i)))) (range 0 3)))
-(define requests (map (lambda (agent) (send agent "How does src/lib.rs load plugins? Three sentences.")) agents))
-(define answers (map reply requests))
-(foldl (lambda (answer best) (if (< (string-length answer) (string-length best)) answer best))
-       (car answers) (cdr answers))
+(define dirs (list "crates/a" "crates/b" "crates/c"))
+(define requests (map (lambda (dir) (send (spawn-agent "reviewer") (string-append "Review the error handling in " dir ". List each finding as file:line and one sentence."))) dirs))
+(string-join (map reply requests) "\n\n")
 ```
 
 A program runs for at most 60 seconds of execution (waits on agents and

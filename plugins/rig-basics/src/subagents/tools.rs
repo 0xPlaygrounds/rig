@@ -21,24 +21,29 @@ pub const MESSAGE: &str = "message";
 /// The tool that waits for an agent's message without ending the turn.
 pub const WAIT: &str = "wait";
 
-const TASK_DESCRIPTION: &str = "Start a new subagent on a self-contained task: a new agent with \
-    a conversation of its own, which sees only `prompt` and `environment` and works with its \
-    tools until it can answer. It starts in your working directory. The call returns at once \
-    with its id; its report, its final answer, arrives as a message headed with that id and \
-    the task title as soon as it is done. It may `message` you a question meanwhile. With \
-    `peers`, the subagents you start are told each other's ids and can message and wait for \
-    each other. Continue a subagent with `message`, not another `task`. Use `task` for work \
-    that would fill your context or can run on its own: a broad search or investigation \
-    across many files, an independent change, or a second opinion from another model; not for \
-    one quick read or edit. Write `prompt` as a full brief: the goal, what is known, where to \
-    look, and what to return. Put what it must know of the environment and cannot see in \
-    `environment`: where the work is, how to reach other machines (the exact command), what \
-    is missing locally. Do not give two subagents changes to the same files. Each `task` or \
-    `message` call is a request, answered by exactly one report: meanwhile keep working on \
-    what does not need it, or end your turn; call `wait` only when you cannot go on without a \
-    report, and never poll. Never invent, simulate or paraphrase as fact another agent's \
-    reply; if the requested interaction is not supported, say so before offering an \
-    alternative.";
+const TASK_DESCRIPTION: &str = "Start a subagent: a new agent with an empty conversation of its \
+    own, which sees only `prompt` and `environment`, works with its tools in your working \
+    directory and reports back. It usually costs more than doing the work yourself: it re-reads \
+    what you already know and its tokens are spent on top of yours. So do the work yourself by \
+    default, including searches, reads, edits and investigations you can finish in a few tool \
+    calls. Start a subagent only when the user asks for one, such as for a second opinion from \
+    another model, or when a part of the task is both large and separable: it takes many tool \
+    calls whose details you will not need afterwards, and a brief can state its goal and the \
+    answer you need. Start several at once only for parts that are independent of each other and \
+    of your own work meanwhile. Never start one to read a few files, run one command or make one \
+    edit.\n\n\
+    The call returns at once with the subagent's id; its report, its final answer, arrives as a \
+    message headed with that id and the task title as soon as it is done. It may `message` you a \
+    question meanwhile. Continue a subagent with `message`, not another `task`. Write `prompt` as \
+    a full brief: the goal, what is known, where to look, and what to return. Put what it must \
+    know of the environment and cannot see in `environment`: where the work is, how to reach other \
+    machines (the exact command), what is missing locally. Do not give two subagents changes to \
+    the same files. With `peers`, the subagents you start are told each other's ids and can \
+    message and wait for each other. Each `task` or `message` call is a request, answered by \
+    exactly one report: meanwhile do the work that does not need it, or end your turn; call `wait` \
+    only when you cannot go on without a report, and never poll. Never invent, simulate or \
+    paraphrase as fact another agent's reply; if the requested interaction is not supported, say \
+    so before offering an alternative.";
 
 const MESSAGE_DESCRIPTION: &str = "Send `text` to an agent you can reach, by its id: one of your \
     subagents, an agent that asked you something (such as the agent that started you), or, \
@@ -57,15 +62,15 @@ const WAIT_DESCRIPTION: &str = "Wait, without ending your turn, until the agent 
 /// What every subagent is told about its role, in a prompt section of its
 /// own after its parent's own system prompt.
 pub(super) const SUBAGENT_ROLE: &str = "You are a subagent. Another agent gave you the task in the \
-    first message and expects your answer. Decide what you can yourself and say what you \
-    assumed; when you cannot go on without that agent, `message` it your question and `wait` \
-    for its answer, or, without those tools, say what you need in your final answer. A message is not your report: your final answer, when your turn ends, is \
-    sent to that agent as the task's result, so make it complete on its own, with file paths, \
-    findings and what you changed, and keep it short. That agent may send you corrections \
-    while you work and follow-ups later; answer each in your final answer. If you start \
-    subagents of your own, end your turn while they work: their reports come back to you, \
-    and you answer once they have. Never invent, simulate or paraphrase as fact another \
-    agent's reply.";
+    first message and expects your answer. Do the task yourself. Decide what you can yourself and \
+    say what you assumed; when you cannot go on without that agent, `message` it your question and \
+    `wait` for its answer, or, without those tools, say what you need in your final answer. A \
+    message is not your report: your final answer, when your turn ends, is sent to that agent as \
+    the task's result, so make it complete on its own, with file paths, findings and what you \
+    changed, and keep it short. That agent may send you corrections while you work and follow-ups \
+    later; answer each in your final answer. Start subagents of your own only when your task says \
+    to; if you do, end your turn while they work: their reports come back to you, and you answer \
+    once they have. Never invent, simulate or paraphrase as fact another agent's reply.";
 
 /// What a subagent started with `peers` is told, after [`SUBAGENT_ROLE`].
 pub(super) const PEER_ROLE: &str = "Other subagents of that agent work beside you; your task names the \
