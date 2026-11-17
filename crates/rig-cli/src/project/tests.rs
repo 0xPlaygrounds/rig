@@ -399,3 +399,17 @@ fn a_home_with_a_line_break_is_refused_before_building() {
     );
     assert!(!written, "the project was written");
 }
+
+#[test]
+fn the_safe_build_holds_rigs_defaults_and_no_extra() {
+    let source = RigSource::Local(checkout());
+    let home = Home::at("/home/rig");
+    let extra =
+        "[[plugins.extra]]\ncrate = \"mine\"\npath = \"/mine\"\nplugin = \"mine::MinePlugin\"\n";
+    let chosen = home_with(extra).unwrap_or_default();
+    assert!(chosen.on.iter().any(|plugin| plugin == "mine::MinePlugin"));
+    let main = main_rs(&home, &defaults(), &source);
+    assert!(!main.contains("mine"), "{main}");
+    let plain = home_with("").unwrap_or_default();
+    assert_eq!(defaults().on, plain.on);
+}

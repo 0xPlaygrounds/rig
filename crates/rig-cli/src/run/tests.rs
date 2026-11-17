@@ -445,7 +445,7 @@ fn an_unknown_plugin_refuses_the_start_instead_of_running_the_previous_build() {
         fs::create_dir_all(home.root().join("plugins/bad")).ok();
         fs::write(home.root().join("plugins/bad/Cargo.toml"), "[package\n").ok();
         let started = at(&home, Path::new(NO_LAUNCHER))
-            .and_then(|launch| run(launch, &["-p".to_owned(), "hi".to_owned()]))
+            .and_then(|launch| run(launch, &["-p".to_owned(), "hi".to_owned()], false))
             .map_err(|why| why.to_string());
         let ran = fs::read_to_string(home.root().join("ran")).unwrap_or_default();
         fs::remove_dir_all(home.root()).ok();
@@ -2344,4 +2344,63 @@ fn signalled_at_prompt(
     };
     drop(kept);
     Ok((String::from_utf8_lossy(&said).into_owned(), status.signal()))
+}
+
+/// `rig --safe` in a home whose settings name an extra crate that is not
+/// there, so a normal start refuses, and whose safe build is cached with a
+/// matching stamp: the safe build starts with no cargo run, never the good
+/// or shared staged build, says it is in safe mode and how to leave, and
+/// keeps both build logs. Its `/reload` leaves safe mode: the build
+/// that reload staged starts as a trial and becomes the good build.
+#[cfg(unix)]
+#[test]
+fn safe_mode_starts_the_cached_default_build_and_a_reload_leaves_it() {
+    let home = builds("safe", "", "");
+    let broken = "[[plugins.extra]]\ncrate = \"gone\"\npath = \"plugins/gone\"\nplugin = \"gone::GonePlugin\"\n";
+    let ran = (|| -> Result<_> {
+        fs::write(home.settings(), broken)?;
+        fs::write(home.build_log(), "the broken build's output\n")?;
+        fs::write(build::safe_log(&home), "the safe build's output\n")?;
+        let own = home.root().join("own");
+        script(
+            &own,
+            &format!(
+                "[ -n \"$RIG_DESCRIBE\" ] && exit 0\necho own >> \"$RIG_HOME/ran\"\n{}",
+                fake_agent::commands(&[Step::Ready])
+            ),
+        )?;
+        let reload = format!("cp {} \"$RIG_HOME/bin/staged-$RIG_SESSION\"", own.display());
+        let notice = "printf '%s' \"$RIG_NOTICE\" > \"$RIG_HOME/notice\"";
+        let safe = fake_agent::script(&[&[
+            sh("echo safe >> \"$RIG_HOME/ran\""),
+            sh(notice),
+            Step::Ready,
+            sh(&reload),
+            Step::End(AgentEnd::Reload),
+        ]]);
+        fs::write(home.bin().join("safe"), safe)?;
+        fs::set_permissions(
+            home.bin().join("safe"),
+            std::os::unix::fs::PermissionsExt::from_mode(0o755),
+        )?;
+        let launch = at(&home, Path::new(NO_LAUNCHER))?;
+        fs::write(home.bin().join("safe.version"), build::safe_stamp(&launch)?)?;
+        let code = run(launch, &["-p".to_owned(), "hi".to_owned()], true)?;
+        let read = |name: &str| fs::read_to_string(home.root().join(name)).unwrap_or_default();
+        let good = fs::read_to_string(home.good())?;
+        let logs = read("build.log") + &read("safe-build.log");
+        Ok((code, read("ran"), read("notice"), logs, good))
+    })();
+    fs::remove_dir_all(home.root()).ok();
+    let (code, ran, notice, log, good) = ran.map_err(|why| why.to_string()).unwrap_or_default();
+    assert_eq!((code, ran.as_str()), (ExitCode::SUCCESS, "safe\nown\n"));
+    assert!(
+        notice.contains("Safe mode") && notice.contains("/reload"),
+        "{notice:?}"
+    );
+    assert_eq!(log, "the broken build's output\nthe safe build's output\n");
+    assert!(
+        good.contains("echo own"),
+        "the reloaded build is not the good one: {good}"
+    );
 }

@@ -25,7 +25,7 @@ use rig_harness_protocol::launch::{Launch, Purpose};
 use rig_harness_protocol::{AgentDescription, Home, RunDir, config, first_errors};
 
 use super::project::{self, Manifest, PACKAGE, RigSource, workspace_dependency};
-use super::{BEVY_VERSION, COMMIT, Result, locks};
+use super::{BEVY_VERSION, COMMIT, LONG_VERSION, Result, locks};
 
 /// Whether a build that is already known gets staged again.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -85,7 +85,7 @@ pub struct BuildFailure {
     /// The output from its first error on, at most [`ERROR_LINES`] lines;
     /// empty when no line starts with `error`.
     pub errors: Vec<String>,
-    /// [`Home::build_log`].
+    /// The build's whole output: [`Home::build_log`], or [`safe_log`].
     pub log: PathBuf,
 }
 
@@ -151,7 +151,7 @@ pub fn compile(
     output: BuildOutput,
 ) -> std::result::Result<(), BuildFailure> {
     let home = &launch.home();
-    let mut log = BuildLog::create(home, output, Box::new(std::io::stderr()));
+    let mut log = BuildLog::create(home.build_log(), output, Box::new(std::io::stderr()));
     let wanted = (|| -> Result<_> {
         let plugins = config::chosen(home)?;
         local_crates(home, &plugins)?;
@@ -161,7 +161,9 @@ pub fn compile(
         Ok(wanted) => wanted,
         Err(failure) => return Err(log.fail(FailedAt::Settings, &*failure)),
     };
-    match compile_logged(launch, &plugins, &source, staged, staging, &mut log) {
+    let built = compile_logged(launch, &plugins, &source, &mut log)
+        .and_then(|()| stage(launch, staged, staging));
+    match built {
         Ok(()) => {
             log.record("build succeeded");
             Ok(())
@@ -170,12 +172,12 @@ pub fn compile(
     }
 }
 
+/// Writes the agent project with `plugins` from `source`, checks its Bevy
+/// version and builds it into [`artifact`], logging to `log`.
 fn compile_logged(
     launch: &Launch,
     plugins: &config::Plugins,
     source: &RigSource,
-    staged: &Path,
-    staging: Staging,
     log: &mut BuildLog,
 ) -> Result<()> {
     // A build that cannot be made, not a settings mistake: the previous
@@ -217,7 +219,83 @@ fn compile_logged(
     if !status.success() {
         return Err(format!("cargo could not build the agent ({status})").into());
     }
-    stage(launch, staged, staging)
+    Ok(())
+}
+
+/// The build `rig --safe` starts: rig's default plugins alone.
+pub fn safe(home: &Home) -> PathBuf {
+    home.bin().join("safe")
+}
+
+/// What [`safe`] was built by and from: the launcher's version and the
+/// source of rig's crates.
+fn safe_version(home: &Home) -> PathBuf {
+    home.bin().join("safe.version")
+}
+
+/// The whole output of the last safe build, kept apart from
+/// [`Home::build_log`] so the log of a failed build of the user's plugins
+/// stays.
+pub fn safe_log(home: &Home) -> PathBuf {
+    home.root().join("safe-build.log")
+}
+
+/// The stamp [`safe_version`] holds for a safe build by this launcher from
+/// the launch's source.
+pub fn safe_stamp(launch: &Launch) -> Result<String> {
+    let source = match RigSource::detect(launch.source.as_deref())? {
+        RigSource::Local(checkout) => format!("path {}", checkout.display()),
+        RigSource::Registry => "crates.io".to_owned(),
+    };
+    Ok(format!("{LONG_VERSION}\n{source}\n"))
+}
+
+/// Makes [`safe`] the build of rig's default plugins, ignoring `[plugins]`
+/// in `settings.toml`, unless the one there has this launch's
+/// [`safe_stamp`], so a second safe start runs no cargo. It builds in the
+/// agent project, keeps the project's `Cargo.lock` for the next build of
+/// the user's plugins, and logs to [`safe_log`] and to stderr as `output`
+/// says.
+pub fn compile_safe(launch: &Launch, output: BuildOutput) -> std::result::Result<(), BuildFailure> {
+    let home = &launch.home();
+    let stamp = safe_stamp(launch);
+    if let Ok(stamp) = &stamp
+        && fs::read_to_string(safe_version(home)).ok().as_ref() == Some(stamp)
+        && safe(home).is_file()
+    {
+        return Ok(());
+    }
+    let mut log = BuildLog::create(safe_log(home), output, Box::new(std::io::stderr()));
+    let stamp = match stamp {
+        Ok(stamp) => stamp,
+        Err(failure) => return Err(log.fail(FailedAt::Settings, &*failure)),
+    };
+    log.say("Building rig's default plugins for safe mode…");
+    let lock = home.project().join("Cargo.lock");
+    let kept = fs::read(&lock).ok();
+    let built = (|| -> Result<()> {
+        let source = RigSource::detect(launch.source.as_deref())?;
+        compile_logged(launch, &project::defaults(), &source, &mut log)?;
+        let artifact = artifact(home);
+        described(launch, &artifact)
+            .map_err(|why| format!("the safe build does not start: {why}"))?;
+        let temporary = home.bin().join("safe.tmp");
+        fs::create_dir_all(home.bin())?;
+        copy(&artifact, &temporary)?;
+        fs::rename(&temporary, safe(home))?;
+        fs::write(safe_version(home), &stamp)?;
+        Ok(())
+    })();
+    if let Some(kept) = kept {
+        fs::write(&lock, kept).ok();
+    }
+    match built {
+        Ok(()) => {
+            log.record("build succeeded");
+            Ok(())
+        }
+        Err(failure) => Err(log.fail(FailedAt::Build, &*failure)),
+    }
 }
 
 /// Checks that every `[[plugins.extra]]` crate that is on and comes from a
@@ -354,10 +432,9 @@ struct BuildLog {
 }
 
 impl BuildLog {
-    /// Starts the log over, showing on `shown` what `output` says.
-    fn create(home: &Home, output: BuildOutput, shown: Box<dyn Write>) -> Self {
-        let path = home.build_log();
-        let file = fs::create_dir_all(home.root())
+    /// Starts the log at `path` over, showing on `shown` what `output` says.
+    fn create(path: PathBuf, output: BuildOutput, shown: Box<dyn Write>) -> Self {
+        let file = (path.parent().map_or(Ok(()), fs::create_dir_all))
             .and_then(|()| {
                 fs::open(
                     File::options().write(true).create(true).truncate(true),

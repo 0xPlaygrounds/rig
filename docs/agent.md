@@ -579,6 +579,18 @@ its conversation as a message from the `build` plugin, which starts no turn
 when the agent is idle and is saved with the session. Ask it why the build
 failed and it can read the log and fix the cause; `/reload` then tries again.
 
+Safe mode: when a plugin keeps rig from building or starting, `rig --safe`
+(it goes wherever an option goes, so `rig --safe -r <id>` works) starts a
+build of rig's default plugins alone. It ignores `[plugins]` in
+`settings.toml`; the rest of the file, such as the model and sign-in, still
+applies. That build is kept in `RIG_HOME/bin/safe` with its own log,
+`RIG_HOME/safe-build.log`, so `build.log` keeps the failed build's output, and
+the next `rig --safe` starts it without running cargo until rig or its source
+changes. The agent says it is in safe mode. Fix the cause, for example with
+`/plugins`, then `/reload` builds and starts your own plugins again, rolling
+back to the safe build if that build crashes during startup; quitting and
+running `rig` works too.
+
 `rig build` regenerates and builds the agent without starting it.
 `CARGO_BUILD_JOBS` sets cargo's `-j` for these builds, as for any cargo build.
 

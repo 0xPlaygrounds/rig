@@ -312,7 +312,7 @@ fn fake_build(
     fs::remove_dir_all(&root).ok();
     let home = Home::at(&root);
     let shown = Shown::default();
-    let mut log = BuildLog::create(&home, output, Box::new(shown.clone()));
+    let mut log = BuildLog::create(home.build_log(), output, Box::new(shown.clone()));
     log.erase = erase;
     let mut cargo = Command::new("sh");
     cargo
@@ -366,7 +366,11 @@ fn a_failure_rig_explains_does_not_repeat_cargos_error() {
     let root = std::env::temp_dir().join(format!("rig-build-explained-{}", std::process::id()));
     fs::remove_dir_all(&root).ok();
     let home = Home::at(&root);
-    let mut log = BuildLog::create(&home, BuildOutput::Live, Box::new(Shown::default()));
+    let mut log = BuildLog::create(
+        home.build_log(),
+        BuildOutput::Live,
+        Box::new(Shown::default()),
+    );
     let mut cargo = Command::new("sh");
     cargo
         .args([
@@ -392,7 +396,11 @@ fn a_wait_for_cargos_lock_ends_with_its_command() {
     let root = std::env::temp_dir().join(format!("rig-build-log-two-{}", std::process::id()));
     let home = Home::at(&root);
     let shown = Shown::default();
-    let mut log = BuildLog::create(&home, BuildOutput::LogOnly, Box::new(shown.clone()));
+    let mut log = BuildLog::create(
+        home.build_log(),
+        BuildOutput::LogOnly,
+        Box::new(shown.clone()),
+    );
     let commands = [
         "printf '    Blocking waiting for file lock on build directory\\n' >&2",
         "sleep 4",
@@ -413,7 +421,11 @@ fn a_long_wait_for_cargos_lock_is_said_while_it_lasts() {
     let root = std::env::temp_dir().join(format!("rig-build-log-wait-{}", std::process::id()));
     let home = Home::at(&root);
     let shown = Shown::default();
-    let mut log = BuildLog::create(&home, BuildOutput::LogOnly, Box::new(shown.clone()));
+    let mut log = BuildLog::create(
+        home.build_log(),
+        BuildOutput::LogOnly,
+        Box::new(shown.clone()),
+    );
     let mut cargo = Command::new("sh");
     let script = "printf '    Blocking waiting for file lock on build directory\\n' >&2; \
                   sleep 4; printf '    Finished in 4s\\n' >&2";
@@ -438,7 +450,11 @@ fn a_long_wait_for_cargos_lock_is_said_while_it_lasts() {
 fn cargo_starts_with_no_signal_blocked() {
     let root = std::env::temp_dir().join(format!("rig-build-mask-{}", std::process::id()));
     let home = Home::at(&root);
-    let mut log = BuildLog::create(&home, BuildOutput::LogOnly, Box::new(Shown::default()));
+    let mut log = BuildLog::create(
+        home.build_log(),
+        BuildOutput::LogOnly,
+        Box::new(Shown::default()),
+    );
     let mut cargo = Command::new("sh");
     cargo
         .args(["-c", "grep SigBlk /proc/self/status >&2"])
@@ -480,7 +496,11 @@ fn an_ignored_hangup_stays_ignored_through_a_build() {
     }
     let root = std::env::temp_dir().join(format!("rig-build-hangup-{}", std::process::id()));
     let home = Home::at(&root);
-    let mut log = BuildLog::create(&home, BuildOutput::LogOnly, Box::new(Shown::default()));
+    let mut log = BuildLog::create(
+        home.build_log(),
+        BuildOutput::LogOnly,
+        Box::new(Shown::default()),
+    );
     let mut cargo = Command::new("sh");
     cargo
         .args(["-c", "grep SigIgn /proc/self/status >&2"])
@@ -521,7 +541,11 @@ fn a_launcher_leading_its_session_keeps_cargo_in_its_group() {
         let seen = std::path::PathBuf::from(seen);
         let root = seen.with_extension("home");
         let home = Home::at(&root);
-        let mut log = BuildLog::create(&home, BuildOutput::LogOnly, Box::new(Shown::default()));
+        let mut log = BuildLog::create(
+            home.build_log(),
+            BuildOutput::LogOnly,
+            Box::new(Shown::default()),
+        );
         let mut cargo = Command::new("sh");
         // "cargo" ignores SIGTERM, from before it says it is ready; what it
         // started does not.
@@ -601,7 +625,11 @@ fn a_stopped_build_leaves_nothing_running() {
     fs::create_dir_all(&root).ok();
     let home = Home::at(&root);
     let pid = root.join("compiler.pid");
-    let mut log = BuildLog::create(&home, BuildOutput::LogOnly, Box::new(Shown::default()));
+    let mut log = BuildLog::create(
+        home.build_log(),
+        BuildOutput::LogOnly,
+        Box::new(Shown::default()),
+    );
     let mut cargo = Command::new("sh");
     let script = format!("sleep 60 & echo $! > '{}'; wait", pid.display());
     cargo.args(["-c", &script]).stderr(Stdio::piped());
@@ -656,7 +684,7 @@ fn a_crlf_split_between_two_reads_is_not_erased() {
     let name = format!("rig-build-log-split-{}", std::process::id());
     let home = Home::at(std::env::temp_dir().join(name));
     let shown = Shown::default();
-    let mut log = BuildLog::create(&home, BuildOutput::Live, Box::new(shown.clone()));
+    let mut log = BuildLog::create(home.build_log(), BuildOutput::Live, Box::new(shown.clone()));
     log.erase = true;
     for chunk in [&b"one\r"[..], b"\ntwo\r", b"three\n"] {
         log.show(chunk);

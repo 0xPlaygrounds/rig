@@ -67,11 +67,17 @@ pub enum Start {
     New,
 }
 
+/// What the first start in safe mode says.
+const SAFE_NOTICE: &str = "Safe mode: only rig's default plugins run, and [plugins] in \
+     settings.toml is ignored. /reload, or a change in /plugins, builds and starts your own \
+     plugins again; so does quitting and running `rig`.";
+
 /// Builds the agent, reads the command line `args` against it, runs it
 /// until it ends without asking to reload, and returns its exit code: 2
 /// for a command line the build does not take, or a `--resume` that names
-/// no saved session.
-pub fn run(mut launch: Launch, args: &[String]) -> Result<ExitCode> {
+/// no saved session. In `safe` mode it builds and runs rig's default
+/// plugins alone ([`build::compile_safe`]) until a `/reload`.
+pub fn run(mut launch: Launch, args: &[String], safe: bool) -> Result<ExitCode> {
     let home = &launch.home();
     let terminal = launch.terminal;
     // Before the build, the command line as the last build reads it; the
@@ -107,11 +113,19 @@ pub fn run(mut launch: Launch, args: &[String]) -> Result<ExitCode> {
         locks::sweep(home);
         let run = locks::hold_run(home)?;
         let (claimed, claim_notice) = claim(home, start, launch.here.as_deref())?;
-        let failure = rebuild(&launch, &claimed.id, output, print)?;
-        let built = failure.as_ref().map(|failure| {
-            format!("Building the agent failed, so the previous build is running: {failure}")
-        });
-        let running = select(&launch, &claimed.id, run.dir(), None)?;
+        let (failure, running) = if safe {
+            build::compile_safe(&launch, output).map_err(|failure| failure.told(output))?;
+            (None, hold_safe(&launch, run.dir())?)
+        } else {
+            let failure = rebuild(&launch, &claimed.id, output, print)?;
+            (failure, select(&launch, &claimed.id, run.dir(), None)?)
+        };
+        let built = match &failure {
+            Some(failure) => Some(format!(
+                "Building the agent failed, so the previous build is running: {failure}"
+            )),
+            None => safe.then(|| SAFE_NOTICE.to_owned()),
+        };
         (
             run,
             claimed,
@@ -411,6 +425,8 @@ fn run_agent(
         if rejected {
             build::reject(home, &running.current.executable)?;
         }
+        // A switch stays in safe mode; a reload leaves it.
+        let safe = running.current.is_safe() && left.end != AgentEnd::Reload;
         let ending = match step {
             Step::Reexec { to } => {
                 // The session the agent switched to, claimed as a switch
@@ -429,7 +445,11 @@ fn run_agent(
                     launch.here = Some(AbsPath::new(here)?);
                 }
                 claimed.discard_if_unsaved(home);
-                launch.args = resume.into_iter().flatten().chain(args).collect();
+                let safe = safe.then(|| OsString::from("--safe"));
+                launch.args = (safe.into_iter())
+                    .chain(resume.into_iter().flatten())
+                    .chain(args)
+                    .collect();
                 launch.carry = Carry {
                     reason: Some(if claimed.id == session {
                         StartReason::Reloaded
@@ -1201,6 +1221,9 @@ enum Role {
     Trial { good: Option<String> },
     /// A build that started up before.
     Proven,
+    /// The safe build ([`build::safe`]): only a build staged for its own
+    /// session, as its `/reload` stages, replaces it.
+    Safe,
 }
 
 impl BuildRef {
@@ -1222,6 +1245,10 @@ impl BuildRef {
     fn is_trial(&self) -> bool {
         matches!(self.role, Role::Trial { .. })
     }
+
+    fn is_safe(&self) -> bool {
+        matches!(self.role, Role::Safe)
+    }
 }
 
 impl Drop for BuildRef {
@@ -1231,10 +1258,11 @@ impl Drop for BuildRef {
 }
 
 /// The builds the launcher of `session` holds in `run` for its next start:
-/// a build staged for it or for any launcher, claimed as a trial, rolling
-/// back to `current` or else the good build; without one, `current`, else
-/// the good build. A staged path that is no program ([`starts_a_program`]),
-/// or cannot be looked at or read, is warned of and passed over. Call it
+/// a build staged for it or, unless `current` is the safe build, for any
+/// launcher, claimed as a trial, rolling back to `current` or else the good
+/// build; without one, `current`, else the good build. A staged path that
+/// is no program ([`starts_a_program`]), or cannot be looked at or read, is
+/// warned of and passed over. Call it
 /// holding [`locks::hold_build_lock`], so the claims and the good build it
 /// reads are the ones it holds.
 fn select(
@@ -1249,7 +1277,9 @@ fn select(
         Some(current) => Some(current),
         None => hold_good(launch, run)?,
     };
-    for staged in [home.staged_for(session), home.staged()] {
+    let shared = !held_before.as_ref().is_some_and(BuildRef::is_safe);
+    let shared = shared.then(|| home.staged());
+    for staged in std::iter::once(home.staged_for(session)).chain(shared) {
         let program = match fs::optional(fs::metadata(&staged)) {
             Ok(None) => continue,
             Ok(Some(metadata)) if metadata.is_file() => starts_a_program(&staged),
@@ -1324,6 +1354,16 @@ fn hold_good(launch: &Launch, run: &RunDir) -> Result<Option<BuildRef>> {
         fs::optional(build::hold(&good, &held))?
             .map(|()| BuildRef::new(launch, held, Role::Proven)),
     )
+}
+
+/// The safe build ([`build::safe`]), held in `run`.
+fn hold_safe(launch: &Launch, run: &RunDir) -> Result<Running> {
+    let held = held(run)?;
+    build::hold(&build::safe(&launch.home()), &held)?;
+    Ok(Running {
+        current: BuildRef::new(launch, held, Role::Safe),
+        previous: None,
+    })
 }
 
 /// A path in `run` for a build to hold, which no other build of this

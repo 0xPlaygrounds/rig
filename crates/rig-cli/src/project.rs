@@ -35,6 +35,18 @@ fn built_in_crates(plugins: &Plugins) -> BTreeSet<&'static str> {
         .collect()
 }
 
+/// rig's own plugins that are on by default and build on this target, with
+/// no extras: what `rig --safe` builds, whatever `[plugins]` says.
+pub fn defaults() -> Plugins {
+    Plugins {
+        on: (BUILT_IN.iter())
+            .filter(|built_in| built_in.on && built_in.available())
+            .map(|built_in| built_in.plugin.to_owned())
+            .collect(),
+        extra: Vec::new(),
+    }
+}
+
 /// Where the agent project gets the `rig-harness` crate from.
 pub enum RigSource {
     /// A rig checkout, by path.
