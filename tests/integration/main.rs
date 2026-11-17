@@ -8,6 +8,8 @@ mod api_surface;
 #[allow(clippy::expect_used)]
 #[path = "../providers/azure/mod.rs"]
 mod azure;
+#[cfg(all(feature = "cli", not(target_family = "wasm")))]
+mod cli;
 mod connect_credentials;
 #[allow(
     clippy::expect_used,

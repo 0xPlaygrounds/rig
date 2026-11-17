@@ -47,7 +47,7 @@ each plugin added): ask it before reading rig's source. Some are not, such as
 # Words
 
 - **Crates.** The **kernel** is rig-ecs (never "runtime" or "core"), the
-  **harness** rig-harness, the **launcher** the `rig` binary of `rig-cli` (std,
+  **harness** rig-harness, the **launcher** `rig-cli`, which the `rig` binary runs (std,
   `toml_edit`, and libc on unix); a **plugin** is a Bevy plugin the agent is
   built with, which `[plugins]` in `settings.toml` turns on or off. Sources: `crates/<name>`
   for libraries, kernel and harness; `plugins/rig-basics/src/<module>` for

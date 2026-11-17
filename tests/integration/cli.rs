@@ -1,3 +1,6 @@
+//! The `rig` binary run as a subprocess: its plugin commands, and the
+//! starts and checks that refuse a build its settings would break.
+
 #![allow(
     clippy::disallowed_methods,
     reason = "test fixtures run programs and touch files of their own"

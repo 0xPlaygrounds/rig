@@ -247,7 +247,7 @@ fn failed_update(name: &str, script: &str) -> Said {
 /// the build log of an older build.
 #[test]
 fn a_failed_update_shows_what_rig_update_said() {
-    let said = "rig update: `cargo install --force rig-cli` failed (exit status: 101); this rig \
+    let said = "rig update: `cargo install --force rig` failed (exit status: 101); this rig \
                 is unchanged.";
     let script = format!(
         "echo \"rig update: running $1\" >&2\n\
