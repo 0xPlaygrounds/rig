@@ -4,7 +4,7 @@
 //! "alt+m" = { cycle_model = ["deepseek/deepseek-flash", "deepseek/deepseek-v4-pro"] }
 //! "ctrl+g" = { command = "/compact" }
 //! "ctrl+t" = { insert = "Think step by step." }
-//! "ctrl+o" = { send = "Go on.", label = "Continue" }
+//! "alt+c" = { send = "Go on.", label = "Continue" }
 //! "ctrl+e" = { editor = true, override = true }
 //! ```
 //!

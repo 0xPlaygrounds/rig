@@ -1,9 +1,9 @@
 # rig-fold
 
 `rig_fold::FoldPlugin` folds finished tool calls in the rig agent's terminal
-view. It is on by default. Without it every call is drawn whole: turn it off
-with `rig plugin disable rig_fold::FoldPlugin`, in `/plugins`, or in
-`$RIG_HOME/settings.toml`:
+view. It is on by default. Turn it off with `rig plugin disable
+rig_fold::FoldPlugin`, in `/plugins`, or in `$RIG_HOME/settings.toml`; then
+every call is drawn whole:
 
 ```toml
 [plugins]
