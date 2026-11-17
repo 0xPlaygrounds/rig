@@ -478,7 +478,11 @@ impl ResponsesWebSocketSession {
             if let ResponsesWebSocketEvent::Done(done) = &event {
                 // OpenAI may emit `response.done` after the turn has already ended at
                 // `response.completed`. Ignore that trailing event on the next turn.
-                if self.pending_done_response_id.as_deref() == done.response_id() {
+                if self
+                    .pending_done_response_id
+                    .as_deref()
+                    .is_some_and(|pending| done.response_id() == Some(pending))
+                {
                     self.pending_done_response_id = None;
                     continue;
                 }
