@@ -154,8 +154,9 @@ fn a_path_plugin_gets_the_rig_crates_it_depends_on() {
     }
 }
 
-/// A path dependency of an extra by path is rebuilt when it changes, as the
-/// extra is, so it keeps line tables too, from crates.io as from a checkout.
+/// A path dependency of an extra by path, written out or inherited from its
+/// workspace, is rebuilt when it changes, as the extra is, so it keeps line
+/// tables too, from crates.io as from a checkout.
 #[test]
 fn a_path_plugins_own_path_dependencies_keep_line_tables() {
     let root = std::env::temp_dir().join(format!("rig-path-deps-{}", std::process::id()));
@@ -169,7 +170,15 @@ fn a_path_plugins_own_path_dependencies_keep_line_tables() {
             "inner",
             "[package]\nname = \"inner-pkg\"\n[dependencies]\ndeep = { path = \"../deep\" }\n",
         ),
-        ("deep", "[package]\nname = \"deep\"\n"),
+        (
+            "deep",
+            "[package]\nname = \"deep\"\n[dependencies]\nshared.workspace = true\n",
+        ),
+        (
+            "",
+            "[workspace]\n[workspace.dependencies]\nshared = { path = \"shared\" }\n",
+        ),
+        ("shared", "[package]\nname = \"shared\"\n"),
     ];
     for (directory, manifest) in crates {
         fs::create_dir_all(root.join(directory)).ok();
@@ -178,7 +187,7 @@ fn a_path_plugins_own_path_dependencies_keep_line_tables() {
     let outer = [extra("outer::OuterPlugin", "outer", root.join("outer"))];
     let profile = profile(&only(&outer), &RigSource::Registry).unwrap_or_default();
     fs::remove_dir_all(&root).ok();
-    for name in ["outer", "inner-pkg", "deep"] {
+    for name in ["outer", "inner-pkg", "deep", "shared"] {
         assert!(
             profile.contains(&format!(
                 "\n[profile.dev.package.{name}]\nopt-level = 1\ndebug = \"line-tables-only\"\n"

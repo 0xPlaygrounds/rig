@@ -428,19 +428,71 @@ fn profile(plugins: &Plugins, source: &RigSource) -> Result<String> {
     Ok(text)
 }
 
+/// `path` with each `..` taking out the component before it, as a
+/// manifest's relative path reads it.
+pub fn lexical(path: &Path) -> PathBuf {
+    let mut clean = PathBuf::new();
+    for component in path.components() {
+        match component {
+            std::path::Component::ParentDir if clean.pop() => {}
+            component => clean.push(component),
+        }
+    }
+    clean
+}
+
+/// The `[workspace.dependencies]` entry of `key` in the workspace of
+/// `manifest`, the manifest of `directory`, with the workspace's manifest:
+/// the one its `[package] workspace` path names, else the nearest at or
+/// above `directory` with a `[workspace]`.
+pub fn workspace_dependency(
+    manifest: &Manifest,
+    directory: &Path,
+    key: &str,
+) -> Option<(Manifest, Item)> {
+    let named = (manifest.document.get("package"))
+        .and_then(|package| package.get("workspace"))
+        .and_then(Item::as_str);
+    let workspace = match named {
+        Some(path) => Manifest::read(&lexical(&directory.join(path))).ok()?,
+        None => directory
+            .ancestors()
+            .filter_map(|directory| Manifest::read(directory).ok())
+            .find(|manifest| manifest.document.get("workspace").is_some())?,
+    };
+    let item = workspace
+        .document
+        .get("workspace")?
+        .get("dependencies")?
+        .get(key)?
+        .clone();
+    Some((workspace, item))
+}
+
 /// Adds to `found` the packages the crate in `directory` depends on by path,
-/// and theirs in turn: cargo rebuilds them when they change, as it does the
+/// written out or inherited from its workspace, and theirs in turn: cargo rebuilds them when they change, as it does the
 /// crate. A manifest that cannot be read is skipped; cargo names it.
 fn path_crates(directory: &Path, found: &mut BTreeSet<String>) {
     let Ok(manifest) = Manifest::read(directory) else {
         return;
     };
     for (_, table) in manifest.dependency_tables(&["dependencies"]) {
-        for (_, item) in table.iter() {
+        for (key, item) in table.iter() {
+            let inherited = item.get("workspace").and_then(Item::as_bool) == Some(true);
+            let written =
+                match inherited {
+                    true => workspace_dependency(&manifest, directory, key).and_then(
+                        |(workspace, item)| Some((workspace.file.parent()?.to_path_buf(), item)),
+                    ),
+                    false => Some((directory.to_path_buf(), item.clone())),
+                };
+            let Some((base, item)) = written else {
+                continue;
+            };
             let Some(path) = item.get("path").and_then(Item::as_str) else {
                 continue;
             };
-            let dependency = directory.join(path);
+            let dependency = lexical(&base.join(path));
             let name = Manifest::read(&dependency).ok().and_then(|manifest| {
                 let name = manifest.document.get("package")?.get("name")?.as_str()?;
                 Some(name.to_owned())
