@@ -1,7 +1,7 @@
 use std::io::ErrorKind;
 use std::time::{Duration, Instant};
 
-use super::{Backend, Program, Use, output_of, write_with};
+use super::{Backend, IMAGES, Program, Use, output_of, write_with};
 use crate::process::Launcher;
 
 const MISSING: Program = ("rig-test-no-such-clipboard", &[]);
@@ -64,4 +64,20 @@ fn a_wayland_text_read_asks_for_text() {
         args.windows(2).any(|pair| pair == ["--type", "text"]),
         "{args:?}"
     );
+}
+
+/// Wayland and X11 are each asked for a PNG, then a JPEG, then a WebP, as a
+/// clipboard may offer an image only as one of them.
+#[test]
+fn a_clipboard_is_asked_for_png_then_jpeg_then_webp() {
+    for backend in [Backend::Wayland, Backend::X11] {
+        let asked: Vec<&str> = IMAGES
+            .into_iter()
+            .filter_map(|image| {
+                let (_, args) = backend.command(Use::ReadImage(image));
+                args.iter().copied().find(|arg| arg.starts_with("image/"))
+            })
+            .collect();
+        assert_eq!(asked, ["image/png", "image/jpeg", "image/webp"]);
+    }
 }
