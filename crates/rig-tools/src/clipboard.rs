@@ -18,11 +18,23 @@ use crate::process::{Launcher, Process, Spawn};
 enum Use {
     /// Prints the clipboard's text.
     ReadText,
-    /// Prints the clipboard's image as PNG.
-    ReadImage,
+    /// Prints the clipboard's image of this type.
+    ReadImage(Image),
     /// Replaces the clipboard's text with its input.
     WriteText,
 }
+
+/// An image type a clipboard is asked for.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Image {
+    Png,
+    Jpeg,
+    Webp,
+}
+
+/// The image types a read asks for, in order, as a clipboard may offer an
+/// image only as one of them.
+const IMAGES: [Image; 3] = [Image::Png, Image::Jpeg, Image::Webp];
 
 /// A clipboard this machine may have.
 #[derive(Clone, Copy)]
@@ -37,18 +49,32 @@ impl Backend {
     fn command(self, what: Use) -> Program {
         match (self, what) {
             (Self::Wayland, Use::ReadText) => ("wl-paste", &["--no-newline", "--type", "text"]),
-            (Self::Wayland, Use::ReadImage) => {
+            (Self::Wayland, Use::ReadImage(Image::Png)) => {
                 ("wl-paste", &["--no-newline", "--type", "image/png"])
+            }
+            (Self::Wayland, Use::ReadImage(Image::Jpeg)) => {
+                ("wl-paste", &["--no-newline", "--type", "image/jpeg"])
+            }
+            (Self::Wayland, Use::ReadImage(Image::Webp)) => {
+                ("wl-paste", &["--no-newline", "--type", "image/webp"])
             }
             (Self::Wayland, Use::WriteText) => ("wl-copy", &[]),
             (Self::X11, Use::ReadText) => ("xclip", &["-selection", "clipboard", "-out"]),
-            (Self::X11, Use::ReadImage) => (
+            (Self::X11, Use::ReadImage(Image::Png)) => (
                 "xclip",
                 &["-selection", "clipboard", "-target", "image/png", "-out"],
             ),
+            (Self::X11, Use::ReadImage(Image::Jpeg)) => (
+                "xclip",
+                &["-selection", "clipboard", "-target", "image/jpeg", "-out"],
+            ),
+            (Self::X11, Use::ReadImage(Image::Webp)) => (
+                "xclip",
+                &["-selection", "clipboard", "-target", "image/webp", "-out"],
+            ),
             (Self::X11, Use::WriteText) => ("xclip", &["-selection", "clipboard", "-in"]),
             (Self::Mac, Use::ReadText) => ("pbpaste", &[]),
-            (Self::Mac, Use::ReadImage) => ("pngpaste", &["-"]),
+            (Self::Mac, Use::ReadImage(_)) => ("pngpaste", &["-"]),
             (Self::Mac, Use::WriteText) => ("pbcopy", &[]),
         }
     }
@@ -69,7 +95,9 @@ fn programs(what: Use) -> Vec<Program> {
         std::env::var_os("DISPLAY")
             .is_some()
             .then_some(Backend::X11),
-        cfg!(target_os = "macos").then_some(Backend::Mac),
+        // `pngpaste` prints any image as PNG, so only a PNG read asks it.
+        (cfg!(target_os = "macos") && !matches!(what, Use::ReadImage(Image::Jpeg | Image::Webp)))
+            .then_some(Backend::Mac),
     ]
     .into_iter()
     .flatten()
@@ -155,23 +183,35 @@ pub fn read_text(launcher: &Launcher) -> io::Result<Option<String>> {
 
 /// Saves the clipboard's image as a file in the directory `into`, named by
 /// the time and the image's type, and returns its path; `None` when the
-/// clipboard holds no image. Each program has five seconds to answer.
+/// clipboard holds no image. It asks for a PNG, then a JPEG, then a WebP;
+/// each program has five seconds to answer.
 ///
 /// # Errors
 ///
 /// As [`read_text`], or why the file could not be saved.
 pub fn read_image(launcher: &Launcher, into: &Path) -> io::Result<Option<PathBuf>> {
-    let printed = output_of(launcher, &programs(Use::ReadImage), READ_LIMIT)?;
-    let Some((bytes, kind)) =
-        printed.and_then(|bytes| ImageMediaType::sniff(&bytes).map(|kind| (bytes, kind)))
-    else {
-        return Ok(None);
-    };
-    std::fs::create_dir_all(into)?;
-    let stamp = rig_core::now_ms();
-    let path = into.join(format!("pasted-{stamp}.{}", kind.extension()));
-    std::fs::write(&path, bytes)?;
-    Ok(Some(path))
+    let mut asked = false;
+    for image in IMAGES {
+        let programs = programs(Use::ReadImage(image));
+        if programs.is_empty() {
+            continue;
+        }
+        asked = true;
+        let printed = output_of(launcher, &programs, READ_LIMIT)?;
+        let sniffed =
+            printed.and_then(|bytes| ImageMediaType::sniff(&bytes).map(|kind| (bytes, kind)));
+        if let Some((bytes, kind)) = sniffed {
+            std::fs::create_dir_all(into)?;
+            let stamp = rig_core::now_ms();
+            let path = into.join(format!("pasted-{stamp}.{}", kind.extension()));
+            std::fs::write(&path, bytes)?;
+            return Ok(Some(path));
+        }
+    }
+    if !asked {
+        return Err(no_clipboard());
+    }
+    Ok(None)
 }
 
 /// Replaces the clipboard's text with `text`.

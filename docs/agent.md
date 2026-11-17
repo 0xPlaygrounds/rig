@@ -275,12 +275,12 @@ looks like a path (it has a `/` or an extension) with no file there, or one
 that cannot be read, is warned about with the reason, and the model's
 message says the same, so the model knows it got no file. A message waiting for
 files on another machine holds back those sent after it, and Esc meanwhile
-puts them all back in the input. Ctrl+V pastes the clipboard's image
-(through `wl-paste`, `xclip` or `pngpaste`) as such a path, or its text
-when it holds no image, and a dropped image file becomes one too. When it
-cannot, it says why: the program that is not installed, no clipboard
-reachable from this machine (over SSH, say), or a program that did not
-answer within 5 seconds.
+puts them all back in the input. Ctrl+V pastes the clipboard's image, a
+PNG, JPEG or WebP (through `wl-paste`, `xclip` or `pngpaste`), as such a
+path, or its text when it holds no image, and each image file dropped
+becomes one too, also as a `file://` URL. When it cannot, it says why: the
+program that is not installed, no clipboard reachable from this machine
+(over SSH, say), or a program that did not answer within 5 seconds.
 
 Answers are drawn as markdown, edits as diffs, and each built-in tool's call
 in its own way. By default [`rig_fold::FoldPlugin`](../plugins/rig-fold) folds

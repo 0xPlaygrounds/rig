@@ -194,12 +194,15 @@ pub(crate) fn type_pasted(
     commands.entity(pasted.entity).despawn();
 }
 
-/// Inserts pasted `text` at the cursor; a dropped image file becomes
-/// `@path`, which attaches it.
+/// Inserts pasted `text` at the cursor; dropped image files become one
+/// `@path` each, which attaches them.
 pub(crate) fn paste_text(editor: &mut Editor, text: &str) {
-    match dropped_image(text) {
-        Some(path) => type_path(editor, &path),
-        None => editor.insert(text),
+    let images = dropped_images(text);
+    if images.is_empty() {
+        editor.insert(text);
+    }
+    for path in &images {
+        type_path(editor, path);
     }
 }
 
@@ -216,26 +219,37 @@ pub(crate) fn type_path(editor: &mut Editor, path: &Path) {
     editor.insert(&format!("{space}{reference} "));
 }
 
-/// The path a paste holds when it is one image file, as a terminal pastes
-/// a dropped file: quoted (taken as it is), shell-escaped, such as
-/// `shot\ \(1\).png` (unescaped, except on Windows, where `\` separates
-/// directories), or as a `file://` URL.
-pub(crate) fn dropped_image(text: &str) -> Option<PathBuf> {
-    let text = text.trim();
-    let quoted = text
+/// The image files a paste holds when it is only image files, as a
+/// terminal pastes dropped files: one per line, or separated by spaces,
+/// each quoted (taken as it is), shell-escaped, such as `shot\ \(1\).png`
+/// (unescaped, except on Windows, where `\` separates directories), or a
+/// `file://` URL, percent-decoded. Empty unless every part is one.
+pub(crate) fn dropped_images(text: &str) -> Vec<PathBuf> {
+    let lines = text.lines().map(str::trim).filter(|line| !line.is_empty());
+    let lines: Vec<String> = lines.map(unquoted).collect();
+    [lines, words(text)]
+        .into_iter()
+        .find_map(|parts| {
+            let images: Option<Vec<PathBuf>> = parts.iter().map(|it| image_file(it)).collect();
+            images.filter(|images| !images.is_empty())
+        })
+        .unwrap_or_default()
+}
+
+/// `path` without the quotes around it, else unescaped.
+fn unquoted(path: &str) -> String {
+    let quoted = path
         .strip_prefix('\'')
-        .and_then(|text| text.strip_suffix('\''))
+        .and_then(|path| path.strip_suffix('\''))
         .or_else(|| {
-            text.strip_prefix('"')
-                .and_then(|text| text.strip_suffix('"'))
+            path.strip_prefix('"')
+                .and_then(|path| path.strip_suffix('"'))
         });
-    let path = match quoted {
+    match quoted {
         Some(quoted) => quoted.to_owned(),
-        None if cfg!(windows) => text.to_owned(),
-        None => unescape(text),
-    };
-    let path = PathBuf::from(path.strip_prefix("file://").unwrap_or(&path));
-    (rig_tools::attach::is_image_path(&path) && path.is_file()).then_some(path)
+        None if cfg!(windows) => path.to_owned(),
+        None => unescape(path),
+    }
 }
 
 /// `text` with each `\` that escapes the next character, as a shell
@@ -250,6 +264,76 @@ fn unescape(text: &str) -> String {
         }
     }
     out
+}
+
+/// The words of `text` split at whitespace, as a shell splits them: a
+/// quoted part taken as it is, and `\` escaping the next character except
+/// on Windows.
+fn words(text: &str) -> Vec<String> {
+    let mut words = Vec::new();
+    let mut word: Option<String> = None;
+    let mut quote = None;
+    let mut chars = text.chars();
+    while let Some(character) = chars.next() {
+        match (quote, character) {
+            (Some(open), character) if character == open => quote = None,
+            (Some(_), character) => word.get_or_insert_default().push(character),
+            (None, '\'' | '"') => {
+                quote = Some(character);
+                word.get_or_insert_default();
+            }
+            (None, '\\') if !cfg!(windows) => word.get_or_insert_default().extend(chars.next()),
+            (None, character) if character.is_whitespace() => words.extend(word.take()),
+            (None, character) => word.get_or_insert_default().push(character),
+        }
+    }
+    words.extend(word);
+    words
+}
+
+/// The image file `part` names, as a path or a `file://` URL whose host
+/// is empty or `localhost`; `None` when it names no image file there.
+fn image_file(part: &str) -> Option<PathBuf> {
+    let path = match part.strip_prefix("file://") {
+        Some(url) => PathBuf::from(local_url_path(url)?),
+        None => PathBuf::from(part),
+    };
+    (rig_tools::attach::is_image_path(&path) && path.is_file()).then_some(path)
+}
+
+/// The decoded path of `url`, a `file://` URL without its scheme, when its
+/// host is empty or `localhost`; `None` for another host, which this
+/// machine cannot read.
+fn local_url_path(url: &str) -> Option<String> {
+    let path = url.strip_prefix("localhost").unwrap_or(url);
+    path.starts_with('/')
+        .then(|| percent_decoded(path))
+        .flatten()
+}
+
+/// `text` with each `%` and two hex digits replaced by the byte they
+/// name; `None` when the bytes are not UTF-8.
+fn percent_decoded(text: &str) -> Option<String> {
+    let mut bytes = Vec::with_capacity(text.len());
+    let mut rest = text.as_bytes();
+    while let Some((&byte, after)) = rest.split_first() {
+        let hex = after
+            .get(..2)
+            .filter(|hex| hex.iter().all(u8::is_ascii_hexdigit))
+            .and_then(|hex| std::str::from_utf8(hex).ok())
+            .and_then(|hex| u8::from_str_radix(hex, 16).ok());
+        match (byte, hex) {
+            (b'%', Some(decoded)) => {
+                bytes.push(decoded);
+                rest = after.get(2..).unwrap_or_default();
+            }
+            _ => {
+                bytes.push(byte);
+                rest = after;
+            }
+        }
+    }
+    String::from_utf8(bytes).ok()
 }
 
 #[cfg(test)]
