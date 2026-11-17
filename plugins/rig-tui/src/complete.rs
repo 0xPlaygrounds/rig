@@ -544,10 +544,13 @@ pub(crate) fn update(
         complete,
         open,
     });
-    let named = |open: &Completion| {
-        (open.items.get(open.selected)).is_some_and(|item| item.text == open.query)
+    // Enter on these sends the paste, or only closes its quote.
+    let kept = |list: &Completion| {
+        list.is_exact()
+            || (list.open
+                && (list.items.get(list.selected)).is_some_and(|item| item.text == list.query))
     };
-    if pasted && !completion.as_ref().is_some_and(named) {
+    if pasted && !completion.as_ref().is_some_and(kept) {
         view.dismissed = Some(start);
         view.completion = None;
         return;

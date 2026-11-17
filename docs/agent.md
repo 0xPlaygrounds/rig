@@ -216,8 +216,9 @@ history from anywhere on the first line. The usual emacs keys edit
 (Ctrl+A/E/K/U/W, Alt+B/F/D); Ctrl+C clears the input, and Ctrl+D on an
 empty input quits. A leading `/` completes command names and `@` completes
 the paths of the shown agent's working directory (skipping what
-`.gitignore` leaves out); Tab or Enter takes the selected one. Pasted
-text opens no list, so Enter sends it as pasted. A `/`
+`.gitignore` leaves out); Tab or Enter takes the selected one. A paste
+opens no list on its last word unless that word already names the
+selected item, so Enter sends it as pasted (or only closes its quote). A `/`
 followed by a space, or a first word with another `/` in it (a path such as
 `/etc/hosts: what is this?`, or `//x`), is no command: it goes to the model
 as typed. A path a
