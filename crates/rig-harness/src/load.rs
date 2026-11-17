@@ -299,10 +299,10 @@ pub fn load<P: Plugin + Default>(app: &mut App, package: &str, source: &str) {
     Attribute::Open(entity).bracket(app);
     // `Attribute` before and after it brackets its `finish` and `cleanup`
     // (and the plugins it adds), which run in the order plugins were
-    // added.
+    // added; after it, the outer's attribution resumes.
     app.add_plugins(Attribute::Open(entity));
     app.add_plugins(plugin);
-    app.add_plugins(Attribute::Close);
+    app.add_plugins(outer.map_or(Attribute::Close, Attribute::Open));
     Attribute::Close.bracket(app);
     if let Some(outer) = outer {
         Attribute::Open(outer).bracket(app);
