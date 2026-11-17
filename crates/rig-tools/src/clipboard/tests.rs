@@ -1,7 +1,7 @@
 use std::io::ErrorKind;
 use std::time::{Duration, Instant};
 
-use super::{Program, output_of, write_with};
+use super::{Backend, Program, Use, output_of, write_with};
 use crate::process::Launcher;
 
 const MISSING: Program = ("rig-test-no-such-clipboard", &[]);
@@ -53,4 +53,15 @@ fn a_clipboard_read_gives_up_at_its_limit() {
         Some(ErrorKind::TimedOut)
     );
     assert!(failure.is_some_and(|it| it.to_string().contains("sh did not answer")));
+}
+
+/// A text read asks Wayland for text, as `wl-paste` with no type prints
+/// whatever the clipboard offers, such as a JPEG's bytes.
+#[test]
+fn a_wayland_text_read_asks_for_text() {
+    let (_, args) = Backend::Wayland.command(Use::ReadText);
+    assert!(
+        args.windows(2).any(|pair| pair == ["--type", "text"]),
+        "{args:?}"
+    );
 }

@@ -36,7 +36,7 @@ impl Backend {
     /// The program and arguments that do `what` with this clipboard.
     fn command(self, what: Use) -> Program {
         match (self, what) {
-            (Self::Wayland, Use::ReadText) => ("wl-paste", &["--no-newline"]),
+            (Self::Wayland, Use::ReadText) => ("wl-paste", &["--no-newline", "--type", "text"]),
             (Self::Wayland, Use::ReadImage) => {
                 ("wl-paste", &["--no-newline", "--type", "image/png"])
             }
