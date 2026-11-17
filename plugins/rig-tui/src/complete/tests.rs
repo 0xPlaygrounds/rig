@@ -347,3 +347,44 @@ fn a_dropped_image_with_a_space_is_typed_quoted() {
     }
     std::fs::remove_dir_all(&root).ok();
 }
+
+/// A dropped `file://` URL is percent-decoded, with or without the host
+/// `localhost`, and a drop of several image files, as terminals paste
+/// them, types one reference for each.
+#[cfg(unix)]
+#[test]
+fn dropped_image_urls_and_several_images_are_typed_as_references() {
+    use crate::KeyInput;
+    use crate::tests::push;
+    use crossterm::event::Event;
+
+    let root = scratch("drop-several");
+    let (spaced, plain) = (root.join("my shot.png"), root.join("a.jpg"));
+    std::fs::write(&spaced, b"\x89PNG\r\n\x1a\n").ok();
+    std::fs::write(&plain, b"\xff\xd8\xff").ok();
+    let (spaced, plain) = (spaced.display(), plain.display());
+    let escaped = spaced.to_string().replace(' ', "\\ ");
+    let both = format!("@\"{spaced}\" @{plain} ");
+    let drops = [
+        (
+            format!("file://{root}/my%20shot.png", root = root.display()),
+            format!("@\"{spaced}\" "),
+        ),
+        (format!("file://localhost{plain}"), format!("@{plain} ")),
+        (format!("'{spaced}' '{plain}'"), both.clone()),
+        (format!("{escaped} {plain} "), both.clone()),
+        (format!("{spaced}\n{plain}\n"), both.clone()),
+        (
+            format!("file://{}/my%20shot.png file://{plain}", root.display()),
+            both,
+        ),
+    ];
+    let (mut app, _) = view_app();
+    for (pasted, typed) in drops {
+        press(&mut app, "ctrl+c");
+        push(&mut app, KeyInput::Event(Event::Paste(pasted.clone())));
+        app.update();
+        assert_eq!(typed_text(&app), typed, "{pasted:?}");
+    }
+    std::fs::remove_dir_all(&root).ok();
+}

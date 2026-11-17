@@ -6,8 +6,11 @@ use rig_ecs::agent::Notice;
 use rig_ecs::requests::RequestOf;
 use rig_harness::main_agent::ShownAgent;
 
-use super::{CopyMissed, Paste, Pasted, read_either, type_pasted, warn_copy_missed};
+use super::{
+    CopyMissed, Paste, Pasted, dropped_images, read_either, type_pasted, warn_copy_missed,
+};
 use crate::editor::{Editor, MainEditor};
+use crate::tests::scratch;
 use crate::view::TuiView;
 
 /// A pasted image is typed in the editor that asked for it, not in
@@ -102,4 +105,32 @@ fn a_missing_image_reader_still_pastes_text() {
         found.err()
     );
     assert!(!read_text);
+}
+
+/// A paste is taken as dropped images only when every part of it is an
+/// image file there: a sentence naming one, a text file, a missing image
+/// or a URL of another host stay text.
+#[test]
+fn a_paste_with_any_part_not_an_image_file_drops_none() {
+    let root = scratch("drop-none");
+    let (image, text) = (root.join("a.png"), root.join("notes.txt"));
+    std::fs::write(&image, b"\x89PNG\r\n\x1a\n").ok();
+    std::fs::write(&text, "notes").ok();
+    let (image, text) = (image.display(), text.display());
+    let missing = root.join("gone.png");
+    assert_eq!(
+        dropped_images(&format!("{image}")),
+        [PathBuf::from(image.to_string())]
+    );
+    for pasted in [
+        format!("see {image} please"),
+        format!("{image} {text}"),
+        format!("{text}"),
+        format!("{}", missing.display()),
+        format!("file://elsewhere{image}"),
+        String::new(),
+    ] {
+        assert_eq!(dropped_images(&pasted), Vec::<PathBuf>::new(), "{pasted:?}");
+    }
+    std::fs::remove_dir_all(&root).ok();
 }
