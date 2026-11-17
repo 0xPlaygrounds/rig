@@ -30,8 +30,8 @@ const TASK_DESCRIPTION: &str = "Start a subagent: a new agent with an empty conv
     another model, or when a part of the task is both large and separable: it takes many tool \
     calls whose details you will not need afterwards, and a brief can state its goal and the \
     answer you need. Start several at once only for parts that are independent of each other and \
-    of your own work meanwhile. Never start one to read a few files, run one command or make one \
-    edit.\n\n\
+    of your own work meanwhile. Unless the user asks, never start one to read a few files, run \
+    one quick command or make one edit.\n\n\
     The call returns at once with the subagent's id; its report, its final answer, arrives as a \
     message headed with that id and the task title as soon as it is done. It may `message` you a \
     question meanwhile. Continue a subagent with `message`, not another `task`. Write `prompt` as \

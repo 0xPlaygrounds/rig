@@ -111,7 +111,8 @@ impl Plugin for HelpersPlugin {
              added to yours. So do the work yourself by default. Use helpers only when the user \
              asks for them, for large parts of the task that are independent of each other, or for \
              slow work, such as a long test run, given to a helper of the same call as the work it \
-             should run beside. Never for a few reads, one command or an edit you already know. \
+             should run beside. Unless the user asks, never for a few reads, one quick command \
+             or an edit you already know. \
              `tasks` run side by side, {} at a time while the rest wait their turn, `chain` in \
              order (`{{previous}}` in a task is the answer before it), `task` alone. Each may take \
              {} s unless `timeout` says otherwise. The call returns once every helper finished, \
