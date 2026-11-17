@@ -148,28 +148,32 @@ fn on_screen() -> (App, Option<Entity>) {
 }
 
 /// Steps Bevy's real clock by `after`, runs a frame, and returns the
-/// color of the mark's first cell on screen.
+/// color of the first cell of each of the mark's three rows on screen.
 #[cfg(feature = "tui")]
-fn mark_color(app: &mut App, after: std::time::Duration) -> Option<Color> {
+fn mark_colors(app: &mut App, after: std::time::Duration) -> Vec<Option<Color>> {
     app.world_mut()
         .resource_mut::<Time<Real>>()
         .update_with_duration(after);
     app.update();
     let buffer = app.world().resource::<rig_tui::TuiTestScreen>().buffer();
     let area = buffer.area;
-    let rows = (area.top()..area.bottom()).map(|y| {
-        let cells = (area.left()..area.right()).filter_map(move |x| buffer.cell((x, y)));
-        cells.collect::<Vec<_>>()
-    });
-    let mark = rows.into_iter().find_map(|row| {
-        let text: String = row.iter().map(|cell| cell.symbol()).collect();
-        text.contains("█▙ █▙ █▙").then(|| {
-            row.into_iter()
-                .find(|cell| cell.symbol() == "█")
-                .map(|cell| cell.fg)
+    let rows: Vec<Vec<_>> = (area.top()..area.bottom())
+        .map(|y| {
+            let cells = (area.left()..area.right()).filter_map(|x| buffer.cell((x, y)));
+            cells.collect()
         })
-    });
-    mark.flatten()
+        .collect();
+    ["█▙ █▙ █▙", "██ ██ ██", "█▛ █▛ █▛"]
+        .into_iter()
+        .map(|panels| {
+            let row = rows.iter().find(|row| {
+                let text: String = row.iter().map(|cell| cell.symbol()).collect();
+                text.contains(panels)
+            })?;
+            let first = row.iter().find(|cell| cell.symbol() == "█")?;
+            Some(first.fg)
+        })
+        .collect()
 }
 
 #[cfg(feature = "tui")]
@@ -180,9 +184,12 @@ fn the_mark_pulses_while_the_agent_works_and_rests_when_idle() {
     let Some(agent) = agent else {
         return;
     };
-    let still = mark_color(&mut app, crate::activity::STEP);
-    assert!(still.is_some(), "the mark is on screen");
-    assert_eq!(mark_color(&mut app, crate::activity::STEP), still);
+    let still = mark_colors(&mut app, crate::activity::STEP);
+    assert!(
+        still.len() == 3 && still.iter().all(Option::is_some),
+        "the whole mark is on screen: {still:?}"
+    );
+    assert_eq!(mark_colors(&mut app, crate::activity::STEP), still);
 
     // A plugin's work for the agent, which runs until it has an outcome.
     let review = EffectRequest {
@@ -197,16 +204,26 @@ fn the_mark_pulses_while_the_agent_works_and_rests_when_idle() {
         .spawn((review, ForAgent(agent), Name::new("reviewing")))
         .id();
     let colors: Vec<_> = (0..4)
-        .map(|_| mark_color(&mut app, crate::activity::STEP))
+        .map(|_| mark_colors(&mut app, crate::activity::STEP))
         .collect();
-    assert!(
-        colors.iter().all(Option::is_some) && colors.iter().any(|color| *color != still),
-        "the mark stays on screen and pulses: {colors:?}"
-    );
+    // Every row of the mark pulses, so the mark never looks split.
+    for row in 0..3 {
+        let shown: Vec<_> = colors
+            .iter()
+            .map(|colors| colors.get(row).copied())
+            .collect();
+        assert!(
+            shown
+                .iter()
+                .all(|color| color.is_some_and(|color| color.is_some()))
+                && shown.iter().any(|color| *color != still.get(row).copied()),
+            "row {row} of the mark stays on screen and pulses: {shown:?}"
+        );
+    }
 
     app.world_mut()
         .entity_mut(review)
         .insert(Outcome::custom("done"));
-    mark_color(&mut app, crate::activity::STEP);
-    assert_eq!(mark_color(&mut app, crate::activity::STEP), still);
+    mark_colors(&mut app, crate::activity::STEP);
+    assert_eq!(mark_colors(&mut app, crate::activity::STEP), still);
 }
