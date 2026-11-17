@@ -75,14 +75,28 @@ fn read(launcher: &Launcher, directory: &Path) -> Result<Paste, String> {
     }
 }
 
+/// A copy that reached no clipboard program, as none is installed: what
+/// its task ends as, with why.
+#[derive(Component)]
+pub(crate) struct CopyMissed(Option<io::Error>);
+
+impl From<Option<io::Error>> for CopyMissed {
+    fn from(missed: Option<io::Error>) -> Self {
+        Self(missed)
+    }
+}
+
 /// Puts each text copied to the clipboard in this machine's clipboard too,
 /// off the main thread, as the terminal may ignore the escape code that
 /// copies it.
 pub(crate) fn copy_to_system(
     mut copies: MessageReader<CopyToClipboard>,
     processes: Option<Res<Processes>>,
+    wake: Option<Res<Wake>>,
+    mut commands: Commands,
 ) {
     let pool = IoTaskPool::get_or_init(TaskPool::default);
+    let wake = wake.as_deref().cloned().unwrap_or_default();
     for CopyToClipboard(text) in copies.read() {
         let launcher = processes.as_deref().map(Processes::launcher);
         let launcher = launcher.unwrap_or_default();
@@ -90,14 +104,42 @@ pub(crate) fn copy_to_system(
         let copy = blocking(move || Ok(clipboard::write_text(&launcher, &text)));
         let copy = async move {
             match copy.await {
-                Ok(Err(failure)) if failure.kind() == ErrorKind::Unsupported => {}
-                Ok(Err(failure)) => warn!("could not copy to the clipboard: {failure}"),
-                Err(failure) => warn!("could not copy to the clipboard: {failure}"),
-                Ok(Ok(())) => {}
+                Ok(Err(failure)) if failure.kind() == ErrorKind::NotFound => Some(failure),
+                Ok(Err(failure)) if failure.kind() == ErrorKind::Unsupported => None,
+                Ok(Err(failure)) => {
+                    warn!("could not copy to the clipboard: {failure}");
+                    None
+                }
+                Err(failure) => {
+                    warn!("could not copy to the clipboard: {failure}");
+                    None
+                }
+                Ok(Ok(())) => None,
             }
         };
-        pool.spawn(copy).detach();
+        let running = Running::spawn_into::<CopyMissed, _>(pool, &wake, copy);
+        commands.spawn((Name::new("rig-tui: copy"), running));
     }
+}
+
+/// Says once a session that a copy reached only the terminal, naming the
+/// clipboard program that is not installed.
+pub(crate) fn warn_copy_missed(
+    missed: On<Insert<CopyMissed>>,
+    copies: Query<&CopyMissed>,
+    shown: Res<ShownAgent>,
+    mut warned: Local<bool>,
+    mut notices: MessageWriter<Notice>,
+    mut commands: Commands,
+) {
+    if let Ok(CopyMissed(Some(why))) = copies.get(missed.entity)
+        && !*warned
+    {
+        *warned = true;
+        let why = format!("Copied with OSC 52 only, which some terminals ignore: {why}.");
+        notices.write(Notice::warn(shown.0, why));
+    }
+    commands.entity(missed.entity).despawn();
 }
 
 /// Puts what a Ctrl+V found in the editor that asked for it, or says why

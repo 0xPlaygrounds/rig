@@ -1,3 +1,4 @@
+use std::io::{self, ErrorKind};
 use std::path::PathBuf;
 
 use bevy_ecs::prelude::*;
@@ -5,7 +6,7 @@ use rig_ecs::agent::Notice;
 use rig_ecs::requests::RequestOf;
 use rig_harness::main_agent::ShownAgent;
 
-use super::{Paste, Pasted, type_pasted};
+use super::{CopyMissed, Paste, Pasted, type_pasted, warn_copy_missed};
 use crate::editor::{Editor, MainEditor};
 
 /// A pasted image is typed in the editor that asked for it, not in
@@ -39,4 +40,21 @@ fn pasted_text_is_typed() {
     world.flush();
     let text = world.get::<Editor>(main).map(|it| it.text().to_owned());
     assert_eq!(text.as_deref(), Some("two\nlines"));
+}
+
+/// A copy that found no clipboard program says so once a session.
+#[test]
+fn a_missed_copy_is_told_once() {
+    let mut world = World::new();
+    world.init_resource::<ShownAgent>();
+    world.init_resource::<Messages<Notice>>();
+    world.add_observer(warn_copy_missed);
+    for _ in 0..2 {
+        let missing = io::Error::new(ErrorKind::NotFound, "wl-copy is not installed");
+        world.spawn(CopyMissed(Some(missing)));
+        world.flush();
+    }
+    let notices = world.resource::<Messages<Notice>>();
+    let told: Vec<&Notice> = notices.iter_current_update_messages().collect();
+    assert_eq!(told.len(), 1, "{told:?}");
 }
