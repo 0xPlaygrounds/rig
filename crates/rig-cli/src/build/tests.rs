@@ -838,3 +838,74 @@ fn an_inherited_bevy_pin_is_found_in_the_workspace_the_package_names() {
         )]
     );
 }
+
+/// A cached safe build runs with no cargo only from crates.io, with this
+/// launcher's stamp, and while it still describes itself: a damaged copy,
+/// or one built from a checkout, which may have changed since, is built
+/// again.
+#[test]
+fn a_safe_build_is_reused_only_from_crates_io_while_it_describes_itself() {
+    let root = std::env::temp_dir().join(format!("rig-safe-cache-{}", std::process::id()));
+    fs::remove_dir_all(&root).ok();
+    let home = Home::at(&root);
+    let describing = "#!/bin/sh\n[ -n \"$RIG_DESCRIBE\" ] || exit 0\nprintf 'rig-describe 1\\n' > \"$RIG_DESCRIBE\"\n";
+    let current = (|| -> Result<Vec<bool>> {
+        let launch = crate::test_launch(&home, Path::new("/opt/rig/bin/rig"))?;
+        let checkout = RigSource::Local(root.clone());
+        fs::create_dir_all(home.bin())?;
+        fs::write(safe(&home), describing)?;
+        fs::set_permissions(safe(&home), std::fs::Permissions::from_mode(0o755))?;
+        fs::write(safe_version(&home), safe_stamp(&RigSource::Registry))?;
+        let mut current = vec![safe_is_current(&launch, &RigSource::Registry)];
+        fs::write(safe_version(&home), safe_stamp(&checkout))?;
+        current.push(safe_is_current(&launch, &checkout));
+        fs::write(safe_version(&home), safe_stamp(&RigSource::Registry))?;
+        fs::set_permissions(safe(&home), std::fs::Permissions::from_mode(0o644))?;
+        current.push(safe_is_current(&launch, &RigSource::Registry));
+        fs::write(safe(&home), "\x7fELF")?;
+        fs::set_permissions(safe(&home), std::fs::Permissions::from_mode(0o755))?;
+        current.push(safe_is_current(&launch, &RigSource::Registry));
+        Ok(current)
+    })();
+    fs::remove_dir_all(&root).ok();
+    let current = current.map_err(|why| why.to_string());
+    assert_eq!(current, Ok(vec![true, false, false, false]));
+}
+
+/// The lock files a safe build changed are put back as they were, and one
+/// that was not there is removed, so the next build of the user's plugins
+/// reseeds and checks as it would have.
+#[test]
+fn a_safe_build_puts_the_projects_lock_files_back() {
+    let root = std::env::temp_dir().join(format!("rig-safe-locks-{}", std::process::id()));
+    fs::remove_dir_all(&root).ok();
+    let home = Home::at(&root);
+    let after = (|| -> Result<Vec<Option<String>>> {
+        fs::create_dir_all(home.project())?;
+        fs::write(home.project().join("Cargo.lock"), "user's lock")?;
+        fs::write(home.project().join("Cargo.lock.seed"), "commit A's lock")?;
+        let kept = keep_locks(&home);
+        for name in ["Cargo.lock", "Cargo.lock.seed", "Cargo.lock.checked"] {
+            fs::write(home.project().join(name), "the safe build's")?;
+        }
+        let mut log = BuildLog::create(
+            home.build_log(),
+            BuildOutput::LogOnly,
+            Box::new(Shown::default()),
+        );
+        put_back(kept, &mut log);
+        Ok(["Cargo.lock", "Cargo.lock.seed", "Cargo.lock.checked"]
+            .map(|name| fs::read_to_string(home.project().join(name)).ok())
+            .to_vec())
+    })();
+    fs::remove_dir_all(&root).ok();
+    let after = after.map_err(|why| why.to_string());
+    assert_eq!(
+        after,
+        Ok(vec![
+            Some("user's lock".to_owned()),
+            Some("commit A's lock".to_owned()),
+            None
+        ])
+    );
+}
