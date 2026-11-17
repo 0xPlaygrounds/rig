@@ -169,6 +169,10 @@ impl<H: Serve + ?Sized> Serve for Arc<H> {
         (**self).descriptor()
     }
 
+    fn key(&self) -> HandlerKey {
+        (**self).key()
+    }
+
     async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
         (**self).serve(kind, dispatch).await
     }
@@ -357,6 +361,10 @@ impl Serve for ErasedHandler {
 
     fn descriptor(&self) -> HandlerDescriptor {
         self.inner.descriptor()
+    }
+
+    fn key(&self) -> HandlerKey {
+        self.key.clone()
     }
 
     async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
