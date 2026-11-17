@@ -776,10 +776,11 @@ processes can share one:
 | `plugins/` | The plugin crates `rig plugin new` makes. |
 | `auth/` | `/login`'s credentials: `chatgpt.json` and the API keys in `keys/`. |
 | `anthropic-oauth/` | The Claude sign-in and device id of the optional `rig-claude-cloak` plugin. |
-| `project/` | The generated agent project, regenerated before each build. |
+| `project/` | The generated agent project, regenerated before each build. `kept-locks/` holds its lock files while a `rig --safe` build runs, and after one was stopped, until the next build puts them back. |
 | `target/` | cargo's build of the agent project, a few gigabytes. |
-| `bin/` | The builds. `good` is the last one that started. `staged` is a new build waiting for the next start, and `staged-<session>` one made for one session's `rig` by its start or its `/reload`. `rejected` is the stamp of a build that stopped before it was ready, which starts skip until it changes. `described/` holds what each build reported about itself, and `lock` is the build lock. |
+| `bin/` | The builds. `good` is the last one that started. `staged` is a new build waiting for the next start, and `staged-<session>` one made for one session's `rig` by its start or its `/reload`. `rejected` is the stamp of a build that stopped before it was ready, which starts skip until it changes. `described/` holds what each build reported about itself, and `lock` is the build lock. `safe` is the build `rig --safe` starts, and `safe.version` the launcher version and source it was built by. |
 | `build.log` | The last build's whole output. |
+| `safe-build.log` | The last `rig --safe` build's whole output. |
 | `mcp.json` | The MCP servers of the optional `rig-mcp-client` plugin, in every project, with its locks `mcp.lock` and `mcp-approvals.lock`. |
 | `data/` | Plugins' data across sessions and projects. |
 | `projects/` | Plugins' data per project, such as the prompt history `projects/<name>-<key>/tui/history.jsonl`. |
@@ -790,7 +791,8 @@ processes can share one:
 | `sessions/<id>/agent.log` | The session's agent log. |
 
 Rig cleans up after itself in these places only. `project/` and `build.log`
-are rewritten by every build. A `rig` removes its `run/<pid>/` when it exits,
+are rewritten by every build, `bin/safe` and `safe-build.log` by every safe
+build. A `rig` removes its `run/<pid>/` when it exits,
 and the next start removes those of a `rig` that was killed. A failed run's
 `run/<pid>/agent.log` is kept until you delete it, unless the `rig` went back
 to another session and said why there. The next start after a session's `rig`
