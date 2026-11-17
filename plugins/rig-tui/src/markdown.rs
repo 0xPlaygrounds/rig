@@ -68,9 +68,9 @@ fn stand_ins() -> impl Iterator<Item = char> {
 
 /// `text` as markdown at `width`, as [`render`] draws it, with each of `marks` drawn
 /// before its byte: past the end at the end, inside a character before
-/// it. Each mark stands in the text as a private-use character neither
-/// the text nor its rendering holds while it is rendered, so markdown on both sides of it is
-/// kept. A text that leaves too few of them free is drawn plain.
+/// it. Each mark stands in the text as a private-use character the text
+/// neither holds nor names while it is rendered, so markdown on both sides
+/// of it is kept. A text that leaves too few of them free is drawn plain.
 pub fn render_marked(
     text: &str,
     marks: &[(usize, Span<'static>)],
@@ -80,11 +80,7 @@ pub fn render_marked(
     if marks.is_empty() {
         return render(text, theme, width);
     }
-    // Markdown can draw characters the source only names, such as `&#xE000;`.
-    let drawn = render(text, theme, width);
-    let drawn = drawn.iter().flat_map(|look| &look.line.spans);
-    let drawn = drawn.flat_map(|span| span.content.chars());
-    let held: HashSet<char> = text.chars().chain(drawn).collect();
+    let held: HashSet<char> = text.chars().chain(referenced(text)).collect();
     let free = stand_ins().filter(|ch| !held.contains(ch));
     let mut placed: Vec<(usize, char, &Span<'static>)> = free
         .zip(marks)
@@ -146,6 +142,21 @@ pub fn render_marked(
             LookLine { line, code }
         })
         .collect()
+}
+
+/// Every character a numeric character reference in `text` names, such as
+/// `&#xE000;`, wherever it stands. A stand-in never joins text, so these and
+/// the text's own are all the private-use characters markdown can draw
+/// from it once marked, since no named reference names one.
+fn referenced(text: &str) -> impl Iterator<Item = char> + '_ {
+    text.split("&#").skip(1).filter_map(|after| {
+        let (digits, _) = after.split_once(';')?;
+        let code = match digits.strip_prefix(['x', 'X']) {
+            Some(hex) => u32::from_str_radix(hex, 16),
+            None => digits.parse(),
+        };
+        char::from_u32(code.ok()?)
+    })
 }
 
 /// `text` as plain lines with each of `marks` before its byte.

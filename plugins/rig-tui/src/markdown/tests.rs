@@ -138,6 +138,13 @@ fn private_use_text_is_kept_apart_from_marks() {
         marked("\u{E000}&#xE001;", &[(0, "[m]")]),
         "[m]\u{E000}\u{E001}"
     );
+    // A stand-in can end what kept a reference literal, so it decodes.
+    assert_eq!(marked(r"\&#xE000;", &[(1, "[m]")]), "\\[m]\u{E000}");
+    assert_eq!(marked("    &#xE000;", &[(0, "[m]")]), "[m]    \u{E000}");
+    assert_eq!(
+        marked("<!-- &#xE000; -->", &[(1, "[m]")]),
+        "<[m]!-- \u{E000} -->"
+    );
 }
 
 /// A text holding every private-use character is drawn whole, its marks
