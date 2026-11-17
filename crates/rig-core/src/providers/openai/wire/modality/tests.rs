@@ -536,10 +536,10 @@ fn the_huggingface_image_body_is_the_routers_own_shape() {
         )
         .expect("the request encodes");
     let http_request = &encoded.request;
-    // The model is the path, at the router root rather than under `/v1`.
+    // The model is the path, under HF Inference's own `models` root.
     assert_eq!(
         http_request.uri().to_string(),
-        "https://router.huggingface.co/stabilityai/stable-diffusion-3-medium-diffusers"
+        "https://router.huggingface.co/hf-inference/models/stabilityai/stable-diffusion-3-medium-diffusers"
     );
     let body = json_body(&encoded.request);
     assert_eq!(body["inputs"], "a cat");
