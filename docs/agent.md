@@ -19,6 +19,7 @@ as Bevy entities, one recorded effect path, session logs) is the
 - [The terminal view](#the-terminal-view)
 - [Sessions](#sessions)
 - [Context, compaction and retries](#context-compaction-and-retries)
+- [If rig seems stuck](#if-rig-seems-stuck)
 - [Tools](#tools)
 - [Subagents](#subagents)
 - [Without the terminal view](#without-the-terminal-view)
