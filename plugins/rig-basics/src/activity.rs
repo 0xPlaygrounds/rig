@@ -307,5 +307,14 @@ fn lasted(seconds: u64) -> String {
     }
 }
 
+/// How long each step of the working animation lasts.
+#[cfg(feature = "tui")]
+pub(crate) const STEP: Duration = Duration::from_millis(120);
+
+/// Animates the working agent's status, when the terminal view is the
+/// run's front.
+#[cfg(feature = "tui")]
+pub(crate) fn animate(_app: &mut App) {}
+
 #[cfg(test)]
 mod tests;

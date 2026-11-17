@@ -192,3 +192,85 @@ fn the_status_line_shows_how_long_a_step_has_lasted() {
     app.world_mut().entity_mut(turn).despawn();
     assert_eq!(shown(&mut app, 60).as_deref(), Some("idle"));
 }
+
+/// An app with the terminal view's activity, `settings` as its
+/// settings.toml, and a thinking shown agent; with the agent and its turn.
+#[cfg(feature = "tui")]
+fn working(settings: &str) -> (App, Entity, Entity) {
+    let mut app = App::new();
+    app.insert_resource(rig_harness::settings::Settings::from_toml(settings))
+        .add_plugins(ActivityPlugin)
+        .init_resource::<rig_harness::main_agent::ShownAgent>()
+        .register_required_components::<Agent, rig_tui::StatusItems>();
+    animate(&mut app);
+    let world = app.world_mut();
+    let agent = spawn_root(world).id();
+    world.resource_mut::<rig_harness::main_agent::ShownAgent>().0 = Some(agent);
+    let turn = world.spawn(TurnOf(agent)).id();
+    world.spawn((Partial::default(), CallOf(turn)));
+    (app, agent, turn)
+}
+
+/// Steps Bevy's real clock by `after`, runs a frame, and returns `agent`'s
+/// status item and how many [`KeepAwake`]s live.
+#[cfg(feature = "tui")]
+fn step(app: &mut App, agent: Entity, after: Duration) -> (Option<String>, usize) {
+    let world = app.world_mut();
+    world
+        .resource_mut::<Time<Real>>()
+        .update_with_duration(after);
+    app.update();
+    let items = app.world().get::<rig_tui::StatusItems>(agent);
+    let item = items.and_then(|items| items.iter().find(|item| item.name == "status"));
+    let text = item.map(|item| item.text.clone());
+    let world = app.world_mut();
+    let awake = world.query::<&KeepAwake>().iter(world).count();
+    (text, awake)
+}
+
+#[cfg(feature = "tui")]
+#[test]
+fn a_working_agents_status_waves_while_the_loop_stays_awake() {
+    let (mut app, agent, turn) = working("");
+    let (first, awake) = step(&mut app, agent, Duration::ZERO);
+    assert_eq!(awake, 1);
+    let (second, awake) = step(&mut app, agent, STEP);
+    assert_eq!(awake, 1, "one KeepAwake, not one a step");
+    assert_ne!(first, second, "the wave moves a step");
+    let label = |text: &Option<String>| text.as_deref().is_some_and(|t| t.ends_with(" thinking…"));
+    assert!(label(&first) && label(&second), "{first:?} {second:?}");
+
+    app.world_mut().entity_mut(turn).despawn();
+    let (idle, awake) = step(&mut app, agent, STEP);
+    assert_eq!((idle.as_deref(), awake), (Some("idle"), 0));
+}
+
+#[cfg(feature = "tui")]
+#[test]
+fn with_animate_off_the_wave_is_still_and_the_loop_sleeps() {
+    let (mut app, agent, _) = working("[activity]\nanimate = false\n");
+    let (first, awake) = step(&mut app, agent, Duration::ZERO);
+    let (second, _) = step(&mut app, agent, STEP);
+    assert_eq!(first, second);
+    assert_eq!(awake, 0);
+    // Still a wave, before the label.
+    assert!(first.is_some_and(|text| text.ends_with(" thinking…") && text != "thinking…"));
+}
+
+/// A run whose front is not the terminal view, such as `rig -p`, keeps
+/// no animation awake.
+#[cfg(feature = "tui")]
+#[test]
+fn another_front_animates_nothing() {
+    let mut app = App::new();
+    app.insert_resource(rig_harness::settings::Settings::default())
+        .add_plugins(ActivityPlugin)
+        .init_resource::<rig_harness::main_agent::ShownAgent>();
+    app.finish();
+    let world = app.world_mut();
+    let agent = spawn_root(world).id();
+    world.resource_mut::<rig_harness::main_agent::ShownAgent>().0 = Some(agent);
+    world.spawn(TurnOf(agent));
+    let (_, awake) = step(&mut app, agent, STEP);
+    assert_eq!(awake, 0);
+}
