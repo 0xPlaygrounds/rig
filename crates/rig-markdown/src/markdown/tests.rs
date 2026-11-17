@@ -80,3 +80,13 @@ fn a_list_item_that_starts_with_code_keeps_its_marker() {
         }
     }
 }
+
+/// A tab in prose and in inline code is drawn as spacing once wrapped.
+#[test]
+fn a_tab_in_prose_and_inline_code_is_spacing() {
+    let lines = render("a\tb `c\td`", &Palette::default(), None, &Plain);
+    let lines: Vec<Line<'static>> = lines.into_iter().map(|(line, _)| line).collect();
+    let rows = crate::wrap::wrap_all(&lines, 80);
+    let text: Vec<String> = rows.iter().map(ToString::to_string).collect();
+    assert_eq!(text, ["a    b c    d"]);
+}

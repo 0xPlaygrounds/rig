@@ -467,3 +467,23 @@ fn a_plain_theme_draws_no_color_at_all() {
     assert_eq!(colored, None);
     assert!(screen.rows().iter().any(|row| row.contains("A heading")));
 }
+
+/// A queued message's tab is spacing, as the transcript draws it.
+#[test]
+fn a_queued_messages_tab_is_spacing() {
+    use rig_ecs::inbox::{DeliveryMode, Incoming};
+    let message = Incoming::new("a\tb\n\tc", DeliveryMode::Queue);
+    let mut lines = Vec::new();
+    super::inbox_lines(&[&message], &Theme::default(), &mut lines);
+    let rows: Vec<String> = lines
+        .iter()
+        .flat_map(|line| crate::wrap::wrap(&line.line, 80))
+        .map(|(row, _)| row.to_string())
+        .collect();
+    assert!(
+        rows.iter()
+            .any(|row| row.contains("after this turn: a    b"))
+            && rows.iter().any(|row| row.contains("        c")),
+        "{rows:#?}"
+    );
+}
