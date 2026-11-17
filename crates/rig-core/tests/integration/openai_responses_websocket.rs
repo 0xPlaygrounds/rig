@@ -402,6 +402,31 @@ async fn done_first_failed_turn_does_not_chain_next_request() {
     );
 }
 
+/// A `response.done` without a response id ends the turn when no earlier
+/// turn left a trailing done pending, rather than being skipped as one.
+#[tokio::test]
+async fn an_id_less_done_ends_the_turn() {
+    let mut response = sample_response("completed");
+    if let Some(id) = response.get_mut("id") {
+        *id = serde_json::Value::Null;
+    }
+    let script = Script::turn([json!({
+        "type": "response.done",
+        "response": response,
+    })
+    .to_string()])
+    .stalling();
+
+    let client = test_client();
+    let mut session = session_with_timeout(&client, &script, Some(Duration::from_millis(200)));
+
+    let completed = session
+        .completion(CompletionRequest::new("hello"))
+        .await
+        .expect("the id-less done should end the turn");
+    assert_eq!(raw_response(completed)["status"], "completed");
+}
+
 #[tokio::test]
 async fn close_is_idempotent() {
     let script = Script::turn([]);
