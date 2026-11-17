@@ -26,6 +26,7 @@ use super::panel::{TerminalSize, TuiPanel};
 use super::pick::{self, Choices, PickerInput, Showing};
 use super::render::selectable;
 use super::selection::Selection;
+use super::status::{AppStatus, Side, StatusItem, Tone};
 use super::terminal::TerminalFocus;
 use super::view::{ItemRow, TranscriptItem, TranscriptView, TuiView};
 use rig_ecs::agent::{ActiveTurn, Notice, StopTurn};
@@ -634,6 +635,28 @@ fn moused(mouse: MouseEvent, view: &mut TuiView, pane: Option<Mut<PaneState>>) {
             }
         }
         _ => {}
+    }
+}
+
+/// The status line item saying what the last drag copied.
+const COPIED: StatusItem = StatusItem::new("copied", Side::Left, 95, 20);
+
+/// Shows `Copied N lines`, N the rows the drag spans, while the text a drag
+/// copied on its release stays selected, so it shows in that frame and goes
+/// with the selection.
+pub(crate) fn show_copied(view: Res<TuiView>, mut status: ResMut<AppStatus>) {
+    let copied = view
+        .selection
+        .filter(|drag| !drag.held && drag.from != drag.to);
+    let text = copied.map_or_else(String::new, |drag| {
+        match drag.from.y.abs_diff(drag.to.y).saturating_add(1) {
+            1 => "Copied 1 line".to_owned(),
+            rows => format!("Copied {rows} lines"),
+        }
+    });
+    let shown = status.0.iter().find(|item| item.name == COPIED.name);
+    if shown.map(|item| item.text.as_str()).unwrap_or_default() != text {
+        status.0.show(COPIED.says(text, Tone::Green));
     }
 }
 

@@ -147,6 +147,38 @@ fn a_drag_copies_the_text_under_it_and_a_click_copies_nothing() {
     }
 }
 
+/// The frame of a drag's release says how many rows it copied, until the
+/// next click or key; a click says nothing.
+#[test]
+fn a_drag_says_how_many_lines_it_copied_until_the_next_click_or_key() {
+    let mut app = transcript_app(3);
+    let says = |app: &App, text: &str| {
+        let rows = app.world().resource::<TuiTestScreen>().rows();
+        rows.iter().any(|row| row.contains(text))
+    };
+    let left = MouseButton::Left;
+    mouse(&mut app, MouseEventKind::Down(left), 2, 1);
+    mouse(&mut app, MouseEventKind::Up(left), 2, 1);
+    app.update();
+    assert!(!says(&app, "Copied"));
+
+    mouse(&mut app, MouseEventKind::Down(left), 2, 1);
+    mouse(&mut app, MouseEventKind::Drag(left), 4, 2);
+    mouse(&mut app, MouseEventKind::Up(left), 6, 3);
+    app.update();
+    assert!(says(&app, "Copied 3 lines"));
+    mouse(&mut app, MouseEventKind::Down(left), 2, 1);
+    app.update();
+    assert!(!says(&app, "Copied"));
+
+    mouse(&mut app, MouseEventKind::Down(left), 2, 1);
+    mouse(&mut app, MouseEventKind::Up(left), 6, 1);
+    app.update();
+    assert!(says(&app, "Copied 1 line"));
+    press(&mut app, "left");
+    assert!(!says(&app, "Copied"));
+}
+
 /// The texts agents accepted.
 #[derive(Resource, Default)]
 struct Delivered(Vec<String>);

@@ -296,6 +296,9 @@ pub fn add_view(app: &mut App) {
                 transcript::note_effects.in_set(TuiSystems::Prepare),
                 turns::tell_state,
                 input::note_input_context.in_set(TuiSystems::Prepare),
+                input::show_copied
+                    .run_if(resource_exists_and_changed::<view::TuiView>)
+                    .in_set(StatusSystems::Show),
                 (
                     pane::draw_panes,
                     editor::draw_editors,
