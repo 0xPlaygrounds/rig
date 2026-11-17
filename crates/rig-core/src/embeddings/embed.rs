@@ -7,13 +7,18 @@
 //! # Ok::<(), rig_core::embeddings::EmbedError>(())
 //! ```
 
+use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+
 /// Failure extracting text for embedding.
 #[derive(Debug, thiserror::Error)]
 #[error("{0}")]
-pub struct EmbedError(#[from] Box<dyn std::error::Error + Send + Sync>);
+pub struct EmbedError(#[from] crate::http_client::BoxError);
 
 impl EmbedError {
-    pub fn new<E: std::error::Error + Send + Sync + 'static>(error: E) -> Self {
+    pub fn new<E>(error: E) -> Self
+    where
+        E: std::error::Error + WasmCompatSend + WasmCompatSync + 'static,
+    {
         EmbedError(Box::new(error))
     }
 }
