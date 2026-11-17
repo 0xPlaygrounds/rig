@@ -102,7 +102,7 @@ fn the_welcome_is_the_mark_beside_the_version_model_and_directory() {
     assert!(row(1).ends_with("acme/fast · reasoning high"), "{rows:?}");
     assert!(row(2).ends_with("~/code/rig"), "{rows:?}");
     // Gray, and a little stronger from the outer panels in.
-    let shades: Vec<_> = tui::mark(1, &theme)
+    let shades: Vec<_> = tui::mark(1, &theme, None)
         .iter()
         .filter_map(|span| span.style.fg)
         .collect();
@@ -176,6 +176,7 @@ fn mark_color(app: &mut App, after: std::time::Duration) -> Option<Color> {
 #[test]
 fn the_mark_pulses_while_the_agent_works_and_rests_when_idle() {
     let (mut app, agent) = on_screen();
+    assert!(agent.is_some(), "the session has its agent");
     let Some(agent) = agent else {
         return;
     };
@@ -199,8 +200,8 @@ fn the_mark_pulses_while_the_agent_works_and_rests_when_idle() {
         .map(|_| mark_color(&mut app, crate::activity::STEP))
         .collect();
     assert!(
-        colors.iter().any(|color| *color != still),
-        "the mark pulses: {colors:?}"
+        colors.iter().all(Option::is_some) && colors.iter().any(|color| *color != still),
+        "the mark stays on screen and pulses: {colors:?}"
     );
 
     app.world_mut()

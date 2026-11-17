@@ -137,14 +137,17 @@ mod tui {
     const SHADES: [f32; 3] = [0.6, 0.72, 0.85];
 
     /// Row `row` of rig's mark in `theme`'s grays: six panels around a
-    /// gap, three each side.
-    pub(super) fn mark(row: usize, theme: &Theme) -> Vec<Span<'static>> {
-        let panel = |cells: &[&'static str; 3], shade: f32| {
+    /// gap, three each side, at the activity's animation step `step`, or
+    /// still in [`SHADES`].
+    pub(super) fn mark(row: usize, theme: &Theme, step: Option<usize>) -> Vec<Span<'static>> {
+        let panel = |cells: &[&'static str; 3], pair: usize| {
             let cell = cells.get(row).copied().unwrap_or_default();
+            let lift = f32::from(level(pair, step)) - f32::from(level(pair, None));
+            let shade = SHADES.get(pair).copied().unwrap_or_default() + 0.07 * lift;
             Span::from(cell).fg(theme.shade(shade))
         };
-        let left = SHADES.iter().map(|shade| panel(&LEFT, *shade));
-        let right = SHADES.iter().rev().map(|shade| panel(&RIGHT, *shade));
+        let left = (0..SHADES.len()).map(|pair| panel(&LEFT, pair));
+        let right = (0..SHADES.len()).rev().map(|pair| panel(&RIGHT, pair));
         let mut spans = vec![Span::from(" ")];
         for (at, span) in left.chain(right).enumerate() {
             if at > 0 {
@@ -192,7 +195,8 @@ mod tui {
             return;
         }
         for mut canvas in &mut panes {
-            let buffer = canvas.buffer_mut();
+            // Painting changes only the buffer, not a change to redraw for.
+            let buffer = canvas.bypass_change_detection().buffer_mut();
             let area = buffer.area;
             for y in (area.top()..area.bottom()).take(LEFT.len()) {
                 for row in 0..LEFT.len() {
@@ -209,27 +213,20 @@ mod tui {
     /// mark; whether it did.
     fn paint(buffer: &mut Buffer, (y, row): (u16, usize), step: usize, theme: &Theme) -> bool {
         let mut x = buffer.area.left();
-        let (mut panel, mut cells) = (0, Vec::new());
-        for span in mark(row, theme) {
-            let shaded = span.style.fg.is_some();
-            // The pair of panels from the outer one in.
-            let pair = panel.min((2 * SHADES.len() - 1).saturating_sub(panel));
+        let mut cells = Vec::new();
+        for span in mark(row, theme, Some(step)) {
             for glyph in span.content.chars() {
                 let cell = buffer.cell((x, y));
                 if !cell.is_some_and(|cell| cell.symbol().chars().eq([glyph])) {
                     return false;
                 }
-                if shaded {
-                    cells.push((x, pair));
-                }
+                cells.extend(span.style.fg.map(|color| (x, color)));
                 x = x.saturating_add(1);
             }
-            panel += usize::from(shaded);
         }
-        for (x, pair) in cells {
-            let level = f32::from(level(pair, Some(step)));
+        for (x, color) in cells {
             if let Some(cell) = buffer.cell_mut((x, y)) {
-                cell.set_fg(theme.shade(0.5 + 0.07 * level));
+                cell.set_fg(color);
             }
         }
         true
@@ -259,7 +256,7 @@ mod tui {
             vec![Span::from(says.directory).dim()],
         ];
         let rows = beside.into_iter().enumerate().map(|(row, beside)| {
-            let mut spans = mark(row, &view.theme);
+            let mut spans = mark(row, &view.theme, None);
             spans.push(Span::from("   "));
             spans.extend(beside);
             // Its own background, not the band asides are drawn on.

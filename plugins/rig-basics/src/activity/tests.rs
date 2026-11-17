@@ -244,6 +244,15 @@ fn a_working_agents_status_waves_while_the_loop_stays_awake() {
     let label = |text: &Option<String>| text.as_deref().is_some_and(|t| t.ends_with(" thinking…"));
     assert!(label(&first) && label(&second), "{first:?} {second:?}");
 
+    // A question stops it; work after the answer starts it again.
+    let ask = Ask::yes_no("Keep it?");
+    let ask = app.world_mut().spawn((ask, ForAgent(agent))).id();
+    let (asking, awake) = step(&mut app, agent, STEP);
+    assert_eq!((asking.as_deref(), awake), (Some("asking: Keep it?"), 0));
+    app.world_mut().entity_mut(ask).despawn();
+    let (_, awake) = step(&mut app, agent, STEP);
+    assert_eq!(awake, 1);
+
     app.world_mut().entity_mut(turn).despawn();
     let (idle, awake) = step(&mut app, agent, STEP);
     assert_eq!((idle.as_deref(), awake), (Some("idle"), 0));

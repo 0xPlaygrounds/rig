@@ -279,9 +279,9 @@ fn show_status(
             clock.since = now;
         }
         let seconds = now.saturating_sub(clock.since).as_secs();
-        let works = works(&activity.status);
-        let shown = (works && seconds >= CLOCK_AFTER).then_some(seconds);
-        let step = pulse.as_ref().and_then(|pulse| pulse.0).filter(|_| works);
+        let busy = works(&activity.status);
+        let shown = (busy && seconds >= CLOCK_AFTER).then_some(seconds);
+        let step = pulse.as_ref().and_then(|pulse| pulse.0).filter(|_| busy);
         if !activity.is_changed() && shown == clock.shown && step == clock.step {
             continue;
         }
@@ -360,8 +360,8 @@ const PERIOD: usize = 12;
 #[cfg(feature = "tui")]
 const WAVE: [u8; PERIOD] = [0, 0, 1, 3, 5, 7, 7, 5, 3, 1, 0, 0];
 
-/// How high each still bar stands, from the outer pair in, like the
-/// mark's shades.
+/// How high each still bar stands, from the outer pair in: a little
+/// higher toward the middle, as the mark's shades are stronger there.
 #[cfg(feature = "tui")]
 const STILL: [u8; 3] = [3, 4, 5];
 
@@ -401,8 +401,8 @@ fn pace(
     mut commands: Commands,
 ) {
     let activity = shown.0.and_then(|agent| agents.get(agent).ok());
-    let works = settings.animate && activity.is_some_and(|activity| works(&activity.status));
-    match (works, awake.iter().next()) {
+    let busy = settings.animate && activity.is_some_and(|activity| works(&activity.status));
+    match (busy, awake.iter().next()) {
         (true, None) => {
             commands.spawn((Name::new("activity animation"), Pulsing, KeepAwake(STEP)));
             pulse.0 = Some(0);
