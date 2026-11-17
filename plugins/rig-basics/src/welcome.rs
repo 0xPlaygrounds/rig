@@ -2,7 +2,10 @@
 //! version, the agent's model and reasoning setting, and the project's
 //! directory. It is an unsaved aside before the first entry
 //! ([`WELCOME`]), so it never reaches the model and scrolls away with the
-//! conversation, kept current as the model or the setting changes.
+//! conversation, kept current as the model or the setting changes. While
+//! the shown agent works, the mark on screen pulses with the activity's
+//! animation ([`ActivityPlugin`](crate::activity::ActivityPlugin)); without
+//! that plugin it stays still.
 //!
 //! ```no_run
 //! use rig_harness::prelude::*;
@@ -113,11 +116,16 @@ pub use tui::WelcomeLooks;
 mod tui {
     use bevy_app::App;
     use rig_harness::prelude::*;
+    use rig_tui::ratatui::buffer::Buffer;
     use rig_tui::ratatui::style::{Color, Stylize};
     use rig_tui::ratatui::text::{Line, Span};
-    use rig_tui::{AsideRender, RenderBatch, RenderSystems, Theme, TranscriptRender};
+    use rig_tui::{
+        AsideRender, MainPane, PanelCanvas, RenderBatch, RenderSystems, Theme, TranscriptRender,
+        TuiSystems,
+    };
 
     use super::{WELCOME, Welcome};
+    use crate::activity::{Pulse, level};
 
     /// A panel of rig's mark, its rows from the top: one left of the gap,
     /// its inner corners (right) cut, and its mirror right of it.
@@ -157,7 +165,74 @@ mod tui {
         app.add_systems(
             TranscriptRender,
             draw.in_set(WelcomeLooks).in_set(RenderSystems::Render),
+        )
+        .add_systems(
+            PostUpdate,
+            pulse
+                .run_if(resource_exists::<Pulse>)
+                .after(TuiSystems::Draw)
+                .before(TuiSystems::Render),
         );
+    }
+
+    /// Paints the mark in the main pane in the activity's animation step,
+    /// over the drawn transcript, so the transcript is not laid out again
+    /// for it. It looks only at the pane's top rows, where the welcome
+    /// starts, so each row of the mark still on screen pulses and nothing
+    /// else changes. Under `NO_COLOR` the mark stays as drawn.
+    fn pulse(
+        pulse: Res<Pulse>,
+        mut panes: Query<&mut PanelCanvas, With<MainPane>>,
+        theme: Res<Theme>,
+    ) {
+        let Some(step) = pulse.0 else {
+            return;
+        };
+        if theme.plain {
+            return;
+        }
+        for mut canvas in &mut panes {
+            let buffer = canvas.buffer_mut();
+            let area = buffer.area;
+            for y in (area.top()..area.bottom()).take(LEFT.len()) {
+                for row in 0..LEFT.len() {
+                    if paint(buffer, (y, row), step, &theme) {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Colors screen row `y` of `buffer` as row `row` of the mark at
+    /// animation step `step`, when the row starts with that row of the
+    /// mark; whether it did.
+    fn paint(buffer: &mut Buffer, (y, row): (u16, usize), step: usize, theme: &Theme) -> bool {
+        let mut x = buffer.area.left();
+        let (mut panel, mut cells) = (0, Vec::new());
+        for span in mark(row, theme) {
+            let shaded = span.style.fg.is_some();
+            // The pair of panels from the outer one in.
+            let pair = panel.min((2 * SHADES.len() - 1).saturating_sub(panel));
+            for glyph in span.content.chars() {
+                let cell = buffer.cell((x, y));
+                if !cell.is_some_and(|cell| cell.symbol().chars().eq([glyph])) {
+                    return false;
+                }
+                if shaded {
+                    cells.push((x, pair));
+                }
+                x = x.saturating_add(1);
+            }
+            panel += usize::from(shaded);
+        }
+        for (x, pair) in cells {
+            let level = f32::from(level(pair, Some(step)));
+            if let Some(cell) = buffer.cell_mut((x, y)) {
+                cell.set_fg(theme.shade(0.5 + 0.07 * level));
+            }
+        }
+        true
     }
 
     /// Draws the welcome asides.

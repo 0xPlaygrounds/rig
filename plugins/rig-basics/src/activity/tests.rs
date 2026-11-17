@@ -169,7 +169,9 @@ fn the_status_line_shows_how_long_a_step_has_lasted() {
         app.update();
         let items = app.world().get::<rig_tui::StatusItems>(agent);
         let item = items.and_then(|items| items.iter().find(|item| item.name == "status"));
-        item.map(|item| item.text.clone())
+        // Without its working wave.
+        let bars = |c: char| ('▁'..='█').contains(&c) || c == ' ';
+        item.map(|item| item.text.trim_start_matches(bars).to_owned())
     };
     // A short step shows no clock, so it does not flicker.
     assert_eq!(shown(&mut app, 0).as_deref(), Some("thinking…"));
@@ -205,7 +207,9 @@ fn working(settings: &str) -> (App, Entity, Entity) {
     animate(&mut app);
     let world = app.world_mut();
     let agent = spawn_root(world).id();
-    world.resource_mut::<rig_harness::main_agent::ShownAgent>().0 = Some(agent);
+    world
+        .resource_mut::<rig_harness::main_agent::ShownAgent>()
+        .0 = Some(agent);
     let turn = world.spawn(TurnOf(agent)).id();
     world.spawn((Partial::default(), CallOf(turn)));
     (app, agent, turn)
@@ -269,7 +273,9 @@ fn another_front_animates_nothing() {
     app.finish();
     let world = app.world_mut();
     let agent = spawn_root(world).id();
-    world.resource_mut::<rig_harness::main_agent::ShownAgent>().0 = Some(agent);
+    world
+        .resource_mut::<rig_harness::main_agent::ShownAgent>()
+        .0 = Some(agent);
     world.spawn(TurnOf(agent));
     let (_, awake) = step(&mut app, agent, STEP);
     assert_eq!(awake, 0);

@@ -10,6 +10,11 @@
 //! [`Activity`] is updated in `PostUpdate`, in [`ActivitySystems`], and
 //! changes only when what it says changes, so `Changed<Activity>` tells a
 //! view to redraw.
+//!
+//! While the shown agent works, its status starts with a small wave of six
+//! bars, which moves, as does rig's mark in the welcome, only while the
+//! terminal view is the run's front. `animate = false` in the
+//! `[activity]` table of settings.toml keeps both still.
 
 use std::fmt;
 
@@ -31,7 +36,15 @@ impl Plugin for ActivityPlugin {
                 PostUpdate,
                 ActivitySystems.before(rig_tui::StatusSystems::Show),
             )
-            .add_systems(PostUpdate, show_status.in_set(rig_tui::StatusSystems::Show));
+            .add_systems(PostUpdate, show_status.in_set(rig_tui::StatusSystems::Show))
+            .add_setting::<ActivitySettings>("activity");
+    }
+
+    #[cfg(feature = "tui")]
+    fn finish(&self, app: &mut App) {
+        if app.runs_front(rig_tui::FRONT) {
+            animate(app);
+        }
     }
 }
 
@@ -239,6 +252,7 @@ struct StatusClock {
     status: ActivityStatus,
     since: Duration,
     shown: Option<u64>,
+    step: Option<usize>,
 }
 
 /// The seconds a status lasts before its clock shows, so short steps do
@@ -247,14 +261,15 @@ struct StatusClock {
 const CLOCK_AFTER: u64 = 5;
 
 /// Each agent's status, in its status line: green when idle, yellow at
-/// work, red waiting to retry. Work that has lasted [`CLOCK_AFTER`]
-/// seconds shows how long, such as `thinking… 1m12s`, so a silent model
-/// does not look frozen.
+/// work after its [`wave`], red waiting to retry. Work that has lasted
+/// [`CLOCK_AFTER`] seconds shows how long, such as `thinking… 1m12s`, so a
+/// silent model does not look frozen.
 #[cfg(feature = "tui")]
 fn show_status(
     mut agents: Query<(Ref<Activity>, &mut StatusClock, &mut rig_tui::StatusItems)>,
     time: Res<Time<Real>>,
     policy: Res<rig_ecs::retry::RetryPolicy>,
+    pulse: Option<Res<Pulse>>,
 ) {
     use rig_tui::Tone;
     let now = time.elapsed();
@@ -264,18 +279,15 @@ fn show_status(
             clock.since = now;
         }
         let seconds = now.saturating_sub(clock.since).as_secs();
-        let timed = matches!(
-            activity.status,
-            ActivityStatus::Thinking
-                | ActivityStatus::Writing
-                | ActivityStatus::RunningTools
-                | ActivityStatus::Busy(_)
-        );
-        let shown = (timed && seconds >= CLOCK_AFTER).then_some(seconds);
-        if !activity.is_changed() && shown == clock.shown {
+        let works = works(&activity.status);
+        let shown = (works && seconds >= CLOCK_AFTER).then_some(seconds);
+        let step = pulse.as_ref().and_then(|pulse| pulse.0).filter(|_| works);
+        if !activity.is_changed() && shown == clock.shown && step == clock.step {
             continue;
         }
         clock.shown = shown;
+        clock.step = step;
+        let wave = wave(step);
         let shown = match (&activity.status, shown) {
             (ActivityStatus::Idle, _) => STATUS.says("idle", Tone::Green),
             (ActivityStatus::Asking(title), _) => {
@@ -285,10 +297,11 @@ fn show_status(
                 format!("retry {attempt}/{} in {seconds}s…", policy.max_retries),
                 Tone::Red,
             ),
-            (status, Some(seconds)) => {
-                STATUS.says(format!("{status}… {}", lasted(seconds)), Tone::Yellow)
-            }
-            (status, None) => STATUS.says(format!("{status}…"), Tone::Yellow),
+            (status, Some(seconds)) => STATUS.says(
+                format!("{wave} {status}… {}", lasted(seconds)),
+                Tone::Yellow,
+            ),
+            (status, None) => STATUS.says(format!("{wave} {status}…"), Tone::Yellow),
         };
         items.show(shown);
     }
@@ -307,14 +320,134 @@ fn lasted(seconds: u64) -> String {
     }
 }
 
+/// Whether `status` is work the agent does itself, not a wait.
+#[cfg(feature = "tui")]
+fn works(status: &ActivityStatus) -> bool {
+    matches!(
+        status,
+        ActivityStatus::Thinking
+            | ActivityStatus::Writing
+            | ActivityStatus::RunningTools
+            | ActivityStatus::Busy(_)
+    )
+}
+
+/// `[activity]` in `settings.toml`.
+#[cfg(feature = "tui")]
+#[derive(Resource, serde::Deserialize)]
+#[serde(default, deny_unknown_fields)]
+struct ActivitySettings {
+    /// Whether the working agent's wave and rig's mark move.
+    animate: bool,
+}
+
+#[cfg(feature = "tui")]
+impl Default for ActivitySettings {
+    fn default() -> Self {
+        Self { animate: true }
+    }
+}
+
 /// How long each step of the working animation lasts.
 #[cfg(feature = "tui")]
 pub(crate) const STEP: Duration = Duration::from_millis(120);
 
-/// Animates the working agent's status, when the terminal view is the
-/// run's front.
+/// The steps of one wave.
 #[cfg(feature = "tui")]
-pub(crate) fn animate(_app: &mut App) {}
+const PERIOD: usize = 12;
+
+/// How high a bar stands (0 to 7) at each step of its wave.
+#[cfg(feature = "tui")]
+const WAVE: [u8; PERIOD] = [0, 0, 1, 3, 5, 7, 7, 5, 3, 1, 0, 0];
+
+/// How high each still bar stands, from the outer pair in, like the
+/// mark's shades.
+#[cfg(feature = "tui")]
+const STILL: [u8; 3] = [3, 4, 5];
+
+/// The working animation's step, out of [`PERIOD`], while the shown agent
+/// works and `animate` is on.
+#[cfg(feature = "tui")]
+#[derive(Resource, Default)]
+pub(crate) struct Pulse(pub(crate) Option<usize>);
+
+/// The entity that keeps the loop awake for the animation's steps.
+#[cfg(feature = "tui")]
+#[derive(Component)]
+struct Pulsing;
+
+/// Animates the working agent's status and rig's mark: what the terminal
+/// view's front adds.
+#[cfg(feature = "tui")]
+pub(crate) fn animate(app: &mut App) {
+    app.init_resource::<Pulse>().add_systems(
+        PostUpdate,
+        (pace, step.run_if(on_real_timer(STEP)))
+            .chain()
+            .after(ActivitySystems)
+            .before(rig_tui::StatusSystems::Show),
+    );
+}
+
+/// Starts the animation, with one [`KeepAwake`] for its steps, when the
+/// shown agent starts to work, and stops it when the agent stops.
+#[cfg(feature = "tui")]
+fn pace(
+    shown: Res<rig_harness::main_agent::ShownAgent>,
+    agents: Query<&Activity>,
+    settings: Res<ActivitySettings>,
+    awake: Query<Entity, With<Pulsing>>,
+    mut pulse: ResMut<Pulse>,
+    mut commands: Commands,
+) {
+    let activity = shown.0.and_then(|agent| agents.get(agent).ok());
+    let works = settings.animate && activity.is_some_and(|activity| works(&activity.status));
+    match (works, awake.iter().next()) {
+        (true, None) => {
+            commands.spawn((Name::new("activity animation"), Pulsing, KeepAwake(STEP)));
+            pulse.0 = Some(0);
+        }
+        (false, Some(entity)) => {
+            commands.entity(entity).despawn();
+            pulse.0 = None;
+        }
+        _ => {}
+    }
+}
+
+/// Moves the animation a step.
+#[cfg(feature = "tui")]
+fn step(mut pulse: ResMut<Pulse>) {
+    if let Some(step) = pulse.0 {
+        pulse.0 = Some((step + 1) % PERIOD);
+    }
+}
+
+/// How high (0 to 7) the bar of pair `pair`, from the outer pair in,
+/// stands at animation step `step`: a wave running out from the gap.
+/// With no step it stands still.
+#[cfg(feature = "tui")]
+pub(crate) fn level(pair: usize, step: Option<usize>) -> u8 {
+    let level = match step {
+        Some(step) => WAVE.get((step + 2 * pair) % PERIOD),
+        None => STILL.get(pair),
+    };
+    level.copied().unwrap_or_default()
+}
+
+/// Six bars around a gap like rig's mark, their heights at animation step
+/// `step`. Height, not color, shows the step, so it moves under `NO_COLOR`.
+#[cfg(feature = "tui")]
+fn wave(step: Option<usize>) -> String {
+    const BARS: [char; 8] = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+    let bar = |pair| {
+        let level = usize::from(level(pair, step));
+        BARS.get(level).copied().unwrap_or_default()
+    };
+    let left: String = (0..STILL.len()).map(bar).collect();
+    let right: String = (0..STILL.len()).rev().map(bar).collect();
+    format!("{left} {right}")
+}
 
 #[cfg(test)]
 mod tests;

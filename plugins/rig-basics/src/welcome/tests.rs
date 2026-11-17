@@ -141,7 +141,9 @@ fn on_screen() -> (App, Option<Entity>) {
     app.finish();
     app.update();
     let agent = first_agent(app.world_mut());
-    app.world_mut().resource_mut::<rig_harness::main_agent::ShownAgent>().0 = agent;
+    app.world_mut()
+        .resource_mut::<rig_harness::main_agent::ShownAgent>()
+        .0 = agent;
     (app, agent)
 }
 
