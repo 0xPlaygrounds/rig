@@ -370,19 +370,16 @@ fn enter_ticks_and_the_list_marks_and_counts_changes_against_the_settings() {
         assert!(enter, "Enter ticks in /plugins: {keys:?}");
     }
 
-    tick(&mut app, list, &["Folded output"], &["Welcome"]);
+    tick(&mut app, list, &["Budget"], &["Welcome"]);
     let shown = app.world().get::<Picker>(list).cloned().unwrap_or_default();
     assert!(detail(&shown, "Welcome").contains("- off"), "{shown:#?}");
-    assert!(
-        detail(&shown, "Folded output").contains("+ on"),
-        "{shown:#?}"
-    );
+    assert!(detail(&shown, "Budget").contains("+ on"), "{shown:#?}");
     assert!(shown.body.contains("2 changes"), "{}", shown.body);
     assert!(shown.body.contains("Enter ticks"), "{}", shown.body);
     assert_eq!(settings(&home), "", "ticking writes nothing");
 
     // Back as it was: no change is counted.
-    tick(&mut app, list, &["Welcome"], &["Folded output"]);
+    tick(&mut app, list, &["Welcome"], &["Budget"]);
     let shown = app.world().get::<Picker>(list).cloned().unwrap_or_default();
     assert!(!detail(&shown, "Welcome").contains("off"), "{shown:#?}");
     assert!(!shown.body.contains("change"), "{}", shown.body);
@@ -416,12 +413,7 @@ fn esc_with_changes_asks_to_reload_now_or_later_naming_them() {
     let Some((list, _)) = found else {
         return;
     };
-    tick(
-        &mut app,
-        list,
-        &["Folded output"],
-        &["Welcome", "Plugins picker"],
-    );
+    tick(&mut app, list, &["Budget"], &["Welcome", "Plugins picker"]);
     pick(&mut app, list, None);
 
     let found = picker(&mut app);
@@ -431,7 +423,7 @@ fn esc_with_changes_asks_to_reload_now_or_later_naming_them() {
     };
     let labels: Vec<&str> = asked.items.iter().map(|item| item.label.as_str()).collect();
     assert!(
-        asked.body.contains("Turn on: Folded output")
+        asked.body.contains("Turn on: Budget")
             && asked.body.contains("Turn off: ")
             && asked.body.contains("Welcome")
             && asked.body.contains("/plugins itself"),
@@ -454,7 +446,7 @@ fn esc_with_changes_asks_to_reload_now_or_later_naming_them() {
     let checked = |label: &str| {
         (again.items.iter().find(|item| item.label == label)).map(|item| item.checked)
     };
-    assert_eq!(checked("Folded output"), Some(true));
+    assert_eq!(checked("Budget"), Some(true));
     assert_eq!(checked("Welcome"), Some(false));
     assert!(detail(&again, "Welcome").contains("- off"), "{again:#?}");
     assert_eq!(settings(&home), "");
@@ -474,13 +466,18 @@ fn esc_with_changes_asks_to_reload_now_or_later_naming_them() {
     assert!(picker(&mut app).is_none());
     let written = settings(&home);
     assert!(
-        written.contains("rig_fold::FoldPlugin")
+        written.contains("rig_basics::budget::BudgetPlugin")
             && written.contains("rig_basics::welcome::WelcomePlugin")
             && written.contains("rig_basics::reload::plugins::PluginsPlugin"),
         "{written}"
     );
     let chosen = config::chosen(&home).unwrap_or_default();
-    assert!(chosen.on.iter().any(|on| on == "rig_fold::FoldPlugin"));
+    assert!(
+        chosen
+            .on
+            .iter()
+            .any(|on| on == "rig_basics::budget::BudgetPlugin")
+    );
     assert!(
         !chosen
             .on
@@ -495,7 +492,7 @@ fn plugins_defaults_asks_to_go_back_to_rigs_defaults() {
     let home = scratch_home("plugins-defaults");
     fs::create_dir_all(home.root()).ok();
     let changed = "[plugins]\ndisable = [\"rig_basics::welcome::WelcomePlugin\"]\n\
-                   enable = [\"rig_fold::FoldPlugin\"]\n";
+                   enable = [\"rig_basics::budget::BudgetPlugin\"]\n";
     fs::write(home.settings(), changed).ok();
     let (mut app, agent) = app(&home, true);
     run(&mut app, agent, "plugins defaults");
@@ -510,7 +507,7 @@ fn plugins_defaults_asks_to_go_back_to_rigs_defaults() {
         return;
     };
     assert!(
-        asked.body.contains("Turn on: Welcome") && asked.body.contains("Turn off: Folded output"),
+        asked.body.contains("Turn on: Welcome") && asked.body.contains("Turn off: Budget"),
         "{}",
         asked.body
     );
@@ -544,7 +541,7 @@ fn the_question_says_why_it_cannot_reload_and_esc_goes_back_to_the_list() {
     let Some((list, _)) = found else {
         return;
     };
-    tick(&mut app, list, &["Folded output"], &[]);
+    tick(&mut app, list, &["Budget"], &[]);
     pick(&mut app, list, None);
     let asked = picker(&mut app);
     assert!(asked.is_some(), "no question");
@@ -562,7 +559,7 @@ fn the_question_says_why_it_cannot_reload_and_esc_goes_back_to_the_list() {
         Some("Plugins")
     );
     let ticked = (again.iter().flat_map(|(_, shown)| shown.items.iter()))
-        .find(|item| item.label == "Folded output")
+        .find(|item| item.label == "Budget")
         .map(|item| item.checked);
     assert_eq!(ticked, Some(true));
     assert_eq!(settings(&home), "");
@@ -571,7 +568,7 @@ fn the_question_says_why_it_cannot_reload_and_esc_goes_back_to_the_list() {
     let Some((list, _)) = again else {
         return;
     };
-    // The reopened list keeps Folded output ticked.
+    // The reopened list keeps Budget ticked.
     tick(&mut app, list, &[], &[]);
     pick(&mut app, list, None);
     let Some((question, shown)) = picker(&mut app) else {
@@ -580,9 +577,7 @@ fn the_question_says_why_it_cannot_reload_and_esc_goes_back_to_the_list() {
     let later = at(&shown, "Later, at the next start");
     pick(&mut app, question, later.map(Chosen::item));
     let told = &app.world().resource::<Told>().0;
-    let said = told
-        .iter()
-        .find(|text| text.contains("turned on Folded output"));
+    let said = told.iter().find(|text| text.contains("turned on Budget"));
     assert!(
         said.is_some_and(|text| text.contains("starts again") && !text.contains("/reload")),
         "{told:?}"
