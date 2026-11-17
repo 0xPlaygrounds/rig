@@ -393,28 +393,117 @@ fn manifest(home: &Home, plugins: &Plugins, source: &RigSource) -> Result<String
     Ok(text)
 }
 
-/// The agent's build profile: dependencies at full speed, built once, and
-/// the crates `/reload` rebuilds (rig's own from a checkout, and extras by
-/// path or git) at opt-level 1, so a rebuild stays quick.
+/// The agent's build profile: dependencies at full speed with no debug info,
+/// built once, and the crates `/reload` rebuilds (rig's own from a checkout,
+/// extras by path or git, and the path dependencies of extras by path) at
+/// opt-level 1 with line tables, so a rebuild stays quick and their
+/// backtraces keep file and line.
 fn profile(plugins: &Plugins, source: &RigSource) -> Result<String> {
     let mut text = String::from(
         "\n[profile.dev]\ndebug = \"line-tables-only\"\n\
-         \n[profile.dev.package.\"*\"]\nopt-level = 3\ndebug-assertions = false\n\
-         overflow-checks = false\n",
+         \n[profile.dev.package.\"*\"]\nopt-level = 3\ndebug = false\n\
+         debug-assertions = false\noverflow-checks = false\n",
     );
     let mut edited: BTreeSet<String> = match source {
         RigSource::Local(_) => rig_crates(plugins, source)?,
         RigSource::Registry => BTreeSet::new(),
     };
-    edited.extend(
-        (plugins.extras_on())
-            .filter(|extra| matches!(extra.source, Source::Path(_) | Source::Git { .. }))
-            .map(|extra| extra.krate.clone()),
-    );
+    for extra in plugins.extras_on() {
+        match &extra.source {
+            Source::Path(directory) => {
+                edited.insert(extra.krate.clone());
+                path_crates(directory, &mut edited);
+            }
+            Source::Git { .. } => {
+                edited.insert(extra.krate.clone());
+            }
+            Source::Version(_) => {}
+        }
+    }
     for name in edited {
-        text.push_str(&format!("\n[profile.dev.package.{name}]\nopt-level = 1\n"));
+        text.push_str(&format!(
+            "\n[profile.dev.package.{name}]\nopt-level = 1\ndebug = \"line-tables-only\"\n"
+        ));
     }
     Ok(text)
+}
+
+/// `path` with each `..` taking out the component before it, as a
+/// manifest's relative path reads it.
+pub fn lexical(path: &Path) -> PathBuf {
+    let mut clean = PathBuf::new();
+    for component in path.components() {
+        match component {
+            std::path::Component::ParentDir if clean.pop() => {}
+            component => clean.push(component),
+        }
+    }
+    clean
+}
+
+/// The `[workspace.dependencies]` entry of `key` in the workspace of
+/// `manifest`, the manifest of `directory`, with the workspace's manifest:
+/// the one its `[package] workspace` path names, else the nearest at or
+/// above `directory` with a `[workspace]`.
+pub fn workspace_dependency(
+    manifest: &Manifest,
+    directory: &Path,
+    key: &str,
+) -> Option<(Manifest, Item)> {
+    let named = (manifest.document.get("package"))
+        .and_then(|package| package.get("workspace"))
+        .and_then(Item::as_str);
+    let workspace = match named {
+        Some(path) => Manifest::read(&lexical(&directory.join(path))).ok()?,
+        None => directory
+            .ancestors()
+            .filter_map(|directory| Manifest::read(directory).ok())
+            .find(|manifest| manifest.document.get("workspace").is_some())?,
+    };
+    let item = workspace
+        .document
+        .get("workspace")?
+        .get("dependencies")?
+        .get(key)?
+        .clone();
+    Some((workspace, item))
+}
+
+/// Adds to `found` the packages the crate in `directory` depends on by path,
+/// written out or inherited from its workspace, and theirs in turn: cargo rebuilds them when they change, as it does the
+/// crate. A manifest that cannot be read is skipped; cargo names it.
+fn path_crates(directory: &Path, found: &mut BTreeSet<String>) {
+    let Ok(manifest) = Manifest::read(directory) else {
+        return;
+    };
+    for (_, table) in manifest.dependency_tables(&["dependencies"]) {
+        for (key, item) in table.iter() {
+            let inherited = item.get("workspace").and_then(Item::as_bool) == Some(true);
+            let written =
+                match inherited {
+                    true => workspace_dependency(&manifest, directory, key).and_then(
+                        |(workspace, item)| Some((workspace.file.parent()?.to_path_buf(), item)),
+                    ),
+                    false => Some((directory.to_path_buf(), item.clone())),
+                };
+            let Some((base, item)) = written else {
+                continue;
+            };
+            let Some(path) = item.get("path").and_then(Item::as_str) else {
+                continue;
+            };
+            let dependency = lexical(&base.join(path));
+            let name = Manifest::read(&dependency).ok().and_then(|manifest| {
+                let name = manifest.document.get("package")?.get("name")?.as_str()?;
+                Some(name.to_owned())
+            });
+            if let Some(name) = name
+                && found.insert(name)
+            {
+                path_crates(&dependency, found);
+            }
+        }
+    }
 }
 
 /// The dependency source of the rig crate `name`: its directory in the

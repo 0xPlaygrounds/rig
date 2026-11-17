@@ -24,7 +24,7 @@ use rig_harness_protocol::fs;
 use rig_harness_protocol::launch::{Launch, Purpose};
 use rig_harness_protocol::{AgentDescription, Home, RunDir, config, first_errors};
 
-use super::project::{self, Manifest, PACKAGE, RigSource};
+use super::project::{self, Manifest, PACKAGE, RigSource, workspace_dependency};
 use super::{BEVY_VERSION, COMMIT, Result, locks};
 
 /// Whether a build that is already known gets staged again.
@@ -968,47 +968,6 @@ impl project::Manifest {
             line + 1
         ))
     }
-}
-
-/// `path` with each `..` taking out the component before it, as a
-/// manifest's relative path reads it.
-fn lexical(path: &Path) -> PathBuf {
-    let mut clean = PathBuf::new();
-    for component in path.components() {
-        match component {
-            std::path::Component::ParentDir if clean.pop() => {}
-            component => clean.push(component),
-        }
-    }
-    clean
-}
-
-/// The `[workspace.dependencies]` entry of `key` in the workspace of
-/// `manifest`, the manifest of `directory`, with the workspace's manifest:
-/// the one its `[package] workspace` path names, else the nearest at or
-/// above `directory` with a `[workspace]`.
-fn workspace_dependency(
-    manifest: &Manifest,
-    directory: &Path,
-    key: &str,
-) -> Option<(Manifest, Item)> {
-    let named = (manifest.document.get("package"))
-        .and_then(|package| package.get("workspace"))
-        .and_then(Item::as_str);
-    let workspace = match named {
-        Some(path) => Manifest::read(&lexical(&directory.join(path))).ok()?,
-        None => directory
-            .ancestors()
-            .filter_map(|directory| Manifest::read(directory).ok())
-            .find(|manifest| manifest.document.get("workspace").is_some())?,
-    };
-    let item = workspace
-        .document
-        .get("workspace")?
-        .get("dependencies")?
-        .get(key)?
-        .clone();
-    Some((workspace, item))
 }
 
 /// Whether the requirement `wanted` takes [`BEVY_VERSION`], cargo's way
