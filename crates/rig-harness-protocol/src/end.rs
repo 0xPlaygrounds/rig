@@ -68,16 +68,14 @@ impl AgentEnd {
         }
     }
 
-    /// Writes this end as `run`'s record, whole or not at all: to a
-    /// temporary file first, then renamed over the record.
+    /// Writes this end as `run`'s record, whole or not at all, by
+    /// [`fs::replace`].
     ///
     /// # Errors
     ///
     /// When the file cannot be written or renamed.
     pub fn write(&self, run: &RunDir) -> io::Result<()> {
-        let written = run.path().join(format!("{FILE}.new"));
-        fs::write(&written, self.to_string())?;
-        fs::rename(&written, run.path().join(FILE))
+        fs::replace(&run.path().join(FILE), self.to_string().as_bytes())
     }
 
     /// How the agent of `run` that exited with `status` ended: its record

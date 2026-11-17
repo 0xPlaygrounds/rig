@@ -346,6 +346,7 @@ pub(crate) fn install(app: &mut App) {
             .after(CurrentAgentSystems),
     )
     .init_resource::<output::Read>()
+    .init_resource::<ProjectWorkspace>()
     .add_systems(PostUpdate, output::stream)
     .add_observer(output::call_asked)
     .add_observer(output::started)
@@ -742,6 +743,7 @@ struct Opened<'w, 's> {
     >,
     store: Option<Res<'w, SessionStore>>,
     root: Res<'w, ProjectRoot>,
+    workspace: Res<'w, ProjectWorkspace>,
     slash: Query<'w, 's, (&'static Name, &'static SlashCommand)>,
     models: Res<'w, Models>,
     options: options::Options<'w, 's>,
@@ -782,7 +784,7 @@ fn open(mut opened: Opened) {
                     .map(|summarized| summarized.replaced)
                     .unwrap_or_default();
                 let cwd = translate::cwd_of(work, &opened.root);
-                translate::replay(&id.0, conversation, &replaced, &cwd)
+                translate::replay(&id.0, conversation, &replaced, &cwd, &*opened.workspace.0)
             }
             _ => Vec::new(),
         };

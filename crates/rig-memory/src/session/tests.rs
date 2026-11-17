@@ -945,3 +945,22 @@ fn a_session_a_writer_opened_saves() {
     opened.saved.insert("more".into(), json!(1));
     opened.save(&*store).expect("an opened session saves");
 }
+
+/// Saving refuses a log with a second header, as loading does, rather than
+/// appending to it.
+#[test]
+fn saving_refuses_a_log_with_a_second_header() {
+    let store = MemoryStore::default();
+    let mut conversation = load(&store, "agent").expect("an empty log");
+    conversation.push(Message::user("first"));
+    save(&store, "agent", &mut conversation).expect("saved");
+    let log = store.read_log("agent").expect("a log");
+    let end = log.iter().position(|byte| *byte == b'\n').expect("a line") + 1;
+    let header = log.get(..end).expect("a header").to_vec();
+    append(&store, "agent", &header).expect("a second header appended");
+    let refused = load(&store, "agent").expect_err("loading refuses it");
+    assert!(refused.to_string().contains("a second header"), "{refused}");
+    conversation.push(Message::user("second"));
+    let saved = save(&store, "agent", &mut conversation);
+    assert!(saved.is_err(), "save appended to a log that load refuses");
+}

@@ -23,7 +23,9 @@ use std::process::ExitCode;
 
 use plugin::USAGE as PLUGIN_USAGE;
 use rig_harness_protocol::launch::Launch;
-use rig_harness_protocol::{AgentDescription, Home, INVOCATION_USAGE, REFUSED_EXIT_CODE};
+use rig_harness_protocol::{
+    AgentDescription, Home, INVOCATION_USAGE, REFUSED_EXIT_CODE, text_words,
+};
 use run::last_report;
 
 pub use rig_harness_protocol::{BEVY_VERSION, VERSION};
@@ -104,12 +106,17 @@ Exit codes:
 const AGENTS: &str = include_str!("help-agents.txt");
 
 fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
     let launch = match Launch::from_process() {
         Ok(launch) => launch,
         Err(failure) => {
             eprintln!("error: {failure}");
             return ExitCode::FAILURE;
+        }
+    };
+    let args: Vec<String> = match text_words(&launch.args) {
+        Ok(words) => words.into_iter().map(str::to_owned).collect(),
+        Err(word) => {
+            return run::refused(&format!("`{}` is not UTF-8", word.to_string_lossy()));
         }
     };
     let home = launch.home();

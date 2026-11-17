@@ -313,3 +313,43 @@ fn a_quoted_string_reads_back_as_written() {
         assert_eq!(read, Some((Some(text), Some(text))), "{toml}");
     }
 }
+
+/// A RIG_HOME with a line break stays on the header line of the generated
+/// Cargo.toml and main.rs, so both still parse.
+#[test]
+fn a_home_with_a_line_break_still_generates_a_manifest_that_parses() {
+    let source = RigSource::Local(checkout());
+    let plugins = home_with("[tui]\n").unwrap_or_default();
+    let home = Home::at("/home/r\nig");
+    let manifest = manifest(&home, &plugins, &source).map_err(|why| why.to_string());
+    let parsed = manifest.clone().and_then(|text| {
+        text.parse::<rig_harness_protocol::config::toml_edit::DocumentMut>()
+            .map(|_| ())
+            .map_err(|why| why.to_string())
+    });
+    let main = main_rs(&home, &plugins, &source);
+    let second = main.lines().nth(1).unwrap_or_default().to_owned();
+    assert_eq!(parsed, Ok(()), "{manifest:?}");
+    assert!(second.starts_with("fn main"), "main.rs line 2: {second}");
+}
+
+/// A RIG_HOME with a line break is refused before anything is written, as
+/// cargo cannot build there: build scripts' paths go through its
+/// line-based output.
+#[test]
+fn a_home_with_a_line_break_is_refused_before_building() {
+    let root = std::env::temp_dir().join(format!("rig-line\nbreak-{}", std::process::id()));
+    fs::remove_dir_all(&root).ok();
+    let home = Home::at(&root);
+    let generated =
+        generate(&home, &only(&[]), &RigSource::Registry).map_err(|why| why.to_string());
+    let written = home.project().exists();
+    fs::remove_dir_all(&root).ok();
+    assert!(
+        generated
+            .as_ref()
+            .is_err_and(|why| why.contains("holds a line break")),
+        "{generated:?}"
+    );
+    assert!(!written, "the project was written");
+}

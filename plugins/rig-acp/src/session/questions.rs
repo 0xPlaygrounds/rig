@@ -42,6 +42,7 @@ pub(crate) struct Asking<'w, 's> {
     agents: Query<'w, 's, &'static AgentId>,
     dirs: Query<'w, 's, &'static WorkDir>,
     root: Res<'w, ProjectRoot>,
+    workspace: Res<'w, ProjectWorkspace>,
     commands: Commands<'w, 's>,
 }
 
@@ -86,7 +87,8 @@ impl Asking<'_, '_> {
             let reasons = approval.into_iter().flat_map(|needs| &needs.reasons);
             let reasons: Vec<_> = reasons.map(|reason| reason.text.as_str()).collect();
             let why = reasons.join("\n");
-            let tool = translate::tool_asked(&request.call, call_id, &cwd, &why);
+            let tool =
+                translate::tool_asked(&request.call, call_id, &cwd, &*self.workspace.0, &why);
             let options = vec![
                 acp::PermissionOption::new(ALLOW, "Allow", acp::PermissionOptionKind::AllowOnce),
                 acp::PermissionOption::new(DENY, "Deny", acp::PermissionOptionKind::RejectOnce),

@@ -313,7 +313,8 @@ pub(crate) fn note_meta(meta: Meta, state: &mut BTreeMap<String, Value>, retired
 /// `lines`, the log `name`, read for saving to it as [`fold_lines`] reads
 /// it, but its changes only counted by their stamps, not read or applied:
 /// its conversation is empty, continuing the log; its saved values and
-/// retirement are read. `None` when it holds no complete line.
+/// retirement are read, and a second header is refused as loading refuses
+/// it. `None` when it holds no complete line.
 fn tally(name: &str, lines: &LogLines) -> Result<Option<Folded>, SessionError> {
     let Some((_, _, first)) = lines.iter().next() else {
         return Ok(None);
@@ -325,6 +326,9 @@ fn tally(name: &str, lines: &LogLines) -> Result<Option<Folded>, SessionError> {
         let refuse = |why| SessionError::record(name, line, why);
         let (stamp, change) = stamp_of(bytes).map_err(refuse)?;
         if !change && let (_, Body::Meta(meta)) = parse(bytes).map_err(refuse)? {
+            if matches!(meta, Meta::Header(_)) {
+                return Err(refuse("a second header".to_owned()));
+            }
             note_meta(meta, &mut state, &mut retired);
         }
         last = stamp;

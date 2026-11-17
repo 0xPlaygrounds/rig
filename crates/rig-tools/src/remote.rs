@@ -738,7 +738,7 @@ impl Workspace for Remote {
         let mut files: Vec<PathBuf> = String::from_utf8_lossy(&ran.out)
             .split('\0')
             .map(|name| Path::new(name.trim_start_matches("./")))
-            .filter(|name| !name.as_os_str().is_empty() && listing.keeps(name))
+            .filter(|name| !name.as_os_str().is_empty() && listing.keeps(name, false))
             .map(|name| root.join(name))
             .filter(|path| {
                 globs

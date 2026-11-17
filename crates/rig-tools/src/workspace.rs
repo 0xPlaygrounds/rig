@@ -225,11 +225,16 @@ impl Listing {
 
     /// Whether this listing keeps `below`, a path below the listed root, by
     /// its names alone (the ignore rules aside): `Visible` none of whose
-    /// parts is hidden or `target`, `Hidden` none of whose parts is `.git`.
-    pub fn keeps(self, below: &Path) -> bool {
+    /// parts is hidden or a `target` directory, `Hidden` none of whose parts
+    /// is `.git`. `dir` says whether `below` itself is a directory.
+    pub fn keeps(self, below: &Path, dir: bool) -> bool {
         let mut parts = below.iter();
         match self {
-            Self::Visible => !parts.any(|part| part == "target" || is_hidden(Path::new(part))),
+            Self::Visible => {
+                let last = parts.next_back();
+                !last.is_some_and(|last| (dir && last == "target") || is_hidden(Path::new(last)))
+                    && !parts.any(|part| part == "target" || is_hidden(Path::new(part)))
+            }
             Self::Hidden => !parts.any(|part| part == ".git"),
             Self::All => true,
         }
@@ -749,7 +754,10 @@ pub(crate) fn walk(
         .hidden(false)
         .filter_entry(move |entry| {
             entry.depth() == 0
-                || (listing.keeps(Path::new(entry.file_name())) && within(entry.path()))
+                || (listing.keeps(
+                    Path::new(entry.file_name()),
+                    entry.file_type().is_some_and(|kind| kind.is_dir()),
+                ) && within(entry.path()))
         });
     walk
 }

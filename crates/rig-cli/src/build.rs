@@ -1072,23 +1072,17 @@ fn tree(launch: &Launch, args: &[&str], log: &mut BuildLog) -> Result<Vec<String
     let mut build = Build::spawn(command)?;
     let child = &mut build.child;
     // Read on its own thread, so neither pipe fills while the other is read.
-    let out = child.stdout.take();
-    let reader = std::thread::spawn(move || {
-        let mut text = String::new();
-        if let Some(mut out) = out {
-            out.read_to_string(&mut text).ok();
-        }
-        text
-    });
+    let out = child.stdout.take().map(chunks);
     log.pass_on(child);
-    let stdout = reader
-        .join()
-        .map_err(|_| "reading cargo tree's output failed")?;
+    let stdout: Vec<u8> = out.into_iter().flatten().flatten().collect();
     let status = child.wait()?;
     if !status.success() {
         return Err("cargo could not resolve the agent project's dependencies".into());
     }
-    Ok(stdout.lines().map(str::to_owned).collect())
+    Ok(String::from_utf8_lossy(&stdout)
+        .lines()
+        .map(str::to_owned)
+        .collect())
 }
 
 /// The name and version of a `cargo tree` line.

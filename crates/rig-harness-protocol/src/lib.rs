@@ -1142,8 +1142,8 @@ impl SessionDir {
     }
 
     /// Names the session, or removes its name with `None` or a blank name.
-    /// The name is written beside the file and renamed over it, so a
-    /// reader sees the old name or the new one, never a part.
+    /// The name replaces the file whole by [`fs::replace`], so a reader
+    /// sees the old name or the new one, never a part.
     ///
     /// # Errors
     ///
@@ -1151,27 +1151,21 @@ impl SessionDir {
     pub fn set_name(&self, name: Option<&str>) -> std::io::Result<()> {
         let file = self.name_file();
         match name.map(str::trim).filter(|name| !name.is_empty()) {
-            Some(name) => {
-                let part = self.0.join("name.part");
-                fs::write(&part, name)?;
-                fs::rename(&part, &file)
-            }
+            Some(name) => fs::replace(&file, name.as_bytes()),
             None => fs::optional(fs::remove_file(&file)).map(drop),
         }
     }
 
     /// Writes `directory` as the one the session runs in
-    /// ([`Self::directory`]), beside the file and renamed over it, so a
-    /// reader sees the old one or the new one, never a part.
+    /// ([`Self::directory`]) by [`fs::replace`], so a reader sees the old
+    /// one or the new one, never a part.
     ///
     /// # Errors
     ///
     /// When the file cannot be written.
     pub fn set_working_directory(&self, directory: &Path) -> std::io::Result<()> {
         fs::create_dir_all(&self.0)?;
-        let part = self.0.join("directory.part");
-        fs::write(&part, directory.to_string_lossy().as_bytes())?;
-        fs::rename(&part, self.directory())
+        fs::replace(&self.directory(), directory.to_string_lossy().as_bytes())
     }
 
     /// The plain-text file of [`Self::name`].
@@ -1241,6 +1235,18 @@ pub const INVOCATION_USAGE: &str =
                          --<option>=<value>.
 ";
 
+/// The words of a command line as text.
+///
+/// # Errors
+///
+/// The first word that is not UTF-8.
+pub fn text_words(words: &[OsString]) -> Result<Vec<&str>, &OsStr> {
+    words
+        .iter()
+        .map(|word| word.to_str().ok_or(word.as_os_str()))
+        .collect()
+}
+
 impl Invocation {
     /// Reads the agent's arguments in their canonical form, without the
     /// program name: a plugin option's value comes after `=`. Without
@@ -1255,8 +1261,10 @@ impl Invocation {
 
     /// The agent's own arguments, from the process's.
     pub fn from_env() -> Result<Self, String> {
-        let args: Vec<String> = std::env::args().skip(1).collect();
-        Self::parse(&args)
+        let args: Vec<OsString> = std::env::args_os().skip(1).collect();
+        let words = text_words(&args)
+            .map_err(|word| format!("`{}` is not UTF-8", word.to_string_lossy()))?;
+        Self::parse(&words)
     }
 
     /// Whether nobody sits at a terminal view, and the run ends by itself.
@@ -1502,6 +1510,12 @@ pub struct DescribedSecret {
     pub help: String,
 }
 
+/// Whether a report field is a `-` after any number of `\`: the empty
+/// field's mark, or one escaped by a `\` more.
+fn is_dash(field: &str) -> bool {
+    field.trim_start_matches('\\') == "-"
+}
+
 impl AgentDescription {
     /// Reads a report. Without the header it is empty: a build from before
     /// commands, which has none. A record of a kind it does not know is
@@ -1513,7 +1527,11 @@ impl AgentDescription {
         if lines.next() != Some(DESCRIBED_HEADER) {
             return described;
         }
-        let given = |field: &str| (field != "-").then(|| field.to_owned());
+        let given = |field: &str| match field {
+            "-" => None,
+            field if is_dash(field) => field.get(1..).map(str::to_owned),
+            field => Some(field.to_owned()),
+        };
         for line in lines {
             match line.split('\t').collect::<Vec<_>>().as_slice() {
                 ["command", name, usage, run, session, help, ..] => {
@@ -1543,11 +1561,13 @@ impl AgentDescription {
     }
 
     /// The report as text, which [`Self::parse`] reads back. Tabs and line
-    /// breaks in a field become spaces.
+    /// breaks in a field become spaces. An empty usage or value name is
+    /// written `-`, so a `-` of its own gets a `\` before it.
     pub fn write(&self) -> String {
         let clean = |field: &str| field.replace(['\t', '\n', '\r'], " ");
         let or_dash = |field: &str| match field {
             "" => "-".to_owned(),
+            field if is_dash(field) => format!("\\{field}"),
             field => clean(field),
         };
         let mut lines = vec![DESCRIBED_HEADER.to_owned()];
