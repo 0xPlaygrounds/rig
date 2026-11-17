@@ -11,7 +11,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::client::env::{self, EnvError};
 use crate::providers::internal::credential_header;
-use crate::wire::Secret;
 
 use super::{Dialect, OpenAIConfig};
 
@@ -68,23 +67,6 @@ pub(super) fn default_user_agent(originator: &str) -> String {
 }
 
 impl OpenAIConfig {
-    /// `dialect` with the credential it accepts through its
-    /// [`alternate_auth`](Dialect::alternate_auth) variable, sent with that
-    /// alternative's header.
-    ///
-    /// Azure's account key and its Entra bearer token are both credentials
-    /// for the same account but go out under different headers, so which one
-    /// is held has to be recorded rather than guessed from the value.
-    pub fn with_alternate_key(dialect: &Dialect, api_key: impl Into<Secret>) -> Self {
-        let auth = dialect
-            .alternate_auth
-            .map_or(dialect.quirks.auth, |alternative| alternative.auth);
-        Self {
-            auth,
-            ..Self::with_key(dialect, api_key)
-        }
-    }
-
     /// The credential `dialect` reads from the environment, and how it is
     /// sent. Alternative credentials require their own header policy; the
     /// primary is preferred.

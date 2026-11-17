@@ -225,18 +225,6 @@ pub struct Rerank {
 }
 
 impl Rerank {
-    /// Order only the `top_k` most relevant documents.
-    pub fn with_top_k(mut self, top_k: usize) -> Self {
-        self.top_k = Some(top_k);
-        self
-    }
-
-    /// Ask Voyage to echo each ordered document's text back.
-    pub fn with_return_documents(mut self, return_documents: bool) -> Self {
-        self.return_documents = return_documents;
-        self
-    }
-
     /// Set whether overlong documents are truncated (`true`) or rejected (`false`).
     pub fn with_truncation(mut self, truncation: bool) -> Self {
         self.truncation = Some(truncation);

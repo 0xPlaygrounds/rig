@@ -352,10 +352,10 @@ fn the_xai_speech_body_differs_from_openais() {
 /// a speech request must not carry the general `api-version`.
 #[test]
 fn azure_speech_carries_its_own_api_version() {
-    let provider = OpenAIConfig::with_key(&AZURE, "k")
+    let mut provider = OpenAIConfig::with_key(&AZURE, "k")
         .with_base_url("https://example.openai.azure.com")
-        .with_api_version("2024-10-21")
-        .with_audio_api_version("2025-04-01-preview");
+        .with_api_version("2024-10-21");
+    provider.audio_api_version = Some("2025-04-01-preview".to_owned());
     let encoded = provider
         .audio_generation("my-tts")
         .encode(

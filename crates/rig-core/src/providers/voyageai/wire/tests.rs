@@ -126,10 +126,10 @@ async fn a_rerank_reply_keeps_the_provider_order_and_the_indices_it_named() {
 
 #[test]
 fn a_rerank_request_carries_the_query_the_documents_and_the_options() {
-    let encoded = voyage()
-        .rerank("rerank-2.5")
-        .with_top_k(1)
-        .with_return_documents(true)
+    let mut wire = voyage().rerank("rerank-2.5");
+    wire.top_k = Some(1);
+    wire.return_documents = true;
+    let encoded = wire
         .encode(
             RerankRequest {
                 query: "which is best?".to_owned(),
