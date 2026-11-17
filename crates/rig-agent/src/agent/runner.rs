@@ -272,12 +272,6 @@ impl<O> AgentRunner<O> {
         self
     }
 
-    /// Remove the agent's configured maximum token count for this run.
-    pub fn without_max_tokens(mut self) -> Self {
-        self.config.spec_mut().max_tokens = None;
-        self
-    }
-
     /// Shallow-merge object fields into the provider-specific parameters for
     /// this run. Later fields win. A non-object baseline is replaced by the
     /// supplied object. A later completion-call hook patch has final
@@ -295,22 +289,6 @@ impl<O> AgentRunner<O> {
                 }
                 _ => params,
             });
-        self
-    }
-
-    /// Replace all provider-specific parameters for this run. A later
-    /// completion-call hook patch has final precedence: object values
-    /// shallow-merge, while a non-object on either side causes wholesale
-    /// replacement by the hook value.
-    pub fn replace_additional_params(mut self, params: serde_json::Value) -> Self {
-        self.config.spec_mut().additional_params = Some(params);
-        self
-    }
-
-    /// Remove the agent's configured provider-specific parameters for this run.
-    /// A later completion-call hook may still supply its own parameters.
-    pub fn without_additional_params(mut self) -> Self {
-        self.config.spec_mut().additional_params = None;
         self
     }
 
@@ -375,12 +353,6 @@ impl<O> AgentRunner<O> {
     /// Override the tool-choice policy for this run.
     pub fn tool_choice(mut self, tool_choice: ToolChoice) -> Self {
         self.config.spec_mut().tool_choice = Some(tool_choice);
-        self
-    }
-
-    /// Remove the agent's configured tool-choice policy for this run.
-    pub fn without_tool_choice(mut self) -> Self {
-        self.config.spec_mut().tool_choice = None;
         self
     }
 
