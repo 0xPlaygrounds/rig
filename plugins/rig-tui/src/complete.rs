@@ -449,7 +449,10 @@ pub(crate) fn typed(
 /// Opens, updates or closes the completion after the input, the paths or
 /// the sources changed (`renewed`: an open list is listed again). A list
 /// closed with Esc stays closed until the token moves, and a prompt of the
-/// history shown unchanged opens none, so Up and Down walk past it.
+/// history shown unchanged opens none, so Up and Down walk past it. After a
+/// paste no list opens until the text changes, unless the word the paste
+/// ends in already names the selected item, so the next Enter sends what was
+/// pasted and at most closes its quote.
 pub(crate) fn update(
     view: &mut TuiView,
     input: &Editor,
@@ -458,6 +461,14 @@ pub(crate) fn update(
     wake: &Wake,
     commands: &mut Commands,
 ) {
+    let pasted = std::mem::take(&mut view.pasted);
+    if (view.paste_dismissed.as_deref()).is_some_and(|text| text != input.text()) {
+        view.paste_dismissed = None;
+    }
+    if view.paste_dismissed.is_some() {
+        view.completion = None;
+        return;
+    }
     if input.recalled() {
         view.completion = None;
         view.dismissed = None;
@@ -531,7 +542,7 @@ pub(crate) fn update(
         .and_then(|open| open.items.get(open.selected))
         .and_then(|was| items.iter().position(|item| item == was))
         .unwrap_or(0);
-    view.completion = (!items.is_empty()).then_some(Completion {
+    let completion = (!items.is_empty()).then_some(Completion {
         kind,
         start,
         query,
@@ -540,6 +551,18 @@ pub(crate) fn update(
         complete,
         open,
     });
+    // Enter on these sends the paste, or only closes its quote.
+    let kept = |list: &Completion| {
+        list.is_exact()
+            || (list.open
+                && (list.items.get(list.selected)).is_some_and(|item| item.text == list.query))
+    };
+    if pasted && !completion.as_ref().is_some_and(kept) {
+        view.paste_dismissed = Some(input.text().to_owned());
+        view.completion = None;
+        return;
+    }
+    view.completion = completion;
 }
 
 /// The best [`SHOWN`] paths for `query`: those whose file name matches

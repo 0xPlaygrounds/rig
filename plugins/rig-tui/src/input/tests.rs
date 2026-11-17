@@ -486,3 +486,100 @@ fn ctrl_d_on_an_empty_input_quits_and_on_a_draft_does_nothing() {
     press(&mut app, "ctrl+c ctrl+d");
     assert_eq!(quits(&app), 1);
 }
+
+/// Pastes `text` into the input and runs a frame.
+fn paste(app: &mut App, text: &str) {
+    push(app, KeyInput::Event(Event::Paste(text.to_owned())));
+    app.update();
+}
+
+/// A paste ending in a word that would complete, `@` alone or a partly
+/// typed path, opens no list, so one Enter sends it as pasted.
+#[test]
+fn enter_after_a_paste_ending_in_a_path_word_sends_it() {
+    use rig_harness::prelude::ProjectRoot;
+    use std::time::{Duration, Instant};
+
+    let root = crate::tests::scratch("paste-enter");
+    std::fs::write(root.join("lib.rs"), "").ok();
+    let (mut app, _) = view_app();
+    app.insert_resource(ProjectRoot(root.clone()));
+    let run_for = |app: &mut App, wait: Duration| {
+        let started = Instant::now();
+        while started.elapsed() < wait {
+            app.update();
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    };
+    // Typed, `@l` lists the project's paths once they are walked.
+    type_text(&mut app, "@l");
+    let started = Instant::now();
+    while app.world().resource::<TuiView>().completion.is_none()
+        && started.elapsed() < Duration::from_secs(10)
+    {
+        run_for(&mut app, Duration::from_millis(5));
+    }
+    let listed = app.world().resource::<TuiView>().completion.is_some();
+    press(&mut app, "ctrl+c");
+    for pasted in ["ping @lib", "look at @"] {
+        paste(&mut app, pasted);
+        run_for(&mut app, Duration::from_millis(200));
+        assert!(app.world().resource::<TuiView>().completion.is_none());
+        press(&mut app, "enter");
+        assert_eq!(
+            app.world()
+                .resource::<Accepted>()
+                .0
+                .last()
+                .map(String::as_str),
+            Some(pasted)
+        );
+        press(&mut app, "ctrl+c");
+    }
+    std::fs::remove_dir_all(&root).ok();
+    assert!(listed);
+}
+
+/// A pasted `/comp` opens no list of commands: Enter sends it as typed,
+/// and it is refused as an unknown command rather than completed.
+#[test]
+fn enter_after_a_pasted_partial_command_does_not_complete_it() {
+    let (mut app, _) = view_app();
+    app.add_command("compact", "Compacts", |_: In<CommandArgs>| {});
+    paste(&mut app, "/comp");
+    assert!(app.world().resource::<TuiView>().completion.is_none());
+    press(&mut app, "enter");
+    assert_eq!(typed(&app), "/comp");
+    // Typed by hand, the same word still opens the list, and so does a key
+    // typed into a pasted one.
+    press(&mut app, "ctrl+c");
+    type_text(&mut app, "/comp");
+    assert!(app.world().resource::<TuiView>().completion.is_some());
+    press(&mut app, "ctrl+c");
+    paste(&mut app, "/com");
+    type_text(&mut app, "p");
+    press(&mut app, "tab");
+    assert_eq!(typed(&app), "/compact ");
+    // Esc, or any key that leaves the text as pasted, opens no list, even
+    // with the cursor moved off the word and back.
+    press(&mut app, "ctrl+c");
+    paste(&mut app, "/comp");
+    press(&mut app, "esc");
+    press(&mut app, "down");
+    press(&mut app, "ctrl+a");
+    press(&mut app, "ctrl+e");
+    assert!(app.world().resource::<TuiView>().completion.is_none());
+    press(&mut app, "enter");
+    assert_eq!(typed(&app), "/comp");
+    // A list typed open after a paste and closed with Esc stays closed as
+    // the word grows.
+    press(&mut app, "ctrl+c");
+    paste(&mut app, "/co");
+    press(&mut app, "ctrl+a");
+    press(&mut app, "ctrl+e");
+    type_text(&mut app, "m");
+    assert!(app.world().resource::<TuiView>().completion.is_some());
+    press(&mut app, "esc");
+    type_text(&mut app, "p");
+    assert!(app.world().resource::<TuiView>().completion.is_none());
+}

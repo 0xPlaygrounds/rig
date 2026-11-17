@@ -490,6 +490,7 @@ pub(crate) fn read_input(
         let editor = keyed_editor(&editors, keymap.focus.0);
         let in_panel = editor.is_some() && editor == keymap.focus.0;
         let mut found = editor.and_then(|editor| editors.get_mut(editor).ok());
+        let main = found.as_ref().is_some_and(|(.., main)| *main);
         let input: &mut Editor = match &mut found {
             Some((_, editor, _)) => editor,
             None => &mut none,
@@ -569,10 +570,13 @@ pub(crate) fn read_input(
                 }
                 None if !in_panel && matches!(keymap.scope(reading), KeyScope::Panel(_)) => {}
                 // A dropped image file becomes `@path`, which attaches it.
-                None => match clipboard::dropped_image(&text) {
-                    Some(path) => clipboard::type_path(input, &path),
-                    None => input.insert(&text),
-                },
+                None => {
+                    match clipboard::dropped_image(&text) {
+                        Some(path) => clipboard::type_path(input, &path),
+                        None => input.insert(&text),
+                    }
+                    view.pasted |= main && !text.is_empty();
+                }
             },
             Event::Resize(width, height) => {
                 view.selection = None;
