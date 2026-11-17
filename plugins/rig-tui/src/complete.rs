@@ -450,9 +450,9 @@ pub(crate) fn typed(
 /// the sources changed (`renewed`: an open list is listed again). A list
 /// closed with Esc stays closed until the token moves, and a prompt of the
 /// history shown unchanged opens none, so Up and Down walk past it. A paste
-/// closes the list on the word it ends in until the next key, unless that
-/// word already names the selected item, so the next Enter sends what was
-/// pasted and at most closes its quote.
+/// closes the list on the word it ends in until the text changes, unless
+/// that word already names the selected item, so the next Enter sends what
+/// was pasted and at most closes its quote.
 pub(crate) fn update(
     view: &mut TuiView,
     input: &Editor,
@@ -462,6 +462,9 @@ pub(crate) fn update(
     commands: &mut Commands,
 ) {
     let pasted = std::mem::take(&mut view.pasted);
+    if (view.paste_dismissed.as_deref()).is_some_and(|text| text != input.text()) {
+        (view.dismissed, view.paste_dismissed) = (None, None);
+    }
     if input.recalled() {
         view.completion = None;
         view.dismissed = None;
@@ -552,7 +555,7 @@ pub(crate) fn update(
     };
     if pasted && !completion.as_ref().is_some_and(kept) {
         view.dismissed = Some(start);
-        view.paste_dismissed = true;
+        view.paste_dismissed = Some(input.text().to_owned());
         view.completion = None;
         return;
     }

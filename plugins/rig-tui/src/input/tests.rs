@@ -560,4 +560,12 @@ fn enter_after_a_pasted_partial_command_does_not_complete_it() {
     type_text(&mut app, "p");
     press(&mut app, "tab");
     assert_eq!(typed(&app), "/compact ");
+    // Esc, or any key that leaves the text as pasted, opens no list.
+    press(&mut app, "ctrl+c");
+    paste(&mut app, "/comp");
+    press(&mut app, "esc");
+    press(&mut app, "down");
+    assert!(app.world().resource::<TuiView>().completion.is_none());
+    press(&mut app, "enter");
+    assert_eq!(typed(&app), "/comp");
 }
