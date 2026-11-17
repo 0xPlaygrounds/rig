@@ -275,15 +275,14 @@ puts them all back in the input. Ctrl+V pastes the clipboard's image
 image file becomes one too.
 
 Answers are drawn as markdown, edits as diffs, and each built-in tool's call
-in its own way. By default every call is drawn whole: its arguments and
-result, every diff and every note, nothing cut or folded. The optional
-[`rig_fold::FoldPlugin`](../plugins/rig-fold) (off by default, `rig plugin
-enable rig_fold::FoldPlugin`) instead folds each finished call to its header,
-its first and last lines, and a line counting those left out. Ctrl+O (`[fold]
-key`) shows the call selected with Alt+Up whole, or every call when none is
-selected, and folds them again. A failed, stopped or running call stays whole,
-and the model, the session log, `--json`, ACP and exports still get every
-line. A diff is drawn from what the session keeps of it, so with redaction on
+in its own way. By default
+[`rig_fold::FoldPlugin`](../plugins/rig-fold) folds each finished call to its
+header, its first and last lines, and a line counting those left out. Ctrl+O
+(`[fold] key`) shows the call selected with Alt+Up whole, or every call when
+none is selected, and folds them again. A failed, stopped or running call
+stays whole, and the model, the session log, `--json`, ACP and exports still
+get every line. `rig plugin disable rig_fold::FoldPlugin` draws every call
+whole: its arguments and result, every diff and every note. A diff is drawn from what the session keeps of it, so with redaction on
 (below) a secret in it shows as a placeholder and an edit whose diff holds a
 private key block shows its reply instead, as one whose diff passes 256 KiB
 always does. A call's row is
