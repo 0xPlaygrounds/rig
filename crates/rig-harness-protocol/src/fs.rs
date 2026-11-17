@@ -241,7 +241,7 @@ pub fn open(options: &OpenOptions, path: impl AsRef<Path>) -> io::Result<File> {
 /// call alone and never one that was there (such as a planted link), which
 /// is private from creation, takes the old file's permissions and group, and
 /// is synced before it is renamed over `target`; the folder is synced after
-/// where the system allows. A new `target` gets the default mode.
+/// where the system allows. A new `target` stays private.
 ///
 /// # Errors
 ///
@@ -249,24 +249,6 @@ pub fn open(options: &OpenOptions, path: impl AsRef<Path>) -> io::Result<File> {
 /// the old file's group that cannot be kept included. The staged file is
 /// removed.
 pub fn replace(target: &Path, bytes: &[u8]) -> io::Result<()> {
-    staged_replace(target, bytes, false)
-}
-
-/// [`replace`] for a file that may hold secrets: a new `target` is private
-/// too.
-///
-/// # Errors
-///
-/// As [`replace`].
-pub fn replace_private(target: &Path, bytes: &[u8]) -> io::Result<()> {
-    staged_replace(target, bytes, true)
-}
-
-fn staged_replace(
-    target: &Path,
-    bytes: &[u8],
-    #[cfg_attr(not(unix), allow(unused_variables))] private: bool,
-) -> io::Result<()> {
     static CALLS: AtomicU64 = AtomicU64::new(0);
     let (Some(folder), Some(name)) = (target.parent(), target.file_name()) else {
         let why = format!("replace {}: not a file's path", target.display());
@@ -282,9 +264,7 @@ fn staged_replace(
     let mut options = OpenOptions::new();
     options.write(true).create_new(true);
     #[cfg(unix)]
-    if private || kept.is_some() {
-        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-    }
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
     let replaced = open(&options, &staged)
         .and_then(|mut file| {
             if let Some(kept) = &kept {
