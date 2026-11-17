@@ -295,7 +295,9 @@ impl ResponsesWebSocketSessionBuilder {
 pub struct ResponsesWebSocketSession {
     wire: Responses,
     previous_response_id: Option<String>,
-    pending_done_response_id: Option<String>,
+    /// The id of the turn whose trailing `response.done` may still arrive,
+    /// `Some(None)` when that turn's response had no id.
+    pending_done: Option<Option<String>>,
     socket: BoxedWebSocketConnection,
     in_flight: bool,
     /// The fold of the turn in flight, opened when it was sent.
@@ -319,7 +321,7 @@ impl ResponsesWebSocketSession {
         Self {
             wire,
             previous_response_id: None,
-            pending_done_response_id: None,
+            pending_done: None,
             socket: connection,
             in_flight: false,
             turn: None,
@@ -479,11 +481,11 @@ impl ResponsesWebSocketSession {
                 // OpenAI may emit `response.done` after the turn has already ended at
                 // `response.completed`. Ignore that trailing event on the next turn.
                 if self
-                    .pending_done_response_id
-                    .as_deref()
-                    .is_some_and(|pending| done.response_id() == Some(pending))
+                    .pending_done
+                    .as_ref()
+                    .is_some_and(|pending| pending.as_deref() == done.response_id())
                 {
-                    self.pending_done_response_id = None;
+                    self.pending_done = None;
                     continue;
                 }
             }
@@ -624,11 +626,11 @@ impl ResponsesWebSocketSession {
                     // `previous_response_id` like a completed one.
                     "response.completed" | "response.incomplete" => {
                         self.previous_response_id.clone_from(&response_id);
-                        self.pending_done_response_id = response_id;
+                        self.pending_done = Some(response_id);
                         self.in_flight = false;
                     }
                     "response.failed" => {
-                        self.pending_done_response_id = response_id;
+                        self.pending_done = Some(response_id);
                         self.previous_response_id = None;
                         self.in_flight = false;
                     }
@@ -647,12 +649,12 @@ impl ResponsesWebSocketSession {
                         self.previous_response_id = None;
                     }
                 }
-                self.pending_done_response_id = None;
+                self.pending_done = None;
                 self.in_flight = false;
             }
             ResponsesWebSocketEvent::Error(_) => {
                 self.previous_response_id = None;
-                self.pending_done_response_id = None;
+                self.pending_done = None;
                 self.in_flight = false;
             }
             // An unknown frame carries no turn-lifecycle signal.
@@ -663,7 +665,7 @@ impl ResponsesWebSocketSession {
     fn abort_turn(&mut self) {
         self.turn = None;
         self.previous_response_id = None;
-        self.pending_done_response_id = None;
+        self.pending_done = None;
         self.in_flight = false;
     }
 
