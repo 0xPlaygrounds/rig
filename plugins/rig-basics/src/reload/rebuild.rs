@@ -4,6 +4,7 @@
 use std::io::{BufRead, BufReader};
 use std::process::{ChildStderr, Command, Stdio};
 use std::sync::{Mutex, PoisonError};
+use std::thread::Builder;
 
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 use rig_harness::harness_protocol;
@@ -63,6 +64,7 @@ impl ReloadBuild {
         rebuild: Rebuild,
         agent: Entity,
         wake: Wake,
+        reader: Builder,
     ) -> std::io::Result<Self> {
         let path = std::path::PathBuf::from(launcher);
         let installed = LauncherFile::new(path.clone(), harness_protocol::Stamp::of(&path)?);
@@ -81,7 +83,7 @@ impl ReloadBuild {
         let mut process = Process::start_with_stdio(command)?;
         let (sender, lines) = crossbeam_channel::unbounded();
         if let Some(stderr) = process.take_stderr() {
-            std::thread::spawn(move || forward(stderr, sender, wake));
+            reader.spawn(move || forward(stderr, sender, wake))?;
         }
         Ok(Self {
             process: Mutex::new(process),
@@ -173,7 +175,7 @@ fn start_queued_reload(
     let Some(launcher) = harness_protocol::launcher() else {
         return;
     };
-    let notice = match ReloadBuild::start(&launcher, rebuild, agent, wake.clone()) {
+    let notice = match ReloadBuild::start(&launcher, rebuild, agent, wake.clone(), Builder::new()) {
         Ok(build) => {
             commands.insert_resource(build);
             *status = ReloadStatus::Building { latest: None };

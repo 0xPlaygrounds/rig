@@ -42,6 +42,17 @@ fn kept() -> Vec<String> {
     KEPT.with_borrow(|kept| kept.iter().map(|code| code.0.text.clone()).collect())
 }
 
+/// A grammar warm-up whose thread cannot start leaves the grammars to load
+/// when code is first drawn.
+#[test]
+fn code_is_colored_when_the_warm_up_cannot_start() {
+    // A stack no system can give: the loader thread really fails to start.
+    warm_up(std::thread::Builder::new().stack_size(usize::MAX / 2));
+    let code = Code::new("fn main() {}\n", Language::File("a.rs"));
+    let spans = code.spans(0).unwrap_or_default();
+    assert!(spans.iter().any(|span| span.style.fg.is_some()));
+}
+
 #[test]
 fn code_is_drawn_in_the_terminals_palette_and_plain_text_is_not_colored() {
     let code = Code::new("fn main() {\n    let x = 1;\n}\n", Language::File("a.rs"));

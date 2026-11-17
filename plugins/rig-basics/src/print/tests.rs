@@ -1129,7 +1129,7 @@ fn sections_follow_the_answer_by_tag() {
 #[test]
 fn a_prompt_takes_what_is_piped_in_however_late() {
     let piped = |prompt: &str, text: &'static [u8]| {
-        with_piped(prompt, text, PIPED_LIMIT, || false)
+        with_piped(prompt, text, PIPED_LIMIT, Builder::new(), || false)
             .ok()
             .flatten()
     };
@@ -1142,7 +1142,7 @@ fn a_prompt_takes_what_is_piped_in_however_late() {
         std::thread::sleep(Duration::from_millis(1500));
         writer.write_all(b"late").ok();
     });
-    let read = with_piped("Review", late, PIPED_LIMIT, || false);
+    let read = with_piped("Review", late, PIPED_LIMIT, Builder::new(), || false);
     assert_eq!(read.ok().flatten().as_deref(), Some("Review\n\nlate"));
 }
 
@@ -1155,7 +1155,7 @@ fn an_interrupted_run_stops_waiting_for_stdin() {
     };
     let since = std::time::Instant::now();
     let interrupted = move || since.elapsed() > Duration::from_millis(100);
-    let waited = with_piped("", silent, PIPED_LIMIT, interrupted);
+    let waited = with_piped("", silent, PIPED_LIMIT, Builder::new(), interrupted);
     assert_eq!(waited, Ok(None));
     drop(writer);
 }
@@ -1164,7 +1164,8 @@ fn an_interrupted_run_stops_waiting_for_stdin() {
 /// with or without a prompt before it.
 #[test]
 fn piped_input_past_its_limit_is_refused() {
-    let read = |prompt: &str, text: &'static [u8]| with_piped(prompt, text, 4, || false);
+    let read =
+        |prompt: &str, text: &'static [u8]| with_piped(prompt, text, 4, Builder::new(), || false);
     assert_eq!(read("", b"abcd"), Ok(Some("abcd".to_owned())));
     let large = Unpiped::TooLarge(TooLarge { limit: 4, asked: 5 });
     assert_eq!(read("", b"abcde"), Err(large.clone()));
@@ -1172,10 +1173,12 @@ fn piped_input_past_its_limit_is_refused() {
 }
 
 /// What is piped in that is not text, or that could not be read, refuses
-/// the run rather than going to the model mangled or cut short.
+/// the run rather than going to the model mangled or cut short, as does a
+/// reader thread that could not start.
 #[test]
 fn piped_input_that_is_not_text_or_fails_is_refused() {
-    let read = |prompt: &str, text: &'static [u8]| with_piped(prompt, text, 64, || false);
+    let read =
+        |prompt: &str, text: &'static [u8]| with_piped(prompt, text, 64, Builder::new(), || false);
     assert_eq!(read("", b"ok \xff no"), Err(Unpiped::NotText(3)));
     assert_eq!(read("Review", b"\xc3"), Err(Unpiped::NotText(0)));
     /// A reader that fails after its first bytes.
@@ -1191,8 +1194,15 @@ fn piped_input_that_is_not_text_or_fails_is_refused() {
             }
         }
     }
-    let failed = with_piped("", Broken(false), 64, || false);
+    let failed = with_piped("", Broken(false), 64, Builder::new(), || false);
     assert_eq!(failed, Err(Unpiped::Failed("the pipe broke".to_owned())));
+    // A stack no system can give: the reader thread really fails to start.
+    let unstartable = Builder::new().stack_size(usize::MAX / 2);
+    let unstarted = with_piped("Review", &b"diff"[..], 64, unstartable, || false);
+    assert!(
+        matches!(unstarted, Err(Unpiped::Failed(_))),
+        "{unstarted:?}"
+    );
     assert_eq!(
         Unpiped::NotText(3).to_string(),
         "what was piped in is not UTF-8 text from byte 3 on: pipe in text"

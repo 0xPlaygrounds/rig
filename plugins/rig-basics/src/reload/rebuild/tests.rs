@@ -31,7 +31,7 @@ fn the_rebuild_gets_no_secret() {
     let script = "#!/bin/sh\nprintf %s \"${RIG_SECRET_PROBE-none}\" > \"$0.seen\"\n";
     std::fs::write(&launcher, script).ok();
     std::fs::set_permissions(&launcher, std::fs::Permissions::from_mode(0o755)).ok();
-    let build = ReloadBuild::start(
+    let build = start(
         launcher.as_os_str(),
         Rebuild::Build,
         Entity::PLACEHOLDER,
@@ -77,7 +77,7 @@ fn a_stopped_rebuild_leaves_no_cargo() {
                   setsid sleep 60 & echo $! > \"$0.pid\"\nwait\n";
     std::fs::write(&launcher, script).ok();
     std::fs::set_permissions(&launcher, std::fs::Permissions::from_mode(0o755)).ok();
-    let build = ReloadBuild::start(
+    let build = start(
         launcher.as_os_str(),
         Rebuild::Build,
         Entity::PLACEHOLDER,
@@ -99,6 +99,53 @@ fn a_stopped_rebuild_leaves_no_cargo() {
     let left = alive(cargo.trim());
     std::fs::remove_dir_all(&dir).ok();
     assert!(!left, "cargo outlived the stopped rebuild");
+}
+
+/// A rebuild whose stderr reader cannot start fails to start, and the
+/// build it began does not outlive it.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_rebuild_whose_reader_cannot_start_leaves_no_build() {
+    let dir = scratch("unread");
+    std::fs::create_dir_all(&dir).ok();
+    let launcher = dir.join("rig");
+    std::fs::write(&launcher, "#!/bin/sh\nsleep 60\n").ok();
+    std::fs::set_permissions(&launcher, std::fs::Permissions::from_mode(0o755)).ok();
+    // A stack no system can give: the reader thread really fails to start.
+    let unstartable = Builder::new().stack_size(usize::MAX / 2);
+    let wake = Wake::default();
+    let build = ReloadBuild::start(
+        launcher.as_os_str(),
+        Rebuild::Build,
+        Entity::PLACEHOLDER,
+        wake,
+        unstartable,
+    );
+    // The launcher's shell names its script on its command line while it runs.
+    let script = launcher.as_os_str().as_encoded_bytes().to_vec();
+    let running = std::fs::read_dir("/proc")
+        .into_iter()
+        .flatten()
+        .flatten()
+        .any(|entry| {
+            std::fs::read(entry.path().join("cmdline"))
+                .is_ok_and(|line| line.windows(script.len()).any(|part| part == script))
+        });
+    std::fs::remove_dir_all(&dir).ok();
+    assert!(
+        build.is_err() && !running,
+        "the build started or outlived its failed start"
+    );
+}
+
+/// [`ReloadBuild::start`] with its stderr read on a thread of its own.
+fn start(
+    launcher: &std::ffi::OsStr,
+    rebuild: Rebuild,
+    agent: Entity,
+    wake: Wake,
+) -> std::io::Result<ReloadBuild> {
+    ReloadBuild::start(launcher, rebuild, agent, wake, Builder::new())
 }
 
 /// A directory of the test's own named `name`, beside its binary.
@@ -159,7 +206,7 @@ fn a_failed_build_leaves_its_errors_as_a_note() {
         kind: ChoiceKind::ForThisRun,
     });
     let wake = app.world().resource::<Wake>().clone();
-    if let Ok(build) = ReloadBuild::start(launcher.as_os_str(), Rebuild::Build, agent, wake) {
+    if let Ok(build) = start(launcher.as_os_str(), Rebuild::Build, agent, wake) {
         app.insert_resource(build);
         *app.world_mut().resource_mut::<ReloadStatus>() = ReloadStatus::Building { latest: None };
     }
@@ -226,7 +273,7 @@ fn failed_update(name: &str, script: &str) -> Said {
     app.update();
     let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
     let wake = app.world().resource::<Wake>().clone();
-    if let Ok(build) = ReloadBuild::start(launcher.as_os_str(), Rebuild::Update, agent, wake) {
+    if let Ok(build) = start(launcher.as_os_str(), Rebuild::Update, agent, wake) {
         app.insert_resource(build);
         *app.world_mut().resource_mut::<ReloadStatus>() = ReloadStatus::Building { latest: None };
     }
@@ -397,7 +444,7 @@ fn headless_reload(name: &str, rebuild: Rebuild, replace: bool, json: bool) -> E
     });
     app.finish();
     let wake = app.world().resource::<Wake>().clone();
-    if let Ok(build) = ReloadBuild::start(build.as_os_str(), rebuild, Entity::PLACEHOLDER, wake) {
+    if let Ok(build) = start(build.as_os_str(), rebuild, Entity::PLACEHOLDER, wake) {
         app.insert_resource(build);
         *app.world_mut().resource_mut::<ReloadStatus>() = ReloadStatus::Building { latest: None };
     }
@@ -540,7 +587,7 @@ fn cancelled_update(name: &str, script: &str) -> Vec<String> {
     app.update();
     let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
     let wake = app.world().resource::<Wake>().clone();
-    if let Ok(build) = ReloadBuild::start(launcher.as_os_str(), Rebuild::Update, agent, wake) {
+    if let Ok(build) = start(launcher.as_os_str(), Rebuild::Update, agent, wake) {
         app.insert_resource(build);
         *app.world_mut().resource_mut::<ReloadStatus>() = ReloadStatus::Building { latest: None };
     }
