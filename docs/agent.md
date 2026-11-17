@@ -271,8 +271,11 @@ that cannot be read, is warned about with the reason, and the model's
 message says the same, so the model knows it got no file. A message waiting for
 files on another machine holds back those sent after it, and Esc meanwhile
 puts them all back in the input. Ctrl+V pastes the clipboard's image
-(through `wl-paste`, `xclip` or `pngpaste`) as such a path, and a dropped
-image file becomes one too.
+(through `wl-paste`, `xclip` or `pngpaste`) as such a path, or its text
+when it holds no image, and a dropped image file becomes one too. When it
+cannot, it says why: the program that is not installed, no clipboard
+reachable from this machine (over SSH, say), or a program that did not
+answer within 5 seconds.
 
 Answers are drawn as markdown, edits as diffs, and each built-in tool's call
 in its own way. By default [`rig_fold::FoldPlugin`](../plugins/rig-fold) folds
@@ -288,6 +291,12 @@ whose diff holds a private key block shows its reply instead, as one whose
 diff passes 256 KiB always does. A call's row is tinted by where it stands
 (waiting, running, done, failed). Code is highlighted in the terminal's own
 palette, so it follows the terminal's theme.
+Dragging over the screen with the mouse copies what it covers when the
+button comes up, and the status line says `Copied 3 lines` until the next
+key or click. The copy goes to the terminal (OSC 52) and to `wl-copy` or
+`xclip`; when neither is installed, the first copy says so. Shift and a drag
+reach the terminal's own selection instead. Inside tmux, OSC 52 needs
+`set -g set-clipboard on`.
 PageUp, PageDown and Shift+Up/Down scroll the transcript. With `NO_COLOR` set,
 nothing is drawn in color. A plugin draws its tools' calls with ordinary systems in
 `rig_tui::TranscriptRender`, selecting inputs through
