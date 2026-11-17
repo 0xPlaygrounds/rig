@@ -323,13 +323,13 @@ fn azure_accepts_either_credential_under_its_own_header() {
 fn the_huggingface_sub_route_decides_the_model_and_the_routes() {
     assert_eq!(
         SubRoute::Fireworks.model_identifier("llama-3.3-70b"),
-        "llama-3.3-70b:fireworks-ai"
+        "llama-3.3-70b:fireworks"
     );
     // Idempotent: the rewrite runs on the resolved request model, so an
     // already-selecting per-request override must not be suffixed twice.
     assert_eq!(
-        SubRoute::Fireworks.model_identifier("llama-3.3-70b:fireworks-ai"),
-        "llama-3.3-70b:fireworks-ai"
+        SubRoute::Fireworks.model_identifier("llama-3.3-70b:fireworks"),
+        "llama-3.3-70b:fireworks"
     );
     assert_eq!(
         SubRoute::Together.model_identifier("llama-3.3-70b"),
@@ -338,7 +338,7 @@ fn the_huggingface_sub_route_decides_the_model_and_the_routes() {
 
     // The slugs the router routes by.
     assert_eq!(SubRoute::HFInference.slug(), "hf-inference");
-    assert_eq!(SubRoute::Fireworks.slug(), "fireworks-ai");
+    assert_eq!(SubRoute::Fireworks.slug(), "fireworks");
     assert_eq!(SubRoute::from("my-route").slug(), "my-route");
 
     // `None` behaves as the router's own default, which is the only
@@ -665,6 +665,7 @@ fn the_huggingface_sub_route_selects_the_provider_by_model_suffix() {
     for (route, suffix) in [
         (SubRoute::Together, "together"),
         (SubRoute::Nebius, "nebius"),
+        (SubRoute::Fireworks, "fireworks"),
         (SubRoute::HFInference, "hf-inference"),
     ] {
         let routed = router.clone().with_sub_route(route);
@@ -691,10 +692,25 @@ fn the_huggingface_sub_route_selects_the_provider_by_model_suffix() {
         Some(json!(format!("{MODEL}:together")))
     );
 
+    let fireworks = router.clone().with_sub_route(SubRoute::Fireworks);
+    let mut already = probe();
+    already.model = Some(format!("{MODEL}:fireworks"));
+    assert_eq!(
+        model_sent(&fireworks, already),
+        Some(json!(format!("{MODEL}:fireworks")))
+    );
+
     let mut conflicting = probe();
     conflicting.model = Some(format!("{MODEL}:novita"));
     assert!(
         sent(&together, conflicting).is_err(),
         "a model selecting another provider is refused, not sent with two suffixes"
+    );
+
+    let mut raw_conflict = probe();
+    raw_conflict.additional_params = Some(json!({ "model": format!("{MODEL}:fastest") }));
+    assert!(
+        sent(&together, raw_conflict).is_err(),
+        "a raw override selecting a policy is refused too"
     );
 }

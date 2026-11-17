@@ -72,7 +72,7 @@ impl SubRoute {
             Self::HFInference => "hf-inference",
             Self::Together => "together",
             Self::SambaNova => "sambanova",
-            Self::Fireworks => "fireworks-ai",
+            Self::Fireworks => "fireworks",
             Self::Hyperbolic => "hyperbolic",
             Self::Nebius => "nebius",
             Self::Novita => "novita",
