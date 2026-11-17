@@ -12,8 +12,8 @@
 //! options its plugins add (`rig help` lists them). A first word `--safe`
 //! starts rig's default plugins alone (`run::safe_flag`).
 //!
-//! [`main`] is the whole command. This package's `rig` binary and the `rig`
-//! facade's, which `cargo install rig` installs, are only a call to it:
+//! [`main`] is the whole command. The `rig` crate's binary, which `cargo
+//! install rig` installs, is only a call to it:
 //!
 //! ```no_run
 //! fn main() -> std::process::ExitCode {

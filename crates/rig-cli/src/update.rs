@@ -25,8 +25,8 @@ use super::Result;
 use super::project::RigSource;
 
 /// The crate `cargo install` installs the launcher from, also over a launcher
-/// the `rig` package installed: `--force` hands its `rig` binary to this one.
-const PACKAGE: &str = "rig-cli";
+/// an older `rig-cli` installed: `--force` hands its `rig` binary to this one.
+const PACKAGE: &str = "rig";
 
 /// Runs `rig update`. Refuses, in a line that starts as each of its own
 /// does, when this launcher is not in a `bin` directory, as `cargo install`
@@ -73,7 +73,7 @@ fn install_root(launcher: &Path) -> Result<PathBuf> {
 }
 
 /// The `cargo install` that replaces the launcher in `root` from `source`:
-/// crates.io's latest `rig-cli`, or the checkout as it is now, whose new
+/// crates.io's latest `rig`, or the checkout as it is now, whose new
 /// commits are the user's to fetch. Both build with the lock rig was
 /// tested with: the checkout's, or the one published in the package.
 /// rustup picks the toolchain of the directory cargo starts in, so it
@@ -89,10 +89,9 @@ pub fn install_command(launch: &Launch, source: &RigSource, root: &Path) -> Comm
         }
         RigSource::Local(checkout) => {
             let mut command = launch.build_child(Purpose::Install(checkout));
-            let path = checkout.join("crates").join(PACKAGE);
             command
                 .args(["install", "--force", "--locked", "--path"])
-                .arg(path);
+                .arg(checkout);
             command
         }
     };

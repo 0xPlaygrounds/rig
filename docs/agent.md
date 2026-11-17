@@ -3,7 +3,7 @@
 `rig` is a terminal coding agent. It is a Bevy app built on the
 [`rig-harness`](../crates/rig-harness) crate, and every part of it but the
 harness is a plugin, built from a plugin crate and turned on or off in
-`settings.toml`. The `rig` command (the `rig-cli` crate) is its launcher: it
+`settings.toml`. The `rig` command (the `rig` crate's binary) is its launcher: it
 generates a small Cargo project for the agent with the plugins you turned on,
 builds it, and runs it.
 
@@ -30,17 +30,15 @@ as Bevy entities, one recorded effect path, session logs) is the
 
 ## Install and run
 
-`cargo install rig` installs the launcher, the `rig` command. `cargo install
-rig-cli` installs the same launcher without building the `rig` library.
-`rig-cli` is not on crates.io until the next release, so until then
-`cargo install rig` installs the last release, 0.46.0. This guide describes
-`main`; [0.46.0's guide](https://github.com/0xPlaygrounds/rig/blob/v0.46.0/docs/agent.md)
+`cargo install rig` installs the launcher, the `rig` command. Until the next
+release it installs the last release, 0.46.0. This guide describes `main`;
+[0.46.0's guide](https://github.com/0xPlaygrounds/rig/blob/v0.46.0/docs/agent.md)
 is on its tag. To install `main`, build the launcher from a checkout
-(`--force` replaces a `rig` installed by another crate):
+(`--force` replaces a `rig` installed by another crate or source):
 
 ```bash
 git clone https://github.com/0xPlaygrounds/rig && cd rig
-cargo install --locked --force --path crates/rig-cli
+cargo install --locked --force --path .
 ```
 
 Then:
@@ -69,14 +67,13 @@ before running it. cargo runs in the checkout, or for crates.io in the
 install root, not in the directory rig was started in, so a
 `rust-toolchain.toml` there pinning an older Rust does not apply:
 
-- From crates.io: `cd <root> && cargo install --force --locked rig-cli
-  --root <root>`. `rig-cli` is not on crates.io until the next release, so until then
-  cargo cannot find it. 0.46.0 has no `rig update`: reinstall it by hand as in
-  [Install and run](#install-and-run). `--force` replaces the `rig` that the
-  `rig` crate installed, and cargo then lists it under `rig-cli`.
+- From crates.io: `cd <root> && cargo install --force --locked rig --root
+  <root>`. 0.46.0 has no `rig update`: reinstall it by hand as in
+  [Install and run](#install-and-run). `--force` replaces a `rig` that another
+  crate, such as an older `rig-cli`, installed.
 - From a checkout: `cd <checkout> && cargo install --force --locked --path
-  <checkout>/crates/rig-cli --root <root>`, with the checkout's own Rust. It
-  rebuilds the checkout as it is: `git pull` first is yours.
+  <checkout> --root <root>`, with the checkout's own Rust. It rebuilds the
+  checkout as it is: `git pull` first is yours.
 
 A failed install, such as one offline, leaves the installed rig as it was and
 exits 1. In the agent, `/update` runs it, showing its lines and cargo's latest
@@ -856,6 +853,6 @@ To run the agent from a rig checkout instead of crates.io, install the
 launcher from it or point `RIG_SOURCE` at it:
 
 ```bash
-cd rig && cargo install --path crates/rig-cli --root /some/dir
+cd rig && cargo install --path . --root /some/dir
 RIG_HOME=/some/dir/home RIG_SOURCE=$PWD /some/dir/bin/rig
 ```

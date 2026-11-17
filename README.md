@@ -105,7 +105,7 @@ providers), [`rig-derive`](crates/rig-derive) (feature `derive`),
 [`rig-reqwest`](crates/rig-reqwest) (feature `reqwest`) and
 [`rig-tungstenite`](crates/rig-tungstenite) (feature `websocket`).
 
-Coding agent: [`rig-cli`](crates/rig-cli) (feature `cli`, the `rig` binary)
+Coding agent: [`rig-cli`](crates/rig-cli) (feature `cli`, the library of the `rig` binary)
 and, not facade features, [`rig-harness`](crates/rig-harness),
 [`rig-harness-protocol`](crates/rig-harness-protocol),
 [`rig-ecs`](crates/rig-ecs), [`rig-tools`](crates/rig-tools),

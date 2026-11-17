@@ -47,7 +47,7 @@ fn the_install_command_follows_the_detected_source() {
     assert_eq!(
         words(&registry),
         [
-            "install", "--force", "--locked", "rig-cli", "--root", "/opt/rig"
+            "install", "--force", "--locked", "rig", "--root", "/opt/rig"
         ]
     );
     let checkout = RigSource::Local(PathBuf::from("/src/my rig"));
@@ -59,15 +59,14 @@ fn the_install_command_follows_the_detected_source() {
             "--force",
             "--locked",
             "--path",
-            "/src/my rig/crates/rig-cli",
+            "/src/my rig",
             "--root",
             "/opt/rig"
         ]
     );
     assert_eq!(
         shell_words(&local),
-        "cd '/src/my rig' && cargo install --force --locked --path '/src/my rig/crates/rig-cli' \
-         --root /opt/rig"
+        "cd '/src/my rig' && cargo install --force --locked --path '/src/my rig' --root /opt/rig"
     );
     assert_eq!(registry.get_current_dir(), Some(root));
     assert_eq!(

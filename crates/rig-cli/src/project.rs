@@ -95,7 +95,7 @@ impl RigSource {
         Err(format!(
             "rig {LONG_VERSION} was built from a rig checkout that is gone or in cargo's cache \
              (`cargo install --git`), so its agent cannot build from crates.io's rig {VERSION}: \
-             run `cargo install --path crates/rig-cli` in a checkout you keep, or set \
+             run `cargo install --path .` in a checkout you keep, or set \
              RIG_SOURCE to one"
         )
         .into())

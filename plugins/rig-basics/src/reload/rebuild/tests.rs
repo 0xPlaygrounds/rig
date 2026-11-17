@@ -247,11 +247,11 @@ fn failed_update(name: &str, script: &str) -> Said {
 /// the build log of an older build.
 #[test]
 fn a_failed_update_shows_what_rig_update_said() {
-    let said = "rig update: `cargo install --force rig-cli` failed (exit status: 101); this rig \
+    let said = "rig update: `cargo install --force rig` failed (exit status: 101); this rig \
                 is unchanged.";
     let script = format!(
         "echo \"rig update: running $1\" >&2\n\
-         echo 'error: could not find `rig-cli` in registry' >&2\necho '{said}' >&2\nexit 1"
+         echo 'error: could not find `rig` in registry' >&2\necho '{said}' >&2\nexit 1"
     );
     let Said { notices, notes } = failed_update("update", &script);
     assert_eq!(
@@ -259,7 +259,7 @@ fn a_failed_update_shows_what_rig_update_said() {
         Some(vec![
             "rig update: running update".to_owned(),
             said.to_owned(),
-            "The update failed: error: could not find `rig-cli` in registry; this rig keeps \
+            "The update failed: error: could not find `rig` in registry; this rig keeps \
              running."
                 .to_owned(),
         ])
@@ -267,7 +267,7 @@ fn a_failed_update_shows_what_rig_update_said() {
     assert_eq!(notes.len(), 1);
     assert!(notes.iter().all(|note| {
         note.starts_with("Updating rig (/update) failed before it was installed")
-            && note.contains("could not find `rig-cli`")
+            && note.contains("could not find `rig`")
             && !note.contains("build.log")
     }));
 }

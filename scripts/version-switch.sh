@@ -149,7 +149,7 @@ launcher_for() {
     git -C "$repo" worktree add --quiet --detach "$tree" "$commit"
     worktrees+=("$tree")
     package=rig
-    [[ -f "$tree/crates/rig-cli/Cargo.toml" ]] && package=rig-cli
+    grep -qs '^\[\[bin\]\]' "$tree/crates/rig-cli/Cargo.toml" && package=rig-cli
     echo "building the $label launcher from $arg ($commit) …"
     (cd "$tree" && TMPDIR="$work/tmp" CARGO_TARGET_DIR="$work/build/$label" CARGO_BUILD_JOBS="$jobs" \
         cargo build --release --locked -p "$package" --bin rig) >"$logs/build-$label.log" 2>&1 ||

@@ -14138,8 +14138,6 @@ dependencies = [
 name = "rig-cli"
 version = "0.46.0"
 dependencies = [
- "anyhow",
- "assert_fs",
  "ctrlc",
  "libc",
  "rig-harness-protocol",

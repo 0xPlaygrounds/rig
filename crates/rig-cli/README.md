@@ -1,17 +1,17 @@
 # rig-cli
 
-The `rig` command: the launcher of the rig coding agent, a terminal coding
-agent built on [rig-harness](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-harness).
+The library of the `rig` command, the launcher of the rig coding agent, a
+terminal coding agent built on [rig-harness](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-harness).
 
-`cargo install rig-cli` installs it, and so does `cargo install rig`, whose
-`rig` binary calls this crate. The
+`cargo install rig` installs the command; the `rig` crate's binary calls this
+crate. `cargo install rig-cli` installs no binary. The
 [agent guide](https://github.com/0xPlaygrounds/rig/blob/main/docs/agent.md#install-and-run)
 says how to install it.
 
-To update, run `rig update` (`/update` in the agent): it reinstalls `rig-cli`
+To update, run `rig update` (`/update` in the agent): it reinstalls `rig`
 from where it came from, crates.io or the checkout as it is now (`git pull`
 first is yours), printing the cargo command first, and builds the agent at the
-new version. It replaces a launcher `cargo install rig` installed the same way.
+new version. It also replaces a launcher an older `rig-cli` installed.
 `/update` then resumes the session on it.
 
 It generates a small Cargo project for the agent under `RIG_HOME` (default
