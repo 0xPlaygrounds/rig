@@ -25,11 +25,13 @@ impl Plugin for ActivityPlugin {
             .init_resource::<rig_ecs::retry::RetryPolicy>()
             .add_systems(PostUpdate, update_activity.in_set(ActivitySystems));
         #[cfg(feature = "tui")]
-        app.configure_sets(
-            PostUpdate,
-            ActivitySystems.before(rig_tui::StatusSystems::Show),
-        )
-        .add_systems(PostUpdate, show_status.in_set(rig_tui::StatusSystems::Show));
+        app.register_required_components::<Agent, StatusClock>()
+            .init_resource::<Time<Real>>()
+            .configure_sets(
+                PostUpdate,
+                ActivitySystems.before(rig_tui::StatusSystems::Show),
+            )
+            .add_systems(PostUpdate, show_status.in_set(rig_tui::StatusSystems::Show));
     }
 }
 
@@ -229,25 +231,79 @@ fn update_activity(
 const STATUS: rig_tui::StatusItem =
     rig_tui::StatusItem::new("status", rig_tui::Side::Left, 50, u8::MAX);
 
+/// When an agent's status last changed, on Bevy's real clock, and the
+/// whole seconds its status line shows since then, if any.
+#[cfg(feature = "tui")]
+#[derive(Component, Default)]
+struct StatusClock {
+    status: ActivityStatus,
+    since: Duration,
+    shown: Option<u64>,
+}
+
+/// The seconds a status lasts before its clock shows, so short steps do
+/// not flicker.
+#[cfg(feature = "tui")]
+const CLOCK_AFTER: u64 = 5;
+
 /// Each agent's status, in its status line: green when idle, yellow at
-/// work, red waiting to retry.
+/// work, red waiting to retry. Work that has lasted [`CLOCK_AFTER`]
+/// seconds shows how long, such as `thinking… 1m12s`, so a silent model
+/// does not look frozen.
 #[cfg(feature = "tui")]
 fn show_status(
-    mut agents: Query<(&Activity, &mut rig_tui::StatusItems), Changed<Activity>>,
+    mut agents: Query<(Ref<Activity>, &mut StatusClock, &mut rig_tui::StatusItems)>,
+    time: Res<Time<Real>>,
     policy: Res<rig_ecs::retry::RetryPolicy>,
 ) {
     use rig_tui::Tone;
-    for (activity, mut items) in &mut agents {
-        let shown = match &activity.status {
-            ActivityStatus::Idle => STATUS.says("idle", Tone::Green),
-            ActivityStatus::Asking(title) => STATUS.says(format!("asking: {title}"), Tone::Cyan),
-            ActivityStatus::Retrying { attempt, seconds } => STATUS.says(
+    let now = time.elapsed();
+    for (activity, mut clock, mut items) in &mut agents {
+        if clock.status != activity.status {
+            clock.status = activity.status.clone();
+            clock.since = now;
+        }
+        let seconds = now.saturating_sub(clock.since).as_secs();
+        let timed = matches!(
+            activity.status,
+            ActivityStatus::Thinking
+                | ActivityStatus::Writing
+                | ActivityStatus::RunningTools
+                | ActivityStatus::Busy(_)
+        );
+        let shown = (timed && seconds >= CLOCK_AFTER).then_some(seconds);
+        if !activity.is_changed() && shown == clock.shown {
+            continue;
+        }
+        clock.shown = shown;
+        let shown = match (&activity.status, shown) {
+            (ActivityStatus::Idle, _) => STATUS.says("idle", Tone::Green),
+            (ActivityStatus::Asking(title), _) => {
+                STATUS.says(format!("asking: {title}"), Tone::Cyan)
+            }
+            (ActivityStatus::Retrying { attempt, seconds }, _) => STATUS.says(
                 format!("retry {attempt}/{} in {seconds}s…", policy.max_retries),
                 Tone::Red,
             ),
-            status => STATUS.says(format!("{status}…"), Tone::Yellow),
+            (status, Some(seconds)) => {
+                STATUS.says(format!("{status}… {}", lasted(seconds)), Tone::Yellow)
+            }
+            (status, None) => STATUS.says(format!("{status}…"), Tone::Yellow),
         };
         items.show(shown);
+    }
+}
+
+/// `seconds` as `12s`, `4m03s` or `1h02m`.
+#[cfg(feature = "tui")]
+fn lasted(seconds: u64) -> String {
+    let (hours, minutes) = (seconds / 3600, seconds / 60 % 60);
+    if hours > 0 {
+        format!("{hours}h{minutes:02}m")
+    } else if minutes > 0 {
+        format!("{minutes}m{:02}s", seconds % 60)
+    } else {
+        format!("{seconds}s")
     }
 }
 

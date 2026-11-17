@@ -149,3 +149,46 @@ fn a_turn_is_writing_once_its_answer_streams() {
         .spawn((ToolRequest { call: request }, CallOf(turn)));
     assert_eq!(status(&mut app, agent), Some(ActivityStatus::RunningTools));
 }
+
+#[cfg(feature = "tui")]
+#[test]
+fn the_status_line_shows_how_long_a_step_has_lasted() {
+    let mut app = App::new();
+    // Bevy's real clock, stepped by hand.
+    app.add_plugins(ActivityPlugin)
+        .init_resource::<Time<Real>>()
+        .register_required_components::<Agent, rig_tui::StatusItems>();
+    let world = app.world_mut();
+    let agent = spawn_root(world).id();
+    let turn = world.spawn(TurnOf(agent)).id();
+    let call = world.spawn((Partial::default(), CallOf(turn))).id();
+    let shown = |app: &mut App, after: u64| {
+        let world = app.world_mut();
+        let mut time = world.resource_mut::<Time<Real>>();
+        time.update_with_duration(Duration::from_secs(after));
+        app.update();
+        let items = app.world().get::<rig_tui::StatusItems>(agent);
+        let item = items.and_then(|items| items.iter().find(|item| item.name == "status"));
+        item.map(|item| item.text.clone())
+    };
+    // A short step shows no clock, so it does not flicker.
+    assert_eq!(shown(&mut app, 0).as_deref(), Some("thinking…"));
+    assert_eq!(shown(&mut app, 4).as_deref(), Some("thinking…"));
+    assert_eq!(shown(&mut app, 1).as_deref(), Some("thinking… 5s"));
+    assert_eq!(shown(&mut app, 65).as_deref(), Some("thinking… 1m10s"));
+
+    // The clock counts from when the status changed.
+    let answer = Partial {
+        text: "Hello".to_owned(),
+        reasoning: String::new(),
+        calls: Vec::new(),
+    };
+    app.world_mut().entity_mut(call).insert(answer);
+    assert_eq!(shown(&mut app, 0).as_deref(), Some("writing…"));
+    assert_eq!(shown(&mut app, 8).as_deref(), Some("writing… 8s"));
+    assert_eq!(shown(&mut app, 235).as_deref(), Some("writing… 4m03s"));
+    assert_eq!(shown(&mut app, 3357).as_deref(), Some("writing… 1h00m"));
+
+    app.world_mut().entity_mut(turn).despawn();
+    assert_eq!(shown(&mut app, 60).as_deref(), Some("idle"));
+}
