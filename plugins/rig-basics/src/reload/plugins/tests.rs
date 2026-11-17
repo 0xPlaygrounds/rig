@@ -134,7 +134,9 @@ fn a_row_says_what_waits_for_the_next_reload_and_what_an_essential_takes_away() 
         "[plugins]\ndisable = [\"rig_basics::welcome::WelcomePlugin\"]\n\
          enable = [\"rig_basics::budget::BudgetPlugin\"]\n\
          [[plugins.extra]]\ncrate = \"viz\"\npath = \"viz\"\nplugin = \"viz::Charts\"\n\
-         [[plugins.extra]]\ncrate = \"viz\"\npath = \"viz\"\nplugin = \"viz::Tables\"\n",
+         [[plugins.extra]]\ncrate = \"viz\"\npath = \"viz\"\nplugin = \"viz::Tables\"\n\
+         [[plugins.extra]]\ncrate = \"viz\"\npath = \"viz\"\nplugin = \"viz::charts::Plugin\"\n\
+         [[plugins.extra]]\ncrate = \"viz\"\npath = \"viz\"\nplugin = \"viz::tables::Plugin\"\n",
     )
     .ok();
     let (mut app, agent) = app(&home, true);
@@ -178,6 +180,15 @@ fn a_row_says_what_waits_for_the_next_reload_and_what_an_essential_takes_away() 
     assert_eq!(
         shown("viz::Tables").map(|(name, _)| name),
         Some("viz Tables")
+    );
+    // Two of one crate with one type name are named by their type paths.
+    assert_eq!(
+        shown("viz::charts::Plugin").map(|(name, _)| name),
+        Some("viz::charts::Plugin")
+    );
+    assert_eq!(
+        shown("viz::tables::Plugin").map(|(name, _)| name),
+        Some("viz::tables::Plugin")
     );
 }
 

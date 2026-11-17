@@ -144,9 +144,8 @@ fn rows(chosen: &Plugins, running: &[String]) -> Vec<Row> {
     let built_ins = (built_ins.into_iter())
         .map(|built_in| built_in_row(built_in, on(built_in.plugin), runs(built_in.plugin)));
     let extras = (chosen.extra.iter()).map(|extra| {
-        let shared = (chosen.extra.iter())
-            .any(|other| other.krate == extra.krate && other.plugin != extra.plugin);
-        extra_row(extra, shared, on(&extra.plugin), runs(&extra.plugin))
+        let name = extra_name(extra, &chosen.extra);
+        extra_row(extra, name, on(&extra.plugin), runs(&extra.plugin))
     });
     built_ins.chain(extras).collect()
 }
@@ -196,13 +195,27 @@ fn built_in_row(built_in: &BuiltIn, on: bool, runs: bool) -> Row {
     }
 }
 
-/// The row of the extra plugin `extra`, named by its crate, and by its
-/// type too when another extra is `shared` from that crate.
-fn extra_row(extra: &Extra, shared: bool, on: bool, runs: bool) -> Row {
-    let name = match extra.plugin.rsplit("::").next().filter(|_| shared) {
-        Some(last) => format!("{} {last}", extra.krate),
-        None => extra.krate.clone(),
-    };
+/// The name of `extra` among `extras`: its crate when it is the crate's
+/// only one, else its crate and type name when no other of the crate's has
+/// that name, else its type path. Crate names hold no spaces and type paths
+/// differ, so no two extras share a name.
+fn extra_name(extra: &Extra, extras: &[Extra]) -> String {
+    let last = |plugin: &str| plugin.rsplit("::").next().unwrap_or(plugin).to_owned();
+    let mut others = (extras.iter())
+        .filter(|other| other.krate == extra.krate && other.plugin != extra.plugin)
+        .peekable();
+    if others.peek().is_none() {
+        return extra.krate.clone();
+    }
+    let name = last(&extra.plugin);
+    if others.any(|other| last(&other.plugin) == name) {
+        return extra.plugin.clone();
+    }
+    format!("{} {name}", extra.krate)
+}
+
+/// The row of the extra plugin `extra`, shown as `name`.
+fn extra_row(extra: &Extra, name: String, on: bool, runs: bool) -> Row {
     let about = format!(
         "{name}\nYour plugins · {}\n{}\n\n{}\n{}\nFrom {}.",
         extra.krate,
