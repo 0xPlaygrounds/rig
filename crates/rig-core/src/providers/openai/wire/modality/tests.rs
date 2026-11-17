@@ -255,6 +255,25 @@ fn a_transcription_request_is_multipart() {
     );
 }
 
+/// Azure transcribes at `/audio/transcriptions`, keeping the spoken
+/// language; `/audio/translations` would answer in English.
+#[test]
+fn azure_transcribes_rather_than_translates() {
+    let encoded = OpenAIConfig::with_key(&AZURE, "k")
+        .with_base_url("https://example.openai.azure.com")
+        .with_api_version("2024-10-21")
+        .transcription("whisper")
+        .encode(
+            crate::transcription::TranscriptionRequestBuilder::new(b"RIFF".to_vec()).build(),
+            Mode::Unary,
+        )
+        .expect("the request encodes");
+    assert_eq!(
+        encoded.request.uri().to_string(),
+        "https://example.openai.azure.com/openai/deployments/whisper/audio/transcriptions?api-version=2024-10-21"
+    );
+}
+
 // ── the dialect-specific modality bodies ────────────────────────────────
 
 /// xAI's image endpoint takes no `size` and must be asked for base64, which
