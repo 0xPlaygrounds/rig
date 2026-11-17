@@ -231,7 +231,7 @@ fn a_file_that_is_not_toml_is_refused_at_its_line() {
 
 /// A private file's staged copy is never readable by others, watched while
 /// edits run; a link planted at the staged name is not followed; a new file
-/// gets the default mode, not a private one.
+/// is private too.
 #[cfg(unix)]
 #[test]
 fn a_private_settings_file_is_never_staged_readable() {
@@ -315,7 +315,7 @@ fn a_private_settings_file_is_never_staged_readable() {
 
     let fresh = dir.join("fresh.toml");
     assert_eq!(set_key(&fresh, 1), Ok((true, ())));
-    assert_eq!(mode(&fresh).ok(), mode(&outside).ok());
+    assert_eq!(mode(&fresh).ok(), Some(0o600));
     std::fs::remove_dir_all(&dir).ok();
 }
 

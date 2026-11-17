@@ -378,10 +378,10 @@ impl McpFile {
         lock(&self.lock)
     }
 
-    /// Replaces the file with `bytes` by [`harness_fs::replace_private`], as
-    /// its headers may hold tokens: never through a file that was there,
-    /// such as a link a checkout planted. The user's own file, when it is a
-    /// link, is replaced where it points.
+    /// Replaces the file with `bytes` by [`harness_fs::replace`], private
+    /// when new as its headers may hold tokens, and never through a file
+    /// that was there, such as a link a checkout planted. The user's own
+    /// file, when it is a link, is replaced where it points.
     fn write(&self, bytes: &[u8]) -> Result<(), String> {
         let path = match self.scope {
             Scope::User => linked(&self.path()).map_err(|error| error.to_string())?,
@@ -392,7 +392,7 @@ impl McpFile {
         if self.scope == Scope::Project {
             self.inside_project()?;
         }
-        harness_fs::replace_private(&path, bytes).map_err(failed)
+        harness_fs::replace(&path, bytes).map_err(failed)
     }
 
     /// Refuses a project's `.rig` that leads out of the project, such as a

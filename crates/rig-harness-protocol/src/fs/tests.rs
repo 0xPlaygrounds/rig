@@ -80,3 +80,29 @@ fn concurrent_replaces_each_land_whole() {
     assert_eq!((failed, torn), (0, 0));
     assert!(whole(&last));
 }
+
+/// A new file is the user's alone whatever the umask, and a file that was
+/// there keeps its wider mode.
+#[cfg(unix)]
+#[test]
+fn a_new_file_is_private_and_an_old_one_keeps_its_mode() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = std::env::temp_dir().join(format!("rig-fs-private-{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
+    let (new, old) = (dir.join("new"), dir.join("old"));
+    let mode = |path: &Path| {
+        std::fs::metadata(path)
+            .map(|meta| meta.permissions().mode() & 0o777)
+            .ok()
+    };
+    let made = std::fs::create_dir_all(&dir)
+        .and_then(|()| std::fs::write(&old, "old"))
+        .and_then(|()| std::fs::set_permissions(&old, std::fs::Permissions::from_mode(0o644)))
+        .and_then(|()| replace(&new, b"new"))
+        .and_then(|()| replace(&old, b"new"));
+    let modes = [mode(&new), mode(&old)];
+    std::fs::remove_dir_all(&dir).ok();
+    assert!(made.is_ok(), "{made:?}");
+    assert_eq!(modes, [Some(0o600), Some(0o644)]);
+}
