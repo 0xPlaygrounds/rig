@@ -7,8 +7,9 @@ use bevy_ecs::prelude::*;
 use bevy_log::warn;
 use bevy_tasks::{IoTaskPool, TaskPool};
 
-use super::editor::Editor;
+use super::editor::{Editor, MainEditor};
 use super::terminal::CopyToClipboard;
+use super::view::TuiView;
 use rig_ecs::agent::Notice;
 use rig_ecs::requests::RequestOf;
 use rig_ecs::tasks::{Running, Wake};
@@ -167,17 +168,21 @@ pub(crate) fn warn_copy_missed(
 pub(crate) fn type_pasted(
     pasted: On<Insert<Pasted>>,
     found: Query<(&Pasted, &RequestOf)>,
-    shown: Res<ShownAgent>,
-    mut editors: Query<&mut Editor>,
+    (shown, mut view): (Res<ShownAgent>, ResMut<TuiView>),
+    mut editors: Query<(&mut Editor, Has<MainEditor>)>,
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
     match found.get(pasted.entity) {
         Ok((Pasted(Ok(paste)), &RequestOf(editor))) => {
-            if let Ok(mut input) = editors.get_mut(editor) {
+            if let Ok((mut input, main)) = editors.get_mut(editor) {
                 match paste {
                     Paste::Image(path) => type_path(&mut input, path),
-                    Paste::Text(text) => paste_text(&mut input, text),
+                    // As a bracketed paste, it opens no completion list.
+                    Paste::Text(text) => {
+                        paste_text(&mut input, text);
+                        view.pasted |= main && !text.is_empty();
+                    }
                 }
             }
         }

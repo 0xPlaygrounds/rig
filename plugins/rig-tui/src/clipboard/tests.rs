@@ -8,6 +8,7 @@ use rig_harness::main_agent::ShownAgent;
 
 use super::{CopyMissed, Paste, Pasted, read_either, type_pasted, warn_copy_missed};
 use crate::editor::{Editor, MainEditor};
+use crate::view::TuiView;
 
 /// A pasted image is typed in the editor that asked for it, not in
 /// whichever is the main one.
@@ -15,6 +16,7 @@ use crate::editor::{Editor, MainEditor};
 fn a_pasted_image_is_typed_in_the_editor_that_asked_for_it() {
     let mut world = World::new();
     world.init_resource::<ShownAgent>();
+    world.init_resource::<TuiView>();
     world.init_resource::<Messages<Notice>>();
     world.add_observer(type_pasted);
     let main = world.spawn((Editor::default(), MainEditor)).id();
@@ -32,6 +34,7 @@ fn a_pasted_image_is_typed_in_the_editor_that_asked_for_it() {
 fn pasted_text_is_typed() {
     let mut world = World::new();
     world.init_resource::<ShownAgent>();
+    world.init_resource::<TuiView>();
     world.init_resource::<Messages<Notice>>();
     world.add_observer(type_pasted);
     let main = world.spawn((Editor::default(), MainEditor)).id();
@@ -40,6 +43,8 @@ fn pasted_text_is_typed() {
     world.flush();
     let text = world.get::<Editor>(main).map(|it| it.text().to_owned());
     assert_eq!(text.as_deref(), Some("two\nlines"));
+    // Like a bracketed paste, it marks the input pasted for the completion.
+    assert!(world.resource::<TuiView>().pasted);
 }
 
 /// A copy that found no clipboard program says so once a session.
@@ -47,6 +52,7 @@ fn pasted_text_is_typed() {
 fn a_missed_copy_is_told_once() {
     let mut world = World::new();
     world.init_resource::<ShownAgent>();
+    world.init_resource::<TuiView>();
     world.init_resource::<Messages<Notice>>();
     world.add_observer(warn_copy_missed);
     for _ in 0..2 {
