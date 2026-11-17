@@ -30,9 +30,11 @@ as Bevy entities, one recorded effect path, session logs) is the
 
 ## Install and run
 
-`rig-cli` is not on crates.io yet. Until the next release, `cargo install rig`
-installs the last release, 0.46.0, whose `rig` crate carries the launcher.
-This guide describes `main`; [0.46.0's guide](https://github.com/0xPlaygrounds/rig/blob/v0.46.0/docs/agent.md)
+`cargo install rig` installs the launcher, the `rig` command. `cargo install
+rig-cli` installs the same launcher without building the `rig` library.
+`rig-cli` is not on crates.io until the next release, so until then
+`cargo install rig` installs the last release, 0.46.0. This guide describes
+`main`; [0.46.0's guide](https://github.com/0xPlaygrounds/rig/blob/v0.46.0/docs/agent.md)
 is on its tag. To install `main`, build the launcher from a checkout
 (`--force` replaces a `rig` installed by another crate):
 
@@ -71,7 +73,7 @@ install root, not in the directory rig was started in, so a
   --root <root>`. `rig-cli` is not on crates.io until the next release, so until then
   cargo cannot find it. 0.46.0 has no `rig update`: reinstall it by hand as in
   [Install and run](#install-and-run). `--force` replaces the `rig` that the
-  `rig` crate installed.
+  `rig` crate installed, and cargo then lists it under `rig-cli`.
 - From a checkout: `cd <checkout> && cargo install --force --locked --path
   <checkout>/crates/rig-cli --root <root>`, with the checkout's own Rust. It
   rebuilds the checkout as it is: `git pull` first is yours.

@@ -284,7 +284,7 @@ pub(super) fn all() -> Vec<Check> {
                 "fail",
                 "-E",
                 "test(/^process::tests::/) | test(/^host::(signals|launcher)::tests::/) \
-                 | (binary(rig) & test(/^(run|locks|run::stop)::tests::/)) \
+                 | (package(rig-cli) & test(/^(run|locks|run::stop)::tests::/)) \
                  | test(/^tests::a_group_whose_leader_left/)",
             ])],
         ),

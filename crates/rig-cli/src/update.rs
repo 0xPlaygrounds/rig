@@ -24,7 +24,8 @@ use rig_harness_protocol::{UPDATE_SAYS, shell_word};
 use super::Result;
 use super::project::RigSource;
 
-/// The crate `cargo install` installs the launcher from.
+/// The crate `cargo install` installs the launcher from, also over a launcher
+/// the `rig` package installed: `--force` hands its `rig` binary to this one.
 const PACKAGE: &str = "rig-cli";
 
 /// Runs `rig update`. Refuses, in a line that starts as each of its own
