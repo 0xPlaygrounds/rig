@@ -127,9 +127,9 @@ fn the_welcome_is_the_mark_beside_the_version_model_and_directory() {
 /// The welcome on a terminal view's test screen, with activity, after its
 /// first frame, with its agent shown.
 #[cfg(feature = "tui")]
-fn on_screen() -> (App, Option<Entity>) {
+fn on_screen(width: u16) -> (App, Option<Entity>) {
     let (mut app, _) = app_on(&MemoryStore::default());
-    app.insert_resource(rig_tui::TuiTestScreen::new(100, 30));
+    app.insert_resource(rig_tui::TuiTestScreen::new(width, 30));
     rig_harness_test_support::tui_view(&mut app);
     app.add_plugins((
         AgentPlugin,
@@ -179,7 +179,21 @@ fn mark_colors(app: &mut App, after: std::time::Duration) -> Vec<Option<Color>> 
 #[cfg(feature = "tui")]
 #[test]
 fn the_mark_pulses_while_the_agent_works_and_rests_when_idle() {
-    let (mut app, agent) = on_screen();
+    pulses_while_working(100);
+}
+
+#[cfg(feature = "tui")]
+#[test]
+fn the_whole_mark_pulses_when_the_line_beside_it_wraps() {
+    // Too narrow for "no model: /model picks one" beside the mark.
+    pulses_while_working(40);
+}
+
+/// On a screen `width` columns wide, the whole mark is still while idle,
+/// every row of it pulses while the agent works, and it rests again after.
+#[cfg(feature = "tui")]
+fn pulses_while_working(width: u16) {
+    let (mut app, agent) = on_screen(width);
     assert!(agent.is_some(), "the session has its agent");
     let Some(agent) = agent else {
         return;

@@ -180,9 +180,11 @@ mod tui {
 
     /// Paints the mark in the main pane in the activity's animation step,
     /// over the drawn transcript, so the transcript is not laid out again
-    /// for it. It looks only at the pane's top rows, as many as the
-    /// welcome's mark and the blank line above it, so each row of the mark
-    /// still on screen pulses and nothing else changes. Under `NO_COLOR` the mark stays as drawn.
+    /// for it. It looks down the pane from the top until it has painted
+    /// the mark's last row, so each row of the mark still on screen pulses
+    /// wherever a title or wrapped lines put it, and only rows that start
+    /// with a row of the mark change. Under `NO_COLOR` the mark stays as
+    /// drawn.
     fn pulse(
         pulse: Res<Pulse>,
         mut panes: Query<&mut PanelCanvas, With<MainPane>>,
@@ -198,13 +200,11 @@ mod tui {
             // Painting changes only the buffer, not a change to redraw for.
             let buffer = canvas.bypass_change_detection().buffer_mut();
             let area = buffer.area;
-            // The transcript draws a blank line above each aside, so the
-            // mark at the top sits under it.
-            for y in (area.top()..area.bottom()).take(1 + LEFT.len()) {
-                for row in 0..LEFT.len() {
-                    if paint(buffer, (y, row), step, &theme) {
-                        break;
-                    }
+            let last = LEFT.len().saturating_sub(1);
+            for y in area.top()..area.bottom() {
+                let painted = (0..LEFT.len()).find(|row| paint(buffer, (y, *row), step, &theme));
+                if painted == Some(last) {
+                    break;
                 }
             }
         }
