@@ -670,10 +670,19 @@ what it adds. `rig plugin enable <type>` and `disable <type>` change
 `[plugins]`, keeping every comment. `rig plugin new hello` makes that crate in
 `$RIG_HOME/plugins/hello`, outside any workspace, and adds its
 `[[plugins.extra]]`, checked before `settings.toml` is written. Another
-crate's plugin is a `[[plugins.extra]]` table you write. In the agent, `/plugins` is a picker of the same list: tick and
-untick plugins, press Enter, and the agent rebuilds and restarts with them at
-once; a failed build keeps the running one (without a terminal it prints the
-list).
+crate's plugin is a `[[plugins.extra]]` table you write.
+
+In the agent, `/plugins` reads `settings.toml` itself and opens at once. It
+lists every plugin by a short name, such as "Terminal view", in groups, and
+your extras last by crate. The pane beside the list shows the highlighted
+plugin's group, crate, type path (what `settings.toml` and `rig plugin
+enable` take), default, state in `settings.toml`, whether it runs now, and
+what it adds. Typing filters by name or type path. Tick and untick plugins
+and press Enter: every change goes into `settings.toml` in one edit, or none
+when one is refused, and the agent rebuilds and restarts with them; a failed
+build keeps the running one. Without a terminal it prints each plugin's name,
+type path and state. When `settings.toml` does not read, `/plugins` names the
+file and the error instead of opening.
 
 `rig plugin check` checks the list. With `--build` it also builds the agent
 with its plugins in `$RIG_HOME/target` without staging it, and names the

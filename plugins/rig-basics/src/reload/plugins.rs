@@ -1,20 +1,20 @@
-//! `/plugins`: every plugin, on and off, as `$RIG_LAUNCHER plugin list`
-//! lists them, each with its crate, what it adds, and how it differs from
-//! what this build runs (its `PluginSource` entities). In the terminal view
-//! it is a picker with the plugins on ticked: applying it runs
-//! `$RIG_LAUNCHER plugin enable` and `disable` for each plugin ticked or
-//! unticked, which edit `RIG_HOME/settings.toml`, then reloads at once
-//! ([`ReloadStatus::ask`]), which rebuilds the agent with them. Without a
-//! terminal it shows the list. The launcher owns the file, so the model
-//! changes it the same way from `shell`.
+//! `/plugins`: rig's plugins and the extras of `RIG_HOME/settings.toml`,
+//! read from that file in this process, each with whether it is on and
+//! whether this build runs it (its `PluginSource` entity). In the terminal
+//! view it is a picker of short names in group order with the plugins on
+//! ticked, and the highlighted plugin's detail beside it ([`PickPreview`]).
+//! Applying writes every change in one edit of the file ([`config::turn`])
+//! and then reloads ([`ReloadStatus::ask`]), which rebuilds the agent with
+//! them. Without a terminal it lists them.
+//!
+//! `rig plugin enable` and `rig plugin disable` change the same file from a
+//! shell, with the same rules.
 
-use std::process::Command;
-
-use rig_harness::harness_protocol::config::essential;
-use rig_harness::harness_protocol::{self, without_secrets};
-use rig_harness::pick::{Picked, Picker};
+use rig_harness::harness_protocol::Home;
+use rig_harness::harness_protocol::config::{self, BUILT_IN, BuiltIn, Extra, Plugins};
+use rig_harness::pick::{Highlighted, PickPreview, Picked, Picker};
 use rig_harness::prelude::*;
-use rig_tools::process::{Process, Spawn};
+use rig_harness::services::RigHome;
 
 use crate::reload::{Rebuild, ReloadStatus};
 
@@ -28,57 +28,69 @@ impl Plugin for PluginsPlugin {
             "plugins",
             "List every plugin, on and off, and turn them on and off in settings.toml",
             plugins,
-        );
+        )
+        .add_systems(Update, preview);
     }
 }
 
-/// One plugin, from a line of `rig plugin list`.
+/// One plugin as `/plugins` shows it.
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct Listed {
-    /// Whether it is on.
-    enabled: bool,
-    /// The plugin type, such as `rig_tui::TuiPlugin`.
-    type_path: String,
-    /// Its crate.
-    krate: String,
-    /// What it adds, with the launcher's own notes.
-    description: String,
+struct Row {
+    /// Its type path, which settings.toml names.
+    plugin: String,
+    /// What the list shows: a built-in's short name, an extra's crate.
+    name: String,
+    /// Whether settings.toml turns it on.
+    on: bool,
+    /// Its state, short: `on`, `off`, or why it is off.
+    state: String,
+    /// Everything about it, for the preview.
+    about: String,
 }
 
-/// The `/plugins` picker's entries, in its order, and the agent it is for.
+/// The `/plugins` picker's rows, in its order, and the agent it is for.
 #[derive(Component)]
 struct PluginsPicker {
-    listed: Vec<Listed>,
+    rows: Vec<Row>,
     agent: Entity,
 }
 
 /// `/plugins`: the picker on an interactive terminal, else the list.
 fn plugins(
     In(args): In<NoArgs>,
+    home: Option<Res<RigHome>>,
     invoked: Option<Res<Invoked>>,
     running: Query<&Name, With<PluginSource>>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let listed = match launcher(&["list"]) {
-        Ok(output) => parse(&output),
+    let home = home.map_or_else(Home::from_env, |home| home.0.clone());
+    let chosen = match config::chosen(&home) {
+        Ok(chosen) => chosen,
         Err(why) => {
-            notices.write(Notice::error(args.agent, why));
+            notices.write(Notice::error(
+                args.agent,
+                format!(
+                    "{} does not read, so /plugins cannot tell which plugins are on: {why}\n\
+                     Edit the file, or take out a plugin it names with \
+                     `rig plugin disable <plugin>` in a shell.",
+                    home.settings().display()
+                ),
+            ));
             return;
         }
     };
     let running: Vec<String> = running.iter().map(Name::to_string).collect();
-    let details: Vec<String> = listed
-        .iter()
-        .map(|listed| detail(listed, &running))
-        .collect();
+    let rows = rows(&chosen, &running);
     if !invoked.is_some_and(|invoked| invoked.interactive()) {
-        let lines: Vec<String> = listed
-            .iter()
-            .zip(&details)
-            .map(|(listed, detail)| {
-                let state = if listed.enabled { "on " } else { "off" };
-                format!("{state} {}: {detail}", listed.type_path)
+        let names = rows.iter().map(|row| row.name.len()).max().unwrap_or(0);
+        let paths = rows.iter().map(|row| row.plugin.len()).max().unwrap_or(0);
+        let lines: Vec<String> = (rows.iter())
+            .map(|row| {
+                format!(
+                    "{:<names$}  {:<paths$}  {}",
+                    row.name, row.plugin, row.state
+                )
             })
             .collect();
         notices.write(Notice::info(args.agent, lines.join("\n")));
@@ -87,138 +99,199 @@ fn plugins(
     let mut picker = Picker::new("Plugins")
         .for_agent(args.agent)
         .body(
-            "Tick the plugins to run and press Enter: RIG_HOME/settings.toml is changed and \
-             the agent rebuilds at once. A failed build keeps this one running.",
+            "Tick the plugins to run and press Enter: RIG_HOME/settings.toml changes in one \
+             edit and the agent rebuilds. A failed build keeps this one running.",
         )
         .multiple();
-    for (listed, detail) in listed.iter().zip(details) {
-        picker.items.push(PickItem {
-            checked: listed.enabled,
-            ..PickItem::new(&listed.type_path, "").detail(detail)
-        });
-    }
+    picker.items = (rows.iter())
+        .map(|row| PickItem {
+            checked: row.on,
+            // Typing a type path finds its plugin; → shows it with the whole state.
+            more: Some(format!("{}: {}", row.plugin, row.state)),
+            ..PickItem::new(&row.name, "").detail(&row.state)
+        })
+        .collect();
+    // The terminal view gives the preview its half of the screen from the
+    // first frame only when the picker comes with one.
+    let first = rows
+        .first()
+        .map(|row| row.about.clone())
+        .unwrap_or_default();
     commands
         .spawn((
             picker,
+            PickPreview::Text(first),
             PluginsPicker {
-                listed,
+                rows,
                 agent: args.agent,
             },
         ))
         .observe(apply);
 }
 
-/// Enables and disables what the user ticked and unticked, then reloads.
+/// Every plugin, rig's in group order and then the extras, as `chosen`
+/// turns them on, and whether `running` holds each.
+fn rows(chosen: &Plugins, running: &[String]) -> Vec<Row> {
+    let mut built_ins: Vec<&BuiltIn> = BUILT_IN.iter().collect();
+    built_ins.sort_by_key(|built_in| built_in.group);
+    let on = |plugin: &str| chosen.on.iter().any(|on| on == plugin);
+    let runs = |plugin: &str| running.iter().any(|runs| runs == plugin);
+    let built_ins = (built_ins.into_iter())
+        .map(|built_in| built_in_row(built_in, on(built_in.plugin), runs(built_in.plugin)));
+    let extras =
+        (chosen.extra.iter()).map(|extra| extra_row(extra, on(&extra.plugin), runs(&extra.plugin)));
+    built_ins.chain(extras).collect()
+}
+
+/// The row of rig's plugin `built_in`.
+fn built_in_row(built_in: &BuiltIn, on: bool, runs: bool) -> Row {
+    let warning = built_in.essential.filter(|_| !on);
+    let mut state = match (on, built_in.available()) {
+        (_, false) => format!("off here: {} only", built_in.targets.join("/")),
+        (true, true) => "on".to_owned(),
+        (false, true) => "off".to_owned(),
+    };
+    if let Some(what) = warning {
+        state.push_str(&format!(" [warning: takes away {what}]"));
+    }
+    let mut about = format!(
+        "{}\n{} · {}\n{}\n\n{}\n",
+        built_in.name,
+        built_in.group.title(),
+        built_in.krate,
+        built_in.plugin,
+        states(Some(built_in.on), on, runs),
+    );
+    if !built_in.targets.is_empty() {
+        about.push_str(&format!(
+            "Builds on {} only.\n",
+            built_in.targets.join(" and ")
+        ));
+    }
+    if let Some(what) = warning {
+        about.push_str(&format!("Warning: off, which takes away {what}.\n"));
+    }
+    about.push('\n');
+    about.push_str(built_in.about);
+    Row {
+        plugin: built_in.plugin.to_owned(),
+        name: built_in.name.to_owned(),
+        on,
+        state,
+        about,
+    }
+}
+
+/// The row of the extra plugin `extra`.
+fn extra_row(extra: &Extra, on: bool, runs: bool) -> Row {
+    let state = if on { "on" } else { "off" };
+    let about = format!(
+        "{}\nYour plugins · {}\n{}\n\n{}\n\nFrom {}.",
+        extra.krate,
+        extra.krate,
+        extra.plugin,
+        states(None, on, runs),
+        extra.source,
+    );
+    Row {
+        plugin: extra.plugin.clone(),
+        name: extra.krate.clone(),
+        on,
+        state: state.to_owned(),
+        about,
+    }
+}
+
+/// A plugin's default, when it has one, its state in settings.toml and
+/// whether this build runs it.
+fn states(default: Option<bool>, on: bool, runs: bool) -> String {
+    let word = |on: bool| if on { "on" } else { "off" };
+    let mut parts = Vec::new();
+    if let Some(default) = default {
+        parts.push(format!("default {}", word(default)));
+    }
+    parts.push(format!("{} in settings", word(on)));
+    parts.push(if runs { "running now" } else { "not running" }.to_owned());
+    parts.join(" · ")
+}
+
+/// Shows the highlighted plugin's detail beside each `/plugins` picker.
+fn preview(
+    pickers: Query<
+        (Entity, &PluginsPicker, &Highlighted, Option<&PickPreview>),
+        Changed<Highlighted>,
+    >,
+    mut commands: Commands,
+) {
+    for (entity, picker, highlighted, shown) in &pickers {
+        let Some(row) = picker.rows.get(highlighted.0) else {
+            continue;
+        };
+        let preview = PickPreview::Text(row.about.clone());
+        if shown != Some(&preview) {
+            commands.entity(entity).insert(preview);
+        }
+    }
+}
+
+/// Writes what the user ticked and unticked to settings.toml in one edit,
+/// then reloads.
 fn apply(
     picked: On<Picked>,
     pickers: Query<&PluginsPicker>,
+    home: Option<Res<RigHome>>,
     status: Option<ResMut<ReloadStatus>>,
     mut notices: MessageWriter<Notice>,
 ) {
     let (Some(chosen), Ok(picker)) = (&picked.chosen, pickers.get(picked.entity)) else {
         return;
     };
-    let mut changed = Vec::new();
-    for (index, listed) in picker.listed.iter().enumerate() {
-        let enable = chosen.items.contains(&index);
-        if enable == listed.enabled {
-            continue;
-        }
-        let verb = if enable { "enable" } else { "disable" };
-        match launcher(&[verb, &listed.type_path]) {
-            Ok(_) => changed.push(format!("{verb}d {}", listed.type_path)),
-            Err(why) => {
-                notices.write(Notice::error(picker.agent, why));
-            }
-        }
-    }
+    let changed: Vec<(&Row, bool)> = (picker.rows.iter().enumerate())
+        .map(|(index, row)| (row, chosen.items.contains(&index)))
+        .filter(|(row, on)| row.on != *on)
+        .collect();
     if changed.is_empty() {
         notices.write(Notice::info(picker.agent, "No plugin changed."));
         return;
+    }
+    let path = home
+        .map_or_else(Home::from_env, |home| home.0.clone())
+        .settings();
+    let changes: Vec<(&str, bool)> = (changed.iter())
+        .map(|(row, on)| (row.plugin.as_str(), *on))
+        .collect();
+    let edited = config::edit(&path, |file| {
+        config::turn(file, &changes).map(|changed| (changed, ()))
+    });
+    if let Err(why) = edited {
+        notices.write(Notice::error(
+            picker.agent,
+            format!("{} is unchanged: {why}", path.display()),
+        ));
+        return;
+    }
+    let turned = |on: bool| -> Vec<&str> {
+        (changed.iter())
+            .filter(|(_, turned)| *turned == on)
+            .map(|(row, _)| row.name.as_str())
+            .collect()
+    };
+    let mut said = Vec::new();
+    for (on, names) in [("on", turned(true)), ("off", turned(false))] {
+        if !names.is_empty() {
+            said.push(format!("turned {on} {}", names.join(", ")));
+        }
     }
     let reload = match status {
         Some(mut status) => status.ask(picker.agent, Rebuild::Build).err(),
         None => Some("Without rig_basics::reload::ReloadPlugin, it applies when rig starts again."),
     };
-    let mut text = format!("settings.toml: {}.", changed.join(", "));
+    let mut text = format!("{}: {}.", path.display(), said.join("; "));
     if let Some(why) = reload {
         text.push(' ');
         text.push_str(why);
     }
     notices.write(Notice::info(picker.agent, text));
-}
-
-/// What a front shows beside a plugin: how it differs from what this build
-/// runs and what goes without an essential one, first so a cut row keeps
-/// them, then its crate and its description.
-fn detail(listed: &Listed, running: &[String]) -> String {
-    // A plugin's name is its type's path, which is the path its entry gives.
-    let runs = running.contains(&listed.type_path);
-    let mut parts = Vec::new();
-    match (listed.enabled, runs) {
-        (true, false) => parts.push("[enabled, takes effect at the next reload]".to_owned()),
-        (false, true) => parts.push("[disabled, runs until the next reload]".to_owned()),
-        _ => {}
-    }
-    if listed.enabled
-        && let Some(what) = essential(&listed.type_path)
-    {
-        parts.push(format!("[warning: disabling it takes away {what}]"));
-    }
-    parts.push(format!("({})", listed.krate));
-    if !listed.description.is_empty() {
-        parts.push(listed.description.clone());
-    }
-    parts.join(" ")
-}
-
-/// The entries of `rig plugin list`'s output: `on` or `off`, the type, its
-/// crate and its description, separated by spaces.
-fn parse(output: &str) -> Vec<Listed> {
-    output
-        .lines()
-        .filter_map(|line| {
-            let (state, rest) = word(line)?;
-            let (type_path, rest) = word(rest)?;
-            let (krate, rest) = word(rest).unwrap_or((rest.trim(), ""));
-            Some(Listed {
-                enabled: match state {
-                    "on" => true,
-                    "off" => false,
-                    _ => return None,
-                },
-                type_path: type_path.to_owned(),
-                krate: krate.to_owned(),
-                description: rest.trim().to_owned(),
-            })
-        })
-        .collect()
-}
-
-/// The first word of `text` and the text after it.
-fn word(text: &str) -> Option<(&str, &str)> {
-    let text = text.trim_start();
-    let end = text.find(char::is_whitespace).unwrap_or(text.len());
-    let (word, rest) = text.split_at(end);
-    (!word.is_empty()).then_some((word, rest))
-}
-
-/// Runs `$RIG_LAUNCHER plugin <args>`, without the secrets, and returns
-/// what it printed, or why it failed.
-fn launcher(args: &[&str]) -> Result<String, String> {
-    let launcher = harness_protocol::launcher()
-        .ok_or("/plugins needs the rig launcher: start the agent with `rig`.")?;
-    let mut command = Command::new(launcher);
-    command.arg("plugin").args(args);
-    without_secrets(&mut command);
-    let output = Process::start(command, Spawn::default())
-        .and_then(|launcher| launcher.output(None))
-        .map_err(|failure| format!("Could not run the rig launcher: {failure}"))?;
-    if !output.status.success() {
-        let said = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("rig plugin {}: {}", args.join(" "), said.trim()));
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
 #[cfg(test)]
