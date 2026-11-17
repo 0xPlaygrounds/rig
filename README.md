@@ -8,6 +8,7 @@
 [![crates.io](https://img.shields.io/crates/v/rig.svg)](https://crates.io/crates/rig)
 [![docs.rs](https://img.shields.io/docsrs/rig)](https://docs.rs/rig)
 [![Discord](https://img.shields.io/discord/511303648119226382?label=Discord)](https://discord.gg/playgrounds)
+<a href="https://ryzome.ai"><img src="img/ryzome-bg.png" height="32" align="absmiddle" alt="Ryzome"></a>
 
 Rig is a Rust library for building applications on large language models.
 It also ships `rig`, a terminal coding agent built on the library that you
@@ -15,15 +16,16 @@ extend with Bevy plugins.
 
 ## The coding agent
 
-Install the launcher, `rig-cli`, from a checkout. The
-[agent guide](docs/agent.md#install-and-run) covers installing a release.
-It needs Rust 1.97.1 or newer and runs on Linux and macOS.
-
 ```bash
-git clone https://github.com/0xPlaygrounds/rig && cd rig
-cargo install --locked --force --path crates/rig-cli
+cargo install rig
 rig
 ```
+
+This installs the last release, 0.46.0, whose `rig` crate carries the
+launcher; [its guide](https://github.com/0xPlaygrounds/rig/blob/v0.46.0/docs/agent.md)
+is on its tag. The [agent guide](docs/agent.md#install-and-run) describes
+`main` and how to install it from a checkout. The agent needs Rust 1.97.1 or
+newer and runs on Linux and macOS.
 
 The first `rig` builds the agent, which takes several minutes, and opens it.
 Run `/login` to sign in or save an API key, or export one such as
@@ -31,8 +33,8 @@ Run `/login` to sign in or save an API key, or export one such as
 the commands. `rig -p "fix the failing test"` answers one prompt and exits.
 
 Its tools, commands, sessions, sign-in and terminal view are each a plugin,
-turned on or off in `~/.rig/settings.toml`. `/reload` rebuilds the agent with
-your changes and keeps the session.
+so any of them can be turned off, replaced or added to. `/reload` rebuilds
+the agent with your changes and keeps the session.
 
 - The [agent guide](docs/agent.md) covers updating, models, sessions, tools,
   settings and scripting.
@@ -78,7 +80,7 @@ the derive macros and the reqwest HTTP client with rustls. Each crate in the
 list below is a feature named after it without `rig-`:
 
 ```bash
-cargo add rig --features lancedb,fastembed
+cargo add rig --features memory,fastembed
 ```
 
 - Agents and state: [`rig-agent`](crates/rig-agent),
@@ -91,13 +93,9 @@ cargo add rig --features lancedb,fastembed
   [`rig-candle`](crates/rig-candle) (local models),
   [`rig-fastembed`](crates/rig-fastembed) (local embeddings),
   [`rig-typesafeai`](crates/rig-typesafeai) (TypeSafe Jev judgments).
-- Vector stores: [`rig-helixdb`](crates/rig-helixdb),
-  [`rig-lancedb`](crates/rig-lancedb), [`rig-milvus`](crates/rig-milvus),
-  [`rig-mongodb`](crates/rig-mongodb), [`rig-neo4j`](crates/rig-neo4j),
-  [`rig-postgres`](crates/rig-postgres), [`rig-qdrant`](crates/rig-qdrant),
-  [`rig-s3vectors`](crates/rig-s3vectors), [`rig-scylladb`](crates/rig-scylladb),
-  [`rig-sqlite`](crates/rig-sqlite), [`rig-surrealdb`](crates/rig-surrealdb),
-  [`rig-vectorize`](crates/rig-vectorize).
+
+The vector stores, such as LanceDB, Qdrant and PostgreSQL, are companion
+crates behind features too; [docs.rs lists every feature](https://docs.rs/crate/rig/latest/features).
 
 Internals: [`rig-core`](crates/rig-core) (messages, models, tools,
 providers), [`rig-derive`](crates/rig-derive) (feature `derive`),
@@ -125,3 +123,7 @@ built on Rig.
 
 Rig is pre-1.0, so releases break APIs. The [changelog](CHANGELOG.md) and
 [migration notes](MIGRATING.md) say what changed. Rig is MIT licensed.
+
+<p align="center">
+<img src="img/built-by-playgrounds.svg" alt="Built by Playgrounds" width="30%">
+</p>
