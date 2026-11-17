@@ -1049,3 +1049,46 @@ fn a_picker_filled_again_before_its_first_frame_keeps_the_item_it_opened_on() {
         [Some(Chosen::item(0))]
     );
 }
+
+/// A picker that binds Enter to ticking: Enter ticks the highlighted row,
+/// also with a filter typed, and never closes it; the ticks are mirrored as
+/// [`Ticked`] and survive a filter that matches nothing; the keys row says
+/// what Enter and Esc do; Esc closes it without a choice.
+#[test]
+fn a_picker_whose_enter_ticks_mirrors_the_ticks_and_esc_closes_it() {
+    use rig_harness::pick::Ticked;
+
+    use crate::TuiTestScreen;
+
+    let (mut app, _) = view_app();
+    app.init_resource::<Reported>().add_observer(report);
+    app.insert_resource(TuiTestScreen::new(80, 24));
+    let picker = Picker::new("Plugins")
+        .multiple()
+        .item("Welcome", "")
+        .item("Folded output", "")
+        .item("Skills", "");
+    let keys = ChoiceKeys(vec![(KeyCode::Enter, ChoiceAction::Tick)]);
+    let entity = app.world_mut().spawn((picker, keys)).id();
+    app.update();
+    // Enter twice unticks; a third time ticks again.
+    press(&mut app, "enter enter enter");
+    type_text(&mut app, "fold");
+    press(&mut app, "enter");
+    type_text(&mut app, "zzz");
+    press(&mut app, "enter");
+    app.update();
+    let ticked = app.world().get::<Ticked>(entity).cloned();
+    assert_eq!(ticked, Some(Ticked(vec![0, 1])));
+    assert_eq!(shown(&mut app).as_deref(), Some("Plugins"));
+    let rows = app.world().resource::<TuiTestScreen>().rows();
+    assert!(
+        rows.iter()
+            .any(|row| row.contains("Enter ticks, Esc leaves"))
+            && !rows.iter().any(|row| row.contains("Enter picks")),
+        "{rows:#?}"
+    );
+    press(&mut app, "esc");
+    assert_eq!(shown(&mut app), None);
+    assert_eq!(app.world().resource::<Reported>().0, [None]);
+}

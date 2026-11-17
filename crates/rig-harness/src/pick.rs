@@ -218,6 +218,13 @@ impl Chosen {
 #[reflect(Component, Clone, Debug, Default, PartialEq)]
 pub struct Highlighted(pub usize);
 
+/// The positions of the items ticked in a [`Picker`] of several, in list
+/// order, set by the front on the picker's entity as the user ticks, so a
+/// plugin can show what changed before the picker closes.
+#[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq)]
+#[reflect(Component, Clone, Debug, Default, PartialEq)]
+pub struct Ticked(pub Vec<usize>);
+
 /// What a front shows beside a [`Picker`] of the plugin's, previewing the
 /// highlighted item ([`Highlighted`]): text, or a conversation drawn as a
 /// transcript, scrolled to entry `at` when given. Any plugin sets it on its

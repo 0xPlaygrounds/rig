@@ -32,7 +32,7 @@ use rig_ecs::agent::{ActiveTurn, Notice, StopTurn};
 use rig_ecs::inbox::{Deliver, DeliveryMode};
 use rig_ecs::tasks::Wake;
 use rig_harness::main_agent::ShownAgent;
-use rig_harness::pick::{Chosen, Pick};
+use rig_harness::pick::{Chosen, Pick, Ticked};
 use rig_harness::prelude::{Exit, ExitReason, Processes, Scratch};
 
 /// How long the input thread waits for an event before it checks whether
@@ -533,9 +533,14 @@ pub(crate) fn read_input(
                 let picking = showing.iter_mut().find(|(_, c)| c.draft.is_none());
                 if let Some((entity, mut choosing)) = picking {
                     let shown = choices.shown(entity);
-                    let chosen =
-                        shown.and_then(|shown| pick::choice_key(key, &mut choosing, &shown));
+                    let chosen = (shown.as_ref())
+                        .and_then(|shown| pick::choice_key(key, &mut choosing, shown));
                     if let Some(chosen) = chosen {
+                        // The plugin sees the ticks of a key earlier in this frame too.
+                        if shown.is_some_and(|shown| shown.multiple) {
+                            let ticked = Ticked(choosing.ticked.clone());
+                            commands.entity(entity).try_insert(ticked);
+                        }
                         commands.trigger(Pick::person(entity, chosen));
                         // The next one takes the keys that follow.
                         view.queue.retain(|&queued| queued != entity);

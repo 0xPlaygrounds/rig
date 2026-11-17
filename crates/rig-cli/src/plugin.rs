@@ -197,8 +197,7 @@ fn list(home: &Home) -> Result<()> {
 /// crates, under `your plugins (extras):`, one line each: `on` or `off`, the
 /// type, its crate and what it adds. A plugin of rig's ends with its default
 /// and whether the settings changed it, with a warning on an essential plugin
-/// turned off; an extra ends with where its crate comes from. `/plugins` reads
-/// the lines that start with `on` or `off`.
+/// turned off; an extra ends with where its crate comes from.
 fn listing(home: &Home) -> Result<String> {
     let chosen = config::chosen(home)?;
     let mut rows: Vec<(bool, String, String, String)> = Vec::new();
@@ -262,13 +261,14 @@ fn listing(home: &Home) -> Result<String> {
 /// `type_path` in `[plugins] enable` or `disable` of the home's settings,
 /// or takes it out of the other list when that gives rig's default; a
 /// name in this list stays. `disable` takes a name that is neither rig's
-/// nor an extra out of both lists, which is how the settings' refusal of
-/// it says to fix it, even while the file holds other mistakes.
+/// nor an extra out of both lists, and turns off a plugin that does not
+/// build here, which is how the settings' refusal of either says to fix
+/// it, even while the file holds other mistakes.
 fn enable(home: &Home, type_path: &str, on: bool) -> Result<()> {
     let path = home.settings();
     let (changed, forgot) = config::edit(&path, |file| -> Result<_> {
-        let before = match config::plugins(file) {
-            Err(failure) if !on && built_in(type_path).is_none() && !extra(file, type_path) => {
+        if !on && let Err(failure) = config::plugins(file) {
+            if built_in(type_path).is_none() && !extra(file, type_path) {
                 // Off with an off default, then on with an on default: each
                 // only takes the name out of the other list.
                 let document = &mut file.document;
@@ -279,28 +279,16 @@ fn enable(home: &Home, type_path: &str, on: bool) -> Result<()> {
                 }
                 return Ok((true, true));
             }
-            before => before?,
-        };
-        let by_default = match built_in(type_path) {
-            Some(built_in) if on && !built_in.available() => {
-                return Err(config::Error::Unavailable {
-                    plugin: type_path.to_owned(),
-                    targets: built_in.targets,
-                }
-                .into());
+            // Turning off the plugin the file cannot run here is its fix.
+            if let config::Error::Unavailable { plugin, .. } = &failure
+                && plugin == type_path
+            {
+                let by_default = built_in(type_path).is_some_and(|built_in| built_in.on);
+                let changed = set_on(&mut file.document, type_path, false, by_default);
+                return Ok((changed, false));
             }
-            Some(built_in) => built_in.on,
-            None if before.extra.iter().any(|extra| extra.plugin == type_path) => true,
-            None => {
-                return Err(format!(
-                    "no plugin `{type_path}`; `rig plugin list` shows them, and a \
-                     [[plugins.extra]] table adds a crate's"
-                )
-                .into());
-            }
-        };
-        let changed = set_on(&mut file.document, type_path, on, by_default);
-        config::plugins(file)?;
+        }
+        let changed = config::turn(file, &[(type_path, on)])?;
         Ok((changed, false))
     })?;
     let state = if on { "on" } else { "off" };

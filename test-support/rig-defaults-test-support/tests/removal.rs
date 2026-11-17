@@ -33,19 +33,19 @@ const LEAVE_OUT: &str = "RIG_TEST_LEAVE_OUT";
 /// for.
 macro_rules! off_by_default {
     (@keep [$($kept:tt)*]) => { &[$($kept)*] };
-    (@keep [$($kept:tt)*] off rig_steel::SteelPlugin, $krate:literal, [$($os:literal),*],
-        $essential:expr, $about:literal; $($more:tt)*) => {
+    (@keep [$($kept:tt)*] off rig_steel::SteelPlugin, $krate:literal, $name:literal,
+        $group:ident, [$($os:literal),*], $essential:expr, $about:literal; $($more:tt)*) => {
         off_by_default!(@keep [$($kept)*] $($more)*)
     };
-    (@keep [$($kept:tt)*] off $first:ident $(:: $rest:ident)*, $krate:literal,
-        [$($os:literal),*], $essential:expr, $about:literal; $($more:tt)*) => {
+    (@keep [$($kept:tt)*] off $first:ident $(:: $rest:ident)*, $krate:literal, $name:literal,
+        $group:ident, [$($os:literal),*], $essential:expr, $about:literal; $($more:tt)*) => {
         off_by_default!(@keep [$($kept)* (
             concat!(stringify!($first) $(, "::", stringify!($rest))*),
             |app: &mut App| load::<$first $(:: $rest)*>(app, $krate, ""),
         ),] $($more)*)
     };
-    (@keep [$($kept:tt)*] on $first:ident $(:: $rest:ident)*, $krate:literal, [$($os:literal),*],
-        $essential:expr, $about:literal; $($more:tt)*) => {
+    (@keep [$($kept:tt)*] on $first:ident $(:: $rest:ident)*, $krate:literal, $name:literal,
+        $group:ident, [$($os:literal),*], $essential:expr, $about:literal; $($more:tt)*) => {
         off_by_default!(@keep [$($kept)*] $($more)*)
     };
     ($($entries:tt)*) => { off_by_default!(@keep [] $($entries)*) };

@@ -438,3 +438,38 @@ fn an_edit_refuses_a_link_it_cannot_write_through() {
     assert!(std::fs::read_link(&path).is_ok(), "still a link");
     std::fs::remove_dir_all(&root).ok();
 }
+
+#[test]
+fn turning_several_plugins_writes_all_of_them_or_nothing() {
+    let root = std::env::temp_dir().join(format!("rig-config-turn-{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    assert!(std::fs::create_dir_all(&root).is_ok());
+    let path = root.join("settings.toml");
+    let before = "# mine\n[plugins]\ndisable = [\"rig_basics::welcome::WelcomePlugin\"]\n";
+    assert!(std::fs::write(&path, before).is_ok());
+    let unavailable = BUILT_IN.iter().find(|built_in| !built_in.available());
+    let refused = ["nope::NopePlugin"]
+        .into_iter()
+        .chain(unavailable.map(|built_in| built_in.plugin));
+    for plugin in refused {
+        let turned = edit(&path, |file| {
+            turn(file, &[(BUDGET, true), (plugin, true)]).map(|changed| (changed, ()))
+        });
+        assert!(turned.is_err(), "{plugin}");
+        let after = std::fs::read_to_string(&path).unwrap_or_default();
+        assert_eq!(after, before, "{plugin}");
+    }
+    let turned = edit(&path, |file| {
+        let changes = [(BUDGET, true), ("rig_basics::welcome::WelcomePlugin", true)];
+        turn(file, &changes).map(|changed| (changed, ()))
+    });
+    assert_eq!(turned, Ok((true, ())));
+    let chosen = SettingsFile::read(&path).and_then(|file| plugins(&file));
+    let on = chosen.map(|chosen| chosen.on).unwrap_or_default();
+    assert!(
+        on.iter().any(|plugin| plugin == BUDGET)
+            && on.iter().any(|plugin| plugin.ends_with("WelcomePlugin")),
+        "{on:?}"
+    );
+    std::fs::remove_dir_all(&root).ok();
+}

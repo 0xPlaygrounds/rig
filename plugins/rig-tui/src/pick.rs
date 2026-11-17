@@ -11,7 +11,7 @@ use rig_core::json_utils::json_len;
 use rig_core::message::{AssistantContent, Message, ToolResultContent, UserContent};
 use rig_ecs::stage::{Effect, Outcome, Settled, SupersededBy};
 use rig_harness::ask::Ask;
-use rig_harness::pick::{Chosen, Highlighted, PickPreview, Picker};
+use rig_harness::pick::{Chosen, Highlighted, PickPreview, Picker, Ticked};
 use rig_tools::shorten;
 use unicode_width::UnicodeWidthStr;
 
@@ -414,7 +414,7 @@ pub(crate) fn queue_choices(
         {
             commands
                 .entity(entity)
-                .try_remove::<(PickerInput, Highlighted)>();
+                .try_remove::<(PickerInput, Highlighted, Ticked)>();
             commands
                 .entity(next)
                 .try_insert(carried(shown.clone(), old, new));
@@ -504,7 +504,7 @@ pub(crate) fn show_first(
         }
         commands
             .entity(entity)
-            .try_remove::<(PickerInput, Highlighted)>();
+            .try_remove::<(PickerInput, Highlighted, Ticked)>();
     }
     let first = view.queue.iter().find_map(|&entity| {
         let shown = choices.shown(entity)?;
@@ -538,18 +538,29 @@ pub(crate) fn show_first(
 
 /// Keeps [`Highlighted`] on the picker or question shown over the
 /// transcript at the item its selected row is, and none on a typed answer,
-/// and notes that item for a picker filled again, unless it was filled
-/// since: its selection is found again first.
+/// and [`Ticked`] at its ticks in one of several; and notes that item for a
+/// picker filled again, unless it was filled since: its selection is found
+/// again first.
 pub(crate) fn mark_highlighted(
-    mut showing: Query<(Entity, &mut PickerInput, Option<&Highlighted>)>,
+    mut showing: Query<(
+        Entity,
+        &mut PickerInput,
+        Option<&Highlighted>,
+        Option<&Ticked>,
+    )>,
     filled: Query<(), Changed<Picker>>,
     choices: Choices,
     mut commands: Commands,
 ) {
-    for (entity, mut state, highlighted) in &mut showing {
+    for (entity, mut state, highlighted, ticked) in &mut showing {
         let Some(shown) = choices.shown(entity).filter(|_| state.draft.is_none()) else {
             continue;
         };
+        if shown.multiple && ticked.is_none_or(|ticked| ticked.0 != state.ticked) {
+            commands
+                .entity(entity)
+                .try_insert(Ticked(state.ticked.clone()));
+        }
         let rows = shown.rows(&state.filter);
         let index = match rows.get(state.selected) {
             Some(Row::Item(index)) => Some(*index),
