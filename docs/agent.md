@@ -230,7 +230,8 @@ typed again, it is a command again.
 While an earlier prompt is shown, the input's top row says "An earlier
 prompt · Down back to your draft" (or "to an empty input"). While nothing is typed, the top row shows
 the keys and the bottom row the status line: the model, the reasoning
-setting, what the agent is doing, the session's tokens (uncached input,
+setting, what the agent is doing (and for how long, see
+[If rig seems stuck](#if-rig-seems-stuck)), the session's tokens (uncached input,
 output, cache reads and writes), its cost (the provider's figure, else the
 catalog's list price; `+` when some calls had no price) and the context in
 use against the model's window: after `/compact`, until the next reply
@@ -414,6 +415,27 @@ tool it does not have three times in a turn fails the turn;
 `[tools] max_unavailable_calls` changes that. When the turn fails, your
 message goes back into the input: press Enter to send it again, or switch
 models first.
+
+## If rig seems stuck
+
+The status line says what the agent is doing. Once a step has lasted 5
+seconds it also says for how long, such as `thinking… 1m12s` or
+`running tools… 4m03s`. The clock starts again when the step changes, so
+`thinking… 4m10s` means the model has sent nothing for that long.
+
+Esc stops the turn at any time. What the reply had streamed stays.
+
+A model call whose provider sends nothing for 5 minutes fails and is retried
+like a dropped connection (above), showing `retry 1/4 in 2s…`. With the
+default four retries, a provider that never answers takes about 25 minutes
+(5 tries of 5 minutes) to end in an error. Any event the provider sends,
+a keep-alive ping included, restarts the 5 minutes.
+
+To see what happened, read the session's log, `RIG_HOME/sessions/<id>/agent.log`.
+A session that was never saved is removed when rig exits; when that run
+failed, its log is kept in `RIG_HOME/run/<pid>/agent.log`. `RIG_HOME/build.log`
+holds the last build's output. Start rig with `RUST_LOG=debug` for a more
+detailed log.
 
 ## Tools
 
