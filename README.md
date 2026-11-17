@@ -1,104 +1,51 @@
 <p align="center">
 <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="img/rig-rebranded-logo-white.svg">
-    <source media="(prefers-color-scheme: light)" srcset="img/rig-rebranded-logo-black.svg">
-    <img src="img/rig-rebranded-logo-white.svg" style="width: 40%; height: 40%;" alt="Rig logo">
+  <source media="(prefers-color-scheme: dark)" srcset="img/rig-rebranded-logo-white.svg">
+  <img src="img/rig-rebranded-logo-black.svg" width="40%" alt="Rig">
 </picture>
-<br>
-<br>
-<a href="https://rig.rs/docs"><img src="https://img.shields.io/badge/📖 docs-rig.rs-dca282.svg" /></a> &nbsp;
-<a href="https://docs.rs/rig/latest/rig/"><img src="https://img.shields.io/badge/docs-API Reference-dca282.svg" /></a> &nbsp;
-<a href="https://crates.io/crates/rig"><img src="https://img.shields.io/crates/v/rig.svg?color=dca282" /></a>
-&nbsp;
-<a href="https://crates.io/crates/rig"><img src="https://img.shields.io/crates/d/rig-core.svg?color=dca282" /></a>
-&nbsp;
-<a href="LICENSE"><img src="https://img.shields.io/crates/l/rig.svg?color=dca282" /></a>
-</br>
-<a href="https://discord.gg/playgrounds"><img src="https://img.shields.io/discord/511303648119226382?color=%236d82cc&label=Discord&logo=discord&logoColor=white" /></a>
-&nbsp;
-<a href=""><img src="https://img.shields.io/badge/built_with-Rust-dca282.svg?logo=rust" /></a>
-&nbsp;
-<a href="https://github.com/0xPlaygrounds/rig"><img src="https://img.shields.io/github/stars/0xPlaygrounds/rig?style=social" alt="stars - rig" /></a>
-<br>
-
-<br>
 </p>
-&nbsp;
 
+[![crates.io](https://img.shields.io/crates/v/rig.svg)](https://crates.io/crates/rig)
+[![docs.rs](https://img.shields.io/docsrs/rig)](https://docs.rs/rig)
+[![Discord](https://img.shields.io/discord/511303648119226382?label=Discord)](https://discord.gg/playgrounds)
+<a href="https://ryzome.ai"><img src="img/ryzome-bg.png" height="32" align="absmiddle" alt="Ryzome"></a>
 
-<div align="center">
-
-[📑 Docs](https://rig.rs/docs)
-<span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
-[🌐 Website](https://rig.rs)
-<span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
-[🤝 Contribute](https://github.com/0xPlaygrounds/rig/issues/new)
-<span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
-[✍🏽 Blogs](https://rig.rs/docs/guides)
-<span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
-<a href="https://ryzome.ai"><img src="img/ryzome-bg.png" height="32" align="absmiddle" alt="Ryzome" /></a>
-
-</div>
-
-Rig is a Rust library for building LLM applications, and `rig`, a terminal
-coding agent built on it that you extend with Bevy plugins.
+Rig is a Rust library for building applications on large language models.
+It also ships `rig`, a terminal coding agent built on the library that you
+extend with Bevy plugins.
 
 ## The coding agent
 
-`rig-cli` is not on crates.io yet. Until the next release, install the last
-release, 0.46.0, whose `rig` crate carries the launcher:
-
 ```bash
 cargo install rig
+rig
 ```
 
-This README describes `main`. 0.46.0 keeps its plugin list in
-`plugins.toml`, and [its guide](https://github.com/0xPlaygrounds/rig/blob/v0.46.0/docs/agent.md)
-is on its tag. Or install `main` from a checkout (`--force` replaces a `rig` installed by
-another crate):
+This installs the last release, 0.46.0, whose `rig` crate carries the
+launcher; [its guide](https://github.com/0xPlaygrounds/rig/blob/v0.46.0/docs/agent.md)
+is on its tag. The [agent guide](docs/agent.md#install-and-run) describes
+`main` and how to install it from a checkout. The agent needs Rust 1.97.1 or
+newer and runs on Linux and macOS.
 
-```bash
-git clone https://github.com/0xPlaygrounds/rig && cd rig
-cargo install --locked --force --path crates/rig-cli
-```
+The first `rig` builds the agent, which takes several minutes, and opens it.
+Run `/login` to sign in or save an API key, or export one such as
+`OPENAI_API_KEY` before starting. `/model` picks a model and `/help` lists
+the commands. `rig -p "fix the failing test"` answers one prompt and exits.
 
-Then:
+Its tools, commands, sessions, sign-in and terminal view are each a plugin,
+so any of them can be turned off, replaced or added to. `/reload` rebuilds
+the agent with your changes and keeps the session.
 
-1. `rig` builds the agent, which takes several minutes the first time, and opens it.
-2. `/login` signs in with a ChatGPT plan or saves a provider's API key. Or
-   export a key, such as `OPENAI_API_KEY`, before starting `rig`.
-3. `/model` picks a model. A local Ollama or llama.cpp server is listed once
-   `OLLAMA_API_BASE_URL` or `LLAMACPP_API_BASE_URL` names it, or its key
-   variable is set.
-4. Type a prompt and press Enter. `/help` lists the commands.
-5. `rig -p "fix the failing test"` answers one prompt without the terminal view.
-
-`rig update` updates rig ([how](docs/agent.md#update)). The agent guide also says what is
-[per home and what is per project](docs/agent.md#what-is-per-home-and-what-is-per-project).
-
-- **Everything is a plugin.** The agent is a [Bevy](https://bevy.org) app; its
-  tools, commands, sessions, sign-in and terminal view are each a plugin, turned
-  on or off in `settings.toml`, so any of them can be removed, replaced or
-  added to.
-- **It rebuilds itself.** `/reload` rebuilds the agent with your plugin
-  crates and restarts it in the same session, and keeps the old build running
-  if the new one does not compile. `rig update` reinstalls rig with cargo;
-  `/update` does it from the agent and restarts on it. Both arrive with the
-  next release: 0.46.0 updates by installing again.
-- **Scriptable.** `rig -p --json` and `rig --json` drive it over pipes;
-  `rig help-agents` is the protocol.
-- **More when you want it.** Subagents are an optional plugin, and the tools
-  work on remote hosts over ssh or any command.
-
-The [agent guide](docs/agent.md) covers the keys, sessions, compaction,
-plugins and files, and the [plugin guide](crates/rig-harness/PLUGINS.md) shows
-how to write a tool, command or panel. The agent needs Rust 1.97.1 or newer
-and runs on Linux and macOS.
+- The [agent guide](docs/agent.md) covers updating, models, sessions, tools,
+  settings and scripting.
+- The [plugin guide](crates/rig-harness/PLUGINS.md) shows how to write a
+  tool, a command or a panel.
 
 ## The library
 
 ```bash
-cargo add rig
+cargo add rig anyhow
+cargo add tokio --features macros,rt-multi-thread
 ```
 
 ```rust
@@ -106,103 +53,77 @@ use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
-    // The client reads `OPENAI_API_KEY` and builds the models it serves.
+async fn main() -> anyhow::Result<()> {
+    // Reads OPENAI_API_KEY.
     let model = OpenAI::from_env()?.completion(openai::GPT_6_1_SOL);
-    let comedian = AgentBuilder::new(model)
-        .preamble("You are a comedian here to entertain the user using humour and jokes.")
+    let agent = AgentBuilder::new(model)
+        .preamble("You are a comedian.")
         .build();
 
-    let response = comedian.prompt("Entertain me!").await?;
+    let response = agent.prompt("Entertain me!").await?;
     println!("{}", response.output());
     Ok(())
 }
 ```
 
-The example also needs tokio, with the `macros` and `rt-multi-thread` features
-that `#[tokio::main]` uses, and anyhow
-(`cargo add tokio --features macros,rt-multi-thread` and `cargo add anyhow`).
-
-- 20+ model providers and 10+ vector stores, each under one interface
-- Agents with tools, multi-turn streaming and typed hooks
-- Live tool output in streamed runs: a returned JSON array arrives one element at a time, any other output at once
-- Completion, embedding, transcription, audio and image generation
-- [GenAI semantic conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/) for OpenTelemetry
-- Recording and replay of an agent's effects ([`rig-cassette`](crates/rig-cassette/README.md))
-- Browser WASM (`wasm32-unknown-unknown`) for the core and the agent runtime ([target support](crates/rig-agent/README.md#target-support))
-
-More in [`examples/`](examples), the [docs](https://rig.rs/docs) and the
-[API reference](https://docs.rs/rig/latest/rig/).
+Rig puts over 20 model providers and a dozen vector stores behind one
+interface. It has agents with tools, streaming and typed hooks. It covers
+completion, embedding, transcription, audio and image models and follows the
+OpenTelemetry GenAI conventions. `rig-core` and `rig-agent` build for browser
+WASM. See [`examples/`](examples), the [guides](https://rig.rs/docs) and the
+[API reference](https://docs.rs/rig).
 
 ## Crates
 
-The `rig` crate re-exports `rig-core`, and each companion crate behind a
-feature.
+The `rig` crate re-exports `rig-core`. Its default features add `rig-agent`,
+the derive macros and the reqwest HTTP client with rustls. Each crate in the
+list below is a feature named after it without `rig-`:
 
-| Crate | Feature | What it is |
-| --- | --- | --- |
-| [`rig-core`](crates/rig-core) | always | Provider-neutral messages, completion and embedding models, tool contracts, the conversation type, vector-store contracts, and the providers |
-| [`rig-agent`](crates/rig-agent) | `agent` (default) | The agent builder, prompting and streaming, hooks, the tool registry and the serializable `AgentRun` |
-| [`rig-memory`](crates/rig-memory) | `memory` | Windows, compaction, and saving, resuming and forking conversations |
-| [`rig-cassette`](crates/rig-cassette) | `cassette` | Effect logs: recording, replay and checkpoints |
-
-The coding agent's crates are not facade features. Depend on them directly.
-
-| Crate | What it is |
-| --- | --- |
-| [`rig-cli`](crates/rig-cli) | The `rig` launcher |
-| [`rig-tools`](crates/rig-tools) | Coding tools any rig agent can use: read, write, edit, search, shell |
-| [`rig-ecs`](crates/rig-ecs), [`rig-harness`](crates/rig-harness) | The agent kernel on Bevy's ECS, and the harness the coding agent's plugins build on |
-| [`rig-tui`](plugins/rig-tui), [`rig-basics`](plugins/rig-basics) | The terminal view, and the coding agent's default plugins |
-| [`rig-markdown`](crates/rig-markdown) | Markdown drawn as styled lines and word-wrapped to a width, shared by the terminal view and `rig -p` |
-| [`rig-fold`](plugins/rig-fold) | Off by default: folds finished tool calls in the terminal view, with a key that shows them whole |
-| [`rig-traffic`](plugins/rig-traffic) | Opt-in provider HTTP recording in the session store, using the cassette engine |
-| [`rig-mcp-client`](plugins/rig-mcp-client) | The coding agent's MCP client, off by default: MCP servers' tools, with an opt-in plugin that asks before a project's server starts |
-| [`rig-acp`](plugins/rig-acp) | `rig acp`, off by default: the coding agent for ACP clients (editors such as Zed) |
-
-### Integrations
-
-```toml
-rig = { version = "0.46.0", features = ["lancedb", "fastembed"] }
+```bash
+cargo add rig --features memory,fastembed
 ```
 
-| Integration | Crate | Feature | Module path |
-| --- | --- | --- | --- |
-| AWS Bedrock | [`rig-bedrock`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-bedrock) | `bedrock` | `rig::bedrock` |
-| AWS S3Vectors | [`rig-s3vectors`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-s3vectors) | `s3vectors` | `rig::s3vectors` |
-| Candle (local Llama/SmolLM2/Qwen3 tools, YOLOv8 pose) | [`rig-candle`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-candle) | `candle` | `rig::candle` |
-| Cloudflare Vectorize | [`rig-vectorize`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-vectorize) | `vectorize` | `rig::vectorize` |
-| FastEmbed | [`rig-fastembed`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-fastembed) | `fastembed` | `rig::fastembed` |
-| Google Gemini gRPC | [`rig-gemini-grpc`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-gemini-grpc) | `gemini-grpc` | `rig::gemini_grpc` |
-| Google Vertex AI | [`rig-vertexai`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-vertexai) | `vertexai` | `rig::vertexai` |
-| HelixDB | [`rig-helixdb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-helixdb) | `helixdb` | `rig::helixdb` |
-| LanceDB | [`rig-lancedb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-lancedb) | `lancedb` | `rig::lancedb` |
-| Conversations over time | [`rig-memory`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-memory) | `memory` | `rig::memory` |
-| Milvus | [`rig-milvus`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-milvus) | `milvus` | `rig::milvus` |
-| MongoDB | [`rig-mongodb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-mongodb) | `mongodb` | `rig::mongodb` |
-| Neo4j | [`rig-neo4j`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-neo4j) | `neo4j` | `rig::neo4j` |
-| PostgreSQL (vector store; with `memory`, a session store) | [`rig-postgres`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-postgres) | `postgres` | `rig::postgres` |
-| Qdrant | [`rig-qdrant`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-qdrant) | `qdrant` | `rig::qdrant` |
-| ScyllaDB | [`rig-scylladb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-scylladb) | `scylladb` | `rig::scylladb` |
-| SQLite (vector store; with `memory`, a session store) | [`rig-sqlite`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-sqlite) | `sqlite` | `rig::sqlite` |
-| SurrealDB | [`rig-surrealdb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-surrealdb) | `surrealdb` | `rig::surrealdb` |
-| TypeSafe Jev (experimental judgments) | [`rig-typesafeai`](crates/rig-typesafeai) | `typesafeai` | `rig::typesafeai` |
+- Agents and state: [`rig-agent`](crates/rig-agent),
+  [`rig-memory`](crates/rig-memory) (saved conversations),
+  [`rig-cassette`](crates/rig-cassette) (record and replay),
+  [`rig-rmcp`](crates/rig-rmcp) (MCP tools).
+- Models: [`rig-bedrock`](crates/rig-bedrock),
+  [`rig-vertexai`](crates/rig-vertexai),
+  [`rig-gemini-grpc`](crates/rig-gemini-grpc),
+  [`rig-candle`](crates/rig-candle) (local models),
+  [`rig-fastembed`](crates/rig-fastembed) (local embeddings),
+  [`rig-typesafeai`](crates/rig-typesafeai) (TypeSafe Jev judgments).
+
+The vector stores, such as LanceDB, Qdrant and PostgreSQL, are companion
+crates behind features too; [docs.rs lists every feature](https://docs.rs/crate/rig/latest/features).
+
+Internals: [`rig-core`](crates/rig-core) (messages, models, tools,
+providers), [`rig-derive`](crates/rig-derive) (feature `derive`),
+[`rig-http`](crates/rig-http) (transport traits),
+[`rig-reqwest`](crates/rig-reqwest) (feature `reqwest`) and
+[`rig-tungstenite`](crates/rig-tungstenite) (feature `websocket`).
+
+Coding agent (not facade features): [`rig-cli`](crates/rig-cli),
+[`rig-harness`](crates/rig-harness),
+[`rig-harness-protocol`](crates/rig-harness-protocol),
+[`rig-ecs`](crates/rig-ecs), [`rig-tools`](crates/rig-tools),
+[`rig-markdown`](crates/rig-markdown), and the plugins
+[`rig-basics`](plugins/rig-basics), [`rig-tui`](plugins/rig-tui),
+[`rig-fold`](plugins/rig-fold), [`rig-steel`](plugins/rig-steel),
+[`rig-mcp-client`](plugins/rig-mcp-client), [`rig-acp`](plugins/rig-acp),
+[`rig-inspect`](plugins/rig-inspect), [`rig-traffic`](plugins/rig-traffic)
+and [`rig-claude-cloak`](plugins/rig-claude-cloak).
 
 ## Community
 
-Projects built on Rig are listed in
-[awesome-rig](https://github.com/0xPlaygrounds/awesome-rig); open a pull
-request there to add yours. Questions and ideas are welcome on
-[Discord](https://discord.gg/playgrounds), and [CONTRIBUTING.md](CONTRIBUTING.md)
-says how to contribute. Rig is MIT licensed.
+Ask questions on [Discord](https://discord.gg/playgrounds).
+[CONTRIBUTING.md](CONTRIBUTING.md) says how to contribute, and
+[awesome-rig](https://github.com/0xPlaygrounds/awesome-rig) lists projects
+built on Rig.
 
-> [!WARNING]
-> Rig is pre-1.0. Releases contain breaking changes; each release's
-> [changelog](CHANGELOG.md) and [migration notes](MIGRATING.md) say what
-> changed and how to move.
+Rig is pre-1.0, so releases break APIs. The [changelog](CHANGELOG.md) and
+[migration notes](MIGRATING.md) say what changed. Rig is MIT licensed.
 
 <p align="center">
-<br>
-<br>
-<img src="img/built-by-playgrounds.svg" alt="Build by Playgrounds" width="30%">
+<img src="img/built-by-playgrounds.svg" alt="Built by Playgrounds" width="30%">
 </p>

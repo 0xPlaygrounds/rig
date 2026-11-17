@@ -3,16 +3,8 @@
 The `rig` command: the launcher of the rig coding agent, a terminal coding
 agent built on [rig-harness](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-harness).
 
-`rig-cli` is not on crates.io yet. Until the next release, `cargo install rig`
-installs the last release, 0.46.0. To install `main`, build it from a checkout,
-and the agent is then built from that checkout (`--force` replaces a `rig`
-installed by another crate):
-
-```bash
-git clone https://github.com/0xPlaygrounds/rig && cd rig
-cargo install --locked --force --path crates/rig-cli
-rig
-```
+The [agent guide](https://github.com/0xPlaygrounds/rig/blob/main/docs/agent.md#install-and-run)
+says how to install it.
 
 To update, run `rig update` (`/update` in the agent): it reinstalls rig from
 where it came from, crates.io or the checkout as it is now (`git pull` first
