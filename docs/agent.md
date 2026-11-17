@@ -556,6 +556,42 @@ failed and it can read the log and fix the cause; `/reload` then tries again.
 `rig build` regenerates and builds the agent without starting it.
 `CARGO_BUILD_JOBS` sets cargo's `-j` for these builds, as for any cargo build.
 
+### Faster builds
+
+The agent's dependencies build once, optimized and with no debug info, which
+keeps `RIG_HOME/target` smaller and links shorter. The crates `/reload`
+rebuilds (rig's own from a checkout, and plugins by path or git) keep line
+tables, so their backtraces show file and line.
+
+cargo runs in `RIG_HOME/project` and keeps your environment, so
+`RUSTC_WRAPPER`, `RUSTFLAGS` and the other cargo variables apply to these
+builds. It also reads `RIG_HOME/.cargo/config.toml`, which changes the agent's
+builds alone. For example, to cache compiled crates with
+[sccache](https://github.com/mozilla/sccache) and link with
+[mold](https://github.com/rui314/mold):
+
+```toml
+# RIG_HOME/.cargo/config.toml
+[build]
+rustc-wrapper = "sccache"
+
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+```
+
+A `RUSTFLAGS` variable replaces the `rustflags` there. On x86_64 Linux rust
+already links with `rust-lld`, so another linker gains less. A `[profile.dev]`
+table in that file overrides the generated one: set
+`[profile.dev.package."*"] debug = "line-tables-only"` to get dependency
+backtraces back.
+
+A `rust-toolchain.toml` in `RIG_HOME` picks the toolchain for these builds. It
+must be at least rig's minimum Rust version. The Cranelift backend, which can
+compile debug builds faster, needs nightly and is experimental: with the
+`rustc-codegen-cranelift-preview` component, set `[unstable] codegen-backend =
+true` and `[profile.dev] codegen-backend = "cranelift"` in the config file.
+Changing the toolchain or the flags rebuilds everything once.
+
 ## Plugins
 
 Plugins are Bevy plugins. Everything but the harness (the session and the

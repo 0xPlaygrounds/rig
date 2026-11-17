@@ -393,14 +393,15 @@ fn manifest(home: &Home, plugins: &Plugins, source: &RigSource) -> Result<String
     Ok(text)
 }
 
-/// The agent's build profile: dependencies at full speed, built once, and
-/// the crates `/reload` rebuilds (rig's own from a checkout, and extras by
-/// path or git) at opt-level 1, so a rebuild stays quick.
+/// The agent's build profile: dependencies at full speed with no debug info,
+/// built once, and the crates `/reload` rebuilds (rig's own from a checkout,
+/// and extras by path or git) at opt-level 1 with line tables, so a rebuild
+/// stays quick and their backtraces keep file and line.
 fn profile(plugins: &Plugins, source: &RigSource) -> Result<String> {
     let mut text = String::from(
         "\n[profile.dev]\ndebug = \"line-tables-only\"\n\
-         \n[profile.dev.package.\"*\"]\nopt-level = 3\ndebug-assertions = false\n\
-         overflow-checks = false\n",
+         \n[profile.dev.package.\"*\"]\nopt-level = 3\ndebug = false\n\
+         debug-assertions = false\noverflow-checks = false\n",
     );
     let mut edited: BTreeSet<String> = match source {
         RigSource::Local(_) => rig_crates(plugins, source)?,
@@ -412,7 +413,9 @@ fn profile(plugins: &Plugins, source: &RigSource) -> Result<String> {
             .map(|extra| extra.krate.clone()),
     );
     for name in edited {
-        text.push_str(&format!("\n[profile.dev.package.{name}]\nopt-level = 1\n"));
+        text.push_str(&format!(
+            "\n[profile.dev.package.{name}]\nopt-level = 1\ndebug = \"line-tables-only\"\n"
+        ));
     }
     Ok(text)
 }

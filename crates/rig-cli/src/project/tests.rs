@@ -143,11 +143,14 @@ fn a_path_plugin_gets_the_rig_crates_it_depends_on() {
     let used = rig_crates(&only(&viz), &source).unwrap_or_default();
     assert!(used.contains("rig-harness") && used.contains("rig-ecs"));
     assert!(!used.contains("viz"));
-    // What /reload rebuilds stays at opt-level 1; the rest builds at 3.
+    // What /reload rebuilds stays at opt-level 1 with line tables; the rest
+    // builds at 3 with no debug info.
     let profile = profile(&only(&viz), &source).unwrap_or_default();
-    assert!(profile.contains("[profile.dev.package.\"*\"]\nopt-level = 3\n"));
+    assert!(profile.contains("[profile.dev.package.\"*\"]\nopt-level = 3\ndebug = false\n"));
     for name in ["viz", "rig-harness", "rig-ecs"] {
-        assert!(profile.contains(&format!("\n[profile.dev.package.{name}]\nopt-level = 1\n")));
+        assert!(profile.contains(&format!(
+            "\n[profile.dev.package.{name}]\nopt-level = 1\ndebug = \"line-tables-only\"\n"
+        )));
     }
 }
 
