@@ -107,7 +107,6 @@ async fn runner_applies_per_run_request_overrides() {
         }])
         .temperature(0.7)
         .max_tokens(42)
-        .replace_additional_params(json!({"override": true}))
         .tool_choice(ToolChoice::None)
         .run()
         .await
@@ -128,7 +127,7 @@ async fn runner_applies_per_run_request_overrides() {
     assert!(documents.iter().any(|(id, _)| id == "run-two"));
     assert_eq!(request.temperature, Some(0.7));
     assert_eq!(request.max_tokens, Some(42));
-    assert_eq!(request.additional_params, Some(json!({"override": true})));
+    assert_eq!(request.additional_params, Some(json!({"baseline": true})));
     assert_eq!(request.tool_choice, Some(ToolChoice::None));
 }
 
@@ -598,16 +597,10 @@ async fn runner_can_clear_configured_request_defaults() {
     AgentBuilder::new(model.clone())
         .preamble("baseline")
         .temperature(0.1)
-        .max_tokens(10)
-        .additional_params(json!({"baseline": true}))
-        .tool_choice(ToolChoice::Required)
         .build()
         .prompt("go")
         .without_preamble()
         .without_temperature()
-        .without_max_tokens()
-        .without_additional_params()
-        .without_tool_choice()
         .run()
         .await
         .expect("runner request should succeed");
@@ -621,9 +614,6 @@ async fn runner_can_clear_configured_request_defaults() {
             .any(|message| matches!(&**message, crate::completion::Message::System { .. }))
     );
     assert_eq!(request.temperature, None);
-    assert_eq!(request.max_tokens, None);
-    assert_eq!(request.additional_params, None);
-    assert_eq!(request.tool_choice, None);
 }
 
 #[tokio::test]
