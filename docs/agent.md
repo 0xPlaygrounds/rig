@@ -733,10 +733,7 @@ with `rig plugin enable rig_steel::SteelPlugin`, or:
 enable = ["rig_steel::SteelPlugin"]
 ```
 
-Use it when the user asks for it, or when several agents must be tied
-together by logic: a relay, a fan-out over independent parts, a loop until a
-check passes. A review of three independent crates at once, with the findings
-gathered:
+A fan-out that reviews three directories at once and gathers the findings:
 
 ```scheme
 (define dirs (list "crates/a" "crates/b" "crates/c"))

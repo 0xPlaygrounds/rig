@@ -110,13 +110,11 @@ impl Default for Limits {
 
 const DESCRIPTION: &str = "Run a Steel program (Scheme) that orchestrates agents and tools, and \
     return the value of its last expression (a string as it is, anything else as JSON) with what \
-    it printed. Each agent it starts usually costs more than doing the work yourself. Use it \
-    only when the user asks for it, or when the work needs several agents tied together by logic \
-    that one subagent cannot do: a relay between agents, a fan-out over independent parts with \
-    all replies gathered, a loop until a check passes. Not for tool calls you can make directly, \
-    and not for one agent. A program waits for its agents' replies, so its result holds their \
-    real answers. Never invent, simulate or paraphrase as fact another agent's reply; if the \
-    requested interaction is not supported, say so before offering an alternative.\n\n\
+    it printed. It suits agents and tools tied together by logic: a relay between agents, a \
+    fan-out with all replies gathered, a loop until a check passes; one subagent or one tool call \
+    is simpler called directly. A program waits for its agents' replies, so its result holds \
+    their real answers. Never invent, simulate or paraphrase as fact another agent's reply; if \
+    the requested interaction is not supported, say so before offering an alternative.\n\n\
     The program is Steel, an R7RS-style Scheme: define, let, lambda, if, cond, when, let loop, \
     named lets, map, for-each, filter, foldl, lists, vectors, hash maps (hash, hash-ref), \
     strings (string-append, string-join, string-length), number->string, display and \
@@ -137,7 +135,7 @@ const DESCRIPTION: &str = "Run a Steel program (Scheme) that orchestrates agents
     (call-tool name [args]) -> string\n    \
     Calls one of your own tools with args, a hash such as (hash 'path \"src/lib.rs\"), and \
     returns its text output; raises an error when the tool fails.\n\n\
-    Review three independent crates at once and gather the findings:\n\
+    Review three directories at once and gather the findings:\n\
     (define dirs (list \"crates/a\" \"crates/b\" \"crates/c\"))\n\
     (define requests (map (lambda (dir) (send (spawn-agent \"reviewer\") (string-append \"Review the error handling in \" dir \". List each finding as file:line and one sentence.\"))) dirs))\n\
     (string-join (map reply requests) \"\\n\\n\")";

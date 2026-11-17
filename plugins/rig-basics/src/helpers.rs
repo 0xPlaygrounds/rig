@@ -105,22 +105,18 @@ impl Plugin for HelpersPlugin {
             .world()
             .resource::<HelperSettings>();
         let description = format!(
-            "Hand tasks to helpers: other rig agents, each a separate run that starts fresh, \
-             without this conversation, so a task says all it needs. A helper usually costs more \
-             than doing the work yourself: it re-reads what you already know and its tokens are \
-             added to yours. So do the work yourself by default. Use helpers only when the user \
-             asks for them, for large parts of the task that are independent of each other, or for \
-             slow work, such as a long test run, given to a helper of the same call as the work it \
-             should run beside. Unless the user asks, never for a few reads, one quick command \
-             or an edit you already know. \
-             `tasks` run side by side, {} at a time while the rest wait their turn, `chain` in \
-             order (`{{previous}}` in a task is the answer before it), `task` alone. Each may take \
-             {} s unless `timeout` says otherwise. The call returns once every helper finished, \
-             and you wait until then. Each works in `dir` (default: yours) with your tools but \
-             `helper`, or the `tools` named; helpers in one directory see each other's edits, so \
-             give them separate files or directories (such as git worktrees). You get back each \
-             one's final answer, or why it failed, its session and what it cost, or that some of \
-             that is unknown.",
+            "Hand tasks to helpers: other rig agents that start fresh, without this \
+             conversation, so a task says all it needs. `tasks` run side by side, {} at a \
+             time while the rest wait their turn, `chain` in order (`{{previous}}` in a task is \
+             the answer before it), `task` alone. Each may take {} s unless `timeout` says \
+             otherwise. The call returns once every helper finished, and you \
+             wait until then: give work that should run alongside, such as a slow test, to a \
+             helper of the same call. Each works in `dir` (default: yours) with your tools \
+             but `helper`, or the `tools` named; helpers in one directory see each other's \
+             edits, so give them separate files or directories (such as git worktrees). \
+             Helpers suit independent parts and slow work beside yours, not edits you \
+             already know. You get back each one's final answer, or why it failed, its \
+             session and what it cost, or that some of that is unknown.",
             set.at_once, set.timeout_secs
         );
         if !app.is_plugin_added::<UsagePlugin>() {
