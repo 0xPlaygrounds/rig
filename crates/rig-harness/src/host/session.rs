@@ -656,10 +656,8 @@ fn finish_deletes(
     mut deleted: MessageWriter<SessionDeleted>,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Some(home) = home else {
-        return;
-    };
-    let Ok(entries) = fs::read_dir(home.0.sessions()) else {
+    let home = home.map_or_else(Home::from_env, |home| home.0.clone());
+    let Ok(entries) = fs::read_dir(home.sessions()) else {
         return;
     };
     for entry in entries.flatten() {

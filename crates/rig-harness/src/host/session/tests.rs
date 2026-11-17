@@ -1050,3 +1050,66 @@ fn a_failed_saved_marker_write_does_not_lose_the_conversation() {
     fs::remove_dir_all(home.root()).ok();
     assert_eq!(kept, (true, true), "(kept on disk, marked saved)");
 }
+
+/// Set, to the id of the session marked deleting, in the copy of
+/// [`an_app_without_a_rig_home_finishes_deletes_in_the_environments`] that
+/// runs with `RIG_HOME` set.
+const CUT_SHORT: &str = "RIG_TEST_CUT_SHORT_DELETE";
+
+/// An app with no [`RigHome`] deletes in the home the environment names, so
+/// it also finishes there the deletes a crash cut short.
+#[cfg(unix)]
+#[test]
+#[allow(clippy::disallowed_methods, reason = "runs this test binary again")]
+fn an_app_without_a_rig_home_finishes_deletes_in_the_environments() {
+    let Some(cut) = std::env::var_os(CUT_SHORT) else {
+        let home = scratch_home("rig-session-delete-env");
+        let saved = |id: &str| {
+            let id: SessionId = id.parse().ok()?;
+            let session = home.session(&id);
+            fs::create_dir_all(session.path()).ok()?;
+            session.mark_saved().ok()?;
+            Some((id, session))
+        };
+        let sessions = (saved("1700000000-30"), saved("1700000000-31"));
+        assert!(matches!(sessions, (Some(_), Some(_))), "saved");
+        let (Some((cut, cut_dir)), Some(_)) = sessions else {
+            return;
+        };
+        assert!(cut_dir.mark_deleting().is_ok());
+        let name =
+            "host::session::tests::an_app_without_a_rig_home_finishes_deletes_in_the_environments";
+        let output = std::env::current_exe().and_then(|test| {
+            std::process::Command::new(test)
+                .args(["--exact", name, "--nocapture", "--test-threads", "1"])
+                .env(rig_harness_protocol::env::HOME, home.root())
+                .env(CUT_SHORT, cut.as_str())
+                .output()
+        });
+        let ran = output.map(|output| {
+            let passed = String::from_utf8_lossy(&output.stdout).contains("1 passed");
+            let said = String::from_utf8_lossy(&output.stderr).into_owned();
+            (output.status.success() && passed, said)
+        });
+        assert!(ran.as_ref().is_ok_and(|(passed, _)| *passed), "{ran:?}");
+        assert!(!cut_dir.path().exists());
+        fs::remove_dir_all(home.root()).ok();
+        return;
+    };
+    let here: Option<SessionId> = "1700000000-31".parse().ok();
+    assert!(here.is_some());
+    let Some(here) = here.map(|id| Home::from_env().session(&id)) else {
+        return;
+    };
+    let mut app = App::new();
+    app.add_message::<Notice>()
+        .init_resource::<Seen>()
+        .insert_resource(SessionPaths(here))
+        .add_plugins(SessionPlugin)
+        .add_systems(Last, watch);
+    drop(std::panic::take_hook());
+    app.update();
+    let deleted = &app.world().resource::<Seen>().deleted;
+    let deleted: Vec<String> = deleted.iter().map(ToString::to_string).collect();
+    assert_eq!(deleted, [cut.to_string_lossy()]);
+}
