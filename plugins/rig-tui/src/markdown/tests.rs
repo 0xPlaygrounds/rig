@@ -132,6 +132,12 @@ fn private_use_text_is_kept_apart_from_marks() {
         marked("a\u{E000}\u{E001}b", &[(1, "[1]"), (1, "[2]"), (9, "[3]")]),
         "a[1][2]\u{E000}\u{E001}b[3]"
     );
+    // A numeric character reference becomes the character it names.
+    assert_eq!(marked("a&#xE000;b", &[(0, "[m]")]), "[m]a\u{E000}b");
+    assert_eq!(
+        marked("\u{E000}&#xE001;", &[(0, "[m]")]),
+        "[m]\u{E000}\u{E001}"
+    );
 }
 
 /// A text holding every private-use character is drawn whole, its marks

@@ -68,8 +68,8 @@ fn stand_ins() -> impl Iterator<Item = char> {
 
 /// `text` as markdown at `width`, as [`render`] draws it, with each of `marks` drawn
 /// before its byte: past the end at the end, inside a character before
-/// it. Each mark stands in the text as a private-use character the text
-/// does not hold while it is rendered, so markdown on both sides of it is
+/// it. Each mark stands in the text as a private-use character neither
+/// the text nor its rendering holds while it is rendered, so markdown on both sides of it is
 /// kept. A text that leaves too few of them free is drawn plain.
 pub fn render_marked(
     text: &str,
@@ -80,7 +80,11 @@ pub fn render_marked(
     if marks.is_empty() {
         return render(text, theme, width);
     }
-    let held: HashSet<char> = text.chars().collect();
+    // Markdown can draw characters the source only names, such as `&#xE000;`.
+    let drawn = render(text, theme, width);
+    let drawn = drawn.iter().flat_map(|look| &look.line.spans);
+    let drawn = drawn.flat_map(|span| span.content.chars());
+    let held: HashSet<char> = text.chars().chain(drawn).collect();
     let free = stand_ins().filter(|ch| !held.contains(ch));
     let mut placed: Vec<(usize, char, &Span<'static>)> = free
         .zip(marks)
