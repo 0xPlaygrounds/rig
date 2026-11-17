@@ -1053,7 +1053,7 @@ fn a_picker_filled_again_before_its_first_frame_keeps_the_item_it_opened_on() {
 /// A picker that binds Enter to ticking: Enter ticks the highlighted row,
 /// also with a filter typed, and never closes it; the ticks are mirrored as
 /// [`Ticked`] and survive a filter that matches nothing; the keys row says
-/// what Enter does; Esc closes it without a choice.
+/// what Enter and Esc do; Esc closes it without a choice.
 #[test]
 fn a_picker_whose_enter_ticks_mirrors_the_ticks_and_esc_closes_it() {
     use rig_harness::pick::Ticked;
@@ -1071,7 +1071,8 @@ fn a_picker_whose_enter_ticks_mirrors_the_ticks_and_esc_closes_it() {
     let keys = ChoiceKeys(vec![(KeyCode::Enter, ChoiceAction::Tick)]);
     let entity = app.world_mut().spawn((picker, keys)).id();
     app.update();
-    press(&mut app, "enter");
+    // Enter twice unticks; a third time ticks again.
+    press(&mut app, "enter enter enter");
     type_text(&mut app, "fold");
     press(&mut app, "enter");
     type_text(&mut app, "zzz");
@@ -1082,7 +1083,8 @@ fn a_picker_whose_enter_ticks_mirrors_the_ticks_and_esc_closes_it() {
     assert_eq!(shown(&mut app).as_deref(), Some("Plugins"));
     let rows = app.world().resource::<TuiTestScreen>().rows();
     assert!(
-        rows.iter().any(|row| row.contains("Enter ticks"))
+        rows.iter()
+            .any(|row| row.contains("Enter ticks, Esc leaves"))
             && !rows.iter().any(|row| row.contains("Enter picks")),
         "{rows:#?}"
     );

@@ -532,3 +532,62 @@ fn plugins_defaults_asks_to_go_back_to_rigs_defaults() {
         "{told:?}"
     );
 }
+
+#[test]
+fn the_question_says_why_it_cannot_reload_and_a_question_never_shown_does_nothing() {
+    let home = scratch_home("plugins-no-reload");
+    let (mut app, agent) = app(&home, true);
+    app.world_mut().remove_resource::<ReloadStatus>();
+    // Opens the list, ticks Folded output and leaves: the question.
+    let ask = |app: &mut App| -> Option<(Entity, Picker)> {
+        open(app, agent);
+        let (list, _) = picker(app)?;
+        tick(app, list, &["Folded output"], &[]);
+        pick(app, list, None);
+        picker(app)
+    };
+    let asked = ask(&mut app);
+    assert!(asked.is_some(), "no question");
+    let Some((question, shown)) = asked else {
+        return;
+    };
+    assert!(shown.body.contains("Reload plugin"), "{}", shown.body);
+
+    // Closed by a front that never showed it: no list again, nothing written.
+    pick(&mut app, question, None);
+    assert!(picker(&mut app).is_none());
+    assert_eq!(settings(&home), "");
+
+    // Shown, then Esc: back to the list.
+    let Some((question, _)) = ask(&mut app) else {
+        return;
+    };
+    app.world_mut().entity_mut(question).insert(Highlighted(0));
+    pick(&mut app, question, None);
+    let again = picker(&mut app);
+    assert_eq!(
+        again.as_ref().map(|(_, shown)| shown.title.as_str()),
+        Some("Plugins")
+    );
+
+    // Later says when the changes apply, naming no /reload that cannot run.
+    let Some((list, _)) = again else {
+        return;
+    };
+    // The reopened list keeps Folded output ticked.
+    tick(&mut app, list, &[], &[]);
+    pick(&mut app, list, None);
+    let Some((question, shown)) = picker(&mut app) else {
+        return;
+    };
+    let later = at(&shown, "Later, at the next start");
+    pick(&mut app, question, later.map(Chosen::item));
+    let told = &app.world().resource::<Told>().0;
+    let said = told
+        .iter()
+        .find(|text| text.contains("turned on Folded output"));
+    assert!(
+        said.is_some_and(|text| text.contains("starts again") && !text.contains("/reload")),
+        "{told:?}"
+    );
+}

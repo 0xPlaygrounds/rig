@@ -1355,10 +1355,11 @@ fn draw_choice(
     if shown.ticks && !enter_ticks {
         keys.push("Tab ticks");
     }
-    let enter = if enter_ticks {
-        "Enter ticks"
+    // A picker whose Enter ticks closes only to say what to do next.
+    let (enter, esc) = if enter_ticks {
+        ("Enter ticks", "Esc leaves")
     } else {
-        "Enter picks"
+        ("Enter picks", "Esc closes")
     };
     let width = usize::from(inner.width);
     let ticks = if shown.ticks { "[ ] ".len() } else { 0 };
@@ -1377,14 +1378,22 @@ fn draw_choice(
     let title = theme.raised(shown.title);
     match boxed {
         Some((.., row)) => {
-            let keys = keys_hint(&keys, enter, usize::from(row.width.saturating_sub(2)));
+            let keys = keys_hint(
+                &keys,
+                (enter, esc),
+                usize::from(row.width.saturating_sub(2)),
+            );
             let keys = Line::from(format!("{keys} ")).dim().right_aligned();
             let surface = Style::new().bg(theme.raised_surface);
             frame.render_widget(Paragraph::new(keys).style(surface), row);
             frame.render_widget(title, popup);
         }
         None => {
-            let keys = keys_hint(&keys, enter, usize::from(popup.width.saturating_sub(2)));
+            let keys = keys_hint(
+                &keys,
+                (enter, esc),
+                usize::from(popup.width.saturating_sub(2)),
+            );
             frame.render_widget(with_keys(title, &keys), popup);
         }
     }
@@ -1450,12 +1459,12 @@ fn strip_colors(buffer: &mut Buffer) {
     }
 }
 
-/// A picker's keys, `keys` then `enter` and Esc's, in at most `width`
+/// A picker's keys, `keys` then Enter's and Esc's, in at most `width`
 /// columns: the first of `keys` are left out while it is wider.
-fn keys_hint(keys: &[&str], enter: &str, width: usize) -> String {
+fn keys_hint(keys: &[&str], (enter, esc): (&str, &str), width: usize) -> String {
     let mut keys = keys;
     loop {
-        let all = keys.iter().copied().chain([enter, "Esc closes"]);
+        let all = keys.iter().copied().chain([enter, esc]);
         let hint = all.collect::<Vec<_>>().join(", ");
         match keys.split_first() {
             Some((_, rest)) if hint.width() > width => keys = rest,

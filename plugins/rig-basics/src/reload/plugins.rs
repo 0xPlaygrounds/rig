@@ -68,13 +68,15 @@ struct PluginsPicker {
 }
 
 /// The question asked on leaving the list with changes: the list's rows,
-/// which are ticked, the row highlighted and the answers offered.
+/// which are ticked, the row highlighted, whether a reload can run and the
+/// answers offered.
 #[derive(Component)]
 struct LeaveQuestion {
     rows: Vec<Row>,
     on: Vec<bool>,
     agent: Entity,
     at: usize,
+    reload: Reload,
     answers: Vec<Leave>,
 }
 
@@ -145,20 +147,40 @@ fn plugins(
     };
     let running: Vec<String> = running.iter().map(Name::to_string).collect();
     let rows = rows(&chosen, &running);
+    let interactive = invoked.is_some_and(|invoked| invoked.interactive());
     if defaults {
         let on: Vec<bool> = rows.iter().map(|row| row.default).collect();
-        if rows.iter().zip(&on).all(|(row, on)| row.on == *on) {
+        let changed = changed(&rows, &on);
+        if changed.is_empty() {
             notices.write(Notice::info(
                 args.agent,
                 format!("{} already runs rig's defaults.", home.settings().display()),
             ));
             return;
         }
-        let reload = reloads.is_some();
+        // The question needs a terminal to show it.
+        if !interactive {
+            let commands: Vec<String> = (changed.iter())
+                .map(|(row, on)| {
+                    let verb = if *on { "enable" } else { "disable" };
+                    format!("  rig plugin {verb} {}", row.plugin)
+                })
+                .collect();
+            notices.write(Notice::error(
+                args.agent,
+                format!(
+                    "/plugins defaults asks before it writes, which needs rig on a terminal. \
+                     In a shell, these go back to rig's defaults:\n{}",
+                    commands.join("\n")
+                ),
+            ));
+            return;
+        }
+        let reload = Reload::here(reloads.is_some());
         ask(&mut commands, rows, on, args.agent, 0, reload);
         return;
     }
-    if !invoked.is_some_and(|invoked| invoked.interactive()) {
+    if !interactive {
         let names = rows.iter().map(|row| row.name.len()).max().unwrap_or(0);
         let paths = rows.iter().map(|row| row.plugin.len()).max().unwrap_or(0);
         let lines: Vec<String> = (rows.iter())
@@ -214,7 +236,7 @@ fn list(commands: &mut Commands, rows: Vec<Row>, on: &[bool], agent: Entity, at:
 /// The list's body: its keys and how many rows `on` changes.
 fn body(rows: &[Row], on: &[bool]) -> String {
     let keys = "Enter ticks or unticks, Esc leaves, type to filter.";
-    match changes(rows, on) {
+    match changed(rows, on).len() {
         0 => format!("{keys} Nothing is written until you leave."),
         1 => format!("{keys} 1 change: leaving asks whether to reload now or later."),
         changes => {
@@ -223,12 +245,56 @@ fn body(rows: &[Row], on: &[bool]) -> String {
     }
 }
 
-/// How many of `rows` `on` turns on or off.
-fn changes(rows: &[Row], on: &[bool]) -> usize {
-    rows.iter()
-        .zip(on)
-        .filter(|(row, on)| row.on != **on)
-        .count()
+/// The rows that `on` turns on or off, each with whether it turns it on.
+fn changed<'a>(rows: &'a [Row], on: &[bool]) -> Vec<(&'a Row, bool)> {
+    (rows.iter().zip(on.iter().copied()))
+        .filter(|(row, on)| row.on != *on)
+        .collect()
+}
+
+/// Whether "Reload now" can run here, else why not.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Reload {
+    /// `ReloadPlugin` is on and the launcher started rig.
+    Can,
+    /// `ReloadPlugin` is off.
+    NoPlugin,
+    /// The launcher did not start rig.
+    NoLauncher,
+}
+
+impl Reload {
+    /// Whether a reload can run, with `ReloadPlugin` on or not (`plugin`).
+    fn here(plugin: bool) -> Self {
+        match (plugin, harness_protocol::launcher().is_some()) {
+            (false, _) => Reload::NoPlugin,
+            (true, false) => Reload::NoLauncher,
+            (true, true) => Reload::Can,
+        }
+    }
+
+    /// Why "Reload now" is not offered, when it is not.
+    fn why_not(self) -> Option<&'static str> {
+        match self {
+            Reload::Can => None,
+            Reload::NoPlugin => Some(
+                "Reloading now needs the Reload plugin, which is off; the changes apply when \
+                 rig starts again.",
+            ),
+            Reload::NoLauncher => Some(
+                "Reloading now needs rig started with `rig`; the changes apply when it starts \
+                 again.",
+            ),
+        }
+    }
+
+    /// When changes written for later apply.
+    fn later(self) -> &'static str {
+        match self {
+            Reload::Can => "They apply when rig starts again, or at /reload.",
+            Reload::NoPlugin | Reload::NoLauncher => "They apply when rig starts again.",
+        }
+    }
 }
 
 /// What the list shows beside `row` while `on` says whether it is ticked:
@@ -476,7 +542,8 @@ fn mark(
 
 /// On leaving the list: the question when what is ticked differs from
 /// settings.toml, else nothing. A front that answers with the items picked
-/// rather than ticks them gives those.
+/// rather than ticks them gives those; one that closes it without ever
+/// saying what is ticked never showed it.
 fn leave(
     picked: On<Picked>,
     lists: Query<(
@@ -495,41 +562,34 @@ fn leave(
     let on = match (&picked.chosen, ticked) {
         (Some(chosen), _) => ticks(count, &chosen.items),
         (None, Some(ticked)) => ticks(count, &ticked.0),
-        (None, None) => shown.items.iter().map(|item| item.checked).collect(),
+        (None, None) => return,
     };
-    if changes(&list.rows, &on) == 0 {
+    if changed(&list.rows, &on).is_empty() {
         return;
     }
     let at = highlighted.map_or(shown.selected, |highlighted| highlighted.0);
-    let reload = reloads.is_some();
+    let reload = Reload::here(reloads.is_some());
     ask(&mut commands, list.rows.clone(), on, list.agent, at, reload);
 }
 
 /// Asks whether to reload now with what `on` changes in `rows`, at the next
 /// start, or to go back to the list at row `at`. It offers to reload now
-/// only where a reload can run: with `ReloadPlugin` (`reload`) and the
-/// launcher.
+/// only where `reload` says one can run, and else says why.
 fn ask(
     commands: &mut Commands,
     rows: Vec<Row>,
     on: Vec<bool>,
     agent: Entity,
     at: usize,
-    reload: bool,
+    reload: Reload,
 ) {
-    let reload = reload && harness_protocol::launcher().is_some();
-    let changed: Vec<(&Row, bool)> = (rows.iter().zip(on.iter().copied()))
-        .filter(|(row, on)| row.on != *on)
-        .collect();
-    let names = |want: bool| -> Vec<&str> {
-        (changed.iter())
-            .filter(|(_, on)| *on == want)
-            .map(|(row, _)| row.name.as_str())
-            .collect()
-    };
+    let changed = changed(&rows, &on);
     let mut lines = Vec::new();
     for (word, want) in [("on", true), ("off", false)] {
-        let names = names(want);
+        let names: Vec<&str> = (changed.iter())
+            .filter(|(_, on)| *on == want)
+            .map(|(row, _)| row.name.as_str())
+            .collect();
         if !names.is_empty() {
             lines.push(format!("Turn {word}: {}", names.join(", ")));
         }
@@ -543,19 +603,15 @@ fn ask(
             ));
         }
     }
-    if !reload {
-        lines.push(
-            "\nReloading now needs rig started with `rig`; the changes apply when it starts \
-             again."
-                .to_owned(),
-        );
+    if let Some(why) = reload.why_not() {
+        lines.push(format!("\n{why}"));
     }
+    lines.push("Esc goes back to the list.".to_owned());
     let answers: Vec<Leave> = match reload {
-        true => vec![Leave::Reload, Leave::Later, Leave::Edit],
-        false => vec![Leave::Later, Leave::Edit],
+        Reload::Can => vec![Leave::Reload, Leave::Later, Leave::Edit],
+        Reload::NoPlugin | Reload::NoLauncher => vec![Leave::Later, Leave::Edit],
     };
-    let count = changed.len();
-    let title = match count {
+    let title = match changed.len() {
         1 => "1 plugin change".to_owned(),
         count => format!("{count} plugin changes"),
     };
@@ -568,6 +624,7 @@ fn ask(
         on,
         agent,
         at,
+        reload,
         answers,
     };
     commands.spawn((picker, question)).observe(answer);
@@ -575,38 +632,43 @@ fn ask(
 
 /// Carries out the answer to the question: writes the changes to
 /// settings.toml in one edit, and reloads for [`Leave::Reload`]; back to
-/// the list for [`Leave::Edit`] or when it was closed.
+/// the list for [`Leave::Edit`] or Esc. Closed without ever being
+/// highlighted, the front never showed it: nothing happens.
 fn answer(
     picked: On<Picked>,
-    questions: Query<&LeaveQuestion>,
+    questions: Query<(&LeaveQuestion, Has<Highlighted>)>,
     home: Option<Res<RigHome>>,
     status: Option<ResMut<ReloadStatus>>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Ok(question) = questions.get(picked.entity) else {
+    let Ok((question, shown)) = questions.get(picked.entity) else {
         return;
     };
-    let chosen = picked
-        .chosen
-        .as_ref()
-        .and_then(|chosen| chosen.items.first());
-    let leave = chosen.and_then(|index| question.answers.get(*index));
-    let leave = leave.copied().unwrap_or(Leave::Edit);
+    let leave = match &picked.chosen {
+        Some(chosen) => chosen
+            .items
+            .first()
+            .and_then(|index| question.answers.get(*index)),
+        None if shown => Some(&Leave::Edit),
+        None => None,
+    };
+    let Some(&leave) = leave else {
+        return;
+    };
     let LeaveQuestion {
         rows,
         on,
         agent,
         at,
+        reload,
         ..
     } = question;
     if leave == Leave::Edit {
         list(&mut commands, rows.clone(), on, *agent, *at);
         return;
     }
-    let changed: Vec<(&Row, bool)> = (rows.iter().zip(on.iter().copied()))
-        .filter(|(row, on)| row.on != *on)
-        .collect();
+    let changed = changed(rows, on);
     let path = home
         .map_or_else(Home::from_env, |home| home.0.clone())
         .settings();
@@ -623,14 +685,12 @@ fn answer(
         ));
         return;
     }
-    let turned = |want: bool| -> Vec<&str> {
-        (changed.iter())
+    let mut said = Vec::new();
+    for (word, want) in [("on", true), ("off", false)] {
+        let names: Vec<&str> = (changed.iter())
             .filter(|(_, on)| *on == want)
             .map(|(row, _)| row.name.as_str())
-            .collect()
-    };
-    let mut said = Vec::new();
-    for (word, names) in [("on", turned(true)), ("off", turned(false))] {
+            .collect();
         if !names.is_empty() {
             said.push(format!("turned {word} {}", names.join(", ")));
         }
@@ -640,7 +700,7 @@ fn answer(
             Ok(()) => "Reloading once no turn runs.",
             Err(why) => why,
         },
-        _ => "They apply when rig starts again, or at /reload.",
+        _ => reload.later(),
     };
     notices.write(Notice::info(
         *agent,

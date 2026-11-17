@@ -2835,3 +2835,34 @@ fn a_one_shot_session_switch_exits_0_on_its_exit_line() {
         assert_eq!(at(&exit, "error"), &Value::Null, "{command}: {exit}");
     }
 }
+
+/// `/plugins defaults` where no picker shows (`rig -p`) asks nothing: it
+/// ends, refused with the shell commands that go back to the defaults, and
+/// writes nothing.
+#[test]
+fn plugins_defaults_without_pickers_says_what_to_run_instead() {
+    let home = test_support::scratch_home("print-plugins-defaults");
+    assert!(std::fs::create_dir_all(home.root()).is_ok());
+    let changed = "[plugins]\ndisable = [\"rig_basics::welcome::WelcomePlugin\"]\n";
+    assert!(std::fs::write(home.settings(), changed).is_ok());
+    let model = answering(&["unused"]);
+    let stderr = Lines::default();
+    let (app, _) = one_shot("/plugins defaults", Some(MODEL), &model, false, |app| {
+        app.insert_resource(Printed::to(stderr.clone()))
+            .insert_resource(RigHome(home.clone()))
+            .add_plugins((
+                rig_harness::pick::PickPlugin,
+                crate::reload::plugins::PluginsPlugin,
+            ));
+    });
+    assert_eq!(app.should_exit(), Some(AppExit::from_code(2)));
+    let lines = stderr.text();
+    assert!(
+        lines
+            .iter()
+            .any(|line| line.contains("rig plugin enable rig_basics::welcome::WelcomePlugin")),
+        "{lines:?}"
+    );
+    let after = std::fs::read_to_string(home.settings()).unwrap_or_default();
+    assert_eq!(after, changed);
+}
