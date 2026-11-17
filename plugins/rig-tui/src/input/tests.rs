@@ -147,36 +147,55 @@ fn a_drag_copies_the_text_under_it_and_a_click_copies_nothing() {
     }
 }
 
-/// The frame of a drag's release says how many rows it copied, until the
-/// next click or key; a click says nothing.
+/// The frame after a drag's release says how many lines it copied, until
+/// the next click or key; a click, or a drag over blank cells, says
+/// nothing, and blank rows a drag ends in are not counted.
 #[test]
 fn a_drag_says_how_many_lines_it_copied_until_the_next_click_or_key() {
     let mut app = transcript_app(3);
-    let says = |app: &App, text: &str| {
-        let rows = app.world().resource::<TuiTestScreen>().rows();
-        rows.iter().any(|row| row.contains(text))
-    };
+    let rows = |app: &App| app.world().resource::<TuiTestScreen>().rows();
+    let says = |app: &App, text: &str| rows(app).iter().any(|row| row.contains(text));
     let left = MouseButton::Left;
+    let release = |app: &mut App, column, row| {
+        mouse(app, MouseEventKind::Up(left), column, row);
+        app.update();
+        app.update();
+    };
     mouse(&mut app, MouseEventKind::Down(left), 2, 1);
-    mouse(&mut app, MouseEventKind::Up(left), 2, 1);
-    app.update();
+    release(&mut app, 2, 1);
     assert!(!says(&app, "Copied"));
 
     mouse(&mut app, MouseEventKind::Down(left), 2, 1);
     mouse(&mut app, MouseEventKind::Drag(left), 4, 2);
-    mouse(&mut app, MouseEventKind::Up(left), 6, 3);
-    app.update();
-    assert!(says(&app, "Copied 3 lines"));
+    release(&mut app, 6, 3);
+    assert!(says(&app, "Copied 3 lines"), "{:?}", rows(&app));
     mouse(&mut app, MouseEventKind::Down(left), 2, 1);
     app.update();
     assert!(!says(&app, "Copied"));
 
     mouse(&mut app, MouseEventKind::Down(left), 2, 1);
-    mouse(&mut app, MouseEventKind::Up(left), 6, 1);
-    app.update();
+    release(&mut app, 6, 1);
     assert!(says(&app, "Copied 1 line"));
     press(&mut app, "left");
     assert!(!says(&app, "Copied"));
+
+    let shown = rows(&app);
+    let mut after_text = shown.iter().zip(shown.iter().skip(1));
+    let blank =
+        after_text.position(|(above, row)| !above.trim().is_empty() && row.trim().is_empty());
+    let blank = u16::try_from(blank.unwrap_or_default().saturating_add(1)).unwrap_or_default();
+    assert!(blank > 1, "{shown:?}");
+    mouse(&mut app, MouseEventKind::Down(left), 40, 1);
+    release(&mut app, 50, 1);
+    assert!(!says(&app, "Copied"), "{:?}", rows(&app));
+    mouse(&mut app, MouseEventKind::Down(left), 0, blank);
+    release(&mut app, 50, blank);
+    assert!(!says(&app, "Copied"), "{:?}", rows(&app));
+
+    let text = blank.saturating_sub(1);
+    mouse(&mut app, MouseEventKind::Down(left), 0, text);
+    release(&mut app, 50, blank);
+    assert!(says(&app, "Copied 1 line"), "{:?}", rows(&app));
 }
 
 /// The texts agents accepted.

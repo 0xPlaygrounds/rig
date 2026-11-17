@@ -621,7 +621,14 @@ fn moused(mouse: MouseEvent, view: &mut TuiView, pane: Option<Mut<PaneState>>) {
         }
         MouseEventKind::Down(MouseButton::Left) => {
             let (from, to, up, held) = (at, at, false, true);
-            view.selection = Some(Selection { from, to, up, held });
+            let copied = None;
+            view.selection = Some(Selection {
+                from,
+                to,
+                up,
+                held,
+                copied,
+            });
         }
         MouseEventKind::Drag(MouseButton::Left) | MouseEventKind::Up(MouseButton::Left) => {
             if let Some(selection) = view.selection.as_mut().filter(|drag| drag.held) {
@@ -637,19 +644,15 @@ fn moused(mouse: MouseEvent, view: &mut TuiView, pane: Option<Mut<PaneState>>) {
 /// The status line item saying what the last drag copied.
 const COPIED: StatusItem = StatusItem::new("copied", Side::Left, 95, 20);
 
-/// Shows `Copied N lines`, N the rows the drag spans, while the text a drag
-/// copied on its release stays selected, so it shows in that frame and goes
-/// with the selection.
+/// Shows `Copied N lines`, N the lines of the text a drag copied, while
+/// it stays selected, so it goes with the selection.
 pub(crate) fn show_copied(view: Res<TuiView>, mut status: ResMut<AppStatus>) {
-    let copied = view
-        .selection
-        .filter(|drag| !drag.held && drag.from != drag.to);
-    let text = copied.map_or_else(String::new, |drag| {
-        match drag.from.y.abs_diff(drag.to.y).saturating_add(1) {
-            1 => "Copied 1 line".to_owned(),
-            rows => format!("Copied {rows} lines"),
-        }
-    });
+    let copied = view.selection.and_then(|drag| drag.copied);
+    let text = match copied {
+        None => String::new(),
+        Some(1) => "Copied 1 line".to_owned(),
+        Some(lines) => format!("Copied {lines} lines"),
+    };
     let shown = status.0.iter().find(|item| item.name == COPIED.name);
     if shown.map(|item| item.text.as_str()).unwrap_or_default() != text {
         status.0.show(COPIED.says(text, Tone::Green));

@@ -51,6 +51,7 @@ use rig_ecs::agent::{ActiveTurn, AgentId, Calls, Conversation, Partial, PartialC
 use rig_ecs::fork::ForkedFrom;
 use rig_ecs::inbox::{DeliveryMode, Incoming};
 use rig_ecs::stage::{Effect, ForAgent, Holds, Outcome, Settled, Started, SupersededBy};
+use rig_ecs::tasks::Wake;
 use rig_ecs::tools::{InReply, ToolRequest};
 use rig_ecs::turn::{ModelRequest, SentTo};
 use rig_harness::main_agent::ShownAgent;
@@ -1036,7 +1037,7 @@ pub(crate) fn render(
     (spawns, ticks): (PanelSpawns, SystemChangeTick),
     mut showing: Query<(Entity, &mut PickerInput, Option<&PickPreview>)>,
     (mut repaints, mut copies): (MessageReader<RedrawArea>, MessageWriter<CopyToClipboard>),
-    theme: Res<Theme>,
+    (theme, wake): (Res<Theme>, Option<Res<Wake>>),
 ) -> Result {
     if !std::mem::take(&mut frame_layout.due) {
         return Ok(());
@@ -1143,7 +1144,17 @@ pub(crate) fn render(
         (None, None) => Ok(()),
     };
     drew.set_if_neq(areas);
-    copies.write_batch(copied.filter(|text| !text.is_empty()).map(CopyToClipboard));
+    // The status line, drawn already, says what was copied in the next
+    // frame, which this change to the view asks for.
+    if let Some(text) = copied.filter(|text| !text.is_empty()) {
+        if let Some(selection) = view.selection.as_mut() {
+            selection.copied = Some(text.lines().count());
+        }
+        if let Some(wake) = wake.as_deref() {
+            wake.wake();
+        }
+        copies.write(CopyToClipboard(text));
+    }
     drawn?;
     Ok(())
 }
