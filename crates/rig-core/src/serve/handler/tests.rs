@@ -517,3 +517,20 @@ fn sharing_and_erasing_keep_a_cheap_key() {
     assert_eq!(again.key(), &HandlerKey::from("cheap"));
     assert_eq!(handler.0.load(std::sync::atomic::Ordering::SeqCst), 0);
 }
+
+/// An embedding model of unknown width is described without one, not as
+/// zero wide, in the descriptor a record keeps.
+#[test]
+fn an_embedding_model_of_unknown_width_has_no_dims() {
+    let described = |ndims| {
+        let model = crate::driver::Model::new(
+            crate::driver::Local::new("mock")
+                .with_capabilities(crate::wire::Capabilities::embedding(5, ndims)),
+            crate::test_utils::MockEmbeddings,
+        );
+        let handler = ErasedHandler::new(crate::serve::adapters::ModelAdapter::new("mock", model));
+        serde_json::to_value(handler.descriptor().family).expect("serializes")
+    };
+    assert_eq!(described(10)["dims"], 10);
+    assert_eq!(described(0).get("dims"), None);
+}
