@@ -293,8 +293,9 @@ diff passes 256 KiB always does. A call's row is tinted by where it stands
 palette, so it follows the terminal's theme.
 Dragging over the screen with the mouse copies what it covers when the
 button comes up, and the status line says `Copied 3 lines` until the next
-key or click. The copy goes to the terminal (OSC 52) and to `wl-copy` or
-`xclip`; when neither is installed, the first copy says so. Shift and a drag
+key or click. The copy goes to the terminal (OSC 52) and to `wl-copy`,
+`xclip` or `pbcopy`; when the clipboard program is not installed, the first
+copy says so. Shift and a drag
 reach the terminal's own selection instead. Inside tmux, OSC 52 needs
 `set -g set-clipboard on`.
 PageUp, PageDown and Shift+Up/Down scroll the transcript. With `NO_COLOR` set,
