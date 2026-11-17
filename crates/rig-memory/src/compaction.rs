@@ -145,10 +145,7 @@ impl SummaryState {
                     waiting = reply.tool_calls().collect();
                 }
                 Message::User { content } => {
-                    for result in content.iter().filter_map(|part| match part {
-                        UserContent::ToolResult(result) => Some(result),
-                        _ => None,
-                    }) {
+                    for result in content.iter().filter_map(UserContent::as_tool_result) {
                         let Some(at) = waiting.iter().position(|call| call.id == result.call)
                         else {
                             continue;
@@ -1221,16 +1218,12 @@ impl Summarizer {
                     // A failed or stopped reply's call that no result
                     // answers never ran.
                     let failed = reply.stop.as_ref().is_some_and(|stop| stop.is_failure());
-                    let answered: Vec<&CallId> = match messages.get(at + 1).map(|next| &**next) {
-                        Some(Message::User { content }) => content
-                            .iter()
-                            .filter_map(|item| match item {
-                                UserContent::ToolResult(result) => Some(&result.call),
-                                _ => None,
-                            })
-                            .collect(),
-                        _ => Vec::new(),
-                    };
+                    let next = messages.get(at + 1).map(|next| &**next);
+                    let answered: Vec<&CallId> = next
+                        .into_iter()
+                        .flat_map(Message::results)
+                        .map(|result| &result.call)
+                        .collect();
                     for item in &reply.content {
                         match item {
                             AssistantContent::Text(text) => {

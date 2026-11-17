@@ -49,12 +49,9 @@ impl Plugin for ConversationSurgeryPlugin {
 fn call_ids(message: &Message) -> Vec<CallId> {
     match message {
         Message::Assistant(turn) => turn.tool_calls().map(|call| call.id.clone()).collect(),
-        Message::User { content } => content
-            .iter()
-            .filter_map(|item| match item {
-                UserContent::ToolResult(result) => Some(result.call.clone()),
-                _ => None,
-            })
+        Message::User { .. } => message
+            .results()
+            .map(|result| result.call.clone())
             .collect(),
         Message::System { .. } => Vec::new(),
     }

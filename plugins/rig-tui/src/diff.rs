@@ -75,9 +75,7 @@ fn draw(lines: &[(Kind, String)], path: Option<&str>, theme: &Theme) -> Vec<Look
         let number = |at: Option<usize>| at.map_or(" ".repeat(width), |at| format!("{at:>width$}"));
         let gutter =
             |old, new, sign| Span::from(format!("    {} {} {sign} ", number(old), number(new)));
-        let spans = vec![Span::from(text.clone())];
-        let mut marked =
-            |shade| overlay(spans.clone(), &words.remove(&at).unwrap_or_default(), shade);
+        let mut marked = |shade| overlay(text, &words.remove(&at).unwrap_or_default(), shade);
         let (line, gutter) = match *kind {
             Kind::Other => (Line::from(format!("    {text}")).dim(), None),
             Kind::File => (Line::from(format!("    {text}")).bold(), None),
@@ -85,7 +83,7 @@ fn draw(lines: &[(Kind, String)], path: Option<&str>, theme: &Theme) -> Vec<Look
             Kind::Same(old, new) => {
                 let gutter = gutter(Some(old), Some(new), ' ').dim();
                 (
-                    Line::from([vec![gutter.clone()], spans.clone()].concat()),
+                    Line::from(vec![gutter.clone(), Span::from(text.clone())]),
                     Some(gutter),
                 )
             }
@@ -297,43 +295,23 @@ fn changed_words(lines: &[(Kind, String)]) -> HashMap<usize, Vec<Range<usize>>> 
     words
 }
 
-/// `spans` with `shade` laid over the bytes `ranges` of their joined
-/// text, each span split where a range starts or ends inside it.
-fn overlay(spans: Vec<Span<'static>>, ranges: &[Range<usize>], shade: Style) -> Vec<Span<'static>> {
-    if ranges.is_empty() {
-        return spans;
-    }
-    let mut laid = Vec::new();
-    let mut start = 0;
-    for span in spans {
-        let text = span.content.as_ref();
-        let end = start + text.len();
-        let mut cuts = vec![0, text.len()];
-        let inside = ranges.iter().flat_map(|range| [range.start, range.end]);
-        cuts.extend(
-            inside
-                .filter(|at| start < *at && *at < end)
-                .map(|at| at - start),
-        );
-        cuts.sort_unstable();
-        cuts.dedup();
-        for pair in cuts.windows(2) {
-            let [from, to] = pair else { continue };
-            let Some(piece) = text.get(*from..*to) else {
-                continue;
-            };
-            let at = start + from;
-            let marked = ranges.iter().any(|range| range.contains(&at));
-            let style = if marked {
-                span.style.patch(shade)
-            } else {
-                span.style
-            };
-            laid.push(Span::styled(piece.to_owned(), style));
+/// `text` as spans, with `shade` on its bytes `ranges`, which come in
+/// order and apart.
+fn overlay(text: &str, ranges: &[Range<usize>], shade: Style) -> Vec<Span<'static>> {
+    let mut spans = Vec::new();
+    let mut piece = |range: Range<usize>, style| {
+        if let Some(piece) = text.get(range).filter(|piece| !piece.is_empty()) {
+            spans.push(Span::styled(piece.to_owned(), style));
         }
-        start = end;
+    };
+    let mut at = 0;
+    for range in ranges {
+        piece(at..range.start, Style::default());
+        piece(range.clone(), shade);
+        at = range.end;
     }
-    laid
+    piece(at..text.len(), Style::default());
+    spans
 }
 
 #[cfg(test)]

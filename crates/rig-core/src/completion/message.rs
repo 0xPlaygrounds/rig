@@ -1168,6 +1168,16 @@ impl Message {
         }
     }
 
+    /// The tool results a user message carries, in order; none for other
+    /// roles.
+    pub fn results(&self) -> impl Iterator<Item = &ToolResult> {
+        let content = match self {
+            Message::User { content } => content.as_slice(),
+            _ => &[],
+        };
+        content.iter().filter_map(UserContent::as_tool_result)
+    }
+
     /// The images of this message, in order: a user message's own and
     /// those of its tool results, or an assistant turn's.
     pub fn images(&self) -> impl Iterator<Item = &Image> {
@@ -1278,6 +1288,14 @@ impl UserContent {
     pub fn as_text(&self) -> Option<&str> {
         match self {
             Self::Text(text) => Some(&text.text),
+            _ => None,
+        }
+    }
+
+    /// Borrow the result of a tool-result block.
+    pub fn as_tool_result(&self) -> Option<&ToolResult> {
+        match self {
+            Self::ToolResult(result) => Some(result),
             _ => None,
         }
     }

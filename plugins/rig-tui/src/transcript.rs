@@ -1467,18 +1467,6 @@ impl Scroll {
     }
 }
 
-/// The tool results a message carries.
-fn tool_results(message: Option<&Message>) -> impl Iterator<Item = &ToolResult> {
-    let content = match message {
-        Some(Message::User { content }) => Some(content.iter()),
-        _ => None,
-    };
-    content.into_iter().flatten().filter_map(|item| match item {
-        UserContent::ToolResult(result) => Some(result),
-        _ => None,
-    })
-}
-
 /// The result of each call of `reply` among those of `results`, in call
 /// order ([`answered_by`]).
 fn answers<'a>(
@@ -1486,10 +1474,8 @@ fn answers<'a>(
     results: Option<&'a Message>,
 ) -> Vec<Option<&'a ToolResult>> {
     let calls = reply.tool_calls().map(|call| &call.id);
-    answered_by(
-        calls,
-        tool_results(results).map(|result| (&result.call, result)),
-    )
+    let results = results.into_iter().flat_map(Message::results);
+    answered_by(calls, results.map(|result| (&result.call, result)))
 }
 
 /// Draws `entry`, the `at`-th of those shown, with the notices and notes

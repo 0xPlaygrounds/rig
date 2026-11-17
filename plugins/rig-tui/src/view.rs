@@ -84,7 +84,8 @@ pub enum TranscriptItem {
     /// [`Note`](rig_harness::rig_core::conversation::Note), by its id
     /// ([`RenderBatch::asides_mut`](crate::RenderBatch::asides_mut)).
     Aside(AsideId),
-    /// A notice, by its number in the [`Notices`].
+    /// A notice the view shows, by its number: 0 for the first the session
+    /// showed, those dropped since counted.
     Notice(usize),
     /// A content block of a message, an image, audio, a video or a
     /// document, by the message's id and the block's place in it
@@ -155,7 +156,7 @@ pub struct TranscriptView {
 /// was written. [`TranscriptItem::Notice`] names one by its number: its
 /// index here plus the older ones dropped.
 #[derive(Resource, Default)]
-pub struct Notices {
+pub(crate) struct Notices {
     shown: Vec<ShownNotice>,
     dropped: usize,
     /// The notices collected, shared by each run of [`collect_notices`].
@@ -235,8 +236,9 @@ pub struct LineSpan {
     /// The item whose lines `line` counts, from its first; `None` counts
     /// the whole transcript's, for rows of no item.
     pub item: Option<TranscriptItem>,
-    /// The line, by its index in the item's
-    /// ([`DrawnTranscript::item`]'s [`lines`](DrawnTranscript::lines)).
+    /// The line, by its index among the item's
+    /// [`lines`](DrawnTranscript::lines), counted from the one at the
+    /// first of its [`rows_of`](DrawnTranscript::rows_of).
     pub line: usize,
     /// Its bytes in the line's text; a match a wrap split is lit on each
     /// of its rows and counted in the row it starts in.
@@ -469,43 +471,11 @@ impl DrawnTranscript {
     pub fn on_screen(&self) -> Range<usize> {
         self.on_screen.clone()
     }
-
-    /// Only `item`'s rows, as a transcript of their own: its rows from 0,
-    /// the items drawn in it, and its rows on screen.
-    /// `None` when it is not drawn.
-    pub fn item(&self, item: &TranscriptItem) -> Option<Self> {
-        let at = self.items.iter().position(|(drawn, _)| drawn == item)?;
-        let rows = self.items.get(at).map(|(_, rows)| rows.clone())?;
-        let start = rows.start;
-        let within = |inner: &Range<usize>| rows.start <= inner.start && inner.end <= rows.end;
-        // An item holding it comes before it, though it may have the same
-        // rows, such as a reply that only calls a tool.
-        let items: Vec<(TranscriptItem, Range<usize>)> = self
-            .items
-            .iter()
-            .skip(at)
-            .filter(|(_, inner)| within(inner))
-            .map(|(item, inner)| (item.clone(), inner.start - start..inner.end - start))
-            .collect();
-        let on_screen = self.on_screen.start.max(rows.start)..self.on_screen.end.min(rows.end);
-        let on_screen = if on_screen.is_empty() {
-            0..0
-        } else {
-            on_screen.start - start..on_screen.end - start
-        };
-        Some(Self {
-            agent: self.agent,
-            area: self.area,
-            rows: self.rows.get(rows).unwrap_or_default().to_vec(),
-            items,
-            on_screen,
-        })
-    }
 }
 
 /// A notice placed in a transcript.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ShownNotice {
+pub(crate) struct ShownNotice {
     /// The agent it is about, or `None` for every agent.
     pub agent: Option<AgentId>,
     /// Where it was written in its agent's transcript (the one shown, for
@@ -533,7 +503,7 @@ struct Anchor {
 /// index of a message in its [`Conversation`]. Those in the same slot are
 /// drawn in the order they came.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum TranscriptSlot {
+pub(crate) enum TranscriptSlot {
     /// Before the first message.
     Top,
     /// After this message.
@@ -547,7 +517,7 @@ impl TranscriptSlot {
     /// follows while that is there, else after the first item of the entry
     /// that stands for it now, such as the summary of a compaction that
     /// took it out.
-    pub fn of_aside(aside: &Aside, conversation: &conversation::Conversation) -> Self {
+    pub(crate) fn of_aside(aside: &Aside, conversation: &conversation::Conversation) -> Self {
         let Some(after) = aside.after else {
             return Self::Top;
         };
@@ -571,16 +541,6 @@ impl ShownNotice {
         self.agent.is_none()
     }
 
-    /// The agent whose transcript draws it: the one it is about, or for a
-    /// notice about every agent the one it was written in. `None` for one
-    /// about every agent written before any had a message, which every
-    /// transcript draws at its top. With no agent shown, the view draws
-    /// every notice about every agent.
-    pub fn drawn_in(&self) -> Option<&AgentId> {
-        let written = self.at.as_ref().map(|at| &at.agent);
-        written.or(self.agent.as_ref())
-    }
-
     /// The message it was written after in the transcript of the agent
     /// `id`, when it was written there, with how many of its content items
     /// there were then.
@@ -593,7 +553,7 @@ impl ShownNotice {
     /// `conversation`, or `None` when it is no part of it: it is about
     /// another agent, or about every agent and was written in another's.
     /// One whose message is gone goes where that message was.
-    pub fn slot(
+    pub(crate) fn slot(
         &self,
         id: &AgentId,
         conversation: &conversation::Conversation,
@@ -680,11 +640,6 @@ impl TranscriptView {
 }
 
 impl Notices {
-    /// The notices, oldest first.
-    pub fn all(&self) -> &[ShownNotice] {
-        &self.shown
-    }
-
     /// The notices, oldest first, each with its number.
     pub(crate) fn numbered(&self) -> impl Iterator<Item = (usize, &ShownNotice)> {
         let numbers = self.dropped..;

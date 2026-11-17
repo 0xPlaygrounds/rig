@@ -47,10 +47,11 @@ impl Plugin for DefaultsPlugin {
     }
 }
 
-/// `[model]` in `settings.toml`, as written; read as a setting so a table
-/// that does not read, such as an `effort` no setting is named, refuses the
-/// run.
-#[derive(Resource, Deserialize, Default, Clone)]
+/// `[model]` in `settings.toml`: the model's id and the text of its
+/// reasoning setting. Read as a setting at start-up, so a table that does
+/// not read, such as an `effort` no setting is named, refuses the run;
+/// [`ModelTable::read`] reads the file again later, unvalidated.
+#[derive(Resource, Deserialize, Default, Clone, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 struct ModelTable {
     default: Option<String>,
@@ -69,24 +70,7 @@ fn effort_word<'de, D: serde::Deserializer<'de>>(words: D) -> Result<Option<Stri
     }
 }
 
-/// `[model]` as the user left it: the model and the text of its reasoning
-/// setting.
-#[derive(Default, PartialEq)]
-struct Defaults {
-    model: Option<ModelChoice>,
-    effort: Option<String>,
-}
-
-impl From<ModelTable> for Defaults {
-    fn from(table: ModelTable) -> Self {
-        Self {
-            model: table.default.map(ModelChoice),
-            effort: table.effort,
-        }
-    }
-}
-
-impl Defaults {
+impl ModelTable {
     /// The ones in `home`'s `settings.toml` now.
     fn read(home: &Home) -> Self {
         let file = SettingsFile::read(&home.settings()).ok();
@@ -95,10 +79,10 @@ impl Defaults {
             let value = table.and_then(|table| table.get(key));
             value.and_then(|value| value.as_str()).map(str::to_owned)
         };
-        Self::from(ModelTable {
+        Self {
             default: text("default"),
             effort: text("effort"),
-        })
+        }
     }
 
     /// Writes them into `[model]` of `home`'s `settings.toml`, keeping the
@@ -115,7 +99,7 @@ impl Defaults {
             };
             let mut changed = false;
             let keys = [
-                ("default", self.model.as_ref().map(|model| model.0.clone())),
+                ("default", self.default.clone()),
                 ("effort", self.effort.clone()),
             ];
             for (key, value) in keys {
@@ -158,12 +142,12 @@ fn apply_defaults(
     if agents.is_empty() {
         return;
     }
-    let defaults = Defaults::read(&home.0);
+    let defaults = ModelTable::read(&home.0);
     let named = invoked.is_some_and(|invoked| invoked.args.model.is_some());
-    let model = defaults.model.filter(|_| !named);
+    let model = defaults.default.filter(|_| !named).map(ModelChoice);
     for agent in &agents {
         let mut agent = commands.entity(agent);
-        // A text no model reads has refused the run already ([`effort_word`]).
+        // The file is read again here, unvalidated: skip a text no model reads.
         let effort = defaults.effort.as_ref();
         if let Some(effort) = effort.filter(|effort| ReasoningSupport::reads(effort)) {
             agent.insert(SavedEffort(effort.clone()));
@@ -255,16 +239,16 @@ fn remember(
         return;
     };
     commands.entity(agent).remove::<Unsaved>();
-    let kept = Defaults::read(&home.0);
-    let users = unsaved.model.as_ref().or(kept.model.as_ref());
-    if users != Some(model) {
+    let kept = ModelTable::read(&home.0);
+    let users = unsaved.model.as_ref().map(|users| users.0.as_str());
+    if users.or(kept.default.as_deref()) != Some(model.0.as_str()) {
         return;
     }
-    let defaults = Defaults {
-        model: Some(model.clone()),
+    let table = ModelTable {
+        default: Some(model.0.clone()),
         effort: Some(connection.spec.reasoning.name_of(effort.0)),
     };
-    if kept != defaults {
-        defaults.write(&home.0);
+    if kept != table {
+        table.write(&home.0);
     }
 }

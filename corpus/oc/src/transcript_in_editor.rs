@@ -615,11 +615,8 @@ fn ids(message: &Message) -> (Vec<String>, Vec<String>) {
             turn.tool_calls().map(|call| call.id.to_string()).collect(),
             Vec::new(),
         ),
-        Message::User { content } => {
-            let results = content.iter().filter_map(|part| match part {
-                UserContent::ToolResult(result) => Some(result.call.to_string()),
-                _ => None,
-            });
+        Message::User { .. } => {
+            let results = message.results().map(|result| result.call.to_string());
             (Vec::new(), results.collect())
         }
         Message::System { .. } => (Vec::new(), Vec::new()),

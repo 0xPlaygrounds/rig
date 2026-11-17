@@ -217,9 +217,8 @@ fn a_refused_command_comes_back_whole_and_enter_sends_it_as_a_message() {
         let notices = app.world().resource::<view::Notices>();
         let input = crate::tests::input(&app);
         let shown: Vec<&str> = notices
-            .all()
-            .iter()
-            .map(|notice| notice.text.as_str())
+            .numbered()
+            .map(|(_, notice)| notice.text.as_str())
             .collect();
         assert_eq!(input.text(), typed);
         assert!(
@@ -228,7 +227,10 @@ fn a_refused_command_comes_back_whole_and_enter_sends_it_as_a_message() {
         );
     }
     assert_eq!(
-        app.world().resource::<crate::Notices>().all().len(),
+        app.world()
+            .resource::<crate::view::Notices>()
+            .numbered()
+            .count(),
         refused.len()
     );
     enter(&mut app, "/gui still doesnt do anything");

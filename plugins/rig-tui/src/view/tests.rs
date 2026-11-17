@@ -129,7 +129,7 @@ fn a_notice_sent_as_a_reload_exits_is_kept_for_its_build() {
     let (mut app, _) = view_app();
     app.insert_resource(data(&session));
     assert!(app.world_mut().run_system_once(load_notices).is_ok());
-    let notices = app.world().resource::<Notices>().all();
+    let notices = &app.world().resource::<Notices>().shown;
     let texts: Vec<&str> = notices.iter().map(|notice| notice.text.as_str()).collect();
     assert_eq!(texts, ["The session is no longer saved: full"]);
 }
@@ -175,9 +175,10 @@ fn a_notice_says_which_transcript_draws_it_and_where() {
     app.update();
     say(&mut app, agent, Message::user("next"));
     let world = app.world();
-    let notice = world.resource::<crate::Notices>().all().first();
+    let notice = world.resource::<crate::view::Notices>().shown.first();
     let conversation = world.get::<Conversation>(agent);
-    assert_eq!(notice.and_then(ShownNotice::drawn_in), Some(&id));
+    let written = notice.and_then(|notice| notice.at.as_ref());
+    assert_eq!(written.map(|at| &at.agent), Some(&id));
     let slot = |id: &AgentId| notice?.slot(id, conversation?);
     assert_eq!(slot(&id), Some(TranscriptSlot::After(1)));
     assert_eq!(slot(&AgentId("a2".to_owned())), None);
@@ -217,7 +218,7 @@ fn a_notice_is_an_item_a_plugin_scrolls_to() {
     for index in 10..30 {
         say(&mut app, agent, question(index));
     }
-    let notices = app.world().resource::<crate::Notices>().all().len();
+    let notices = app.world().resource::<crate::view::Notices>().shown.len();
     assert_eq!(notices, 1);
     let item = TranscriptItem::Notice(0);
     app.world_mut().trigger(ScrollTo {

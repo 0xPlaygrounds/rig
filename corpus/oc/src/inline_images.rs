@@ -418,13 +418,10 @@ fn images_of_call(conversation: &Conversation, at: CallRef) -> Vec<&Image> {
     let reply = conversation.index_of(at.reply);
     let asked =
         reply.and_then(|reply| Some((&**messages.get(reply)?, &**messages.get(reply + 1)?)));
-    let Some((ChatMessage::Assistant(reply), ChatMessage::User { content })) = asked else {
+    let Some((ChatMessage::Assistant(reply), results @ ChatMessage::User { .. })) = asked else {
         return Vec::new();
     };
-    let results = content.iter().filter_map(|content| match content {
-        UserContent::ToolResult(result) => Some((&result.call, result)),
-        _ => None,
-    });
+    let results = results.results().map(|result| (&result.call, result));
     let answers = answered_by(reply.tool_calls().map(|call| &call.id), results);
     let result = usize::try_from(at.index)
         .ok()

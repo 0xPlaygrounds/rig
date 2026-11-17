@@ -193,15 +193,8 @@ fn stubs(
 
 /// The ids of the calls whose results `messages` hold.
 fn answered(messages: &[std::sync::Arc<Message>]) -> HashSet<CallId> {
-    let content = messages.iter().filter_map(|message| match &**message {
-        Message::User { content } => Some(content),
-        _ => None,
-    });
-    let results = content.flatten().filter_map(|item| match item {
-        UserContent::ToolResult(result) => Some(result.call.clone()),
-        _ => None,
-    });
-    results.collect()
+    let results = messages.iter().flat_map(|message| message.results());
+    results.map(|result| result.call.clone()).collect()
 }
 
 /// About how many tokens `result` takes.
