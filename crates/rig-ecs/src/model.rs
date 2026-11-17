@@ -223,9 +223,12 @@ pub(crate) fn on_set_model(
                 Ok(connection) => {
                     let mut agent = commands.entity(set.entity);
                     match connected {
+                        Some(old) if old.spec.reference() == model.0 => {
+                            agent.insert(model.clone());
+                        }
                         // One insert, so `check_effort` never sees the old
                         // setting with the new model.
-                        Some(old) if old.spec.reference() != model.0 => {
+                        Some(old) => {
                             let effort = effort.copied().unwrap_or_default();
                             let effort = carried(&old.spec, effort, &connection.spec);
                             notices.write(Notice::info(set.entity, switched(&connection)));
@@ -233,8 +236,10 @@ pub(crate) fn on_set_model(
                                 .insert((model.clone(), connection, effort))
                                 .remove::<ModelRefused>();
                         }
-                        _ => {
-                            agent.insert(model.clone());
+                        None => {
+                            agent
+                                .insert((model.clone(), connection))
+                                .remove::<ModelRefused>();
                         }
                     }
                     commands.trigger(ChoiceTaken {
@@ -422,3 +427,6 @@ pub(crate) fn on_set_reasoning(
         }
     }
 }
+
+#[cfg(test)]
+mod tests;
