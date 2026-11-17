@@ -49,13 +49,16 @@ pub enum Language<'a> {
     File(&'a str),
 }
 
-/// Loads the grammars and the theme on a thread of their own, so the
-/// first code drawn does not wait for them.
-pub(crate) fn warm_up() {
-    std::thread::spawn(|| {
-        LazyLock::force(&SYNTAXES);
-        LazyLock::force(&THEME);
-    });
+/// Loads the grammars and the theme on a `loader` thread, so the first
+/// code drawn does not wait for them. A loader that cannot start leaves
+/// them to load when code is first drawn.
+pub(crate) fn warm_up(loader: std::thread::Builder) {
+    loader
+        .spawn(|| {
+            LazyLock::force(&SYNTAXES);
+            LazyLock::force(&THEME);
+        })
+        .ok();
 }
 
 /// Texts shorter than this are not kept for a longer one to go on from:
