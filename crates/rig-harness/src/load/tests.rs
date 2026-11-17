@@ -74,12 +74,13 @@ fn what_a_plugin_spawns_in_build_and_finish_is_its_own() {
 }
 
 /// Spawns and adds a system before and after loading `Nested` in the
-/// middle of its build.
+/// middle of its build, and spawns in its `finish`.
 #[derive(Default)]
 struct Host;
 
 fn host_before() {}
 fn host_after() {}
+fn nested_system() {}
 
 impl Plugin for Host {
     fn build(&self, app: &mut App) {
@@ -89,18 +90,31 @@ impl Plugin for Host {
         app.world_mut().spawn(Name::new("host after"));
         app.add_systems(Update, host_after);
     }
+
+    fn finish(&self, app: &mut App) {
+        app.world_mut().spawn(Name::new("host finished"));
+    }
 }
 
-/// Spawns in its build, loaded by `Host`.
+/// Spawns and adds a system in its build, and spawns in its `finish`,
+/// loaded by `Host`.
 #[derive(Default)]
 struct Nested;
 
 impl Plugin for Nested {
     fn build(&self, app: &mut App) {
         app.world_mut().spawn(Name::new("nested"));
+        app.add_systems(Update, nested_system);
+    }
+
+    fn finish(&self, app: &mut App) {
+        app.world_mut().spawn(Name::new("nested finished"));
     }
 }
 
+/// Each of two nested plugins owns what it spawned and added, before,
+/// inside and after the nested load, and nothing spawned once the app
+/// runs is either's.
 #[test]
 fn a_plugin_loaded_in_another_build_is_attributed_and_the_outer_carries_on() {
     let mut app = App::new();
@@ -109,7 +123,10 @@ fn a_plugin_loaded_in_another_build_is_attributed_and_the_outer_carries_on() {
     app.cleanup();
     app.update();
     let world = app.world_mut();
+    world.spawn(Name::new("running"));
+    world.flush();
     let host = world.resource::<PluginEntity<Host>>().entity();
+    let nested = world.resource::<PluginEntity<Nested>>().entity();
     let mut named = world.query::<(&Name, Option<&ProvidedBy>)>();
     let mut by = |name: &str| {
         named
@@ -118,7 +135,11 @@ fn a_plugin_loaded_in_another_build_is_attributed_and_the_outer_carries_on() {
             .and_then(|(_, by)| by.map(|by| by.0))
     };
     assert_eq!(by("host before"), Some(host));
+    assert_eq!(by("nested"), Some(nested));
     assert_eq!(by("host after"), Some(host));
+    assert_eq!(by("host finished"), Some(host));
+    assert_eq!(by("nested finished"), Some(nested));
+    assert_eq!(by("running"), None);
     let systems = world.resource::<super::PluginSystems>();
     let of = |name: &str| {
         (systems.0.iter())
@@ -126,6 +147,7 @@ fn a_plugin_loaded_in_another_build_is_attributed_and_the_outer_carries_on() {
             .and_then(|(_, plugin)| *plugin)
     };
     assert_eq!(of("host_before"), Some(host));
+    assert_eq!(of("nested_system"), Some(nested));
     assert_eq!(of("host_after"), Some(host));
 }
 
