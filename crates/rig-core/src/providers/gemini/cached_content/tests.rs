@@ -252,3 +252,44 @@ async fn a_reply_of_the_other_shape_names_the_shape_it_carried() {
         "{on_list:?}"
     );
 }
+
+/// Create and both expiry patches send a JSON body, so each says so; the
+/// body-less get and delete send no content type.
+#[test]
+fn every_cache_write_sends_its_json_content_type() {
+    use crate::wire::{Mode, Wire};
+
+    let wire = crate::providers::gemini::GeminiConfig::new("test-key").cached_contents();
+    let content_type = |request: CachedContentRequest| {
+        let encoded = wire
+            .encode(request, Mode::Unary)
+            .expect("the request encodes");
+        encoded
+            .request
+            .headers()
+            .get(http::header::CONTENT_TYPE)
+            .map(|value| value.as_bytes().to_vec())
+    };
+    let json = Some(b"application/json".to_vec());
+    let name = || "cachedContents/abc".to_owned();
+    assert_eq!(
+        content_type(CachedContentRequest::Create(
+            NewCachedContent::new("gemini-2.5-flash").content("corpus")
+        )),
+        json
+    );
+    for expiry in [
+        CacheExpiry::ttl(Duration::from_secs(600)),
+        CacheExpiry::ExpireTime("2030-01-01T00:00:00Z".to_owned()),
+    ] {
+        assert_eq!(
+            content_type(CachedContentRequest::UpdateExpiry {
+                name: name(),
+                expiry
+            }),
+            json
+        );
+    }
+    assert_eq!(content_type(CachedContentRequest::Get(name())), None);
+    assert_eq!(content_type(CachedContentRequest::Delete(name())), None);
+}
