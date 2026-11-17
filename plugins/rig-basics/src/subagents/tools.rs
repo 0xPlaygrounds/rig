@@ -23,9 +23,9 @@ pub const WAIT: &str = "wait";
 
 const TASK_DESCRIPTION: &str = "Start a subagent: a new agent with a conversation of its own, \
     which sees only `prompt` and `environment`, works with its tools in your working directory \
-    and reports back. It suits a large part of a task that a brief can state and that can be done \
-    separately, a second opinion from another model, or a request from the user for one; a few \
-    reads, commands or edits are quicker done directly.\n\n\
+    and reports back. It suits a large, separable part of a task that a brief can state, a second \
+    opinion from another model, or a user's request for a subagent; a few reads, commands or \
+    edits are quicker done directly.\n\n\
     The call returns at once with its id; its report, its final answer, arrives as a message \
     headed with that id and the task title as soon as it is done. It may `message` you a question \
     meanwhile. With `peers`, the subagents you start are told each other's ids and can message and \
