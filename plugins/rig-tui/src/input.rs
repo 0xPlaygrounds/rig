@@ -570,12 +570,8 @@ pub(crate) fn read_input(
                     choosing.selected = 0;
                 }
                 None if !in_panel && matches!(keymap.scope(reading), KeyScope::Panel(_)) => {}
-                // A dropped image file becomes `@path`, which attaches it.
                 None => {
-                    match clipboard::dropped_image(&text) {
-                        Some(path) => clipboard::type_path(input, &path),
-                        None => input.insert(&text),
-                    }
+                    clipboard::paste_text(input, &text);
                     view.pasted |= main && !text.is_empty();
                 }
             },
@@ -854,7 +850,7 @@ fn act(
                 .map(Processes::launcher)
                 .unwrap_or_default();
             if let Some(editor) = *editor {
-                clipboard::paste_image(images, launcher, (editor, context.wake), commands);
+                clipboard::paste(images, launcher, (editor, context.wake), commands);
             }
         }
         Do::SelectUp | Do::SelectDown => {
