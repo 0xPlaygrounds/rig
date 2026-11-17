@@ -53,7 +53,7 @@ pub enum SubRoute {
     Together,
     /// SambaNova, through the router.
     SambaNova,
-    /// Fireworks AI, which addresses models by a qualified id.
+    /// Fireworks AI, through the router.
     Fireworks,
     /// Hyperbolic, through the router.
     Hyperbolic,
@@ -69,7 +69,7 @@ impl SubRoute {
     /// The router's slug for this sub-provider.
     pub fn slug(&self) -> &str {
         match self {
-            Self::HFInference => "hf-inference/models",
+            Self::HFInference => "hf-inference",
             Self::Together => "together",
             Self::SambaNova => "sambanova",
             Self::Fireworks => "fireworks-ai",
@@ -80,15 +80,13 @@ impl SubRoute {
         }
     }
 
-    /// Qualify Fireworks model identifiers unless already prefixed.
-    /// Return other sub-routes' identifiers unchanged.
+    /// The router's model id that selects this sub-provider: `model:slug`.
+    /// A model already ending in `:slug` is returned unchanged.
     pub fn model_identifier(&self, model: &str) -> String {
-        const FIREWORKS_PREFIX: &str = "accounts/fireworks/models/";
-        match self {
-            Self::Fireworks if !model.starts_with(FIREWORKS_PREFIX) => {
-                format!("{FIREWORKS_PREFIX}{model}")
-            }
-            _ => model.to_owned(),
+        let slug = self.slug();
+        match model.strip_suffix(slug) {
+            Some(rest) if rest.ends_with(':') => model.to_owned(),
+            _ => format!("{model}:{slug}"),
         }
     }
 }
@@ -610,9 +608,10 @@ pub struct OpenAIConfig {
     /// [`alternate_auth`](Dialect::alternate_auth) variable, which has its
     /// own header.
     pub auth: Auth,
-    /// Which sub-provider the Hugging Face router forwards to. `None` behaves
-    /// as [`SubRoute::HFInference`], the router's own default. `None` for
-    /// every other dialect, which routes nothing.
+    /// Which sub-provider the Hugging Face router forwards to. `None` leaves
+    /// Chat to the router's own routing and sends the model-addressed
+    /// endpoints to [`SubRoute::HFInference`]. `None` for every other
+    /// dialect, which routes nothing.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sub_route: Option<SubRoute>,
     /// The account the credential belongs to, when the gateway asks which
@@ -746,7 +745,8 @@ impl OpenAIConfig {
         Self::with_key(dialect, self.api_key)
     }
 
-    /// Route through a Hugging Face sub-provider.
+    /// Route through a Hugging Face sub-provider. Chat sends the model as
+    /// `model:slug`, which the router reads as an explicit selection.
     pub fn with_sub_route(mut self, sub_route: SubRoute) -> Self {
         self.sub_route = Some(sub_route);
         self
@@ -882,8 +882,8 @@ impl OpenAIConfig {
         base
     }
 
-    /// The sub-provider the Hugging Face router forwards to. `None` on the
-    /// configuration means the router's own default.
+    /// The sub-provider the Hugging Face router's model-addressed endpoints
+    /// use. `None` on the configuration means HF Inference.
     pub(crate) fn route(&self) -> std::borrow::Cow<'_, SubRoute> {
         match &self.sub_route {
             Some(route) => std::borrow::Cow::Borrowed(route),

@@ -240,11 +240,7 @@ impl Chat {
         input: &mut BaseInput<'_>,
     ) -> Result<Map<String, Value>, EncodeError> {
         let quirks = &self.provider.dialect.quirks;
-        let mut model = request.model.clone().unwrap_or_else(|| self.model.clone());
-        if quirks.rewrite == BodyRewrite::HuggingFaceRouter {
-            // Some sub-providers (Fireworks) address models by a qualified id.
-            model = self.provider.route().model_identifier(&model);
-        }
+        let model = request.model.clone().unwrap_or_else(|| self.model.clone());
         let passthrough = input.raw_tools()?;
         // A call to a custom tool the request declares is a custom call (pi).
         let custom: Vec<String> = passthrough
@@ -559,6 +555,28 @@ pub(crate) fn rewrite_body(
     Ok(())
 }
 
+/// Select `route` on the Hugging Face router by suffixing the merged body's
+/// `model` with `:slug`. A model already selecting another provider or
+/// policy is an error rather than a model with two suffixes.
+pub(crate) fn select_router_provider(
+    route: &super::SubRoute,
+    map: &mut Map<String, Value>,
+) -> Result<(), EncodeError> {
+    let Some(Value::String(model)) = map.get_mut("model") else {
+        return Ok(());
+    };
+    if let Some((_, selected)) = model.rsplit_once(':')
+        && selected != route.slug()
+    {
+        return Err(EncodeError::request(format!(
+            "the model `{model}` already selects `{selected}` on the Hugging Face router, \
+             which conflicts with the configured sub-provider `{route}`"
+        )));
+    }
+    *model = route.model_identifier(model);
+    Ok(())
+}
+
 /// `call` as the item the wire sends, from what replay hands the encoder:
 /// the current item, an edited one's kind, or nothing. A call is `custom`
 /// when its item or kept kind says so, or when it is rebuilt and the request
@@ -775,6 +793,11 @@ impl Wire for Chat {
             rewrites.push(Rewrite::Stream(true));
         }
         rewrites.push(Rewrite::ChatDialect(quirks.rewrite));
+        if quirks.rewrite == BodyRewrite::HuggingFaceRouter
+            && let Some(route) = &self.provider.sub_route
+        {
+            rewrites.push(Rewrite::RouterProvider(route.clone()));
+        }
         let raw_at = match quirks.rewrite {
             BodyRewrite::Mira => RawAt::Ignored(
                 "Additional parameters are not supported by Mira and will be ignored",

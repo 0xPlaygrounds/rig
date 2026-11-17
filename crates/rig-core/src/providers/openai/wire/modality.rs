@@ -286,8 +286,9 @@ impl OpenAIConfig {
             ));
         }
         Ok(format!(
-            "{}/{}",
+            "{}/{}/models/{}",
             self.base_url.trim_end_matches('/'),
+            route.slug(),
             model.trim_start_matches('/')
         ))
     }
