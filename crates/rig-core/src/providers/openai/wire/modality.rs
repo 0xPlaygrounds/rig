@@ -220,12 +220,6 @@ impl super::SubRoute {
 }
 
 impl OpenAIConfig {
-    /// Set the `api-version` Azure's speech endpoint is versioned by.
-    pub fn with_audio_api_version(mut self, api_version: impl Into<String>) -> Self {
-        self.audio_api_version = Some(api_version.into());
-        self
-    }
-
     /// The embeddings wire for `model`.
     pub(crate) fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
         Embeddings::new(self.clone(), model, ndims)

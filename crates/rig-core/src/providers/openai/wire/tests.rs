@@ -308,7 +308,7 @@ fn azure_accepts_either_credential_under_its_own_header() {
     assert_eq!(keyed["api-key"], "account-key");
     assert!(!keyed.contains_key("authorization"));
 
-    let token = headers(&OpenAIConfig::with_alternate_key(&AZURE, "entra-token"));
+    let token = headers(&OpenAIConfig::with_key(&AZURE, "entra-token").with_auth(alternative.auth));
     assert_eq!(token["authorization"], "Bearer entra-token");
     assert!(
         !token.contains_key("api-key"),
