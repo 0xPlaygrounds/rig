@@ -61,8 +61,8 @@ pub(crate) struct TuiView {
     /// Text was pasted into the main input since the completion last
     /// followed it: the word the paste ends in opens no list.
     pub(crate) pasted: bool,
-    /// The input's text when a paste set `dismissed`: once the text
-    /// changes, lists open again, unlike after Esc.
+    /// The input's text when a paste closed the list: no list opens until
+    /// the text changes.
     pub(crate) paste_dismissed: Option<String>,
     /// The pickers and questions to show, in the order they came; the
     /// first is shown over the transcript and takes the keys.

@@ -560,12 +560,26 @@ fn enter_after_a_pasted_partial_command_does_not_complete_it() {
     type_text(&mut app, "p");
     press(&mut app, "tab");
     assert_eq!(typed(&app), "/compact ");
-    // Esc, or any key that leaves the text as pasted, opens no list.
+    // Esc, or any key that leaves the text as pasted, opens no list, even
+    // with the cursor moved off the word and back.
     press(&mut app, "ctrl+c");
     paste(&mut app, "/comp");
     press(&mut app, "esc");
     press(&mut app, "down");
+    press(&mut app, "ctrl+a");
+    press(&mut app, "ctrl+e");
     assert!(app.world().resource::<TuiView>().completion.is_none());
     press(&mut app, "enter");
     assert_eq!(typed(&app), "/comp");
+    // A list typed open after a paste and closed with Esc stays closed as
+    // the word grows.
+    press(&mut app, "ctrl+c");
+    paste(&mut app, "/co");
+    press(&mut app, "ctrl+a");
+    press(&mut app, "ctrl+e");
+    type_text(&mut app, "m");
+    assert!(app.world().resource::<TuiView>().completion.is_some());
+    press(&mut app, "esc");
+    type_text(&mut app, "p");
+    assert!(app.world().resource::<TuiView>().completion.is_none());
 }
