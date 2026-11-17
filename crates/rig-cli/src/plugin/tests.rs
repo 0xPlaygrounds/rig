@@ -54,6 +54,23 @@ fn a_plugin_that_does_not_build_here_is_refused() {
 }
 
 #[test]
+fn disabling_a_plugin_that_does_not_build_here_fixes_the_file() {
+    let home = old_home("unavailable-off");
+    let elsewhere = BUILT_IN.iter().find(|built_in| !built_in.available());
+    if let Some(elsewhere) = elsewhere {
+        let result = (|| -> Result<_> {
+            fs::create_dir_all(home.root())?;
+            let on = format!("[plugins]\nenable = [\"{}\"]\n", elsewhere.plugin);
+            fs::write(home.settings(), on)?;
+            run(&home, &["disable", elsewhere.plugin])?;
+            Ok(config::chosen(&home)?)
+        })();
+        assert!(result.is_ok(), "{result:?}");
+    }
+    fs::remove_dir_all(home.root()).ok();
+}
+
+#[test]
 fn a_new_plugin_crate_is_an_extra_of_the_home() {
     let home = old_home("new");
     let result = (|| -> Result<_> {

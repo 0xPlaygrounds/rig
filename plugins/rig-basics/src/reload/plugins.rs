@@ -68,12 +68,17 @@ fn plugins(
     let chosen = match config::chosen(&home) {
         Ok(chosen) => chosen,
         Err(why) => {
+            // An unknown plugin's refusal names its own fix.
+            let fix = match &why {
+                config::Error::Unavailable { plugin, .. } => {
+                    format!("`rig plugin disable {plugin}` in a shell turns it off.")
+                }
+                _ => "Edit the file to fix it.".to_owned(),
+            };
             notices.write(Notice::error(
                 args.agent,
                 format!(
-                    "{} does not read, so /plugins cannot tell which plugins are on: {why}\n\
-                     Edit the file, or take out a plugin it names with \
-                     `rig plugin disable <plugin>` in a shell.",
+                    "{} does not read, so /plugins cannot tell which plugins are on: {why}\n{fix}",
                     home.settings().display()
                 ),
             ));
@@ -138,20 +143,22 @@ fn rows(chosen: &Plugins, running: &[String]) -> Vec<Row> {
     let runs = |plugin: &str| running.iter().any(|runs| runs == plugin);
     let built_ins = (built_ins.into_iter())
         .map(|built_in| built_in_row(built_in, on(built_in.plugin), runs(built_in.plugin)));
-    let extras =
-        (chosen.extra.iter()).map(|extra| extra_row(extra, on(&extra.plugin), runs(&extra.plugin)));
+    let extras = (chosen.extra.iter()).map(|extra| {
+        let shared = (chosen.extra.iter())
+            .any(|other| other.krate == extra.krate && other.plugin != extra.plugin);
+        extra_row(extra, shared, on(&extra.plugin), runs(&extra.plugin))
+    });
     built_ins.chain(extras).collect()
 }
 
 /// The row of rig's plugin `built_in`.
 fn built_in_row(built_in: &BuiltIn, on: bool, runs: bool) -> Row {
-    let warning = built_in.essential.filter(|_| !on);
-    let mut state = match (on, built_in.available()) {
-        (_, false) => format!("off here: {} only", built_in.targets.join("/")),
-        (true, true) => "on".to_owned(),
-        (false, true) => "off".to_owned(),
+    let mut state = if built_in.available() {
+        state(on, runs)
+    } else {
+        format!("off here: {} only", built_in.targets.join("/"))
     };
-    if let Some(what) = warning {
+    if let Some(what) = built_in.essential.filter(|_| !on) {
         state.push_str(&format!(" [warning: takes away {what}]"));
     }
     let mut about = format!(
@@ -168,8 +175,15 @@ fn built_in_row(built_in: &BuiltIn, on: bool, runs: bool) -> Row {
             built_in.targets.join(" and ")
         ));
     }
-    if let Some(what) = warning {
-        about.push_str(&format!("Warning: off, which takes away {what}.\n"));
+    about.push_str(reload(on, runs));
+    match (built_in.essential, on) {
+        (Some(what), true) => {
+            about.push_str(&format!("Essential: turning it off takes away {what}.\n"));
+        }
+        (Some(what), false) => {
+            about.push_str(&format!("Warning: off, which takes away {what}.\n"));
+        }
+        (None, _) => {}
     }
     about.push('\n');
     about.push_str(built_in.about);
@@ -182,23 +196,47 @@ fn built_in_row(built_in: &BuiltIn, on: bool, runs: bool) -> Row {
     }
 }
 
-/// The row of the extra plugin `extra`.
-fn extra_row(extra: &Extra, on: bool, runs: bool) -> Row {
-    let state = if on { "on" } else { "off" };
+/// The row of the extra plugin `extra`, named by its crate, and by its
+/// type too when another extra is `shared` from that crate.
+fn extra_row(extra: &Extra, shared: bool, on: bool, runs: bool) -> Row {
+    let name = match extra.plugin.rsplit("::").next().filter(|_| shared) {
+        Some(last) => format!("{} {last}", extra.krate),
+        None => extra.krate.clone(),
+    };
     let about = format!(
-        "{}\nYour plugins · {}\n{}\n\n{}\n\nFrom {}.",
-        extra.krate,
+        "{name}\nYour plugins · {}\n{}\n\n{}\n{}\nFrom {}.",
         extra.krate,
         extra.plugin,
         states(None, on, runs),
+        reload(on, runs),
         extra.source,
     );
     Row {
         plugin: extra.plugin.clone(),
-        name: extra.krate.clone(),
+        name,
         on,
-        state: state.to_owned(),
+        state: state(on, runs),
         about,
+    }
+}
+
+/// A plugin's short state: on or off in settings.toml, and whether that
+/// waits for the next reload because this build runs it or not.
+fn state(on: bool, runs: bool) -> String {
+    let word = if on { "on" } else { "off" };
+    if on == runs {
+        word.to_owned()
+    } else {
+        format!("{word} · next reload")
+    }
+}
+
+/// What the next reload changes for a plugin, as a line, or nothing.
+fn reload(on: bool, runs: bool) -> &'static str {
+    match (on, runs) {
+        (true, false) => "Takes effect at the next reload.\n",
+        (false, true) => "Runs until the next reload.\n",
+        _ => "",
     }
 }
 

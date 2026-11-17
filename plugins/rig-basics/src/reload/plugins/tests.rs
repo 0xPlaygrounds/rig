@@ -117,6 +117,70 @@ fn plugins_opens_from_settings_with_short_names_and_a_preview_from_the_start() {
     );
 }
 
+/// The rows of the one `/plugins` picker in `app`.
+fn picked_rows(app: &mut App) -> Vec<Row> {
+    let world = app.world_mut();
+    let mut pickers = world.query::<&PluginsPicker>();
+    let rows = pickers.iter(world).next().map(|picker| picker.rows.clone());
+    rows.unwrap_or_default()
+}
+
+#[test]
+fn a_row_says_what_waits_for_the_next_reload_and_what_an_essential_takes_away() {
+    let home = scratch_home("plugins-states");
+    fs::create_dir_all(home.root()).ok();
+    fs::write(
+        home.settings(),
+        "[plugins]\ndisable = [\"rig_basics::welcome::WelcomePlugin\"]\n\
+         enable = [\"rig_basics::budget::BudgetPlugin\"]\n\
+         [[plugins.extra]]\ncrate = \"viz\"\npath = \"viz\"\nplugin = \"viz::Charts\"\n\
+         [[plugins.extra]]\ncrate = \"viz\"\npath = \"viz\"\nplugin = \"viz::Tables\"\n",
+    )
+    .ok();
+    let (mut app, agent) = app(&home, true);
+    // This build runs the terminal view and the welcome, which settings.toml
+    // now turns off.
+    for plugin in ["rig_tui::TuiPlugin", "rig_basics::welcome::WelcomePlugin"] {
+        let source = PluginSource {
+            package: String::new(),
+            source: String::new(),
+        };
+        app.world_mut().spawn((Name::new(plugin), source));
+    }
+    open(&mut app, agent);
+    let rows = picked_rows(&mut app);
+    let row = |plugin: &str| rows.iter().find(|row| row.plugin == plugin);
+    let shown = |plugin: &str| row(plugin).map(|row| (row.name.as_str(), row.state.as_str()));
+
+    assert_eq!(
+        shown("rig_basics::welcome::WelcomePlugin"),
+        Some(("Welcome", "off · next reload"))
+    );
+    assert_eq!(
+        shown("rig_basics::budget::BudgetPlugin"),
+        Some(("Budget", "on · next reload"))
+    );
+    assert_eq!(shown("rig_tui::TuiPlugin"), Some(("Terminal view", "on")));
+    let about = |plugin: &str| row(plugin).map_or("", |row| row.about.as_str());
+    assert!(about("rig_basics::welcome::WelcomePlugin").contains("Runs until the next reload"));
+    assert!(about("rig_basics::budget::BudgetPlugin").contains("Takes effect at the next reload"));
+    assert!(
+        about("rig_tui::TuiPlugin")
+            .contains("Essential: turning it off takes away the terminal view"),
+        "{}",
+        about("rig_tui::TuiPlugin")
+    );
+    // Two extras of one crate are told apart.
+    assert_eq!(
+        shown("viz::Charts").map(|(name, _)| name),
+        Some("viz Charts")
+    );
+    assert_eq!(
+        shown("viz::Tables").map(|(name, _)| name),
+        Some("viz Tables")
+    );
+}
+
 #[test]
 fn an_unreadable_settings_file_is_named_with_what_to_do() {
     let home = scratch_home("plugins-unreadable");
@@ -138,6 +202,25 @@ fn an_unreadable_settings_file_is_named_with_what_to_do() {
         told.iter().any(|text| text.contains(&settings)
             && text.contains("nope::NopePlugin")
             && text.contains("rig plugin disable")),
+        "{told:?}"
+    );
+}
+
+#[test]
+fn settings_that_are_not_toml_are_named_without_a_command_that_cannot_read_them() {
+    let home = scratch_home("plugins-not-toml");
+    fs::create_dir_all(home.root()).ok();
+    fs::write(home.settings(), "[plugins\n").ok();
+    let (mut app, agent) = app(&home, true);
+    open(&mut app, agent);
+
+    let told = &app.world().resource::<Told>().0;
+    let settings = home.settings().display().to_string();
+    assert!(
+        told.iter().any(|text| text.contains(&settings)
+            && text.contains("not TOML")
+            && text.contains("Edit the file")
+            && !text.contains("rig plugin disable")),
         "{told:?}"
     );
 }

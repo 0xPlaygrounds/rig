@@ -261,25 +261,32 @@ fn listing(home: &Home) -> Result<String> {
 /// `type_path` in `[plugins] enable` or `disable` of the home's settings,
 /// or takes it out of the other list when that gives rig's default; a
 /// name in this list stays. `disable` takes a name that is neither rig's
-/// nor an extra out of both lists, which is how the settings' refusal of
-/// it says to fix it, even while the file holds other mistakes.
+/// nor an extra out of both lists, and turns off a plugin that does not
+/// build here, which is how the settings' refusal of either says to fix
+/// it, even while the file holds other mistakes.
 fn enable(home: &Home, type_path: &str, on: bool) -> Result<()> {
     let path = home.settings();
     let (changed, forgot) = config::edit(&path, |file| -> Result<_> {
-        if !on
-            && built_in(type_path).is_none()
-            && !extra(file, type_path)
-            && let Err(failure) = config::plugins(file)
-        {
-            // Off with an off default, then on with an on default: each
-            // only takes the name out of the other list.
-            let document = &mut file.document;
-            if !(set_on(document, type_path, false, false)
-                | set_on(document, type_path, true, true))
-            {
-                return Err(failure.into());
+        if !on && let Err(failure) = config::plugins(file) {
+            if built_in(type_path).is_none() && !extra(file, type_path) {
+                // Off with an off default, then on with an on default: each
+                // only takes the name out of the other list.
+                let document = &mut file.document;
+                if !(set_on(document, type_path, false, false)
+                    | set_on(document, type_path, true, true))
+                {
+                    return Err(failure.into());
+                }
+                return Ok((true, true));
             }
-            return Ok((true, true));
+            // Turning off the plugin the file cannot run here is its fix.
+            if let config::Error::Unavailable { plugin, .. } = &failure
+                && plugin == type_path
+            {
+                let by_default = built_in(type_path).is_some_and(|built_in| built_in.on);
+                let changed = set_on(&mut file.document, type_path, false, by_default);
+                return Ok((changed, false));
+            }
         }
         let changed = config::turn(file, &[(type_path, on)])?;
         Ok((changed, false))
