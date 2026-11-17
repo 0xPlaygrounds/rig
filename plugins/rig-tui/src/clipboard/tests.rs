@@ -7,7 +7,8 @@ use rig_ecs::requests::RequestOf;
 use rig_harness::main_agent::ShownAgent;
 
 use super::{
-    CopyMissed, Paste, Pasted, dropped_images, read_either, type_pasted, warn_copy_missed,
+    CopyMissed, Paste, Pasted, dropped_images, local_url_path, read_either, type_pasted,
+    warn_copy_missed,
 };
 use crate::editor::{Editor, MainEditor};
 use crate::tests::scratch;
@@ -133,4 +134,14 @@ fn a_paste_with_any_part_not_an_image_file_drops_none() {
         assert_eq!(dropped_images(&pasted), Vec::<PathBuf>::new(), "{pasted:?}");
     }
     std::fs::remove_dir_all(&root).ok();
+}
+
+/// A `file://` URL names a local path only with no host or `localhost`; a
+/// URL of another host is never read as a path relative to here.
+#[test]
+fn a_file_url_of_another_host_names_no_local_path() {
+    assert_eq!(local_url_path("/a%20b.png").as_deref(), Some("/a b.png"));
+    assert_eq!(local_url_path("localhost/a.png").as_deref(), Some("/a.png"));
+    assert_eq!(local_url_path("elsewhere/a.png"), None);
+    assert_eq!(local_url_path("localhostile/a.png"), None);
 }

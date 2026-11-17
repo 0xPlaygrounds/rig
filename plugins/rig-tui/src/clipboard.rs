@@ -295,15 +295,20 @@ fn words(text: &str) -> Vec<String> {
 /// is empty or `localhost`; `None` when it names no image file there.
 fn image_file(part: &str) -> Option<PathBuf> {
     let path = match part.strip_prefix("file://") {
-        Some(url) => {
-            let local = url
-                .strip_prefix("localhost")
-                .filter(|it| it.starts_with('/'));
-            PathBuf::from(percent_decoded(local.unwrap_or(url))?)
-        }
+        Some(url) => PathBuf::from(local_url_path(url)?),
         None => PathBuf::from(part),
     };
     (rig_tools::attach::is_image_path(&path) && path.is_file()).then_some(path)
+}
+
+/// The decoded path of `url`, a `file://` URL without its scheme, when its
+/// host is empty or `localhost`; `None` for another host, which this
+/// machine cannot read.
+fn local_url_path(url: &str) -> Option<String> {
+    let path = url.strip_prefix("localhost").unwrap_or(url);
+    path.starts_with('/')
+        .then(|| percent_decoded(path))
+        .flatten()
 }
 
 /// `text` with each `%` and two hex digits replaced by the byte they
