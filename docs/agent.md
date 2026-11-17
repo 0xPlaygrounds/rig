@@ -717,10 +717,12 @@ reports of builds in `bin/` or held by a running `rig`. A session that logged
 nothing is removed when it ends, with its `spill/` and `images/`; its
 `agent.log` moves to `run/<pid>/` if the run failed. Nothing else is removed
 on its own: `target/` keeps the builds of earlier versions, and saved
-sessions, `data/` and `projects/` stay. Remove a session's directory only when
-no `rig` runs it. `du -sh ~/.rig/*` (or your `RIG_HOME`) shows what each
-takes. Deleting `target/` while no `rig` is building frees most of the space;
-the next start then builds the agent from scratch, which takes minutes.
+sessions, `data/` and `projects/` stay. A plugin can delete a saved session
+for you; a delete a crash cut short finishes at the next start. Remove a
+session's directory only when no `rig` runs it. `du -sh ~/.rig/*` (or your
+`RIG_HOME`) shows what each takes. Deleting `target/` while no `rig` is
+building frees most of the space; the next start then builds the agent from
+scratch, which takes minutes.
 
 Set `RIG_HOME` to put everything elsewhere, for example under a cache
 directory.
