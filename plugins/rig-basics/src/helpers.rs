@@ -112,11 +112,11 @@ impl Plugin for HelpersPlugin {
              otherwise. The call returns once every helper finished, and you \
              wait until then: give work that should run alongside, such as a slow test, to a \
              helper of the same call. Each works in `dir` (default: yours) with your tools \
-             or the `tools` named; helpers in one directory see each other's edits, so give \
-             them separate files or directories (such as git worktrees). Helpers pay for \
-             independent parts and for slow work beside yours, not for edits you already \
-             know. You get back each one's final answer, or why it failed, its session and \
-             what it cost, or that some of that is unknown.",
+             but `helper`, or the `tools` named; helpers in one directory see each other's \
+             edits, so give them separate files or directories (such as git worktrees). \
+             Helpers suit independent parts and slow work beside yours, not edits you \
+             already know. You get back each one's final answer, or why it failed, its \
+             session and what it cost, or that some of that is unknown.",
             set.at_once, set.timeout_secs
         );
         if !app.is_plugin_added::<UsagePlugin>() {

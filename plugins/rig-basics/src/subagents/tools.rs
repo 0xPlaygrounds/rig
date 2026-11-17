@@ -21,24 +21,23 @@ pub const MESSAGE: &str = "message";
 /// The tool that waits for an agent's message without ending the turn.
 pub const WAIT: &str = "wait";
 
-const TASK_DESCRIPTION: &str = "Start a new subagent on a self-contained task: a new agent with \
-    a conversation of its own, which sees only `prompt` and `environment` and works with its \
-    tools until it can answer. It starts in your working directory. The call returns at once \
-    with its id; its report, its final answer, arrives as a message headed with that id and \
-    the task title as soon as it is done. It may `message` you a question meanwhile. With \
-    `peers`, the subagents you start are told each other's ids and can message and wait for \
-    each other. Continue a subagent with `message`, not another `task`. Use `task` for work \
-    that would fill your context or can run on its own: a broad search or investigation \
-    across many files, an independent change, or a second opinion from another model; not for \
-    one quick read or edit. Write `prompt` as a full brief: the goal, what is known, where to \
-    look, and what to return. Put what it must know of the environment and cannot see in \
-    `environment`: where the work is, how to reach other machines (the exact command), what \
-    is missing locally. Do not give two subagents changes to the same files. Each `task` or \
-    `message` call is a request, answered by exactly one report: meanwhile keep working on \
-    what does not need it, or end your turn; call `wait` only when you cannot go on without a \
-    report, and never poll. Never invent, simulate or paraphrase as fact another agent's \
-    reply; if the requested interaction is not supported, say so before offering an \
-    alternative.";
+const TASK_DESCRIPTION: &str = "Start a subagent: a new agent with a conversation of its own, \
+    which sees only `prompt` and `environment`, works with its tools in your working directory \
+    and reports back. It suits a large, separable part of a task that a brief can state, a second \
+    opinion from another model, or a user's request for a subagent; a few reads, commands or \
+    edits are quicker done directly.\n\n\
+    The call returns at once with its id; its report, its final answer, arrives as a message \
+    headed with that id and the task title as soon as it is done. It may `message` you a question \
+    meanwhile. With `peers`, the subagents you start are told each other's ids and can message and \
+    wait for each other. Continue a subagent with `message`, not another `task`. Write `prompt` as \
+    a full brief: the goal, what is known, where to look, and what to return. Put what it must \
+    know of the environment and cannot see in `environment`: where the work is, how to reach other \
+    machines (the exact command), what is missing locally. Do not give two subagents changes to \
+    the same files. Each `task` or `message` call is a request, answered by exactly one report: \
+    meanwhile keep working on what does not need it, or end your turn; call `wait` only when you \
+    cannot go on without a report, and never poll. Never invent, simulate or paraphrase as fact \
+    another agent's reply; if the requested interaction is not supported, say so before offering \
+    an alternative.";
 
 const MESSAGE_DESCRIPTION: &str = "Send `text` to an agent you can reach, by its id: one of your \
     subagents, an agent that asked you something (such as the agent that started you), or, \
