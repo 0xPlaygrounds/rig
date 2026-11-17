@@ -2484,3 +2484,65 @@ fn a_reload_from_safe_mode_that_fails_rolls_back_to_the_safe_build() {
         assert!(good.contains("echo good"), "replace {replace}: {good}");
     }
 }
+
+/// A reload re-executed from safe mode, whose old launcher's staged build
+/// the new launcher's sweep removed, builds the user's plugins again: here
+/// that build fails on a malformed extra, which is said and logged in
+/// `build.log`, and the safe build starts. A safe start that is no reload
+/// builds nothing of the user's.
+#[cfg(unix)]
+#[test]
+fn a_reload_re_executed_from_safe_mode_builds_the_users_plugins_again() {
+    let home = builds("safe-reexec-build", "", "");
+    let started = locks::hold_run(&home).and_then(|run| {
+        fs::write(
+            home.settings(),
+            "[[plugins.extra]]\ncrate = \"bad\"\npath = \"plugins/bad\"\nplugin = \"bad::BadPlugin\"\n",
+        )?;
+        fs::create_dir_all(home.root().join("plugins/bad"))?;
+        fs::write(home.root().join("plugins/bad/Cargo.toml"), "[package\n")?;
+        script(&build::safe(&home), &describing("safe"))?;
+        let launch = at(&home, Path::new(NO_LAUNCHER))?;
+        let session = SessionId::generate();
+        let start = |reloaded: bool| -> Result<_> {
+            fs::optional(fs::remove_file(home.build_log()))?;
+            let (failure, running) =
+                start_safe(&launch, &session, run.dir(), reloaded, BuildOutput::LogOnly)?;
+            let log = fs::optional(fs::read_to_string(home.build_log()))?.unwrap_or_default();
+            Ok((
+                failure.map(|failure| failure.reason),
+                running.current.is_safe(),
+                log.contains("is not TOML"),
+            ))
+        };
+        Ok((start(false)?, start(true)?))
+    });
+    fs::remove_dir_all(home.root()).ok();
+    let started = started.map_err(|why| why.to_string());
+    let Ok((quiet, reloaded)) = started else {
+        return assert!(started.is_ok(), "{started:?}");
+    };
+    assert_eq!(quiet, (None, true, false));
+    assert!(
+        matches!(&reloaded, (Some(why), true, true) if why.contains("is not TOML")),
+        "{reloaded:?}"
+    );
+}
+
+/// After a safe session, the resume hint starts in safe mode too.
+#[cfg(unix)]
+#[test]
+fn a_safe_sessions_resume_hint_keeps_safe_mode() {
+    let root = std::env::temp_dir().join(format!("rig-safe-resume-{}", std::process::id()));
+    fs::remove_dir_all(&root).ok();
+    let home = Home::at(&root);
+    let command = (|| -> Result<_> {
+        let (id, session) = home.new_session()?;
+        session.mark_saved()?;
+        fs::write(session.path().join("name"), "work")?;
+        Ok(resume_command(&home, &id, false, true))
+    })();
+    fs::remove_dir_all(&root).ok();
+    let command = command.map_err(|why| why.to_string());
+    assert_eq!(command, Ok(Some("rig --safe --resume 'work'".to_owned())));
+}

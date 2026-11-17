@@ -840,9 +840,10 @@ fn an_inherited_bevy_pin_is_found_in_the_workspace_the_package_names() {
 }
 
 /// A cached safe build runs with no cargo only from crates.io, with this
-/// launcher's stamp, and while it still describes itself: a damaged copy,
-/// or one built from a checkout, which may have changed since, is built
-/// again.
+/// launcher's stamp, and while it still writes a description report: a
+/// damaged copy (not executable, truncated, or empty, which runs as a
+/// shell script that exits 0), or one built from a checkout, which may
+/// have changed since, is built again.
 #[test]
 fn a_safe_build_is_reused_only_from_crates_io_while_it_describes_itself() {
     let root = std::env::temp_dir().join(format!("rig-safe-cache-{}", std::process::id()));
@@ -865,47 +866,92 @@ fn a_safe_build_is_reused_only_from_crates_io_while_it_describes_itself() {
         fs::write(safe(&home), "\x7fELF")?;
         fs::set_permissions(safe(&home), std::fs::Permissions::from_mode(0o755))?;
         current.push(safe_is_current(&launch, &RigSource::Registry));
+        fs::write(safe(&home), "")?;
+        current.push(safe_is_current(&launch, &RigSource::Registry));
         Ok(current)
     })();
     fs::remove_dir_all(&root).ok();
     let current = current.map_err(|why| why.to_string());
-    assert_eq!(current, Ok(vec![true, false, false, false]));
+    assert_eq!(current, Ok(vec![true, false, false, false, false]));
 }
 
-/// The lock files a safe build changed are put back as they were, and one
-/// that was not there is removed, so the next build of the user's plugins
-/// reseeds and checks as it would have.
+/// The lock files a safe build changed are kept on disk, so after a safe
+/// build that a signal stopped, the next build of the user's plugins puts
+/// them back as they were before it builds (here it then fails on its
+/// settings), removing one that was not there.
 #[test]
-fn a_safe_build_puts_the_projects_lock_files_back() {
+fn a_stopped_safe_build_leaves_the_projects_lock_files_for_the_next_build() {
     let root = std::env::temp_dir().join(format!("rig-safe-locks-{}", std::process::id()));
     fs::remove_dir_all(&root).ok();
     let home = Home::at(&root);
-    let after = (|| -> Result<Vec<Option<String>>> {
+    let after = (|| -> Result<_> {
         fs::create_dir_all(home.project())?;
         fs::write(home.project().join("Cargo.lock"), "user's lock")?;
         fs::write(home.project().join("Cargo.lock.seed"), "commit A's lock")?;
-        let kept = keep_locks(&home);
-        for name in ["Cargo.lock", "Cargo.lock.seed", "Cargo.lock.checked"] {
+        keep_locks(&home)?;
+        for name in LOCKS {
             fs::write(home.project().join(name), "the safe build's")?;
         }
-        let mut log = BuildLog::create(
-            home.build_log(),
+        fs::write(
+            home.settings(),
+            "[plugins]\nenable = [\"rig_basics::gone::GonePlugin\"]\n",
+        )?;
+        let launch = crate::test_launch(&home, Path::new("/opt/rig/bin/rig"))?;
+        let built = compile(
+            &launch,
+            &home.staged(),
+            Staging::Always,
             BuildOutput::LogOnly,
-            Box::new(Shown::default()),
         );
-        put_back(kept, &mut log);
-        Ok(["Cargo.lock", "Cargo.lock.seed", "Cargo.lock.checked"]
-            .map(|name| fs::read_to_string(home.project().join(name)).ok())
-            .to_vec())
+        let locks = LOCKS.map(|name| fs::read_to_string(home.project().join(name)).ok());
+        Ok((built.is_err(), locks, kept_locks(&home).exists()))
     })();
     fs::remove_dir_all(&root).ok();
     let after = after.map_err(|why| why.to_string());
     assert_eq!(
         after,
-        Ok(vec![
-            Some("user's lock".to_owned()),
-            Some("commit A's lock".to_owned()),
-            None
-        ])
+        Ok((
+            true,
+            [
+                Some("user's lock".to_owned()),
+                Some("commit A's lock".to_owned()),
+                None
+            ],
+            false
+        ))
+    );
+}
+
+/// A safe build that fails logs to its own log, and the failed build's
+/// `build.log` stays as it was.
+#[test]
+fn a_safe_build_logs_apart_from_build_log() {
+    let root = std::env::temp_dir().join(format!("rig-safe-log-{}", std::process::id()));
+    fs::remove_dir_all(&root).ok();
+    let home = Home::at(&root);
+    let logs = (|| -> Result<_> {
+        fs::create_dir_all(home.root())?;
+        fs::write(home.build_log(), "the broken build's output\n")?;
+        let mut launch = crate::test_launch(&home, Path::new("/opt/rig/bin/rig"))?;
+        launch.source = Some(rig_harness_protocol::launch::AbsPath::new(
+            root.join("not-a-checkout"),
+        )?);
+        let built = compile_safe(&launch, BuildOutput::LogOnly).map_err(|failure| failure.log);
+        Ok((
+            built,
+            fs::read_to_string(home.build_log())?,
+            fs::read_to_string(safe_log(&home))?,
+        ))
+    })();
+    fs::remove_dir_all(&root).ok();
+    let logs = logs.map_err(|why| why.to_string());
+    let Ok((built, build_log, safe_build_log)) = logs else {
+        return assert!(logs.is_ok(), "{logs:?}");
+    };
+    assert_eq!(built, Err(safe_log(&home)));
+    assert_eq!(build_log, "the broken build's output\n");
+    assert!(
+        safe_build_log.contains("is not a rig checkout"),
+        "{safe_build_log}"
     );
 }

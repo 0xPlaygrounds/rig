@@ -128,30 +128,20 @@ pub fn run(mut launch: Launch, args: &[String], safe: bool) -> Result<ExitCode> 
         let (claimed, claim_notice) = claim(home, start, launch.here.as_deref())?;
         let (failure, running) = if safe {
             build::compile_safe(&launch, output).map_err(|failure| failure.told(output))?;
-            // A reload re-executed from safe mode builds the user's plugins
-            // again, as its `rig build` did before this launcher's sweep
-            // removed that build, for a trial that rolls back to the safe
-            // build.
             let reloaded = carried.reason == Some(StartReason::Reloaded);
-            let staged = home.staged_for(&claimed.id);
-            let failure = reloaded
-                .then(|| build::compile(&launch, &staged, Staging::Always, output).err())
-                .flatten();
-            if let Some(failure) = &failure {
-                let told = failure.told(output);
-                eprintln!("error: building the agent failed; starting the safe build: {told}");
-            }
-            (failure, select_safe(&launch, &claimed.id, run.dir())?)
+            start_safe(&launch, &claimed.id, run.dir(), reloaded, output)?
         } else {
             let failure = rebuild(&launch, &claimed.id, output, print)?;
             (failure, select(&launch, &claimed.id, run.dir(), None)?)
         };
-        let built = match &failure {
-            Some(failure) => Some(format!(
-                "Building the agent failed, so the previous build is running: {failure}"
-            )),
-            None => running.current.is_safe().then(|| SAFE_NOTICE.to_owned()),
-        };
+        let failed = failure.as_ref().map(|failure| {
+            format!("Building the agent failed, so the previous build is running: {failure}")
+        });
+        let safe_mode = running.current.is_safe().then(|| SAFE_NOTICE.to_owned());
+        let built = failed
+            .into_iter()
+            .chain(safe_mode)
+            .reduce(|a, b| a + "\n" + &b);
         (
             run,
             claimed,
@@ -549,7 +539,12 @@ fn run_agent(
                 screen.restore();
                 eprintln!("{message}");
                 kept_screen = false;
-                launch.carry.notice = Some(message);
+                // Back on the safe build, the agent says it is safe mode again.
+                launch.carry.notice = Some(if running.current.is_safe() {
+                    format!("{message}\n{SAFE_NOTICE}")
+                } else {
+                    message
+                });
                 reason = StartReason::Restarted;
                 continue;
             }
@@ -1383,6 +1378,31 @@ fn hold_good(launch: &Launch, run: &RunDir) -> Result<Option<BuildRef>> {
         fs::optional(build::hold(&good, &held))?
             .map(|()| BuildRef::new(launch, held, Role::Proven)),
     )
+}
+
+/// The builds a safe start of `session` holds in `run`, past
+/// [`build::compile_safe`]: [`select_safe`]. After a reload re-executed
+/// from safe mode (`reloaded`) it first builds the user's plugins into the
+/// build staged for `session`, as that reload's `rig build` did before
+/// this launcher's sweep removed it, so the reload's build starts as a
+/// trial that rolls back to the safe build. That build's failure is said
+/// on stderr as `output` says and returned; the safe build then runs.
+fn start_safe(
+    launch: &Launch,
+    session: &SessionId,
+    run: &RunDir,
+    reloaded: bool,
+    output: BuildOutput,
+) -> Result<(Option<BuildFailure>, Running)> {
+    let staged = launch.home().staged_for(session);
+    let failure = reloaded
+        .then(|| build::compile(launch, &staged, Staging::Always, output).err())
+        .flatten();
+    if let Some(failure) = &failure {
+        let told = failure.told(output);
+        eprintln!("error: building the agent failed; starting the safe build: {told}");
+    }
+    Ok((failure, select_safe(launch, session, run)?))
 }
 
 /// [`select`] for a safe start of `session`: the safe build
