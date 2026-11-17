@@ -955,3 +955,52 @@ fn a_safe_build_logs_apart_from_build_log() {
         "{safe_build_log}"
     );
 }
+
+/// Keeping the lock files of a home that has no agent project yet makes
+/// none, so the build that follows still sees a new home and sets up the
+/// plugin-writing skill ([`super::super::plugin::skill::set_up`]).
+#[test]
+fn keeping_the_lock_files_of_a_new_home_makes_no_project() {
+    let root = std::env::temp_dir().join(format!("rig-safe-new-home-{}", std::process::id()));
+    fs::remove_dir_all(&root).ok();
+    let home = Home::at(&root);
+    let kept = (|| -> Result<_> {
+        fs::create_dir_all(home.root())?;
+        keep_locks(&home)?;
+        let project = home.project().exists();
+        put_back(&home)?;
+        Ok((project, home.project().exists()))
+    })();
+    fs::remove_dir_all(&root).ok();
+    assert_eq!(kept.map_err(|why| why.to_string()), Ok((false, false)));
+}
+
+/// A kill while a used backup is being removed leaves part of it. That
+/// part is never read as a backup: the next build leaves the user's
+/// restored lock files alone.
+#[test]
+fn a_partly_removed_backup_is_not_read_as_one() {
+    let root = std::env::temp_dir().join(format!("rig-safe-partial-{}", std::process::id()));
+    fs::remove_dir_all(&root).ok();
+    let home = Home::at(&root);
+    let after = (|| -> Result<_> {
+        fs::create_dir_all(home.project())?;
+        fs::write(home.project().join("Cargo.lock"), "user's lock")?;
+        fs::write(home.project().join("Cargo.lock.seed"), "commit A's lock")?;
+        keep_locks(&home)?;
+        // As `put_back` leaves it when killed while it removes the backup
+        // it restored from: retired, its kept Cargo.lock already gone.
+        fs::rename(kept_locks(&home), retired_locks(&home))?;
+        fs::remove_file(retired_locks(&home).join("Cargo.lock"))?;
+        put_back(&home)?;
+        if retired_locks(&home).exists() {
+            return Err("the retired backup is still there".into());
+        }
+        Ok(fs::read_to_string(home.project().join("Cargo.lock")).ok())
+    })();
+    fs::remove_dir_all(&root).ok();
+    assert_eq!(
+        after.map_err(|why| why.to_string()),
+        Ok(Some("user's lock".to_owned()))
+    );
+}

@@ -320,17 +320,26 @@ pub fn compile_safe(launch: &Launch, output: BuildOutput) -> std::result::Result
 const LOCKS: [&str; 3] = ["Cargo.lock", "Cargo.lock.seed", "Cargo.lock.checked"];
 
 /// Where [`keep_locks`] keeps the project's lock files while a safe build
-/// runs. It is there only while one runs, or after one was stopped.
+/// runs. It is there only while one runs, or after one was stopped. It
+/// sits beside `project/`, not in it, so keeping the locks of a new home
+/// makes no project, and the build still sees a new home.
 fn kept_locks(home: &Home) -> PathBuf {
-    home.project().join("kept-locks")
+    home.root().join("kept-locks")
+}
+
+/// A used [`kept_locks`], renamed before it is removed, so that a removal
+/// cut short leaves no partial backup to read.
+fn retired_locks(home: &Home) -> PathBuf {
+    home.root().join("kept-locks.old")
 }
 
 /// Copies the project's [`LOCKS`] that exist to [`kept_locks`], putting
-/// back first what a stopped safe build left there. The copy is renamed
-/// into place whole, so a kept directory always holds a complete set.
+/// back first what a stopped safe build left there. The copy is made
+/// aside and renamed into place whole, and a used one is renamed away
+/// before it is removed, so [`kept_locks`] always holds a complete set.
 fn keep_locks(home: &Home) -> Result<()> {
     put_back(home)?;
-    let keeping = home.project().join("kept-locks.tmp");
+    let keeping = home.root().join("kept-locks.tmp");
     fs::optional(fs::remove_dir_all(&keeping))?;
     fs::create_dir_all(&keeping)?;
     for name in LOCKS {
@@ -344,31 +353,32 @@ fn keep_locks(home: &Home) -> Result<()> {
 }
 
 /// Puts the lock files in [`kept_locks`] back as they were, removing one
-/// that was not there, then the kept directory; nothing when there is
-/// none. Every build calls it first, so the user's locks come back after a
-/// safe build that a signal stopped. When `Cargo.lock` cannot be put back,
+/// that was not there, then retires the kept directory; nothing when there
+/// is none. Every build calls it first, so the user's locks come back after
+/// a safe build that a signal stopped. When any of them cannot be put back,
 /// the seed is removed, so the next build reseeds from the checkout rather
-/// than trust the safe build's lock.
+/// than trust a lock the safe build left.
 fn put_back(home: &Home) -> Result<()> {
+    let retired = retired_locks(home);
+    fs::optional(fs::remove_dir_all(&retired))?;
     let kept = kept_locks(home);
     if fs::optional(fs::metadata(&kept))?.is_none() {
         return Ok(());
     }
     for name in LOCKS {
         let path = home.project().join(name);
-        let restored = if fs::optional(fs::metadata(kept.join(name)))?.is_some() {
-            fs::copy(kept.join(name), &path).map(drop)
-        } else {
-            fs::optional(fs::remove_file(&path)).map(drop)
+        let restored = match fs::optional(fs::metadata(kept.join(name))) {
+            Ok(Some(_)) => fs::copy(kept.join(name), &path).map(drop),
+            Ok(None) => fs::optional(fs::remove_file(&path)).map(drop),
+            Err(why) => Err(why),
         };
         if let Err(why) = restored {
-            if name == "Cargo.lock" {
-                fs::optional(fs::remove_file(home.project().join("Cargo.lock.seed"))).ok();
-            }
+            fs::optional(fs::remove_file(home.project().join("Cargo.lock.seed"))).ok();
             return Err(why.into());
         }
     }
-    fs::remove_dir_all(&kept)?;
+    fs::rename(&kept, &retired)?;
+    fs::remove_dir_all(&retired)?;
     Ok(())
 }
 
