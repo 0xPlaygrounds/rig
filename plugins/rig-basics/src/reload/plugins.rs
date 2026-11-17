@@ -29,7 +29,7 @@ impl Plugin for PluginsPlugin {
             "List every plugin, on and off, and turn them on and off in settings.toml",
             plugins,
         )
-        .add_systems(Update, preview);
+        .add_systems(Update, (preview, unhighlighted));
     }
 }
 
@@ -316,6 +316,24 @@ fn preview(
         let preview = PickPreview::Text(row.about.clone());
         if shown != Some(&preview) {
             commands.entity(entity).insert(preview);
+        }
+    }
+}
+
+/// What the preview says while no plugin is highlighted.
+const NONE_HIGHLIGHTED: &str = "No plugin matches the filter.";
+
+/// Says so in the preview of each `/plugins` picker whose filter left no
+/// row to highlight; [`preview`] shows the plugin again once one is.
+fn unhighlighted(
+    mut removed: RemovedComponents<Highlighted>,
+    pickers: Query<(), (With<PluginsPicker>, Without<Highlighted>)>,
+    mut commands: Commands,
+) {
+    for entity in removed.read() {
+        if pickers.contains(entity) {
+            let none = PickPreview::Text(NONE_HIGHLIGHTED.to_owned());
+            commands.entity(entity).insert(none);
         }
     }
 }

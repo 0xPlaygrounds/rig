@@ -115,6 +115,16 @@ fn plugins_opens_from_settings_with_short_names_and_a_preview_from_the_start() {
             && text.contains("off in settings"),
         "{text}"
     );
+
+    // A filter that leaves no row leaves no plugin in the preview.
+    app.world_mut().entity_mut(*picker).remove::<Highlighted>();
+    app.update();
+    assert_eq!(preview(&app, *picker), NONE_HIGHLIGHTED);
+    app.world_mut()
+        .entity_mut(*picker)
+        .insert(Highlighted(welcome));
+    app.update();
+    assert_eq!(preview(&app, *picker), text);
 }
 
 /// The rows of the one `/plugins` picker in `app`.
