@@ -7,6 +7,7 @@ use ratatui_core::style::{Modifier, Stylize};
 use ratatui_core::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
 
+use crate::code::untabbed;
 use crate::wrap::wrap;
 
 /// A cell: its lines (a `<br>` starts another), each its spans.
@@ -63,9 +64,10 @@ fn column(rows: &[Vec<Cell>], at: usize) -> impl Iterator<Item = &Cell> {
     rows.iter().filter_map(move |row| row.get(at))
 }
 
-/// The widest of `cell`'s lines.
+/// The widest of `cell`'s lines, as drawn.
 fn cell_width(cell: &Cell) -> usize {
-    let line = |spans: &Vec<Span<'static>>| spans.iter().map(|span| span.content.width()).sum();
+    let width = |span: &Span<'static>| untabbed(&span.content).width();
+    let line = |spans: &Vec<Span<'static>>| spans.iter().map(width).sum();
     cell.iter().map(line).max().unwrap_or(0)
 }
 
@@ -200,7 +202,7 @@ fn records(
                         .map(|span| span.content.as_ref())
                         .collect::<String>()
                 });
-                lines.collect::<Vec<_>>().join(" ")
+                untabbed(&lines.collect::<Vec<_>>().join(" "))
             };
             header.iter().map(text).collect()
         })

@@ -1189,14 +1189,18 @@ impl std::fmt::Display for ContextUse {
 /// A token count in at most four characters plus a unit: `999`, `1.2k`,
 /// `45k`, `1.2M`.
 pub fn tokens_label(count: u64) -> String {
-    // Shown rounded, so the float conversion's precision does not matter.
-    let scaled = |unit: f64| count as f64 / unit;
+    // The unit follows the rounded value, so 9,999 reads `10k`, not `10.0k`.
+    let rounded = |unit: u64| count.saturating_add(unit / 2) / unit;
+    let tenths = |unit: u64| {
+        let tenths = rounded(unit / 10);
+        format!("{}.{}", tenths / 10, tenths % 10)
+    };
     match count {
         0..1_000 => count.to_string(),
-        1_000..10_000 => format!("{:.1}k", scaled(1e3)),
-        10_000..1_000_000 => format!("{:.0}k", scaled(1e3)),
-        1_000_000..10_000_000 => format!("{:.1}M", scaled(1e6)),
-        _ => format!("{:.0}M", scaled(1e6)),
+        _ if rounded(100) < 100 => format!("{}k", tenths(1_000)),
+        _ if rounded(1_000) < 1_000 => format!("{}k", rounded(1_000)),
+        _ if rounded(100_000) < 100 => format!("{}M", tenths(1_000_000)),
+        _ => format!("{}M", rounded(1_000_000)),
     }
 }
 

@@ -134,7 +134,8 @@ pub fn wrap_all(lines: &[Line<'_>], width: usize) -> Vec<Line<'static>> {
 
 /// The graphemes of `text`, `line`'s text, each in the style of the span
 /// its first byte is in, over the line's: found in the whole text, so a
-/// grapheme whose spans split it is one cell. Those with a control
+/// grapheme whose spans split it is one cell. A tab is four spaces, as
+/// [`crate::code::untabbed`] draws code; other graphemes with a control
 /// character are left out, as ratatui draws a line.
 fn cells<'a>(line: &Line<'_>, text: &'a str) -> Vec<(&'a str, Style)> {
     let mut spans = line.spans.iter().scan(0, |end, span| {
@@ -142,15 +143,19 @@ fn cells<'a>(line: &Line<'_>, text: &'a str) -> Vec<(&'a str, Style)> {
         Some((*end, line.style.patch(span.style)))
     });
     let mut span = spans.next();
-    let graphemes = text.grapheme_indices(true);
-    let graphemes = graphemes.filter(|(_, grapheme)| !grapheme.contains(char::is_control));
-    let cells = graphemes.map(|(at, grapheme)| {
+    let cells = text.grapheme_indices(true).flat_map(|(at, grapheme)| {
         while let Some((end, _)) = span
             && end <= at
         {
             span = spans.next();
         }
-        (grapheme, span.map_or(line.style, |(_, style)| style))
+        let style = span.map_or(line.style, |(_, style)| style);
+        let (symbol, count) = match grapheme {
+            "\t" => (" ", 4),
+            _ if grapheme.contains(char::is_control) => (grapheme, 0),
+            _ => (grapheme, 1),
+        };
+        std::iter::repeat_n((symbol, style), count)
     });
     cells.collect()
 }

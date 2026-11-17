@@ -418,6 +418,21 @@ fn a_programs_failure_is_kept_past_what_it_printed() {
     );
 }
 
+/// Printed output cut inside a character ends at the last whole character,
+/// not in a replacement character.
+#[test]
+fn printed_output_is_cut_between_characters() {
+    let small = crate::Limits {
+        max_output_bytes: 1024,
+        ..crate::Limits::default()
+    };
+    let said = ran_with(small, r#"(display "a") (display (make-string 600 #\é))"#);
+    assert!(
+        !said.contains('\u{FFFD}') && said.contains(&format!("a{}\n", "é".repeat(511))),
+        "{said}"
+    );
+}
+
 /// A program may make 1000 host calls by default, and as many as
 /// `[steel] max_calls` says; the call past them is refused naming the key.
 #[test]

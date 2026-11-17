@@ -158,3 +158,27 @@ fn a_column_after_two_spaces_wraps_under_its_text() {
         .collect();
     assert_eq!(rows, ["/help List", "the commands"]);
 }
+
+/// A tab is four spaces in its span's style, and wraps as four spaces do.
+#[test]
+fn a_tab_is_four_spaces_in_its_spans_style() {
+    let (dim, bold) = (Style::new().dim(), Style::new().bold());
+    let line = Line::from(vec![
+        ratatui_core::text::Span::styled("one", dim),
+        ratatui_core::text::Span::styled("\t", bold),
+        ratatui_core::text::Span::styled("two", dim),
+    ]);
+    let rows = wrap(&line, 20);
+    let spans: Vec<(&str, Style)> = rows
+        .iter()
+        .flat_map(|(row, _)| row.spans.iter())
+        .map(|span| (span.content.as_ref(), span.style))
+        .collect();
+    assert_eq!(spans, [("one", dim), ("    ", bold), ("two", dim)]);
+    let rows = |line: &Line<'_>| {
+        let rows = wrap(line, 5).into_iter();
+        rows.map(|(row, joint)| (row.to_string(), joint))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(rows(&line), rows(&Line::from("one    two")));
+}

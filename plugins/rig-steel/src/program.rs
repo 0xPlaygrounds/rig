@@ -424,7 +424,16 @@ impl Printed {
         let Ok(printed) = self.0.lock() else {
             return String::new();
         };
-        let mut text = String::from_utf8_lossy(&printed.bytes).into_owned();
+        let mut bytes = printed.bytes.as_slice();
+        // The cap can split the last character: drop only that incomplete tail.
+        if printed.cut
+            && let Some(lead) = bytes.iter().rposition(|byte| byte & 0xC0 != 0x80)
+            && let Some((whole, tail)) = bytes.split_at_checked(lead)
+            && std::str::from_utf8(tail).is_err_and(|error| error.error_len().is_none())
+        {
+            bytes = whole;
+        }
+        let mut text = String::from_utf8_lossy(bytes).into_owned();
         if printed.cut {
             text.push_str(&format!(
                 "\n[printed output cut at {} bytes (`[steel] max_output_bytes`)]",

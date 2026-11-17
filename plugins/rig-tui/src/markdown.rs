@@ -2,6 +2,8 @@
 //! tints, by [`rig_markdown::markdown`]. Fenced code is colored by its
 //! language's grammar, when it has one.
 
+use std::collections::{HashMap, HashSet};
+
 use ratatui::text::{Line, Span};
 use rig_markdown::markdown::{Highlight, Kind, Palette};
 
@@ -58,17 +60,17 @@ impl Highlight for Grammars {
     }
 }
 
-/// The first of the private-use characters [`render_marked`] stands
-/// marks in with.
-const SENTINEL: u32 = 0xE000;
-
-/// The most marks one text takes: the private-use area's size.
-const MOST_MARKS: usize = 0x1900;
+/// The private-use characters [`render_marked`] may stand marks in with.
+fn stand_ins() -> impl Iterator<Item = char> {
+    let planes = [0xE000..=0xF8FF, 0xF_0000..=0xF_FFFD, 0x10_0000..=0x10_FFFD];
+    planes.into_iter().flatten().filter_map(char::from_u32)
+}
 
 /// `text` as markdown at `width`, as [`render`] draws it, with each of `marks` drawn
 /// before its byte: past the end at the end, inside a character before
-/// it. Each mark stands in the text as a private-use character while it
-/// is rendered, so markdown on both sides of it is kept.
+/// it. Each mark stands in the text as a private-use character the text
+/// neither holds nor names while it is rendered, so markdown on both sides
+/// of it is kept. A text that leaves too few of them free is drawn plain.
 pub fn render_marked(
     text: &str,
     marks: &[(usize, Span<'static>)],
@@ -78,28 +80,29 @@ pub fn render_marked(
     if marks.is_empty() {
         return render(text, theme, width);
     }
-    let mut placed: Vec<(usize, usize)> = marks
-        .iter()
-        .take(MOST_MARKS)
-        .enumerate()
-        .map(|(index, (at, _))| (text.floor_char_boundary(*at), index))
+    let held: HashSet<char> = text.chars().chain(referenced(text)).collect();
+    let free = stand_ins().filter(|ch| !held.contains(ch));
+    let mut placed: Vec<(usize, char, &Span<'static>)> = free
+        .zip(marks)
+        .map(|(stand_in, (at, mark))| (text.floor_char_boundary(*at), stand_in, mark))
         .collect();
-    placed.sort_by_key(|(at, _)| *at);
-    let mut marked = String::with_capacity(text.len() + 3 * placed.len());
+    if placed.len() < marks.len() {
+        return plain_marked(text, marks);
+    }
+    placed.sort_by_key(|(at, ..)| *at);
+    let mut marked = String::with_capacity(text.len() + 4 * placed.len());
     let mut from = 0;
-    for (at, index) in &placed {
+    for (at, stand_in, _) in &placed {
         marked.push_str(text.get(from..*at).unwrap_or_default());
-        let code = SENTINEL.saturating_add(u32::try_from(*index).unwrap_or(u32::MAX));
-        marked.extend(char::from_u32(code));
+        marked.push(*stand_in);
         from = *at;
     }
     marked.push_str(text.get(from..).unwrap_or_default());
-    let mark_of = |ch: char| {
-        let index = u32::from(ch).checked_sub(SENTINEL)?;
-        marks
-            .get(usize::try_from(index).ok()?)
-            .map(|(_, span)| span)
-    };
+    let stood_for: HashMap<char, &Span<'static>> = placed
+        .into_iter()
+        .map(|(_, stand_in, mark)| (stand_in, mark))
+        .collect();
+    let mark_of = |ch: char| stood_for.get(&ch).copied();
     let swap = |span: Span<'static>| -> Vec<Span<'static>> {
         if !span.content.chars().any(|ch| mark_of(ch).is_some()) {
             return vec![span];
@@ -139,6 +142,51 @@ pub fn render_marked(
             LookLine { line, code }
         })
         .collect()
+}
+
+/// Every character a numeric character reference in `text` names, such as
+/// `&#xE000;`, wherever it stands. A stand-in never joins text, so these and
+/// the text's own are all the private-use characters markdown can draw
+/// from it once marked, since no named reference names one.
+fn referenced(text: &str) -> impl Iterator<Item = char> + '_ {
+    text.split("&#").skip(1).filter_map(|after| {
+        let (digits, _) = after.split_once(';')?;
+        let code = match digits.strip_prefix(['x', 'X']) {
+            Some(hex) => u32::from_str_radix(hex, 16),
+            None => digits.parse(),
+        };
+        char::from_u32(code.ok()?)
+    })
+}
+
+/// `text` as plain lines with each of `marks` before its byte.
+fn plain_marked(text: &str, marks: &[(usize, Span<'static>)]) -> Vec<LookLine> {
+    let mut placed: Vec<(usize, Option<&Span<'static>>)> = marks
+        .iter()
+        .map(|(at, mark)| (text.floor_char_boundary(*at), Some(mark)))
+        .collect();
+    placed.sort_by_key(|(at, _)| *at);
+    placed.push((text.len(), None));
+    let mut lines = vec![Line::default()];
+    let mut from = 0;
+    for (at, mark) in placed {
+        let piece = text.get(from..at).unwrap_or_default();
+        for (index, row) in piece.split('\n').enumerate() {
+            if index > 0 {
+                lines.push(Line::default());
+            }
+            if let Some(line) = lines.last_mut()
+                && !row.is_empty()
+            {
+                line.push_span(Span::from(row.to_owned()));
+            }
+        }
+        if let (Some(line), Some(mark)) = (lines.last_mut(), mark) {
+            line.push_span(mark.clone());
+        }
+        from = at;
+    }
+    lines.into_iter().map(LookLine::from).collect()
 }
 
 #[cfg(test)]

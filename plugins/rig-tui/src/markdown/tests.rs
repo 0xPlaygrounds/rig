@@ -111,3 +111,53 @@ fn a_mark_in_a_code_block_is_drawn_in_the_lines_colors() {
         "{line:?}"
     );
 }
+
+/// `text` with `marks` rendered, a line per row.
+fn marked(text: &str, marks: &[(usize, &'static str)]) -> String {
+    let marks: Vec<_> = marks
+        .iter()
+        .map(|(at, mark)| (*at, ratatui::text::Span::from(*mark)))
+        .collect();
+    let lines = render_marked(text, &marks, &crate::Theme::default(), None);
+    let rows: Vec<String> = lines.iter().map(ToString::to_string).collect();
+    rows.join("\n")
+}
+
+/// Private-use characters in the text stay themselves, and each mark is
+/// drawn once where it goes, however many share a byte.
+#[test]
+fn private_use_text_is_kept_apart_from_marks() {
+    assert_eq!(marked("a\u{E000}b", &[(0, "[m]")]), "[m]a\u{E000}b");
+    assert_eq!(
+        marked("a\u{E000}\u{E001}b", &[(1, "[1]"), (1, "[2]"), (9, "[3]")]),
+        "a[1][2]\u{E000}\u{E001}b[3]"
+    );
+    // A numeric character reference becomes the character it names.
+    assert_eq!(marked("a&#xE000;b", &[(0, "[m]")]), "[m]a\u{E000}b");
+    assert_eq!(
+        marked("\u{E000}&#xE001;", &[(0, "[m]")]),
+        "[m]\u{E000}\u{E001}"
+    );
+    // A stand-in can end what kept a reference literal, so it decodes.
+    assert_eq!(marked(r"\&#xE000;", &[(1, "[m]")]), "\\[m]\u{E000}");
+    assert_eq!(marked("    &#xE000;", &[(0, "[m]")]), "[m]    \u{E000}");
+    assert_eq!(
+        marked("<!-- &#xE000; -->", &[(1, "[m]")]),
+        "<[m]!-- \u{E000} -->"
+    );
+}
+
+/// A text holding every private-use character is drawn whole, its marks
+/// in place, though none is free to stand a mark in.
+#[test]
+fn marks_are_kept_when_no_private_use_character_is_free() {
+    let planes = [0xE000..=0xF8FF, 0xF_0000..=0xF_FFFD, 0x10_0000..=0x10_FFFD];
+    let used: String = planes
+        .into_iter()
+        .flatten()
+        .filter_map(char::from_u32)
+        .collect();
+    let text = format!("{used}\nnext");
+    let drawn = marked(&text, &[(0, "[1]"), (text.len(), "[2]")]);
+    assert_eq!(drawn, format!("[1]{used}\nnext[2]"));
+}
