@@ -12,6 +12,7 @@ use bevy_ecs::prelude::*;
 use bevy_ecs::schedule::ScheduleLabel;
 use bevy_ecs::system::{SystemChangeTick, SystemParam};
 use crossterm::cursor::MoveTo;
+use crossterm::event::KeyCode;
 use ratatui::Frame;
 use ratatui::backend::Backend;
 use ratatui::buffer::{Buffer, Cell};
@@ -29,7 +30,9 @@ use super::pane::{PaneState, TranscriptPane};
 use super::panel::{
     self, PanelCanvas, PanelSpawns, Placement, RedrawArea, RequestRedraw, TerminalSize, TuiPanel,
 };
-use super::pick::{Choices, InlineStrip, Item, Listing, PickerInput, Row, detail_column};
+use super::pick::{
+    ChoiceAction, Choices, InlineStrip, Item, Listing, PickerInput, Row, detail_column,
+};
 use super::renderers::{
     CallState, LookLine, Place, Renderers, ToolRender, UNNAMED_HOLD, reasoning_lines, reply_lines,
 };
@@ -1347,9 +1350,16 @@ fn draw_choice(
     if body_height < body.len() {
         keys.push("Shift+↑↓ scrolls");
     }
-    if shown.ticks {
+    let enter_ticks = (shown.keys.iter())
+        .any(|(code, action)| *code == KeyCode::Enter && *action == ChoiceAction::Tick);
+    if shown.ticks && !enter_ticks {
         keys.push("Tab ticks");
     }
+    let enter = if enter_ticks {
+        "Enter ticks"
+    } else {
+        "Enter picks"
+    };
     let width = usize::from(inner.width);
     let ticks = if shown.ticks { "[ ] ".len() } else { 0 };
     let column = detail_column(&shown.items, width.saturating_sub(ticks));
@@ -1367,14 +1377,14 @@ fn draw_choice(
     let title = theme.raised(shown.title);
     match boxed {
         Some((.., row)) => {
-            let keys = keys_hint(&keys, usize::from(row.width.saturating_sub(2)));
+            let keys = keys_hint(&keys, enter, usize::from(row.width.saturating_sub(2)));
             let keys = Line::from(format!("{keys} ")).dim().right_aligned();
             let surface = Style::new().bg(theme.raised_surface);
             frame.render_widget(Paragraph::new(keys).style(surface), row);
             frame.render_widget(title, popup);
         }
         None => {
-            let keys = keys_hint(&keys, usize::from(popup.width.saturating_sub(2)));
+            let keys = keys_hint(&keys, enter, usize::from(popup.width.saturating_sub(2)));
             frame.render_widget(with_keys(title, &keys), popup);
         }
     }
@@ -1440,12 +1450,12 @@ fn strip_colors(buffer: &mut Buffer) {
     }
 }
 
-/// A picker's keys, `keys` then Enter's and Esc's, in at most `width`
+/// A picker's keys, `keys` then `enter` and Esc's, in at most `width`
 /// columns: the first of `keys` are left out while it is wider.
-fn keys_hint(keys: &[&str], width: usize) -> String {
+fn keys_hint(keys: &[&str], enter: &str, width: usize) -> String {
     let mut keys = keys;
     loop {
-        let all = keys.iter().copied().chain(["Enter picks", "Esc closes"]);
+        let all = keys.iter().copied().chain([enter, "Esc closes"]);
         let hint = all.collect::<Vec<_>>().join(", ");
         match keys.split_first() {
             Some((_, rest)) if hint.width() > width => keys = rest,

@@ -3,16 +3,19 @@
 //! whether this build runs it (its `PluginSource` entity). In the terminal
 //! view it is a picker of short names in group order with the plugins on
 //! ticked, and the highlighted plugin's detail beside it ([`PickPreview`]).
-//! Applying writes every change in one edit of the file ([`config::turn`])
-//! and then reloads ([`ReloadStatus::ask`]), which rebuilds the agent with
-//! them. Without a terminal it lists them.
+//! Enter ticks and unticks; each row that differs from the file shows
+//! `+ on` or `- off`. Leaving with changes asks whether to reload now
+//! ([`ReloadStatus::ask`]), at the next start, or to keep editing; either
+//! of the first two writes every change in one edit of the file
+//! ([`config::turn`]). `/plugins defaults` asks the same about going back to
+//! rig's defaults. Without a terminal it lists them.
 //!
 //! `rig plugin enable` and `rig plugin disable` change the same file from a
 //! shell, with the same rules.
 
-use rig_harness::harness_protocol::Home;
 use rig_harness::harness_protocol::config::{self, BUILT_IN, BuiltIn, Extra, Plugins};
-use rig_harness::pick::{Highlighted, PickPreview, Picked, Picker};
+use rig_harness::harness_protocol::{self, Home};
+use rig_harness::pick::{Highlighted, PickPreview, Picked, Picker, Ticked};
 use rig_harness::prelude::*;
 use rig_harness::services::RigHome;
 
@@ -26,10 +29,14 @@ impl Plugin for PluginsPlugin {
     fn build(&self, app: &mut App) {
         app.add_command(
             "plugins",
-            "List every plugin, on and off, and turn them on and off in settings.toml",
+            "List every plugin, on and off, and turn them on and off in settings.toml; \
+             `/plugins defaults` goes back to rig's defaults",
             plugins,
-        )
-        .add_systems(Update, (preview, unhighlighted));
+        );
+        let mark = (preview, unhighlighted, mark);
+        #[cfg(feature = "tui")]
+        let mark = mark.before(rig_tui::ChoiceSystems);
+        app.add_systems(Update, mark);
     }
 }
 
@@ -42,28 +49,79 @@ struct Row {
     name: String,
     /// Whether settings.toml turns it on.
     on: bool,
+    /// Whether rig's defaults turn it on here: an extra always.
+    default: bool,
     /// Its state, short: `on`, `off`, or why it is off.
     state: String,
+    /// What goes when it is off, for an essential plugin.
+    essential: Option<&'static str>,
     /// Everything about it, for the preview.
     about: String,
 }
 
-/// The `/plugins` picker's rows, in its order, and the agent it is for.
+/// The `/plugins` list: its rows, in its order, against settings.toml, and
+/// the agent it is for.
 #[derive(Component)]
 struct PluginsPicker {
     rows: Vec<Row>,
     agent: Entity,
 }
 
-/// `/plugins`: the picker on an interactive terminal, else the list.
+/// The question asked on leaving the list with changes: the list's rows,
+/// which are ticked, the row highlighted and the answers offered.
+#[derive(Component)]
+struct LeaveQuestion {
+    rows: Vec<Row>,
+    on: Vec<bool>,
+    agent: Entity,
+    at: usize,
+    answers: Vec<Leave>,
+}
+
+/// An answer to [`LeaveQuestion`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Leave {
+    /// Write the changes and rebuild once no turn runs.
+    Reload,
+    /// Write the changes for the next start.
+    Later,
+    /// Back to the list, with the ticks.
+    Edit,
+}
+
+impl Leave {
+    /// Its label in the question.
+    fn label(self) -> &'static str {
+        match self {
+            Leave::Reload => "Reload now",
+            Leave::Later => "Later, at the next start",
+            Leave::Edit => "Keep editing",
+        }
+    }
+}
+
+/// `/plugins`: the picker on an interactive terminal, else the list;
+/// `/plugins defaults`: the question about going back to rig's defaults.
 fn plugins(
-    In(args): In<NoArgs>,
+    In(args): In<CommandArgs>,
     home: Option<Res<RigHome>>,
     invoked: Option<Res<Invoked>>,
     running: Query<&Name, With<PluginSource>>,
+    reloads: Option<Res<ReloadStatus>>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
+    let defaults = match args.args.as_str() {
+        "" => false,
+        "defaults" => true,
+        other => {
+            notices.write(Notice::error(
+                args.agent,
+                format!("/plugins takes nothing or `defaults`, not `{other}`."),
+            ));
+            return;
+        }
+    };
     let home = home.map_or_else(Home::from_env, |home| home.0.clone());
     let chosen = match config::chosen(&home) {
         Ok(chosen) => chosen,
@@ -87,6 +145,19 @@ fn plugins(
     };
     let running: Vec<String> = running.iter().map(Name::to_string).collect();
     let rows = rows(&chosen, &running);
+    if defaults {
+        let on: Vec<bool> = rows.iter().map(|row| row.default).collect();
+        if rows.iter().zip(&on).all(|(row, on)| row.on == *on) {
+            notices.write(Notice::info(
+                args.agent,
+                format!("{} already runs rig's defaults.", home.settings().display()),
+            ));
+            return;
+        }
+        let reload = reloads.is_some();
+        ask(&mut commands, rows, on, args.agent, 0, reload);
+        return;
+    }
     if !invoked.is_some_and(|invoked| invoked.interactive()) {
         let names = rows.iter().map(|row| row.name.len()).max().unwrap_or(0);
         let paths = rows.iter().map(|row| row.plugin.len()).max().unwrap_or(0);
@@ -101,37 +172,79 @@ fn plugins(
         notices.write(Notice::info(args.agent, lines.join("\n")));
         return;
     }
+    let on: Vec<bool> = rows.iter().map(|row| row.on).collect();
+    list(&mut commands, rows, &on, args.agent, 0);
+}
+
+/// Opens the list of `rows` for `agent` with `on` ticked and row `at`
+/// selected.
+fn list(commands: &mut Commands, rows: Vec<Row>, on: &[bool], agent: Entity, at: usize) {
     let mut picker = Picker::new("Plugins")
-        .for_agent(args.agent)
-        .body(
-            "Tick the plugins to run and press Enter: RIG_HOME/settings.toml changes in one \
-             edit and the agent rebuilds. A failed build keeps this one running.",
-        )
+        .for_agent(agent)
+        .body(body(&rows, on))
         .multiple();
-    picker.items = (rows.iter())
-        .map(|row| PickItem {
-            checked: row.on,
+    picker.selected = at;
+    picker.items = (rows.iter().zip(on))
+        .map(|(row, on)| PickItem {
+            checked: *on,
             // Typing a type path finds its plugin; → shows it with the whole state.
             more: Some(format!("{}: {}", row.plugin, row.state)),
-            ..PickItem::new(&row.name, "").detail(&row.state)
+            ..PickItem::new(&row.name, "").detail(detail(row, *on))
         })
         .collect();
     // The terminal view gives the preview its half of the screen from the
     // first frame only when the picker comes with one.
-    let first = rows
-        .first()
+    let shown = rows
+        .get(at)
         .map(|row| row.about.clone())
         .unwrap_or_default();
-    commands
-        .spawn((
-            picker,
-            PickPreview::Text(first),
-            PluginsPicker {
-                rows,
-                agent: args.agent,
-            },
-        ))
-        .observe(apply);
+    let mut list = commands.spawn((
+        picker,
+        PickPreview::Text(shown),
+        PluginsPicker { rows, agent },
+    ));
+    #[cfg(feature = "tui")]
+    list.insert(rig_tui::ChoiceKeys(vec![(
+        rig_tui::crossterm::event::KeyCode::Enter,
+        rig_tui::ChoiceAction::Tick,
+    )]));
+    list.observe(leave);
+}
+
+/// The list's body: its keys and how many rows `on` changes.
+fn body(rows: &[Row], on: &[bool]) -> String {
+    let keys = "Enter ticks or unticks, Esc leaves, type to filter.";
+    match changes(rows, on) {
+        0 => format!("{keys} Nothing is written until you leave."),
+        1 => format!("{keys} 1 change: leaving asks whether to reload now or later."),
+        changes => {
+            format!("{keys} {changes} changes: leaving asks whether to reload now or later.")
+        }
+    }
+}
+
+/// How many of `rows` `on` turns on or off.
+fn changes(rows: &[Row], on: &[bool]) -> usize {
+    rows.iter()
+        .zip(on)
+        .filter(|(row, on)| row.on != **on)
+        .count()
+}
+
+/// What the list shows beside `row` while `on` says whether it is ticked:
+/// its state, or how ticking changes it.
+fn detail(row: &Row, on: bool) -> String {
+    match (row.on, on, row.essential) {
+        (false, true, _) => "+ on".to_owned(),
+        (true, false, Some(what)) => format!("- off, takes away {what}"),
+        (true, false, None) => "- off".to_owned(),
+        _ => row.state.clone(),
+    }
+}
+
+/// Which of `count` rows `positions` ticks.
+fn ticks(count: usize, positions: &[usize]) -> Vec<bool> {
+    (0..count).map(|index| positions.contains(&index)).collect()
 }
 
 /// Every plugin, rig's in group order and then the extras, as `chosen`
@@ -226,7 +339,9 @@ fn built_in_row(built_in: &BuiltIn, on: bool, runs: bool) -> Row {
         plugin: built_in.plugin.to_owned(),
         name: built_in.name.to_owned(),
         on,
+        default: built_in.on && built_in.available(),
         state,
+        essential: built_in.essential,
         about,
     }
 }
@@ -263,7 +378,9 @@ fn extra_row(extra: &Extra, name: String, on: bool, runs: bool) -> Row {
         plugin: extra.plugin.clone(),
         name,
         on,
+        default: true,
         state: state(on, runs),
+        essential: None,
         about,
     }
 }
@@ -338,26 +455,158 @@ fn unhighlighted(
     }
 }
 
-/// Writes what the user ticked and unticked to settings.toml in one edit,
-/// then reloads.
-fn apply(
-    picked: On<Picked>,
-    pickers: Query<&PluginsPicker>,
-    home: Option<Res<RigHome>>,
-    status: Option<ResMut<ReloadStatus>>,
-    mut notices: MessageWriter<Notice>,
+/// Draws `+ on`, `- off` and the count of changes on each list as the
+/// user ticks.
+fn mark(
+    lists: Query<(Entity, &PluginsPicker, &Picker, &Ticked), Changed<Ticked>>,
+    mut commands: Commands,
 ) {
-    let (Some(chosen), Ok(picker)) = (&picked.chosen, pickers.get(picked.entity)) else {
+    for (entity, list, shown, ticked) in &lists {
+        let on = ticks(list.rows.len(), &ticked.0);
+        let mut picker = shown.clone();
+        picker.body = body(&list.rows, &on);
+        for (item, (row, on)) in picker.items.iter_mut().zip(list.rows.iter().zip(&on)) {
+            item.detail = Some(detail(row, *on));
+        }
+        if picker != *shown {
+            commands.entity(entity).insert(picker);
+        }
+    }
+}
+
+/// On leaving the list: the question when what is ticked differs from
+/// settings.toml, else nothing. A front that answers with the items picked
+/// rather than ticks them gives those.
+fn leave(
+    picked: On<Picked>,
+    lists: Query<(
+        &PluginsPicker,
+        &Picker,
+        Option<&Ticked>,
+        Option<&Highlighted>,
+    )>,
+    reloads: Option<Res<ReloadStatus>>,
+    mut commands: Commands,
+) {
+    let Ok((list, shown, ticked, highlighted)) = lists.get(picked.entity) else {
         return;
     };
-    let changed: Vec<(&Row, bool)> = (picker.rows.iter().enumerate())
-        .map(|(index, row)| (row, chosen.items.contains(&index)))
-        .filter(|(row, on)| row.on != *on)
-        .collect();
-    if changed.is_empty() {
-        notices.write(Notice::info(picker.agent, "No plugin changed."));
+    let count = list.rows.len();
+    let on = match (&picked.chosen, ticked) {
+        (Some(chosen), _) => ticks(count, &chosen.items),
+        (None, Some(ticked)) => ticks(count, &ticked.0),
+        (None, None) => shown.items.iter().map(|item| item.checked).collect(),
+    };
+    if changes(&list.rows, &on) == 0 {
         return;
     }
+    let at = highlighted.map_or(shown.selected, |highlighted| highlighted.0);
+    let reload = reloads.is_some();
+    ask(&mut commands, list.rows.clone(), on, list.agent, at, reload);
+}
+
+/// Asks whether to reload now with what `on` changes in `rows`, at the next
+/// start, or to go back to the list at row `at`. It offers to reload now
+/// only where a reload can run: with `ReloadPlugin` (`reload`) and the
+/// launcher.
+fn ask(
+    commands: &mut Commands,
+    rows: Vec<Row>,
+    on: Vec<bool>,
+    agent: Entity,
+    at: usize,
+    reload: bool,
+) {
+    let reload = reload && harness_protocol::launcher().is_some();
+    let changed: Vec<(&Row, bool)> = (rows.iter().zip(on.iter().copied()))
+        .filter(|(row, on)| row.on != *on)
+        .collect();
+    let names = |want: bool| -> Vec<&str> {
+        (changed.iter())
+            .filter(|(_, on)| *on == want)
+            .map(|(row, _)| row.name.as_str())
+            .collect()
+    };
+    let mut lines = Vec::new();
+    for (word, want) in [("on", true), ("off", false)] {
+        let names = names(want);
+        if !names.is_empty() {
+            lines.push(format!("Turn {word}: {}", names.join(", ")));
+        }
+    }
+    for (row, _) in changed.iter().filter(|(_, on)| !on) {
+        if let Some(what) = row.essential {
+            lines.push(format!(
+                "\nTurning off {} takes away {what}. In a shell, this brings it back:\n  \
+                 rig plugin enable {}",
+                row.name, row.plugin
+            ));
+        }
+    }
+    if !reload {
+        lines.push(
+            "\nReloading now needs rig started with `rig`; the changes apply when it starts \
+             again."
+                .to_owned(),
+        );
+    }
+    let answers: Vec<Leave> = match reload {
+        true => vec![Leave::Reload, Leave::Later, Leave::Edit],
+        false => vec![Leave::Later, Leave::Edit],
+    };
+    let count = changed.len();
+    let title = match count {
+        1 => "1 plugin change".to_owned(),
+        count => format!("{count} plugin changes"),
+    };
+    let mut picker = Picker::new(title).for_agent(agent).body(lines.join("\n"));
+    picker.items = (answers.iter())
+        .map(|answer| PickItem::new(answer.label(), ""))
+        .collect();
+    let question = LeaveQuestion {
+        rows,
+        on,
+        agent,
+        at,
+        answers,
+    };
+    commands.spawn((picker, question)).observe(answer);
+}
+
+/// Carries out the answer to the question: writes the changes to
+/// settings.toml in one edit, and reloads for [`Leave::Reload`]; back to
+/// the list for [`Leave::Edit`] or when it was closed.
+fn answer(
+    picked: On<Picked>,
+    questions: Query<&LeaveQuestion>,
+    home: Option<Res<RigHome>>,
+    status: Option<ResMut<ReloadStatus>>,
+    mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
+) {
+    let Ok(question) = questions.get(picked.entity) else {
+        return;
+    };
+    let chosen = picked
+        .chosen
+        .as_ref()
+        .and_then(|chosen| chosen.items.first());
+    let leave = chosen.and_then(|index| question.answers.get(*index));
+    let leave = leave.copied().unwrap_or(Leave::Edit);
+    let LeaveQuestion {
+        rows,
+        on,
+        agent,
+        at,
+        ..
+    } = question;
+    if leave == Leave::Edit {
+        list(&mut commands, rows.clone(), on, *agent, *at);
+        return;
+    }
+    let changed: Vec<(&Row, bool)> = (rows.iter().zip(on.iter().copied()))
+        .filter(|(row, on)| row.on != *on)
+        .collect();
     let path = home
         .map_or_else(Home::from_env, |home| home.0.clone())
         .settings();
@@ -369,33 +618,34 @@ fn apply(
     });
     if let Err(why) = edited {
         notices.write(Notice::error(
-            picker.agent,
+            *agent,
             format!("{} is unchanged: {why}", path.display()),
         ));
         return;
     }
-    let turned = |on: bool| -> Vec<&str> {
+    let turned = |want: bool| -> Vec<&str> {
         (changed.iter())
-            .filter(|(_, turned)| *turned == on)
+            .filter(|(_, on)| *on == want)
             .map(|(row, _)| row.name.as_str())
             .collect()
     };
     let mut said = Vec::new();
-    for (on, names) in [("on", turned(true)), ("off", turned(false))] {
+    for (word, names) in [("on", turned(true)), ("off", turned(false))] {
         if !names.is_empty() {
-            said.push(format!("turned {on} {}", names.join(", ")));
+            said.push(format!("turned {word} {}", names.join(", ")));
         }
     }
-    let reload = match status {
-        Some(mut status) => status.ask(picker.agent, Rebuild::Build).err(),
-        None => Some("Without rig_basics::reload::ReloadPlugin, it applies when rig starts again."),
+    let then = match (leave, status) {
+        (Leave::Reload, Some(mut status)) => match status.ask(*agent, Rebuild::Build) {
+            Ok(()) => "Reloading once no turn runs.",
+            Err(why) => why,
+        },
+        _ => "They apply when rig starts again, or at /reload.",
     };
-    let mut text = format!("{}: {}.", path.display(), said.join("; "));
-    if let Some(why) = reload {
-        text.push(' ');
-        text.push_str(why);
-    }
-    notices.write(Notice::info(picker.agent, text));
+    notices.write(Notice::info(
+        *agent,
+        format!("{}: {}. {then}", path.display(), said.join("; ")),
+    ));
 }
 
 #[cfg(test)]

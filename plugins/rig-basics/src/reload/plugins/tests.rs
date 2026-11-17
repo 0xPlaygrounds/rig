@@ -2,7 +2,7 @@ use std::fs;
 
 use rig_harness::harness_protocol::Invocation;
 use rig_harness::host::launcher::Invoked;
-use rig_harness::pick::{Highlighted, PickPreview};
+use rig_harness::pick::{Chosen, Highlighted, Pick, PickPreview, Ticked};
 use rig_harness::rig_ecs::inbox::Recalled;
 use rig_harness::services::RigHome;
 use rig_harness_test_support::scratch_home;
@@ -17,34 +17,98 @@ struct Told(Vec<String>);
 /// notices, and an agent.
 fn app(home: &rig_harness::harness_protocol::Home, terminal: bool) -> (App, Entity) {
     let mut app = App::new();
-    app.add_plugins((rig_harness::rig_ecs::AgentPlugin, PluginsPlugin))
-        .insert_resource(RigHome(home.clone()))
-        .insert_resource(Invoked {
-            args: Invocation::default(),
-            terminal,
-        })
-        .init_resource::<Told>()
-        .add_systems(
-            Last,
-            |mut notices: MessageReader<Notice>,
-             mut refused: MessageReader<Recalled>,
-             mut told: ResMut<Told>| {
-                told.0
-                    .extend(notices.read().map(|notice| notice.text.clone()));
-                told.0
-                    .extend(refused.read().filter_map(|line| line.why.clone()));
-            },
-        );
+    app.add_plugins((
+        rig_harness::rig_ecs::AgentPlugin,
+        rig_harness::pick::PickPlugin,
+        PluginsPlugin,
+    ))
+    .init_resource::<ReloadStatus>()
+    .insert_resource(RigHome(home.clone()))
+    .insert_resource(Invoked {
+        args: Invocation::default(),
+        terminal,
+    })
+    .init_resource::<Told>()
+    .add_systems(
+        Last,
+        |mut notices: MessageReader<Notice>,
+         mut refused: MessageReader<Recalled>,
+         mut told: ResMut<Told>| {
+            told.0
+                .extend(notices.read().map(|notice| notice.text.clone()));
+            told.0
+                .extend(refused.read().filter_map(|line| line.why.clone()));
+        },
+    );
     let agent = spawn_root(app.world_mut()).id();
     (app, agent)
 }
 
 /// Runs `/plugins` for `agent` and the frame after it.
 fn open(app: &mut App, agent: Entity) {
+    run(app, agent, "plugins");
+}
+
+/// Runs the command `line` for `agent` and the frame after it.
+fn run(app: &mut App, agent: Entity, line: &str) {
     let world = app.world_mut();
-    world.trigger(RunCommand::new(agent, "plugins".to_owned()));
+    world.trigger(RunCommand::new(agent, line.to_owned()));
     world.flush();
     app.update();
+}
+
+/// The one picker open, if one is.
+fn picker(app: &mut App) -> Option<(Entity, Picker)> {
+    let world = app.world_mut();
+    let mut pickers = world.query::<(Entity, &Picker)>();
+    let open: Vec<(Entity, Picker)> = (pickers.iter(world))
+        .map(|(entity, picker)| (entity, picker.clone()))
+        .collect();
+    match open.as_slice() {
+        [one] => Some(one.clone()),
+        _ => None,
+    }
+}
+
+/// The position of the item labelled `label` in `picker`.
+fn at(picker: &Picker, label: &str) -> Option<usize> {
+    picker.items.iter().position(|item| item.label == label)
+}
+
+/// The detail of the item labelled `label` in `picker`.
+fn detail(picker: &Picker, label: &str) -> String {
+    let item = picker.items.iter().find(|item| item.label == label);
+    item.and_then(|item| item.detail.clone())
+        .unwrap_or_default()
+}
+
+/// Ticks the list as the view does, from what is on now: `on` ticked and
+/// `off` unticked, then the frame after it.
+fn tick(app: &mut App, list: Entity, on: &[&str], off: &[&str]) {
+    let Some(shown) = app.world().get::<Picker>(list).cloned() else {
+        return;
+    };
+    let ticked = (shown.items.iter().enumerate())
+        .filter(|(_, item)| {
+            on.contains(&item.label.as_str()) || item.checked && !off.contains(&item.label.as_str())
+        })
+        .map(|(index, _)| index)
+        .collect();
+    app.world_mut().entity_mut(list).insert(Ticked(ticked));
+    app.update();
+}
+
+/// Closes or answers `entity` as a person, then the frame after it.
+fn pick(app: &mut App, entity: Entity, chosen: Option<Chosen>) {
+    let world = app.world_mut();
+    world.trigger(Pick::person(entity, chosen));
+    world.flush();
+    app.update();
+}
+
+/// The settings file's text, empty when it is missing.
+fn settings(home: &rig_harness::harness_protocol::Home) -> String {
+    fs::read_to_string(home.settings()).unwrap_or_default()
 }
 
 /// The text of the preview on `picker`.
@@ -280,4 +344,191 @@ fn every_row_has_a_name_of_its_own() {
     let before = names.len();
     names.dedup();
     assert_eq!(names.len(), before, "{names:?}");
+}
+
+#[test]
+fn enter_ticks_and_the_list_marks_and_counts_changes_against_the_settings() {
+    let home = scratch_home("plugins-ticks");
+    let (mut app, agent) = app(&home, true);
+    open(&mut app, agent);
+    let found = picker(&mut app);
+    assert!(
+        found.is_some(),
+        "no picker: {:?}",
+        app.world().resource::<Told>().0
+    );
+    let Some((list, _)) = found else {
+        return;
+    };
+    #[cfg(feature = "tui")]
+    {
+        let keys = app.world().get::<rig_tui::ChoiceKeys>(list);
+        let enter = (keys.iter().flat_map(|keys| keys.0.iter())).any(|(code, action)| {
+            *code == rig_tui::crossterm::event::KeyCode::Enter
+                && *action == rig_tui::ChoiceAction::Tick
+        });
+        assert!(enter, "Enter ticks in /plugins: {keys:?}");
+    }
+
+    tick(&mut app, list, &["Folded output"], &["Welcome"]);
+    let shown = app.world().get::<Picker>(list).cloned().unwrap_or_default();
+    assert!(detail(&shown, "Welcome").contains("- off"), "{shown:#?}");
+    assert!(
+        detail(&shown, "Folded output").contains("+ on"),
+        "{shown:#?}"
+    );
+    assert!(shown.body.contains("2 changes"), "{}", shown.body);
+    assert!(shown.body.contains("Enter ticks"), "{}", shown.body);
+    assert_eq!(settings(&home), "", "ticking writes nothing");
+
+    // Back as it was: no change is counted.
+    tick(&mut app, list, &["Welcome"], &["Folded output"]);
+    let shown = app.world().get::<Picker>(list).cloned().unwrap_or_default();
+    assert!(!detail(&shown, "Welcome").contains("off"), "{shown:#?}");
+    assert!(!shown.body.contains("change"), "{}", shown.body);
+}
+
+#[test]
+fn esc_with_no_change_closes_and_asks_nothing() {
+    let home = scratch_home("plugins-esc-unchanged");
+    let (mut app, agent) = app(&home, true);
+    open(&mut app, agent);
+    let found = picker(&mut app);
+    assert!(found.is_some(), "no picker");
+    let Some((list, _)) = found else {
+        return;
+    };
+    tick(&mut app, list, &[], &[]);
+    pick(&mut app, list, None);
+
+    assert!(picker(&mut app).is_none());
+    assert_eq!(settings(&home), "");
+    assert_eq!(app.world().resource::<Told>().0, Vec::<String>::new());
+}
+
+#[test]
+fn esc_with_changes_asks_to_reload_now_or_later_naming_them() {
+    let home = scratch_home("plugins-esc-changed");
+    let (mut app, agent) = app(&home, true);
+    open(&mut app, agent);
+    let found = picker(&mut app);
+    assert!(found.is_some(), "no picker");
+    let Some((list, _)) = found else {
+        return;
+    };
+    tick(
+        &mut app,
+        list,
+        &["Folded output"],
+        &["Welcome", "Plugins picker"],
+    );
+    pick(&mut app, list, None);
+
+    let found = picker(&mut app);
+    assert!(found.is_some(), "no question");
+    let Some((question, asked)) = found else {
+        return;
+    };
+    let labels: Vec<&str> = asked.items.iter().map(|item| item.label.as_str()).collect();
+    assert!(
+        asked.body.contains("Turn on: Folded output")
+            && asked.body.contains("Turn off: ")
+            && asked.body.contains("Welcome")
+            && asked.body.contains("/plugins itself"),
+        "{}",
+        asked.body
+    );
+    // Without the launcher a reload cannot run, so it is not offered.
+    assert_eq!(labels, ["Later, at the next start", "Keep editing"]);
+    assert!(asked.body.contains("`rig`"), "{}", asked.body);
+    assert_eq!(settings(&home), "", "asking writes nothing");
+
+    // Keep editing: the list again, with the ticks kept.
+    let keep = at(&asked, "Keep editing");
+    pick(&mut app, question, keep.map(Chosen::item));
+    let found = picker(&mut app);
+    assert!(found.is_some(), "no list");
+    let Some((list, again)) = found else {
+        return;
+    };
+    let checked = |label: &str| {
+        (again.items.iter().find(|item| item.label == label)).map(|item| item.checked)
+    };
+    assert_eq!(checked("Folded output"), Some(true));
+    assert_eq!(checked("Welcome"), Some(false));
+    assert!(detail(&again, "Welcome").contains("- off"), "{again:#?}");
+    assert_eq!(settings(&home), "");
+
+    // Esc asks again; Later writes the changes and does not reload.
+    tick(&mut app, list, &[], &["Plugins picker"]);
+    let ticked = app.world().get::<Ticked>(list).cloned();
+    assert!(ticked.is_some());
+    pick(&mut app, list, None);
+    let found = picker(&mut app);
+    assert!(found.is_some(), "no question");
+    let Some((question, asked)) = found else {
+        return;
+    };
+    let later = at(&asked, "Later, at the next start");
+    pick(&mut app, question, later.map(Chosen::item));
+    assert!(picker(&mut app).is_none());
+    let written = settings(&home);
+    assert!(
+        written.contains("rig_fold::FoldPlugin")
+            && written.contains("rig_basics::welcome::WelcomePlugin")
+            && written.contains("rig_basics::reload::plugins::PluginsPlugin"),
+        "{written}"
+    );
+    let chosen = config::chosen(&home).unwrap_or_default();
+    assert!(chosen.on.iter().any(|on| on == "rig_fold::FoldPlugin"));
+    assert!(
+        !chosen
+            .on
+            .iter()
+            .any(|on| on == "rig_basics::welcome::WelcomePlugin")
+    );
+    assert_eq!(*app.world().resource::<ReloadStatus>(), ReloadStatus::Idle);
+}
+
+#[test]
+fn plugins_defaults_asks_to_go_back_to_rigs_defaults() {
+    let home = scratch_home("plugins-defaults");
+    fs::create_dir_all(home.root()).ok();
+    let changed = "[plugins]\ndisable = [\"rig_basics::welcome::WelcomePlugin\"]\n\
+                   enable = [\"rig_fold::FoldPlugin\"]\n";
+    fs::write(home.settings(), changed).ok();
+    let (mut app, agent) = app(&home, true);
+    run(&mut app, agent, "plugins defaults");
+
+    let found = picker(&mut app);
+    assert!(
+        found.is_some(),
+        "no question: {:?}",
+        app.world().resource::<Told>().0
+    );
+    let Some((question, asked)) = found else {
+        return;
+    };
+    assert!(
+        asked.body.contains("Turn on: Welcome") && asked.body.contains("Turn off: Folded output"),
+        "{}",
+        asked.body
+    );
+    let later = at(&asked, "Later, at the next start");
+    pick(&mut app, question, later.map(Chosen::item));
+    let back = config::chosen(&home).unwrap_or_default();
+    let defaults: Vec<&str> = (BUILT_IN.iter())
+        .filter(|built_in| built_in.on && built_in.available())
+        .map(|built_in| built_in.plugin)
+        .collect();
+    assert_eq!(back.on, defaults);
+
+    // At the defaults already, it says so and asks nothing.
+    run(&mut app, agent, "plugins defaults");
+    assert!(picker(&mut app).is_none());
+    let told = &app.world().resource::<Told>().0;
+    assert!(
+        told.iter().any(|text| text.contains("defaults")),
+        "{told:?}"
+    );
 }

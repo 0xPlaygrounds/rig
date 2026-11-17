@@ -678,10 +678,21 @@ your extras last by crate, each with its state: on, off, or either with
 "next reload" while the running agent differs. The pane beside the list
 shows the highlighted plugin's group, crate, type path (what `settings.toml`
 and `rig plugin enable` take), default, state in `settings.toml`, whether it
-runs now, what an essential one takes away when off, and what it adds. Typing filters by name or type path. Tick and untick plugins
-and press Enter: every change goes into `settings.toml` in one edit, or none
-when one is refused, and the agent rebuilds and restarts with them; a failed
-build keeps the running one. Without a terminal it prints each plugin's name,
+runs now, what an essential one takes away when off, and what it adds.
+Typing filters by name or type path. Enter ticks and unticks the highlighted
+plugin, also while a filter is typed; a row that differs from
+`settings.toml` shows `+ on` or `- off`, and the list counts the changes.
+Esc leaves. With changes it first names what turns on and off, and what an
+essential plugin such as `/plugins` itself takes away, and asks: "Reload
+now" (offered only when the Reload plugin is on and the `rig` launcher
+started rig; otherwise it says which is missing), "Later, at the next
+start", or "Keep editing" (Esc too). Either of the first two writes every
+change into `settings.toml` in one edit, or none when one is refused; a
+reload rebuilds and restarts once no turn runs, and a failed build keeps the
+running one. `/plugins defaults` asks the same about going back to rig's
+defaults; without a terminal it asks nothing and prints the `rig plugin
+enable` and `rig plugin disable` commands that do it from a shell. Without a
+terminal `/plugins` prints each plugin's name,
 type path and state. When `settings.toml` does not read, `/plugins` names the
 file, the error and its fix instead of opening.
 

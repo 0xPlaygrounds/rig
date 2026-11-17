@@ -173,8 +173,8 @@ plugin crate changed, and restarts it. Without it the agent runs as it started."
             on rig_basics::reload::plugins::PluginsPlugin, "rig-basics",
                 "Plugins picker", Rebuild, [],
                 Some("/plugins itself"),
-                "/plugins: every plugin, on and off, to turn on and off; applying rebuilds the \
-agent and restarts it.";
+                "/plugins: every plugin, on and off, to turn on and off; leaving with changes \
+asks whether to rebuild the agent now or at the next start.";
             on rig_basics::BasicCommandsPlugin, "rig-basics", "Help and quit", Views, [], None,
                 "/help and /quit.";
             on rig_basics::welcome::WelcomePlugin, "rig-basics", "Welcome", Views, [], None,
