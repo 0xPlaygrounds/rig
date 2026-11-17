@@ -87,3 +87,22 @@ fn a_br_breaks_a_cell_and_a_line() {
     assert_eq!(lines, ["a     b", "one   x", "two"]);
     assert_eq!(text("first<br/>second", 80), ["first", "second"]);
 }
+
+/// A tab in a cell is measured as the four spaces it is drawn as, so the
+/// cell stays on one row when there is room.
+#[test]
+fn a_cell_with_a_tab_fits_on_one_row() {
+    let markdown = "| a\tb | c |\n| - | - |\n| d | e |\n";
+    assert_eq!(text(markdown, 80), ["a    b   c", "d        e"]);
+}
+
+/// A tab in a header is drawn as four spaces in its record label, and the
+/// values after the labels stay in one column.
+#[test]
+fn a_records_label_with_a_tab_keeps_its_values_aligned() {
+    let markdown = "| a\tb | c | d |\n| - | - | - |\n| abcdef | abcdef | abcdef |\n";
+    let lines = rendered(markdown, Some(22));
+    let rows = crate::wrap::wrap_all(&lines, 22);
+    let rows: Vec<String> = rows.iter().map(ToString::to_string).collect();
+    assert_eq!(rows, ["a    b  abcdef", "c       abcdef", "d       abcdef"]);
+}
