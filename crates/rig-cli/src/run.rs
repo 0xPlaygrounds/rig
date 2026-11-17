@@ -72,11 +72,24 @@ const SAFE_NOTICE: &str = "Safe mode: only rig's default plugins run, and [plugi
      settings.toml is ignored. /reload, or a change in /plugins, builds and starts your own \
      plugins again; so does quitting and running `rig`.";
 
+/// Whether `args` start in safe mode, and the rest of them: only a first
+/// word `--safe` counts, so a prompt, an option's value or a word after
+/// `--` that reads `--safe` stays the agent's.
+pub fn safe_flag(mut args: Vec<String>) -> (bool, Vec<String>) {
+    let safe = args.first().is_some_and(|first| first == "--safe");
+    if safe {
+        args.remove(0);
+    }
+    (safe, args)
+}
+
 /// Builds the agent, reads the command line `args` against it, runs it
 /// until it ends without asking to reload, and returns its exit code: 2
 /// for a command line the build does not take, or a `--resume` that names
 /// no saved session. In `safe` mode it builds and runs rig's default
-/// plugins alone ([`build::compile_safe`]) until a `/reload`.
+/// plugins alone ([`build::compile_safe`]) until a `/reload`; after a
+/// reload re-executed from safe mode, it also builds the user's plugins
+/// and starts that build as a trial that rolls back to the safe build.
 pub fn run(mut launch: Launch, args: &[String], safe: bool) -> Result<ExitCode> {
     let home = &launch.home();
     let terminal = launch.terminal;
@@ -115,7 +128,20 @@ pub fn run(mut launch: Launch, args: &[String], safe: bool) -> Result<ExitCode> 
         let (claimed, claim_notice) = claim(home, start, launch.here.as_deref())?;
         let (failure, running) = if safe {
             build::compile_safe(&launch, output).map_err(|failure| failure.told(output))?;
-            (None, hold_safe(&launch, run.dir())?)
+            // A reload re-executed from safe mode builds the user's plugins
+            // again, as its `rig build` did before this launcher's sweep
+            // removed that build, for a trial that rolls back to the safe
+            // build.
+            let reloaded = carried.reason == Some(StartReason::Reloaded);
+            let staged = home.staged_for(&claimed.id);
+            let failure = reloaded
+                .then(|| build::compile(&launch, &staged, Staging::Always, output).err())
+                .flatten();
+            if let Some(failure) = &failure {
+                let told = failure.told(output);
+                eprintln!("error: building the agent failed; starting the safe build: {told}");
+            }
+            (failure, select_safe(&launch, &claimed.id, run.dir())?)
         } else {
             let failure = rebuild(&launch, &claimed.id, output, print)?;
             (failure, select(&launch, &claimed.id, run.dir(), None)?)
@@ -124,7 +150,7 @@ pub fn run(mut launch: Launch, args: &[String], safe: bool) -> Result<ExitCode> 
             Some(failure) => Some(format!(
                 "Building the agent failed, so the previous build is running: {failure}"
             )),
-            None => safe.then(|| SAFE_NOTICE.to_owned()),
+            None => running.current.is_safe().then(|| SAFE_NOTICE.to_owned()),
         };
         (
             run,
@@ -425,8 +451,9 @@ fn run_agent(
         if rejected {
             build::reject(home, &running.current.executable)?;
         }
-        // A switch stays in safe mode; a reload leaves it.
-        let safe = running.current.is_safe() && left.end != AgentEnd::Reload;
+        // A re-executed launcher stays in safe mode, so a switch keeps it
+        // and a reload's trial rolls back to the safe build.
+        let safe = running.current.is_safe();
         let ending = match step {
             Step::Reexec { to } => {
                 // The session the agent switched to, claimed as a switch
@@ -530,7 +557,7 @@ fn run_agent(
         let log = claimed.leave(home, run, &left.end);
         let refused = matches!(left.end, AgentEnd::Refused(_));
         let resume = (left.ready)
-            .then(|| resume_command(home, &session, refused))
+            .then(|| resume_command(home, &session, refused, running.current.is_safe()))
             .flatten();
         let said = match said {
             Said::Nothing => None,
@@ -857,7 +884,8 @@ fn stopped(
 /// finds this session by it; by its id when the name is not unique, could
 /// be read as an id or an option, or holds a control or format character.
 /// The quoting is POSIX shell's, as the launcher runs on Linux and macOS.
-fn resume_command(home: &Home, session: &SessionId, refused: bool) -> Option<String> {
+/// In `safe` mode the command starts with `rig --safe`.
+fn resume_command(home: &Home, session: &SessionId, refused: bool, safe: bool) -> Option<String> {
     let directory = home.session(session);
     if refused || !directory.is_saved() {
         return None;
@@ -869,9 +897,10 @@ fn resume_command(home: &Home, session: &SessionId, refused: bool) -> Option<Str
             && name.parse::<SessionId>().is_err()
             && home.find(name).as_ref() == Ok(session)
     });
+    let rig = if safe { "rig --safe" } else { "rig" };
     Some(match name {
-        Some(name) => format!("rig --resume '{}'", name.replace('\'', r"'\''")),
-        None => format!("rig --resume {session}"),
+        Some(name) => format!("{rig} --resume '{}'", name.replace('\'', r"'\''")),
+        None => format!("{rig} --resume {session}"),
     })
 }
 
@@ -1356,14 +1385,14 @@ fn hold_good(launch: &Launch, run: &RunDir) -> Result<Option<BuildRef>> {
     )
 }
 
-/// The safe build ([`build::safe`]), held in `run`.
-fn hold_safe(launch: &Launch, run: &RunDir) -> Result<Running> {
+/// [`select`] for a safe start of `session`: the safe build
+/// ([`build::safe`]), held in `run`, or a build staged for `session` as a
+/// trial rolling back to it.
+fn select_safe(launch: &Launch, session: &SessionId, run: &RunDir) -> Result<Running> {
     let held = held(run)?;
     build::hold(&build::safe(&launch.home()), &held)?;
-    Ok(Running {
-        current: BuildRef::new(launch, held, Role::Safe),
-        previous: None,
-    })
+    let safe = BuildRef::new(launch, held, Role::Safe);
+    select(launch, session, run, Some(safe))
 }
 
 /// A path in `run` for a build to hold, which no other build of this
