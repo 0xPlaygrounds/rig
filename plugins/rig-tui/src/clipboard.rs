@@ -59,6 +59,20 @@ pub(crate) fn paste(
 /// The clipboard's image saved in `directory`, else its text, or why there
 /// is neither.
 fn read(launcher: &Launcher, directory: &Path) -> Result<Paste, String> {
+    read_either(
+        || clipboard::read_image(launcher, directory),
+        || clipboard::read_text(launcher),
+    )
+}
+
+/// What `image` found, else what `text` found, or why neither found any.
+/// An image reader that is not installed, as `pngpaste` often is on macOS
+/// beside `pbpaste`, still lets the text be read; it is named when there is
+/// no text, as the clipboard may hold an image it would read.
+fn read_either(
+    image: impl FnOnce() -> io::Result<Option<PathBuf>>,
+    text: impl FnOnce() -> io::Result<Option<String>>,
+) -> Result<Paste, String> {
     let failed = |failure: io::Error| match failure.kind() {
         ErrorKind::Unsupported => "No clipboard is reachable from this machine (for example \
                                    over SSH): Ctrl+V reads it with wl-paste, xclip or pngpaste."
@@ -66,11 +80,17 @@ fn read(launcher: &Launcher, directory: &Path) -> Result<Paste, String> {
         ErrorKind::TimedOut => format!("Gave up reading the clipboard: {failure}."),
         _ => format!("Could not read the clipboard: {failure}."),
     };
-    if let Some(path) = clipboard::read_image(launcher, directory).map_err(failed)? {
-        return Ok(Paste::Image(path));
-    }
-    match clipboard::read_text(launcher).map_err(failed)? {
-        Some(text) if !text.is_empty() => Ok(Paste::Text(text)),
+    let missing = match image() {
+        Ok(Some(path)) => return Ok(Paste::Image(path)),
+        Ok(None) => None,
+        Err(failure) if failure.kind() == ErrorKind::NotFound => Some(failure),
+        Err(failure) => return Err(failed(failure)),
+    };
+    match (text().map_err(failed)?, missing) {
+        (Some(text), _) if !text.is_empty() => Ok(Paste::Text(text)),
+        (_, Some(missing)) => Err(format!(
+            "The clipboard holds no text, and its image cannot be read: {missing}."
+        )),
         _ => Err("The clipboard holds no image or text.".to_owned()),
     }
 }

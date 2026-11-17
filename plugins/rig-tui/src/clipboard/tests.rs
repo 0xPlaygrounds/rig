@@ -6,7 +6,7 @@ use rig_ecs::agent::Notice;
 use rig_ecs::requests::RequestOf;
 use rig_harness::main_agent::ShownAgent;
 
-use super::{CopyMissed, Paste, Pasted, type_pasted, warn_copy_missed};
+use super::{CopyMissed, Paste, Pasted, read_either, type_pasted, warn_copy_missed};
 use crate::editor::{Editor, MainEditor};
 
 /// A pasted image is typed in the editor that asked for it, not in
@@ -57,4 +57,43 @@ fn a_missed_copy_is_told_once() {
     let notices = world.resource::<Messages<Notice>>();
     let told: Vec<&Notice> = notices.iter_current_update_messages().collect();
     assert_eq!(told.len(), 1, "{told:?}");
+}
+
+/// An image reader that is not installed, as `pngpaste` often is on macOS,
+/// does not stop the text read; it is named when there is no text. A read
+/// that timed out ends the paste, as the next would wait again.
+#[test]
+fn a_missing_image_reader_still_pastes_text() {
+    let missing = || {
+        Err(io::Error::new(
+            ErrorKind::NotFound,
+            "pngpaste is not installed",
+        ))
+    };
+    let found = read_either(missing, || Ok(Some("copied".to_owned())));
+    assert!(matches!(found, Ok(Paste::Text(text)) if text == "copied"));
+    let found = read_either(missing, || Ok(None));
+    assert!(
+        matches!(&found, Err(why) if why.contains("pngpaste")),
+        "{:?}",
+        found.err()
+    );
+
+    let mut read_text = false;
+    let hung = || {
+        Err(io::Error::new(
+            ErrorKind::TimedOut,
+            "wl-paste did not answer",
+        ))
+    };
+    let found = read_either(hung, || {
+        read_text = true;
+        Ok(Some("copied".to_owned()))
+    });
+    assert!(
+        matches!(&found, Err(why) if why.contains("wl-paste")),
+        "{:?}",
+        found.err()
+    );
+    assert!(!read_text);
 }
