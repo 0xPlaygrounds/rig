@@ -67,6 +67,12 @@ impl Wire for Embeddings {
         texts: Vec<String>,
         _mode: Mode,
     ) -> Result<Vec<(String, EmbedContentRequest)>, EncodeError> {
+        let width = i32::try_from(self.ndims).map_err(|_| {
+            EncodeError::request(format!(
+                "embedding width {} does not fit the request's i32 field",
+                self.ndims
+            ))
+        })?;
         Ok(texts
             .into_iter()
             .map(|text| {
@@ -81,7 +87,7 @@ impl Wire for Embeddings {
                     }),
                     task_type: None,
                     title: None,
-                    output_dimensionality: Some(self.ndims as i32),
+                    output_dimensionality: Some(width),
                 };
                 (text, request)
             })
@@ -167,3 +173,6 @@ impl<'id> Decoder<'id, Embedding, (String, proto::EmbedContentResponse)> for Emb
         ))))
     }
 }
+
+#[cfg(test)]
+mod tests;
