@@ -34,7 +34,7 @@ enum Backend {
 
 impl Backend {
     /// The program and arguments that do `what` with this clipboard.
-    fn command(self, what: Use) -> (&'static str, &'static [&'static str]) {
+    fn command(self, what: Use) -> Program {
         match (self, what) {
             (Self::Wayland, Use::ReadText) => ("wl-paste", &["--no-newline"]),
             (Self::Wayland, Use::ReadImage) => {
@@ -54,8 +54,14 @@ impl Backend {
     }
 }
 
+/// A program and its arguments.
+type Program = (&'static str, &'static [&'static str]);
+
+/// How long a read waits for the clipboard's program before it gives up.
+const READ_LIMIT: Duration = Duration::from_secs(5);
+
 /// The programs that do `what` on this machine, in the order tried.
-fn programs(what: Use) -> Vec<(&'static str, &'static [&'static str])> {
+fn programs(what: Use) -> Vec<Program> {
     [
         std::env::var_os("WAYLAND_DISPLAY")
             .is_some()
@@ -71,71 +77,91 @@ fn programs(what: Use) -> Vec<(&'static str, &'static [&'static str])> {
     .collect()
 }
 
-/// The error for a clipboard none of `programs` could serve.
-fn none_of(programs: &[(&str, &[&str])], what: &str) -> io::Error {
-    if programs.is_empty() {
-        return io::Error::new(
-            ErrorKind::Unsupported,
-            "no clipboard here: it needs wl-paste and wl-copy, xclip, or pbpaste and pbcopy",
-        );
-    }
-    let names: Vec<&str> = programs.iter().map(|(program, _)| *program).collect();
+/// The error for a machine with no clipboard program to try.
+fn no_clipboard() -> io::Error {
     io::Error::new(
-        ErrorKind::NotFound,
-        format!(
-            "no {what} in the clipboard (read with {})",
-            names.join(", ")
-        ),
+        ErrorKind::Unsupported,
+        "no clipboard here: it needs wl-paste and wl-copy, xclip, or pbpaste and pbcopy",
     )
 }
 
-/// What the first program for `what` that succeeds prints.
-fn output_of(
-    launcher: &Launcher,
-    what: Use,
-) -> (
-    Vec<(&'static str, &'static [&'static str])>,
-    Option<Vec<u8>>,
-) {
-    let programs = programs(what);
-    let printed = programs.iter().find_map(|(program, args)| {
-        let mut command = launcher.command(program);
-        command.args(*args);
-        let output = Process::start(command, Spawn::default())
-            .and_then(|process| process.output(None))
-            .ok()?;
-        output.status.success().then_some(output.stdout)
-    });
-    (programs, printed)
+/// The [`NotFound`](ErrorKind::NotFound) error naming the `missing`
+/// programs, and the package of each that has another name.
+fn not_installed(missing: &[&str]) -> io::Error {
+    let named: Vec<String> = missing
+        .iter()
+        .map(|program| match *program {
+            "wl-paste" | "wl-copy" => format!("{program} (from wl-clipboard)"),
+            other => other.to_owned(),
+        })
+        .collect();
+    let verb = if named.len() == 1 { "is" } else { "are" };
+    let named = named.join(" and ");
+    io::Error::new(ErrorKind::NotFound, format!("{named} {verb} not installed"))
 }
 
-/// The clipboard's text.
+/// What the first of `programs` that succeeds prints, waiting at most
+/// `limit` for each; `None` when every one that ran failed.
+///
+/// # Errors
+///
+/// [`Unsupported`](ErrorKind::Unsupported) when there is none to try,
+/// [`NotFound`](ErrorKind::NotFound) naming them when none is installed,
+/// and [`TimedOut`](ErrorKind::TimedOut) naming the one that ran past
+/// `limit`.
+fn output_of(
+    launcher: &Launcher,
+    programs: &[Program],
+    limit: Duration,
+) -> io::Result<Option<Vec<u8>>> {
+    if programs.is_empty() {
+        return Err(no_clipboard());
+    }
+    let mut missing = Vec::new();
+    for (program, args) in programs {
+        let mut command = launcher.command(program);
+        command.args(*args);
+        match Process::start(command, Spawn::default()).and_then(|it| it.output(Some(limit))) {
+            Ok(output) if output.status.success() => return Ok(Some(output.stdout)),
+            Ok(_) => {}
+            Err(error) if error.kind() == ErrorKind::NotFound => missing.push(*program),
+            Err(error) if error.kind() == ErrorKind::TimedOut => {
+                let secs = limit.as_secs_f32();
+                let why = format!("{program} did not answer within {secs} s");
+                return Err(io::Error::new(ErrorKind::TimedOut, why));
+            }
+            Err(error) => return Err(io::Error::new(error.kind(), format!("{program}: {error}"))),
+        }
+    }
+    if missing.len() == programs.len() {
+        return Err(not_installed(&missing));
+    }
+    Ok(None)
+}
+
+/// The clipboard's text; `None` when it holds none. Each program has
+/// five seconds to answer.
 ///
 /// # Errors
 ///
 /// [`Unsupported`](ErrorKind::Unsupported) when this machine has no
-/// clipboard program, and [`NotFound`](ErrorKind::NotFound) when none of
-/// them gave text.
-pub fn read_text(launcher: &Launcher) -> io::Result<String> {
-    match output_of(launcher, Use::ReadText) {
-        (_, Some(bytes)) => Ok(String::from_utf8_lossy(&bytes).into_owned()),
-        (programs, None) => Err(none_of(&programs, "text")),
-    }
+/// clipboard program, [`NotFound`](ErrorKind::NotFound) naming the
+/// programs when none is installed, and [`TimedOut`](ErrorKind::TimedOut)
+/// when one did not answer.
+pub fn read_text(launcher: &Launcher) -> io::Result<Option<String>> {
+    let printed = output_of(launcher, &programs(Use::ReadText), READ_LIMIT)?;
+    Ok(printed.map(|bytes| String::from_utf8_lossy(&bytes).into_owned()))
 }
 
 /// Saves the clipboard's image as a file in the directory `into`, named by
 /// the time and the image's type, and returns its path; `None` when the
-/// clipboard holds no image.
+/// clipboard holds no image. Each program has five seconds to answer.
 ///
 /// # Errors
 ///
-/// [`Unsupported`](ErrorKind::Unsupported) when this machine has no
-/// clipboard program, or the file could not be saved.
+/// As [`read_text`], or why the file could not be saved.
 pub fn read_image(launcher: &Launcher, into: &Path) -> io::Result<Option<PathBuf>> {
-    let (programs, printed) = output_of(launcher, Use::ReadImage);
-    if programs.is_empty() {
-        return Err(none_of(&programs, "image"));
-    }
+    let printed = output_of(launcher, &programs(Use::ReadImage), READ_LIMIT)?;
     let Some((bytes, kind)) =
         printed.and_then(|bytes| ImageMediaType::sniff(&bytes).map(|kind| (bytes, kind)))
     else {
@@ -153,14 +179,21 @@ pub fn read_image(launcher: &Launcher, into: &Path) -> io::Result<Option<PathBuf
 /// # Errors
 ///
 /// [`Unsupported`](ErrorKind::Unsupported) when this machine has no
-/// clipboard program, else why the last one tried failed.
+/// clipboard program, [`NotFound`](ErrorKind::NotFound) naming the
+/// programs when none is installed, else why the last one tried failed.
 pub fn write_text(launcher: &Launcher, text: &str) -> io::Result<()> {
-    let programs = programs(Use::WriteText);
-    let mut failed = none_of(&[], "");
+    write_with(launcher, &programs(Use::WriteText), text)
+}
+
+/// Gives `text` to the first of `programs` that takes it, as
+/// [`write_text`] does.
+fn write_with(launcher: &Launcher, programs: &[Program], text: &str) -> io::Result<()> {
+    let mut failed = no_clipboard();
+    let mut missing = Vec::new();
     for (program, args) in programs {
         let mut command = launcher.command(program);
         command
-            .args(args)
+            .args(*args)
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
@@ -180,8 +213,15 @@ pub fn write_text(launcher: &Launcher, text: &str) -> io::Result<()> {
         });
         match written {
             Ok(()) => return Ok(()),
+            Err(error) if error.kind() == ErrorKind::NotFound => missing.push(*program),
             Err(error) => failed = error,
         }
     }
+    if !programs.is_empty() && missing.len() == programs.len() {
+        return Err(not_installed(&missing));
+    }
     Err(failed)
 }
+
+#[cfg(test)]
+mod tests;
