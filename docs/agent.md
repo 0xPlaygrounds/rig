@@ -564,9 +564,11 @@ rebuilds (rig's own from a checkout, and plugins by path or git) keep line
 tables, so their backtraces show file and line.
 
 cargo runs in `RIG_HOME/project` and keeps your environment, so
-`RUSTC_WRAPPER`, `RUSTFLAGS` and the other cargo variables apply to these
-builds. It also reads `RIG_HOME/.cargo/config.toml`, which changes the agent's
-builds alone. For example, to cache compiled crates with
+`RUSTC_WRAPPER`, `RUSTFLAGS` and most cargo variables apply to these builds.
+rig ignores `CARGO_TARGET_DIR`, and the build target and target directory must
+stay unset, since rig starts the build it finds in `RIG_HOME/target/debug`.
+cargo also reads `RIG_HOME/.cargo/config.toml`, which applies to builds under
+`RIG_HOME` and nothing else. For example, to cache compiled crates with
 [sccache](https://github.com/mozilla/sccache) and link with
 [mold](https://github.com/rui314/mold):
 
@@ -579,18 +581,19 @@ rustc-wrapper = "sccache"
 rustflags = ["-C", "link-arg=-fuse-ld=mold"]
 ```
 
-A `RUSTFLAGS` variable replaces the `rustflags` there. On x86_64 Linux rust
+A `RUSTFLAGS` variable replaces the `rustflags` there. On x86_64 Linux Rust
 already links with `rust-lld`, so another linker gains less. A `[profile.dev]`
 table in that file overrides the generated one: set
 `[profile.dev.package."*"] debug = "line-tables-only"` to get dependency
 backtraces back.
 
-A `rust-toolchain.toml` in `RIG_HOME` picks the toolchain for these builds. It
-must be at least rig's minimum Rust version. The Cranelift backend, which can
-compile debug builds faster, needs nightly and is experimental: with the
-`rustc-codegen-cranelift-preview` component, set `[unstable] codegen-backend =
-true` and `[profile.dev] codegen-backend = "cranelift"` in the config file.
-Changing the toolchain or the flags rebuilds everything once.
+A `rust-toolchain.toml` in `RIG_HOME` picks the toolchain for these builds,
+unless `RUSTUP_TOOLCHAIN` is set. It must be at least rig's minimum Rust
+version. The Cranelift backend can compile debug builds faster, but it needs
+nightly and is experimental. To try it, add the
+`rustc-codegen-cranelift-preview` component and set `[unstable]
+codegen-backend = true` and `[profile.dev] codegen-backend = "cranelift"` in
+the config file. Changing the toolchain or the flags rebuilds everything once.
 
 ## Plugins
 
