@@ -61,7 +61,6 @@ pub const AZURE: Dialect = Dialect {
         // Verifying a credential without deploying and spending tokens is
         // not offered.
         verify_path: "",
-        transcription_path: "/audio/translations",
         embedding: EmbeddingQuirks {
             // The deployment is in the URL, so the body carries no model.
             sends_model_field: false,
@@ -215,8 +214,8 @@ pub const HUGGINGFACE: Dialect = Dialect {
         // in the base URL.
         completion_path: "/v1/chat/completions",
         verify_path: "/api/whoami-v2",
-        // Transcription and image generation address `/{model}` at the
-        // router root, not a fixed path under `/v1`.
+        // Transcription and image generation address
+        // `/hf-inference/models/{model}`, not a fixed path under `/v1`.
         model_is_modality_path: true,
         // The router's image endpoint takes none of OpenAI's fields and
         // answers with the image bytes rather than a JSON envelope.

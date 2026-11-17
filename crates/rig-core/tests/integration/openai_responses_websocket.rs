@@ -402,6 +402,72 @@ async fn done_first_failed_turn_does_not_chain_next_request() {
     );
 }
 
+/// A `response.done` without a response id ends the turn when no earlier
+/// turn left a trailing done pending, rather than being skipped as one.
+#[tokio::test]
+async fn an_id_less_done_ends_the_turn() {
+    let mut response = sample_response("completed");
+    if let Some(id) = response.get_mut("id") {
+        *id = serde_json::Value::Null;
+    }
+    let script = Script::turn([json!({
+        "type": "response.done",
+        "response": response,
+    })
+    .to_string()])
+    .stalling();
+
+    let client = test_client();
+    let mut session = session_with_timeout(&client, &script, Some(Duration::from_millis(200)));
+
+    let completed = session
+        .completion(CompletionRequest::new("hello"))
+        .await
+        .expect("the id-less done should end the turn");
+    assert_eq!(raw_response(completed)["status"], "completed");
+}
+
+/// A trailing id-less `response.done` after an id-less `response.completed`
+/// is still the previous turn's: the next turn skips it and ends on its own
+/// events.
+#[tokio::test]
+async fn an_id_less_late_done_is_ignored_on_next_turn() {
+    let mut first = sample_response("completed");
+    if let Some(id) = first.get_mut("id") {
+        *id = serde_json::Value::Null;
+    }
+    let script = Script::turns([
+        vec![
+            response_event("response.completed", first, 1),
+            json!({
+                "type": "response.done",
+                "response": { "status": "completed" },
+            })
+            .to_string(),
+        ],
+        vec![response_event(
+            "response.completed",
+            response_with("resp_2", "completed"),
+            3,
+        )],
+    ]);
+
+    let client = test_client();
+    let mut session = session(&client, &script);
+
+    session
+        .completion(CompletionRequest::new("first"))
+        .await
+        .expect("first response should complete");
+    let second = raw_response(
+        session
+            .completion(CompletionRequest::new("second"))
+            .await
+            .expect("second response should complete"),
+    );
+    assert_eq!(second["id"], "resp_2");
+}
+
 #[tokio::test]
 async fn close_is_idempotent() {
     let script = Script::turn([]);

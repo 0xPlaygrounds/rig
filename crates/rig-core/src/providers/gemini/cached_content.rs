@@ -468,8 +468,7 @@ impl Wire for CachedContents {
             CachedContentRequest::Create(new) => {
                 new.validate()?;
                 self.provider
-                    .request(http::Method::POST, CACHED_CONTENTS_PATH)
-                    .body(Body::Bytes(serde_json::to_vec(&new)?))?
+                    .post_json(CACHED_CONTENTS_PATH, Body::Bytes(serde_json::to_vec(&new)?))?
             }
             CachedContentRequest::Get(name) => self
                 .provider
@@ -484,6 +483,7 @@ impl Wire for CachedContents {
                 let path = format!("{}?updateMask={mask}", resource_path(&name)?);
                 self.provider
                     .request(http::Method::PATCH, &path)
+                    .header(http::header::CONTENT_TYPE, "application/json")
                     .body(Body::Bytes(patch))?
             }
             CachedContentRequest::Delete(name) => self

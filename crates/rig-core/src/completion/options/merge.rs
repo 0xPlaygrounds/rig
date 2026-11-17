@@ -178,6 +178,12 @@ pub enum Rewrite {
     /// For rig's own crates; not covered by semver.
     #[doc(hidden)]
     ChatDialect(BodyRewrite),
+    /// The Hugging Face router: `model` suffixed with the sub-provider it
+    /// selects.
+    ///
+    /// For rig's own crates; not covered by semver.
+    #[doc(hidden)]
+    RouterProvider(crate::providers::openai::wire::SubRoute),
     /// Gemini `cachedContent`: each raw `cachedContent`/`cached_content`
     /// handle, then the wire's own, checked against the body. The
     /// GenerateContent wires that name it also read a raw
@@ -939,6 +945,9 @@ fn apply(
         }
         Rewrite::ChatDialect(kind) => {
             crate::providers::openai::wire::chat::rewrite_body(*kind, body)?;
+        }
+        Rewrite::RouterProvider(route) => {
+            crate::providers::openai::wire::chat::select_router_provider(route, body)?;
         }
         Rewrite::GeminiCachedContent(handle) => {
             for name in handles.iter().chain(handle) {

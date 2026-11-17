@@ -317,28 +317,28 @@ fn azure_accepts_either_credential_under_its_own_header() {
 }
 
 /// Hugging Face's router picks a sub-provider, and the choice is observable:
-/// Fireworks addresses models by a qualified id, and only the default
-/// sub-provider serves the endpoints that put the model in the URL.
+/// the model names it by suffix, and only the default sub-provider serves
+/// the endpoints that put the model in the URL.
 #[test]
 fn the_huggingface_sub_route_decides_the_model_and_the_routes() {
     assert_eq!(
         SubRoute::Fireworks.model_identifier("llama-3.3-70b"),
-        "accounts/fireworks/models/llama-3.3-70b"
+        "llama-3.3-70b:fireworks"
     );
     // Idempotent: the rewrite runs on the resolved request model, so an
-    // already-qualified per-request override must not be prefixed twice.
+    // already-selecting per-request override must not be suffixed twice.
     assert_eq!(
-        SubRoute::Fireworks.model_identifier("accounts/fireworks/models/llama-3.3-70b"),
-        "accounts/fireworks/models/llama-3.3-70b"
+        SubRoute::Fireworks.model_identifier("llama-3.3-70b:fireworks"),
+        "llama-3.3-70b:fireworks"
     );
     assert_eq!(
         SubRoute::Together.model_identifier("llama-3.3-70b"),
-        "llama-3.3-70b"
+        "llama-3.3-70b:together"
     );
 
     // The slugs the router routes by.
-    assert_eq!(SubRoute::HFInference.slug(), "hf-inference/models");
-    assert_eq!(SubRoute::Fireworks.slug(), "fireworks-ai");
+    assert_eq!(SubRoute::HFInference.slug(), "hf-inference");
+    assert_eq!(SubRoute::Fireworks.slug(), "fireworks");
     assert_eq!(SubRoute::from("my-route").slug(), "my-route");
 
     // `None` behaves as the router's own default, which is the only
@@ -352,7 +352,7 @@ fn the_huggingface_sub_route_decides_the_model_and_the_routes() {
                 "openai/whisper-large-v3"
             )
             .expect("hf-inference serves transcription"),
-        "https://router.huggingface.co/openai/whisper-large-v3"
+        "https://router.huggingface.co/hf-inference/models/openai/whisper-large-v3"
     );
 
     let routed = default.clone().with_sub_route(SubRoute::Together);
@@ -627,4 +627,90 @@ fn a_debug_printed_request_hides_the_key_it_sends() {
             request.uri()
         );
     }
+}
+
+/// An explicit Hugging Face sub-provider reaches the router as the
+/// `model:provider` suffix on the model the request finally sends, after a
+/// raw `model` override. No selection leaves the model to the router's own
+/// routing, and a model already selecting another provider is refused.
+#[test]
+fn the_huggingface_sub_route_selects_the_provider_by_model_suffix() {
+    use crate::completion::CompletionRequest;
+    use crate::test_utils::json_body;
+    use crate::wire::{Mode, Wire};
+    use serde_json::json;
+
+    const MODEL: &str = "meta-llama/Llama-3.3-70B-Instruct";
+    let router = OpenAIConfig::with_key(&HUGGINGFACE, "hf");
+    let sent = |config: &OpenAIConfig, request: CompletionRequest| {
+        config
+            .chat(MODEL)
+            .encode(request, Mode::Unary)
+            .map(|encoded| {
+                (
+                    encoded.request.uri().to_string(),
+                    json_body(&encoded.request),
+                )
+            })
+    };
+    let probe = || CompletionRequest::new("probe");
+    let model_sent = |config: &OpenAIConfig, request: CompletionRequest| {
+        sent(config, request)
+            .expect("the request encodes")
+            .1
+            .get("model")
+            .cloned()
+    };
+
+    for (route, suffix) in [
+        (SubRoute::Together, "together"),
+        (SubRoute::Nebius, "nebius"),
+        (SubRoute::Fireworks, "fireworks"),
+        (SubRoute::HFInference, "hf-inference"),
+    ] {
+        let routed = router.clone().with_sub_route(route);
+        let (uri, body) = sent(&routed, probe()).expect("the request encodes");
+        assert_eq!(uri, "https://router.huggingface.co/v1/chat/completions");
+        assert_eq!(body.get("model"), Some(&json!(format!("{MODEL}:{suffix}"))));
+    }
+
+    assert_eq!(model_sent(&router, probe()), Some(json!(MODEL)));
+
+    let together = router.clone().with_sub_route(SubRoute::Together);
+    let mut overridden = probe();
+    overridden.model = Some("org/request-model".to_owned());
+    overridden.additional_params = Some(json!({ "model": "org/raw-model" }));
+    assert_eq!(
+        model_sent(&together, overridden),
+        Some(json!("org/raw-model:together"))
+    );
+
+    let mut already = probe();
+    already.model = Some(format!("{MODEL}:together"));
+    assert_eq!(
+        model_sent(&together, already),
+        Some(json!(format!("{MODEL}:together")))
+    );
+
+    let fireworks = router.clone().with_sub_route(SubRoute::Fireworks);
+    let mut already = probe();
+    already.model = Some(format!("{MODEL}:fireworks"));
+    assert_eq!(
+        model_sent(&fireworks, already),
+        Some(json!(format!("{MODEL}:fireworks")))
+    );
+
+    let mut conflicting = probe();
+    conflicting.model = Some(format!("{MODEL}:novita"));
+    assert!(
+        sent(&together, conflicting).is_err(),
+        "a model selecting another provider is refused, not sent with two suffixes"
+    );
+
+    let mut raw_conflict = probe();
+    raw_conflict.additional_params = Some(json!({ "model": format!("{MODEL}:fastest") }));
+    assert!(
+        sent(&together, raw_conflict).is_err(),
+        "a raw override selecting a policy is refused too"
+    );
 }

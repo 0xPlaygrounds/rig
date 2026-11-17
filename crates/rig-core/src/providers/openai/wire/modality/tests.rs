@@ -255,6 +255,25 @@ fn a_transcription_request_is_multipart() {
     );
 }
 
+/// Azure transcribes at `/audio/transcriptions`, keeping the spoken
+/// language; `/audio/translations` would answer in English.
+#[test]
+fn azure_transcribes_rather_than_translates() {
+    let encoded = OpenAIConfig::with_key(&AZURE, "k")
+        .with_base_url("https://example.openai.azure.com")
+        .with_api_version("2024-10-21")
+        .transcription("whisper")
+        .encode(
+            crate::transcription::TranscriptionRequestBuilder::new(b"RIFF".to_vec()).build(),
+            Mode::Unary,
+        )
+        .expect("the request encodes");
+    assert_eq!(
+        encoded.request.uri().to_string(),
+        "https://example.openai.azure.com/openai/deployments/whisper/audio/transcriptions?api-version=2024-10-21"
+    );
+}
+
 // ── the dialect-specific modality bodies ────────────────────────────────
 
 /// xAI's image endpoint takes no `size` and must be asked for base64, which
@@ -536,10 +555,10 @@ fn the_huggingface_image_body_is_the_routers_own_shape() {
         )
         .expect("the request encodes");
     let http_request = &encoded.request;
-    // The model is the path, at the router root rather than under `/v1`.
+    // The model is the path, under HF Inference's own `models` root.
     assert_eq!(
         http_request.uri().to_string(),
-        "https://router.huggingface.co/stabilityai/stable-diffusion-3-medium-diffusers"
+        "https://router.huggingface.co/hf-inference/models/stabilityai/stable-diffusion-3-medium-diffusers"
     );
     let body = json_body(&encoded.request);
     assert_eq!(body["inputs"], "a cat");
