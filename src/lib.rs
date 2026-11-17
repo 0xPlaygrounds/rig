@@ -5,7 +5,9 @@
 //! feature, the runtime from `rig_agent` at `rig::agent`. `rig::tool` then
 //! carries the agent's tool registry alongside the `rig-core` tool contracts,
 //! which are always available. `use rig::prelude::*;` brings in
-//! [`Model`], [`DynModel`] and, with `agent`, the common agent types.
+//! [`Model`], [`DynModel`] and, with `agent`, the common agent types. The
+//! default `cli` feature adds no library items: on native targets it builds
+//! the `rig` binary, the coding agent's launcher from `rig-cli`.
 //!
 //! Companion provider and vector-store crates are feature-gated modules, named
 //! after their features wherever module naming allows:

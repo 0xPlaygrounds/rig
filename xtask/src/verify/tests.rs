@@ -309,6 +309,22 @@ fn default_check_compiles_extracted_regressions_without_extra_features() {
     }
 }
 
+#[test]
+fn default_check_builds_the_facade_rig_binary() {
+    let all = checks::all();
+    let check = all.iter().find(|check| check.id == "default-check");
+    let builds_it = check.is_some_and(|check| {
+        check.steps.iter().any(|step| {
+            step.args.windows(2).any(|pair| pair == ["-p", "rig"])
+                && step.args.windows(2).any(|pair| pair == ["--bin", "rig"])
+        })
+    });
+    assert!(
+        builds_it,
+        "default-check runs `cargo check -p rig --bin rig`"
+    );
+}
+
 /// The findings of the typed-options guards in `source`, as a listed
 /// completion-wire file.
 fn guarded(source: &str) -> Vec<String> {

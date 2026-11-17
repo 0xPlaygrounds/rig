@@ -40,7 +40,7 @@ signatures, module paths, and feature flags.
 
 ## Repository Shape
 
-- Root facade crate: `rig` (re-exports the core crate, exposes companion crates behind feature flags)
+- Root facade crate: `rig` (re-exports the core crate, exposes companion crates behind feature flags, and ships the `rig` binary, a call into `crates/rig-cli` behind the default `cli` feature)
 - Core crate: `crates/rig-core`
 - Companion provider, vector-store, memory, and integration crates: `crates/rig-*`
 - Derive macros: `crates/rig-derive`

@@ -213,6 +213,10 @@ pub(super) fn all() -> Vec<Check> {
                     "rig-test-support",
                     "--tests",
                 ]),
+                // `cargo install rig` installs the launcher: the facade has a
+                // `rig` binary, and its default features turn on every
+                // feature it requires, or cargo refuses `--bin rig`.
+                cargo(&["check", "--locked", "-p", "rig", "--bin", "rig"]),
                 // The divan benches compile here and run nowhere in CI.
                 cargo(&[
                     "check",
@@ -280,7 +284,7 @@ pub(super) fn all() -> Vec<Check> {
                 "fail",
                 "-E",
                 "test(/^process::tests::/) | test(/^host::(signals|launcher)::tests::/) \
-                 | (binary(rig) & test(/^(run|locks|run::stop)::tests::/)) \
+                 | (package(rig-cli) & test(/^(run|locks|run::stop)::tests::/)) \
                  | test(/^tests::a_group_whose_leader_left/)",
             ])],
         ),

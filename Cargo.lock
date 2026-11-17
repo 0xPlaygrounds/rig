@@ -13885,6 +13885,7 @@ dependencies = [
  "rig-bedrock",
  "rig-candle",
  "rig-cassette",
+ "rig-cli",
  "rig-core",
  "rig-derive",
  "rig-fastembed",

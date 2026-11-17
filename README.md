@@ -21,8 +21,8 @@ cargo install rig
 rig
 ```
 
-This installs the last release, 0.46.0, whose `rig` crate carries the
-launcher; [its guide](https://github.com/0xPlaygrounds/rig/blob/v0.46.0/docs/agent.md)
+This installs the launcher. Until the next release it is 0.46.0, and
+[its guide](https://github.com/0xPlaygrounds/rig/blob/v0.46.0/docs/agent.md)
 is on its tag. The [agent guide](docs/agent.md#install-and-run) describes
 `main` and how to install it from a checkout. The agent needs Rust 1.97.1 or
 newer and runs on Linux and macOS.
@@ -76,8 +76,10 @@ WASM. See [`examples/`](examples), the [guides](https://rig.rs/docs) and the
 ## Crates
 
 The `rig` crate re-exports `rig-core`. Its default features add `rig-agent`,
-the derive macros and the reqwest HTTP client with rustls. Each crate in the
-list below is a feature named after it without `rig-`:
+the derive macros, the reqwest HTTP client with rustls and, on native targets,
+the `rig` launcher (feature `cli`, from `rig-cli`); `default-features = false`
+leaves them out. Each crate in the list below is a feature named after it
+without `rig-`:
 
 ```bash
 cargo add rig --features memory,fastembed
@@ -103,8 +105,8 @@ providers), [`rig-derive`](crates/rig-derive) (feature `derive`),
 [`rig-reqwest`](crates/rig-reqwest) (feature `reqwest`) and
 [`rig-tungstenite`](crates/rig-tungstenite) (feature `websocket`).
 
-Coding agent (not facade features): [`rig-cli`](crates/rig-cli),
-[`rig-harness`](crates/rig-harness),
+Coding agent: [`rig-cli`](crates/rig-cli) (feature `cli`, the `rig` binary)
+and, not facade features, [`rig-harness`](crates/rig-harness),
 [`rig-harness-protocol`](crates/rig-harness-protocol),
 [`rig-ecs`](crates/rig-ecs), [`rig-tools`](crates/rig-tools),
 [`rig-markdown`](crates/rig-markdown), and the plugins
