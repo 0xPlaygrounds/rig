@@ -74,14 +74,14 @@ WASM. See [`examples/`](examples), the [guides](https://rig.rs/docs) and the
 ## Crates
 
 The `rig` crate re-exports `rig-core`. Its default features add `rig-agent`,
-the derive macros and the reqwest HTTP client. Each crate in the list below is a feature
-named after it without `rig-`:
+the derive macros and the reqwest HTTP client with rustls. Each crate in the
+list below is a feature named after it without `rig-`:
 
 ```bash
 cargo add rig --features lancedb,fastembed
 ```
 
-- Agents and state: [`rig-agent`](crates/rig-agent) (agents),
+- Agents and state: [`rig-agent`](crates/rig-agent),
   [`rig-memory`](crates/rig-memory) (saved conversations),
   [`rig-cassette`](crates/rig-cassette) (record and replay),
   [`rig-rmcp`](crates/rig-rmcp) (MCP tools).
@@ -91,12 +91,13 @@ cargo add rig --features lancedb,fastembed
   [`rig-candle`](crates/rig-candle) (local models),
   [`rig-fastembed`](crates/rig-fastembed) (local embeddings),
   [`rig-typesafeai`](crates/rig-typesafeai) (TypeSafe Jev judgments).
-- Vector stores: [HelixDB](crates/rig-helixdb), [LanceDB](crates/rig-lancedb),
-  [Milvus](crates/rig-milvus), [MongoDB](crates/rig-mongodb),
-  [Neo4j](crates/rig-neo4j), [PostgreSQL](crates/rig-postgres),
-  [Qdrant](crates/rig-qdrant), [S3 Vectors](crates/rig-s3vectors),
-  [ScyllaDB](crates/rig-scylladb), [SQLite](crates/rig-sqlite),
-  [SurrealDB](crates/rig-surrealdb), [Vectorize](crates/rig-vectorize).
+- Vector stores: [`rig-helixdb`](crates/rig-helixdb),
+  [`rig-lancedb`](crates/rig-lancedb), [`rig-milvus`](crates/rig-milvus),
+  [`rig-mongodb`](crates/rig-mongodb), [`rig-neo4j`](crates/rig-neo4j),
+  [`rig-postgres`](crates/rig-postgres), [`rig-qdrant`](crates/rig-qdrant),
+  [`rig-s3vectors`](crates/rig-s3vectors), [`rig-scylladb`](crates/rig-scylladb),
+  [`rig-sqlite`](crates/rig-sqlite), [`rig-surrealdb`](crates/rig-surrealdb),
+  [`rig-vectorize`](crates/rig-vectorize).
 
 Internals: [`rig-core`](crates/rig-core) (messages, models, tools,
 providers), [`rig-derive`](crates/rig-derive) (feature `derive`),
