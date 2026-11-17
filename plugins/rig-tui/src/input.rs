@@ -26,6 +26,7 @@ use super::panel::{TerminalSize, TuiPanel};
 use super::pick::{self, Choices, PickerInput, Showing};
 use super::render::selectable;
 use super::selection::Selection;
+use super::status::{AppStatus, Side, StatusItem, Tone};
 use super::terminal::TerminalFocus;
 use super::view::{ItemRow, TranscriptItem, TranscriptView, TuiView};
 use rig_ecs::agent::{ActiveTurn, Notice, StopTurn};
@@ -574,12 +575,8 @@ pub(crate) fn read_input(
                     choosing.selected = 0;
                 }
                 None if !in_panel && matches!(keymap.scope(reading), KeyScope::Panel(_)) => {}
-                // A dropped image file becomes `@path`, which attaches it.
                 None => {
-                    match clipboard::dropped_image(&text) {
-                        Some(path) => clipboard::type_path(input, &path),
-                        None => input.insert(&text),
-                    }
+                    clipboard::paste_text(input, &text);
                     view.pasted |= main && !text.is_empty();
                 }
             },
@@ -629,7 +626,14 @@ fn moused(mouse: MouseEvent, view: &mut TuiView, pane: Option<Mut<PaneState>>) {
         }
         MouseEventKind::Down(MouseButton::Left) => {
             let (from, to, up, held) = (at, at, false, true);
-            view.selection = Some(Selection { from, to, up, held });
+            let copied = None;
+            view.selection = Some(Selection {
+                from,
+                to,
+                up,
+                held,
+                copied,
+            });
         }
         MouseEventKind::Drag(MouseButton::Left) | MouseEventKind::Up(MouseButton::Left) => {
             if let Some(selection) = view.selection.as_mut().filter(|drag| drag.held) {
@@ -639,6 +643,24 @@ fn moused(mouse: MouseEvent, view: &mut TuiView, pane: Option<Mut<PaneState>>) {
             }
         }
         _ => {}
+    }
+}
+
+/// The status line item saying what the last drag copied.
+const COPIED: StatusItem = StatusItem::new("copied", Side::Left, 95, 20);
+
+/// Shows `Copied N lines`, N the lines of the text a drag copied, while
+/// it stays selected, so it goes with the selection.
+pub(crate) fn show_copied(view: Res<TuiView>, mut status: ResMut<AppStatus>) {
+    let copied = view.selection.and_then(|drag| drag.copied);
+    let text = match copied {
+        None => String::new(),
+        Some(1) => "Copied 1 line".to_owned(),
+        Some(lines) => format!("Copied {lines} lines"),
+    };
+    let shown = status.0.iter().find(|item| item.name == COPIED.name);
+    if shown.map(|item| item.text.as_str()).unwrap_or_default() != text {
+        status.0.show(COPIED.says(text, Tone::Green));
     }
 }
 
@@ -836,7 +858,7 @@ fn act(
                 .map(Processes::launcher)
                 .unwrap_or_default();
             if let Some(editor) = *editor {
-                clipboard::paste_image(images, launcher, (editor, context.wake), commands);
+                clipboard::paste(images, launcher, (editor, context.wake), commands);
             }
         }
         Do::SelectUp | Do::SelectDown => {

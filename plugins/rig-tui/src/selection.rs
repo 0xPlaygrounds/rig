@@ -16,6 +16,8 @@ pub(crate) struct Selection {
     pub(crate) up: bool,
     /// Whether the button is still down, so a drag or release moves `to`.
     pub(crate) held: bool,
+    /// The lines of the text the release copied, once a frame copied some.
+    pub(crate) copied: Option<usize>,
 }
 
 impl Selection {

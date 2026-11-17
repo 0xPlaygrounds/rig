@@ -232,6 +232,7 @@ pub fn add_view(app: &mut App) {
         .init_resource::<complete::FileIndex>()
         .init_resource::<turns::Told>()
         .add_observer(clipboard::type_pasted)
+        .add_observer(clipboard::warn_copy_missed)
         .add_observer(render::redraw_on_remove)
         .add_systems(Startup, (view::load_notices, view::load_draft))
         .add_systems(TuiKeys, history::seed_shown.in_set(HistorySystems::Seed))
@@ -296,6 +297,9 @@ pub fn add_view(app: &mut App) {
                 transcript::note_effects.in_set(TuiSystems::Prepare),
                 turns::tell_state,
                 input::note_input_context.in_set(TuiSystems::Prepare),
+                input::show_copied
+                    .run_if(resource_exists_and_changed::<view::TuiView>)
+                    .in_set(StatusSystems::Show),
                 (
                     pane::draw_panes,
                     editor::draw_editors,
