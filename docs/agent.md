@@ -690,15 +690,33 @@ processes can share one:
 | --- | --- |
 | `names.lock` | Held while a rig checks and writes a session's name, so two never take one. |
 | `settings.toml` | The one file you edit: which plugins run (`[plugins]`), the model a new session starts with (`[model]`), and settings, such as `[remote.hosts]` and `[traffic]`. A file that cannot be read or is not TOML, or a table that does not read, such as one with a misspelled key, refuses the start and names the key. A table no enabled plugin reads gets a notice at startup, an error when it looks like a misspelling of one (`[trafic]`). |
+| `AGENTS.md`, `skills/` | Your own instructions and skills, read in every project. |
+| `plugins/` | The plugin crates `rig plugin new` makes. |
 | `auth/` | `/login`'s credentials: `chatgpt.json` and the API keys in `keys/`. |
-| `project/`, `target/`, `bin/` | The generated agent project, cargo's build of it (a few gigabytes), and the builds. |
+| `project/` | The generated agent project, regenerated before each build. |
+| `target/` | cargo's build of the agent project, a few gigabytes. |
+| `bin/` | The builds: `good`, the last one that started; `staged`, a new build waiting for the next start; `staged-<session>`, one `/reload` made for one running session; `rejected`, the stamp of a build that stopped before it was ready, so it is not started again; `described/`, what each build reported about itself; and `lock`, the build lock. |
 | `build.log` | The last build's whole output. |
 | `mcp.json` | The MCP servers of the optional `rig-mcp-client` plugin, in every project. |
 | `data/` | Plugins' data across sessions and projects. |
 | `projects/` | Plugins' data per project, such as the prompt history `projects/<name>-<key>/tui/history.jsonl`. |
-| `sessions/<id>/` | A session: the agent logs in `logs/`, the name `/name` gave it in `name`, and `files/` (`meta.json`, the images in `blobs/`, the effect log `effects.jsonl` with `EffectLogPlugin`, opt-in `traffic.jsonl` with `TrafficPlugin`, plugins' files). |
+| `run/<pid>/` | One per running `rig`, named by its process id: its lock, the process groups its agent started, the builds it holds, and `agent.log` when a run with no saved session failed. |
+| `sessions/<id>/` | A session: the agent logs in `logs/`, the name `/name` gave it in `name`, the directory it runs in in `directory`, and `files/` (`meta.json`, the images in `blobs/`, the effect log `effects.jsonl` with `EffectLogPlugin`, opt-in `traffic.jsonl` with `TrafficPlugin`, plugins' files). |
 | `sessions/<id>/spill/` | The whole output of a `shell` call that was cut. |
+| `sessions/<id>/images/` | The images pasted into the input. |
 | `sessions/<id>/agent.log` | The session's agent log. |
+
+Rig cleans up after itself in these places only. `project/` and `build.log`
+are rewritten by every build. A `rig` removes its `run/<pid>/` when it exits,
+and the next start removes those of a `rig` that was killed, but a
+`run/<pid>/agent.log` of a failed run stays until you delete it. A
+`staged-<session>` goes when its session's `rig` is gone, and `described/`
+keeps only the builds in `bin/`. A session that logged nothing is removed when
+it ends, with its `spill/`, `images/` and `agent.log`. Nothing else is ever
+removed: `target/` keeps the builds of earlier versions, and saved sessions,
+`data/` and `projects/` stay. `du -sh ~/.rig/*` (or your `RIG_HOME`) shows
+what each takes. Deleting `target/` frees most of the space; the next start
+builds the agent again.
 
 Set `RIG_HOME` to put everything elsewhere, for example under a cache
 directory.
