@@ -1593,10 +1593,13 @@ pub(crate) fn back_off(
 
 /// Answers every admitted call of a failed or stopped turn that has not
 /// settled, in [`Stage::Commit`] before the kernel settles: one not answered
-/// yet with its [`IfStopped`], else as stopped, which cancels it if it runs,
-/// and whatever holds them is despawned, so they settle in this pass and the
-/// turn can end. A call spawned since the last pass is left for Admit, where a
-/// new [`TurnCall`] carries the turn on.
+/// yet with its [`IfStopped`], else, if a restore carried it over settled
+/// ([`Interrupted`]), with that result, else as stopped, which cancels it if
+/// it runs. A stopped call that started, or that a restore carried over
+/// running, is said to have possibly run ([`may_have_run`]). Whatever holds
+/// them is despawned, so they settle in this pass and the turn can end. A
+/// call spawned since the last pass is left for Admit, where a new
+/// [`TurnCall`] carries the turn on.
 pub(crate) fn stop_calls(
     turns: Query<(&TurnOutcome, &Calls), With<TurnOf>>,
     calls: Query<
@@ -1604,7 +1607,13 @@ pub(crate) fn stop_calls(
             Has<Outcome>,
             Option<&Holds>,
             Option<&IfStopped>,
-            (Has<ToolRequest>, Has<Started>, Option<&Footprint>),
+            Option<&Interrupted>,
+            (
+                Has<ToolRequest>,
+                Has<Started>,
+                Has<Restored>,
+                Option<&Footprint>,
+            ),
         ),
         (With<Admitted>, Without<Settled>),
     >,
@@ -1614,19 +1623,26 @@ pub(crate) fn stop_calls(
         let Some(why) = ending.stops() else {
             continue;
         };
-        for (call, (answered, holds, if_stopped, (tool, started, footprint))) in of
+        for (
+            call,
+            (answered, holds, if_stopped, interrupted, (tool, started, restored, footprint)),
+        ) in of
             .iter()
             .filter_map(|call| Some((call, calls.get(call).ok()?)))
         {
             release(&mut commands, holds);
             if !answered {
-                let said = match tool {
-                    true => not_finished_text(&why, started, footprint),
-                    false => why.clone(),
-                };
-                let stopped = match if_stopped {
-                    Some(IfStopped(outcome)) => outcome.clone(),
-                    None => Outcome(Err(ErrorReport::new(ErrorKind::Cancelled, said))),
+                let stopped = match (if_stopped, interrupted) {
+                    (Some(IfStopped(outcome)), _) => outcome.clone(),
+                    (None, Some(Interrupted::Settled(result))) => result.clone().into(),
+                    (None, interrupted) => {
+                        let ran = may_have_run(started, interrupted.is_some(), restored, footprint);
+                        let said = match tool {
+                            true => not_finished_text(&why, ran, footprint),
+                            false => why.clone(),
+                        };
+                        Outcome(Err(ErrorReport::new(ErrorKind::Cancelled, said)))
+                    }
                 };
                 commands.entity(call).try_insert_if_new(stopped);
             }

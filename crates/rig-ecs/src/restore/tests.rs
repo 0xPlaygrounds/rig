@@ -30,7 +30,7 @@ use crate::session_log::{
     ConversationChanged, ReflectSaved, SessionLog, SessionLogPlugin, SessionRestored, SessionStore,
 };
 use crate::stage::{
-    AgentPass, Decision, Effect, EffectRequest, ForAgent, HoldOf, Outcome, PrepareSystems,
+    AgentPass, Decision, Effect, EffectRequest, ForAgent, HoldOf, Holds, Outcome, PrepareSystems,
     ReadyToSettle, ReadyToStart, Settled, Stage, Started, SupersededBy, Supersedes,
 };
 use crate::tools::{AppToolsExt, Footprint, ToolRequest};
@@ -1178,6 +1178,40 @@ fn a_restored_turn_a_gate_stops_starts_nothing() {
     let cut = "Stopped: restart. It may have partly run; check before running it again.";
     assert!(said.contains("touched") && said.contains(cut), "{said}");
     assert_eq!(model.request_count(), 0);
+}
+
+/// Carries each restored turn on, holds its interrupted calls, and fails
+/// it.
+fn hold_and_fail(
+    turns: Query<Entity, (With<Restored>, With<TurnOf>, Without<CarryOn>)>,
+    calls: Query<(Entity, &CallOf), (With<Interrupted>, Without<Holds>, Without<Settled>)>,
+    mut commands: Commands,
+) {
+    for turn in &turns {
+        commands.entity(turn).insert(CarryOn);
+    }
+    for (call, &CallOf(turn)) in &calls {
+        commands.spawn(HoldOf(call));
+        commands
+            .entity(turn)
+            .insert(TurnOutcome::Failed("boom".into()));
+    }
+}
+
+#[test]
+fn a_failed_restored_turn_keeps_what_finished_and_cuts_short_what_ran() {
+    let (app, said, _) = restart_after_crash(|app| {
+        app.add_systems(AgentPass, hold_and_fail.in_set(Stage::Gate));
+    });
+    let failed = matches!(app.world().resource::<Ended>().0.as_slice(),
+        [TurnOutcome::Failed(why)] if why == "boom");
+    assert!(failed, "{:?}", app.world().resource::<Ended>().0);
+    // `touch` settled before the crash: its result stands, once. `wait`
+    // was running: it may have partly run.
+    let cut =
+        "Stopped: the turn failed: boom. It may have partly run; check before running it again.";
+    assert_eq!(said.matches("touched").count(), 1, "{said}");
+    assert!(said.contains(cut), "{said}");
 }
 
 /// Where each restored turn began and its index, as Gate saw it.

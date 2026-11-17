@@ -281,6 +281,13 @@ pub fn load<P: Plugin + Default>(app: &mut App, package: &str, source: &str) {
         package: package.to_owned(),
         source: source.to_owned(),
     };
+    // A plugin loaded in another's `build` ends the other's attribution,
+    // which resumes once this one is built.
+    let outer = app
+        .world()
+        .get_resource::<Attributing>()
+        .map(|it| it.plugin);
+    Attribute::Close.bracket(app);
     let entity = app
         .world_mut()
         .spawn((Name::new(plugin.name().to_owned()), source))
@@ -289,17 +296,16 @@ pub fn load<P: Plugin + Default>(app: &mut App, package: &str, source: &str) {
         entity,
         plugin: PhantomData,
     });
-    let outer = app.world_mut().remove_resource::<Attributing>();
     Attribute::Open(entity).bracket(app);
     // `Attribute` before and after it brackets its `finish` and `cleanup`
     // (and the plugins it adds), which run in the order plugins were
-    // added.
+    // added; after it, the outer's attribution resumes.
     app.add_plugins(Attribute::Open(entity));
     app.add_plugins(plugin);
-    app.add_plugins(Attribute::Close);
+    app.add_plugins(outer.map_or(Attribute::Close, Attribute::Open));
     Attribute::Close.bracket(app);
     if let Some(outer) = outer {
-        app.insert_resource(outer);
+        Attribute::Open(outer).bracket(app);
     }
 }
 
@@ -451,7 +457,7 @@ fn stop_attributing(world: &mut World, attribute: Entity) {
 }
 
 /// Attributes what a plugin spawns in its build, `finish` and `cleanup`,
-/// from its [`Attribute::Open`] to the [`Attribute::Close`] after it.
+/// from its [`Attribute::Open`] to the next `Open` or [`Attribute::Close`].
 enum Attribute {
     Open(Entity),
     Close,
@@ -467,24 +473,22 @@ struct Attributing {
 }
 
 impl Attribute {
+    /// Ends the attribution open before it, if any, recording its systems;
+    /// an `Open` then starts its plugin's.
     fn bracket(&self, app: &mut App) {
         let world = app.world_mut();
-        match self {
-            Self::Open(plugin) => {
-                let observer = attribute(world, *plugin);
-                let before = systems(world);
-                world.insert_resource(Attributing {
-                    plugin: *plugin,
-                    observer,
-                    before,
-                });
-            }
-            Self::Close => {
-                if let Some(attributing) = world.remove_resource::<Attributing>() {
-                    PluginSystems::record(world, &attributing.before, attributing.plugin);
-                    stop_attributing(world, attributing.observer);
-                }
-            }
+        if let Some(attributing) = world.remove_resource::<Attributing>() {
+            PluginSystems::record(world, &attributing.before, attributing.plugin);
+            stop_attributing(world, attributing.observer);
+        }
+        if let Self::Open(plugin) = self {
+            let observer = attribute(world, *plugin);
+            let before = systems(world);
+            world.insert_resource(Attributing {
+                plugin: *plugin,
+                observer,
+                before,
+            });
         }
     }
 }
