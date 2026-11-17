@@ -186,14 +186,14 @@ pub struct ChoiceTaken {
 }
 
 /// Chooses the agent's model: a catalog model that connects replaces the
-/// agent's [`ModelChoice`], which [`connect`] connects, and is
-/// [`ChoiceTaken`]. A connected agent keeps its reasoning setting by the
-/// name its model gives it, read again by the new model ([`carried`]). An
-/// unknown one, or another one that does not connect,
-/// such as one with no key, keeps it and its connection, with an error
-/// notice naming the closest models or why, and the one kept. The agent's
-/// own model, chosen again when it no longer connects, is refused as
-/// [`connect`] refuses it.
+/// agent's [`ModelChoice`] and connects it, or keeps its [`Connection`] when
+/// it is to the same model, and is [`ChoiceTaken`]. A connected agent keeps
+/// its reasoning setting by the name its model gives it, read again by the
+/// new model ([`carried`]). An unknown one, or another one that does not
+/// connect, such as one with no key, keeps it and its connection, with an
+/// error notice naming the closest models or why, and the one kept. The
+/// agent's own model, chosen again when it no longer connects, is refused
+/// as [`connect`] refuses it.
 pub(crate) fn on_set_model(
     set: On<SetModel>,
     agents: Query<

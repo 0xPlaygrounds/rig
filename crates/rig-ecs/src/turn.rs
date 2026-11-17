@@ -1595,9 +1595,11 @@ pub(crate) fn back_off(
 /// settled, in [`Stage::Commit`] before the kernel settles: one not answered
 /// yet with its [`IfStopped`], else, if a restore carried it over settled
 /// ([`Interrupted`]), with that result, else as stopped, which cancels it if
-/// it runs, and whatever holds them is despawned, so they settle in this
-/// pass and the turn can end. A call spawned since the last pass is left for Admit, where a
-/// new [`TurnCall`] carries the turn on.
+/// it runs. A stopped call that started, or that a restore carried over
+/// running, is said to have possibly run ([`may_have_run`]). Whatever holds
+/// them is despawned, so they settle in this pass and the turn can end. A
+/// call spawned since the last pass is left for Admit, where a new
+/// [`TurnCall`] carries the turn on.
 pub(crate) fn stop_calls(
     turns: Query<(&TurnOutcome, &Calls), With<TurnOf>>,
     calls: Query<
