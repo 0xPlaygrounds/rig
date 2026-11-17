@@ -395,8 +395,9 @@ fn manifest(home: &Home, plugins: &Plugins, source: &RigSource) -> Result<String
 
 /// The agent's build profile: dependencies at full speed with no debug info,
 /// built once, and the crates `/reload` rebuilds (rig's own from a checkout,
-/// and extras by path or git) at opt-level 1 with line tables, so a rebuild
-/// stays quick and their backtraces keep file and line.
+/// extras by path or git, and the path dependencies of extras by path) at
+/// opt-level 1 with line tables, so a rebuild stays quick and their
+/// backtraces keep file and line.
 fn profile(plugins: &Plugins, source: &RigSource) -> Result<String> {
     let mut text = String::from(
         "\n[profile.dev]\ndebug = \"line-tables-only\"\n\
@@ -407,17 +408,50 @@ fn profile(plugins: &Plugins, source: &RigSource) -> Result<String> {
         RigSource::Local(_) => rig_crates(plugins, source)?,
         RigSource::Registry => BTreeSet::new(),
     };
-    edited.extend(
-        (plugins.extras_on())
-            .filter(|extra| matches!(extra.source, Source::Path(_) | Source::Git { .. }))
-            .map(|extra| extra.krate.clone()),
-    );
+    for extra in plugins.extras_on() {
+        match &extra.source {
+            Source::Path(directory) => {
+                edited.insert(extra.krate.clone());
+                path_crates(directory, &mut edited);
+            }
+            Source::Git { .. } => {
+                edited.insert(extra.krate.clone());
+            }
+            Source::Version(_) => {}
+        }
+    }
     for name in edited {
         text.push_str(&format!(
             "\n[profile.dev.package.{name}]\nopt-level = 1\ndebug = \"line-tables-only\"\n"
         ));
     }
     Ok(text)
+}
+
+/// Adds to `found` the packages the crate in `directory` depends on by path,
+/// and theirs in turn: cargo rebuilds them when they change, as it does the
+/// crate. A manifest that cannot be read is skipped; cargo names it.
+fn path_crates(directory: &Path, found: &mut BTreeSet<String>) {
+    let Ok(manifest) = Manifest::read(directory) else {
+        return;
+    };
+    for (_, table) in manifest.dependency_tables(&["dependencies"]) {
+        for (_, item) in table.iter() {
+            let Some(path) = item.get("path").and_then(Item::as_str) else {
+                continue;
+            };
+            let dependency = directory.join(path);
+            let name = Manifest::read(&dependency).ok().and_then(|manifest| {
+                let name = manifest.document.get("package")?.get("name")?.as_str()?;
+                Some(name.to_owned())
+            });
+            if let Some(name) = name
+                && found.insert(name)
+            {
+                path_crates(&dependency, found);
+            }
+        }
+    }
 }
 
 /// The dependency source of the rig crate `name`: its directory in the

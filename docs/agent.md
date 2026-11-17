@@ -560,8 +560,9 @@ failed and it can read the log and fix the cause; `/reload` then tries again.
 
 The agent's dependencies build once, optimized and with no debug info, which
 keeps `RIG_HOME/target` smaller and links shorter. The crates `/reload`
-rebuilds (rig's own from a checkout, and plugins by path or git) keep line
-tables, so their backtraces show file and line.
+rebuilds (rig's own from a checkout, plugins by path or git, and the path
+dependencies of plugins by path) keep line tables, so their backtraces show
+file and line.
 
 cargo runs in `RIG_HOME/project` and keeps your environment, so
 `RUSTC_WRAPPER`, `RUSTFLAGS` and most cargo variables apply to these builds.
