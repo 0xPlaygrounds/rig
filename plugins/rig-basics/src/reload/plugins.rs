@@ -143,11 +143,47 @@ fn rows(chosen: &Plugins, running: &[String]) -> Vec<Row> {
     let runs = |plugin: &str| running.iter().any(|runs| runs == plugin);
     let built_ins = (built_ins.into_iter())
         .map(|built_in| built_in_row(built_in, on(built_in.plugin), runs(built_in.plugin)));
-    let extras = (chosen.extra.iter()).map(|extra| {
-        let name = extra_name(extra, &chosen.extra);
-        extra_row(extra, name, on(&extra.plugin), runs(&extra.plugin))
-    });
+    let mut names: Vec<String> = (BUILT_IN.iter())
+        .map(|built_in| built_in.name.to_owned())
+        .chain(
+            chosen
+                .extra
+                .iter()
+                .map(|extra| extra_name(extra, &chosen.extra)),
+        )
+        .collect();
+    for (index, extra) in chosen.extra.iter().enumerate() {
+        unique(&mut names, BUILT_IN.len() + index, extra);
+    }
+    let extras = (chosen
+        .extra
+        .iter()
+        .zip(names.into_iter().skip(BUILT_IN.len())))
+    .map(|(extra, name)| extra_row(extra, name, on(&extra.plugin), runs(&extra.plugin)));
     built_ins.chain(extras).collect()
+}
+
+/// Renames the extra `extra` at `at` in `names` while another row has its
+/// name: to its type path, then to its crate and type path, which no other
+/// row has since an extra's type path is its own and no name but these
+/// holds `: `.
+fn unique(names: &mut [String], at: usize, extra: &Extra) {
+    let candidates = [
+        extra.plugin.clone(),
+        format!("{}: {}", extra.krate, extra.plugin),
+    ];
+    for candidate in candidates {
+        let Some(name) = names.get(at) else {
+            return;
+        };
+        let taken = (names.iter().enumerate()).any(|(other, it)| other != at && it == name);
+        if !taken {
+            return;
+        }
+        if let Some(name) = names.get_mut(at) {
+            *name = candidate;
+        }
+    }
 }
 
 /// The row of rig's plugin `built_in`.
@@ -195,10 +231,9 @@ fn built_in_row(built_in: &BuiltIn, on: bool, runs: bool) -> Row {
     }
 }
 
-/// The name of `extra` among `extras`: its crate when it is the crate's
-/// only one, else its crate and type name when no other of the crate's has
-/// that name, else its type path. Crate names hold no spaces and type paths
-/// differ, so no two extras share a name.
+/// The name `extra` is shown by before [`unique`]: its crate when it is the
+/// crate's only extra, else its crate and type name when no other of the
+/// crate's has that type name, else its type path.
 fn extra_name(extra: &Extra, extras: &[Extra]) -> String {
     let last = |plugin: &str| plugin.rsplit("::").next().unwrap_or(plugin).to_owned();
     let mut others = (extras.iter())

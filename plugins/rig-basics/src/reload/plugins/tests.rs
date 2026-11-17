@@ -235,3 +235,39 @@ fn settings_that_are_not_toml_are_named_without_a_command_that_cannot_read_them(
         "{told:?}"
     );
 }
+
+#[test]
+fn every_row_has_a_name_of_its_own() {
+    let home = scratch_home("plugins-names");
+    fs::create_dir_all(home.root()).ok();
+    let extras = [
+        ("Welcome", "welcome::Plugin"),
+        ("viz", "viz::charts::Plugin"),
+        ("viz", "viz::tables::Plugin"),
+        ("Plugin", "Other"),
+        ("lone", "Plugin"),
+        ("Model", "picker"),
+        ("Model", "picker2"),
+        ("picker", "x::picker"),
+    ];
+    let tables: String = (extras.iter())
+        .map(|(krate, plugin)| {
+            format!("[[plugins.extra]]\ncrate = \"{krate}\"\npath = \"{krate}\"\nplugin = \"{plugin}\"\n")
+        })
+        .collect();
+    fs::write(home.settings(), tables).ok();
+    let (mut app, agent) = app(&home, true);
+    open(&mut app, agent);
+    let rows = picked_rows(&mut app);
+    assert_eq!(
+        rows.len(),
+        BUILT_IN.len() + extras.len(),
+        "{:?}",
+        app.world().resource::<Told>().0
+    );
+    let mut names: Vec<&str> = rows.iter().map(|row| row.name.as_str()).collect();
+    names.sort_unstable();
+    let before = names.len();
+    names.dedup();
+    assert_eq!(names.len(), before, "{names:?}");
+}
