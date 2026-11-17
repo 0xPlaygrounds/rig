@@ -534,41 +534,38 @@ fn plugins_defaults_asks_to_go_back_to_rigs_defaults() {
 }
 
 #[test]
-fn the_question_says_why_it_cannot_reload_and_a_question_never_shown_does_nothing() {
+fn the_question_says_why_it_cannot_reload_and_esc_goes_back_to_the_list() {
     let home = scratch_home("plugins-no-reload");
     let (mut app, agent) = app(&home, true);
     app.world_mut().remove_resource::<ReloadStatus>();
-    // Opens the list, ticks Folded output and leaves: the question.
-    let ask = |app: &mut App| -> Option<(Entity, Picker)> {
-        open(app, agent);
-        let (list, _) = picker(app)?;
-        tick(app, list, &["Folded output"], &[]);
-        pick(app, list, None);
-        picker(app)
+    open(&mut app, agent);
+    let found = picker(&mut app);
+    assert!(found.is_some(), "no list");
+    let Some((list, _)) = found else {
+        return;
     };
-    let asked = ask(&mut app);
+    tick(&mut app, list, &["Folded output"], &[]);
+    pick(&mut app, list, None);
+    let asked = picker(&mut app);
     assert!(asked.is_some(), "no question");
     let Some((question, shown)) = asked else {
         return;
     };
     assert!(shown.body.contains("Reload plugin"), "{}", shown.body);
 
-    // Closed by a front that never showed it: no list again, nothing written.
-    pick(&mut app, question, None);
-    assert!(picker(&mut app).is_none());
-    assert_eq!(settings(&home), "");
-
-    // Shown, then Esc: back to the list.
-    let Some((question, _)) = ask(&mut app) else {
-        return;
-    };
-    app.world_mut().entity_mut(question).insert(Highlighted(0));
+    // Esc with a filter typed that matches no answer, so nothing is
+    // highlighted: back to the list with the ticks, nothing written.
     pick(&mut app, question, None);
     let again = picker(&mut app);
     assert_eq!(
         again.as_ref().map(|(_, shown)| shown.title.as_str()),
         Some("Plugins")
     );
+    let ticked = (again.iter().flat_map(|(_, shown)| shown.items.iter()))
+        .find(|item| item.label == "Folded output")
+        .map(|item| item.checked);
+    assert_eq!(ticked, Some(true));
+    assert_eq!(settings(&home), "");
 
     // Later says when the changes apply, naming no /reload that cannot run.
     let Some((list, _)) = again else {

@@ -632,17 +632,19 @@ fn ask(
 
 /// Carries out the answer to the question: writes the changes to
 /// settings.toml in one edit, and reloads for [`Leave::Reload`]; back to
-/// the list for [`Leave::Edit`] or Esc. Closed without ever being
-/// highlighted, the front never showed it: nothing happens.
+/// the list for [`Leave::Edit`] or Esc. Closed with no choice where no
+/// one sits at a terminal, no front showed it: nothing happens, so a
+/// refused question never reopens the list.
 fn answer(
     picked: On<Picked>,
-    questions: Query<(&LeaveQuestion, Has<Highlighted>)>,
+    questions: Query<&LeaveQuestion>,
+    invoked: Option<Res<Invoked>>,
     home: Option<Res<RigHome>>,
     status: Option<ResMut<ReloadStatus>>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Ok((question, shown)) = questions.get(picked.entity) else {
+    let Ok(question) = questions.get(picked.entity) else {
         return;
     };
     let leave = match &picked.chosen {
@@ -650,7 +652,7 @@ fn answer(
             .items
             .first()
             .and_then(|index| question.answers.get(*index)),
-        None if shown => Some(&Leave::Edit),
+        None if invoked.is_some_and(|invoked| invoked.interactive()) => Some(&Leave::Edit),
         None => None,
     };
     let Some(&leave) = leave else {
