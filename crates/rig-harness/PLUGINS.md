@@ -2458,7 +2458,7 @@ lowest first, `u8::MAX` never):
 | left | 20 | `title` | `⤷` a spawned agent's name | 14 | `rig_basics::subagents` |
 | left | 30 | `model` | the model | always | `rig_basics::models` |
 | left | 40 | `reasoning` | the reasoning setting | 12 | `rig_basics::models` |
-| left | 50 | `status` | idle, thinking, …; work that has lasted 5 s adds how long (`thinking… 1m12s`) | always | `rig_basics::activity` |
+| left | 50 | `status` | idle, thinking, …; work starts with a wave of six bars, moving unless `[activity] animate = false`, and adds how long once it has lasted 5 s (`▂▆█ █▆▂ thinking… 1m12s`) | always | `rig_basics::activity` |
 | left | 60 | `subagents` | the agent's subagents at work | 15 | `rig_basics::subagents` |
 | left | 70 | `others` | the other agents at work | 13 | `rig_basics::subagents` |
 | left | 80 | `turn` | what the turn spent (on the turn) | 11 | `rig_basics::telemetry` |

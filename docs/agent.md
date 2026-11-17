@@ -239,7 +239,10 @@ output, cache reads and writes), its cost (the provider's figure, else the
 catalog's list price; `+` when some calls had no price) and the context in
 use against the model's window: after `/compact`, until the next reply
 measures it, an estimate marked `~` (`ctx ~12k/1.0M`), and `?` where
-nothing estimated it. `/usage` breaks them down. With the optional
+nothing estimated it. `/usage` breaks them down. While the agent works, a
+small wave of six bars moves before what it is doing, and rig's mark in the
+welcome at the top of the transcript pulses with it;
+`[activity] animate = false` in `settings.toml` keeps both still. With the optional
 `rig_basics::budget::BudgetPlugin` (`rig plugin enable
 rig_basics::budget::BudgetPlugin`), `/budget 2.00` or `/budget 500000 tokens`
 bounds what the session spends, helpers included: at the limit the running
@@ -802,7 +805,7 @@ processes can share one:
 | Path | What it holds |
 | --- | --- |
 | `names.lock` | Held while a rig checks and writes a session's name, so two never take one. |
-| `settings.toml` | The one file you edit: which plugins run (`[plugins]`), the model a new session starts with (`[model]`), and settings, such as `[remote.hosts]` and `[traffic]`. A file that cannot be read or is not TOML, or a table that does not read, such as one with a misspelled key, refuses the start and names the key. A table no enabled plugin reads gets a notice at startup, an error when it looks like a misspelling of one (`[trafic]`). |
+| `settings.toml` | The one file you edit: which plugins run (`[plugins]`), the model a new session starts with (`[model]`), and settings, such as `[remote.hosts]`, `[traffic]` and `[activity]`. A file that cannot be read or is not TOML, or a table that does not read, such as one with a misspelled key, refuses the start and names the key. A table no enabled plugin reads gets a notice at startup, an error when it looks like a misspelling of one (`[trafic]`). |
 | `AGENTS.md`, `skills/` | Your own instructions and skills, read in every project. A new home gets the `writing-rig-plugins` skill once. |
 | `plugins/` | The plugin crates `rig plugin new` makes. |
 | `auth/` | `/login`'s credentials: `chatgpt.json` and the API keys in `keys/`. |

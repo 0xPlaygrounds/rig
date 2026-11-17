@@ -2,7 +2,10 @@
 //! version, the agent's model and reasoning setting, and the project's
 //! directory. It is an unsaved aside before the first entry
 //! ([`WELCOME`]), so it never reaches the model and scrolls away with the
-//! conversation, kept current as the model or the setting changes.
+//! conversation, kept current as the model or the setting changes. While
+//! the shown agent works, the mark on screen pulses with the activity's
+//! animation ([`ActivityPlugin`](crate::activity::ActivityPlugin)); without
+//! that plugin it stays still.
 //!
 //! ```no_run
 //! use rig_harness::prelude::*;
@@ -113,11 +116,16 @@ pub use tui::WelcomeLooks;
 mod tui {
     use bevy_app::App;
     use rig_harness::prelude::*;
+    use rig_tui::ratatui::buffer::Buffer;
     use rig_tui::ratatui::style::{Color, Stylize};
     use rig_tui::ratatui::text::{Line, Span};
-    use rig_tui::{AsideRender, RenderBatch, RenderSystems, Theme, TranscriptRender};
+    use rig_tui::{
+        AsideRender, MainPane, PanelCanvas, RenderBatch, RenderSystems, Theme, TranscriptRender,
+        TuiSystems,
+    };
 
     use super::{WELCOME, Welcome};
+    use crate::activity::{Pulse, level};
 
     /// A panel of rig's mark, its rows from the top: one left of the gap,
     /// its inner corners (right) cut, and its mirror right of it.
@@ -129,14 +137,17 @@ mod tui {
     const SHADES: [f32; 3] = [0.6, 0.72, 0.85];
 
     /// Row `row` of rig's mark in `theme`'s grays: six panels around a
-    /// gap, three each side.
-    pub(super) fn mark(row: usize, theme: &Theme) -> Vec<Span<'static>> {
-        let panel = |cells: &[&'static str; 3], shade: f32| {
+    /// gap, three each side, at the activity's animation step `step`, or
+    /// still in [`SHADES`].
+    pub(super) fn mark(row: usize, theme: &Theme, step: Option<usize>) -> Vec<Span<'static>> {
+        let panel = |cells: &[&'static str; 3], pair: usize| {
             let cell = cells.get(row).copied().unwrap_or_default();
+            let lift = f32::from(level(pair, step)) - f32::from(level(pair, None));
+            let shade = SHADES.get(pair).copied().unwrap_or_default() + 0.07 * lift;
             Span::from(cell).fg(theme.shade(shade))
         };
-        let left = SHADES.iter().map(|shade| panel(&LEFT, *shade));
-        let right = SHADES.iter().rev().map(|shade| panel(&RIGHT, *shade));
+        let left = (0..SHADES.len()).map(|pair| panel(&LEFT, pair));
+        let right = (0..SHADES.len()).rev().map(|pair| panel(&RIGHT, pair));
         let mut spans = vec![Span::from(" ")];
         for (at, span) in left.chain(right).enumerate() {
             if at > 0 {
@@ -157,7 +168,70 @@ mod tui {
         app.add_systems(
             TranscriptRender,
             draw.in_set(WelcomeLooks).in_set(RenderSystems::Render),
+        )
+        .add_systems(
+            PostUpdate,
+            pulse
+                .run_if(resource_exists::<Pulse>)
+                .after(TuiSystems::Draw)
+                .before(TuiSystems::Render),
         );
+    }
+
+    /// Paints the mark in the main pane in the activity's animation step,
+    /// over the drawn transcript, so the transcript is not laid out again
+    /// for it. It looks down the pane from the top until it has painted
+    /// the mark's last row, so each row of the mark still on screen pulses
+    /// wherever a title or wrapped lines put it, and only rows that start
+    /// with a row of the mark change. Under `NO_COLOR` the mark stays as
+    /// drawn.
+    fn pulse(
+        pulse: Res<Pulse>,
+        mut panes: Query<&mut PanelCanvas, With<MainPane>>,
+        theme: Res<Theme>,
+    ) {
+        let Some(step) = pulse.0 else {
+            return;
+        };
+        if theme.plain {
+            return;
+        }
+        for mut canvas in &mut panes {
+            // Painting changes only the buffer, not a change to redraw for.
+            let buffer = canvas.bypass_change_detection().buffer_mut();
+            let area = buffer.area;
+            let last = LEFT.len().saturating_sub(1);
+            for y in area.top()..area.bottom() {
+                let painted = (0..LEFT.len()).find(|row| paint(buffer, (y, *row), step, &theme));
+                if painted == Some(last) {
+                    break;
+                }
+            }
+        }
+    }
+
+    /// Colors screen row `y` of `buffer` as row `row` of the mark at
+    /// animation step `step`, when the row starts with that row of the
+    /// mark; whether it did.
+    fn paint(buffer: &mut Buffer, (y, row): (u16, usize), step: usize, theme: &Theme) -> bool {
+        let mut x = buffer.area.left();
+        let mut cells = Vec::new();
+        for span in mark(row, theme, Some(step)) {
+            for glyph in span.content.chars() {
+                let cell = buffer.cell((x, y));
+                if !cell.is_some_and(|cell| cell.symbol().chars().eq([glyph])) {
+                    return false;
+                }
+                cells.extend(span.style.fg.map(|color| (x, color)));
+                x = x.saturating_add(1);
+            }
+        }
+        for (x, color) in cells {
+            if let Some(cell) = buffer.cell_mut((x, y)) {
+                cell.set_fg(color);
+            }
+        }
+        true
     }
 
     /// Draws the welcome asides.
@@ -184,7 +258,7 @@ mod tui {
             vec![Span::from(says.directory).dim()],
         ];
         let rows = beside.into_iter().enumerate().map(|(row, beside)| {
-            let mut spans = mark(row, &view.theme);
+            let mut spans = mark(row, &view.theme, None);
             spans.push(Span::from("   "));
             spans.extend(beside);
             // Its own background, not the band asides are drawn on.
