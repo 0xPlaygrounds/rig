@@ -422,15 +422,18 @@ models first.
 The status line says what the agent is doing. Once a step has lasted 5
 seconds it also says for how long, such as `thinking… 1m12s` or
 `running tools… 4m03s`. The clock starts again when the step changes, so
-`thinking… 4m10s` means the model has sent nothing for that long.
+`thinking… 4m10s` means the model has written no answer or tool call for
+that long; it may still be reasoning.
 
 Esc stops the turn at any time. What the reply had streamed stays.
 
-A model call whose provider sends nothing for 5 minutes fails and is retried
+A model call whose provider streams no event for 5 minutes fails and is retried
 like a dropped connection (above), showing `retry 1/4 in 2s…`. With the
 default four retries, a provider that never answers takes about 25 minutes
-(5 tries of 5 minutes) to end in an error. Any event the provider sends,
-a keep-alive ping included, restarts the 5 minutes.
+(5 tries of 5 minutes) to end in an error. The status line's clock starts
+again after each retry, so it climbs to about `5m00s`, shows `retry n/4`,
+then starts over. Only an event the provider streams restarts the 5
+minutes, a ping event included; an event stream's comment lines do not.
 
 To see what happened, read the session's log, `RIG_HOME/sessions/<id>/agent.log`.
 A session that was never saved is removed when rig exits; when that run

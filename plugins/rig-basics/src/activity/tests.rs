@@ -174,7 +174,8 @@ fn the_status_line_shows_how_long_a_step_has_lasted() {
     // A short step shows no clock, so it does not flicker.
     assert_eq!(shown(&mut app, 0).as_deref(), Some("thinking…"));
     assert_eq!(shown(&mut app, 4).as_deref(), Some("thinking…"));
-    assert_eq!(shown(&mut app, 66).as_deref(), Some("thinking… 1m10s"));
+    assert_eq!(shown(&mut app, 1).as_deref(), Some("thinking… 5s"));
+    assert_eq!(shown(&mut app, 65).as_deref(), Some("thinking… 1m10s"));
 
     // The clock counts from when the status changed.
     let answer = Partial {
