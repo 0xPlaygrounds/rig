@@ -9,7 +9,8 @@
 //! Its own first words (`build`, `update`, `plugin`, `help`, `help-agents`,
 //! `--version`) are read before the build; the rest of the command line,
 //! `--resume` included, once the agent is built, against the commands and
-//! options its plugins add (`rig help` lists them).
+//! options its plugins add (`rig help` lists them). A first word `--safe`
+//! starts rig's default plugins alone ([`run::safe_flag`]).
 
 mod build;
 mod legacy;
@@ -76,6 +77,11 @@ stdin; `rig help-agents` says how.
                          over its stdin and stdout (-p, --json).
   rig --version          The launcher's version, with the commit when it was
                          built in a rig checkout.
+  rig --safe [options…]  Start with rig's default plugins alone, ignoring
+                         [plugins] in settings.toml, from a build kept apart
+                         (its log: RIG_HOME/safe-build.log). /reload or
+                         /plugins goes back to your own plugins. `--safe`
+                         counts only as the first word.
 ";
 
 const SESSION: &str = "
@@ -120,6 +126,24 @@ fn main() -> ExitCode {
         }
     };
     let home = launch.home();
+    let (safe, args) = run::safe_flag(args);
+    let launcher_command = matches!(
+        args.first().map(String::as_str),
+        Some(
+            "build"
+                | "update"
+                | "plugin"
+                | "help"
+                | "--help"
+                | "-h"
+                | "help-agents"
+                | "--version"
+                | "-V"
+        )
+    );
+    if safe && launcher_command {
+        return run::refused("`--safe` only goes with a start of the agent");
+    }
     let result = match args
         .iter()
         .map(String::as_str)
@@ -145,7 +169,7 @@ fn main() -> ExitCode {
             Ok(ExitCode::SUCCESS)
         }
         ["help", command] => Ok(help(&home, command)),
-        _ => run::run(launch, &args),
+        _ => run::run(launch, &args, safe),
     };
     result.unwrap_or_else(|failure| {
         eprintln!("error: {failure}");

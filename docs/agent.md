@@ -579,6 +579,24 @@ its conversation as a message from the `build` plugin, which starts no turn
 when the agent is idle and is saved with the session. Ask it why the build
 failed and it can read the log and fix the cause; `/reload` then tries again.
 
+Safe mode: when a plugin keeps rig from building or starting, `rig --safe`
+starts a build of rig's default plugins alone. `--safe` counts only as the
+first word, before any option, so `rig --safe -r <id>` works and a prompt or
+an option value that reads `--safe` stays the agent's. It ignores `[plugins]`
+in `settings.toml`; the rest of the file, such as the model and sign-in, still
+applies. That build is kept in `RIG_HOME/bin/safe` with its own log,
+`RIG_HOME/safe-build.log`, so `build.log` keeps the failed build's output.
+With rig from crates.io, the next `rig --safe` starts it without running cargo
+while the launcher is the same and the build still describes itself; from a
+rig checkout (`RIG_SOURCE`, or a launcher installed from one), every
+`rig --safe` runs cargo, which rebuilds only what changed in the checkout. The
+agent says it is in safe mode. Fix the cause, for example with `/plugins`,
+then `/reload` builds and starts your own plugins again, rolling back to the
+safe build if that build crashes during startup, also when the reload restarts
+on a newly installed launcher. Quitting and running `rig` works too; that
+first plain start rebuilds your plugins and tries the result once as a new
+build, even one that stopped during startup before.
+
 `rig build` regenerates and builds the agent without starting it.
 `CARGO_BUILD_JOBS` sets cargo's `-j` for these builds, as for any cargo build.
 
@@ -759,9 +777,11 @@ processes can share one:
 | `auth/` | `/login`'s credentials: `chatgpt.json` and the API keys in `keys/`. |
 | `anthropic-oauth/` | The Claude sign-in and device id of the optional `rig-claude-cloak` plugin. |
 | `project/` | The generated agent project, regenerated before each build. |
+| `kept-locks/` | The project's lock files while a `rig --safe` build runs, and after one was stopped, until the next build puts them back. |
 | `target/` | cargo's build of the agent project, a few gigabytes. |
-| `bin/` | The builds. `good` is the last one that started. `staged` is a new build waiting for the next start, and `staged-<session>` one made for one session's `rig` by its start or its `/reload`. `rejected` is the stamp of a build that stopped before it was ready, which starts skip until it changes. `described/` holds what each build reported about itself, and `lock` is the build lock. |
+| `bin/` | The builds. `good` is the last one that started. `staged` is a new build waiting for the next start, and `staged-<session>` one made for one session's `rig` by its start or its `/reload`. `rejected` is the stamp of a build that stopped before it was ready, which starts skip until it changes. `described/` holds what each build reported about itself, and `lock` is the build lock. `safe` is the build `rig --safe` starts, and `safe.version` the launcher version and source it was built by. |
 | `build.log` | The last build's whole output. |
+| `safe-build.log` | The last `rig --safe` build's whole output. |
 | `mcp.json` | The MCP servers of the optional `rig-mcp-client` plugin, in every project, with its locks `mcp.lock` and `mcp-approvals.lock`. |
 | `data/` | Plugins' data across sessions and projects. |
 | `projects/` | Plugins' data per project, such as the prompt history `projects/<name>-<key>/tui/history.jsonl`. |
@@ -771,8 +791,11 @@ processes can share one:
 | `sessions/<id>/images/` | The images pasted into the input. |
 | `sessions/<id>/agent.log` | The session's agent log. |
 
-Rig cleans up after itself in these places only. `project/` and `build.log`
-are rewritten by every build. A `rig` removes its `run/<pid>/` when it exits,
+Rig cleans up after itself in these places only. `project/` is rewritten by
+every build, `build.log` by every build of your plugins, and `safe-build.log`
+by every safe build that runs (with rig from crates.io a current safe build is
+started as it is), which rewrites `bin/safe` and `safe.version` when it
+succeeds. A `rig` removes its `run/<pid>/` when it exits,
 and the next start removes those of a `rig` that was killed. A failed run's
 `run/<pid>/agent.log` is kept until you delete it, unless the `rig` went back
 to another session and said why there. The next start after a session's `rig`

@@ -91,7 +91,9 @@ fn resume_named(test: &str, name: &str, other: &str) -> Option<(Option<String>, 
         Ok(id)
     };
     let made = named(name).and_then(|id| named(other).map(|_| id));
-    let resumed = made.ok().map(|id| (resume_command(&home, &id, false), id));
+    let resumed = made
+        .ok()
+        .map(|id| (resume_command(&home, &id, false, false), id));
     fs::remove_dir_all(&root).ok();
     resumed
 }
@@ -445,7 +447,7 @@ fn an_unknown_plugin_refuses_the_start_instead_of_running_the_previous_build() {
         fs::create_dir_all(home.root().join("plugins/bad")).ok();
         fs::write(home.root().join("plugins/bad/Cargo.toml"), "[package\n").ok();
         let started = at(&home, Path::new(NO_LAUNCHER))
-            .and_then(|launch| run(launch, &["-p".to_owned(), "hi".to_owned()]))
+            .and_then(|launch| run(launch, &["-p".to_owned(), "hi".to_owned()], false))
             .map_err(|why| why.to_string());
         let ran = fs::read_to_string(home.root().join("ran")).unwrap_or_default();
         fs::remove_dir_all(home.root()).ok();
@@ -1121,11 +1123,16 @@ fn as_reexecuted(home: &Home, next: &Launch, run: &RunDir) -> Result<Ended> {
     let args: Vec<String> = (launch.args.iter())
         .map(|arg| arg.to_string_lossy().into_owned())
         .collect();
+    let (safe, args) = safe_flag(args);
     let start = start_of(home, AgentDescription::default().resume(&args).as_deref())?;
     let carried = std::mem::take(&mut launch.carry);
     let (mut claimed, notice) = claim(home, start, launch.here.as_deref())?;
     launch.carry.notice = carry_on(&mut launch, carried, &mut claimed, notice);
-    let running = select(&launch, &claimed.id, run, None)?;
+    let running = if safe {
+        select_safe(&launch, &claimed.id, run)?
+    } else {
+        select(&launch, &claimed.id, run, None)?
+    };
     run_agent(
         &mut launch,
         run,
@@ -2344,4 +2351,198 @@ fn signalled_at_prompt(
     };
     drop(kept);
     Ok((String::from_utf8_lossy(&said).into_owned(), status.signal()))
+}
+
+/// Only a first word `--safe` starts in safe mode: a prompt, an option's
+/// value or a word after `--` that reads `--safe` stays the agent's.
+#[test]
+fn only_a_first_word_safe_starts_safe_mode() {
+    let words = |line: &str| line.split(' ').map(str::to_owned).collect::<Vec<_>>();
+    assert_eq!(safe_flag(words("--safe -r work")), (true, words("-r work")));
+    for line in ["-p -- --safe", "-r --safe", "-p --safe", "build --safe"] {
+        assert_eq!(safe_flag(words(line)), (false, words(line)), "{line}");
+    }
+}
+
+/// What a safe start whose `/reload` stages a build that becomes ready, or
+/// exits before it is ready (`ready`), leaves: the builds that ran, the
+/// first start's notice, the good build, and whether the shared staged
+/// build is still there. When `replace`, the reload also replaces the
+/// launcher, so a new launcher goes on from its re-exec, past its build
+/// ([`as_reexecuted`]), which finds the reload's staged build as `rig
+/// build` left it.
+#[cfg(unix)]
+fn safe_reload(name: &str, ready: bool, replace: bool) -> Result<(String, String, String, bool)> {
+    let home = builds(name, "", "");
+    let ran = locks::hold_run(&home).and_then(|run| {
+        let (session, saved) = home.new_session()?;
+        saved.mark_saved()?;
+        let launcher = home.root().join("launcher").join("rig");
+        fs::create_dir_all(home.root().join("launcher"))?;
+        fs::write(&launcher, "old")?;
+        let own = home.root().join("own");
+        let started = if ready {
+            fake_agent::commands(&[Step::Ready])
+        } else {
+            "exit 1".to_owned()
+        };
+        script(
+            &own,
+            &format!(
+                "[ -n \"$RIG_DESCRIBE\" ] && exit 0\necho own >> \"$RIG_HOME/ran\"\n{started}"
+            ),
+        )?;
+        let reload = format!("cp {} \"$RIG_HOME/bin/staged-$RIG_SESSION\"", own.display());
+        let notice = "printf '%s' \"$RIG_NOTICE\" > \"$RIG_HOME/notice\"";
+        let safe = fake_agent::script(&[
+            &[
+                sh("echo safe >> \"$RIG_HOME/ran\""),
+                sh(notice),
+                Step::Ready,
+                sh(&reload),
+                sh(if replace { REPLACE_LAUNCHER } else { ":" }),
+                Step::End(AgentEnd::Reload),
+            ],
+            &[sh("echo safe >> \"$RIG_HOME/ran\"")],
+        ]);
+        fs::write(build::safe(&home), safe)?;
+        fs::set_permissions(
+            build::safe(&home),
+            std::os::unix::fs::PermissionsExt::from_mode(0o755),
+        )?;
+        let mut launch = at(&home, &launcher)?;
+        let (claimed, _) = claim(&home, Start::Resume(session), Some(home.root()))?;
+        let running = select_safe(&launch, &claimed.id, run.dir())?;
+        launch.carry.notice = running.current.is_safe().then(|| SAFE_NOTICE.to_owned());
+        let ended = run_agent(
+            &mut launch,
+            run.dir(),
+            &Invocation::default(),
+            false,
+            claimed,
+            running,
+        )?;
+        if let Some(next) = ended.reexec {
+            let first = next
+                .reexec()
+                .get_args()
+                .next()
+                .map(std::ffi::OsStr::to_owned);
+            if first.as_deref() != Some(std::ffi::OsStr::new("--safe")) {
+                return Err(format!("the re-exec leaves safe mode: {first:?}").into());
+            }
+            as_reexecuted(&home, &next, run.dir())?;
+        }
+        let read = |name: &str| fs::read_to_string(home.root().join(name)).unwrap_or_default();
+        Ok((
+            read("ran"),
+            read("notice"),
+            fs::read_to_string(home.good())?,
+            home.staged().exists(),
+        ))
+    });
+    fs::remove_dir_all(home.root()).ok();
+    ran
+}
+
+/// A safe start runs the safe build, never the good or the shared staged
+/// build, and says it is in safe mode and how to leave. Its `/reload`
+/// leaves safe mode: the build that reload staged starts as a trial and
+/// becomes the good build.
+#[cfg(unix)]
+#[test]
+fn safe_mode_runs_the_safe_build_and_a_reload_leaves_it() {
+    let left = safe_reload("safe-reload", true, false).map_err(|why| why.to_string());
+    let Ok((ran, notice, good, staged)) = left else {
+        return assert!(left.is_ok(), "{left:?}");
+    };
+    assert_eq!(ran, "safe\nown\n");
+    assert!(
+        notice.contains("Safe mode") && notice.contains("/reload"),
+        "{notice:?}"
+    );
+    assert!(
+        good.contains("echo own"),
+        "the reloaded build is not the good one: {good}"
+    );
+    assert!(staged, "safe mode took the shared staged build");
+}
+
+/// A reload from safe mode whose build exits before it is ready rolls back
+/// to the safe build and leaves the good build as it was, on the same
+/// launcher and on a new one the reload re-executed (`rig update`'s).
+#[cfg(unix)]
+#[test]
+fn a_reload_from_safe_mode_that_fails_rolls_back_to_the_safe_build() {
+    for replace in [false, true] {
+        let left = safe_reload(&format!("safe-rollback-{replace}"), false, replace)
+            .map_err(|why| why.to_string());
+        let Ok((ran, _, good, _)) = left else {
+            return assert!(left.is_ok(), "replace {replace}: {left:?}");
+        };
+        assert_eq!(ran, "safe\nown\nsafe\n", "replace {replace}");
+        assert!(good.contains("echo good"), "replace {replace}: {good}");
+    }
+}
+
+/// A reload re-executed from safe mode, whose old launcher's staged build
+/// the new launcher's sweep removed, builds the user's plugins again: here
+/// that build fails on a malformed extra, which is said and logged in
+/// `build.log`, and the safe build starts. A safe start that is no reload
+/// builds nothing of the user's.
+#[cfg(unix)]
+#[test]
+fn a_reload_re_executed_from_safe_mode_builds_the_users_plugins_again() {
+    let home = builds("safe-reexec-build", "", "");
+    let started = locks::hold_run(&home).and_then(|run| {
+        fs::write(
+            home.settings(),
+            "[[plugins.extra]]\ncrate = \"bad\"\npath = \"plugins/bad\"\nplugin = \"bad::BadPlugin\"\n",
+        )?;
+        fs::create_dir_all(home.root().join("plugins/bad"))?;
+        fs::write(home.root().join("plugins/bad/Cargo.toml"), "[package\n")?;
+        script(&build::safe(&home), &describing("safe"))?;
+        let launch = at(&home, Path::new(NO_LAUNCHER))?;
+        let session = SessionId::generate();
+        let start = |reloaded: bool| -> Result<_> {
+            fs::optional(fs::remove_file(home.build_log()))?;
+            let (failure, running) =
+                start_safe(&launch, &session, run.dir(), reloaded, BuildOutput::LogOnly)?;
+            let log = fs::optional(fs::read_to_string(home.build_log()))?.unwrap_or_default();
+            Ok((
+                failure.map(|failure| failure.reason),
+                running.current.is_safe(),
+                log.contains("is not TOML"),
+            ))
+        };
+        Ok((start(false)?, start(true)?))
+    });
+    fs::remove_dir_all(home.root()).ok();
+    let started = started.map_err(|why| why.to_string());
+    let Ok((quiet, reloaded)) = started else {
+        return assert!(started.is_ok(), "{started:?}");
+    };
+    assert_eq!(quiet, (None, true, false));
+    assert!(
+        matches!(&reloaded, (Some(why), true, true) if why.contains("is not TOML")),
+        "{reloaded:?}"
+    );
+}
+
+/// After a safe session, the resume hint starts in safe mode too.
+#[cfg(unix)]
+#[test]
+fn a_safe_sessions_resume_hint_keeps_safe_mode() {
+    let root = std::env::temp_dir().join(format!("rig-safe-resume-{}", std::process::id()));
+    fs::remove_dir_all(&root).ok();
+    let home = Home::at(&root);
+    let command = (|| -> Result<_> {
+        let (id, session) = home.new_session()?;
+        session.mark_saved()?;
+        fs::write(session.path().join("name"), "work")?;
+        Ok(resume_command(&home, &id, false, true))
+    })();
+    fs::remove_dir_all(&root).ok();
+    let command = command.map_err(|why| why.to_string());
+    assert_eq!(command, Ok(Some("rig --safe --resume 'work'".to_owned())));
 }

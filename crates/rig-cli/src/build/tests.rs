@@ -312,7 +312,7 @@ fn fake_build(
     fs::remove_dir_all(&root).ok();
     let home = Home::at(&root);
     let shown = Shown::default();
-    let mut log = BuildLog::create(&home, output, Box::new(shown.clone()));
+    let mut log = BuildLog::create(home.build_log(), output, Box::new(shown.clone()));
     log.erase = erase;
     let mut cargo = Command::new("sh");
     cargo
@@ -366,7 +366,11 @@ fn a_failure_rig_explains_does_not_repeat_cargos_error() {
     let root = std::env::temp_dir().join(format!("rig-build-explained-{}", std::process::id()));
     fs::remove_dir_all(&root).ok();
     let home = Home::at(&root);
-    let mut log = BuildLog::create(&home, BuildOutput::Live, Box::new(Shown::default()));
+    let mut log = BuildLog::create(
+        home.build_log(),
+        BuildOutput::Live,
+        Box::new(Shown::default()),
+    );
     let mut cargo = Command::new("sh");
     cargo
         .args([
@@ -392,7 +396,11 @@ fn a_wait_for_cargos_lock_ends_with_its_command() {
     let root = std::env::temp_dir().join(format!("rig-build-log-two-{}", std::process::id()));
     let home = Home::at(&root);
     let shown = Shown::default();
-    let mut log = BuildLog::create(&home, BuildOutput::LogOnly, Box::new(shown.clone()));
+    let mut log = BuildLog::create(
+        home.build_log(),
+        BuildOutput::LogOnly,
+        Box::new(shown.clone()),
+    );
     let commands = [
         "printf '    Blocking waiting for file lock on build directory\\n' >&2",
         "sleep 4",
@@ -413,7 +421,11 @@ fn a_long_wait_for_cargos_lock_is_said_while_it_lasts() {
     let root = std::env::temp_dir().join(format!("rig-build-log-wait-{}", std::process::id()));
     let home = Home::at(&root);
     let shown = Shown::default();
-    let mut log = BuildLog::create(&home, BuildOutput::LogOnly, Box::new(shown.clone()));
+    let mut log = BuildLog::create(
+        home.build_log(),
+        BuildOutput::LogOnly,
+        Box::new(shown.clone()),
+    );
     let mut cargo = Command::new("sh");
     let script = "printf '    Blocking waiting for file lock on build directory\\n' >&2; \
                   sleep 4; printf '    Finished in 4s\\n' >&2";
@@ -438,7 +450,11 @@ fn a_long_wait_for_cargos_lock_is_said_while_it_lasts() {
 fn cargo_starts_with_no_signal_blocked() {
     let root = std::env::temp_dir().join(format!("rig-build-mask-{}", std::process::id()));
     let home = Home::at(&root);
-    let mut log = BuildLog::create(&home, BuildOutput::LogOnly, Box::new(Shown::default()));
+    let mut log = BuildLog::create(
+        home.build_log(),
+        BuildOutput::LogOnly,
+        Box::new(Shown::default()),
+    );
     let mut cargo = Command::new("sh");
     cargo
         .args(["-c", "grep SigBlk /proc/self/status >&2"])
@@ -480,7 +496,11 @@ fn an_ignored_hangup_stays_ignored_through_a_build() {
     }
     let root = std::env::temp_dir().join(format!("rig-build-hangup-{}", std::process::id()));
     let home = Home::at(&root);
-    let mut log = BuildLog::create(&home, BuildOutput::LogOnly, Box::new(Shown::default()));
+    let mut log = BuildLog::create(
+        home.build_log(),
+        BuildOutput::LogOnly,
+        Box::new(Shown::default()),
+    );
     let mut cargo = Command::new("sh");
     cargo
         .args(["-c", "grep SigIgn /proc/self/status >&2"])
@@ -521,7 +541,11 @@ fn a_launcher_leading_its_session_keeps_cargo_in_its_group() {
         let seen = std::path::PathBuf::from(seen);
         let root = seen.with_extension("home");
         let home = Home::at(&root);
-        let mut log = BuildLog::create(&home, BuildOutput::LogOnly, Box::new(Shown::default()));
+        let mut log = BuildLog::create(
+            home.build_log(),
+            BuildOutput::LogOnly,
+            Box::new(Shown::default()),
+        );
         let mut cargo = Command::new("sh");
         // "cargo" ignores SIGTERM, from before it says it is ready; what it
         // started does not.
@@ -601,7 +625,11 @@ fn a_stopped_build_leaves_nothing_running() {
     fs::create_dir_all(&root).ok();
     let home = Home::at(&root);
     let pid = root.join("compiler.pid");
-    let mut log = BuildLog::create(&home, BuildOutput::LogOnly, Box::new(Shown::default()));
+    let mut log = BuildLog::create(
+        home.build_log(),
+        BuildOutput::LogOnly,
+        Box::new(Shown::default()),
+    );
     let mut cargo = Command::new("sh");
     let script = format!("sleep 60 & echo $! > '{}'; wait", pid.display());
     cargo.args(["-c", &script]).stderr(Stdio::piped());
@@ -656,7 +684,7 @@ fn a_crlf_split_between_two_reads_is_not_erased() {
     let name = format!("rig-build-log-split-{}", std::process::id());
     let home = Home::at(std::env::temp_dir().join(name));
     let shown = Shown::default();
-    let mut log = BuildLog::create(&home, BuildOutput::Live, Box::new(shown.clone()));
+    let mut log = BuildLog::create(home.build_log(), BuildOutput::Live, Box::new(shown.clone()));
     log.erase = true;
     for chunk in [&b"one\r"[..], b"\ntwo\r", b"three\n"] {
         log.show(chunk);
@@ -808,5 +836,171 @@ fn an_inherited_bevy_pin_is_found_in_the_workspace_the_package_names() {
             "{}:5: [workspace.dependencies] bevy_ecs = \"=0.20.0\"",
             ws.join("Cargo.toml").display()
         )]
+    );
+}
+
+/// A cached safe build runs with no cargo only from crates.io, with this
+/// launcher's stamp, and while it still writes a description report: a
+/// damaged copy (not executable, truncated, or empty, which runs as a
+/// shell script that exits 0), or one built from a checkout, which may
+/// have changed since, is built again.
+#[test]
+fn a_safe_build_is_reused_only_from_crates_io_while_it_describes_itself() {
+    let root = std::env::temp_dir().join(format!("rig-safe-cache-{}", std::process::id()));
+    fs::remove_dir_all(&root).ok();
+    let home = Home::at(&root);
+    let describing = "#!/bin/sh\n[ -n \"$RIG_DESCRIBE\" ] || exit 0\nprintf 'rig-describe 1\\n' > \"$RIG_DESCRIBE\"\n";
+    let current = (|| -> Result<Vec<bool>> {
+        let launch = crate::test_launch(&home, Path::new("/opt/rig/bin/rig"))?;
+        let checkout = RigSource::Local(root.clone());
+        fs::create_dir_all(home.bin())?;
+        fs::write(safe(&home), describing)?;
+        fs::set_permissions(safe(&home), std::fs::Permissions::from_mode(0o755))?;
+        fs::write(safe_version(&home), safe_stamp(&RigSource::Registry))?;
+        let mut current = vec![safe_is_current(&launch, &RigSource::Registry)];
+        fs::write(safe_version(&home), safe_stamp(&checkout))?;
+        current.push(safe_is_current(&launch, &checkout));
+        fs::write(safe_version(&home), safe_stamp(&RigSource::Registry))?;
+        fs::set_permissions(safe(&home), std::fs::Permissions::from_mode(0o644))?;
+        current.push(safe_is_current(&launch, &RigSource::Registry));
+        fs::write(safe(&home), "\x7fELF")?;
+        fs::set_permissions(safe(&home), std::fs::Permissions::from_mode(0o755))?;
+        current.push(safe_is_current(&launch, &RigSource::Registry));
+        fs::write(safe(&home), "")?;
+        current.push(safe_is_current(&launch, &RigSource::Registry));
+        Ok(current)
+    })();
+    fs::remove_dir_all(&root).ok();
+    let current = current.map_err(|why| why.to_string());
+    assert_eq!(current, Ok(vec![true, false, false, false, false]));
+}
+
+/// The lock files a safe build changed are kept on disk, so after a safe
+/// build that a signal stopped, the next build of the user's plugins puts
+/// them back as they were before it builds (here it then fails on its
+/// settings), removing one that was not there.
+#[test]
+fn a_stopped_safe_build_leaves_the_projects_lock_files_for_the_next_build() {
+    let root = std::env::temp_dir().join(format!("rig-safe-locks-{}", std::process::id()));
+    fs::remove_dir_all(&root).ok();
+    let home = Home::at(&root);
+    let after = (|| -> Result<_> {
+        fs::create_dir_all(home.project())?;
+        fs::write(home.project().join("Cargo.lock"), "user's lock")?;
+        fs::write(home.project().join("Cargo.lock.seed"), "commit A's lock")?;
+        keep_locks(&home)?;
+        for name in LOCKS {
+            fs::write(home.project().join(name), "the safe build's")?;
+        }
+        fs::write(
+            home.settings(),
+            "[plugins]\nenable = [\"rig_basics::gone::GonePlugin\"]\n",
+        )?;
+        let launch = crate::test_launch(&home, Path::new("/opt/rig/bin/rig"))?;
+        let built = compile(
+            &launch,
+            &home.staged(),
+            Staging::Always,
+            BuildOutput::LogOnly,
+        );
+        let locks = LOCKS.map(|name| fs::read_to_string(home.project().join(name)).ok());
+        Ok((built.is_err(), locks, kept_locks(&home).exists()))
+    })();
+    fs::remove_dir_all(&root).ok();
+    let after = after.map_err(|why| why.to_string());
+    assert_eq!(
+        after,
+        Ok((
+            true,
+            [
+                Some("user's lock".to_owned()),
+                Some("commit A's lock".to_owned()),
+                None
+            ],
+            false
+        ))
+    );
+}
+
+/// A safe build that fails logs to its own log, and the failed build's
+/// `build.log` stays as it was.
+#[test]
+fn a_safe_build_logs_apart_from_build_log() {
+    let root = std::env::temp_dir().join(format!("rig-safe-log-{}", std::process::id()));
+    fs::remove_dir_all(&root).ok();
+    let home = Home::at(&root);
+    let logs = (|| -> Result<_> {
+        fs::create_dir_all(home.root())?;
+        fs::write(home.build_log(), "the broken build's output\n")?;
+        let mut launch = crate::test_launch(&home, Path::new("/opt/rig/bin/rig"))?;
+        launch.source = Some(rig_harness_protocol::launch::AbsPath::new(
+            root.join("not-a-checkout"),
+        )?);
+        let built = compile_safe(&launch, BuildOutput::LogOnly).map_err(|failure| failure.log);
+        Ok((
+            built,
+            fs::read_to_string(home.build_log())?,
+            fs::read_to_string(safe_log(&home))?,
+        ))
+    })();
+    fs::remove_dir_all(&root).ok();
+    let logs = logs.map_err(|why| why.to_string());
+    let Ok((built, build_log, safe_build_log)) = logs else {
+        return assert!(logs.is_ok(), "{logs:?}");
+    };
+    assert_eq!(built, Err(safe_log(&home)));
+    assert_eq!(build_log, "the broken build's output\n");
+    assert!(
+        safe_build_log.contains("is not a rig checkout"),
+        "{safe_build_log}"
+    );
+}
+
+/// Keeping the lock files of a home that has no agent project yet makes
+/// none, so the build that follows still sees a new home and sets up the
+/// plugin-writing skill ([`super::super::plugin::skill::set_up`]).
+#[test]
+fn keeping_the_lock_files_of_a_new_home_makes_no_project() {
+    let root = std::env::temp_dir().join(format!("rig-safe-new-home-{}", std::process::id()));
+    fs::remove_dir_all(&root).ok();
+    let home = Home::at(&root);
+    let kept = (|| -> Result<_> {
+        fs::create_dir_all(home.root())?;
+        keep_locks(&home)?;
+        let project = home.project().exists();
+        put_back(&home)?;
+        Ok((project, home.project().exists()))
+    })();
+    fs::remove_dir_all(&root).ok();
+    assert_eq!(kept.map_err(|why| why.to_string()), Ok((false, false)));
+}
+
+/// A kill while a used backup is being removed leaves part of it. That
+/// part is never read as a backup: the next build leaves the user's
+/// restored lock files alone.
+#[test]
+fn a_partly_removed_backup_is_not_read_as_one() {
+    let root = std::env::temp_dir().join(format!("rig-safe-partial-{}", std::process::id()));
+    fs::remove_dir_all(&root).ok();
+    let home = Home::at(&root);
+    let after = (|| -> Result<_> {
+        fs::create_dir_all(home.project())?;
+        fs::write(home.project().join("Cargo.lock"), "user's lock")?;
+        fs::write(home.project().join("Cargo.lock.seed"), "commit A's lock")?;
+        keep_locks(&home)?;
+        // As `put_back` leaves it when killed while it removes the backup
+        // it restored from: retired, its kept Cargo.lock already gone.
+        fs::rename(kept_locks(&home), retired_locks(&home))?;
+        fs::remove_file(retired_locks(&home).join("Cargo.lock"))?;
+        put_back(&home)?;
+        if retired_locks(&home).exists() {
+            return Err("the retired backup is still there".into());
+        }
+        Ok(fs::read_to_string(home.project().join("Cargo.lock")).ok())
+    })();
+    fs::remove_dir_all(&root).ok();
+    assert_eq!(
+        after.map_err(|why| why.to_string()),
+        Ok(Some("user's lock".to_owned()))
     );
 }

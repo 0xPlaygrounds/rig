@@ -25,7 +25,7 @@ use rig_harness_protocol::launch::{Launch, Purpose};
 use rig_harness_protocol::{AgentDescription, Home, RunDir, config, first_errors};
 
 use super::project::{self, Manifest, PACKAGE, RigSource, workspace_dependency};
-use super::{BEVY_VERSION, COMMIT, Result, locks};
+use super::{BEVY_VERSION, COMMIT, LONG_VERSION, Result, locks};
 
 /// Whether a build that is already known gets staged again.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -85,7 +85,7 @@ pub struct BuildFailure {
     /// The output from its first error on, at most [`ERROR_LINES`] lines;
     /// empty when no line starts with `error`.
     pub errors: Vec<String>,
-    /// [`Home::build_log`].
+    /// The build's whole output: [`Home::build_log`], or [`safe_log`].
     pub log: PathBuf,
 }
 
@@ -142,7 +142,8 @@ impl std::error::Error for Explained {}
 
 /// Writes the agent project with the plugins `settings.toml` turns on,
 /// checks its Bevy version, builds it, and copies the binary to `staged` as
-/// `staging` says. The build's output goes to [`Home::build_log`], and to
+/// `staging` says, after putting back lock files a stopped safe build kept
+/// ([`put_back`]). The build's output goes to [`Home::build_log`], and to
 /// stderr as `output` says.
 pub fn compile(
     launch: &Launch,
@@ -151,7 +152,8 @@ pub fn compile(
     output: BuildOutput,
 ) -> std::result::Result<(), BuildFailure> {
     let home = &launch.home();
-    let mut log = BuildLog::create(home, output, Box::new(std::io::stderr()));
+    let mut log = BuildLog::create(home.build_log(), output, Box::new(std::io::stderr()));
+    put_back_logged(home, &mut log);
     let wanted = (|| -> Result<_> {
         let plugins = config::chosen(home)?;
         local_crates(home, &plugins)?;
@@ -161,7 +163,9 @@ pub fn compile(
         Ok(wanted) => wanted,
         Err(failure) => return Err(log.fail(FailedAt::Settings, &*failure)),
     };
-    match compile_logged(launch, &plugins, &source, staged, staging, &mut log) {
+    let built = compile_logged(launch, &plugins, &source, &mut log)
+        .and_then(|()| stage(launch, staged, staging));
+    match built {
         Ok(()) => {
             log.record("build succeeded");
             Ok(())
@@ -170,12 +174,12 @@ pub fn compile(
     }
 }
 
+/// Writes the agent project with `plugins` from `source`, checks its Bevy
+/// version and builds it into [`artifact`], logging to `log`.
 fn compile_logged(
     launch: &Launch,
     plugins: &config::Plugins,
     source: &RigSource,
-    staged: &Path,
-    staging: Staging,
     log: &mut BuildLog,
 ) -> Result<()> {
     // A build that cannot be made, not a settings mistake: the previous
@@ -217,7 +221,179 @@ fn compile_logged(
     if !status.success() {
         return Err(format!("cargo could not build the agent ({status})").into());
     }
-    stage(launch, staged, staging)
+    Ok(())
+}
+
+/// The build `rig --safe` starts: rig's default plugins alone.
+pub fn safe(home: &Home) -> PathBuf {
+    home.bin().join("safe")
+}
+
+/// What [`safe`] was built by and from: the launcher's version and the
+/// source of rig's crates.
+fn safe_version(home: &Home) -> PathBuf {
+    home.bin().join("safe.version")
+}
+
+/// The whole output of the last safe build, kept apart from
+/// [`Home::build_log`] so the log of a failed build of the user's plugins
+/// stays.
+pub fn safe_log(home: &Home) -> PathBuf {
+    home.root().join("safe-build.log")
+}
+
+/// The stamp [`safe_version`] holds for a safe build by this launcher from
+/// `source`.
+fn safe_stamp(source: &RigSource) -> String {
+    let source = match source {
+        RigSource::Local(checkout) => format!("path {}", checkout.display()),
+        RigSource::Registry => "crates.io".to_owned(),
+    };
+    format!("{LONG_VERSION}\n{source}\n")
+}
+
+/// Whether a safe start can run [`safe`] as it is, with no cargo: only
+/// from crates.io, where the launcher's version pins every crate, when the
+/// safe build has this launcher's [`safe_stamp`] and writes a description
+/// report (an empty file that runs as a shell script writes none). A
+/// checkout's files may have changed since, so a safe build from one is
+/// never reused this way.
+fn safe_is_current(launch: &Launch, source: &RigSource) -> bool {
+    let home = &launch.home();
+    matches!(source, RigSource::Registry)
+        && fs::read_to_string(safe_version(home)).is_ok_and(|kept| kept == safe_stamp(source))
+        && describe(launch, &safe(home), None).is_ok_and(|report| !report.trim().is_empty())
+}
+
+/// Makes [`safe`] the build of rig's default plugins, ignoring `[plugins]`
+/// in `settings.toml`, unless [`safe_is_current`]; from a checkout, cargo
+/// rebuilds only what changed. It builds in the agent project, keeping the
+/// project's lock files for the next build of the user's plugins
+/// ([`keep_locks`], [`put_back`]), and logs to [`safe_log`] and to stderr as
+/// `output` says.
+pub fn compile_safe(launch: &Launch, output: BuildOutput) -> std::result::Result<(), BuildFailure> {
+    let home = &launch.home();
+    let source = RigSource::detect(launch.source.as_deref());
+    if source
+        .as_ref()
+        .is_ok_and(|source| safe_is_current(launch, source))
+    {
+        return Ok(());
+    }
+    let mut log = BuildLog::create(safe_log(home), output, Box::new(std::io::stderr()));
+    let source = match source {
+        Ok(source) => source,
+        Err(failure) => return Err(log.fail(FailedAt::Settings, &*failure)),
+    };
+    log.say("Building rig's default plugins for safe mode…");
+    // Not built at all when the user's lock files cannot be kept.
+    if let Err(failure) = keep_locks(home) {
+        let failure: Box<dyn std::error::Error> =
+            format!("the project's lock files could not be kept: {failure}").into();
+        return Err(log.fail(FailedAt::Build, &*failure));
+    }
+    let built = (|| -> Result<()> {
+        compile_logged(launch, &project::defaults(), &source, &mut log)?;
+        let artifact = artifact(home);
+        described(launch, &artifact)
+            .map_err(|why| format!("the safe build does not start: {why}"))?;
+        let temporary = home.bin().join("safe.tmp");
+        fs::create_dir_all(home.bin())?;
+        copy(&artifact, &temporary)?;
+        fs::rename(&temporary, safe(home))?;
+        fs::write(safe_version(home), safe_stamp(&source))?;
+        Ok(())
+    })();
+    put_back_logged(home, &mut log);
+    match built {
+        Ok(()) => {
+            log.record("build succeeded");
+            Ok(())
+        }
+        Err(failure) => Err(log.fail(FailedAt::Build, &*failure)),
+    }
+}
+
+/// The agent project's lock files a safe build changes: its `Cargo.lock`,
+/// the checkout lock that one was seeded from, and the lock whose Bevy
+/// version was checked.
+const LOCKS: [&str; 3] = ["Cargo.lock", "Cargo.lock.seed", "Cargo.lock.checked"];
+
+/// Where [`keep_locks`] keeps the project's lock files while a safe build
+/// runs. It is there only while one runs, or after one was stopped. It
+/// sits beside `project/`, not in it, so keeping the locks of a new home
+/// makes no project, and the build still sees a new home.
+fn kept_locks(home: &Home) -> PathBuf {
+    home.root().join("kept-locks")
+}
+
+/// A used [`kept_locks`], renamed before it is removed, so that a removal
+/// cut short leaves no partial backup to read.
+fn retired_locks(home: &Home) -> PathBuf {
+    home.root().join("kept-locks.old")
+}
+
+/// Copies the project's [`LOCKS`] that exist to [`kept_locks`], putting
+/// back first what a stopped safe build left there. The copy is made
+/// aside and renamed into place whole, and a used one is renamed away
+/// before it is removed, so [`kept_locks`] always holds a complete set.
+fn keep_locks(home: &Home) -> Result<()> {
+    put_back(home)?;
+    let keeping = home.root().join("kept-locks.tmp");
+    fs::optional(fs::remove_dir_all(&keeping))?;
+    fs::create_dir_all(&keeping)?;
+    for name in LOCKS {
+        let path = home.project().join(name);
+        if fs::optional(fs::metadata(&path))?.is_some() {
+            fs::copy(&path, keeping.join(name))?;
+        }
+    }
+    fs::rename(&keeping, kept_locks(home))?;
+    Ok(())
+}
+
+/// Puts the lock files in [`kept_locks`] back as they were, removing one
+/// that was not there, then retires the kept directory; nothing when there
+/// is none. Every build calls it first, so the user's locks come back after
+/// a safe build that a signal stopped. When any of them cannot be put back,
+/// the seed is removed, so the next build reseeds from the checkout rather
+/// than trust a lock the safe build left.
+fn put_back(home: &Home) -> Result<()> {
+    let retired = retired_locks(home);
+    fs::optional(fs::remove_dir_all(&retired))?;
+    let kept = kept_locks(home);
+    if fs::optional(fs::metadata(&kept))?.is_none() {
+        return Ok(());
+    }
+    for name in LOCKS {
+        let path = home.project().join(name);
+        let restored = match fs::optional(fs::metadata(kept.join(name))) {
+            Ok(Some(_)) => fs::copy(kept.join(name), &path).map(drop),
+            Ok(None) => fs::optional(fs::remove_file(&path)).map(drop),
+            Err(why) => Err(why),
+        };
+        if let Err(why) = restored {
+            fs::optional(fs::remove_file(home.project().join("Cargo.lock.seed"))).ok();
+            return Err(why.into());
+        }
+    }
+    fs::rename(&kept, &retired)?;
+    fs::remove_dir_all(&retired)?;
+    Ok(())
+}
+
+/// [`put_back`], warning on stderr and in `log` when it fails: the next
+/// build of the user's plugins tries again, and may resolve anew.
+fn put_back_logged(home: &Home, log: &mut BuildLog) {
+    if let Err(why) = put_back(home) {
+        let warning = format!(
+            "warning: the project's lock files from before the safe build could not be put \
+             back from {}: {why}",
+            kept_locks(home).display()
+        );
+        eprintln!("{warning}");
+        log.record(&warning);
+    }
 }
 
 /// Checks that every `[[plugins.extra]]` crate that is on and comes from a
@@ -354,10 +530,9 @@ struct BuildLog {
 }
 
 impl BuildLog {
-    /// Starts the log over, showing on `shown` what `output` says.
-    fn create(home: &Home, output: BuildOutput, shown: Box<dyn Write>) -> Self {
-        let path = home.build_log();
-        let file = fs::create_dir_all(home.root())
+    /// Starts the log at `path` over, showing on `shown` what `output` says.
+    fn create(path: PathBuf, output: BuildOutput, shown: Box<dyn Write>) -> Self {
+        let file = (path.parent().map_or(Ok(()), fs::create_dir_all))
             .and_then(|()| {
                 fs::open(
                     File::options().write(true).create(true).truncate(true),
