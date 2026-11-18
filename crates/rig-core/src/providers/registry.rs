@@ -897,7 +897,8 @@ impl ProviderConfig {
 
     /// The window a local server serves `model` with, asked on `http`:
     /// Ollama's `/api/show` and llama.cpp's `/props`. `None` for any other
-    /// provider, which says no window of its own.
+    /// provider, which says no window of its own. The future fails when the
+    /// server has not answered within [`WINDOW_ASK_DEADLINE`].
     pub(crate) fn context_window(
         &self,
         model: &str,
@@ -907,20 +908,36 @@ impl ProviderConfig {
             return None;
         };
         let provider = provider.clone();
-        match provider.dialect.name {
+        let ask: WasmBoxedFuture<'static, Result<u32, ProviderError>> = match provider.dialect.name
+        {
             crate::providers::ollama::PROVIDER_NAME => {
                 let model = model.to_owned();
                 let wire = crate::providers::ollama::show::Show { provider, model };
-                Some(Box::pin(Model::new(wire, http).call(())))
+                Box::pin(Model::new(wire, http).call(()))
             }
             crate::providers::llamacpp::PROVIDER_NAME => {
                 let wire = crate::providers::llamacpp::props::Props { provider };
-                Some(Box::pin(Model::new(wire, http).call(())))
+                Box::pin(Model::new(wire, http).call(()))
             }
-            _ => None,
-        }
+            _ => return None,
+        };
+        Some(Box::pin(async move {
+            crate::wasm_compat::timeout(WINDOW_ASK_DEADLINE, ask)
+                .await
+                .unwrap_or_else(|_| {
+                    Err(ProviderError::Provider(format!(
+                        "no answer within {}s",
+                        WINDOW_ASK_DEADLINE.as_secs()
+                    )))
+                })
+        }))
     }
 }
+
+/// How long a local server may take to say the window it serves a model
+/// with. It answers from what it has loaded, so a server that takes longer
+/// is taken not to say.
+const WINDOW_ASK_DEADLINE: std::time::Duration = std::time::Duration::from_secs(3);
 
 /// What [`Catalog::connect`] connects to: a catalog entry, or a
 /// `vendor/model` reference, as [`Catalog::resolve`] reads one.
@@ -976,18 +993,6 @@ pub struct ConnectOptions {
 }
 
 impl ConnectOptions {
-    /// The window the server reaching `spec`, connected with these
-    /// options, serves it with, asked of that server; `None` when its
-    /// provider has no way to say, as only local servers do, or does not
-    /// connect.
-    pub(crate) fn context_window(
-        self,
-        spec: &ModelSpec,
-    ) -> Option<WasmBoxedFuture<'static, Result<u32, ProviderError>>> {
-        let (config, http) = configured(spec.provider, self).ok()?;
-        config.context_window(&spec.id, http)
-    }
-
     /// No option set.
     pub fn new() -> Self {
         Self::default()
@@ -1192,7 +1197,7 @@ impl Catalog {
 
 /// The configuration and HTTP client `provider` is reached with as
 /// `options` say, as [`Catalog::connect_with`] reads them.
-fn configured(
+pub(crate) fn configured(
     provider: ProviderId,
     options: ConnectOptions,
 ) -> Result<(ProviderConfig, DynHttpClient), ConnectError> {

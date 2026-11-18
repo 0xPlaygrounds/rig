@@ -325,7 +325,7 @@ impl Connector {
     /// or a llama.cpp server's `/props`. `None` when the model is reached
     /// any other way, such as through a provider registered for its vendor,
     /// which may reach another server. The future fails when the server
-    /// does not answer or names no window.
+    /// does not answer within a few seconds or names no window.
     pub fn context_window(
         &self,
         spec: &ModelSpec,
@@ -335,7 +335,8 @@ impl Connector {
         }
         let mut options = ConnectOptions::new();
         options.http = self.transport.shared();
-        options.context_window(spec)
+        let (config, http) = crate::providers::registry::configured(spec.provider, options).ok()?;
+        config.context_window(&spec.id, http)
     }
 
     /// The handler serving `spec`, as [`Self::connect`] finds it, and the
