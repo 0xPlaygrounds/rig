@@ -2,11 +2,14 @@ use bevy_ecs::entity_disabling::Disabled;
 use crossterm::event::KeyEventKind;
 
 use super::*;
-use crate::tests::{Delivered, key_events, press, type_text, typed, view_app};
+use crate::tests::{Delivered, key_events, press, type_text, typed, view_app, view_app_with};
 use crate::view::TuiView;
 use crate::{CompletionSource, Placement, TuiPanel};
 use ratatui::layout::Constraint;
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
+use rig_harness::prelude::*;
+
+use crate::TuiPlugin;
 
 /// What the test bindings heard: for each, whether it was a release.
 #[derive(Resource, Default)]
@@ -65,6 +68,53 @@ fn a_global_binding_shadows_the_inputs_and_a_taken_key_stays_until_disabled() {
     assert!(app.add_key_binding(edit(), heard).is_some());
     press(&mut app, "ctrl+e");
     assert_eq!(heard_count(&app), 2);
+}
+
+/// The warnings the view shows.
+fn warnings(app: &App) -> Vec<String> {
+    let notices = app.world().resource::<crate::view::Notices>().numbered();
+    let warnings = notices.filter(|(_, notice)| notice.level == NoticeLevel::Warn);
+    warnings.map(|(_, notice)| notice.text.clone()).collect()
+}
+
+/// A plugin's binding of a taken key is refused with one warning in the
+/// view, naming both bindings, and its other keys still work. With nothing
+/// refused, or off the terminal view, nothing is said.
+#[test]
+fn a_refused_binding_is_told_once_and_the_plugins_other_keys_work() {
+    let plugin = |app: &mut App| {
+        app.init_resource::<Heard>();
+        app.add_key_binding(KeyBinding::new(KeyPress::ctrl('o'), "Open"), heard);
+        app.add_key_binding(KeyBinding::new(KeyPress::ctrl('o'), "Show output"), heard);
+        app.add_key_binding(KeyBinding::new(KeyPress::ctrl('g'), "Go"), heard);
+    };
+    let (mut app, _) = view_app_with(plugin);
+    app.update();
+    let told = warnings(&app);
+    assert_eq!(told.len(), 1, "{told:?}");
+    let warning = told.first().map_or("", String::as_str);
+    for named in ["`ctrl+o`", "Show output", "Open"] {
+        assert!(warning.contains(named), "{named} in {warning}");
+    }
+    press(&mut app, "ctrl+g");
+    assert_eq!(heard_count(&app), 1);
+
+    let (app, _) = view_app();
+    assert_eq!(warnings(&app), Vec::<String>::new());
+
+    // Another front, such as `--print`, adds no view, and is not told.
+    let mut printed = App::new();
+    printed
+        .insert_resource(Invoked::default())
+        .add_plugins((AgentPlugin, TuiPlugin));
+    plugin(&mut printed);
+    printed.finish();
+    printed.update();
+    let notices = printed.world().get_resource::<Messages<Notice>>();
+    let mut notices = notices
+        .into_iter()
+        .flat_map(Messages::iter_current_update_messages);
+    assert!(!notices.any(|notice| notice.text.contains("`ctrl+o`")));
 }
 
 #[test]
