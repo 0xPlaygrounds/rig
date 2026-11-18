@@ -247,7 +247,7 @@ fn a_root_has_what_its_bundle_gives_when_its_agent_is_added() {
     let mut app = app();
     app.init_resource::<Seen>().add_observer(see);
     let world = app.world_mut();
-    let access = ToolAccess::all().narrow(["read"]);
+    let access = ToolAccess::only(["read"]);
     let id = AgentId("reviewer".to_owned());
     let bundle = (Role("review"), id.clone(), access.clone(), Name::new("r"));
     let agent = spawn_root(world, bundle).id();

@@ -328,7 +328,7 @@ fn a_list_task_refuses_is_never_answered_from_a_record() {
     );
     let sub = MockCompletionModel::from_stream_turns([reply("src/config.rs:12")]);
     let mut session = Session::new(&MemoryStore::default(), &dir, main, &sub);
-    let keeps = ToolAccess::all().narrow([TASK, "read"]);
+    let keeps = ToolAccess::only([TASK, "read"]);
     session
         .app
         .world_mut()

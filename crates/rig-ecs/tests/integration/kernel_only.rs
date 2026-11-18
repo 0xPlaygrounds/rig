@@ -814,7 +814,7 @@ fn unknown_tools_get_filtered_feedback_and_fail_the_turn_on_the_third_call() {
     app.world_mut().spawn(ToolDef(Arc::new(plan)));
     app.world_mut()
         .entity_mut(agent)
-        .insert(ToolAccess::all().narrow(["add", "plan"]));
+        .insert(ToolAccess::only(["add", "plan"]));
     let reason = |name: &str| {
         format!(
             "the model kept calling `{name}`, which is not one of its tools \
