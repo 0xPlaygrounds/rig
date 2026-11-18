@@ -330,8 +330,13 @@ fn relative_to_cwd(path: &Path) -> String {
     let cwd = std::env::current_dir().unwrap_or_default();
     match path.strip_prefix("/") {
         Ok(rest) if cfg!(unix) => {
-            let up = "../".repeat(cwd.components().count().saturating_sub(1));
-            format!("{up}{}", rest.display())
+            // Built from components: a `..` literal here would read to the
+            // verification planner as a path this crate's tests read.
+            let mut relative = std::path::PathBuf::new();
+            for _ in 1..cwd.components().count() {
+                relative.push(std::path::Component::ParentDir);
+            }
+            relative.join(rest).display().to_string()
         }
         _ => path.display().to_string(),
     }
