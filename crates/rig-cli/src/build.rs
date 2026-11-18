@@ -1033,14 +1033,13 @@ fn check_bevy(
 }
 
 /// The error for plugin `plugin` of crate `krate` built on Bevy `version`,
-/// not [`BEVY_VERSION`].
+/// not [`BEVY_VERSION`]. It opens with the requirement to write.
 fn foreign_bevy(krate: &str, plugin: &str, version: &str) -> String {
     format!(
-        "plugin `{krate}` uses Bevy {version}, but this rig agent is built on Bevy \
-         {BEVY_VERSION}. A Bevy plugin only works with the exact Bevy version of its app. \
-         Change {krate}'s bevy dependencies to \"{range}\" (with default-features = false), \
-         which cargo builds with the agent's Bevy, or take it out with \
-         `rig plugin remove {plugin}`.",
+        "plugin `{krate}` must write its bevy dependencies as \"{range}\" (with \
+         default-features = false), the agent's Bevy, or be taken out with \
+         `rig plugin remove {plugin}`. It uses Bevy {version}, and this rig agent is built on \
+         Bevy {BEVY_VERSION}.",
         range = super::bevy_range(),
     )
 }
