@@ -51,17 +51,10 @@ impl Plugin for ModelsPlugin {
             effort,
         )
         .init_resource::<TypedChoices>()
-        .add_systems(First, choose_invoked_model)
-        .configure_sets(
-            Update,
-            FirstPickSystems.after(RunStartSystems).before(AgentLoop),
-        )
-        .add_systems(
-            Update,
-            start_on_first_pick
-                .in_set(FirstPickSystems)
-                .run_if(resource_exists::<RunStart>),
-        );
+        .add_systems(First, choose_invoked_model);
+        if !app.is_plugin_added::<FirstPickPlugin>() {
+            app.add_plugins(FirstPickPlugin);
+        }
         let relist = pick::relist.run_if(any_with_component::<pick::ModelList>);
         #[cfg(feature = "tui")]
         let relist = relist.before(rig_tui::ChoiceSystems);
@@ -191,13 +184,43 @@ impl FirstPick {
 pub struct FirstPickSystems;
 
 /// Gives the agent the user talks to the [`FirstPick`] for this run once
-/// the run's start is over, when `--model` names none and neither the
-/// restored session nor the saved default gave it one. It waits while a
+/// the run's start is over, in [`FirstPickSystems`]. [`ModelsPlugin`] and
+/// every front that sends the agent work without a person to pick, such
+/// as print mode and ACP, add it, so the rule holds without the picker.
+#[derive(Default)]
+pub struct FirstPickPlugin;
+
+impl Plugin for FirstPickPlugin {
+    fn build(&self, app: &mut App) {
+        app.configure_sets(
+            Update,
+            FirstPickSystems.after(RunStartSystems).before(AgentLoop),
+        )
+        .add_systems(
+            Update,
+            start_on_first_pick
+                .in_set(FirstPickSystems)
+                .run_if(resource_exists::<RunStart>),
+        );
+    }
+}
+
+/// The agent's model when `--model` names none and neither the restored
+/// session nor the saved default gave it one, nor a plugin that connects
+/// it itself or labels its model, such as a router. It waits while a
 /// sign-in checks its account or a turn runs; a model chosen meanwhile
 /// stands.
 fn start_on_first_pick(
     (start, invoked): (Res<RunStart>, Option<Res<Invoked>>),
-    (agents, unchosen): (MainAgentQuery, Query<Has<ActiveTurn>, Without<ModelChoice>>),
+    agents: MainAgentQuery,
+    unchosen: Query<
+        Has<ActiveTurn>,
+        (
+            Without<ModelChoice>,
+            Without<ModelLabel>,
+            Without<Connection>,
+        ),
+    >,
     models: Res<Models>,
     mut done: Local<bool>,
     mut commands: Commands,

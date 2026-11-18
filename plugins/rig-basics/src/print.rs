@@ -21,12 +21,12 @@
 //! [`AppHeadlessExt::run_headless`] is the run loop of both, and of any
 //! front nobody sits at. It sends the prompt to the main agent once it has
 //! a model (`--model`, else its restored session's, else the saved
-//! default, else the models plugin's [`FirstPick`]; a `/command` needs
-//! none) and exits once no agent works, so
-//! the subagents it started have answered. A plugin that sends the agent
-//! work over time, such as a file watch, keeps the run going with a
-//! [`KeepRunning`] entity, and one whose tools come in the background holds
-//! the start until they are in with a [`Starting`] entity. A kept run may
+//! default, else the [`FirstPick`]; a `/command` needs none) and exits
+//! once no agent works, so the subagents it started have answered. A
+//! plugin that sends the agent work over time, such as a file watch, keeps
+//! the run going with a [`KeepRunning`] entity, and one whose tools come in
+//! the background holds the start until they are in with a [`Starting`]
+//! entity. A kept run may
 //! start without a prompt, and so may one whose restored session has a turn
 //! a plugin carries on (`CarryOn`, `rig -r <id> -p`): that turn's answer is
 //! the run's. A turn an exit or a crash cut short is stopped, not finished,
@@ -63,7 +63,7 @@ use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
 use self::terminal::Terminal;
-use crate::models::FirstPick;
+use crate::models::{FirstPick, FirstPickPlugin};
 use crate::telemetry::usage::{SessionUsage, Spent, StoppedUsage, TurnUsage, UnknownSpend};
 
 /// `--print`'s name as a front.
@@ -139,6 +139,9 @@ impl Plugin for PrintPlugin {
         let answer = "Answer the questions of a -p run with these choices";
         if !app.is_plugin_added::<RunPlugin>() {
             app.add_plugins(RunPlugin);
+        }
+        if !app.is_plugin_added::<FirstPickPlugin>() {
+            app.add_plugins(FirstPickPlugin);
         }
         app.add_front(Front::new(FRONT).headless())
             .add_front(Front::new(JSON).on_flag(JSON, json))
@@ -765,8 +768,8 @@ fn drive(
                 match FirstPick::of(&models) {
                     // The answer wakes the loop and changes the models.
                     FirstPick::Checking => return,
-                    // The first pick was refused, with a notice, or no
-                    // plugin picks: the run ends unconnected.
+                    // The first pick was refused, with a notice: the run
+                    // ends unconnected.
                     FirstPick::Model(_) => {}
                     FirstPick::Nothing(_) if command => {}
                     FirstPick::Nothing(refused) => {
