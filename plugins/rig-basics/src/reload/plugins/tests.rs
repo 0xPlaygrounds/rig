@@ -882,3 +882,25 @@ fn a_plugin_another_loaded_shows_on_added_by_it() {
         "{approvals}"
     );
 }
+
+#[test]
+fn a_plugin_another_loaded_under_an_off_branch_says_it_runs_not_that_the_branch_keeps_it_off() {
+    let home = scratch_home("plugins-added-under-off");
+    fs::create_dir_all(home.root()).ok();
+    fs::write(
+        home.settings(),
+        "[plugins]\noff = [\"rig-basics/approval\"]\n\
+         enable = [\"rig_basics::subagents::SubagentsPlugin\"]\n",
+    )
+    .ok();
+    let (mut app, agent) = app(&home, true);
+    rig_harness::load::<crate::subagents::SubagentsPlugin>(&mut app, "rig-basics", "");
+    open(&mut app, agent);
+    let rows = picked_rows(&mut app);
+    let about = (rows.iter())
+        .find(|row| row.name == "Approvals")
+        .map(|row| row.about.clone())
+        .unwrap_or_default();
+    assert!(about.contains("running now, added by Subagents"), "{about}");
+    assert!(!about.contains("keeps it off"), "{about}");
+}
