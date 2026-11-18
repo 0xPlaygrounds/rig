@@ -125,7 +125,13 @@ fn plugin_help_anywhere_succeeds_without_creating_a_home() {
 fn missing_or_unknown_plugin_commands_are_refused_without_creating_a_home() {
     let home = old_home("refused");
     fs::remove_dir_all(home.root()).ok();
-    for args in [vec![], vec!["unknown"], vec!["enable"]] {
+    for args in [
+        vec![],
+        vec!["unknown"],
+        vec!["enable"],
+        vec!["add"],
+        vec!["remove"],
+    ] {
         let result = run(&home, &args);
         assert!(
             matches!(result, Ok(code) if code == ExitCode::from(REFUSED_EXIT_CODE)),
@@ -300,4 +306,238 @@ fn the_list_puts_rigs_plugins_with_their_default_before_the_users_with_their_pat
         hello.starts_with("on ") && hello.ends_with(&format!("path {}", path.display())),
         "{hello}"
     );
+}
+
+/// A plugin crate `name` with the library `library`, in `directory`.
+fn plugin_crate(directory: &Path, name: &str) -> Result<()> {
+    fs::create_dir_all(directory.join("src"))?;
+    fs::write(
+        directory.join("Cargo.toml"),
+        format!("[package]\nname = \"{name}\"\nversion = \"0.1.0\"\n"),
+    )?;
+    fs::write(directory.join("src/lib.rs"), "")?;
+    Ok(())
+}
+
+const SAVE: &str = "reactor_save::SavePlugin";
+
+/// `path` relative to the working directory, which a relative `--path` is
+/// read against; absolute where paths have a prefix.
+fn relative_to_cwd(path: &Path) -> String {
+    let cwd = std::env::current_dir().unwrap_or_default();
+    match path.strip_prefix("/") {
+        Ok(rest) if cfg!(unix) => {
+            let up = "../".repeat(cwd.components().count().saturating_sub(1));
+            format!("{up}{}", rest.display())
+        }
+        _ => path.display().to_string(),
+    }
+}
+
+/// `rig plugin add` with each source writes the table the settings read
+/// back as that source, keeps the file's comments, and `rig plugin list`
+/// says where the plugin comes from.
+#[test]
+fn add_writes_the_table_of_each_source_and_keeps_the_comments() {
+    let home = old_home("add");
+    let save = home.root().join("save");
+    let git = |branch: Option<&str>, rev: Option<&str>| Source::Git {
+        url: "file:///srv/save.git".to_owned(),
+        branch: branch.map(str::to_owned),
+        rev: rev.map(str::to_owned),
+    };
+    let made = plugin_crate(&save, "reactor-save");
+    // `add` writes the directory's resolved path, symlinks followed.
+    let resolved = fs::canonicalize(&save).unwrap_or_else(|_| save.clone());
+    let relative = relative_to_cwd(&save);
+    let cases: [(&[&str], &str, Source); 5] = [
+        (
+            &["--path", &relative],
+            "reactor-save",
+            Source::Path(resolved.clone()),
+        ),
+        (
+            &["--git", "file:///srv/save.git"],
+            "reactor_save",
+            git(None, None),
+        ),
+        (
+            &["--git", "file:///srv/save.git", "--branch", "next"],
+            "reactor_save",
+            git(Some("next"), None),
+        ),
+        (
+            &[
+                "--rev",
+                "abc",
+                "--git",
+                "file:///srv/save.git",
+                "--crate",
+                "reactor-save",
+            ],
+            "reactor-save",
+            git(None, Some("abc")),
+        ),
+        (
+            &["--version", "0.2"],
+            "reactor_save",
+            Source::Version("0.2".to_owned()),
+        ),
+    ];
+    let result = (|| -> Result<_> {
+        made?;
+        let mut found = Vec::new();
+        for (flags, _, _) in &cases {
+            fs::write(home.settings(), COMMENTED)?;
+            run(&home, &[&["add", SAVE], *flags].concat())?;
+            let text = fs::read_to_string(home.settings())?;
+            found.push((text, config::chosen(&home)?, listing(&home)?));
+        }
+        Ok(found)
+    })();
+    fs::remove_dir_all(home.root()).ok();
+    assert!(result.is_ok(), "{result:?}");
+    for ((text, chosen, list), (flags, krate, source)) in
+        result.unwrap_or_default().iter().zip(&cases)
+    {
+        let expected = Extra {
+            plugin: SAVE.to_owned(),
+            krate: (*krate).to_owned(),
+            source: source.clone(),
+        };
+        assert!(text.starts_with(COMMENTED), "{flags:?}: {text}");
+        assert!(
+            text.contains(&format!("# Added by `rig plugin add {SAVE}`.")),
+            "{flags:?}: {text}"
+        );
+        assert_eq!(chosen.extra, [expected], "{flags:?}");
+        assert!(chosen.on.iter().any(|on| on == SAVE), "{flags:?}");
+        let line = list.lines().find(|line| line.contains(SAVE)).unwrap_or("");
+        assert!(
+            line.starts_with("on ") && line.ends_with(&source.to_string()),
+            "{flags:?}: {line}"
+        );
+    }
+}
+
+/// `rig plugin remove` takes out exactly the table `rig plugin add` wrote:
+/// a file that had `[plugins]` comes back byte for byte, and one that had
+/// none keeps the empty `[plugins]` the add made.
+#[test]
+fn add_then_remove_leaves_the_file_as_it_was() {
+    let home = old_home("round-trip");
+    let other = "[plugins] # mine\ndisable = [\"viz::VizPlugin\"] # not now\n\n\
+                 # Charts, from crates.io.\n[[plugins.extra]]\ncrate = \"viz\"\n\
+                 version = \"1\" # pinned\nplugin = \"viz::VizPlugin\"\n\n# The end.\n";
+    let with_plugins = format!("{COMMENTED}{other}");
+    let result = (|| -> Result<_> {
+        fs::create_dir_all(home.root())?;
+        let mut after = Vec::new();
+        for original in [with_plugins.as_str(), COMMENTED] {
+            fs::write(home.settings(), original)?;
+            run(&home, &["add", SAVE, "--version", "0.2"])?;
+            run(&home, &["remove", SAVE])?;
+            after.push(fs::read_to_string(home.settings())?);
+        }
+        Ok(after)
+    })();
+    fs::remove_dir_all(home.root()).ok();
+    assert_eq!(
+        result.ok(),
+        Some(vec![
+            with_plugins.clone(),
+            format!("{COMMENTED}[plugins]\n")
+        ])
+    );
+}
+
+/// `remove` keeps every other table and comment, takes the type out of
+/// `[plugins] enable` and `disable` too (a name nothing provides would
+/// make the file refused), and leaves a crate `rig plugin new` made on
+/// disk.
+#[test]
+fn remove_takes_out_one_table_and_its_name_and_keeps_the_crate() {
+    let home = old_home("remove");
+    let result = (|| -> Result<_> {
+        fs::create_dir_all(home.root())?;
+        fs::write(home.settings(), COMMENTED)?;
+        run(&home, &["new", "hello"])?;
+        run(&home, &["add", SAVE, "--version", "0.2"])?;
+        run(&home, &["disable", "hello::HelloPlugin"])?;
+        run(&home, &["remove", "hello::HelloPlugin"])?;
+        let text = fs::read_to_string(home.settings())?;
+        let kept = home.plugins().join("hello/Cargo.toml").is_file();
+        Ok((text, config::chosen(&home)?.extra, kept))
+    })();
+    fs::remove_dir_all(home.root()).ok();
+    assert!(result.is_ok(), "{result:?}");
+    let (text, extra, kept) = result.unwrap_or_default();
+    assert!(
+        text.starts_with(COMMENTED) && !text.contains("hello"),
+        "{text}"
+    );
+    assert!(
+        text.contains(&format!("# Added by `rig plugin add {SAVE}`.")),
+        "{text}"
+    );
+    assert_eq!(
+        extra
+            .iter()
+            .map(|extra| extra.plugin.as_str())
+            .collect::<Vec<_>>(),
+        [SAVE]
+    );
+    assert!(kept);
+}
+
+/// Each refusal says why and leaves the file as it was.
+#[test]
+fn add_and_remove_refuse_out_loud_without_changing_the_file() {
+    let home = old_home("refusals");
+    let original = format!("{COMMENTED}[plugins]\n");
+    let cases: [(&[&str], &str); 10] = [
+        (&["add", SAVE, "--version", "0.2"], "already"),
+        (&["add", SAVE], "--path"),
+        (&["add", SAVE, "--path", "a", "--version", "1"], "one of"),
+        (&["add", SAVE, "--version", "1", "--version", "2"], "once"),
+        (&["add", SAVE, "--rev", "abc", "--version", "1"], "--git"),
+        (
+            &["add", SAVE, "--git", "u", "--branch", "b", "--rev", "r"],
+            "or",
+        ),
+        (
+            &["add", "nowhere::NowherePlugin", "--path", "/nowhere/save"],
+            "/nowhere/save",
+        ),
+        (&["add", SAVE, "--version", "1", "--force"], "--force"),
+        (
+            &["add", "rig_basics::skills::SkillsPlugin", "--version", "1"],
+            "rig's own",
+        ),
+        (&["remove", "viz::VizPlugin"], "viz::VizPlugin"),
+    ];
+    let result = (|| -> Result<_> {
+        fs::create_dir_all(home.root())?;
+        fs::write(home.settings(), &original)?;
+        run(&home, &["add", SAVE, "--version", "0.2"])?;
+        let added = fs::read_to_string(home.settings())?;
+        let mut refusals = Vec::new();
+        for (args, _) in &cases {
+            let refusal = run(&home, args).err().map(|why| why.to_string());
+            refusals.push((refusal, fs::read_to_string(home.settings())?));
+        }
+        Ok((added, refusals))
+    })();
+    fs::remove_dir_all(home.root()).ok();
+    assert!(result.is_ok(), "{result:?}");
+    let (added, refusals) = result.unwrap_or_default();
+    for ((refusal, text), (args, why)) in refusals.iter().zip(&cases) {
+        assert!(
+            refusal
+                .as_ref()
+                .is_some_and(|refusal| refusal.contains(why)),
+            "{args:?}: {refusal:?}"
+        );
+        assert_eq!(text, &added, "{args:?}");
+    }
 }

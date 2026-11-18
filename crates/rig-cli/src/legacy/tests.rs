@@ -70,18 +70,17 @@ fn a_0_46_plugin_list_and_model_are_warned_of_with_what_moves_them() {
     let expected = [
         format!(
             "rig no longer reads {}. Move its plugin list to [plugins] in {settings} (see \
-             MIGRATING.md):\n  Add to {settings}, before the commands below:\n  \
-             [[plugins.extra]]\n  crate = \"hello\"\n  plugin = \"hello::HelloPlugin\"\n  \
-             path = \"plugins/hello\"\n  [[plugins.extra]]\n  crate = \"viz\"\n  \
-             plugin = \"viz::VizPlugin\"\n  git = \"https://example.com/viz\"\n  \
-             rev = \"abc\"\n  rig plugin enable rig_mcp_client::McpPlugin\n  \
+             MIGRATING.md):\n  rig plugin add hello::HelloPlugin --path {}\n  \
+             rig plugin add viz::VizPlugin --git https://example.com/viz --rev abc\n  \
+             rig plugin enable rig_mcp_client::McpPlugin\n  \
              rig plugin enable rig_mcp_client::approval::McpApprovalPlugin\n  \
              rig plugin enable rig_basics::telemetry::effect_log::EffectLogPlugin\n  \
              rig plugin disable rig_basics::welcome::WelcomePlugin\n  \
              rig plugin disable viz::VizPlugin\n  \
              rig_basics::checkpoint::CheckpointPlugin is no longer one of rig's plugins.\n\
              The file was not changed.",
-            plugins.display()
+            plugins.display(),
+            home.root().join("plugins/hello").display()
         ),
         format!(
             "rig no longer reads {}. Move its model to [model] in {settings} (see \
@@ -133,15 +132,8 @@ fn a_live_entry_keeps_its_keys_across_blank_lines_and_comments() {
     assert_eq!(
         moves,
         [
-            "  Add to /h/settings.toml, before the commands below:",
-            "  [[plugins.extra]]",
-            "  crate = \"hello\"",
-            "  plugin = \"hello::HelloPlugin\"",
-            "  path = \"plugins/hello\"",
-            "  [[plugins.extra]]",
-            "  crate = \"viz\"",
-            "  plugin = \"viz::VizPlugin\"",
-            "  path = \"plugins/viz\"",
+            "  rig plugin add hello::HelloPlugin --path /h/plugins/hello",
+            "  rig plugin add viz::VizPlugin --path /h/plugins/viz",
             "  rig plugin enable rig_mcp_client::McpPlugin",
             "  rig plugin enable rig_mcp_client::approval::McpApprovalPlugin",
             "  rig plugin disable viz::VizPlugin",
