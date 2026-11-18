@@ -2583,10 +2583,11 @@ any run and inert without the view:
   key or a sequence (`ctrl+x ctrl+e`), heard as `KeyPressed`
   (`run_command("compact")` runs a slash command). The first binding of a
   key stays (the view warns of one it refused as it starts), a global one
-  shadows the others, and `Disabled` frees its keys. While a transcript item is selected (Alt+Up), bindings
-  `in_scope(KeyScope::Transcript)` shadow the input's. A binding with an
-  `InputAction` (`Up`, `Send`, …) does that built-in action.
-  `KeyFocus(Some(panel))` gives a `TuiPanel` the keys until Esc.
+  shadows the others, and `Disabled` frees its keys. While a transcript
+  item is selected (Alt+Up), bindings `in_scope(KeyScope::Transcript)`
+  shadow the input's. A binding with an `InputAction` (`Up`, `Send`, …)
+  does that built-in action. `KeyFocus(Some(panel))` gives a `TuiPanel`
+  the keys until Esc.
 - **Completion.** A `CompletionSource` entity offers candidates
   (`.candidate(text, detail)`) for a word starting with a marker anywhere
   in the input, `CompletionSource::marker('#')` (`/` and `@` are the
