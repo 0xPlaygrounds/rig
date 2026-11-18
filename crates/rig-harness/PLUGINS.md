@@ -92,7 +92,8 @@ fn src_only(mut calls: Query<(&ToolRequest, &mut Decision), (ReadyToStart, ToolC
 data another plugin also edits goes in a public `SystemSet` of its own,
 configured in its phase, so others can order against it.
 
-Examples: [confirm_destructive] (a gate that asks first),
+Examples: [src_only_writes] (the plugin above, with its test),
+[confirm_destructive] (a gate that asks first),
 [loop_breaker] (a gate that counts), [output_truncate] (a reviewer),
 [few_shot_examples] (a `Prepare` edit of model requests).
 
@@ -181,13 +182,33 @@ Examples: [handoff], [map_reduce], [review_agent].
 # The terminal view
 
 `rig-tui` draws the transcript, the status line, panels and the input. A
-plugin adds to it with ordinary systems: a look for a tool's calls in the
-`TranscriptRender` schedule, an item on the status line, a panel, a key
-binding. A crate that also builds without the view puts `rig-tui` behind a
-default `tui` feature.
+plugin adds to it with ordinary systems and entities:
 
-Examples: [rich_tool_rendering] (looks), [git_status_item] (a status item),
-[todo_tracker] (a panel and a key), [keybindings].
+- a look for some transcript items, a system in the `TranscriptRender`
+  schedule that writes their lines;
+- a status line item, shown in `StatusSystems::Show`;
+- a panel, a `TuiPanel` entity drawn in `TuiSystems::Draw`;
+- a key binding, `app.add_key_binding(binding, observer)`.
+
+A crate that also builds without the view puts `rig-tui` behind a default
+`tui` feature. The `rig_tui` crate docs have an example of each.
+
+Examples: [rich_tool_rendering] (looks), [git_status_item] and
+[throughput_item] (status items), [todo_tracker] (a panel and a key),
+[keybindings].
+
+# Turning off or replacing what another plugin added
+
+A whole plugin is replaced in `settings.toml`: name it in `[plugins] disable`
+and add yours. Tools, slash commands, key bindings, options, fronts and prompt
+sections are entities: Bevy's `Disabled` on one, inserted in
+`Plugin::finish`, turns it off and frees its name for a replacement. Changing
+how another plugin's tool runs is rarely a replacement: a `Prepare` or `Gate`
+system on its calls does it, and a `Review` system changes its results.
+
+Examples: [keep_last_compaction] (replaces the default compaction),
+[submit_result] (turns a tool off), [shell_rewrite] (edits another tool's
+calls).
 
 # Fronts and commands of your own
 
@@ -202,52 +223,14 @@ Examples: [usage_report_cli], [export], [window_gui].
 A plugin's test builds a small app with the kernel, the plugin and the
 services it needs, then runs it frame by frame with `app.update()`. An effect
 spawned for an agent stands in for what its model would ask; a whole turn
-runs on rig-core's scripted `MockCompletionModel`.
+runs on rig-core's scripted `MockCompletionModel` (its `test-utils` feature).
 [`stage_conflicts`](crate::stage_conflicts) lists the systems of one stage
 that write the same data in no order, and `rig plugin check --build` runs the
 same check on the plugins that are on.
 
-```rust
-use rig_harness::prelude::*;
-use rig_harness::rig_core::message::{ToolFunction, ToolName};
-use rig_harness::rig_ecs::session_log::SessionStore;
-use rig_harness::rig_memory::MemoryStore;
-
-# struct SrcOnlyPlugin;
-# impl Plugin for SrcOnlyPlugin {
-#     fn build(&self, app: &mut App) {
-#         app.add_systems(AgentPass, src_only.in_set(Stage::Gate));
-#     }
-# }
-# fn src_only(mut calls: Query<(&ToolRequest, &mut Decision), (ReadyToStart, ToolCalls)>) {
-#     for (request, mut decision) in &mut calls {
-#         let path = request.call.function.arguments["path"].as_str().unwrap_or_default();
-#         if request.call.function.name.as_str() == "write" && !path.starts_with("src/") {
-#             decision.decide(Decider::plugin("src-only"), Outcome::refused("write only under src/"));
-#         }
-#     }
-# }
-let mut app = App::new();
-app.insert_resource(SessionStore::new(MemoryStore::default()))
-    .add_plugins((AgentPlugin, SessionLogPlugin, SrcOnlyPlugin))
-    .add_open_tool("write", "Write a file.", ToolOptions::default(), |_: On<ToolCalled<serde_json::Value>>| {});
-app.finish();
-assert!(rig_harness::stage_conflicts(app.world_mut()).is_empty());
-// The first frame restores the session and spawns the first agent.
-app.update();
-let agent = app.world_mut().query_filtered::<Entity, With<Agent>>().single(app.world());
-let (Ok(agent), Ok(name)) = (agent, ToolName::new("write")) else {
-    panic!("the kernel spawns an agent");
-};
-// The call its model would ask for.
-let call = ToolCall::from_wire("c1", ToolFunction::new(name, serde_json::json!({ "path": "README.md" })));
-let call = app.world_mut().spawn((ToolRequest { call }, ForAgent(agent))).id();
-app.update();
-let refused = app.world().get::<Outcome>(call).and_then(|outcome| outcome.0.as_ref().err());
-assert!(refused.is_some_and(|why| why.to_string().contains("only under src/")));
-```
-
-Every corpus plugin's `tests.rs` is a further example.
+Example: [src_only_writes] is a plugin with such a test, in its
+[`tests.rs`][src_only_writes tests]. Every corpus plugin's `tests.rs` is a
+further example.
 
 [plugin corpus]: https://github.com/0xPlaygrounds/rig/tree/main/corpus
 [`rig-basics`]: https://github.com/0xPlaygrounds/rig/tree/main/plugins/rig-basics
@@ -294,3 +277,9 @@ Every corpus plugin's `tests.rs` is a further example.
 [usage_report_cli]: https://github.com/0xPlaygrounds/rig/blob/main/corpus/sn/src/usage_report_cli.rs
 [export]: https://github.com/0xPlaygrounds/rig/blob/main/corpus/base/src/export.rs
 [window_gui]: https://github.com/0xPlaygrounds/rig/blob/main/corpus/base/src/window_gui.rs
+[throughput_item]: https://github.com/0xPlaygrounds/rig/blob/main/corpus/ho/src/throughput_item.rs
+[keep_last_compaction]: https://github.com/0xPlaygrounds/rig/blob/main/corpus/ct/src/keep_last_compaction.rs
+[submit_result]: https://github.com/0xPlaygrounds/rig/blob/main/corpus/ho/src/submit_result.rs
+[shell_rewrite]: https://github.com/0xPlaygrounds/rig/blob/main/corpus/base/src/shell_rewrite.rs
+[src_only_writes]: https://github.com/0xPlaygrounds/rig/blob/main/corpus/base/src/src_only_writes.rs
+[src_only_writes tests]: https://github.com/0xPlaygrounds/rig/blob/main/corpus/base/src/src_only_writes/tests.rs
