@@ -313,8 +313,18 @@ fn remove(home: &Home, type_path: &str) -> Result<()> {
         if !kept.is_empty() {
             put_before_next(document, position, &kept);
         }
-        set_on(document, type_path, false, false);
-        set_on(document, type_path, true, true);
+        // Only a list that names it changes; an empty one of the user's stays.
+        let named = |document: &DocumentMut, key: &str| {
+            (document.get("plugins").and_then(|plugins| plugins.get(key)))
+                .and_then(Item::as_array)
+                .is_some_and(|list| list.iter().any(|name| name.as_str() == Some(type_path)))
+        };
+        if named(document, "enable") {
+            set_on(document, type_path, false, false);
+        }
+        if named(document, "disable") {
+            set_on(document, type_path, true, true);
+        }
         config::plugins(file)?;
         Ok((true, directory))
     })?;
