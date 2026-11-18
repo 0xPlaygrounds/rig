@@ -29,12 +29,15 @@ const FILE: &str = "mcp/approvals.json";
 
 /// Holds each server of the project's `.rig/mcp.json` until the user
 /// approves it as written: `/mcp approve` and `/mcp deny`. It adds nothing
-/// unless [`McpPlugin`] was added before it.
+/// unless [`McpPlugin`] is added too, in any order.
 #[derive(Default)]
 pub struct McpApprovalPlugin;
 
 impl Plugin for McpApprovalPlugin {
-    fn build(&self, app: &mut App) {
+    fn build(&self, _app: &mut App) {}
+
+    /// Asks once every plugin is built, so [`McpPlugin`] may be added after.
+    fn finish(&self, app: &mut App) {
         if !app.is_plugin_added::<McpPlugin>() {
             return;
         }

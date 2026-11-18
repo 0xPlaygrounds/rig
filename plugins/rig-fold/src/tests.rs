@@ -11,7 +11,9 @@ use serde_json::json;
 use super::*;
 
 /// The app the terminal view runs in, with `settings`, the plugin added
-/// after `before`, and its main pane, which shows the shown agent.
+/// and finished after `before`, and its main pane, which shows the shown
+/// agent. Only the plugin's `finish` runs: the terminal view's would open
+/// the terminal.
 fn app_with(settings: &str, before: impl FnOnce(&mut App)) -> (App, Entity) {
     let mut app = App::new();
     // Run at a terminal, so the terminal view is the run's front.
@@ -24,6 +26,7 @@ fn app_with(settings: &str, before: impl FnOnce(&mut App)) -> (App, Entity) {
         .add_plugins(TuiViewPlugin);
     before(&mut app);
     app.add_plugins(FoldPlugin);
+    FoldPlugin.finish(&mut app);
     let source = TranscriptSource::Shown;
     let pane = TranscriptPane {
         source,
@@ -331,10 +334,8 @@ fn without_its_key_nothing_folds() {
     );
 }
 
-/// How many warnings the app says as it starts hold `text`. Only the
-/// plugin's `finish` runs: the terminal view's would open the terminal.
+/// How many warnings the app says as it starts hold `text`.
 fn told(app: &mut App, text: &str) -> usize {
-    FoldPlugin.finish(app);
     // An app nothing adds a startup system to has no `Startup` to run.
     app.world_mut().try_run_schedule(Startup).ok();
     let notices = app.world().get_resource::<Messages<Notice>>();
@@ -362,13 +363,10 @@ fn fold_keys(view: bool) -> usize {
         .count()
 }
 
+/// Without the terminal view it binds no key; it still reads `[fold]`, as
+/// settings are read only in `build`, before the view may be added.
 #[test]
 fn without_the_terminal_view_it_adds_nothing() {
-    let mut app = App::new();
-    app.insert_resource(Settings::from_toml(""))
-        .add_plugins(FoldPlugin);
-    app.finish();
-    assert!(app.world().get_resource::<FoldSettings>().is_none());
     assert_eq!(fold_keys(false), 0);
 }
 

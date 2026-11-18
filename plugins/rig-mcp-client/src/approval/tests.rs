@@ -39,6 +39,7 @@ fn an_answer_keeps_the_answers_another_rig_gave_since() {
 fn without_mcp_servers_it_adds_nothing() {
     let mut app = App::new();
     app.add_plugins(McpApprovalPlugin);
+    app.finish();
     assert!(!app.is_plugin_added::<crate::McpCorePlugin>());
     let world = app.world_mut();
     let mut names = world.query::<&Name>();

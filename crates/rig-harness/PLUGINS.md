@@ -9,8 +9,9 @@ are plugins built on the same public API, and `[plugins]` in
 loads it in its `build` with `rig_harness::load::<P>`, which adds it unless
 the app has it and records which plugin added it; a plugin added any other
 way runs, but `/plugins` cannot see it. A plugin useless without
-another returns from `build` unless `app.is_plugin_added::<Other>()`, so it
-must be added after that one.
+another checks `app.is_plugin_added::<Other>()` in its `finish`, once every
+plugin is built, and adds nothing there without it; its settings are still
+read in `build`, the only place a plugin may read them.
 
 The kernel, `rig-ecs`, runs agents and their work; this crate, the harness,
 adds sessions, settings, commands and fronts (how a user drives the agent).
