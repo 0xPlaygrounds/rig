@@ -208,7 +208,10 @@ impl Running {
     }
 }
 
-/// A finished task's output, or a [`Running::stream`]'s latest item.
+/// A finished task's output, or a [`Running::stream`]'s latest item. On a
+/// hold or a plugin's own entity it moves no effect, so no stage runs for
+/// it: react with an `On<Insert<Done<T>>>` observer, such as one that
+/// releases the hold, not with a stage system.
 #[derive(Component)]
 pub struct Done<T: Send + Sync + 'static>(pub T);
 

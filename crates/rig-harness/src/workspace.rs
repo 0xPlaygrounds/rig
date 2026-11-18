@@ -6,8 +6,9 @@ use bevy_ecs::prelude::*;
 use rig_tools::workspace::{Local, Workspace};
 
 /// The workspace the tools act on: this machine's ([`Local`]) unless a
-/// plugin puts another in while the app is built, such as one reached over
-/// SSH. Paths in [`ProjectRoot`](crate::services::ProjectRoot),
+/// plugin puts another in, such as one reached over SSH. A plugin may swap
+/// it while the app runs, so read it on each use rather than keeping a
+/// copy. Paths in [`ProjectRoot`](crate::services::ProjectRoot),
 /// [`WorkDir`](crate::services::WorkDir) and tools' facts
 /// ([`FilesRead`](rig_core::tool::FilesRead),
 /// [`FilesChanged`](rig_core::tool::FilesChanged)) are in it. Run project

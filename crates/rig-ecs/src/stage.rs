@@ -571,6 +571,13 @@ pub fn despawn_open_children<M: Component>(
 /// The record of every effect that settled or was cancelled, in settle
 /// order, and of the dispatches nested in their handlers. Only effects of a
 /// kind the kernel knows, such as an [`EffectRequest`], have a record.
+///
+/// A record holds what its effect really carried, such as tool output and
+/// the request as sent, and a log writer in [`Persist`](crate::Persist)
+/// writes it as given. A plugin changes records before they are written
+/// with a `MessageMutator<EffectRecorded>` system in `Last`, after
+/// [`StopTurnsOnExit`](crate::StopTurnsOnExit) so it also sees the records
+/// of turns the exit stops.
 #[derive(Message, Clone, Debug)]
 pub struct EffectRecorded(pub EffectRecord);
 

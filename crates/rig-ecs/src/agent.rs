@@ -181,7 +181,10 @@ pub struct EffectParent(pub EffectId);
 ///
 /// Each change waits in the conversation's outbox until the kernel saves it
 /// and announces it as a
-/// [`ConversationChanged`](super::session_log::ConversationChanged). A value
+/// [`ConversationChanged`](super::session_log::ConversationChanged): right
+/// before `Update`, between the stages of each pass, at the end of the
+/// frame, before a tool call that may change something starts, and when a
+/// turn stops. A value
 /// inserted in place of the agent's own is saved as one reset, after the
 /// changes the old one had not saved. Saved through serde.
 ///

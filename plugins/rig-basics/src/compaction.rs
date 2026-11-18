@@ -9,10 +9,13 @@
 //! A request that does not fit goes through one recovery path
 //! ([`Recovering`]): as it is, then with old tool outputs cleared, then
 //! summarized, then the turn fails. Each step happens once until a model
-//! reply moves the conversation on. Clearing keeps the newest 20k tokens of
+//! reply moves the conversation on. A summary that fails or is cut short is
+//! never used and clears nothing. Clearing keeps the newest 20k tokens of
 //! tool outputs, so it rewrites the prompt cache seldom, and an output is
 //! cleared only once the model has written notes on it ([`Noting`]) or it
-//! reads back unchanged; otherwise the older messages are summarized, or the
+//! reads back unchanged, re-run as a [`ToolRequest`] [`ForAgent`] that is no
+//! [`CallOf`] the turn, so gates decide it and the turn's call counts skip
+//! it. Failed notes clear nothing. Otherwise the older messages are summarized, or the
 //! outputs stay and a notice says why. If clearing would leave more than half
 //! the room used, the model summarizes the older messages into a checkpoint
 //! built on [`summary_state`]. Each change is a splice by [`summary_author`],

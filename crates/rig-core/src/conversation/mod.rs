@@ -780,7 +780,9 @@ impl Conversation {
     /// when that id was in the range and no earlier entry of `with` kept
     /// it; any other gets a new id. Nothing merges. A splice reaching the
     /// end clears the halt. An empty range replaced by nothing changes and
-    /// records nothing.
+    /// records nothing. A provider's prompt cache is lost from the first
+    /// entry replaced on, so a splice before the end costs the requests
+    /// after it.
     pub fn splice(
         &mut self,
         range: impl RangeBounds<usize>,
