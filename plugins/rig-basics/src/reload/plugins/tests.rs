@@ -16,14 +16,16 @@ struct Told(Vec<String>);
 /// An app with `/plugins` and `/reload` in `home`, on a terminal or not,
 /// keeping its notices, and an agent.
 fn app(home: &rig_harness::harness_protocol::Home, terminal: bool) -> (App, Entity) {
-    app_with(home, terminal, crate::reload::ReloadPlugin)
+    app_with(home, terminal, crate::reload::ReloadPlugin, |_| {})
 }
 
-/// [`app`] with `rebuild` in place of the reload plugin.
+/// [`app`] with `rebuild` in place of the reload plugin, and `add` run on it
+/// before its agent is spawned.
 fn app_with(
     home: &rig_harness::harness_protocol::Home,
     terminal: bool,
     rebuild: impl Plugin,
+    add: impl FnOnce(&mut App),
 ) -> (App, Entity) {
     let mut app = App::new();
     app.add_plugins((
@@ -49,6 +51,7 @@ fn app_with(
                 .extend(refused.read().filter_map(|line| line.why.clone()));
         },
     );
+    add(&mut app);
     let agent = spawn_root(app.world_mut(), ()).id();
     (app, agent)
 }
@@ -159,10 +162,19 @@ fn plugins_opens_from_settings_with_short_names_and_a_preview_from_the_start() {
     );
 
     let first = preview(&app, *picker);
-    // The first row is rig's first plugin: its crate and area come first.
-    let first_path = BUILT_IN.first().map_or("-", |built_in| built_in.plugin);
-    assert!(first.contains(first_path), "{first:?} names {first_path}");
-    let more = shown.items.first().and_then(|item| item.more.as_deref());
+    // The first row is the crate of rig's first plugin, which the preview
+    // names with the plugins it holds.
+    let first_plugin = BUILT_IN.first();
+    let first_path = first_plugin.map_or("-", |built_in| built_in.plugin);
+    let first_name = first_plugin.map_or("-", |built_in| built_in.name);
+    assert_eq!(labels.first(), Some(&"rig-basics"));
+    assert!(
+        first.contains("rig-basics") && first.contains(first_name),
+        "{first:?}"
+    );
+    let more = (shown.items.iter())
+        .find(|item| item.label == first_name)
+        .and_then(|item| item.more.as_deref());
     assert!(
         more.is_some_and(|more| more.starts_with(first_path)),
         "typing the type path finds it: {more:?}"
@@ -203,7 +215,10 @@ fn plugins_opens_from_settings_with_short_names_and_a_preview_from_the_start() {
 fn picked_rows(app: &mut App) -> Vec<Row> {
     let world = app.world_mut();
     let mut pickers = world.query::<&PluginsPicker>();
-    let rows = pickers.iter(world).next().map(|picker| picker.rows.clone());
+    let rows = pickers
+        .iter(world)
+        .next()
+        .map(|picker| picker.tree.rows.clone());
     rows.unwrap_or_default()
 }
 
@@ -549,7 +564,7 @@ fn plugins_defaults_asks_to_go_back_to_rigs_defaults() {
 fn the_question_says_why_it_cannot_reload_and_esc_goes_back_to_the_list() {
     let home = scratch_home("plugins-no-reload");
     // `/update` keeps the rebuild machinery, but no `/reload` to run.
-    let (mut app, agent) = app_with(&home, true, crate::reload::update::UpdatePlugin);
+    let (mut app, agent) = app_with(&home, true, crate::reload::update::UpdatePlugin, |_| {});
     open(&mut app, agent);
     let found = picker(&mut app);
     assert!(found.is_some(), "no list");
@@ -903,4 +918,258 @@ fn a_plugin_another_loaded_under_an_off_branch_says_it_runs_not_that_the_branch_
         .unwrap_or_default();
     assert!(about.contains("running now, added by Subagents"), "{about}");
     assert!(!about.contains("keeps it off"), "{about}");
+}
+
+/// The label of the branch `parent` of `picker`'s item labelled `label`.
+fn parent_of(picker: &Picker, label: &str) -> Option<String> {
+    let item = picker.items.iter().find(|item| item.label == label)?;
+    let parent = picker.items.get(item.parent?)?;
+    Some(parent.label.clone())
+}
+
+#[test]
+fn plugins_opens_as_a_tree_of_crates_then_areas() {
+    let home = scratch_home("plugins-tree");
+    let (mut app, agent) = app(&home, true);
+    open(&mut app, agent);
+    let found = picker(&mut app);
+    assert!(
+        found.is_some(),
+        "no picker: {:?}",
+        app.world().resource::<Told>().0
+    );
+    let Some((_, shown)) = found else {
+        return;
+    };
+    // A crate of several plugins is a branch, and so is an area of several.
+    assert_eq!(parent_of(&shown, "rig-basics"), None);
+    assert_eq!(parent_of(&shown, "sessions").as_deref(), Some("rig-basics"));
+    assert_eq!(parent_of(&shown, "Sessions").as_deref(), Some("sessions"));
+    assert_eq!(
+        parent_of(&shown, "Forks and rewind").as_deref(),
+        Some("sessions")
+    );
+    // A crate or an area of one plugin is that plugin's row.
+    assert_eq!(parent_of(&shown, "Terminal view"), None);
+    assert!(at(&shown, "rig-tui").is_none());
+    assert_eq!(parent_of(&shown, "Skills").as_deref(), Some("rig-basics"));
+    assert!(at(&shown, "skills").is_none());
+    // Every branch comes before what it holds, and is ticked while it is on.
+    for (index, item) in shown.items.iter().enumerate() {
+        assert!(item.parent.is_none_or(|parent| parent < index), "{item:?}");
+    }
+    let checked = |label: &str| at(&shown, label).and_then(|at| shown.items.get(at));
+    assert_eq!(checked("sessions").map(|item| item.checked), Some(true));
+    assert!(detail(&shown, "rig-basics").contains("on"), "{shown:#?}");
+}
+
+#[test]
+fn a_branch_unticked_goes_into_off_and_one_ticked_comes_out() {
+    let home = scratch_home("plugins-branch-tick");
+    fs::create_dir_all(home.root()).ok();
+    fs::write(
+        home.settings(),
+        "[plugins]\noff = [\"rig-basics/telemetry\"]\n",
+    )
+    .ok();
+    let (mut app, agent) = app(&home, true);
+    open(&mut app, agent);
+    let found = picker(&mut app);
+    assert!(
+        found.is_some(),
+        "no picker: {:?}",
+        app.world().resource::<Told>().0
+    );
+    let Some((list, shown)) = found else {
+        return;
+    };
+    let checked = |shown: &Picker, label: &str| {
+        (shown.items.iter().find(|item| item.label == label)).map(|item| item.checked)
+    };
+    assert_eq!(checked(&shown, "telemetry"), Some(false));
+    assert_eq!(checked(&shown, "Usage"), Some(true), "its own choice");
+
+    tick(&mut app, list, &["telemetry"], &["sessions"]);
+    let shown = app.world().get::<Picker>(list).cloned().unwrap_or_default();
+    assert!(detail(&shown, "Sessions").contains("- off"), "{shown:#?}");
+    assert!(detail(&shown, "Usage").contains("+ on"), "{shown:#?}");
+    assert!(shown.body.contains("2 changes"), "{}", shown.body);
+    pick(&mut app, list, None);
+    let found = picker(&mut app);
+    assert!(found.is_some(), "no question");
+    let Some((question, asked)) = found else {
+        return;
+    };
+    assert!(
+        asked.body.contains("rig-basics/sessions") && asked.body.contains("rig-basics/telemetry"),
+        "{}",
+        asked.body
+    );
+    let later = at(&asked, "Later, at the next start");
+    pick(&mut app, question, later.map(Chosen::item));
+    let chosen = config::chosen(&home).unwrap_or_default();
+    assert_eq!(chosen.off, ["rig-basics/sessions"], "{}", settings(&home));
+    assert!((chosen.own.iter()).any(|plugin| plugin == "rig_basics::sessions::SessionsPlugin"));
+    assert!((chosen.on.iter()).any(|plugin| plugin == "rig_basics::telemetry::usage::UsagePlugin"));
+}
+
+#[test]
+fn the_question_adds_up_what_a_branch_takes_away_and_keep_editing_keeps_it() {
+    let home = scratch_home("plugins-branch-question");
+    fs::create_dir_all(home.root()).ok();
+    let budget = "[plugins]\nenable = [\"rig_basics::budget::BudgetPlugin\"]\n";
+    fs::write(home.settings(), budget).ok();
+    let (mut app, agent) = app(&home, true);
+    open(&mut app, agent);
+    let found = picker(&mut app);
+    assert!(
+        found.is_some(),
+        "no picker: {:?}",
+        app.world().resource::<Told>().0
+    );
+    let Some((list, _)) = found else {
+        return;
+    };
+    tick(&mut app, list, &[], &["reload", "telemetry"]);
+    let shown = app.world().get::<Picker>(list).cloned().unwrap_or_default();
+    assert_eq!(
+        detail(&shown, "Usage"),
+        "- off with its branch",
+        "{shown:#?}"
+    );
+    pick(&mut app, list, None);
+    let found = picker(&mut app);
+    assert!(found.is_some(), "no question");
+    let Some((question, asked)) = found else {
+        return;
+    };
+    // The essentials the branch holds, and the plugins that go with it.
+    for said in [
+        "/reload",
+        "/plugins itself",
+        "With their branch, off: ",
+        "Usage",
+    ] {
+        assert!(asked.body.contains(said), "{said} not in {}", asked.body);
+    }
+
+    let keep = at(&asked, "Keep editing");
+    pick(&mut app, question, keep.map(Chosen::item));
+    let found = picker(&mut app);
+    assert!(found.is_some(), "no list");
+    let Some((_, again)) = found else {
+        return;
+    };
+    let checked = |label: &str| {
+        (again.items.iter().find(|item| item.label == label)).map(|item| item.checked)
+    };
+    assert_eq!(checked("reload"), Some(false));
+    assert_eq!(checked("telemetry"), Some(false));
+    assert_eq!(checked("Reload"), Some(true), "its own choice is kept");
+    assert!(
+        detail(&again, "Plugins picker").contains("- off"),
+        "{again:#?}"
+    );
+    assert_eq!(settings(&home), budget);
+}
+
+#[test]
+fn the_way_back_to_an_essential_names_every_command_it_needs() {
+    let home = scratch_home("plugins-essential-back");
+    let (mut app, agent) = app(&home, true);
+    open(&mut app, agent);
+    let found = picker(&mut app);
+    assert!(found.is_some(), "no picker");
+    let Some((list, _)) = found else {
+        return;
+    };
+    tick(
+        &mut app,
+        list,
+        &[],
+        &["rig-basics", "reload", "Plugins picker"],
+    );
+    pick(&mut app, list, None);
+    let found = picker(&mut app);
+    assert!(found.is_some(), "no question");
+    let Some((_, asked)) = found else {
+        return;
+    };
+    // Each essential's own warning, with its commands one per line.
+    let warning = |name: &str| {
+        (asked
+            .body
+            .split("Turning off ")
+            .find(|part| part.starts_with(name)))
+        .map(|part| part.lines().map(str::trim).collect::<Vec<_>>())
+        .unwrap_or_default()
+    };
+    let branches = [
+        "rig plugin enable rig-basics",
+        "rig plugin enable rig-basics/reload",
+    ];
+    let own = "rig plugin enable rig_basics::reload::plugins::PluginsPlugin";
+    for (name, commands) in [
+        ("Reload ", &branches[..]),
+        ("Plugins picker ", &branches[..]),
+    ] {
+        let said = warning(name);
+        for command in commands {
+            assert!(
+                said.contains(command),
+                "{command} not for {name}: {}",
+                asked.body
+            );
+        }
+        assert_eq!(
+            said.contains(&own),
+            name == "Plugins picker ",
+            "{}",
+            asked.body
+        );
+    }
+}
+
+/// Typing a branch's name in `/plugins` selects that branch, not the first
+/// plugin under it, and typing a plugin's name selects the plugin, the
+/// crate on or off.
+#[cfg(feature = "tui")]
+#[test]
+fn typing_a_name_in_plugins_selects_the_row_of_that_name() {
+    for (off, typed) in [
+        ("", "reload"),
+        ("", "rig-basics"),
+        ("", "Subagents"),
+        ("", "Plugins picker"),
+        ("off = [\"rig-basics\"]", "rig-basics"),
+    ] {
+        let home = scratch_home("plugins-typed-name");
+        fs::create_dir_all(home.root()).ok();
+        fs::write(home.settings(), format!("[plugins]\n{off}\n")).ok();
+        let (mut app, agent) = app_with(&home, true, crate::reload::ReloadPlugin, |app| {
+            app.insert_resource(rig_tui::TuiTestScreen::new(120, 40));
+            rig_harness_test_support::tui_view(app);
+        });
+        // No `finish`: on a terminal the view's would add itself again.
+        app.update();
+        app.world_mut()
+            .trigger(rig_tui::ShowAgent { entity: agent });
+        open(&mut app, agent);
+        let keys: Vec<&str> = (typed.split(""))
+            .filter(|key| !key.is_empty())
+            .map(|key| if key == " " { "space" } else { key })
+            .collect();
+        rig_harness_test_support::press(&mut app, &keys.join(" "));
+        let found = picker(&mut app);
+        assert!(found.is_some(), "no picker");
+        let Some((list, shown)) = found else {
+            return;
+        };
+        let highlighted = app.world().get::<Highlighted>(list).copied();
+        assert_eq!(
+            highlighted.map(|row| row.0),
+            at(&shown, typed),
+            "{typed} with {off:?}"
+        );
+    }
 }
