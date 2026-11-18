@@ -3,12 +3,12 @@
 //! whether this build runs it (its `PluginSource` entity). In the terminal
 //! view it is a picker of short names in the plugin tree's order (crate,
 //! then area) with each plugin's own choice ticked, and the highlighted
-//! plugin's detail beside it ([`PickPreview`]). A plugin a branch of
-//! `[plugins] off` holds says it is off with its branch; one a plugin on
-//! adds says it is on, needed by that one, and unticking it while that one
-//! is ticked says it stays on. Enter ticks and
-//! unticks that plugin's own choice; each row that differs from the file
-//! shows `+ on` or `- off`. Leaving with changes asks whether to reload now
+//! plugin's detail beside it ([`PickPreview`]).
+//!
+//! Enter ticks and unticks a plugin's own choice, and each row that differs
+//! from the file shows `+ on` or `- off`. A row says when a branch of
+//! `[plugins] off` keeps it off, and when a plugin ticked adds it and so
+//! keeps it on. Leaving with changes asks whether to reload now
 //! ([`ReloadStatus::ask`]), at the next start, or to keep editing; either
 //! of the first two writes every change in one edit of the file
 //! ([`config::turn`]). `/plugins defaults` asks the same about going back to
@@ -54,8 +54,8 @@ struct Row {
     name: String,
     /// Whether its own choice in settings.toml is on.
     on: bool,
-    /// The branch of `[plugins] off` that keeps it off, if one does and no
-    /// plugin on adds it.
+    /// The branch of `[plugins] off` holding it, which keeps it off unless
+    /// a plugin ticked adds it ([`needer`]).
     branch_off: Option<String>,
     /// The plugins that add it ([`BuiltIn::adds`]), which keep it on while
     /// they are.
@@ -342,7 +342,7 @@ fn detail(row: &Row, on: bool, needer: Option<&Row>) -> String {
         return format!("- off, stays on: needed by {}", by.name);
     }
     match (row.on, on, row.essential) {
-        (false, true, _) => match &row.branch_off {
+        (false, true, _) => match row.branch_off.as_ref().filter(|_| needer.is_none()) {
             Some(branch) => format!("+ on, still off with its branch {branch}"),
             None => "+ on".to_owned(),
         },
@@ -451,7 +451,7 @@ struct Choice {
 impl Choice {
     /// What `chosen` makes of `plugin`.
     fn of(chosen: &Plugins, plugin: &str) -> Self {
-        let needed_by = chosen.needed_by(plugin).and_then(config::built_in);
+        let needed_by = chosen.needed_by(plugin).next().and_then(config::built_in);
         Choice {
             on: chosen.own.iter().any(|on| on == plugin),
             branch_off: chosen.off_with(plugin).map(str::to_owned),
@@ -526,7 +526,7 @@ fn built_in_row(built_in: &BuiltIn, choice: Choice, runs: bool) -> Row {
         plugin: built_in.plugin.to_owned(),
         name: built_in.name.to_owned(),
         on: choice.on,
-        branch_off: choice.branch_off.filter(|_| !runs_on),
+        branch_off: choice.branch_off,
         added_by: (BUILT_IN.iter())
             .filter(|adder| adder.adds.contains(&built_in.plugin))
             .map(|adder| adder.plugin)
@@ -733,7 +733,7 @@ fn ask(
 ) {
     let changed = changed(&rows, &on);
     let mut lines = Vec::new();
-    for (word, names) in names(&changed, &branches) {
+    for (word, names) in names(&rows, &on, &branches) {
         lines.push(format!("Turn {word}: {names}"));
     }
     if !branches.is_empty() {
@@ -787,19 +787,20 @@ fn ask(
     commands.spawn((picker, question)).observe(answer);
 }
 
-/// The names of the `changed` rows by what they turn, `on` then `off`, of
-/// those with any; a plugin turned on that a branch keeps off says so,
+/// The names of the rows `on` changes by what they turn, `on` then `off`,
+/// of those with any; a plugin turned on that a branch keeps off says so,
 /// unless that branch is one of the `branches` turned back on.
-fn names(changed: &[(&Row, bool)], branches: &[String]) -> Vec<(&'static str, String)> {
+fn names(rows: &[Row], on: &[bool], branches: &[String]) -> Vec<(&'static str, String)> {
+    let changed = changed(rows, on);
     [("on", true), ("off", false)]
         .into_iter()
         .filter_map(|(word, want)| {
             let names: Vec<String> = (changed.iter())
                 .filter(|(_, on)| *on == want)
-                .map(|(row, on)| {
-                    match (row.branch_off.as_ref())
-                        .filter(|branch| *on && !branches.contains(branch))
-                    {
+                .map(|(row, ticked)| {
+                    match (row.branch_off.as_ref()).filter(|branch| {
+                        *ticked && !branches.contains(branch) && needer(rows, on, row).is_none()
+                    }) {
                         Some(branch) => {
                             format!("{} (stays off with its branch {branch})", row.name)
                         }
@@ -876,7 +877,7 @@ fn answer(
         ));
         return;
     }
-    let mut said: Vec<String> = (names(&changed, branches).into_iter())
+    let mut said: Vec<String> = (names(rows, on, branches).into_iter())
         .map(|(word, names)| format!("turned {word} {names}"))
         .collect();
     if !branches.is_empty() {

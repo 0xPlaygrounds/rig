@@ -522,11 +522,11 @@ impl Plugins {
             .map(String::as_str)
     }
 
-    /// The first plugin on that adds `plugin` ([`BuiltIn::adds`]), which
-    /// keeps it on.
-    pub fn needed_by(&self, plugin: &str) -> Option<&str> {
+    /// The plugins on that add `plugin` ([`BuiltIn::adds`]), which keep it
+    /// on, in the order of [`Plugins::on`].
+    pub fn needed_by<'a>(&'a self, plugin: &'a str) -> impl Iterator<Item = &'a str> {
         (self.on.iter().map(String::as_str))
-            .find(|on| built_in(on).is_some_and(|built_in| built_in.adds.contains(&plugin)))
+            .filter(move |on| built_in(on).is_some_and(|built_in| built_in.adds.contains(&plugin)))
     }
 
     /// The first plugin `plugin` works only with ([`BuiltIn::only_with`])

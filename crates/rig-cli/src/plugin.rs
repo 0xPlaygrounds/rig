@@ -665,7 +665,7 @@ fn row(chosen: &Plugins, depth: usize, plugin: &str, about: &str) -> (String, Op
     if let Some(branch) = chosen.off_with(plugin).filter(|_| own && !on) {
         about.push_str(&format!(" (off with its branch {branch})"));
     }
-    if let Some(by) = chosen.needed_by(plugin).and_then(built_in) {
+    if let Some(by) = chosen.needed_by(plugin).next().and_then(built_in) {
         about.push_str(&format!(" (needed by {})", by.name));
     }
     if let Some(without) = chosen.does_nothing_without(plugin).filter(|_| on) {
@@ -725,13 +725,14 @@ fn enable(home: &Home, name: &str, on: bool) -> Result<Vec<String>> {
         }
         if !on
             && let Ok(chosen) = config::plugins(file)
-            && let Some(by) = chosen.needed_by(name)
+            && let Some(by) = adders(&chosen, name)
         {
-            return Err(format!(
-                "`{name}` stays on while `{by}`, which adds it, is on: \
-                 `rig plugin disable {by}` turns that off"
-            )
-            .into());
+            let them = if chosen.needed_by(name).count() > 1 {
+                "them"
+            } else {
+                "it"
+            };
+            return Err(format!("{by}: disable {them} first").into());
         }
         Ok((config::turn(file, &[(name, on)])?, false))
     })?;
@@ -796,6 +797,10 @@ fn enable(home: &Home, name: &str, on: bool) -> Result<Vec<String>> {
             ));
         }
     } else {
+        if branch {
+            let kept = plugins.iter().filter_map(|plugin| adders(&chosen, plugin));
+            said.extend(kept.map(|kept| format!("{kept}.")));
+        }
         for what in plugins.iter().filter_map(|plugin| essential(plugin)) {
             said.push(format!(
                 "Warning: this takes away {what}; `rig plugin enable {name}` brings it back."
@@ -803,6 +808,24 @@ fn enable(home: &Home, name: &str, on: bool) -> Result<Vec<String>> {
         }
     }
     Ok(said)
+}
+
+/// That `plugin` stays on while the plugins on that add it are, naming
+/// each, when one does.
+fn adders(chosen: &Plugins, plugin: &str) -> Option<String> {
+    let by: Vec<String> = chosen
+        .needed_by(plugin)
+        .map(|by| format!("`{by}`"))
+        .collect();
+    let (adds, is) = match by.len() {
+        0 => return None,
+        1 => ("adds", "is"),
+        _ => ("add", "are"),
+    };
+    Some(format!(
+        "`{plugin}` stays on while {}, which {adds} it, {is} on",
+        by.join(" and ")
+    ))
 }
 
 /// Whether a `[[plugins.extra]]` table of `file` names `plugin`, read

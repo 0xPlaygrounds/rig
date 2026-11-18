@@ -694,12 +694,14 @@ branch later stays off. Moving a plugin to another module changes its area.
 
 Some plugins add others: Subagents adds Approvals, and Budget and Helpers add
 Usage. While such a plugin is on, what it adds is on too, whatever its own
-choice and even when its branch is off; `rig plugin list` and `/plugins` show
-it as "on (needed by Subagents)", and `rig plugin disable` of it refuses,
-naming the plugin that adds it. Others work only with another and never turn
-it on: MCP approval does nothing without MCP servers, and folded output
-nothing without the terminal view. Both lists say "does nothing without" it
-while that one is off.
+choice and even when its branch is off. `/plugins` shows it as "on (needed
+by Subagents)" and `rig plugin list` as on, ending its line with "(needed by
+Subagents)". `rig plugin disable` of it refuses, naming each plugin on that
+adds it, and disabling its branch says it stays on. Others work only with
+another and never turn it on: MCP approval does nothing without MCP
+servers, and folded output nothing without the terminal view. While such a
+plugin is on and that one is off, both lists say it "does nothing without"
+that one.
 
 A mistake in this file (a plugin or branch rig does not know, a branch in
 `enable` or `disable`, a plugin in `off`, an `extra` path that holds no

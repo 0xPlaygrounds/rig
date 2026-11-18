@@ -621,7 +621,7 @@ fn a_needed_plugin_under_an_off_branch_stays_on() {
         "{:?}",
         chosen.on
     );
-    assert_eq!(chosen.needed_by(APPROVALS), Some(SUBAGENTS));
+    assert_eq!(chosen.needed_by(APPROVALS).next(), Some(SUBAGENTS));
     let order = |plugin: &str| chosen.on.iter().position(|it| it == plugin);
     assert!(order(APPROVALS) < order(SUBAGENTS), "in the table's order");
     let alone = plugins(&file(
@@ -630,7 +630,7 @@ fn a_needed_plugin_under_an_off_branch_stays_on() {
     ))
     .unwrap_or_default();
     assert!(!alone.on.iter().any(|plugin| plugin == APPROVALS));
-    assert_eq!(alone.needed_by(APPROVALS), None);
+    assert_eq!(alone.needed_by(APPROVALS).next(), None);
 }
 
 #[test]
