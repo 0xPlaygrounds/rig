@@ -12,13 +12,15 @@ listed over an empty input are a plugin of their own, `hints::KeyHintsPlugin`,
 so a user can turn them off. An app or test that adds the view itself adds
 `TuiPlugins`, the view with such parts.
 
-The view tells the terminal when a turn of an agent nothing spawned runs, as a
-shell does a command: OSC 133 marks (`C` as it starts, `D;1` as it fails or
+`TerminalTitlePlugin` (`rig_tui::title`, on by default) tells the terminal when
+a turn of an agent nothing spawned runs, as a shell does a command: OSC 133 marks (`C` as it starts, `D;1` as it fails or
 `D;0` as it answers or stops, then `A` and `B`), a state report
 (`133;S;activity=busy` or `reading`) for a multiplexer such as fux, and the
 title (`rig · working`, `rig · idle`, `rig · error` only after a failed turn).
-When the shell's marks carry a nonce, `mark_nonce_env` under `[tui]` in
+When the shell's marks carry a nonce, `mark_nonce_env` under `[title]` in
 `settings.toml` names the variable holding it (for fux, `FUX_MARK_NONCE`).
+Off, rig writes neither. `TuiPlugins` is `TuiPlugin` with it, for an app that
+lists its own plugins.
 
 Plugins add panels, transcript looks, status line items, key bindings and
 completion without touching the view. The plugin guide points at an example of each

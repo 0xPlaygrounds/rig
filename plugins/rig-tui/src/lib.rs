@@ -13,7 +13,8 @@
 //!
 //! [`TuiPlugin`] is [`TuiViewPlugin`] plus [`DefaultScreenPlugin`];
 //! [`TuiPlugins`] adds it with the parts a user may leave out, such as
-//! the [`status`] line and the [`hints`]. Where a plugin hooks in:
+//! the [`status`] line, the [`hints`] and the terminal's title ([`title`]).
+//! Where a plugin hooks in:
 //!
 //! - **Panels:** [`TuiPanel`], drawn in [`TuiSystems::Draw`] ([`panel`]);
 //!   [`RequestRedraw`] for a frame, [`TerminalSize`] for the screen.
@@ -60,8 +61,8 @@ mod selection;
 pub mod status;
 mod terminal;
 mod theme;
+pub mod title;
 mod transcript;
-mod turns;
 mod view;
 pub use rig_markdown::wrap;
 
@@ -70,9 +71,7 @@ use bevy_ecs::prelude::*;
 use bevy_ecs::schedule::common_conditions::any_match_filter;
 use rig_ecs::stage::AgentLoop;
 use rig_harness::prelude::launcher::{BUILD_ORIGIN, Refused};
-use rig_harness::prelude::{
-    Answerer, AppCliExt, AppKeepsExt, AppSettingsExt, Front, RigHome, ShownAgent,
-};
+use rig_harness::prelude::{Answerer, AppCliExt, AppKeepsExt, Front, RigHome, ShownAgent};
 
 pub use complete::{Candidate, Completion, CompletionKind, CompletionSource, CompletionTrigger};
 pub use crossterm;
@@ -126,9 +125,10 @@ impl Plugin for TuiPlugin {
 
 /// The terminal view ([`TuiPlugin`]) with the parts the agent adds as
 /// plugins of their own, each unless the app has it: the
-/// [`StatusLinePlugin`](status::StatusLinePlugin) and the
-/// [`KeyHintsPlugin`](hints::KeyHintsPlugin). For an app or a test that
-/// adds the view itself; the agent adds each from the settings.
+/// [`StatusLinePlugin`](status::StatusLinePlugin), the
+/// [`KeyHintsPlugin`](hints::KeyHintsPlugin) and the
+/// [`TerminalTitlePlugin`](title::TerminalTitlePlugin). For an app or a test
+/// that adds the view itself; the agent adds each from the settings.
 #[derive(Default)]
 pub struct TuiPlugins;
 
@@ -142,6 +142,9 @@ impl Plugin for TuiPlugins {
         }
         if !app.is_plugin_added::<hints::KeyHintsPlugin>() {
             app.add_plugins(hints::KeyHintsPlugin);
+        }
+        if !app.is_plugin_added::<title::TerminalTitlePlugin>() {
+            app.add_plugins(title::TerminalTitlePlugin);
         }
     }
 
@@ -175,7 +178,6 @@ impl Plugin for TuiViewPlugin {
         );
         // The notices shown and the unsent draft, in the session's files.
         app.keeps_files("tui");
-        app.add_setting::<turns::TuiSettings>("tui");
         app.init_resource::<render::FrameLayout>()
             .init_resource::<TuiFrame>()
             .init_resource::<view::Notices>()
@@ -263,7 +265,6 @@ pub fn add_view(app: &mut App) {
         .init_resource::<ShownAgent>()
         .init_resource::<view::TuiView>()
         .init_resource::<complete::FileIndex>()
-        .init_resource::<turns::Told>()
         .add_observer(clipboard::type_pasted)
         .add_observer(clipboard::warn_copy_missed)
         .add_observer(render::redraw_on_remove)
@@ -335,7 +336,6 @@ pub fn add_view(app: &mut App) {
                     .run_if(any_match_filter::<(With<RunInTerminal>, Without<TerminalExit>)>)
                     .before(TuiSystems::Layout),
                 transcript::note_effects.in_set(TuiSystems::Prepare),
-                turns::tell_state,
                 input::note_input_context.in_set(TuiSystems::Prepare),
                 input::show_copied
                     .run_if(resource_exists_and_changed::<view::TuiView>)
@@ -377,14 +377,6 @@ pub fn add_view(app: &mut App) {
                 .after(rig_ecs::WriteLogs)
                 .run_if(on_message::<AppExit>),
         )
-        // After the frame, and after what runs on the way out, which may
-        // write to the terminal before the view lets it go.
-        .add_systems(
-            Last,
-            turns::restore_title
-                .run_if(on_message::<AppExit>)
-                .in_set(bevy_app::OnAppExitSystems),
-        )
         .add_systems(
             Last,
             (
@@ -396,9 +388,7 @@ pub fn add_view(app: &mut App) {
         .add_observer(keys::release_focus)
         .add_observer(view::on_focus)
         .add_observer(view::on_scroll_to)
-        .add_observer(transcript::note_agent_name)
-        .add_observer(turns::turn_started)
-        .add_observer(turns::turn_ended);
+        .add_observer(transcript::note_agent_name);
 }
 
 /// The system that draws a failed build's note, in

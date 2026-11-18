@@ -1,6 +1,6 @@
-//! What the terminal is told of the turns of the agents nothing spawned,
-//! so a terminal or a multiplexer driving rig can tell a turn running from
-//! rig waiting for the user. Around each turn go the semantic prompt marks
+//! [`TerminalTitlePlugin`]: what the terminal view tells the terminal of
+//! the turns of the agents nothing spawned, so a terminal or a multiplexer
+//! driving rig can tell a turn running from rig waiting for the user. Around each turn go the semantic prompt marks
 //! (OSC 133) a shell writes around a command: `C` as it starts, `D;1` as it
 //! fails or `D;0` as it answers or stops, then `A` and `B` once no such
 //! turn runs, as a shell draws its prompt. Each is followed by a state
@@ -11,18 +11,55 @@
 //!
 //! A subagent's turns change none of it. The terminal's own title is
 //! pushed on its title stack before the first and popped as the app exits.
-//! The `[tui]` setting `mark_nonce_env` names an environment variable
+//! The `[title]` setting `mark_nonce_env` names an environment variable
 //! holding the nonce of the shell's marks (such as fux's `FUX_MARK_NONCE`),
 //! so the marks count for the command that started rig.
 
+use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use rig_ecs::agent::{SpawnedBy, TurnOf, TurnOutcome};
 use rig_ecs::stage::{ForAgent, Outcome, Settled};
 use rig_harness::ask::Ask;
 use rig_harness::pick::Picker;
+use rig_harness::prelude::AppSettingsExt;
 use serde::Deserialize;
 
-use super::terminal::TerminalWrite;
+use crate::terminal::TerminalWrite;
+use crate::view::TuiView;
+
+/// The terminal's title and the prompt marks around each turn, while the
+/// terminal view runs. Without the [`TuiViewPlugin`](crate::TuiViewPlugin),
+/// added before it or after, it adds nothing.
+#[derive(Default)]
+pub struct TerminalTitlePlugin;
+
+impl Plugin for TerminalTitlePlugin {
+    fn build(&self, app: &mut App) {
+        app.add_setting::<TitleSettings>("title");
+    }
+
+    // In `finish`, after every plugin's `build`, so the order they were
+    // added in does not matter.
+    fn finish(&self, app: &mut App) {
+        if !app.is_plugin_added::<crate::TuiViewPlugin>() {
+            return;
+        }
+        let shown = resource_exists::<TuiView>;
+        app.init_resource::<Told>()
+            .add_systems(PostUpdate, tell_state.run_if(shown))
+            // After what runs on the way out, which may write to the
+            // terminal before the view lets it go.
+            .add_systems(
+                Last,
+                restore_title
+                    .run_if(shown)
+                    .run_if(on_message::<AppExit>)
+                    .in_set(bevy_app::OnAppExitSystems),
+            )
+            .add_observer(turn_started.run_if(shown))
+            .add_observer(turn_ended.run_if(shown));
+    }
+}
 
 /// Saves the terminal's title on its title stack (xterm's `CSI 22 ; 0 t`).
 const PUSH_TITLE: &[u8] = b"\x1b[22;0t";
@@ -30,10 +67,10 @@ const PUSH_TITLE: &[u8] = b"\x1b[22;0t";
 /// Restores the title saved last (`CSI 23 ; 0 t`).
 const POP_TITLE: &[u8] = b"\x1b[23;0t";
 
-/// `[tui]` in `settings.toml`.
+/// `[title]` in `settings.toml`.
 #[derive(Resource, Deserialize, Default)]
 #[serde(default, deny_unknown_fields)]
-pub(crate) struct TuiSettings {
+struct TitleSettings {
     /// The environment variable holding the nonce each mark carries, if
     /// the terminal's shell integration sets one.
     mark_nonce_env: Option<String>,
@@ -41,7 +78,7 @@ pub(crate) struct TuiSettings {
 
 /// What the terminal was told last.
 #[derive(Resource)]
-pub(crate) struct Told {
+struct Told {
     /// Whether a turn runs: `C` was written and its `D` not yet.
     running: Option<bool>,
     /// The title's state, once one was written.
@@ -49,14 +86,14 @@ pub(crate) struct Told {
     /// Whether the last turn that ended failed.
     failed: bool,
     /// The options each mark ends with: `;nonce=…` when
-    /// [`TuiSettings::mark_nonce_env`] names a set variable.
+    /// [`TitleSettings::mark_nonce_env`] names a set variable.
     options: String,
 }
 
 impl FromWorld for Told {
     fn from_world(world: &mut World) -> Self {
         let nonce = world
-            .get_resource::<TuiSettings>()
+            .get_resource::<TitleSettings>()
             .and_then(|settings| settings.mark_nonce_env.as_deref())
             .and_then(|name| std::env::var(name).ok());
         Self {
@@ -97,7 +134,7 @@ impl Told {
 }
 
 /// A turn of an agent nothing spawned starts: `C`.
-pub(crate) fn turn_started(
+fn turn_started(
     turn: On<Add<TurnOf>>,
     turns: Query<&TurnOf>,
     subagents: Query<(), With<SpawnedBy>>,
@@ -113,7 +150,7 @@ pub(crate) fn turn_started(
 }
 
 /// Such a turn ended: `D`, then the prompt.
-pub(crate) fn turn_ended(
+fn turn_ended(
     settled: On<Add<Settled>>,
     turns: Query<(&ForAgent, &TurnOutcome)>,
     subagents: Query<(), With<SpawnedBy>>,
@@ -134,7 +171,7 @@ pub(crate) fn turn_ended(
 
 /// Draws the first prompt, ends a turn gone without an outcome (with its
 /// agent: stopped, so not failed), and keeps the title, once per frame.
-pub(crate) fn tell_state(
+fn tell_state(
     turns: Query<&TurnOf, Without<Settled>>,
     subagents: Query<(), With<SpawnedBy>>,
     pickers: Query<(), With<Picker>>,
@@ -169,7 +206,7 @@ pub(crate) fn tell_state(
 }
 
 /// Gives the terminal its title back as the app exits.
-pub(crate) fn restore_title(mut told: ResMut<Told>, mut out: MessageWriter<TerminalWrite>) {
+fn restore_title(mut told: ResMut<Told>, mut out: MessageWriter<TerminalWrite>) {
     if told.title.take().is_some() {
         out.write(TerminalWrite(POP_TITLE.to_vec()));
     }

@@ -746,10 +746,11 @@ of its plugins comes back as you left it, and a plugin rig adds to an off
 branch later stays off. Moving a plugin to another module changes its area.
 A plugin another adds in its own `build` runs whatever its choice:
 Subagents adds Approvals, and Budget and Helpers add Usage. Folded output,
-the status line and Key hints do nothing without the terminal view, the
-working animation nothing without Activity and the terminal view, nor MCP
-approval without MCP servers. With the terminal view off, rig builds none of
-the plugins of `rig-tui`, such as the status line and Key hints.
+the status line, Key hints and the terminal title do nothing without the
+terminal view, the working animation nothing without Activity and the
+terminal view, nor MCP approval without MCP servers. With the terminal view
+off, rig builds none of the plugins of `rig-tui`, such as the status line,
+Key hints and the terminal title.
 
 A mistake in this file (a plugin or branch rig does not know, a branch in
 `enable` or `disable`, a plugin in `off`, an `extra` path that holds no
