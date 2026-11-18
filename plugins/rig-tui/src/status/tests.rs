@@ -276,13 +276,22 @@ fn hidden_parts_are_not_drawn_but_stay_among_the_items() {
         ("cache", Side::Right, "cache 80%"),
         ("cost", Side::Right, "$0.12"),
     ];
+    // The app's items and the running turn's are hidden by name too.
+    let app_items = &mut app.world_mut().resource_mut::<AppStatus>().0;
+    app_items.show(StatusItem::new("cost", Side::Right, 50, 5).says("app $9", Tone::Plain));
+    app_items.show(StatusItem::new("update", Side::Left, 50, 5).says("v2 out", Tone::Plain));
+    let mut turn = StatusItems::default();
+    turn.show(StatusItem::new("cache", Side::Left, 60, 5).says("turn cache", Tone::Plain));
+    turn.show(StatusItem::new("turn", Side::Left, 61, 5).says("turn 3s", Tone::Plain));
+    app.world_mut().spawn((TurnOf(agent), turn));
     draw_with(&mut app, agent, &items);
     let (row, _) = input_bottom_row(&mut app);
-    assert!(row.contains("12k tok"), "{row:?}");
-    assert!(
-        !row.contains("cache 80%") && !row.contains("$0.12"),
-        "{row:?}"
-    );
+    for shown in ["12k tok", "v2 out", "turn 3s"] {
+        assert!(row.contains(shown), "{shown}: {row:?}");
+    }
+    for hidden in ["cache 80%", "$0.12", "app $9", "turn cache"] {
+        assert!(!row.contains(hidden), "{hidden}: {row:?}");
+    }
     let mut kept: Vec<&str> = (app.world().get::<StatusItems>(agent).into_iter())
         .flat_map(StatusItems::iter)
         .map(|item| item.name)
@@ -300,4 +309,23 @@ fn hidden_parts_are_not_drawn_but_stay_among_the_items() {
     app.update();
     let (row, _) = input_bottom_row(&mut app);
     assert!(row.contains("no agent"), "{row:?}");
+}
+
+#[test]
+fn an_input_spawned_after_startup_gets_the_status_line() {
+    use crate::tests::view_app_of;
+    use crate::{MainEditor, TuiViewPlugin};
+
+    let (mut app, agent) = view_app_of(|app| {
+        app.add_plugins((TuiViewPlugin, StatusLinePlugin));
+    });
+    app.update();
+    app.world_mut().spawn((
+        Editor::default(),
+        MainEditor,
+        TuiPanel::new(Placement::Bottom(Constraint::Length(3))),
+    ));
+    draw_with(&mut app, agent, &[("model", Side::Left, "acme-model")]);
+    let (row, _) = input_bottom_row(&mut app);
+    assert!(row.contains("acme-model"), "{row:?}");
 }
