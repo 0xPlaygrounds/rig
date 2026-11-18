@@ -388,3 +388,26 @@ fn dropped_image_urls_and_several_images_are_typed_as_references() {
     }
     std::fs::remove_dir_all(&root).ok();
 }
+
+/// A refused command put back in the input opens no list, so Esc goes to
+/// the turn; the list opens again once the text changes.
+#[test]
+fn a_refused_command_put_back_opens_no_list_until_the_text_changes() {
+    let (mut app, _) = view_app();
+    app.add_command(
+        "new",
+        "Start a new session",
+        |In(args): In<CommandArgs>, mut notices: MessageWriter<Notice>| {
+            notices.write(Notice::error(args.agent, "A turn is running."));
+        },
+    );
+    type_text(&mut app, "/new");
+    assert!(open(&app));
+    press(&mut app, "enter");
+    assert_eq!(typed_text(&app), "/new");
+    assert!(!open(&app));
+    type_text(&mut app, "x");
+    press(&mut app, "backspace");
+    assert_eq!(typed_text(&app), "/new");
+    assert!(open(&app));
+}

@@ -91,3 +91,34 @@ fn every_help_starts_two_columns_after_the_widest_name() {
         "{text:?}"
     );
 }
+
+#[test]
+fn a_session_switch_refused_while_a_turn_runs_comes_back_in_the_input() {
+    let home = rig_harness_test_support::scratch_home("rig-basics-switch-mid-turn");
+    let mut app = App::new();
+    app.insert_resource(RigHome(home.clone()))
+        .add_plugins((AgentPlugin, crate::sessions::SessionsPlugin));
+    let world = app.world_mut();
+    let mut conversation = Conversation::default();
+    conversation.push(rig_core::completion::Message::user("Keep this session"));
+    let agent = spawn_root(world, conversation).id();
+    world.spawn(TurnOf(agent));
+    for line in ["new", "resume 1-1"] {
+        world.trigger(RunCommand::new(agent, line));
+        world.flush();
+        let recalled: Vec<Recalled> = world.resource_mut::<Messages<Recalled>>().drain().collect();
+        assert_eq!(recalled.len(), 1, "{line}");
+        assert!(
+            recalled.iter().all(|recalled| {
+                recalled.agent == agent
+                    && recalled.text == format!("/{line}")
+                    && recalled
+                        .why
+                        .as_ref()
+                        .is_some_and(|why| why.contains("A turn is running"))
+            }),
+            "{line}: {recalled:?}"
+        );
+    }
+    std::fs::remove_dir_all(home.root()).ok();
+}
