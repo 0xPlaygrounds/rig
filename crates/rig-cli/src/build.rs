@@ -1022,16 +1022,7 @@ fn check_bevy(
         (dependents.iter()).any(|line| package(line).is_some_and(|(name, _)| name == extra.krate))
     });
     Err(Explained(match culprit {
-        Some(plugin) => format!(
-            "plugin `{name}` uses Bevy {version}, but this rig agent is built on Bevy \
-             {BEVY_VERSION}. A Bevy plugin only works with the exact Bevy version of its app. \
-             Change {name}'s bevy dependencies to \"{range}\" (with default-features = false), \
-             which cargo builds with the agent's Bevy, or take it out with \
-             `rig plugin remove {plugin}`.",
-            name = plugin.krate,
-            plugin = plugin.plugin,
-            range = super::bevy_range(),
-        ),
+        Some(plugin) => foreign_bevy(&plugin.krate, &plugin.plugin, version),
         None => format!(
             "the agent project pulls in Bevy {version}, but this rig agent is built on Bevy \
              {BEVY_VERSION}. Every Bevy crate must take {BEVY_VERSION}, as \"{}\" does.",
@@ -1039,6 +1030,18 @@ fn check_bevy(
         ),
     })
     .into())
+}
+
+/// The error for plugin `plugin` of crate `krate` built on Bevy `version`,
+/// not [`BEVY_VERSION`]. It opens with the requirement to write.
+fn foreign_bevy(krate: &str, plugin: &str, version: &str) -> String {
+    format!(
+        "plugin `{krate}` must write its bevy dependencies as \"{range}\" (with \
+         default-features = false), the agent's Bevy, or be taken out with \
+         `rig plugin remove {plugin}`. It uses Bevy {version}, and this rig agent is built on \
+         Bevy {BEVY_VERSION}.",
+        range = super::bevy_range(),
+    )
 }
 
 /// Each requirement of one of Bevy's own crates (`bevy`, a crate named in
