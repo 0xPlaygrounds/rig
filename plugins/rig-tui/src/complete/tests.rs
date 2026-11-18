@@ -1,7 +1,7 @@
 use rig_harness::prelude::*;
 
 use super::super::view::TuiView;
-use crate::tests::{press, scratch, type_text, typed as typed_text, view_app};
+use crate::tests::{press, scratch, type_text, typed as typed_text, view_app, view_app_with};
 use crate::{CompletionKind, CompletionSource, InputContext};
 
 /// Whether a completion list is open.
@@ -119,9 +119,10 @@ fn a_file_made_while_at_is_typed_is_listed_without_waiting() {
     let root = scratch("complete-watch");
     std::fs::create_dir_all(root.join("src")).ok();
     std::fs::write(root.join("src").join("a.rs"), "").ok();
-    let (mut app, _) = view_app();
-    app.add_plugins(rig_harness::watch::WatchPlugin)
-        .insert_resource(ProjectRoot(root.clone()));
+    let (mut app, _) = view_app_with(|app| {
+        app.add_plugins(rig_harness::watch::WatchPlugin);
+    });
+    app.insert_resource(ProjectRoot(root.clone()));
     let items = |app: &App| {
         let completion = app.world().resource::<TuiView>().completion.as_ref();
         let items = completion.into_iter().flat_map(|open| &open.items);
@@ -162,9 +163,10 @@ fn at_keeps_its_paths_through_a_failed_listing() {
 
     let root = scratch("complete-outage");
     std::fs::write(root.join("a.rs"), "").ok();
-    let (mut app, _) = view_app();
-    app.add_plugins(rig_harness::watch::WatchPlugin)
-        .insert_resource(ProjectRoot(root.clone()));
+    let (mut app, _) = view_app_with(|app| {
+        app.add_plugins(rig_harness::watch::WatchPlugin);
+    });
+    app.insert_resource(ProjectRoot(root.clone()));
     let run_for = |app: &mut App, wait: Duration| {
         let started = Instant::now();
         while started.elapsed() < wait {
@@ -207,9 +209,10 @@ fn at_keeps_its_paths_through_a_failed_walk() {
 
     let root = scratch("complete-failed-walk");
     std::fs::write(root.join("a.rs"), "").ok();
-    let (mut app, _) = view_app();
-    app.add_plugins(rig_harness::watch::WatchPlugin)
-        .insert_resource(ProjectRoot(root.clone()));
+    let (mut app, _) = view_app_with(|app| {
+        app.add_plugins(rig_harness::watch::WatchPlugin);
+    });
+    app.insert_resource(ProjectRoot(root.clone()));
     let listed = |app: &App| {
         let index = app.world().resource::<FileIndex>();
         index.paths.iter().any(|path| path == "a.rs")
