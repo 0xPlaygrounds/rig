@@ -97,8 +97,8 @@ pub fn run(launch: &Launch, args: &[&str]) -> Result<ExitCode> {
         ["add", type_path, flags @ ..] => add(home, type_path, flags, source),
         ["remove", type_path] => remove(home, type_path),
         ["list"] => list(home),
-        ["enable", type_path] => enable(home, type_path, true),
-        ["disable", type_path] => enable(home, type_path, false),
+        ["enable", type_path] => say(enable(home, type_path, true)),
+        ["disable", type_path] => say(enable(home, type_path, false)),
         ["check"] => check(home, source),
         ["check", "--build"] => check(home, source).and_then(|()| check_build(launch)),
         _ => {
@@ -678,6 +678,14 @@ fn row(chosen: &Plugins, depth: usize, plugin: &str, about: &str) -> (String, Op
     (head, Some(about))
 }
 
+/// Prints each line `said` holds.
+fn say(said: Result<Vec<String>>) -> Result<()> {
+    for line in said? {
+        println!("{line}");
+    }
+    Ok(())
+}
+
 /// `rig plugin enable <name>` and `rig plugin disable <name>`: names the
 /// plugin `name` in `[plugins] enable` or `disable` of the home's settings,
 /// or takes it out of the other list when that gives rig's default; a
@@ -688,8 +696,9 @@ fn row(chosen: &Plugins, depth: usize, plugin: &str, about: &str) -> (String, Op
 /// else turns off a plugin that does not build here, which is how the
 /// settings' refusal of each says to fix it, even while the file holds
 /// other mistakes. It refuses to disable a plugin that a plugin on adds,
-/// naming that one.
-fn enable(home: &Home, name: &str, on: bool) -> Result<()> {
+/// naming that one. It returns what it tells the user.
+fn enable(home: &Home, name: &str, on: bool) -> Result<Vec<String>> {
+    let mut said = Vec::new();
     let path = home.settings();
     let (changed, forgot) = config::edit(&path, |file| -> Result<_> {
         if !on && let Err(failure) = config::plugins(file) {
@@ -727,11 +736,11 @@ fn enable(home: &Home, name: &str, on: bool) -> Result<()> {
         Ok((config::turn(file, &[(name, on)])?, false))
     })?;
     if forgot {
-        println!(
+        said.push(format!(
             "Took `{name}` out of the [plugins] lists of {} that cannot hold it.",
             path.display()
-        );
-        return Ok(());
+        ));
+        return Ok(said);
     }
     let chosen = config::chosen(home)?;
     let branch = chosen.krate(name).is_none();
@@ -745,10 +754,10 @@ fn enable(home: &Home, name: &str, on: bool) -> Result<()> {
         } else {
             ""
         };
-        println!(
+        said.push(format!(
             "{what}`{name}`{whose} is {state} already in {}.",
             path.display()
-        );
+        ));
     } else {
         let then = match (branch, on) {
             (false, _) => "",
@@ -758,11 +767,11 @@ fn enable(home: &Home, name: &str, on: bool) -> Result<()> {
             }
             (true, true) => ": each of its plugins is as its own choice says",
         };
-        println!(
+        said.push(format!(
             "Turned {what}`{name}` {state} in {}{then}.\n\
              The next start, or /reload in the agent, rebuilds the agent with it.",
             path.display()
-        );
+        ));
     }
     let plugins: Vec<&str> = if branch {
         chosen.held(name)
@@ -780,18 +789,20 @@ fn enable(home: &Home, name: &str, on: bool) -> Result<()> {
             }
         }
         for off in keeping {
-            println!(
+            said.push(format!(
                 "The branch `{off}` is still off, which keeps {} off; \
                  `rig plugin enable {off}` turns it on.",
                 if branch { "some of them" } else { "it" }
-            );
+            ));
         }
     } else {
         for what in plugins.iter().filter_map(|plugin| essential(plugin)) {
-            println!("Warning: this takes away {what}; `rig plugin enable {name}` brings it back.");
+            said.push(format!(
+                "Warning: this takes away {what}; `rig plugin enable {name}` brings it back."
+            ));
         }
     }
-    Ok(())
+    Ok(said)
 }
 
 /// Whether a `[[plugins.extra]]` table of `file` names `plugin`, read

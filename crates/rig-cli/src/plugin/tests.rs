@@ -831,7 +831,77 @@ fn disabling_a_plugin_another_adds_is_refused_naming_it() {
     assert_eq!(before, after, "a refusal leaves the file");
     let approvals = list.lines().find(|line| line.contains(APPROVALS));
     assert!(
-        approvals.is_some_and(|line| line.contains("on ") && line.contains("needed by Subagents")),
+        approvals.is_some_and(|line| {
+            line.split_whitespace().next() == Some("on") && line.contains("needed by Subagents")
+        }),
+        "{list}"
+    );
+}
+
+#[test]
+fn disabling_the_branch_of_a_needed_plugin_says_it_stays_on() {
+    const SUBAGENTS: &str = "rig_basics::subagents::SubagentsPlugin";
+    const APPROVALS: &str = "rig_basics::approval::ApprovalPlugin";
+    let home = old_home("needed-branch");
+    let result = (|| -> Result<_> {
+        fs::create_dir_all(home.root())?;
+        run(&home, &["enable", SUBAGENTS])?;
+        run(&home, &["enable", APPROVALS])?;
+        let said = enable(&home, "rig-basics/approval", false)?;
+        Ok((said.join("\n"), config::chosen(&home)?))
+    })();
+    fs::remove_dir_all(home.root()).ok();
+    assert!(result.is_ok(), "{result:?}");
+    let (said, chosen) = result.unwrap_or_default();
+    assert_eq!(chosen.off, ["rig-basics/approval"]);
+    assert!(chosen.on.iter().any(|plugin| plugin == APPROVALS));
+    assert!(
+        said.lines().any(|line| {
+            line.contains(APPROVALS) && line.contains("stays on") && line.contains(SUBAGENTS)
+        }),
+        "{said}"
+    );
+}
+
+#[test]
+fn the_refusal_names_every_plugin_on_that_adds_it() {
+    const USAGE: &str = "rig_basics::telemetry::usage::UsagePlugin";
+    const ADDERS: [&str; 2] = [
+        "rig_basics::budget::BudgetPlugin",
+        "rig_basics::helpers::HelpersPlugin",
+    ];
+    let home = old_home("needed-twice");
+    let result = (|| -> Result<_> {
+        fs::create_dir_all(home.root())?;
+        for adder in ADDERS {
+            run(&home, &["enable", adder])?;
+        }
+        Ok(run(&home, &["disable", USAGE])
+            .err()
+            .map(|why| why.to_string()))
+    })();
+    fs::remove_dir_all(home.root()).ok();
+    let refused = result.ok().flatten().unwrap_or_default();
+    assert!(
+        ADDERS.iter().all(|adder| refused.contains(adder)),
+        "{refused}"
+    );
+}
+
+#[test]
+fn the_list_says_a_plugin_on_does_nothing_without_one_off() {
+    const MCP_APPROVAL: &str = "rig_mcp_client::approval::McpApprovalPlugin";
+    let home = old_home("idle");
+    let result = (|| -> Result<_> {
+        fs::create_dir_all(home.root())?;
+        run(&home, &["enable", MCP_APPROVAL])?;
+        listing(&home)
+    })();
+    fs::remove_dir_all(home.root()).ok();
+    let list = result.unwrap_or_default();
+    let line = list.lines().find(|line| line.contains(MCP_APPROVAL));
+    assert!(
+        line.is_some_and(|line| line.contains("does nothing without MCP servers")),
         "{list}"
     );
 }

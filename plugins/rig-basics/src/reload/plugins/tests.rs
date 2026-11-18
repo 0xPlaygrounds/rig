@@ -854,3 +854,65 @@ fn plugins_defaults_says_no_plugin_stays_off_under_a_branch_it_turns_back_on() {
         settings(&home)
     );
 }
+
+#[test]
+fn a_plugin_another_adds_says_so_and_unticking_it_says_it_stays_on() {
+    let home = scratch_home("plugins-needed");
+    fs::create_dir_all(home.root()).ok();
+    fs::write(
+        home.settings(),
+        "[plugins]\nenable = [\"rig_basics::subagents::SubagentsPlugin\", \
+         \"rig_basics::approval::ApprovalPlugin\"]\n",
+    )
+    .ok();
+    let (mut app, agent) = app(&home, true);
+    open(&mut app, agent);
+    let Some((list, shown)) = picker(&mut app) else {
+        return;
+    };
+    assert!(
+        detail(&shown, "Approvals").starts_with("on (needed by Subagents)"),
+        "{}",
+        detail(&shown, "Approvals")
+    );
+    tick(&mut app, list, &[], &["Approvals"]);
+    let unticked = app.world().get::<Picker>(list).cloned().unwrap_or_default();
+    assert_eq!(
+        detail(&unticked, "Approvals"),
+        "- off, stays on: needed by Subagents"
+    );
+    pick(&mut app, list, None);
+    let Some((_, asked)) = picker(&mut app) else {
+        return;
+    };
+    assert!(
+        asked
+            .body
+            .contains("Approvals stays on while Subagents, which adds it, is on"),
+        "{}",
+        asked.body
+    );
+}
+
+#[test]
+fn ticking_a_needed_plugin_after_unticking_its_adder_says_its_branch_keeps_it_off() {
+    let home = scratch_home("plugins-needed-branch");
+    fs::create_dir_all(home.root()).ok();
+    fs::write(
+        home.settings(),
+        "[plugins]\noff = [\"rig-basics/approval\"]\n\
+         enable = [\"rig_basics::subagents::SubagentsPlugin\"]\n",
+    )
+    .ok();
+    let (mut app, agent) = app(&home, true);
+    open(&mut app, agent);
+    let Some((list, _)) = picker(&mut app) else {
+        return;
+    };
+    tick(&mut app, list, &["Approvals"], &["Subagents"]);
+    let shown = app.world().get::<Picker>(list).cloned().unwrap_or_default();
+    assert_eq!(
+        detail(&shown, "Approvals"),
+        "+ on, still off with its branch rig-basics/approval"
+    );
+}
