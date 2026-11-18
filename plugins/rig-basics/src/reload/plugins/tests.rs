@@ -726,6 +726,11 @@ fn extras_are_in_the_trees_order_by_crate_then_area() {
         .collect();
     assert_eq!(
         order,
-        ["a::sessions::One", "a::sessions::Three", "a::tools::Two", "b::B"]
+        [
+            "a::sessions::One",
+            "a::sessions::Three",
+            "a::tools::Two",
+            "b::B"
+        ]
     );
 }

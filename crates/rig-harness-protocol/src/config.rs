@@ -69,6 +69,30 @@ pub fn holds(branch: &str, krate: &str, plugin: &str) -> bool {
     }
 }
 
+/// `items` in the plugin tree's order: each crate where its first plugin
+/// is, in it each area where its first plugin is, and otherwise in their
+/// order. `place` gives an item's crate and type path.
+pub fn tree_order<T>(items: Vec<T>, place: impl Fn(&T) -> (&str, &str)) -> Vec<T> {
+    let places: Vec<(&str, &str)> = items.iter().map(&place).collect();
+    let first = |held: &dyn Fn(&(&str, &str)) -> bool, at: usize| {
+        places.iter().position(held).unwrap_or(at)
+    };
+    let keys: Vec<(usize, usize)> = (places.iter().enumerate())
+        .map(|(at, &(krate, plugin))| {
+            let area = area(plugin).map_or(at, |of| {
+                first(
+                    &|&(it, other)| it == krate && self::area(other) == Some(of),
+                    at,
+                )
+            });
+            (first(&|&(it, _)| it == krate, at), area)
+        })
+        .collect();
+    let mut keyed: Vec<((usize, usize), T)> = keys.into_iter().zip(items).collect();
+    keyed.sort_by_key(|(key, _)| *key);
+    keyed.into_iter().map(|(_, item)| item).collect()
+}
+
 impl BuiltIn {
     /// Whether it builds on the target this was compiled for.
     pub fn available(&self) -> bool {

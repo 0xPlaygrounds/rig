@@ -617,9 +617,9 @@ fn listing(home: &Home) -> Result<String> {
 }
 
 /// The lines of `plugins`, each its crate, type path and what it adds, as
-/// [`listing`] shows them: a heading for each crate where its first plugin
-/// is, in it a heading for each area of more than one plugin or in `off`
-/// where its first is, and each plugin under them with its state, its
+/// [`listing`] shows them in the tree's order ([`config::tree_order`]): a
+/// heading for each crate, in it a heading for each area of more than one
+/// plugin or in `off`, and each plugin under them with its state, its
 /// line's head apart from what it adds.
 fn tree(chosen: &Plugins, plugins: Vec<(&str, &str, String)>) -> Vec<(String, Option<String>)> {
     let heading = |depth: usize, branch: &str| {
@@ -629,42 +629,28 @@ fn tree(chosen: &Plugins, plugins: Vec<(&str, &str, String)>) -> Vec<(String, Op
         }
         (line, None)
     };
-    let mut crates: Vec<&str> = Vec::new();
-    for (krate, ..) in &plugins {
-        if !crates.contains(krate) {
-            crates.push(krate);
-        }
-    }
+    let plugins = config::tree_order(plugins, |(krate, plugin, _)| (*krate, *plugin));
     let mut lines = Vec::new();
-    for krate in crates {
-        lines.push(heading(0, krate));
-        let of_crate: Vec<(&str, &str)> = (plugins.iter())
-            .filter(|(of, ..)| *of == krate)
-            .map(|(_, plugin, about)| (*plugin, about.as_str()))
-            .collect();
-        let mut areas: Vec<&str> = Vec::new();
-        for &(plugin, about) in &of_crate {
-            let together: Vec<(&str, &str)> = match area(plugin) {
-                Some(of) => (of_crate.iter().copied())
-                    .filter(|(it, _)| area(it) == Some(of))
-                    .collect(),
-                None => Vec::new(),
-            };
-            match area(plugin) {
-                Some(of)
-                    if together.len() > 1
-                        || chosen.off.iter().any(|off| *off == format!("{krate}/{of}")) =>
-                {
-                    if !areas.contains(&of) {
-                        areas.push(of);
-                        lines.push(heading(1, &format!("{krate}/{of}")));
-                        lines
-                            .extend((together.iter()).map(|(it, about)| row(chosen, 2, it, about)));
-                    }
-                }
-                _ => lines.push(row(chosen, 1, plugin, about)),
-            }
+    let mut last: Option<(&str, Option<&str>)> = None;
+    for (krate, plugin, about) in &plugins {
+        let headed = area(plugin).filter(|of| {
+            let branch = format!("{krate}/{of}");
+            let together = (plugins.iter())
+                .filter(|(it, other, _)| it == krate && area(other) == Some(of))
+                .count();
+            together > 1 || chosen.off.contains(&branch)
+        });
+        if last.map(|(it, _)| it) != Some(krate) {
+            lines.push(heading(0, krate));
         }
+        if let Some(of) = headed
+            && last != Some((krate, headed))
+        {
+            lines.push(heading(1, &format!("{krate}/{of}")));
+        }
+        last = Some((krate, headed));
+        let depth = if headed.is_some() { 2 } else { 1 };
+        lines.push(row(chosen, depth, plugin, about));
     }
     lines
 }

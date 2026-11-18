@@ -337,12 +337,16 @@ fn ticks(count: usize, positions: &[usize]) -> Vec<bool> {
     (0..count).map(|index| positions.contains(&index)).collect()
 }
 
-/// Every plugin, rig's in the tree's order ([`tree_order`]) and then the
-/// extras, with their own choice in `chosen`, the branch keeping each off
-/// and whether `running` holds each.
+/// Every plugin, rig's and then the extras, each in the tree's order
+/// ([`config::tree_order`]), with their own choice in `chosen`, the branch
+/// keeping each off and whether `running` holds each.
 fn rows(chosen: &Plugins, running: &[String]) -> Vec<Row> {
-    let mut built_ins: Vec<&BuiltIn> = BUILT_IN.iter().collect();
-    tree_order(&mut built_ins);
+    let built_ins = config::tree_order(BUILT_IN.iter().collect(), |built_in: &&BuiltIn| {
+        (built_in.krate, built_in.plugin)
+    });
+    let extra = config::tree_order(chosen.extra.iter().collect(), |extra: &&Extra| {
+        (extra.krate.as_str(), extra.plugin.as_str())
+    });
     let on = |plugin: &str| chosen.own.iter().any(|on| on == plugin);
     let off = |plugin: &str| chosen.off_with(plugin).map(str::to_owned);
     let runs = |plugin: &str| running.iter().any(|runs| runs == plugin);
@@ -352,46 +356,19 @@ fn rows(chosen: &Plugins, running: &[String]) -> Vec<Row> {
     });
     let mut names: Vec<String> = (BUILT_IN.iter())
         .map(|built_in| built_in.name.to_owned())
-        .chain(
-            chosen
-                .extra
-                .iter()
-                .map(|extra| extra_name(extra, &chosen.extra)),
-        )
+        .chain(extra.iter().map(|extra| extra_name(extra, &chosen.extra)))
         .collect();
-    for (index, extra) in chosen.extra.iter().enumerate() {
+    for (index, extra) in extra.iter().enumerate() {
         unique(&mut names, BUILT_IN.len() + index, extra);
     }
-    let extras = (chosen
-        .extra
-        .iter()
+    let extras = (extra
+        .into_iter()
         .zip(names.into_iter().skip(BUILT_IN.len())))
     .map(|(extra, name)| {
         let plugin = &extra.plugin;
         extra_row(extra, name, (on(plugin), off(plugin)), runs(plugin))
     });
     built_ins.chain(extras).collect()
-}
-
-/// `built_ins` in the plugin tree's order: each crate where its first
-/// plugin is, in it each area where its first plugin is, and the plugins of
-/// one area in their order.
-fn tree_order(built_ins: &mut Vec<&BuiltIn>) {
-    let first = |held: &dyn Fn(&BuiltIn) -> bool| built_ins.iter().position(|it| held(it));
-    let keys: Vec<(Option<usize>, Option<usize>)> = (built_ins.iter().enumerate())
-        .map(|(at, built_in)| {
-            let krate = first(&|other| other.krate == built_in.krate);
-            let area = config::area(built_in.plugin).and_then(|area| {
-                first(&|other| {
-                    other.krate == built_in.krate && config::area(other.plugin) == Some(area)
-                })
-            });
-            (krate, area.or(Some(at)))
-        })
-        .collect();
-    let mut keyed: Vec<_> = keys.into_iter().zip(built_ins.drain(..)).collect();
-    keyed.sort_by_key(|(key, _)| *key);
-    built_ins.extend(keyed.into_iter().map(|(_, built_in)| built_in));
 }
 
 /// An area's title, from its module name: `coding_tools` is `Coding tools`.
