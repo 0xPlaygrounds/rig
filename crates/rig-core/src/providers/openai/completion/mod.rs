@@ -5,6 +5,18 @@
 //! assert_eq!(GPT_4O, "gpt-4o");
 //! ```
 
+/// GPT-6.2 Astra, API ID `gpt-6.2-astra`: a reasoning model that cannot
+/// turn reasoning off. Its catalog entry holds the rules the encoders check,
+/// through `on_unsupported`, for a request that sets generation options:
+/// no sampling parameters, and tools only through Responses.
+pub const GPT_6_2_ASTRA: &str = "gpt-6.2-astra";
+
+/// GPT-6.2 Sol, API ID `gpt-6.2-sol`: a reasoning model that cannot turn
+/// reasoning off. Its catalog entry holds the rules the encoders check,
+/// through `on_unsupported`, for a request that sets generation options:
+/// no sampling parameters, and tools only through Responses.
+pub const GPT_6_2_SOL: &str = "gpt-6.2-sol";
+
 /// GPT-6 Astra, API ID `gpt-6-astra`: a reasoning model that cannot turn
 /// reasoning off. Its catalog entry holds the rules the encoders check,
 /// through `on_unsupported`, for a request that sets generation options:

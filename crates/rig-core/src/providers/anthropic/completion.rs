@@ -36,6 +36,11 @@ use crate::providers::internal::set_fields;
 use crate::providers::internal::wire_ids::WireIds;
 use crate::wire::Mode;
 
+/// Claude Fable 5.2, API ID `claude-fable-5-2`: 128K default `max_tokens`,
+/// mid-conversation system messages kept in `messages`. It rejects a forced
+/// tool choice, so the extractor uses native structured output instead of
+/// forcing its `submit` tool.
+pub const CLAUDE_FABLE_5_2: &str = "claude-fable-5-2";
 /// Claude Fable 5.1, API ID `claude-fable-5-1`: 128K default `max_tokens`,
 /// mid-conversation system messages kept in `messages`. It rejects a forced
 /// tool choice, so the extractor uses native structured output instead of

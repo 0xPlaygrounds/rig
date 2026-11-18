@@ -5,8 +5,8 @@ use crate::completion::{GenerationOptions, OnUnsupported, Verbosity};
 use crate::error::ProviderError;
 use crate::operation::Completion;
 use crate::providers::anthropic::completion::{
-    CLAUDE_FABLE_5, CLAUDE_HAIKU_4_5, CLAUDE_OPUS_4_6, CLAUDE_OPUS_4_8, CLAUDE_OPUS_5,
-    CLAUDE_OPUS_5_5, CLAUDE_SONNET_4_6, CLAUDE_SONNET_5, CLAUDE_SONNET_5_5,
+    CLAUDE_FABLE_5, CLAUDE_FABLE_5_2, CLAUDE_HAIKU_4_5, CLAUDE_OPUS_4_6, CLAUDE_OPUS_4_8,
+    CLAUDE_OPUS_5, CLAUDE_OPUS_5_5, CLAUDE_SONNET_4_6, CLAUDE_SONNET_5, CLAUDE_SONNET_5_5,
 };
 use crate::providers::anthropic::wire::AnthropicConfig;
 use crate::wire::{Body, Mode, Operation, Wire};
@@ -226,6 +226,30 @@ fn reasoning_takes_each_classes_documented_shape() {
             "reasoning",
             "{model}: {refused_reasoning:?}"
         );
+    }
+}
+
+/// Claude Fable 5.2 thinks adaptively at every effort level, cannot turn
+/// thinking off, and takes no sampling parameters.
+#[test]
+fn fable_5_2_thinks_adaptively_and_takes_no_sampling() {
+    let body = sent(
+        &wire(CLAUDE_FABLE_5_2),
+        request(GenerationOptions::default().reasoning(Effort::Max)),
+        Mode::Unary,
+    )
+    .expect("Fable 5.2 takes max");
+    assert_eq!(body["thinking"]["type"], "adaptive");
+    assert_eq!(body["output_config"]["effort"], "max");
+    for (options, option) in [
+        (
+            GenerationOptions::default().reasoning(Reasoning::Off),
+            "reasoning",
+        ),
+        (GenerationOptions::default().top_p(0.5), "top_p"),
+    ] {
+        let result = sent(&wire(CLAUDE_FABLE_5_2), request(options), Mode::Unary);
+        assert_eq!(refused(result), option);
     }
 }
 

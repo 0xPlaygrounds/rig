@@ -149,6 +149,11 @@ fn versioned_model(model: &str) -> Option<&str> {
         .find(|base| !base.is_empty())
 }
 
+/// Why `xhigh` or `max` is refused for a model whose thinking levels the
+/// catalog does not list: only some Gemini models go past `high`.
+const UNLISTED_LEVEL: &str =
+    "Gemini's thinking levels stop at `high` unless the catalog lists `xhigh`";
+
 /// `value` under `generationConfig`.
 fn config(value: serde_json::Value) -> Mapping {
     Mapping::Send(json!({ "generationConfig": value }))
@@ -181,9 +186,6 @@ pub(super) fn generate_content_options(
             ) => config(json!({"thinkingConfig": {"thinkingLevel": "minimal"}})),
             (Reasoning::Off, Thinking::None) => Mapping::Omit("the model does not think"),
             (Reasoning::Off, _) => Mapping::unsupported("this model cannot turn thinking off"),
-            (Reasoning::Effort(Effort::XHigh | Effort::Max), _) => {
-                Mapping::unsupported("Gemini's thinking levels stop at `high`")
-            }
             (Reasoning::Effort(effort), Thinking::Levels { levels, .. })
                 if levels.contains(effort) =>
             {
@@ -193,6 +195,9 @@ pub(super) fn generate_content_options(
                 "this model has no `{}` thinking level",
                 effort.as_str()
             )),
+            (Reasoning::Effort(Effort::XHigh | Effort::Max), _) => {
+                Mapping::unsupported(UNLISTED_LEVEL)
+            }
             (Reasoning::Effort(_), Thinking::Budget { .. }) => Mapping::unsupported(
                 "Gemini 2.5 takes a thinking budget, and rig has no effort-to-budget table",
             ),
@@ -283,9 +288,6 @@ pub(super) fn interactions(facts: &ModelFacts, model: &str, fields: OptionFields
             Reasoning::Off | Reasoning::Budget { .. } => Mapping::unsupported(
                 "the Interactions API takes a thinking level: no budget, no off",
             ),
-            Reasoning::Effort(Effort::XHigh | Effort::Max) => {
-                Mapping::unsupported("Gemini's thinking levels stop at `high`")
-            }
             Reasoning::Effort(effort) => match &thinking {
                 Thinking::Levels { levels, .. } if !levels.contains(effort) => {
                     Mapping::unsupported(format!(
@@ -295,6 +297,9 @@ pub(super) fn interactions(facts: &ModelFacts, model: &str, fields: OptionFields
                 }
                 Thinking::Budget { .. } | Thinking::None => {
                     Mapping::unsupported("this model takes no thinking level")
+                }
+                Thinking::Unknown if matches!(effort, Effort::XHigh | Effort::Max) => {
+                    Mapping::unsupported(UNLISTED_LEVEL)
                 }
                 Thinking::Levels { .. } | Thinking::Unknown => {
                     generation_config(json!({"thinking_level": effort.as_str()}))
