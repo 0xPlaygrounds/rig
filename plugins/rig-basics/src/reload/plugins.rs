@@ -408,7 +408,7 @@ fn plugins(
         #[cfg(feature = "tui")]
         let hides = !status.hidden(&home.settings()).is_empty();
         #[cfg(not(feature = "tui"))]
-        let hides = false;
+        let hides = !hidden_in(&home.settings()).is_empty();
         if tree.changed(&on) == 0 && !hides {
             notices.write(Notice::info(
                 args.agent,
@@ -539,6 +539,18 @@ fn details(tree: &Tree, on: &[bool]) -> Vec<String> {
             (_, Some(row)) => detail(tree, row, *now, &trial),
             (_, None) => String::new(),
         })
+        .collect()
+}
+
+/// The names `[status] hide` in the settings file at `path` hides; none
+/// when the file does not read.
+fn hidden_in(path: &std::path::Path) -> Vec<String> {
+    let file = SettingsFile::read(path).ok();
+    (file.as_ref())
+        .and_then(|file| file.document.get("status")?.get("hide")?.as_array())
+        .into_iter()
+        .flatten()
+        .filter_map(|name| name.as_str().map(str::to_owned))
         .collect()
 }
 

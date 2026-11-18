@@ -9,7 +9,7 @@ use rig_harness::harness_protocol::config;
 use rig_harness::prelude::*;
 use rig_tui::status::{StatusParts, StatusSettings};
 
-use super::{Node, Part, Tree, parts_shown};
+use super::{Node, Part, Tree, hidden_in, parts_shown};
 
 /// The parts the status line knows and its running `[status]`, while it
 /// runs.
@@ -64,15 +64,9 @@ impl Status<'_> {
     /// the file read even when the status line does not run.
     pub(super) fn hidden(&self, path: &Path) -> Vec<String> {
         let mut hidden = (self.settings.as_ref()).map_or_else(Vec::new, |it| it.hide.clone());
-        let file = config::SettingsFile::read(path).ok();
-        let hide = (file.as_ref())
-            .and_then(|file| file.document.get("status")?.get("hide")?.as_array())
-            .into_iter()
-            .flatten()
-            .filter_map(|name| name.as_str());
-        for name in hide {
-            if !hidden.iter().any(|it| it == name) {
-                hidden.push(name.to_owned());
+        for name in hidden_in(path) {
+            if !hidden.contains(&name) {
+                hidden.push(name);
             }
         }
         hidden
