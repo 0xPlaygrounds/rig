@@ -126,9 +126,6 @@ impl Status<'_> {
                 let array: toml_edit::Array = names.iter().collect();
                 table.insert("hide", toml_edit::value(array));
             }
-            if table.is_empty() {
-                file.document.remove("status");
-            }
             Ok((true, ()))
         })?;
         if let Some(settings) = &mut self.settings {
