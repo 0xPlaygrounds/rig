@@ -3,8 +3,8 @@
 //! [`AgentColumn`]s other plugins add to its line. Picking one, or
 //! `/agents <id>`, shows it and makes its top-level agent the session's
 //! current one (the harness's `CurrentAgent`), which a resumed session
-//! shows again. The plugins that make more than one agent add
-//! [`AgentPickerPlugin`]; it is no entry of `/plugins` of its own.
+//! shows again. [`AgentPickerPlugin`] is off by default; the plugins that
+//! make more than one agent add it.
 //!
 //! ```
 //! use rig_basics::agent_picker::{AgentColumn, ColumnOf};

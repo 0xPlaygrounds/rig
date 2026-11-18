@@ -519,8 +519,8 @@ is answered.
 
 Esc stops the shown agent's turn and the turns of every subagent below it,
 even when the shown agent is idle: stopping follows who started whom.
-`/agents`, which comes with subagents, forks and Steel programs, lists
-every agent with its model, state and what it and the agents below it
+`/agents` (the Agent picker in `/plugins`, which subagents, forks and Steel
+programs add) lists every agent with its model, state and what it and the agents below it
 spent, and shows the one picked: its transcript, and what you type then
 goes to it. A subagent can start subagents of its own, as deep as they go. Subagents started with `peers` can also send each other
 requests with `message` and `wait` for each other; a request or `wait` that

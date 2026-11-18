@@ -143,11 +143,15 @@ which the last choice rewrites.";
             on rig_basics::sessions::SessionsPlugin, "rig-basics", "Sessions", [], None,
                 "/new, /resume and /name, and the listing of this session that /resume in \
 other windows reads.";
+            off rig_basics::agent_picker::AgentPickerPlugin, "rig-basics",
+                "Agent picker", [], None,
+                "/agents: this session's agents (forks, subagents, Steel programs' agents), to \
+show one. Forks, Subagents and Steel programs add it.";
             off rig_basics::sessions::forks::ForksPlugin, "rig-basics",
                 "Forks and rewind", [], None,
+                adds ["rig_basics::agent_picker::AgentPickerPlugin"],
                 "/fork and rewind (Alt+Up to an earlier message of yours, then Enter): a new agent \
-from the shown one, through the end or an earlier message. /agents comes with it, \
-to show the other agents.";
+from the shown one, through the end or an earlier message. Adds the agent picker.";
             on rig_basics::compaction::CompactionPlugin, "rig-basics",
                 "Compaction", [], None,
                 "Summarizing a conversation near the context window, and /compact.";
@@ -229,9 +233,12 @@ returns their final answers.";
                 "A budget for what the session spends, helpers included: [budget] usd and tokens \
 in settings.toml, and /budget.";
             off rig_basics::subagents::SubagentsPlugin, "rig-basics", "Subagents", [], None,
-                adds ["rig_basics::approval::ApprovalPlugin"],
+                adds [
+                    "rig_basics::approval::ApprovalPlugin",
+                    "rig_basics::agent_picker::AgentPickerPlugin"
+                ],
                 "Subagents: the task, message and wait tools, with which the agent starts other \
-agents, messages them and waits on their reports, and /agents, to show one.";
+agents, messages them and waits on their reports. Adds the agent picker.";
             off rig_steel::SteelPlugin, "rig-steel", "Steel programs", [], None,
                 "The run_steel tool: one Scheme program that runs several agents and tool calls \
 and branches on their results, and /agents, to show them.";
