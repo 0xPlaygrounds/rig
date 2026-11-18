@@ -762,35 +762,48 @@ above the table with it, but not those past a blank line. It also takes the
 type out of `enable` and `disable`, and leaves the crate's files where they
 are, also for a crate `rig plugin new` made.
 
-In the agent, `/plugins` reads `settings.toml` itself and opens at once. It
-lists every plugin by a short name, such as "Terminal view", in the tree's
-order, crate then area, and your extras last by crate, each with its state:
-on, off, "off with its branch" when a branch in `off` holds it, or any of
-these with "next reload" while the running agent differs. A plugin another
+In the agent, `/plugins` reads `settings.toml` itself and opens at once as
+a folded tree: the crates at the top, rig-basics' areas under it (such as
+`sessions` and `coding_tools`), and each plugin by a short name, such as
+"Terminal view", your extras last by crate. A crate or an area of one
+plugin is that plugin's row, unless `off` names it. → opens the highlighted
+branch and ← closes it, or goes up from a plugin to its branch. A plugin's
+tick is its own choice, and a branch's tick says it is out of `off`; a
+branch with some of its plugins on shows `[~]`. Each plugin shows its state:
+on, off, "off with its branch" when a branch in `off` holds it, or any of these
+with "next reload" while the running agent differs. A plugin another
 running plugin added shows "on, added by" that one, such as "on, added by
-Subagents". A tick is the
-plugin's own choice, so Enter on a plugin of an off branch changes only
-that plugin. The pane beside the list shows the highlighted plugin's area,
-crate, type path (what `settings.toml`
-and `rig plugin enable` take), default, state in `settings.toml`, whether it
-runs now, what an essential one takes away when off, and what it adds.
-Typing filters by name or type path. Enter ticks and unticks the highlighted
-plugin, also while a filter is typed; a row that differs from
-`settings.toml` shows `+ on` or `- off`, and the list counts the changes.
-Esc leaves. With changes it first names what turns on and off (a plugin
-turned on under an off branch "stays off with its branch"), and what an
-essential plugin such as `/plugins` itself takes away, and asks: "Reload
-now" (offered only when the Reload plugin is on and the `rig` launcher
-started rig; otherwise it says which is missing), "Later, at the next
-start", "Keep editing" (Esc too), or "Leave without writing". Either of the
-first two writes every change into `settings.toml` in one edit, or none when
-one is refused; a reload rebuilds and restarts once no turn runs, and a
-failed build keeps the running one. `/plugins defaults` asks the same about going back to rig's
-defaults, every branch of `off` turned back on, and "Keep editing" keeps
-those branches for when you leave; without a terminal it asks nothing and
-prints the `rig plugin enable` and `rig plugin disable` commands that do it
-from a shell. Without a terminal `/plugins` prints each plugin's name, type
-path and state. When `settings.toml` does not read, `/plugins` names the
+Subagents". The pane beside the list shows the highlighted
+plugin's area, crate, type path (what `settings.toml` and `rig plugin
+enable` take), default, state in `settings.toml`, whether it runs now, what
+an essential one takes away when off, and what it adds, or which plugins a
+branch holds. Typing finds plugins in folded branches too and shows them
+under their branch, by name or type path.
+
+Enter on a plugin ticks and unticks its own choice, so on a plugin of an
+off branch it changes only that plugin. Enter on a branch that is `[x]` or
+`[~]` puts it into `off`, each plugin keeping its own choice; on a `[ ]`
+branch that `off` names it takes it back out, and on a `[ ]` branch whose
+plugins are all off by their own choice it turns each of them on. A row
+that differs from `settings.toml` shows `+ on` or `- off`, also a plugin
+that goes or comes with its branch, and the list counts the changes. Esc
+leaves. With changes it first names what
+turns on and off (a plugin turned on under an off branch "stays off with its
+branch"), the plugins that go with a branch, what an essential plugin such as `/plugins` itself takes away with every
+`rig plugin enable` command that brings it back, and the plugins ticked on
+that this machine cannot build, which stay off. Then it asks:
+"Reload now" (offered only when the Reload plugin is on and the `rig`
+launcher started rig; otherwise it says which is missing), "Later, at the
+next start", "Keep editing" (Esc too), which goes back to the list with
+the ticks, or "Leave without writing". Either of the first two writes
+every change into `settings.toml` in one edit, or none when one is refused; a reload rebuilds and restarts
+once no turn runs, and a failed build keeps the running one. `/plugins
+defaults` asks the same about going back to rig's defaults, every branch of
+`off` turned back on, and "Keep editing" keeps those branches for when you
+leave; without a terminal it asks nothing and prints the `rig plugin
+enable` and `rig plugin disable` commands that do it from a shell. Without
+a terminal `/plugins` prints each plugin's name, type path and state. When
+`settings.toml` does not read, `/plugins` names the
 file, the error and its fix instead of opening.
 
 `rig plugin check` checks the list. With `--build` it also builds the agent

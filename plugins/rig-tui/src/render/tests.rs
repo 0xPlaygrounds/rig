@@ -41,6 +41,7 @@ fn a_question_shows_its_body_choices_and_typed_answer() {
                 detail: None,
                 checked: false,
                 more: None,
+                parent: None,
             })
             .into(),
         free_text: true,
@@ -61,10 +62,11 @@ fn a_question_shows_its_body_choices_and_typed_answer() {
         more: false,
         touched: false,
         picked: None,
+        open: Vec::new(),
     };
     // What is typed filters the choices and is an answer of its own.
     assert_eq!(
-        shown.rows(&choosing.filter),
+        shown.rows(&choosing),
         [Row::Item(1), Row::Item(2), Row::Typed]
     );
     let screen = drawn_choice(&mut choosing, &shown);

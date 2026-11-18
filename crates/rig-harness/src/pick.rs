@@ -70,6 +70,13 @@ pub struct PickItem {
     pub more: Option<String>,
     /// Whether it is ticked at first, in a picker of several items.
     pub checked: bool,
+    /// The position of the item it sits under, listed before it, in a
+    /// picker with a tree. An item others sit under is a branch, which a
+    /// front shows folded at first. In a picker of several answered with its
+    /// ticks ([`Ticked`]), a branch's tick is a switch over its items:
+    /// unticked, they are off whatever their own ticks, and none of their
+    /// commands runs. An item picked by itself runs its command.
+    pub parent: Option<usize>,
 }
 
 impl PickItem {
@@ -219,8 +226,9 @@ impl Chosen {
 pub struct Highlighted(pub usize);
 
 /// The positions of the items ticked in a [`Picker`] of several, in list
-/// order, set by the front on the picker's entity as the user ticks, so a
-/// plugin can show what changed before the picker closes.
+/// order, branches among them ([`PickItem::parent`]), set by the front on
+/// the picker's entity as the user ticks, so a plugin can show what changed
+/// before the picker closes.
 #[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq)]
 #[reflect(Component, Clone, Debug, Default, PartialEq)]
 pub struct Ticked(pub Vec<usize>);
@@ -357,19 +365,30 @@ fn unshown(picker: &Picker) -> String {
 }
 
 /// Runs the chosen items' commands, in list order, for the picker's agent,
-/// else the one shown, and triggers [`Picked`] before despawning the
-/// picker; answers a question, a closed one refused.
+/// else the one shown, but not those an unticked branch switches off
+/// ([`PickItem::parent`]), and triggers [`Picked`] with every item chosen
+/// before despawning the picker; answers a question, a closed one refused.
 fn pick(
     pick: On<Pick>,
-    pickers: Query<&Picker>,
+    pickers: Query<(&Picker, Option<&Ticked>)>,
     mut asks: Query<(&Ask, &mut Decision), (Without<Outcome>, Without<Settled>)>,
     shown: Res<ShownAgent>,
     mut commands: Commands,
 ) {
     let (entity, chosen) = (pick.entity, pick.chosen.clone());
-    if let Ok(picker) = pickers.get(entity) {
+    if let Ok((picker, ticked)) = pickers.get(entity) {
         let items = chosen.as_ref().map(Chosen::positions).unwrap_or_default();
-        let items = items.iter().filter_map(|index| picker.items.get(*index));
+        let from_ticks = picker.multiple && ticked.is_some_and(|ticked| ticked.0 == items);
+        // Bounded, so a parent that loops ends.
+        let switched_on = |item: &PickItem| {
+            !from_ticks
+                || std::iter::successors(item.parent, |branch| picker.items.get(*branch)?.parent)
+                    .take(picker.items.len())
+                    .all(|branch| items.contains(&branch))
+        };
+        let items = (items.iter())
+            .filter_map(|index| picker.items.get(*index))
+            .filter(|item| switched_on(item));
         if let Some(agent) = picker.agent.or(shown.0) {
             for item in items.filter(|item| !item.command.is_empty()) {
                 commands.trigger(RunCommand::new(agent, item.command.clone()));

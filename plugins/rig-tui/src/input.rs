@@ -347,7 +347,7 @@ pub(crate) fn note_input_context(
     let picking = picker.map(|(e, _)| e);
     let selection = picker.and_then(|(entity, choosing)| {
         let shown = choices.shown(entity)?;
-        match shown.rows(&choosing.filter).get(choosing.selected) {
+        match shown.rows(choosing).get(choosing.selected) {
             Some(&pick::Row::Item(index)) => Some(index),
             _ => None,
         }

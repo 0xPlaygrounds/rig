@@ -553,6 +553,7 @@ fn fill_one(
                 detail,
                 more,
                 checked: false,
+                parent: None,
             },
             picked,
             at,

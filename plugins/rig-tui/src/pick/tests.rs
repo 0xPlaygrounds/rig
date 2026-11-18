@@ -1,7 +1,7 @@
 use rig_harness::prelude::*;
 
 use super::*;
-use crate::tests::{press, type_text, view_app};
+use crate::tests::{line_of, press, type_text, view_app};
 use rig_harness::ask::Choice;
 use rig_harness::pick::{Chosen, PickItem, Picked, Picker};
 
@@ -264,6 +264,7 @@ fn a_long_detail_leaves_the_label_half_the_row() {
         ),
         checked: false,
         more: None,
+        parent: None,
     };
     let column = detail_column(std::slice::from_ref(&item), 60);
     let row = item.line(60, column).to_string();
@@ -285,6 +286,7 @@ fn a_long_label_is_shortened_beside_its_whole_detail() {
         detail: Some("$0.42 · 3h ago"),
         checked: false,
         more: None,
+        parent: None,
     };
     let column = detail_column(std::slice::from_ref(&item), 40);
     let row = item.line(40, column).to_string();
@@ -297,6 +299,7 @@ fn a_long_label_is_shortened_beside_its_whole_detail() {
         detail: None,
         checked: false,
         more: None,
+        parent: None,
     };
     assert_eq!(short.line(40, 0).to_string(), "main");
 }
@@ -311,6 +314,7 @@ fn details_start_at_one_column() {
         detail: Some(detail),
         checked: false,
         more: None,
+        parent: None,
     };
     let items = [
         item("main", "the default branch"),
@@ -1091,4 +1095,277 @@ fn a_picker_whose_enter_ticks_mirrors_the_ticks_and_esc_closes_it() {
     press(&mut app, "esc");
     assert_eq!(shown(&mut app), None);
     assert_eq!(app.world().resource::<Reported>().0, [None]);
+}
+
+/// A picker of several with a tree: `fruit` holding `apple` and `pear`,
+/// `apple` ticked, then `water` at the top, ticked; Enter ticks.
+fn tree() -> (Picker, ChoiceKeys) {
+    let item = |label: &str, parent: Option<usize>, checked: bool| PickItem {
+        parent,
+        checked,
+        ..PickItem::new(label, "")
+    };
+    let mut picker = Picker::new("Plugins").multiple();
+    picker.items = vec![
+        item("fruit", None, true),
+        item("apple", Some(0), true),
+        item("pear", Some(0), false),
+        item("water", None, true),
+    ];
+    (
+        picker,
+        ChoiceKeys(vec![(KeyCode::Enter, ChoiceAction::Tick)]),
+    )
+}
+
+/// The rows of the screen.
+fn screen_rows(app: &App) -> Vec<String> {
+    app.world()
+        .resource::<crate::TuiTestScreen>()
+        .rows()
+        .to_vec()
+}
+
+/// The screen row holding `text`, if one does.
+fn row_with(app: &App, text: &str) -> Option<String> {
+    screen_rows(app).into_iter().find(|row| row.contains(text))
+}
+
+#[test]
+fn a_tree_opens_and_closes_with_right_and_left_and_a_mixed_branch_shows_it() {
+    use crate::TuiTestScreen;
+
+    let (mut app, _) = view_app();
+    app.insert_resource(TuiTestScreen::new(80, 24));
+    app.world_mut().spawn(tree());
+    app.update();
+    // Branches start folded; a branch with some of its items ticked is mixed.
+    assert!(
+        row_with(&app, "apple").is_none(),
+        "{:#?}",
+        screen_rows(&app)
+    );
+    let fruit = row_with(&app, "fruit").unwrap_or_default();
+    assert!(fruit.contains("[~]"), "{fruit}");
+    assert!(
+        row_with(&app, "→ opens").is_some(),
+        "{:#?}",
+        screen_rows(&app)
+    );
+
+    press(&mut app, "right");
+    let apple = row_with(&app, "apple").unwrap_or_default();
+    let pear = row_with(&app, "pear").unwrap_or_default();
+    assert!(
+        apple.contains("[x]") && pear.contains("[ ]"),
+        "{apple}\n{pear}"
+    );
+    // Left on an item goes up to its branch; on an open branch it closes it.
+    press(&mut app, "down down left left");
+    assert!(row_with(&app, "pear").is_none(), "{:#?}", screen_rows(&app));
+    assert!(row_with(&app, "water").is_some());
+    press(&mut app, "down right");
+    assert!(
+        row_with(&app, "pear").is_none(),
+        "a leaf has nothing to open"
+    );
+}
+
+#[test]
+fn enter_on_a_branch_switches_it_over_its_items() {
+    use rig_harness::pick::Ticked;
+
+    let (mut app, _) = view_app();
+    let entity = app.world_mut().spawn(tree()).id();
+    app.update();
+    let ticked = |app: &App| app.world().get::<Ticked>(entity).cloned();
+    // Mixed: Enter turns the branch off and leaves its items' own ticks.
+    press(&mut app, "enter");
+    assert_eq!(ticked(&app), Some(Ticked(vec![1, 3])));
+    // Off: Enter turns it back on, with its items as they were.
+    press(&mut app, "enter");
+    assert_eq!(ticked(&app), Some(Ticked(vec![0, 1, 3])));
+    // On with none of its items on: Enter turns every item on.
+    press(&mut app, "right down enter up enter");
+    assert_eq!(ticked(&app), Some(Ticked(vec![0, 1, 2, 3])));
+    // All on: Enter turns the branch off.
+    press(&mut app, "enter");
+    assert_eq!(ticked(&app), Some(Ticked(vec![1, 2, 3])));
+    // An item under a branch that is off changes only itself.
+    press(&mut app, "down down enter");
+    assert_eq!(ticked(&app), Some(Ticked(vec![1, 3])));
+}
+
+#[test]
+fn typing_finds_items_in_folded_branches_and_shows_them_under_their_branch() {
+    use crate::TuiTestScreen;
+
+    let (mut app, _) = view_app();
+    app.insert_resource(TuiTestScreen::new(80, 24));
+    let entity = app.world_mut().spawn(tree()).id();
+    app.update();
+    type_text(&mut app, "pear");
+    let rows = screen_rows(&app);
+    let fruit = line_of(&rows, "fruit");
+    let pear = line_of(&rows, "[ ] pear");
+    assert!(
+        fruit.is_some() && pear > fruit && line_of(&rows, "apple").is_none(),
+        "{rows:#?}"
+    );
+    // The found item is the one selected and ticked.
+    press(&mut app, "down enter");
+    let ticked = app
+        .world()
+        .get::<rig_harness::pick::Ticked>(entity)
+        .cloned();
+    assert_eq!(ticked, Some(rig_harness::pick::Ticked(vec![0, 1, 2, 3])));
+}
+
+#[test]
+fn right_and_left_show_and_hide_more_in_a_picker_without_a_tree() {
+    use crate::TuiTestScreen;
+
+    let (mut app, _) = view_app();
+    app.insert_resource(TuiTestScreen::new(80, 24));
+    let mut picker = Picker::new("Model").item("gpt", "model gpt");
+    if let Some(item) = picker.items.last_mut() {
+        item.more = Some("a model of the provider openai".to_owned());
+    }
+    app.world_mut().spawn(picker);
+    app.update();
+    assert!(row_with(&app, "openai").is_none());
+    press(&mut app, "right");
+    assert!(
+        row_with(&app, "openai").is_some(),
+        "{:#?}",
+        screen_rows(&app)
+    );
+    press(&mut app, "left");
+    assert!(
+        row_with(&app, "openai").is_none(),
+        "{:#?}",
+        screen_rows(&app)
+    );
+}
+
+#[test]
+fn an_unticked_branch_runs_none_of_its_items_commands_and_keeps_their_ticks() {
+    let (mut app, _) = view_app();
+    app.init_resource::<Reported>()
+        .init_resource::<Ran>()
+        .add_observer(report)
+        .add_command(
+            "note",
+            "Notes its arguments",
+            |In(args): In<CommandArgs>, mut ran: ResMut<Ran>| {
+                ran.0.push(args.args);
+            },
+        );
+    let (mut picker, _) = tree();
+    for item in &mut picker.items {
+        item.command = format!("note {}", item.label);
+    }
+    app.world_mut().spawn(picker);
+    app.update();
+    // Tab on the folded, mixed branch turns it off; Enter answers.
+    press(&mut app, "tab enter");
+    assert_eq!(
+        app.world().resource::<Reported>().0,
+        [Some(Chosen::items([1, 3]))]
+    );
+    assert_eq!(app.world().resource::<Ran>().0, ["water"]);
+}
+
+#[test]
+fn typing_selects_the_first_item_found_not_the_branch_above_it() {
+    use rig_harness::pick::Ticked;
+
+    let (mut app, _) = view_app();
+    let entity = app.world_mut().spawn(tree()).id();
+    app.update();
+    // "r" finds the branch fruit and pear under it, and water: Enter ticks pear.
+    type_text(&mut app, "r");
+    press(&mut app, "enter");
+    let ticked = app.world().get::<Ticked>(entity).cloned();
+    assert_eq!(ticked, Some(Ticked(vec![0, 1, 2, 3])));
+}
+
+/// A picker with a tree whose items run `note <label>`: `fruit` holding
+/// `apple`, none ticked, of several when `multiple`.
+fn noting_tree(app: &mut App, multiple: bool) {
+    app.init_resource::<Ran>().add_command(
+        "note",
+        "Notes its arguments",
+        |In(args): In<CommandArgs>, mut ran: ResMut<Ran>| {
+            ran.0.push(args.args);
+        },
+    );
+    let mut picker = Picker::new("Fruit");
+    if multiple {
+        picker = picker.multiple();
+    }
+    picker.items = vec![
+        PickItem::new("fruit", "note fruit"),
+        PickItem {
+            parent: Some(0),
+            ..PickItem::new("apple", "note apple")
+        },
+    ];
+    app.world_mut().spawn(picker);
+    app.update();
+}
+
+#[test]
+fn enter_on_an_item_under_a_branch_runs_its_command_in_a_picker_of_one() {
+    let (mut app, _) = view_app();
+    noting_tree(&mut app, false);
+    press(&mut app, "right down enter");
+    assert_eq!(app.world().resource::<Ran>().0, ["apple"]);
+}
+
+#[test]
+fn enter_on_an_item_under_a_branch_runs_its_command_with_nothing_ticked() {
+    let (mut app, _) = view_app();
+    noting_tree(&mut app, true);
+    press(&mut app, "right down enter");
+    assert_eq!(app.world().resource::<Ran>().0, ["apple"]);
+}
+
+#[test]
+fn a_picker_filled_again_keeps_the_row_selected_among_rows_of_one_label() {
+    use rig_harness::pick::Ticked;
+
+    let (mut app, _) = view_app();
+    let item = |parent: Option<usize>| PickItem {
+        parent,
+        checked: true,
+        ..PickItem::new("rig-foo", "")
+    };
+    let mut picker = Picker::new("Plugins").multiple();
+    picker.items = vec![item(None), item(Some(0)), item(None)];
+    let keys = ChoiceKeys(vec![(KeyCode::Enter, ChoiceAction::Tick)]);
+    let entity = app.world_mut().spawn((picker.clone(), keys)).id();
+    app.update();
+    let refill = |app: &mut App, detail: &str| {
+        let mut again = picker.clone();
+        for item in &mut again.items {
+            item.detail = Some(detail.to_owned());
+        }
+        app.world_mut().entity_mut(entity).insert(again);
+        app.update();
+    };
+    // The branch's plugin, of the branch's label, ticked and filled again
+    // as `/plugins` does, stays selected.
+    press(&mut app, "right down enter");
+    refill(&mut app, "- off");
+    press(&mut app, "enter");
+    refill(&mut app, "on");
+    let ticked = app.world().get::<Ticked>(entity).cloned();
+    assert_eq!(ticked, Some(Ticked(vec![0, 1, 2])));
+    assert_eq!(
+        app.world()
+            .get::<rig_harness::pick::Highlighted>(entity)
+            .copied(),
+        Some(rig_harness::pick::Highlighted(1))
+    );
 }
