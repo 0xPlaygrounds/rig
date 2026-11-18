@@ -253,7 +253,12 @@ impl Plugin for AgentPlugin {
             )
             .add_systems(
                 stage::AgentPass,
-                model::wait_for_window.in_set(stage::Stage::Gate),
+                (
+                    model::keep_route
+                        .in_set(stage::Stage::Prepare)
+                        .before(stage::PrepareSystems::Input),
+                    model::wait_for_window.in_set(stage::Stage::Gate),
+                ),
             )
             .add_observer(session_log::retire)
             .add_observer(requests::end_with_settled)

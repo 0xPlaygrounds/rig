@@ -18,9 +18,9 @@ use super::agent::CallOf;
 use super::agent::{ActiveTurn, Agent, Notice};
 use super::effects::Handler;
 use super::session_log::ReflectSaved;
-use super::stage::{Effect, ForAgent, HoldOf, ReadyToStart, SupersededBy};
+use super::stage::{Admitted, Effect, ForAgent, HoldOf, ReadyToStart, SupersededBy};
 use super::tasks::{Running, Wake};
-use super::turn::{Adapted, TurnCall};
+use super::turn::{Adapted, ModelRequest, TurnCall};
 
 /// The models agents can use and how each is reached: rig's built-in
 /// catalog by default. A plugin adds a sign-in with
@@ -472,9 +472,13 @@ pub(crate) struct WaitedForWindow;
 /// [`Stage::Gate`](super::stage::Stage::Gate), asking it again first when
 /// the last ask did not reach it, once per turn: measured without the
 /// window, its request would not be compacted near it. A call measured
-/// without a window its model now has is built anew.
+/// without a window its model now has is built anew, once, on the model it
+/// was routed to ([`RoutedTo`]).
 pub(crate) fn wait_for_window(
-    calls: Query<(Entity, &Adapted, &CallOf, &ForAgent, &Effect), (ReadyToStart, With<TurnCall>)>,
+    calls: Query<
+        (Entity, &Adapted, &ModelRequest, &CallOf, &ForAgent, &Effect),
+        (ReadyToStart, With<TurnCall>, Without<RoutedTo>),
+    >,
     waited: Query<(), With<WaitedForWindow>>,
     asks: Query<&AskingWindow>,
     (models, wake): (Res<Models>, Res<Wake>),
@@ -482,18 +486,26 @@ pub(crate) fn wait_for_window(
     mut commands: Commands,
 ) {
     let mut started = Vec::new();
-    for (call, Adapted(connection), &CallOf(turn), &ForAgent(agent), effect) in &calls {
-        if connection.spec.input_limit().is_some() {
+    for (call, Adapted(adapted), model, &CallOf(turn), &ForAgent(agent), effect) in &calls {
+        let Some(connection) = model.connection.as_ref() else {
+            continue;
+        };
+        if adapted.spec.input_limit().is_some() || connection.spec.input_limit().is_some() {
             continue;
         }
         let reference = connection.spec.reference();
-        if let Some(Some(_)) = windows.0.get(&reference) {
+        if let Some(&Some(window)) = windows.0.get(&reference) {
+            let routed = Connection {
+                spec: with_window(&connection.spec, window),
+                handler: connection.handler.clone(),
+            };
             commands
                 .spawn((
                     TurnCall,
                     CallOf(turn),
                     ForAgent(agent),
                     Effect::with_parent_id(effect.parent),
+                    RoutedTo(routed),
                 ))
                 .add_related::<SupersededBy>(&[call]);
             continue;
@@ -521,6 +533,20 @@ pub(crate) fn wait_for_window(
             HoldOf(call),
         ));
         commands.entity(turn).try_insert(WaitedForWindow);
+    }
+}
+
+/// On a turn's call [`wait_for_window`] built anew: the model the call it
+/// replaces was routed to, with its window.
+#[derive(Component)]
+pub(crate) struct RoutedTo(Connection);
+
+/// Sends each call [`wait_for_window`] built anew to its [`RoutedTo`]
+/// model, before Prepare's phases, as a plugin that routes only new calls
+/// routed the call it replaces.
+pub(crate) fn keep_route(mut calls: Query<(&mut ModelRequest, &RoutedTo), Added<Admitted>>) {
+    for (mut model, RoutedTo(connection)) in &mut calls {
+        model.connection = Some(connection.clone());
     }
 }
 
