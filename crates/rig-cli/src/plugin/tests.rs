@@ -271,12 +271,13 @@ fn a_plugin_whose_manifest_cannot_be_read_is_refused_with_why() {
 }
 
 #[test]
-fn the_list_puts_rigs_plugins_with_their_default_before_the_users_with_their_path() {
+fn the_list_is_a_tree_of_crates_areas_and_plugins_rigs_before_the_users() {
     let home = old_home("list");
     let result = (|| -> Result<_> {
         fs::create_dir_all(home.root())?;
         let without = listing(&home)?;
         run(&home, &["new", "hello"])?;
+        run(&home, &["disable", "rig-basics/sessions"])?;
         Ok((without, listing(&home)?))
     })();
     fs::remove_dir_all(home.root()).ok();
@@ -291,22 +292,37 @@ fn the_list_puts_rigs_plugins_with_their_default_before_the_users_with_their_pat
     );
     let lines: Vec<&str> = with.lines().collect();
     let at = |what: &str| lines.iter().position(|line| line.contains(what));
+    let line = |at: Option<usize>| at.and_then(|at| lines.get(at)).copied().unwrap_or("");
     let (rigs, yours) = (at("rig's plugins:"), at("your plugins (extras):"));
-    let (skills, hello) = (at(SKILLS), at("hello::HelloPlugin"));
-    let order = [rigs, skills, yours, hello];
+    let basics = lines.iter().position(|line| *line == "rig-basics");
+    let sessions = at("rig-basics/sessions");
+    let (skills, forks, hello) = (
+        at(SKILLS),
+        at("rig_basics::sessions::agents::AgentsPlugin"),
+        at("hello::HelloPlugin"),
+    );
+    let tui = lines.iter().position(|line| *line == "rig-tui");
+    let order = [rigs, basics, skills, sessions, forks, tui, yours, hello];
     assert!(
         order.iter().all(Option::is_some) && order.is_sorted(),
-        "{with}"
+        "{order:?}\n{with}"
     );
-    let skills = skills.and_then(|at| lines.get(at)).unwrap_or(&"");
+    // A plugin under its crate, one more step in under an area.
+    let skills = line(skills);
     assert!(
-        skills.starts_with("on ") && skills.ends_with("(default on)"),
+        skills.starts_with("  on ") && skills.ends_with("(default on)"),
         "{skills}"
     );
-    let hello = hello.and_then(|at| lines.get(at)).unwrap_or(&"");
+    assert!(line(sessions).starts_with("  rig-basics/sessions") && line(sessions).contains("off"));
+    let forks = line(forks);
+    assert!(
+        forks.starts_with("    off ") && forks.contains("off with its branch rig-basics/sessions"),
+        "{forks}"
+    );
+    let hello = line(hello);
     let path = home.plugins().join("hello");
     assert!(
-        hello.starts_with("on ") && hello.ends_with(&format!("path {}", path.display())),
+        hello.starts_with("  on ") && hello.ends_with(&format!("path {}", path.display())),
         "{hello}"
     );
 }
@@ -422,7 +438,7 @@ fn add_writes_the_table_of_each_source_and_keeps_the_comments() {
         assert!(chosen.on.iter().any(|on| on == SAVE), "{flags:?}");
         let line = list.lines().find(|line| line.contains(SAVE)).unwrap_or("");
         assert!(
-            line.starts_with("on ") && line.ends_with(&source.to_string()),
+            line.trim_start().starts_with("on ") && line.ends_with(&source.to_string()),
             "{flags:?}: {line}"
         );
     }
@@ -657,6 +673,130 @@ fn add_refuses_an_inline_plugins_table_with_comments_inside() {
                 .is_some_and(|why| why.contains("write it as a [plugins] table"))
                 && unchanged,
             "{refusal:?}"
+        );
+    }
+}
+
+#[test]
+fn a_branch_turns_off_in_one_line_and_an_unknown_one_is_taken_out() {
+    let home = old_home("branch");
+    let result = (|| -> Result<_> {
+        fs::create_dir_all(home.root())?;
+        fs::write(home.settings(), COMMENTED)?;
+        run(&home, &["disable", "rig-basics/sessions"])?;
+        let off = fs::read_to_string(home.settings())?;
+        run(&home, &["enable", "rig-basics/sessions"])?;
+        let on = fs::read_to_string(home.settings())?;
+        fs::write(home.settings(), "[plugins]\noff = [\"rig-basics/gone\"]\n")?;
+        let refused = config::chosen(&home).err().map(|why| why.to_string());
+        run(&home, &["disable", "rig-basics/gone"])?;
+        Ok((off, on, refused, config::chosen(&home)?))
+    })();
+    fs::remove_dir_all(home.root()).ok();
+    assert!(result.is_ok(), "{result:?}");
+    let Ok((off, on, refused, fixed)) = result else {
+        return;
+    };
+    assert!(
+        off.ends_with("[plugins]\noff = [\"rig-basics/sessions\"]\n") && off.starts_with(COMMENTED),
+        "{off}"
+    );
+    assert!(
+        on.starts_with(COMMENTED) && !on.contains("sessions"),
+        "{on}"
+    );
+    assert!(
+        refused.is_some_and(|why| why.contains("rig plugin disable rig-basics/gone")),
+        "the refusal names its fix"
+    );
+    assert!(fixed.off.is_empty());
+}
+
+/// Removing a crate's last plugin takes the crate's branches out of
+/// `[plugins] off` too, which would name nothing; a branch still holding a
+/// plugin stays.
+#[test]
+fn removing_a_crates_last_plugin_takes_its_branches_out_of_off() {
+    let home = old_home("remove-off");
+    let other = "reactor_save::store::StorePlugin";
+    let result = (|| -> Result<_> {
+        fs::create_dir_all(home.root())?;
+        fs::write(home.settings(), COMMENTED)?;
+        for plugin in [SAVE, other] {
+            run(
+                &home,
+                &["add", plugin, "--version", "0.2", "--crate", "reactor-save"],
+            )?;
+        }
+        run(&home, &["disable", "reactor-save"])?;
+        run(&home, &["disable", "reactor-save/store"])?;
+        run(&home, &["remove", other])?;
+        let one = config::chosen(&home)?.off;
+        run(&home, &["remove", SAVE])?;
+        Ok((one, config::chosen(&home)?.off))
+    })();
+    fs::remove_dir_all(home.root()).ok();
+    assert_eq!(
+        result.ok(),
+        Some((vec!["reactor-save".to_owned()], Vec::new()))
+    );
+}
+
+/// A branch in `enable` or `disable`, or a plugin in `off`, refuses the
+/// start, and the command the refusal names takes it out of that list and
+/// changes nothing else.
+#[test]
+fn a_name_in_the_wrong_list_is_taken_out_by_the_fix_its_refusal_names() {
+    let home = old_home("wrong-list");
+    let cases = [
+        "[plugins]\ndisable = [\"rig-basics/sessions\"]\n".to_owned(),
+        "[plugins]\nenable = [\"rig-basics\"]\n".to_owned(),
+        format!("[plugins]\noff = [\"{SKILLS}\"]\n"),
+    ];
+    let result = (|| -> Result<_> {
+        fs::create_dir_all(home.root())?;
+        let mut fixed = Vec::new();
+        for (case, name) in cases
+            .iter()
+            .zip(["rig-basics/sessions", "rig-basics", SKILLS])
+        {
+            fs::write(home.settings(), case)?;
+            let refused = config::chosen(&home).err().map(|why| why.to_string());
+            let fix = format!("rig plugin disable {name}");
+            let named = refused.is_some_and(|why| why.contains(&fix));
+            let ran = run(&home, &["disable", name]).map(|_| ());
+            // The fix only takes the name out: nothing else is turned off.
+            let kept = fs::read_to_string(home.settings())?.contains(name);
+            fixed.push((named, ran.is_ok(), config::chosen(&home).is_ok(), kept));
+        }
+        Ok(fixed)
+    })();
+    fs::remove_dir_all(home.root()).ok();
+    assert_eq!(result.ok(), Some(vec![(true, true, true, false); 3]));
+}
+
+/// Every branch in `[plugins] off` shows in the list, also an area of one
+/// plugin whose own choice is off.
+#[test]
+fn the_list_shows_every_branch_in_off() {
+    let home = old_home("list-off");
+    let result = (|| -> Result<_> {
+        fs::create_dir_all(home.root())?;
+        fs::write(
+            home.settings(),
+            "[plugins]\noff = [\"rig-basics/budget\", \"rig-basics/welcome\"]\n\
+             disable = [\"rig_basics::welcome::WelcomePlugin\"]\n",
+        )?;
+        listing(&home)
+    })();
+    fs::remove_dir_all(home.root()).ok();
+    let listed = result.unwrap_or_default();
+    for branch in ["rig-basics/budget", "rig-basics/welcome"] {
+        assert!(
+            listed
+                .lines()
+                .any(|line| line.trim_start().starts_with(branch) && line.contains("off")),
+            "{branch}\n{listed}"
         );
     }
 }

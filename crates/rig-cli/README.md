@@ -17,7 +17,8 @@ new version. It also replaces a launcher an older `rig-cli` installed.
 It generates a small Cargo project for the agent under `RIG_HOME` (default
 `~/.rig`) with the plugins `RIG_HOME/settings.toml` turns on, builds it, and
 runs it. `settings.toml` is the one file you edit: its `[plugins]` table holds
-only your changes to rig's built-in list (`enable`, `disable`, and
+only your changes to rig's built-in list (`enable`, `disable`, the branches
+of the plugin tree in `off`, such as `rig-basics/sessions`, and
 `[[plugins.extra]]` crates). Turning a plugin on or off rebuilds the agent at
 the next start: only the generated crate compiles again, and a plugin's own
 crate the first time it is on.

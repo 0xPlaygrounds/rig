@@ -26,7 +26,7 @@ describes using it.
   [`plugins/`](https://github.com/0xPlaygrounds/rig/tree/main/plugins) folder, turned on or off in `settings.toml` and built only
   on public API, exactly as a third-party plugin is: the compiler holds them
   to it. Most are in [`rig-basics`](https://github.com/0xPlaygrounds/rig/tree/main/plugins/rig-basics), one module
-  per group, with the services only some plugins use: approvals, the preview
+  per area, with the services only some plugins use: approvals, the preview
   of tool calls, and the session picker. The launcher's
   generated `main.rs` adds the plugins the settings turn on as one
   `PluginGroup`, each wrapped in `Loaded`, which records it as an entity

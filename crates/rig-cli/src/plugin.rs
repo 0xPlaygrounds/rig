@@ -1,10 +1,11 @@
-//! `rig plugin`: turn a plugin on or off in `RIG_HOME/settings.toml`
-//! (`enable`, `disable`), show every plugin and whether it is on
-//! (`list`), make a plugin crate under `RIG_HOME/plugins` and add it to the
-//! home's `[[plugins.extra]]` (`new`), add or take out another crate's
-//! plugin there (`add`, `remove`), and check the settings (`check`, with
-//! `--build` also building the agent without staging it and checking how
-//! its plugins' agent-loop systems are ordered). Every change keeps the
+//! `rig plugin`: turn a plugin, or a branch of the plugin tree, on or off
+//! in `RIG_HOME/settings.toml` (`enable`, `disable`), show the tree of
+//! every plugin and whether it is on (`list`), make a plugin crate under
+//! `RIG_HOME/plugins` and add it to the home's `[[plugins.extra]]` (`new`),
+//! add or take out another crate's plugin there (`add`, `remove`), and
+//! check the settings (`check`, with `--build` also building the agent
+//! without staging it and checking how its plugins' agent-loop systems are
+//! ordered). Every change keeps the
 //! file's comments and is checked before it is written, so a command never
 //! leaves a broken file. Plugin crates live outside every workspace, so
 //! making one never touches the rig repository or a project.
@@ -14,7 +15,7 @@ use std::process::ExitCode;
 
 use rig_harness_protocol::config::toml_edit::{ArrayOfTables, DocumentMut, Item, Table, value};
 use rig_harness_protocol::config::{
-    self, BUILT_IN, Extra, Source, built_in, essential, set_on, table,
+    self, BUILT_IN, Extra, Plugins, Source, area, built_in, essential, holds, set_on, table,
 };
 use rig_harness_protocol::fs;
 use rig_harness_protocol::launch::Launch;
@@ -34,15 +35,20 @@ const SCAFFOLD: &str = include_str!("plugin/scaffold.rs");
 
 /// `rig plugin`'s usage.
 pub const USAGE: &str =
-    "  rig plugin list        Every plugin, `on` or `off`, with its crate and what
-                         it adds: rig's own, with its default, which [plugins]
-                         in RIG_HOME/settings.toml changes, then yours, the
-                         extra crates of RIG_HOME/settings.toml, with where
-                         each comes from.
-  rig plugin enable <type>
-  rig plugin disable <type>
+    "  rig plugin list        Every plugin, `on` or `off`, and what it adds, as a
+                         tree: each crate, the areas in it (such as
+                         rig-basics/sessions) and their plugins. rig's own
+                         come first, with their defaults, which [plugins] in
+                         RIG_HOME/settings.toml changes, then yours, the extra
+                         crates of RIG_HOME/settings.toml, with where each
+                         comes from.
+  rig plugin enable <type or branch>
+  rig plugin disable <type or branch>
                          Turn a plugin on or off in RIG_HOME/settings.toml
                          ([plugins] enable and disable), keeping its comments.
+                         A branch, a crate or one of its areas, goes in
+                         [plugins] off: its plugins stay off whatever their
+                         own choice, which `enable` of the branch brings back.
                          `disable` also takes out a name nothing provides.
                          The agent holds only the plugins on, so the next
                          start, or /reload, rebuilds it: only the generated
@@ -269,8 +275,10 @@ fn add(home: &Home, type_path: &str, flags: &[&str], source: Option<&Path>) -> R
 
 /// `rig plugin remove <type>`: takes the `[[plugins.extra]]` table of
 /// `type_path` out of the home's settings, with the comment block touching
-/// its header (comments past a blank line stay), and the name out of
-/// `[plugins] enable` and `disable`. The crate's files stay where they are.
+/// its header (comments past a blank line stay), the name out of
+/// `[plugins] enable` and `disable`, and out of `[plugins] off` each branch
+/// of its crate that then holds no plugin. The crate's files stay where
+/// they are.
 ///
 /// # Errors
 ///
@@ -292,13 +300,14 @@ fn remove(home: &Home, type_path: &str) -> Result<()> {
                 .position(|table| table.get("plugin").and_then(Item::as_str) == Some(type_path))?;
             let table = tables.get(at)?;
             let directory = (table.get("path").and_then(Item::as_str)).map(str::to_owned);
+            let krate = (table.get("crate").and_then(Item::as_str)).map(str::to_owned);
             let prefix = table.decor().prefix().and_then(|it| it.as_str());
             let kept = kept_comments(prefix.unwrap_or_default());
             let position = table.position();
             tables.remove(at);
-            Some((directory, tables.is_empty(), kept, position))
+            Some((directory, krate, tables.is_empty(), kept, position))
         });
-        let Some((directory, empty, kept, position)) = found else {
+        let Some((directory, krate, empty, kept, position)) = found else {
             return Err(format!(
                 "{} has no [[plugins.extra]] table for `{type_path}`; `rig plugin list` shows \
                  the plugins",
@@ -309,7 +318,24 @@ fn remove(home: &Home, type_path: &str) -> Result<()> {
         if empty && let Some(plugins) = plugins {
             plugins.remove("extra");
         }
+        let stale: Vec<String> = (file.document.get("plugins"))
+            .and_then(|plugins| plugins.get("off"))
+            .and_then(Item::as_array)
+            .map(|off| {
+                (off.iter().filter_map(|name| name.as_str()))
+                    .filter(|name| {
+                        krate.as_deref().is_some_and(|krate| {
+                            name.split('/').next() == Some(krate) && !holds_any(file, name)
+                        })
+                    })
+                    .map(str::to_owned)
+                    .collect()
+            })
+            .unwrap_or_default();
         let document = &mut file.document;
+        for branch in &stale {
+            config::forget(document, branch, ["off"]);
+        }
         if !kept.is_empty() {
             put_before_next(document, position, &kept);
         }
@@ -523,15 +549,17 @@ fn list(home: &Home) -> Result<()> {
 }
 
 /// Every plugin of rig's, under `rig's plugins:`, then of the home's extra
-/// crates, under `your plugins (extras):`, one line each: `on` or `off`, the
-/// type, its crate and what it adds. A plugin of rig's ends with its default
-/// and whether the settings changed it, with a warning on an essential plugin
-/// turned off; an extra ends with where its crate comes from.
+/// crates, under `your plugins (extras):`, as a tree: each crate, then in
+/// it each area of more than one plugin, then the plugins, one line each:
+/// `on` or `off`, the type and what it adds. A branch `[plugins] off` turns
+/// off says so. A plugin of rig's ends with its default and whether the
+/// settings changed it, with a warning on an essential plugin turned off;
+/// an extra ends with where its crate comes from.
 fn listing(home: &Home) -> Result<String> {
     let chosen = config::chosen(home)?;
-    let mut rows: Vec<(bool, String, String, String)> = Vec::new();
+    let mut rigs = Vec::new();
     for built_in in BUILT_IN {
-        let on = chosen.on.iter().any(|plugin| plugin == built_in.plugin);
+        let own = chosen.own.iter().any(|plugin| plugin == built_in.plugin);
         let default = if built_in.on { "on" } else { "off" };
         let mut about = built_in.about.to_owned();
         if !built_in.available() {
@@ -539,109 +567,210 @@ fn listing(home: &Home) -> Result<String> {
                 " (default {default}; builds on {} only)",
                 built_in.targets.join(" and ")
             ));
-        } else if on != built_in.on {
+        } else if own != built_in.on {
             about.push_str(&format!(
                 " (default {default}; set by RIG_HOME/settings.toml)"
             ));
         } else {
             about.push_str(&format!(" (default {default})"));
         }
-        if !on && let Some(what) = essential(built_in.plugin) {
-            about.push_str(&format!(" (warning: off, which takes away {what})"));
-        }
-        rows.push((
-            on,
-            built_in.plugin.to_owned(),
-            built_in.krate.to_owned(),
-            about,
-        ));
+        rigs.push((built_in.krate, built_in.plugin, about));
     }
-    for extra in &chosen.extra {
-        let on = chosen.on.contains(&extra.plugin);
-        rows.push((
-            on,
-            extra.plugin.clone(),
-            extra.krate.clone(),
-            extra.source.to_string(),
+    let yours: Vec<_> = (chosen.extra.iter())
+        .map(|extra| {
+            (
+                extra.krate.as_str(),
+                extra.plugin.as_str(),
+                extra.source.to_string(),
+            )
+        })
+        .collect();
+    let mut lines = vec![(String::from("rig's plugins:"), None)];
+    lines.extend(tree(&chosen, rigs));
+    lines.push((String::new(), None));
+    if yours.is_empty() {
+        lines.push((
+            "your plugins (extras): none; `rig plugin new <name>` makes one, \
+             `rig plugin add` adds another crate's."
+                .to_owned(),
+            None,
         ));
+    } else {
+        lines.push(("your plugins (extras):".to_owned(), None));
+        lines.extend(tree(&chosen, yours));
     }
-    let width = |of: fn(&(bool, String, String, String)) -> usize| {
-        rows.iter().map(of).max().unwrap_or_default()
-    };
-    let types = width(|row| row.1.len());
-    let crates = width(|row| row.2.len());
-    let mut text = String::from("rig's plugins:\n");
-    for (index, (on, plugin, krate, about)) in rows.iter().enumerate() {
-        if index == BUILT_IN.len() {
-            text.push_str("\nyour plugins (extras):\n");
-        }
-        let state = if *on { "on" } else { "off" };
-        let line = format!("{state:<3} {plugin:<types$}  {krate:<crates$}  {about}");
+    let width = (lines.iter())
+        .filter(|(_, about)| about.is_some())
+        .map(|(head, _)| head.len())
+        .max()
+        .unwrap_or_default();
+    let mut text = String::new();
+    for (head, about) in lines {
+        let line = match about {
+            Some(about) => format!("{head:<width$}  {about}"),
+            None => head,
+        };
         text.push_str(line.trim_end());
         text.push('\n');
-    }
-    if chosen.extra.is_empty() {
-        text.push_str(
-            "\nyour plugins (extras): none; `rig plugin new <name>` makes one, \
-             `rig plugin add` adds another crate's.\n",
-        );
     }
     Ok(text)
 }
 
-/// `rig plugin enable <type>` and `rig plugin disable <type>`: names
-/// `type_path` in `[plugins] enable` or `disable` of the home's settings,
+/// The lines of `plugins`, each its crate, type path and what it adds, as
+/// [`listing`] shows them in the tree's order ([`config::tree_order`]): a
+/// heading for each crate, in it a heading for each area of more than one
+/// plugin or in `off`, and each plugin under them with its state, its
+/// line's head apart from what it adds.
+fn tree(chosen: &Plugins, plugins: Vec<(&str, &str, String)>) -> Vec<(String, Option<String>)> {
+    let heading = |depth: usize, branch: &str| {
+        let mut line = format!("{:indent$}{branch}", "", indent = depth * 2);
+        if chosen.off.iter().any(|off| off == branch) {
+            line.push_str("  off ([plugins] off)");
+        }
+        (line, None)
+    };
+    let plugins = config::tree_order(plugins, |(krate, plugin, _)| (*krate, *plugin));
+    let mut lines = Vec::new();
+    let mut last: Option<(&str, Option<&str>)> = None;
+    for (krate, plugin, about) in &plugins {
+        let headed = area(plugin).filter(|of| {
+            let branch = format!("{krate}/{of}");
+            let together = (plugins.iter())
+                .filter(|(it, other, _)| it == krate && area(other) == Some(of))
+                .count();
+            together > 1 || chosen.off.contains(&branch)
+        });
+        if last.map(|(it, _)| it) != Some(krate) {
+            lines.push(heading(0, krate));
+        }
+        if let Some(of) = headed
+            && last != Some((krate, headed))
+        {
+            lines.push(heading(1, &format!("{krate}/{of}")));
+        }
+        last = Some((krate, headed));
+        let depth = if headed.is_some() { 2 } else { 1 };
+        lines.push(row(chosen, depth, plugin, about));
+    }
+    lines
+}
+
+/// The line of `plugin` at `depth` in [`tree`], `about` what it adds.
+fn row(chosen: &Plugins, depth: usize, plugin: &str, about: &str) -> (String, Option<String>) {
+    let on = chosen.on.iter().any(|it| it == plugin);
+    let own = chosen.own.iter().any(|it| it == plugin);
+    let state = if on { "on" } else { "off" };
+    let mut about = about.to_owned();
+    if let Some(branch) = chosen.off_with(plugin).filter(|_| own) {
+        about.push_str(&format!(" (off with its branch {branch})"));
+    }
+    if !on && let Some(what) = essential(plugin) {
+        about.push_str(&format!(" (warning: off, which takes away {what})"));
+    }
+    let head = format!("{:indent$}{state:<3} {plugin}", "", indent = depth * 2);
+    (head, Some(about))
+}
+
+/// `rig plugin enable <name>` and `rig plugin disable <name>`: names the
+/// plugin `name` in `[plugins] enable` or `disable` of the home's settings,
 /// or takes it out of the other list when that gives rig's default; a
-/// name in this list stays. `disable` takes a name that is neither rig's
-/// nor an extra out of both lists, and turns off a plugin that does not
-/// build here, which is how the settings' refusal of either says to fix
-/// it, even while the file holds other mistakes.
-fn enable(home: &Home, type_path: &str, on: bool) -> Result<()> {
+/// name in this list stays. A branch `name` leaves or joins `[plugins]
+/// off`. On a file that does not read, `disable` only takes `name` out of
+/// each list that cannot hold it (a branch out of `enable` and `disable`,
+/// a plugin out of `off`, a name that is neither out of all three), or
+/// else turns off a plugin that does not build here, which is how the
+/// settings' refusal of each says to fix it, even while the file holds
+/// other mistakes.
+fn enable(home: &Home, name: &str, on: bool) -> Result<()> {
     let path = home.settings();
     let (changed, forgot) = config::edit(&path, |file| -> Result<_> {
         if !on && let Err(failure) = config::plugins(file) {
-            if built_in(type_path).is_none() && !extra(file, type_path) {
-                // Off with an off default, then on with an on default: each
-                // only takes the name out of the other list.
-                let document = &mut file.document;
-                if !(set_on(document, type_path, false, false)
-                    | set_on(document, type_path, true, true))
-                {
-                    return Err(failure.into());
-                }
+            let plugin = built_in(name).is_some() || extra(file, name);
+            let branch = holds_any(file, name);
+            let wrong = [("enable", plugin), ("disable", plugin), ("off", branch)]
+                .into_iter()
+                .filter(|(_, fits)| !fits)
+                .map(|(list, _)| list);
+            if config::forget(&mut file.document, name, wrong) {
                 return Ok((true, true));
+            }
+            if !plugin && !branch {
+                return Err(failure.into());
             }
             // Turning off the plugin the file cannot run here is its fix.
             if let config::Error::Unavailable { plugin, .. } = &failure
-                && plugin == type_path
+                && plugin == name
             {
-                let by_default = built_in(type_path).is_some_and(|built_in| built_in.on);
-                let changed = set_on(&mut file.document, type_path, false, by_default);
+                let by_default = built_in(name).is_some_and(|built_in| built_in.on);
+                let changed = set_on(&mut file.document, name, false, by_default);
                 return Ok((changed, false));
             }
         }
-        let changed = config::turn(file, &[(type_path, on)])?;
-        Ok((changed, false))
+        Ok((config::turn(file, &[(name, on)])?, false))
     })?;
-    let state = if on { "on" } else { "off" };
     if forgot {
         println!(
-            "Took the unknown plugin `{type_path}` out of {}.",
+            "Took `{name}` out of the [plugins] lists of {} that cannot hold it.",
             path.display()
         );
-    } else if !changed {
-        println!("`{type_path}` is {state} already in {}.", path.display());
-    } else {
+        return Ok(());
+    }
+    let chosen = config::chosen(home)?;
+    let branch = chosen.krate(name).is_none();
+    let state = if on { "on" } else { "off" };
+    let what = if branch { "the branch " } else { "" };
+    if !changed {
+        let what = if branch { "The branch " } else { "" };
+        // A branch keeping it off makes only its own choice on already.
+        let whose = if on && !branch && chosen.off_with(name).is_some() {
+            "'s own choice"
+        } else {
+            ""
+        };
         println!(
-            "Turned `{type_path}` {state} in {}.\n\
+            "{what}`{name}`{whose} is {state} already in {}.",
+            path.display()
+        );
+    } else {
+        let then = match (branch, on) {
+            (false, _) => "",
+            (true, false) => {
+                ": its plugins stay off whatever their own choice, and enabling it brings \
+                 each back as it was"
+            }
+            (true, true) => ": each of its plugins is as its own choice says",
+        };
+        println!(
+            "Turned {what}`{name}` {state} in {}{then}.\n\
              The next start, or /reload in the agent, rebuilds the agent with it.",
             path.display()
         );
     }
-    if !on && let Some(what) = essential(type_path) {
-        println!(
-            "Warning: this takes away {what}; `rig plugin enable {type_path}` brings it back."
-        );
+    let plugins: Vec<&str> = if branch {
+        chosen.held(name)
+    } else {
+        vec![name]
+    };
+    if on {
+        let mut keeping: Vec<&str> = Vec::new();
+        for plugin in &plugins {
+            if let Some(off) = chosen.off_with(plugin)
+                && !keeping.contains(&off)
+            {
+                keeping.push(off);
+            }
+        }
+        for off in keeping {
+            println!(
+                "The branch `{off}` is still off, which keeps {} off; \
+                 `rig plugin enable {off}` turns it on.",
+                if branch { "some of them" } else { "it" }
+            );
+        }
+    } else {
+        for what in plugins.iter().filter_map(|plugin| essential(plugin)) {
+            println!("Warning: this takes away {what}; `rig plugin enable {name}` brings it back.");
+        }
     }
     Ok(())
 }
@@ -655,6 +784,28 @@ fn extra(file: &config::SettingsFile, plugin: &str) -> bool {
         .is_some_and(|tables| {
             (tables.iter()).any(|table| table.get("plugin").and_then(Item::as_str) == Some(plugin))
         })
+}
+
+/// Whether `name` is a branch holding one of rig's plugins or a plugin of
+/// a `[[plugins.extra]]` table of `file`, read without the checks the rest
+/// of the file may fail.
+fn holds_any(file: &config::SettingsFile, name: &str) -> bool {
+    let extras: Vec<(&str, &str)> = (file.document.get("plugins"))
+        .and_then(|plugins| plugins.get("extra"))
+        .and_then(Item::as_array_of_tables)
+        .map(|tables| {
+            (tables.iter())
+                .map(|table| {
+                    let text = |key| table.get(key).and_then(Item::as_str).unwrap_or_default();
+                    (text("crate"), text("plugin"))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    (BUILT_IN.iter())
+        .map(|built_in| (built_in.krate, built_in.plugin))
+        .chain(extras)
+        .any(|(krate, plugin)| holds(name, krate, plugin))
 }
 
 /// The string at `keys` in `manifest`, such as its `package.name`.
