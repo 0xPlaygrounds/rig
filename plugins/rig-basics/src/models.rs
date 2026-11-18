@@ -15,10 +15,15 @@
 //! [`ModelLabel`], which the status line shows in place of its
 //! [`ModelChoice`].
 //!
+//! A run that names no model with `--model`, restores none with its
+//! session and has no saved default starts on the [`FirstPick`], for that
+//! run only, in every front alike.
+//!
 //! [`Connector`]: rig_harness::rig_core::catalog::Connector
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::ReasoningSupport;
+use rig_harness::run::{RunStart, RunStartSystems};
 
 pub mod defaults;
 mod pick;
@@ -26,9 +31,10 @@ mod pick;
 mod tui;
 
 /// Gives the agent the user talks to the model `--model` names, or no
-/// model when the catalog lists none by that name, and adds `/model` and
-/// `/effort`, each a picker without arguments; with the `tui` feature,
-/// each agent's status line shows its model and reasoning setting.
+/// model when the catalog lists none by that name, else the [`FirstPick`]
+/// when it has none, and adds `/model` and `/effort`, each a picker
+/// without arguments; with the `tui` feature, each agent's status line
+/// shows its model and reasoning setting.
 #[derive(Default)]
 pub struct ModelsPlugin;
 
@@ -46,6 +52,9 @@ impl Plugin for ModelsPlugin {
         )
         .init_resource::<TypedChoices>()
         .add_systems(First, choose_invoked_model);
+        if !app.is_plugin_added::<FirstPickPlugin>() {
+            app.add_plugins(FirstPickPlugin);
+        }
         let relist = pick::relist.run_if(any_with_component::<pick::ModelList>);
         #[cfg(feature = "tui")]
         let relist = relist.before(rig_tui::ChoiceSystems);
@@ -99,8 +108,8 @@ impl Default for TypedChoices {
     }
 }
 
-/// The model a run that names none starts on, such as a headless run's
-/// or an editor's new session in a home with no default.
+/// The model a run that names none starts on, in a home with no default:
+/// the terminal view's, a headless run's or an editor's new session.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FirstPick {
     /// A sign-in is still finding out which of its models the account
@@ -114,8 +123,14 @@ pub enum FirstPick {
 }
 
 impl FirstPick {
-    /// The first pick among `models`, in the order [`Connector::reachable`]
-    /// gives.
+    /// The first pick among `models`: [`Self::Checking`] while a sign-in
+    /// is still asking its account; then the ChatGPT plan's default model
+    /// when the account offers it; else the first model that can be
+    /// reached, in the order [`Connector::reachable`] gives: a provider's
+    /// with a key set or a sign-in's, in catalog order, then a local
+    /// server's. A sign-in goes before keys because the user signed in
+    /// within rig, while a key in the environment may be there for other
+    /// tools.
     ///
     /// [`Connector::reachable`]: rig_harness::rig_core::catalog::Connector::reachable
     pub fn of(models: &Models) -> Self {
@@ -126,6 +141,13 @@ impl FirstPick {
             .any(|(_, status)| *status == ModelStatus::Checking)
         {
             return Self::Checking;
+        }
+        let signed_in = crate::login::default_model();
+        if statuses
+            .iter()
+            .any(|(spec, status)| *status == ModelStatus::Usable && spec.reference() == signed_in)
+        {
+            return Self::Model(signed_in);
         }
         if let Some((spec, _)) = statuses
             .iter()
@@ -152,6 +174,101 @@ impl FirstPick {
             })
         });
         Self::Nothing(refused)
+    }
+}
+
+/// The system that gives the agent the user talks to the [`FirstPick`], in
+/// `Update` after the run's start ends and before the agent loop: a front
+/// that reads the agent's model in that frame orders itself after it.
+#[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct FirstPickSystems;
+
+/// Gives the agent the user talks to the [`FirstPick`] for this run once
+/// the run's start is over, in [`FirstPickSystems`]. [`ModelsPlugin`] and
+/// every front that sends the agent work without a person to pick, such
+/// as print mode and ACP, add it, so the rule holds without the picker.
+#[derive(Default)]
+pub struct FirstPickPlugin;
+
+impl Plugin for FirstPickPlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<FirstPickSettled>()
+            .configure_sets(
+                Update,
+                FirstPickSystems.after(RunStartSystems).before(AgentLoop),
+            )
+            .add_systems(
+                Update,
+                start_on_first_pick
+                    .in_set(FirstPickSystems)
+                    .run_if(resource_exists::<RunStart>),
+            );
+    }
+}
+
+/// Whether the first pick is settled for this run: given, found to be
+/// nothing, or not needed because the agent has a model. A front that
+/// answers with the agent's model, such as ACP's opening, waits for it
+/// rather than deciding again.
+#[derive(Resource, Default, Debug)]
+pub struct FirstPickSettled(bool);
+
+impl FirstPickSettled {
+    /// Whether the first pick is settled.
+    pub fn is_settled(&self) -> bool {
+        self.0
+    }
+}
+
+/// The agent's model when `--model` names none and neither the restored
+/// session nor the saved default gave it one, nor a plugin that connects
+/// it itself or labels its model, such as a router. It waits while a
+/// sign-in checks its account or a turn runs; a model chosen meanwhile
+/// stands.
+fn start_on_first_pick(
+    (start, invoked): (Res<RunStart>, Option<Res<Invoked>>),
+    agents: MainAgentQuery,
+    unchosen: Query<
+        Has<ActiveTurn>,
+        (
+            Without<ModelChoice>,
+            Without<ModelLabel>,
+            Without<Connection>,
+        ),
+    >,
+    models: Res<Models>,
+    mut settled: ResMut<FirstPickSettled>,
+    mut commands: Commands,
+) {
+    if settled.0 || !start.is_over() {
+        return;
+    }
+    let Some(agent) = main_agent(&agents) else {
+        return;
+    };
+    let named = invoked.is_some_and(|invoked| invoked.args.model.is_some());
+    let busy = match unchosen.get(agent) {
+        Ok(busy) if !named => busy,
+        _ => {
+            settled.0 = true;
+            return;
+        }
+    };
+    if busy {
+        return;
+    }
+    match FirstPick::of(&models) {
+        // The answer wakes the loop and changes the models.
+        FirstPick::Checking => {}
+        FirstPick::Model(model) => {
+            settled.0 = true;
+            commands.trigger(SetModel {
+                entity: agent,
+                model,
+                kind: ChoiceKind::ForThisRun,
+            });
+        }
+        FirstPick::Nothing(_) => settled.0 = true,
     }
 }
 

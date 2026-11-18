@@ -20,12 +20,13 @@
 //!
 //! [`AppHeadlessExt::run_headless`] is the run loop of both, and of any
 //! front nobody sits at. It sends the prompt to the main agent once it has
-//! a model (`--model`, else its restored session's, else the first one
-//! reachable; a `/command` needs none) and exits once no agent works, so
-//! the subagents it started have answered. A plugin that sends the agent
-//! work over time, such as a file watch, keeps the run going with a
-//! [`KeepRunning`] entity, and one whose tools come in the background holds
-//! the start until they are in with a [`Starting`] entity. A kept run may
+//! a model (`--model`, else its restored session's, else the saved
+//! default, else the [`FirstPick`]; a `/command` needs none) and exits
+//! once no agent works, so the subagents it started have answered. A
+//! plugin that sends the agent work over time, such as a file watch, keeps
+//! the run going with a [`KeepRunning`] entity, and one whose tools come in
+//! the background holds the start until they are in with a [`Starting`]
+//! entity. A kept run may
 //! start without a prompt, and so may one whose restored session has a turn
 //! a plugin carries on (`CarryOn`, `rig -r <id> -p`): that turn's answer is
 //! the run's. A turn an exit or a crash cut short is stopped, not finished,
@@ -62,7 +63,7 @@ use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
 use self::terminal::Terminal;
-use crate::models::FirstPick;
+use crate::models::{FirstPick, FirstPickPlugin};
 use crate::telemetry::usage::{SessionUsage, Spent, StoppedUsage, TurnUsage, UnknownSpend};
 
 /// `--print`'s name as a front.
@@ -138,6 +139,9 @@ impl Plugin for PrintPlugin {
         let answer = "Answer the questions of a -p run with these choices";
         if !app.is_plugin_added::<RunPlugin>() {
             app.add_plugins(RunPlugin);
+        }
+        if !app.is_plugin_added::<FirstPickPlugin>() {
+            app.add_plugins(FirstPickPlugin);
         }
         app.add_front(Front::new(FRONT).headless())
             .add_front(Front::new(JSON).on_flag(JSON, json))
@@ -492,17 +496,20 @@ fn with_piped(
 
 /// Starts a run nobody sits at on an [`App`].
 pub trait AppHeadlessExt {
-    /// Sends `prompt` to the main agent once it has a model, and exits when
-    /// no agent works any more and no [`KeepRunning`] exists. Without a
-    /// prompt, the run finishes the turns a plugin carries on from its
-    /// restored session (`CarryOn`), and waits for the work a `KeepRunning`
-    /// plugin sends.
+    /// Sends `prompt` to the main agent once it has a model, the
+    /// [`FirstPick`] when nothing else gave it one, and exits when no agent
+    /// works any more and no [`KeepRunning`] exists. Without a prompt, the
+    /// run finishes the turns a plugin carries on from its restored session
+    /// (`CarryOn`), and waits for the work a `KeepRunning` plugin sends.
     /// Call it once, from the front's `finish`.
     fn run_headless(&mut self, prompt: Option<String>) -> &mut Self;
 }
 
 impl AppHeadlessExt for App {
     fn run_headless(&mut self, prompt: Option<String>) -> &mut Self {
+        if !self.is_plugin_added::<FirstPickPlugin>() {
+            self.add_plugins(FirstPickPlugin);
+        }
         let invoked = self.world().get_resource::<Invoked>();
         let model = invoked.is_some_and(|invoked| invoked.args.model.is_some());
         let world = self.world_mut();
@@ -757,15 +764,17 @@ fn drive(
             let Ok((chosen, connected)) = agents.choices.get(agent) else {
                 return;
             };
-            let model = match (run.model, chosen) {
-                // `--model` chose it, or the restored session did, and it
-                // was connected, or refused with a notice, already.
-                (true, _) | (false, Some(_)) => None,
-                (false, None) => match FirstPick::of(&models) {
+            // `--model` chose it, the restored session, the saved default
+            // or the first pick did, earlier in the frame the start ended,
+            // and it was connected, or refused with a notice, already.
+            if !run.model && chosen.is_none() {
+                match FirstPick::of(&models) {
                     // The answer wakes the loop and changes the models.
                     FirstPick::Checking => return,
-                    FirstPick::Model(model) => Some(model),
-                    FirstPick::Nothing(_) if command => None,
+                    // The first pick was refused, with a notice: the run
+                    // ends unconnected.
+                    FirstPick::Model(_) => {}
+                    FirstPick::Nothing(_) if command => {}
                     FirstPick::Nothing(refused) => {
                         let why = match refused {
                             Some(refused) => format!("no model can be reached: {refused}"),
@@ -776,21 +785,14 @@ fn drive(
                         let ended = ended(Some(agent), 1);
                         return end(&mut run, (ended, Reason::Said(&why)), commands);
                     }
-                },
-            };
-            // Connected already, as `--model` or the restored session
-            // leaves it: the prompt goes out in the first frame after the
-            // start, so a kill soon after leaves it in the session to resume.
-            if model.is_none() && (connected || command) {
+                }
+            }
+            // Connected already: the prompt goes out in the first frame
+            // after the start, so a kill soon after leaves it in the
+            // session to resume.
+            if connected || command {
                 send(&mut run, agent, &agents, command, restarted, &mut commands)
             } else {
-                if let Some(model) = model {
-                    commands.trigger(SetModel {
-                        entity: agent,
-                        model,
-                        kind: ChoiceKind::ForThisRun,
-                    });
-                }
                 run.step = Step::Connecting { agent };
                 // The model connects as this frame ends, or a refusal says
                 // why not; nothing else may ask for the frame that sees it.

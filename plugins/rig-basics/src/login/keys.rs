@@ -174,8 +174,8 @@ pub(crate) fn unreadable_key(status: &ModelStatus) -> Option<String> {
     why.starts_with(UNREADABLE).then(|| why.clone())
 }
 
-/// Says once per run, naming the file and the model, when an automatic
-/// first pick lands where it does because a saved key cannot be read.
+/// Says once per run, naming the file and the model, when a saved key
+/// for a model listed before an automatic first pick cannot be read.
 fn say_key_passed_over(
     set: On<SetModel>,
     (models, invoked): (Res<Models>, Option<Res<Invoked>>),

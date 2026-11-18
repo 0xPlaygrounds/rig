@@ -284,6 +284,11 @@ fn policy_and_persistence_are_ordered_for_every_front() {
                         invoked.args.flags.retain(|(name, _)| name != JSON);
                         invoked.terminal = front == "tui";
                     }
+                    // The test sends the work: a print run with no prompt
+                    // waits for it rather than ending at its first frame.
+                    if front == FRONT {
+                        app.world_mut().spawn(KeepRunning);
+                    }
                     app.add_front(Front::new("tui").on_terminal());
                 });
             let world = app.world_mut();
