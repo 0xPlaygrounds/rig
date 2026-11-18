@@ -864,9 +864,10 @@ impl Notice {
 
     /// The refusal of what would change `agent`, or the whole app with
     /// `None`, while a turn runs: the rest of the turn would go on with
-    /// something it did not start with.
+    /// something it did not start with. An error, so a refused command
+    /// comes back in the input.
     pub fn turn_running(agent: impl Into<Option<Entity>>) -> Self {
-        Self::info(agent, "A turn is running; stop it first.")
+        Self::error(agent, "A turn is running; stop it first.")
     }
 
     /// The refusal of what needs a model when `agent` has none.
