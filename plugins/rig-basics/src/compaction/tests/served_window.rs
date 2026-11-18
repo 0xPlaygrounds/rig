@@ -3,12 +3,13 @@
 
 use super::*;
 use rig_core::catalog::{Catalog, Connector};
+use rig_core::effect::{EffectId, EffectKind};
 use rig_core::http_client::{
     self, Bytes, DynHttpClient, HttpClientExt, LazyBody, MultipartForm, Request, Response,
     StreamingResponse,
 };
-use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ModelAdapter;
+use rig_core::serve::{BeforeServe, ErasedHandler, Intercept};
 use rig_core::test_utils::{MockHttpResponse, SequencedHttpClient};
 use rig_core::wasm_compat::WasmCompatSend;
 
@@ -347,43 +348,43 @@ fn held_past_the_answer(to_agent: bool) {
     if to_agent {
         app.add_systems(AgentPass, route_to_agent.in_set(PrepareSystems::Edit));
     }
-    app.world_mut().trigger(Deliver::new(
-        agent,
-        "And the next question?",
-        DeliveryMode::Steer,
-    ));
-    let held = |world: &mut World| {
-        world
-            .query_filtered::<(), With<OtherHold>>()
-            .iter(world)
-            .next()
-            .is_some()
-    };
-    run_until(&mut app, &wakes, |world| {
-        world
-            .iter_entities()
-            .any(|entity| entity.contains::<OtherHold>())
-    });
-    server.open();
-    run_until(&mut app, &wakes, |world| !asking(world));
-    let world = app.world_mut();
-    assert!(held(world), "the call is still held when the answer comes");
-    let holds: Vec<Entity> = world
-        .query_filtered::<Entity, With<OtherHold>>()
-        .iter(world)
-        .collect();
-    for hold in holds {
-        world.despawn(hold);
-    }
-    run_until(&mut app, &wakes, |world| {
-        !world.resource::<Ended>().0.is_empty()
-    });
+    hold_past_the_answer(&mut app, &wakes, agent, &server);
     let requests = sent(&model);
     assert!(
         requests.first().is_some_and(|first| asks_summary(first)),
         "the conversation is summarized before the request: {} requests (to agent: {to_agent})",
         requests.len()
     );
+}
+
+/// Asks `agent` a question whose call [`hold_once`] holds until `server`
+/// answered the window ask, then runs until the turn ended.
+fn hold_past_the_answer(app: &mut App, wakes: &Receiver<()>, agent: Entity, server: &Server) {
+    app.world_mut().trigger(Deliver::new(
+        agent,
+        "And the next question?",
+        DeliveryMode::Steer,
+    ));
+    run_until(app, wakes, |world| {
+        world
+            .iter_entities()
+            .any(|entity| entity.contains::<OtherHold>())
+    });
+    server.open();
+    run_until(app, wakes, |world| !asking(world));
+    let world = app.world_mut();
+    let holds: Vec<Entity> = world
+        .query_filtered::<Entity, With<OtherHold>>()
+        .iter(world)
+        .collect();
+    assert!(
+        !holds.is_empty(),
+        "the call is still held when the answer comes"
+    );
+    for hold in holds {
+        world.despawn(hold);
+    }
+    run_until(app, wakes, |world| !world.resource::<Ended>().0.is_empty());
 }
 
 /// The connection [`route_first`] sends a turn's first call to.
@@ -409,32 +410,144 @@ fn route_first(
 }
 
 #[test]
-fn a_call_routed_to_a_served_model_keeps_its_route_once_the_window_comes() {
+fn a_call_a_plugin_routed_to_a_served_model_goes_out_as_it_is() {
+    // While the window is still asked for, and once it is known.
+    for known in [false, true] {
+        let ollama = format!(r#"{{"parameters": "num_ctx {SERVED}", "model_info": {{}}}}"#);
+        let server = Server::new([MockHttpResponse::success(ollama)]);
+        let routed = MockCompletionModel::from_stream_turns([reply("done"), reply("again")]);
+        let (mut app, wakes, agent) = served("ollama/qwen3", &server, &routed);
+        let own = MockCompletionModel::from_stream_turns([reply("not this model")]);
+        let (Some(served), Some(own_connection)) =
+            (app.world().get::<Connection>(agent).cloned(), connect(&own))
+        else {
+            return;
+        };
+        app.world_mut().entity_mut(agent).insert(own_connection);
+        app.insert_resource(RouteTo(served))
+            .add_systems(AgentPass, route_first.in_set(PrepareSystems::Edit));
+        if known {
+            server.open();
+            run_until(&mut app, &wakes, |world| !asking(world));
+        }
+        ask_until(&mut app, &wakes, agent, 1);
+        assert_eq!(
+            asking(app.world()),
+            !known,
+            "the call does not wait for the answer"
+        );
+        let requests = sent(&routed);
+        assert!(
+            matches!(requests.as_slice(), [only] if !asks_summary(only)),
+            "known: {known}: {requests:?}"
+        );
+        assert!(sent(&own).is_empty(), "known: {known}");
+    }
+}
+
+#[test]
+fn a_call_a_plugin_routed_to_its_agents_model_is_not_built_again() {
     let ollama = format!(r#"{{"parameters": "num_ctx {SERVED}", "model_info": {{}}}}"#);
     let server = Server::new([MockHttpResponse::success(ollama)]);
-    let routed = MockCompletionModel::from_stream_turns([
-        reply("## Goal\nAnswer the user's questions about the crate."),
-        reply("done"),
-    ]);
-    let (mut app, wakes, agent) = served("ollama/qwen3", &server, &routed);
-    let own = MockCompletionModel::from_stream_turns([reply("not this model")]);
-    let (Some(served), Some(own_connection)) =
-        (app.world().get::<Connection>(agent).cloned(), connect(&own))
+    let model = MockCompletionModel::from_stream_turns([reply("not this connection")]);
+    let (mut app, wakes, agent) = served("ollama/qwen3", &server, &model);
+    let Some(spec) = app
+        .world()
+        .get::<Connection>(agent)
+        .map(|connection| connection.spec.clone())
     else {
         return;
     };
-    app.world_mut().entity_mut(agent).insert(own_connection);
-    app.insert_resource(RouteTo(served))
-        .add_systems(AgentPass, route_first.in_set(PrepareSystems::Edit));
-    ask_before_the_answer(&mut app, &wakes, agent, &server);
-    // Compaction's resend after the summary is a call of its own, which
-    // this router does not route.
-    let own = sent(&own);
-    assert!(!own.iter().any(|request| asks_summary(request)), "{own:?}");
+    // The plugin's own connection to the agent's model, as a racer's is.
+    let routed = MockCompletionModel::from_stream_turns([reply("done"), reply("again")]);
+    let handler =
+        ModelAdapter::<rig_core::operation::Completion>::new(spec.reference(), routed.clone());
+    let handler = rig_ecs::effects::Handler(ErasedHandler::new(handler));
+    app.insert_resource(RouteTo(Connection { spec, handler }))
+        .add_systems(
+            AgentPass,
+            (hold_once, route_first).in_set(PrepareSystems::Edit),
+        );
+    hold_past_the_answer(&mut app, &wakes, agent, &server);
     let requests = sent(&routed);
     assert!(
-        requests.first().is_some_and(|first| asks_summary(first)),
-        "the routed model summarizes first: {} requests",
-        requests.len()
+        matches!(requests.as_slice(), [only] if !asks_summary(only)),
+        "{requests:?}"
     );
+    assert!(sent(&model).is_empty());
+}
+
+/// Counts what passes through the adapter [`wrap`] puts on a call.
+#[derive(Clone)]
+struct Counting(Arc<AtomicUsize>);
+
+impl Intercept for Counting {
+    fn name(&self) -> String {
+        "counting".to_owned()
+    }
+
+    async fn before(&self, _: EffectId, _: &EffectKind) -> BeforeServe {
+        self.0.fetch_add(1, Ordering::Relaxed);
+        BeforeServe::Proceed
+    }
+}
+
+/// The adapter [`wrap`] applies, and how many calls it adapted.
+#[derive(Resource)]
+struct Wrapping(Counting, usize);
+
+/// Adapts each turn's call.
+fn wrap(
+    mut calls: Query<&mut Adapted, (Added<Admitted>, With<TurnCall>)>,
+    mut wrapping: ResMut<Wrapping>,
+) {
+    for mut adapted in &mut calls {
+        let layer = wrapping.0.clone();
+        let handler = adapted.0.handler.0.clone().layered(layer);
+        adapted.0.handler = rig_ecs::effects::Handler(handler);
+        wrapping.1 += 1;
+    }
+}
+
+/// Leaves each turn's call that took over no other to its agent's
+/// connection.
+fn route_new_to_agent(
+    mut calls: Query<
+        &mut ModelRequest,
+        (
+            Added<Admitted>,
+            With<TurnCall>,
+            Without<rig_ecs::stage::Supersedes>,
+        ),
+    >,
+) {
+    for mut call in &mut calls {
+        call.connection = None;
+    }
+}
+
+#[test]
+fn an_adapter_wraps_a_call_built_again_once() {
+    // A window the conversation fits, so the rebuilt call itself is sent.
+    let ollama = r#"{"parameters": "num_ctx 1000000", "model_info": {}}"#;
+    let server = Server::new([MockHttpResponse::success(ollama)]);
+    let model = MockCompletionModel::from_stream_turns([reply("done")]);
+    let (mut app, wakes, agent) = served("ollama/qwen3", &server, &model);
+    let served = Arc::new(AtomicUsize::new(0));
+    app.insert_resource(Wrapping(Counting(served.clone()), 0))
+        .add_systems(
+            AgentPass,
+            (
+                (hold_once, route_new_to_agent).in_set(PrepareSystems::Edit),
+                wrap.in_set(PrepareSystems::Adapt),
+            ),
+        );
+    hold_past_the_answer(&mut app, &wakes, agent, &server);
+    assert_eq!(
+        app.world().resource::<Wrapping>().1,
+        2,
+        "the held call was built again"
+    );
+    assert_eq!(model.request_count(), 1);
+    assert_eq!(served.load(Ordering::Relaxed), 1, "wrapped once");
 }
