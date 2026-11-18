@@ -56,10 +56,11 @@ key = "ctrl+o"  # written as rig-tui's key bindings are, such as "alt+o"
 
 The key is bound in every scope, so it works while typing, with a call
 selected and in a panel. In a transcript pane that has the keys, such as a
-helper's, it acts on that pane's selection. If a binding added earlier holds
-the key, or the input already uses it (such as Enter or Ctrl+E), the fold key
-is refused and nothing is folded, so folded lines always have a key that shows
-them. The terminal view says so when it starts, and the agent's log has the
-line. Other fronts (`rig -p`, `--json`, ACP) are not told, so what they show
-is the same with the plugin as without it. An input binding of the same key added later is shadowed
-by the fold key.
+helper's, it acts on that pane's selection. The key is bound in the plugin's
+`finish`. If a binding any plugin added in its `build` holds the key, or the
+input already uses it (such as Enter or Ctrl+E), the fold key is refused and
+nothing is folded, so folded lines always have a key that shows them. The
+terminal view says so when it starts, and the agent's log has the line. Other
+fronts (`rig -p`, `--json`, ACP) are not told, so what they show is the same
+with the plugin as without it. An input binding of the same key added in a
+later `finish` is shadowed by the fold key.

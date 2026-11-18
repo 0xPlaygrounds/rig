@@ -159,7 +159,7 @@ impl Plugin for FoldPlugin {
             return;
         }
         // Global, so no other binding of the key shadows it unseen: one
-        // bound first refuses it, and rig-tui says so.
+        // bound before this `finish` refuses it, and rig-tui says so.
         let binding = KeyBinding::new(key, LABEL).in_scope(KeyScope::Global);
         if let Some(bound) = app.add_key_binding(binding, flip) {
             app.world_mut().entity_mut(bound).insert(FoldKey);
