@@ -436,7 +436,7 @@ pub(crate) struct RefusedKeys(Vec<String>);
 
 /// Says each refused binding as a warning in the view, once: a copy the
 /// build before a reload kept goes, so the view shows one per refusal of
-/// this build, as the latest.
+/// this build, as the latest, within the notices it keeps.
 pub(crate) fn tell_refused(
     refused: Option<ResMut<RefusedKeys>>,
     mut shown: ResMut<Notices>,
