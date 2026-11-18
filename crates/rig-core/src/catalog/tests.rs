@@ -82,6 +82,29 @@ fn the_checked_in_catalog_loads_whole() {
     }
 }
 
+/// A cost tier's rates sit beside its `tier`, and still decode under
+/// `serde_json/arbitrary_precision`, where a `#[serde(flatten)]` into `f64`
+/// rejected them because buffered numbers arrive as an internal map and every
+/// tiered row was skipped. Run this module with and without that feature.
+#[test]
+fn a_cost_tier_reads_its_rates_beside_its_tier() {
+    let json = r#"{"input": 6, "output": 22.5, "cache_read": 0.6, "tier": {"type": "context", "size": 200000}}"#;
+    let tier: CostTier = serde_json::from_str(json).expect("a tier with rates decodes");
+
+    assert_eq!(tier.rates.input, Some(6.0));
+    assert_eq!(tier.rates.output, Some(22.5));
+    assert_eq!(tier.rates.cache_read, Some(0.6));
+    assert_eq!(tier.rates.cache_write, None);
+    assert_eq!(
+        (tier.tier.kind.as_str(), tier.tier.size),
+        ("context", 200_000)
+    );
+
+    let written = serde_json::to_string(&tier).expect("a tier serializes");
+    let reread: CostTier = serde_json::from_str(&written).expect("a written tier reads back");
+    assert_eq!(reread, tier);
+}
+
 #[test]
 fn a_models_dev_row_becomes_a_spec() {
     let catalog = models_dev(SAMPLE).expect("parses");

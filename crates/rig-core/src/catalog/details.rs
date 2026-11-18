@@ -113,12 +113,59 @@ pub struct Rates {
 /// Prices that apply to a request past the size its [`Tier`] names.
 #[non_exhaustive]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(from = "CostTierRepr")]
 pub struct CostTier {
     /// The prices.
     #[serde(flatten)]
     pub rates: Rates,
     /// Where they start.
     pub tier: Tier,
+}
+
+/// A [`CostTier`] as models.dev writes it, its rates beside its tier.
+///
+/// Read field by field rather than through `#[serde(flatten)]`: the flatten
+/// buffer skips the numeric coercions the direct path performs, so with
+/// `serde_json/arbitrary_precision` enabled anywhere in the dependency graph
+/// every buffered rate arrives as a map and the row fails with
+/// `invalid type: map, expected f64`.
+#[derive(Deserialize)]
+struct CostTierRepr {
+    input: Option<f64>,
+    output: Option<f64>,
+    cache_read: Option<f64>,
+    cache_write: Option<f64>,
+    reasoning: Option<f64>,
+    input_audio: Option<f64>,
+    output_audio: Option<f64>,
+    tier: Tier,
+}
+
+impl From<CostTierRepr> for CostTier {
+    fn from(repr: CostTierRepr) -> Self {
+        let CostTierRepr {
+            input,
+            output,
+            cache_read,
+            cache_write,
+            reasoning,
+            input_audio,
+            output_audio,
+            tier,
+        } = repr;
+        Self {
+            rates: Rates {
+                input,
+                output,
+                cache_read,
+                cache_write,
+                reasoning,
+                input_audio,
+                output_audio,
+            },
+            tier,
+        }
+    }
 }
 
 /// Where a [`CostTier`] starts: past `size` of what `kind` measures.
