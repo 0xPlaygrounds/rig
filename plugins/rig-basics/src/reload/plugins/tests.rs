@@ -1432,7 +1432,6 @@ fn a_status_part_ticked_and_left_in_one_frame_is_hidden() {
     );
 }
 
-#[cfg(feature = "tui")]
 #[test]
 fn plugins_defaults_clears_status_hide_without_the_status_line() {
     let home = scratch_home("plugins-status-defaults-off");
@@ -1453,6 +1452,8 @@ fn plugins_defaults_clears_status_hide_without_the_status_line() {
         "{text}"
     );
     assert!(text.contains("[keep]\nthis = 1"), "{text}");
+    let told = app.world().resource::<Told>().0.join("\n");
+    assert!(told.contains("shown again"), "{told}");
 }
 
 #[test]
