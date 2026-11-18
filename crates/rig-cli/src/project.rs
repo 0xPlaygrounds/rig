@@ -18,6 +18,7 @@ use rig_harness_protocol::fs;
 use super::{LONG_VERSION, Result, VERSION};
 
 /// The terminal view, whose plugin alone needs rig-basics' `tui` feature.
+/// The other plugins of its crate are parts of it.
 const TUI: &str = "rig_tui::TuiPlugin";
 
 /// The generated package's name, and so its binary's.
@@ -27,10 +28,18 @@ pub const PACKAGE: &str = "rig-harness-agent";
 /// `crates/rig-cli` is two folders below its root.
 pub(super) const CHECKOUT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
 
-/// The crates of rig's own plugins that are on.
+/// The plugins on that the agent builds: without the terminal view, none
+/// of its crate, so nothing builds rig-tui.
+fn built(plugins: &Plugins) -> impl Iterator<Item = &str> {
+    let view = plugins.on.iter().any(|plugin| plugin == TUI);
+    let part = |plugin: &str| built_in(plugin).is_some_and(|it| it.krate == "rig-tui");
+    (plugins.on.iter().map(String::as_str)).filter(move |plugin| view || !part(plugin))
+}
+
+/// The crates of rig's own plugins that the agent builds.
 fn built_in_crates(plugins: &Plugins) -> BTreeSet<&'static str> {
-    (plugins.on.iter())
-        .filter_map(|plugin| built_in(plugin))
+    built(plugins)
+        .filter_map(built_in)
         .map(|built_in| built_in.krate)
         .collect()
 }
@@ -549,7 +558,7 @@ fn rig_origin(source: &RigSource, name: &str) -> String {
     }
 }
 
-/// The agent: the harness, then the plugins on, in their order, as the
+/// The agent: the harness, then the plugins it builds, in their order, as the
 /// `PluginGroup` `Chosen` of [`rig_harness::Loaded`] plugins;
 /// `rig_harness::run` runs it, or describes what its plugins add when the
 /// launcher asks.
@@ -578,7 +587,7 @@ fn main_rs(home: &Home, plugins: &Plugins, source: &RigSource) -> String {
                  rig_harness::PluginGroupBuilder::start::<Self>()\n",
         home.settings(),
     );
-    for plugin in &plugins.on {
+    for plugin in built(plugins) {
         let (krate, from) = match built_in(plugin) {
             Some(built_in) => (built_in.krate, rig_origin(source, built_in.krate)),
             None => match plugins.extra.iter().find(|extra| extra.plugin == *plugin) {
