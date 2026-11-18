@@ -26,8 +26,8 @@ use super::policy::TurnPolicy;
 /// Detect unknown payloads containing assistant content that assembly would lose:
 /// tagged assistant blocks or text with a malformed provider item.
 fn unknown_payload_loses_assistant_content(payload: &serde_json::Value) -> bool {
-    // Deserialize by reference to avoid cloning large unknown payloads.
-    if AssistantContent::deserialize(payload).is_ok() {
+    // Read by reference to avoid cloning large unknown payloads.
+    if rig_core::json_utils::from_value::<AssistantContent>(payload).is_ok() {
         return true;
     }
     // Malformed metadata must not hide the loss of an otherwise valid text field.

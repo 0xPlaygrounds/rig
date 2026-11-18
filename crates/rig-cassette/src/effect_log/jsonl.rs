@@ -496,7 +496,7 @@ impl Known {
         self.has_lines = true;
         let value: Value = serde_json::from_str(line)?;
         if value.get("header").is_some() {
-            let HeaderLine { header } = serde_json::from_value::<HeaderLine<LogHeader>>(value)?;
+            let HeaderLine { header } = from_value::<HeaderLine<LogHeader>>(&value)?;
             merge(&mut self.header, header);
             return Ok(None);
         }
@@ -504,7 +504,7 @@ impl Known {
             self.note(&value, None, None)?;
             return Ok(Some(value));
         }
-        let (record, texts) = self.restore(serde_json::from_value(value)?, whole)?;
+        let (record, texts) = self.restore(from_value(&value)?, whole)?;
         self.note(&record, Some(texts), None)?;
         Ok(Some(record))
     }
@@ -649,7 +649,7 @@ impl Known {
                 remove_preserving_order(item, "content");
             }
         }
-        (!ids.is_empty()).then(|| (ids, Value::Object(fields)))
+        (!ids.is_empty()).then_some((ids, Value::Object(fields)))
     }
 
     /// `message`, written without the content of its tool results that
@@ -1017,7 +1017,7 @@ pub fn read_outcomes_from(lines: impl BufRead) -> io::Result<Vec<EffectRecord>> 
         if record.get("after").is_some() {
             let DeltaLine {
                 id, record: held, ..
-            } = serde_json::from_value::<DeltaLine<Value>>(record)?;
+            } = from_value::<DeltaLine<Value>>(&record)?;
             record = held;
             if let Some(fields) = record.as_object_mut() {
                 fields.insert("id".to_owned(), serde_json::to_value(id)?);

@@ -681,7 +681,7 @@ impl Read {
             Some("ready") => self.session = field("session"),
             Some("usage") if self.version == Some(VERSION) => {
                 let usage = event.get("usage").cloned().unwrap_or_default();
-                match serde_json::from_value::<Usage>(usage) {
+                match rig_core::json_utils::from_value::<Usage>(&usage) {
                     Ok(usage) => {
                         self.spent.record(&usage);
                         reports.send(field("model"), usage);

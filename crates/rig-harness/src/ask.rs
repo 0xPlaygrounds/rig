@@ -288,7 +288,7 @@ impl Answer {
     /// refused.
     pub fn of(outcome: &Outcome) -> Option<Self> {
         match &outcome.0 {
-            Ok(EffectOutcome::Custom { payload }) => Self::deserialize(payload).ok(),
+            Ok(EffectOutcome::Custom { payload }) => rig_core::json_utils::from_value(payload).ok(),
             _ => None,
         }
     }

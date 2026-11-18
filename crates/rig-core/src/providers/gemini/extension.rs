@@ -896,8 +896,10 @@ pub struct GeminiExtras {
 impl ReplyExtras for GeminiExtras {
     fn from_reply(api: &Api, raw: &Value) -> Result<Self, serde_json::Error> {
         match api.as_str() {
-            GENERATE_CONTENT => Ok(GenerateContentReply::deserialize(raw)?.into()),
-            INTERACTIONS => Ok(InteractionReply::deserialize(raw)?.into()),
+            GENERATE_CONTENT => {
+                Ok(crate::json_utils::from_value::<GenerateContentReply>(raw)?.into())
+            }
+            INTERACTIONS => Ok(crate::json_utils::from_value::<InteractionReply>(raw)?.into()),
             other => Err(serde_json::Error::custom(format!(
                 "the Gemini API returns no `{other}` reply"
             ))),

@@ -244,7 +244,7 @@ mod tui {
     /// The mark in grays, and beside it rig's version, the model and the
     /// directory, on the terminal's own background.
     pub(super) fn lines(view: &AsideRender) -> Vec<Line<'static>> {
-        let says: Welcome = serde_json::from_value(view.aside.value.clone()).unwrap_or_default();
+        let says: Welcome = rig_core::json_utils::from_value(&view.aside.value).unwrap_or_default();
         let model = match says.model {
             Some(model) => vec![
                 Span::from(model).bold(),

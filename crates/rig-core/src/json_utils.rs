@@ -530,7 +530,7 @@ pub fn from_value<T: serde::de::DeserializeOwned>(
 }
 
 /// Whether `value` holds an integer beyond u64 and i64.
-fn holds_wide_integer(value: &serde_json::Value) -> bool {
+pub(crate) fn holds_wide_integer(value: &serde_json::Value) -> bool {
     match value {
         serde_json::Value::Number(number) => {
             !number.is_u64()

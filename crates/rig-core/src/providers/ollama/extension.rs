@@ -275,7 +275,7 @@ pub struct Logprob {
 
 impl ReplyExtras for OllamaExtras {
     fn from_reply(_api: &Api, raw: &Value) -> Result<Self, serde_json::Error> {
-        Self::deserialize(raw)
+        crate::json_utils::from_value(raw)
     }
 }
 

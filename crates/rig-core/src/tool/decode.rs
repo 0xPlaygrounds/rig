@@ -35,7 +35,7 @@ use serde_json::{Number, Value};
 /// When `args` does not fit `A` either way: the error of the second try
 /// when there was one, else of the arguments as sent.
 pub fn decode_args<A: DeserializeOwned>(args: &Value) -> Result<A, serde_json::Error> {
-    A::deserialize(args).or_else(|error| as_integers(args).unwrap_or(Err(error)))
+    crate::json_utils::from_value(args).or_else(|error| as_integers(args).unwrap_or(Err(error)))
 }
 
 /// [`decode_args`] for arguments as JSON text, decoded straight from the

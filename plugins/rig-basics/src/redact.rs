@@ -261,7 +261,7 @@ impl Secrets {
         // Again, for a secret a later string taught to show bare in an
         // earlier one.
         json(self, &mut redacted);
-        let reads = |json: &Value| T::deserialize(json).is_ok();
+        let reads = |json: &Value| rig_core::json_utils::from_value::<T>(json).is_ok();
         if !reads(&redacted) {
             let mut strings = Vec::new();
             changed(&given, &redacted, String::new(), &mut strings);
