@@ -421,13 +421,11 @@ fn start_asking(
 
 /// Keeps the window a model's server answered with, and gives it to every
 /// [`Connection`] to that model without one. The turns' calls held for the
-/// answer ([`wait_for_window`]) are released, and those measured without a
-/// window are built anew when one came.
+/// answer ([`wait_for_window`]) are released.
 pub(crate) fn learn_window(
     answered: On<Insert<WindowAnswer>>,
     asks: Query<(&AskingWindow, &WindowAnswer)>,
-    holds: Query<(Entity, &WaitingForWindow, &HoldOf)>,
-    calls: Query<(&CallOf, &ForAgent, &Effect), Without<SupersededBy>>,
+    holds: Query<(Entity, &WaitingForWindow)>,
     mut connections: Query<&mut Connection>,
     mut windows: ResMut<ServedWindows>,
     mut commands: Commands,
@@ -443,24 +441,10 @@ pub(crate) fn learn_window(
             None
         }
     };
-    for (hold, WaitingForWindow(waited), &HoldOf(call)) in &holds {
-        if waited != reference {
-            continue;
+    for (hold, WaitingForWindow(waited)) in &holds {
+        if waited == reference {
+            commands.entity(hold).despawn();
         }
-        commands.entity(hold).despawn();
-        let Some((&CallOf(turn), &ForAgent(agent), effect)) =
-            calls.get(call).ok().filter(|_| window.is_some())
-        else {
-            continue;
-        };
-        commands
-            .spawn((
-                TurnCall,
-                CallOf(turn),
-                ForAgent(agent),
-                Effect::with_parent_id(effect.parent),
-            ))
-            .add_related::<SupersededBy>(&[call]);
     }
     let Some(window) = window else {
         return;
@@ -487,9 +471,10 @@ pub(crate) struct WaitedForWindow;
 /// while that model's server is asked for one, in
 /// [`Stage::Gate`](super::stage::Stage::Gate), asking it again first when
 /// the last ask did not reach it, once per turn: measured without the
-/// window, its request would not be compacted near it.
+/// window, its request would not be compacted near it. A call measured
+/// without a window its model now has is built anew.
 pub(crate) fn wait_for_window(
-    calls: Query<(Entity, &Adapted, &CallOf), (ReadyToStart, With<TurnCall>)>,
+    calls: Query<(Entity, &Adapted, &CallOf, &ForAgent, &Effect), (ReadyToStart, With<TurnCall>)>,
     waited: Query<(), With<WaitedForWindow>>,
     asks: Query<&AskingWindow>,
     (models, wake): (Res<Models>, Res<Wake>),
@@ -497,11 +482,25 @@ pub(crate) fn wait_for_window(
     mut commands: Commands,
 ) {
     let mut started = Vec::new();
-    for (call, Adapted(connection), &CallOf(turn)) in &calls {
-        if connection.spec.input_limit().is_some() || waited.contains(turn) {
+    for (call, Adapted(connection), &CallOf(turn), &ForAgent(agent), effect) in &calls {
+        if connection.spec.input_limit().is_some() {
             continue;
         }
         let reference = connection.spec.reference();
+        if let Some(Some(_)) = windows.0.get(&reference) {
+            commands
+                .spawn((
+                    TurnCall,
+                    CallOf(turn),
+                    ForAgent(agent),
+                    Effect::with_parent_id(effect.parent),
+                ))
+                .add_related::<SupersededBy>(&[call]);
+            continue;
+        }
+        if waited.contains(turn) {
+            continue;
+        }
         if start_asking(
             &connection.spec,
             &models,
