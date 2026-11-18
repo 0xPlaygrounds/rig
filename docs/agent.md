@@ -759,7 +759,9 @@ order, crate then area, and your extras last by crate, each with its state:
 on, off, "off with its branch" when a branch in `off` holds it, "on (needed
 by ...)" when a plugin on adds it, or any of these with "next reload" while
 the running agent differs. Unticking a plugin while the one that adds it is
-ticked says it stays on, and so does the question on leaving. A tick is the
+ticked says it stays on, and so do the question on leaving and the line
+after it. Ticking a plugin while the one it works only with is unticked
+says it does nothing without that one. A tick is the
 plugin's own choice, so Enter on a plugin of an off branch changes only
 that plugin. The pane beside the list shows the highlighted plugin's area,
 crate, type path (what `settings.toml`
