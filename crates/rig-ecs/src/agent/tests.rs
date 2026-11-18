@@ -43,6 +43,37 @@ fn narrowing_never_widens_an_access() {
 }
 
 #[test]
+fn only_keeps_exactly_the_names_given_whatever_was_narrowed_before() {
+    let only = ToolAccess::only(["a", "b", "a"]);
+    assert_eq!(only.names(), Some(&owned(&["a", "b"])[..]));
+    assert_eq!(ToolAccess::only([]).names(), Some(&[][..]));
+    // Narrowing an already narrower access never widens it; `only` starts over.
+    let narrowed = ToolAccess::all().narrow(["a"]).narrow(["b"]);
+    assert_eq!(narrowed.names(), Some(&[][..]));
+    assert_eq!(ToolAccess::only(["b"]).names(), Some(&owned(&["b"])[..]));
+    assert_eq!(
+        serde_json::to_value(&only).ok(),
+        serde_json::to_value(ToolAccess::all().narrow(["a", "b"])).ok()
+    );
+}
+
+#[test]
+fn only_never_gives_a_child_more_than_its_parent() {
+    let mut world = World::new();
+    world.init_resource::<Messages<Notice>>();
+    let parent = world.spawn(ToolAccess::only(["read"])).id();
+    let child = world
+        .spawn((ToolAccess::only(["read", "shell"]), SpawnedBy(parent)))
+        .id();
+    world.run_system_once(keep_within_parents).ok();
+    let access = world.get::<ToolAccess>(child);
+    assert_eq!(
+        access.and_then(ToolAccess::names).map(<[String]>::to_vec),
+        Some(owned(&["read"]))
+    );
+}
+
+#[test]
 fn an_access_saves_as_it_did_before_its_names_were_private() {
     let saved = [
         json!("All"),
