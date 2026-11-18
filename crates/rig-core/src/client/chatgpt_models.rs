@@ -26,7 +26,7 @@ use crate::providers::chatgpt::signed_in_config;
 
 /// The Codex release whose request contract the ChatGPT dialect follows.
 /// The backend lists only the models a client this new may use.
-pub const CLIENT_VERSION: &str = "0.161.0";
+pub const CLIENT_VERSION: &str = "0.166.0";
 /// The largest model-list response body read, in bytes.
 pub const LIST_LIMIT: usize = 8 << 20;
 /// How long the complete model-list request may take.
