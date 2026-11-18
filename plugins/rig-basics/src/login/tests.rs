@@ -296,11 +296,7 @@ fn a_headless_run_with_no_model_waits_for_the_list_and_takes_an_offered_one() {
             args: Invocation::default(),
             terminal: false,
         })
-        .add_plugins((
-            rig_harness::host::exit::ExitPlugin,
-            SessionLogPlugin,
-            crate::models::ModelsPlugin,
-        ))
+        .add_plugins(rig_harness::host::exit::ExitPlugin)
         .run_headless(Some("Hello.".to_owned()));
     });
     for _ in 0..3 {
