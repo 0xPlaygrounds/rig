@@ -1,7 +1,7 @@
 # rig-basics
 
 The default plugins of the [rig coding agent](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-harness), and
-the services only some plugins add. One crate, one module per group, all on
+the services only some plugins add. One crate, one module per area, all on
 rig-harness's public API. Each plugin is its own name in `[plugins]` of
 `settings.toml`, so each can be turned off alone.
 
@@ -96,7 +96,10 @@ disable = ["rig_basics::compaction::CompactionPlugin"]
 
 `rig plugin disable rig_basics::compaction::CompactionPlugin` writes that,
 and `rig plugin enable <type>` takes it back out; `/plugins` does the same
-from inside the agent. `ApprovalPlugin`, `PreviewPlugin`, `HelpersPlugin`, `BudgetPlugin`, `SubagentsPlugin`,
+from inside the agent. Each module is an area of the plugin tree:
+`rig plugin disable rig-basics/sessions` turns off every plugin of
+`sessions` in one line (`[plugins] off`), and `enable` brings each back as
+it was. `ApprovalPlugin`, `PreviewPlugin`, `HelpersPlugin`, `BudgetPlugin`, `SubagentsPlugin`,
 `EffectLogPlugin`, `DiagnosticsPlugin` and `RedactPlugin` are off by
 default. A plugin that needs another adds it when it is missing, as
 `SessionsPlugin` adds `SessionPickerPlugin`, `SubagentsPlugin` adds

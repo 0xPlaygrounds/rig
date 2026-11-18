@@ -1,9 +1,12 @@
 //! `settings.toml`, the one file a user edits, as both the launcher and the
 //! agent read it. Its `[plugins]` table holds only the user's changes to
 //! rig's built-in plugins ([`BUILT_IN`]): `enable` and `disable` name
-//! plugins, and `[[plugins.extra]]` tables add crates that are not rig's.
-//! The agent is built with exactly the plugins on. Every edit rig makes
-//! ([`edit`]) keeps the user's comments and layout.
+//! plugins, `off` names branches of the plugin tree (a crate, such as
+//! `rig-tui`, or an area of one, such as `rig-basics/sessions`), and
+//! `[[plugins.extra]]` tables add crates that are not rig's. A plugin runs
+//! when its own choice is on and no branch holding it is off. The agent is
+//! built with exactly the plugins on. Every edit rig makes ([`edit`])
+//! keeps the user's comments and layout.
 //!
 //! ```
 //! use rig_harness_protocol::config::{SettingsFile, plugins};
@@ -36,8 +39,6 @@ pub struct BuiltIn {
     pub krate: &'static str,
     /// A short name for people, such as `Terminal view`.
     pub name: &'static str,
-    /// The group `/plugins` shows it in.
-    pub group: Group,
     /// Whether it runs unless the user's settings turn it off.
     pub on: bool,
     /// The `target_os` values it builds on; empty for every target.
@@ -49,40 +50,22 @@ pub struct BuiltIn {
     pub about: &'static str,
 }
 
-/// The groups of [`BUILT_IN`], in the order `/plugins` shows them.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Group {
-    /// The system prompt and what goes with a message.
-    Prompt,
-    /// Models and signing in.
-    Models,
-    /// Sessions and their agents.
-    Sessions,
-    /// The model's tools.
-    Tools,
-    /// Redaction, approvals and spending.
-    Safety,
-    /// The fronts and what they show.
-    Views,
-    /// Rebuilding the agent.
-    Rebuild,
-    /// Logs and telemetry.
-    Logs,
+/// The area of the plugin `plugin` within its crate: the module under the
+/// crate's root in its type path, `sessions` for
+/// `rig_basics::sessions::agents::AgentsPlugin`. A plugin at the root has
+/// none. The branch `<crate>/<area>` holds every plugin of the area.
+pub fn area(plugin: &str) -> Option<&str> {
+    let mut segments = plugin.split("::").skip(1);
+    let area = segments.next()?;
+    segments.next().map(|_| area)
 }
 
-impl Group {
-    /// Its heading, such as `Prompt and context`.
-    pub fn title(self) -> &'static str {
-        match self {
-            Self::Prompt => "Prompt and context",
-            Self::Models => "Models and sign-in",
-            Self::Sessions => "Sessions",
-            Self::Tools => "Tools",
-            Self::Safety => "Safety and cost",
-            Self::Views => "Views",
-            Self::Rebuild => "Rebuild",
-            Self::Logs => "Logs",
-        }
+/// Whether the branch `branch` holds the plugin `plugin` of the crate
+/// `krate`: it names the crate, or the crate and the plugin's [`area`].
+pub fn holds(branch: &str, krate: &str, plugin: &str) -> bool {
+    match branch.split_once('/') {
+        None => branch == krate,
+        Some((of, inner)) => of == krate && area(plugin) == Some(inner),
     }
 }
 
@@ -95,7 +78,7 @@ impl BuiltIn {
 
 /// Calls the macro `$then` with every one of rig's own plugins, in the
 /// order the agent adds them: whether it is on by default, its type, its
-/// crate, its short name, its [`Group`], the `target_os` values it builds
+/// crate, its short name, the `target_os` values it builds
 /// on (none for every one), what goes without it when that takes away the
 /// way back, and what it adds.
 /// [`BUILT_IN`] is made from it, and so is a test's list of the defaults,
@@ -105,130 +88,130 @@ macro_rules! built_in_plugins {
     ($then:ident) => {
         $then! {
             on rig_basics::prompt::DefaultPromptPlugin, "rig-basics",
-                "System prompt", Prompt, [], None,
+                "System prompt", [], None,
                 "rig's own system prompt: one fixed text, so the prompt cache keeps it.";
             on rig_basics::agents_md::AgentsMdPlugin, "rig-basics",
-                "AGENTS.md files", Prompt, [], None,
+                "AGENTS.md files", [], None,
                 "The AGENTS.md files of the working directory and the directories above it up to \
 the repository root, and RIG_HOME/AGENTS.md, in the system prompt.";
-            on rig_basics::skills::SkillsPlugin, "rig-basics", "Skills", Prompt, [], None,
+            on rig_basics::skills::SkillsPlugin, "rig-basics", "Skills", [], None,
                 "Skills: each SKILL.md in .rig/skills and .agents/skills (up to the repository \
 root), RIG_HOME/skills and ~/.agents/skills, listed in the system prompt for the \
 model to read, and /skill:<name>.";
-            on rig_basics::models::ModelsPlugin, "rig-basics", "Model picker", Models, [], None,
+            on rig_basics::models::ModelsPlugin, "rig-basics", "Model picker", [], None,
                 "/model, /effort and the model picker.";
-            on rig_basics::login::LoginPlugin, "rig-basics", "Sign-in", Models, [], None,
+            on rig_basics::login::LoginPlugin, "rig-basics", "Sign-in", [], None,
                 "/login and /logout: the ChatGPT plan, and providers' API keys; [login] app_name in \
 settings.toml names the app the sign-in pages return to.";
             on rig_basics::models::defaults::DefaultsPlugin, "rig-basics",
-                "Model defaults", Models, [], None,
+                "Model defaults", [], None,
                 "The model and reasoning a new session starts with: [model] in settings.toml, \
 which the last choice rewrites.";
-            on rig_basics::sessions::SessionsPlugin, "rig-basics", "Sessions", Sessions, [], None,
+            on rig_basics::sessions::SessionsPlugin, "rig-basics", "Sessions", [], None,
                 "/new, /resume and /name.";
             on rig_basics::sessions::agents::AgentsPlugin, "rig-basics",
-                "Forks and rewind", Sessions, [], None,
+                "Forks and rewind", [], None,
                 "/fork, /agents and rewind (Alt+Up to an earlier message of yours, then Enter): \
 the agents of this session.";
             on rig_basics::compaction::CompactionPlugin, "rig-basics",
-                "Compaction", Sessions, [], None,
+                "Compaction", [], None,
                 "Summarizing a conversation near the context window, and /compact.";
-            on rig_basics::telemetry::usage::UsagePlugin, "rig-basics", "Usage", Logs, [], None,
+            on rig_basics::telemetry::usage::UsagePlugin, "rig-basics", "Usage", [], None,
                 "What model calls cost, and /usage.";
-            on rig_traffic::TrafficPlugin, "rig-traffic", "Traffic log", Logs, [], None,
+            on rig_traffic::TrafficPlugin, "rig-traffic", "Traffic log", [], None,
                 "With --traffic-log or [traffic] log = true, provider HTTP in traffic.jsonl.";
-            on rig_basics::activity::ActivityPlugin, "rig-basics", "Activity", Views, [], None,
+            on rig_basics::activity::ActivityPlugin, "rig-basics", "Activity", [], None,
                 "What each agent is doing, for views.";
-            on rig_basics::coding_tools::ReadTool, "rig-basics", "Read tool", Tools, [], None,
+            on rig_basics::coding_tools::ReadTool, "rig-basics", "Read tool", [], None,
                 "The read tool.";
-            on rig_basics::coding_tools::EditTool, "rig-basics", "Edit tool", Tools, [], None,
+            on rig_basics::coding_tools::EditTool, "rig-basics", "Edit tool", [], None,
                 "The edit tool.";
-            on rig_basics::coding_tools::WriteTool, "rig-basics", "Write tool", Tools, [], None,
+            on rig_basics::coding_tools::WriteTool, "rig-basics", "Write tool", [], None,
                 "The write tool.";
-            on rig_basics::coding_tools::ShellTool, "rig-basics", "Shell tool", Tools, [], None,
+            on rig_basics::coding_tools::ShellTool, "rig-basics", "Shell tool", [], None,
                 "The shell tool.";
             on rig_basics::coding_tools::AttachPlugin, "rig-basics",
-                "@file attachments", Prompt, [], None,
+                "@file attachments", [], None,
                 "Files named as @path in what the user types go with the message.";
             off rig_basics::redact::RedactPlugin, "rig-basics",
-                "Secret redaction", Safety, [], None,
+                "Secret redaction", [], None,
                 "API keys, tokens and private keys become placeholders (\u{2039}SECRET_1\u{203a}) \
 where they come in, so the model, logs and views never see them; a tool call \
 naming one runs with the real value. Without it nothing is redacted.";
             on rig_basics::coding_tools::remote::RemoteHostsPlugin, "rig-basics",
-                "Remote hosts", Tools, [], None,
+                "Remote hosts", [], None,
                 "Paths written HOST:PATH reach the hosts [remote.hosts] in settings.toml names \
 (ssh, koh exec, ...); nothing without hosts.";
-            off rig_basics::approval::ApprovalPlugin, "rig-basics", "Approvals", Safety, [], None,
+            off rig_basics::approval::ApprovalPlugin, "rig-basics", "Approvals", [], None,
                 "One question for every effect a plugin wants approved; nothing asks by default. \
 SubagentsPlugin adds it.";
             off rig_basics::preview::PreviewPlugin, "rig-basics",
-                "Change preview", Safety, [], None,
+                "Change preview", [], None,
                 "What a tool call would change on disk, before it runs, for gates that ask \
 (Preview).";
-            on rig_basics::reload::ReloadPlugin, "rig-basics", "Reload", Rebuild, [],
+            on rig_basics::reload::ReloadPlugin, "rig-basics", "Reload", [],
                 Some("/reload, so a change applies only when rig starts again"),
                 "/reload, which rebuilds the agent when the plugins settings.toml turns on or a \
 plugin crate changed, and restarts it. Without it the agent runs as it started.";
             on rig_basics::reload::plugins::PluginsPlugin, "rig-basics",
-                "Plugins picker", Rebuild, [],
+                "Plugins picker", [],
                 Some("/plugins itself"),
                 "/plugins: every plugin, on and off, to turn on and off; leaving with changes \
 asks whether to rebuild the agent now or at the next start.";
-            on rig_basics::BasicCommandsPlugin, "rig-basics", "Help and quit", Views, [], None,
+            on rig_basics::BasicCommandsPlugin, "rig-basics", "Help and quit", [], None,
                 "/help and /quit.";
-            on rig_basics::welcome::WelcomePlugin, "rig-basics", "Welcome", Views, [], None,
+            on rig_basics::welcome::WelcomePlugin, "rig-basics", "Welcome", [], None,
                 "The welcome at the top of the transcript: rig's mark, its version, the model and \
 the project's directory. Never sent to the model.";
-            off rig_inspect::InspectPlugin, "rig-inspect", "Inspect tool", Tools, [], None,
+            off rig_inspect::InspectPlugin, "rig-inspect", "Inspect tool", [], None,
                 "The inspect tool, with which the agent reads its own running world through Bevy \
 Remote.";
-            on rig_basics::print::PrintPlugin, "rig-basics", "Print mode", Views, [], None,
+            on rig_basics::print::PrintPlugin, "rig-basics", "Print mode", [], None,
                 "-p and --json: answers one prompt, or what is piped in, and drives the agent with \
 JSON lines on stdin and stdout; the front of every run that is not on an \
 interactive terminal.";
-            on rig_tui::TuiPlugin, "rig-tui", "Terminal view", Views, [],
+            on rig_tui::TuiPlugin, "rig-tui", "Terminal view", [],
                 Some("the terminal view, leaving only -p and piped prompts"),
                 "The terminal view, the front of a run on an interactive terminal. Without it the \
 agent answers -p or what is piped in, and says so when started on a terminal.";
-            off rig_fold::FoldPlugin, "rig-fold", "Folded output", Views, [], None,
+            off rig_fold::FoldPlugin, "rig-fold", "Folded output", [], None,
                 "Folded tool output in the terminal view: a finished call shows its first and last \
 lines, and Ctrl+O ([fold] key) shows the selected call, or every call, whole. Off, \
 every call is drawn whole.";
-            off rig_basics::helpers::HelpersPlugin, "rig-basics", "Helpers", Tools, [], None,
+            off rig_basics::helpers::HelpersPlugin, "rig-basics", "Helpers", [], None,
                 "The helper tool: hands tasks to other rig agents, each a `rig -p --json` child \
 process with this session's plugins, one, several side by side or a chain, and \
 returns their final answers.";
-            off rig_basics::budget::BudgetPlugin, "rig-basics", "Budget", Safety, [], None,
+            off rig_basics::budget::BudgetPlugin, "rig-basics", "Budget", [], None,
                 "A budget for what the session spends, helpers included: [budget] usd and tokens \
 in settings.toml, and /budget.";
-            off rig_basics::subagents::SubagentsPlugin, "rig-basics", "Subagents", Tools, [], None,
+            off rig_basics::subagents::SubagentsPlugin, "rig-basics", "Subagents", [], None,
                 "Subagents: the task, message and wait tools, with which the agent starts other \
 agents, messages them and waits on their reports.";
-            off rig_steel::SteelPlugin, "rig-steel", "Steel programs", Tools, [], None,
+            off rig_steel::SteelPlugin, "rig-steel", "Steel programs", [], None,
                 "The run_steel tool: one Scheme program that runs several agents and tool calls \
 and branches on their results.";
             off rig_basics::telemetry::effect_log::EffectLogPlugin, "rig-basics",
-                "Effect log", Logs, [], None,
+                "Effect log", [], None,
                 "The effect log: every model call, tool call and message, as a record in the \
 session's effects.jsonl.";
             off rig_basics::telemetry::diagnostics::DiagnosticsPlugin, "rig-basics",
-                "Diagnostics", Logs, [], None,
+                "Diagnostics", [], None,
                 "The warnings and errors the agent logs, kept as data for the inspect tool.";
-            off rig_mcp_client::McpPlugin, "rig-mcp-client", "MCP servers", Tools, [], None,
+            off rig_mcp_client::McpPlugin, "rig-mcp-client", "MCP servers", [], None,
                 "MCP servers: those of RIG_HOME/mcp.json and the project's .rig/mcp.json, their \
 tools as <server>__<tool>, and /mcp.";
             // Off: rig trusts a project's MCP servers as it trusts its other files.
             off rig_mcp_client::approval::McpApprovalPlugin, "rig-mcp-client",
-                "MCP approval", Tools, [], None,
+                "MCP approval", [], None,
                 "With McpPlugin on, asks before a server of the project's .rig/mcp.json starts, \
 and again once its entry changes: /mcp approve and /mcp deny.";
-            off rig_acp::AcpPlugin, "rig-acp", "Editor protocol (ACP)", Views, [], None,
+            off rig_acp::AcpPlugin, "rig-acp", "Editor protocol (ACP)", [], None,
                 "ACP: `rig acp` serves the Agent Client Protocol on stdin and stdout, so an editor \
 such as Zed uses rig, each session in a process of its own, with the MCP servers \
 the editor names.";
             off rig_claude_cloak::ClaudeCloakPlugin, "rig-claude-cloak",
-                "Claude subscription", Models, ["linux", "macos"], None,
+                "Claude subscription", ["linux", "macos"], None,
                 "Claude Cloak: `claude-cloak/*` models signed in with a Claude subscription \
 (OAuth) instead of an API key, and /claude-cloak login and logout.";
         }
@@ -238,13 +221,12 @@ the editor names.";
 /// [`BUILT_IN`] from [`built_in_plugins!`](crate::built_in_plugins).
 macro_rules! built_in_table {
     ($($state:ident $first:ident $(:: $rest:ident)*, $krate:literal, $name:literal,
-        $group:ident, [$($os:literal),*], $essential:expr, $about:literal;)*) => {
+        [$($os:literal),*], $essential:expr, $about:literal;)*) => {
         /// Every one of rig's own plugins, in the order the agent adds them.
         pub const BUILT_IN: &[BuiltIn] = &[$(BuiltIn {
             plugin: concat!(stringify!($first) $(, "::", stringify!($rest))*),
             krate: $krate,
             name: $name,
-            group: Group::$group,
             on: built_in_table!(@on $state),
             targets: &[$($os),*],
             essential: $essential,
@@ -345,7 +327,8 @@ pub enum Error {
         /// What is wrong with it.
         problem: String,
     },
-    /// A plugin that is neither rig's nor an extra of the file.
+    /// A plugin that is neither rig's nor an extra of the file, or a
+    /// branch that holds none.
     Unknown(String),
     /// A plugin turned on that does not build on this target.
     Unavailable {
@@ -380,7 +363,7 @@ impl fmt::Display for Error {
             } => write!(f, "{} [{table}]: {problem}", path.display()),
             Self::Unknown(plugin) => write!(
                 f,
-                "no plugin `{plugin}`; `rig plugin list` shows them, and \
+                "no plugin or branch `{plugin}`; `rig plugin list` shows them, and \
                  `rig plugin add` adds another crate's"
             ),
             Self::Unavailable { plugin, targets } => write!(
@@ -463,6 +446,12 @@ impl SettingsFile {
 pub struct Plugins {
     /// The plugins on, in the order the agent adds them.
     pub on: Vec<String>,
+    /// The plugins whose own choice is on (rig's default, then `disable`,
+    /// then `enable`), whether or not a branch holding them is off, in the
+    /// same order.
+    pub own: Vec<String>,
+    /// The branches `[plugins] off` turns off, as the file lists them.
+    pub off: Vec<String>,
     /// Every `[[plugins.extra]]` table of the file.
     pub extra: Vec<Extra>,
 }
@@ -472,6 +461,42 @@ impl Plugins {
     pub fn extras_on(&self) -> impl Iterator<Item = &Extra> {
         (self.extra.iter()).filter(|extra| self.on.contains(&extra.plugin))
     }
+
+    /// The crate of the plugin `plugin`, rig's or an extra.
+    pub fn krate(&self, plugin: &str) -> Option<&str> {
+        built_in(plugin).map(|built_in| built_in.krate).or_else(|| {
+            (self.extra.iter())
+                .find(|extra| extra.plugin == plugin)
+                .map(|extra| extra.krate.as_str())
+        })
+    }
+
+    /// The first branch of [`Plugins::off`] that holds `plugin`, which keeps
+    /// it off whatever its own choice.
+    pub fn off_with(&self, plugin: &str) -> Option<&str> {
+        let krate = self.krate(plugin)?;
+        (self.off.iter())
+            .find(|branch| holds(branch, krate, plugin))
+            .map(String::as_str)
+    }
+
+    /// Whether `name` is a branch: it holds one of rig's plugins or an
+    /// extra.
+    pub fn is_branch(&self, name: &str) -> bool {
+        is_branch(name, &self.extra)
+    }
+}
+
+/// Whether the branch `name` holds a plugin of rig's or of `extras`.
+fn is_branch(name: &str, extras: &[Extra]) -> bool {
+    (BUILT_IN.iter())
+        .map(|built_in| (built_in.krate, built_in.plugin))
+        .chain(
+            extras
+                .iter()
+                .map(|extra| (extra.krate.as_str(), extra.plugin.as_str())),
+        )
+        .any(|(krate, plugin)| holds(name, krate, plugin))
 }
 
 /// The `[plugins]` table of one file, checked.
@@ -479,17 +504,19 @@ impl Plugins {
 struct Changes {
     enable: Vec<String>,
     disable: Vec<String>,
+    off: Vec<String>,
     extra: Vec<Extra>,
 }
 
 /// The plugins the home's settings file `home` turns on, over
-/// [`BUILT_IN`]'s defaults: its `disable`, then its `enable`.
+/// [`BUILT_IN`]'s defaults: its `disable`, then its `enable`, then those
+/// its `off` branches hold turned off.
 ///
 /// # Errors
 ///
 /// Naming the file: a `[plugins]` table that does not read, a plugin that
-/// is not rig's or an extra, one named both on and off, or turning on a
-/// plugin that does not build on this target.
+/// is not rig's or an extra, a branch that holds none, one named both on
+/// and off, or turning on a plugin that does not build on this target.
 pub fn plugins(home: &SettingsFile) -> Result<Plugins, Error> {
     let changes = changes(home).map_err(|problem| Error::Table {
         path: home.path.clone(),
@@ -518,6 +545,16 @@ pub fn plugins(home: &SettingsFile) -> Result<Plugins, Error> {
             });
         }
     }
+    if let Some(branch) = (changes.off.iter()).find(|branch| !is_branch(branch, &changes.extra)) {
+        return Err(Error::Table {
+            path: home.path.clone(),
+            table: "plugins".to_owned(),
+            problem: format!(
+                "unknown branch `{branch}` in `off`, which holds no plugin: \
+                 `rig plugin disable {branch}` takes it out"
+            ),
+        });
+    }
     let mut on: BTreeSet<&str> = (BUILT_IN.iter())
         .filter(|built_in| built_in.on)
         .map(|built_in| built_in.plugin)
@@ -527,23 +564,30 @@ pub fn plugins(home: &SettingsFile) -> Result<Plugins, Error> {
         on.remove(plugin.as_str());
     }
     on.extend(changes.enable.iter().map(String::as_str));
-    for plugin in &on {
-        if let Some(missing) = built_in(plugin).filter(|built_in| !built_in.available()) {
-            return Err(Error::Unavailable {
-                plugin: (*plugin).to_owned(),
-                targets: missing.targets,
-            });
-        }
-    }
-    let on = (BUILT_IN.iter().map(|built_in| built_in.plugin))
+    let own: Vec<String> = (BUILT_IN.iter().map(|built_in| built_in.plugin))
         .chain(extras.iter().copied())
         .filter(|plugin| on.contains(plugin))
         .map(str::to_owned)
         .collect();
-    Ok(Plugins {
-        on,
+    let mut chosen = Plugins {
+        on: Vec::new(),
+        own,
+        off: changes.off,
         extra: changes.extra,
-    })
+    };
+    chosen.on = (chosen.own.iter())
+        .filter(|plugin| chosen.off_with(plugin).is_none())
+        .cloned()
+        .collect();
+    for plugin in &chosen.on {
+        if let Some(missing) = built_in(plugin).filter(|built_in| !built_in.available()) {
+            return Err(Error::Unavailable {
+                plugin: plugin.clone(),
+                targets: missing.targets,
+            });
+        }
+    }
+    Ok(chosen)
 }
 
 /// The plugins `RIG_HOME/settings.toml` turns on ([`plugins`]).
@@ -566,6 +610,7 @@ fn changes(file: &SettingsFile) -> Result<Changes, String> {
         match key {
             "enable" => changes.enable = names(key, value)?,
             "disable" => changes.disable = names(key, value)?,
+            "off" => changes.off = names(key, value)?,
             "extra" => {
                 let tables = value
                     .as_array_of_tables()
@@ -593,7 +638,7 @@ fn changes(file: &SettingsFile) -> Result<Changes, String> {
             }
             other => {
                 return Err(format!(
-                    "unknown key `{other}`; it takes `enable`, `disable` and `extra`"
+                    "unknown key `{other}`; it takes `enable`, `disable`, `off` and `extra`"
                 ));
             }
         }
@@ -723,20 +768,29 @@ pub fn set_on(document: &mut DocumentMut, plugin: &str, on: bool, by_default: bo
     true
 }
 
-/// Turns each plugin of `changes`, a type path and whether it is on, on or
-/// off in `file` with [`set_on`], over the file's own choice. Call it in
+/// Turns each plugin or branch of `changes`, a name and whether it is on,
+/// on or off in `file`, over the file's own choice: a plugin with
+/// [`set_on`], a branch by joining or leaving `[plugins] off`, which
+/// leaves the own choice of each plugin it holds as it was. Call it in
 /// [`edit`]: it changes all of them or, on an error, none. Returns whether
 /// the file changed.
 ///
 /// # Errors
 ///
 /// When the file's plugins do not read ([`plugins`]), before or after, a
-/// plugin is neither rig's nor an extra of the file, or one turned on does
-/// not build on this target.
+/// name is neither rig's plugin, an extra of the file nor a branch, or a
+/// plugin turned on does not build on this target.
 pub fn turn(file: &mut SettingsFile, changes: &[(&str, bool)]) -> Result<bool, Error> {
     let before = plugins(file)?;
     let mut changed = false;
     for &(plugin, on) in changes {
+        if built_in(plugin).is_none()
+            && !before.extra.iter().any(|extra| extra.plugin == plugin)
+            && before.is_branch(plugin)
+        {
+            changed |= set_branch(&mut file.document, plugin, on);
+            continue;
+        }
         let by_default = match built_in(plugin) {
             Some(built_in) if on && !built_in.available() => {
                 return Err(Error::Unavailable {
@@ -752,6 +806,40 @@ pub fn turn(file: &mut SettingsFile, changes: &[(&str, bool)]) -> Result<bool, E
     }
     plugins(file)?;
     Ok(changed)
+}
+
+/// Turns the branch `branch` on, out of `[plugins] off` of `document`, or
+/// off, into it. Returns whether the document changed.
+fn set_branch(document: &mut DocumentMut, branch: &str, on: bool) -> bool {
+    let Some(table) = table(document, "plugins") else {
+        return false;
+    };
+    if on {
+        return drop_name(table, "off", branch);
+    }
+    let list = table
+        .entry("off")
+        .or_insert_with(|| Item::Value(Value::Array(Array::new())));
+    let Some(list) = list.as_array_mut() else {
+        return false;
+    };
+    if list.iter().any(|value| value.as_str() == Some(branch)) {
+        return false;
+    }
+    list.push(branch);
+    true
+}
+
+/// Takes the name `name` out of every list of `[plugins]` in `document`,
+/// read or not: how `rig plugin disable` removes a plugin or branch that
+/// nothing provides. Returns whether it was in one.
+pub fn forget(document: &mut DocumentMut, name: &str) -> bool {
+    let Some(table) = (document.get_mut("plugins")).and_then(Item::as_table_like_mut) else {
+        return false;
+    };
+    ["enable", "disable", "off"]
+        .into_iter()
+        .fold(false, |dropped, key| drop_name(table, key, name) | dropped)
 }
 
 /// Takes `plugin` out of the list `key` of `table`, and the key once it is

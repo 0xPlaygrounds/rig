@@ -604,7 +604,7 @@ fn a_plugin_of_an_off_branch_keeps_its_own_tick_and_says_its_branch_is_off() {
         detail(&shown, "Sessions").starts_with("off with its branch"),
         "{shown:#?}"
     );
-    assert_eq!(detail(&shown, "Skills"), "on");
+    assert!(detail(&shown, "Skills").starts_with("on"));
 
     // Enter changes only that plugin's own choice; the branch stays off.
     tick(&mut app, list, &[], &["Forks and rewind"]);

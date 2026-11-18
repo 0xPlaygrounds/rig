@@ -25,6 +25,7 @@ fn only(extras: &[Extra]) -> Plugins {
     Plugins {
         on: extras.iter().map(|extra| extra.plugin.clone()).collect(),
         extra: extras.to_vec(),
+        ..Plugins::default()
     }
 }
 
