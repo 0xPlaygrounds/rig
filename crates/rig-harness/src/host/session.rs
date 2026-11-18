@@ -225,16 +225,20 @@ struct KeepsSession;
 /// them already, the default [`StoreOpener`] and [`Scratch`], the
 /// [`SystemTimings`] (which stay empty without the log), opens the
 /// [`SessionStore`] once every plugin is built and then inserts the
-/// [`PluginData`], routes panics to the log,
+/// [`PluginData`], routes panics to the log unless the build describes
+/// itself,
 /// says why the app started ([`AppStart`]), and deletes sessions,
 /// finishing at startup the deletes a crash cut short.
 pub struct SessionPlugin;
 
 impl Plugin for SessionPlugin {
     fn build(&self, app: &mut App) {
-        std::panic::set_hook(Box::new(|info| {
-            error!("{info}\n{}", std::backtrace::Backtrace::capture());
-        }));
+        // A describing build keeps no log; the launcher shows its stderr.
+        if crate::describe::describing().is_none() {
+            std::panic::set_hook(Box::new(|info| {
+                error!("{info}\n{}", std::backtrace::Backtrace::capture());
+            }));
+        }
         let paths = session_paths(app.world_mut());
         if !app.world().contains_resource::<Scratch>() {
             app.insert_resource(Scratch(Some(paths.path().to_owned())));

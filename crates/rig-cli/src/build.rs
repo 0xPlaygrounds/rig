@@ -878,8 +878,9 @@ fn chunks(mut pipe: impl Read + Send + 'static) -> mpsc::Receiver<Vec<u8>> {
 
 /// Runs a describing build as a [`Build`] and waits for it, at most
 /// `timeout`, and returns its `report`, or what it said on stderr when it
-/// failed. Its group is killed once it exits or the time is up, so nothing
-/// it started outlives it or holds its stderr.
+/// failed, on one line and without Rust's backtrace hint. Its group is
+/// killed once it exits or the time is up, so nothing it started outlives
+/// it or holds its stderr.
 fn wait_described(mut command: Command, report: &Path, timeout: Duration) -> Result<String> {
     command.stderr(Stdio::piped());
     let mut build = Build::spawn(command)?;
@@ -915,12 +916,18 @@ fn wait_described(mut command: Command, report: &Path, timeout: Duration) -> Res
     {
         errors.extend(chunk);
     }
-    let errors = String::from_utf8_lossy(&errors);
-    let said = errors.trim();
+    // One line, since `/reload` shows the first: a panic's message comes
+    // on the line after its location.
+    let said = String::from_utf8_lossy(&errors)
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with("note: run with `RUST_BACKTRACE"))
+        .collect::<Vec<_>>()
+        .join(" ");
     Err(if said.is_empty() {
         format!("describing it failed ({status})").into()
     } else {
-        said.to_owned().into()
+        said.into()
     })
 }
 
