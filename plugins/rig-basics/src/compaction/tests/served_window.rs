@@ -270,3 +270,32 @@ fn a_server_that_never_answers_is_given_up_on() {
     assert_eq!(limit, None);
     assert_eq!(server.asked().len(), 1, "{:?}", server.asked());
 }
+
+#[test]
+fn a_failed_ask_holds_one_call_of_a_turn_and_a_refusal_is_final() {
+    let status = |code| move || MockHttpResponse::error(code, "no");
+    let failing = status(http_client::StatusCode::INTERNAL_SERVER_ERROR);
+    let refusing = status(http_client::StatusCode::NOT_FOUND);
+    // A 500 is asked again once per turn: on connecting, then by the
+    // turn's first call only. A 404 is the server's answer, asked once.
+    for (replies, asks) in [(vec![failing(); 4], 2), (vec![refusing(); 4], 1)] {
+        let server = Server::new(replies);
+        server.open();
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call("l1", "look", serde_json::json!({})),
+                MockStreamEvent::final_response_with_default_usage(),
+            ],
+            reply("done"),
+        ]);
+        let (mut app, wakes, agent) = served("ollama/qwen3", &server, &model);
+        run_until(&mut app, &wakes, |world| !asking(world));
+        ask_until(&mut app, &wakes, agent, 1);
+        assert_eq!(
+            model.request_count(),
+            2,
+            "the tool step makes a second call"
+        );
+        assert_eq!(server.asked().len(), asks, "{:?}", server.asked());
+    }
+}
