@@ -1001,8 +1001,8 @@ fn check_bevy(
         Explained(format!(
             "{failure}: a plugin asks for a Bevy that is not this agent's {BEVY_VERSION}:\n  \
              {}\nWrite its Bevy requirements as \"{range}\", such as `bevy_ecs = {{ version = \
-             \"{range}\", default-features = false }}`, or remove it from [[plugins.extra]] in \
-             settings.toml.",
+             \"{range}\", default-features = false }}`, or take it out with \
+             `rig plugin remove <type>`.",
             pins.join("\n  "),
             range = super::bevy_range(),
         ))
@@ -1026,8 +1026,8 @@ fn check_bevy(
             "plugin `{name}` uses Bevy {version}, but this rig agent is built on Bevy \
              {BEVY_VERSION}. A Bevy plugin only works with the exact Bevy version of its app. \
              Change {name}'s bevy dependencies to \"{range}\" (with default-features = false), \
-             which cargo builds with the agent's Bevy, or remove it from [[plugins.extra]] in \
-             settings.toml.",
+             which cargo builds with the agent's Bevy, or take it out with \
+             `rig plugin remove <type>`.",
             name = plugin,
             range = super::bevy_range(),
         ),

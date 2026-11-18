@@ -125,14 +125,13 @@ each plugin added): ask it before reading rig's source. Some are not, such as
 
 ```sh
 rig plugin new hello    # RIG_HOME/plugins/hello, added to [[plugins.extra]]
-rig plugin add my_save::SavePlugin --path ./save  # another crate's; `remove` undoes it
 rig plugin list                              # every plugin, on or off, with what it adds
 rig plugin disable viz::VizPlugin            # turn it off in [plugins]; `enable` undoes it
 rig plugin check --build  # build the agent as /reload would, and check its stage order
 ```
 
 A crate that is not rig's is a `[[plugins.extra]]` table of
-`RIG_HOME/settings.toml`, which `rig plugin add` writes; only the home's file says which plugins run. `rig plugin new`
+`RIG_HOME/settings.toml`; only the home's file says which plugins run. `rig plugin new`
 writes a working, commented slash command and the table `crate = "hello"`
 (the package), `path = "plugins/hello"` (relative to `RIG_HOME`; or `git`,
 with `branch` or `rev`, or `version`) and `plugin = "hello::HelloPlugin"`.

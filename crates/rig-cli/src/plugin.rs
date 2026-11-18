@@ -12,7 +12,7 @@
 use std::path::Path;
 use std::process::ExitCode;
 
-use rig_harness_protocol::config::toml_edit::{ArrayOfTables, Item, Table, value};
+use rig_harness_protocol::config::toml_edit::{ArrayOfTables, DocumentMut, Item, Table, value};
 use rig_harness_protocol::config::{
     self, BUILT_IN, Extra, Source, built_in, essential, set_on, table,
 };
@@ -63,8 +63,9 @@ pub const USAGE: &str =
                          type's first segment (`my_save`), so a git or
                          crates.io package named with `-` needs it.
   rig plugin remove <type>
-                         Take that table out, and the type out of [plugins]
-                         enable and disable. The crate's files stay.
+                         Take that table out, with the comment lines right
+                         above it, and the type out of [plugins] enable and
+                         disable. The crate's files stay.
   rig plugin check [--build]
                          Check the settings and the extra crates they name by
                          path; with --build, also build the agent with them
@@ -195,9 +196,15 @@ fn add(home: &Home, type_path: &str, flags: &[&str], source: Option<&Path>) -> R
                 .into());
             }
         };
-        let Some(&text) = words.next() else {
-            return Err(format!("{flag} needs a value").into());
-        };
+        let text = words.next().copied().unwrap_or_default();
+        if text.is_empty() || text.starts_with("--") {
+            let not = if text.is_empty() {
+                String::new()
+            } else {
+                format!(", not `{text}`")
+            };
+            return Err(format!("{flag} needs a value{not}").into());
+        }
         if given.iter().any(|(other, _)| *other == key) {
             return Err(format!("{flag} is given more than once").into());
         }
@@ -248,24 +255,21 @@ fn add(home: &Home, type_path: &str, flags: &[&str], source: Option<&Path>) -> R
     };
     keys.splice(0..0, [("crate", krate), ("plugin", type_path.to_owned())]);
     let comment = format!("Added by `rig plugin add {type_path}`.");
-    add_extra(home, &keys, &comment, &RigSource::detect(source)?)?;
-    let from = (config::chosen(home)?.extra.into_iter())
-        .find(|extra| extra.plugin == type_path)
-        .map(|extra| extra.source.to_string())
-        .unwrap_or_default();
+    let added = add_extra(home, &keys, &comment, &RigSource::detect(source)?)?;
     println!(
-        "Added `{type_path}` ({from}) to {}.\n\
+        "Added `{type_path}` ({}) to {}.\n\
          `rig plugin check --build` builds the agent with it; /reload in the agent,\n\
          or the next start, builds it and runs it. `rig plugin remove {type_path}`\n\
          takes it out.",
+        added.source,
         home.settings().display()
     );
     Ok(())
 }
 
 /// `rig plugin remove <type>`: takes the `[[plugins.extra]]` table of
-/// `type_path` out of the home's settings, with the comment lines right
-/// above it, and the name out of `[plugins] enable` and `disable`. The
+/// `type_path` out of the home's settings, with the comment block touching
+/// its header (comments past a blank line stay), and the name out of `[plugins] enable` and `disable`. The
 /// crate's files stay where they are.
 ///
 /// # Errors
@@ -286,14 +290,15 @@ fn remove(home: &Home, type_path: &str) -> Result<()> {
             let at = tables
                 .iter()
                 .position(|table| table.get("plugin").and_then(Item::as_str) == Some(type_path))?;
-            let directory = (tables.get(at))
-                .and_then(|table| table.get("path"))
-                .and_then(Item::as_str)
-                .map(str::to_owned);
+            let table = tables.get(at)?;
+            let directory = (table.get("path").and_then(Item::as_str)).map(str::to_owned);
+            let prefix = table.decor().prefix().and_then(|it| it.as_str());
+            let kept = kept_comments(prefix.unwrap_or_default());
+            let position = table.position();
             tables.remove(at);
-            Some((directory, tables.is_empty()))
+            Some((directory, tables.is_empty(), kept, position))
         });
-        let Some((directory, empty)) = found else {
+        let Some((directory, empty, kept, position)) = found else {
             return Err(format!(
                 "{} has no [[plugins.extra]] table for `{type_path}`; `rig plugin list` shows \
                  the plugins",
@@ -305,6 +310,9 @@ fn remove(home: &Home, type_path: &str) -> Result<()> {
             plugins.remove("extra");
         }
         let document = &mut file.document;
+        if !kept.is_empty() {
+            put_before_next(document, position, &kept);
+        }
         set_on(document, type_path, false, false);
         set_on(document, type_path, true, true);
         config::plugins(file)?;
@@ -320,19 +328,105 @@ fn remove(home: &Home, type_path: &str) -> Result<()> {
     Ok(())
 }
 
+/// The part of a removed table's `prefix` that is not its own: everything
+/// up to the last blank line, when it holds a comment. The comment block
+/// touching the header goes with the table.
+fn kept_comments(prefix: &str) -> String {
+    let lines: Vec<&str> = prefix.split_inclusive('\n').collect();
+    let Some(last) = lines.iter().rposition(|line| line.trim().is_empty()) else {
+        return String::new();
+    };
+    let kept: String = lines.iter().take(last + 1).copied().collect();
+    if kept.contains('#') {
+        kept
+    } else {
+        String::new()
+    }
+}
+
+/// Puts `text` in front of what follows the table at `after` in
+/// `document`: the next table's header, else the end of the file. One
+/// blank line stays between them.
+fn put_before_next(document: &mut DocumentMut, after: Option<isize>, text: &str) {
+    let next = after.and_then(|after| next_position(document.as_table(), after));
+    let join = |next: &str| {
+        let blank = (next.split_inclusive('\n').next())
+            .is_some_and(|line| line.ends_with('\n') && line.trim().is_empty());
+        if blank {
+            format!("{}\n{next}", text.trim_end())
+        } else {
+            format!("{text}{next}")
+        }
+    };
+    if let Some(next) = next
+        && prefix_table_at(document.as_table_mut(), next, &join)
+    {
+        return;
+    }
+    let trailing = document.trailing().as_str().unwrap_or_default().to_owned();
+    document.set_trailing(join(&trailing));
+}
+
+/// The first position after `after` of a table header under `table`.
+fn next_position(table: &Table, after: isize) -> Option<isize> {
+    let mut next: Option<isize> = None;
+    for (_, item) in table.iter() {
+        let children: Vec<&Table> = match item {
+            Item::Table(child) => vec![child],
+            Item::ArrayOfTables(array) => array.iter().collect(),
+            _ => Vec::new(),
+        };
+        for child in children {
+            let here = (child.position()).filter(|at| *at > after && !child.is_implicit());
+            let below = next_position(child, after);
+            next = [next, here, below].into_iter().flatten().min();
+        }
+    }
+    next
+}
+
+/// Sets the prefix of the table header at `position` under `table` to
+/// `join` of it. Returns whether it found the table.
+fn prefix_table_at(table: &mut Table, position: isize, join: &dyn Fn(&str) -> String) -> bool {
+    for (_, item) in table.iter_mut() {
+        let children: Vec<&mut Table> = match item {
+            Item::Table(child) => vec![child],
+            Item::ArrayOfTables(array) => array.iter_mut().collect(),
+            _ => Vec::new(),
+        };
+        for child in children {
+            if child.position() == Some(position) && !child.is_implicit() {
+                let was = (child.decor().prefix().and_then(|it| it.as_str()))
+                    .unwrap_or_default()
+                    .to_owned();
+                child.decor_mut().set_prefix(join(&was));
+                return true;
+            }
+            if prefix_table_at(child, position, join) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 /// Adds the `[[plugins.extra]]` table of `keys`, with `comment` above it,
 /// to the home's settings, once the result reads and the new plugin passes
-/// [`check_plugin`]. A plugin type the file has already is refused.
+/// [`check_plugin`]. A plugin type the file has already is refused. An
+/// inline `plugins = { .. }` becomes a `[plugins]` table, which can hold the
+/// new one. Returns the plugin as the written file reads.
 fn add_extra(
     home: &Home,
     keys: &[(&str, String)],
     comment: &str,
     source: &RigSource,
-) -> Result<()> {
-    config::edit(&home.settings(), |file| -> Result<_> {
-        if let Some((_, plugin)) = keys.iter().find(|(key, _)| *key == "plugin")
-            && self::extra(file, plugin)
-        {
+) -> Result<Extra> {
+    let plugin = (keys.iter())
+        .find(|(key, _)| *key == "plugin")
+        .map(|(_, plugin)| plugin.as_str())
+        .unwrap_or_default();
+    let (_, added) = config::edit(&home.settings(), |file| -> Result<_> {
+        if self::extra(file, plugin) {
             return Err(format!(
                 "{} has `{plugin}` already; `rig plugin remove {plugin}` takes it out",
                 file.path.display()
@@ -344,6 +438,7 @@ fn add_extra(
             extra.insert(key, value(text.as_str()));
         }
         extra.decor_mut().set_prefix(format!("\n# {comment}\n"));
+        uninline(&mut file.document, "plugins");
         let plugins = table(&mut file.document, "plugins").ok_or("[plugins] is not a table")?;
         let tables = plugins
             .entry("extra")
@@ -351,17 +446,47 @@ fn add_extra(
             .as_array_of_tables_mut()
             .ok_or("[plugins] extra is not a list of [[plugins.extra]] tables")?;
         tables.push(extra);
-        let chosen = config::plugins(file)?;
-        if let Some(problem) = chosen
-            .extra
-            .last()
-            .and_then(|extra| check_plugin(extra, source))
-        {
+        // The file as it will read back, so a table the writer would not
+        // write is refused rather than lost.
+        let written = config::SettingsFile::parse(file.path.clone(), &file.document.to_string())?;
+        let added = (config::plugins(&written)?.extra.into_iter())
+            .find(|extra| extra.plugin == plugin)
+            .ok_or_else(|| {
+                format!(
+                    "{}: the [[plugins.extra]] table of `{plugin}` would not be written",
+                    file.path.display()
+                )
+            })?;
+        if let Some(problem) = check_plugin(&added, source) {
             return Err(format!("{}: {problem}", file.path.display()).into());
         }
-        Ok((true, ()))
+        Ok((true, added))
     })?;
-    Ok(())
+    Ok(added)
+}
+
+/// Makes the inline table `key = { .. }` of `document` a `[key]` table with
+/// the same keys, the comments above it and the one after it.
+fn uninline(document: &mut DocumentMut, key: &str) {
+    let Some(inline) = document.get(key).and_then(Item::as_inline_table) else {
+        return;
+    };
+    let mut table = inline.clone().into_table();
+    let suffix = inline
+        .decor()
+        .suffix()
+        .and_then(|it| it.as_str())
+        .unwrap_or_default();
+    table.decor_mut().set_suffix(suffix.to_owned());
+    if let Some(mut name) = document.key_mut(key) {
+        let above = (name.leaf_decor().prefix())
+            .and_then(|it| it.as_str())
+            .unwrap_or_default()
+            .to_owned();
+        table.decor_mut().set_prefix(above);
+        name.leaf_decor_mut().set_prefix("");
+    }
+    document.insert(key, Item::Table(table));
 }
 
 /// `rig plugin list`: prints [`listing`].

@@ -718,9 +718,10 @@ directory you run it in and written as its full resolved path, since
 at `--path`, else the type path's first segment (`my_save`); `--crate
 my-save` names a git or crates.io package whose name has a `-`. A plugin type
 the file has already, a second source, or a path that holds no crate is
-refused and the file stays as it was. `remove` also takes the type out of
-`enable` and `disable`, and leaves the crate's files where they are, also
-for a crate `rig plugin new` made.
+refused and the file stays as it was. `remove` takes the comment lines right
+above the table with it, but not those past a blank line. It also takes the
+type out of `enable` and `disable`, and leaves the crate's files where they
+are, also for a crate `rig plugin new` made.
 
 In the agent, `/plugins` reads `settings.toml` itself and opens at once. It
 lists every plugin by a short name, such as "Terminal view", in groups, and

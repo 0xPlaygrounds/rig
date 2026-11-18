@@ -274,7 +274,8 @@ pub fn essential(plugin: &str) -> Option<&'static str> {
 /// home's `settings.toml`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Extra {
-    /// The plugin type's path, such as `my_plugin::MyPlugin`.
+    /// The plugin type's path, starting with its crate, such as
+    /// `my_plugin::MyPlugin`.
     pub plugin: String,
     /// The crate it is in.
     pub krate: String,
@@ -509,9 +510,9 @@ pub fn plugins(home: &SettingsFile) -> Result<Plugins, Error> {
                     "unknown plugin `{plugin}` in `{list}`: `rig plugin disable {plugin}` \
                      takes it out{}",
                     if list == "enable" {
-                        ", or `rig plugin add {plugin}` adds its crate"
+                        format!(", or `rig plugin add {plugin}` with its crate's source adds it")
                     } else {
-                        ""
+                        String::new()
                     }
                 ),
             });
@@ -638,6 +639,12 @@ fn extra(table: &dyn TableLike, base: &Path) -> Result<Extra, String> {
     let plugin = text("plugin")?.ok_or("`plugin` (the type path) is missing")?;
     if !is_type_path(&plugin) {
         return Err(format!("`{plugin}` is not a Rust type path"));
+    }
+    if !plugin.contains("::") {
+        return Err(format!(
+            "`{plugin}` names no crate: write the crate-qualified type path, such as \
+             `{plugin}::MyPlugin`"
+        ));
     }
     if built_in(&plugin).is_some() {
         return Err(format!(
