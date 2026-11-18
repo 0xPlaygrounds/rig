@@ -124,10 +124,11 @@ fn the_welcome_is_the_mark_beside_the_version_model_and_directory() {
     );
 }
 
-/// The welcome on a terminal view's test screen, with activity, after its
-/// first frame, with its agent shown.
+/// The welcome on a terminal view's test screen, with activity and, when
+/// `animated`, the working animation, after its first frame, with its
+/// agent shown.
 #[cfg(feature = "tui")]
-fn on_screen(width: u16) -> (App, Option<Entity>) {
+fn on_screen(width: u16, animated: bool) -> (App, Option<Entity>) {
     let (mut app, _) = app_on(&MemoryStore::default());
     app.insert_resource(rig_tui::TuiTestScreen::new(width, 30));
     rig_harness_test_support::tui_view(&mut app);
@@ -137,7 +138,10 @@ fn on_screen(width: u16) -> (App, Option<Entity>) {
         WelcomePlugin,
         crate::activity::ActivityPlugin,
     ));
-    crate::activity::animate(&mut app);
+    if animated {
+        app.add_plugins(crate::activity::animation::WorkingAnimationPlugin);
+        crate::activity::animation::animate(&mut app);
+    }
     app.finish();
     app.update();
     let agent = first_agent(app.world_mut());
@@ -189,21 +193,43 @@ fn the_whole_mark_pulses_when_the_line_beside_it_wraps() {
     pulses_while_working(40);
 }
 
-/// On a screen `width` columns wide, the whole mark is still while idle,
-/// every row of it pulses while the agent works, and it rests again after.
 #[cfg(feature = "tui")]
-fn pulses_while_working(width: u16) {
-    let (mut app, agent) = on_screen(width);
+#[test]
+fn without_the_animation_the_mark_stays_still_while_the_agent_works() {
+    let (mut app, agent) = on_screen(100, false);
     assert!(agent.is_some(), "the session has its agent");
     let Some(agent) = agent else {
         return;
     };
-    let still = mark_colors(&mut app, crate::activity::STEP);
+    let still = mark_colors(&mut app, crate::activity::animation::STEP);
+    assert!(still.iter().all(Option::is_some), "{still:?}");
+    app.world_mut().spawn(TurnOf(agent));
+    for _ in 0..4 {
+        assert_eq!(
+            mark_colors(&mut app, crate::activity::animation::STEP),
+            still
+        );
+    }
+}
+
+/// On a screen `width` columns wide, the whole mark is still while idle,
+/// every row of it pulses while the agent works, and it rests again after.
+#[cfg(feature = "tui")]
+fn pulses_while_working(width: u16) {
+    let (mut app, agent) = on_screen(width, true);
+    assert!(agent.is_some(), "the session has its agent");
+    let Some(agent) = agent else {
+        return;
+    };
+    let still = mark_colors(&mut app, crate::activity::animation::STEP);
     assert!(
         still.len() == 3 && still.iter().all(Option::is_some),
         "the whole mark is on screen: {still:?}"
     );
-    assert_eq!(mark_colors(&mut app, crate::activity::STEP), still);
+    assert_eq!(
+        mark_colors(&mut app, crate::activity::animation::STEP),
+        still
+    );
 
     // A plugin's work for the agent, which runs until it has an outcome.
     let review = EffectRequest {
@@ -218,7 +244,7 @@ fn pulses_while_working(width: u16) {
         .spawn((review, ForAgent(agent), Name::new("reviewing")))
         .id();
     let colors: Vec<_> = (0..4)
-        .map(|_| mark_colors(&mut app, crate::activity::STEP))
+        .map(|_| mark_colors(&mut app, crate::activity::animation::STEP))
         .collect();
     // Every row of the mark pulses, so the mark never looks split.
     for row in 0..3 {
@@ -238,6 +264,9 @@ fn pulses_while_working(width: u16) {
     app.world_mut()
         .entity_mut(review)
         .insert(Outcome::custom("done"));
-    mark_colors(&mut app, crate::activity::STEP);
-    assert_eq!(mark_colors(&mut app, crate::activity::STEP), still);
+    mark_colors(&mut app, crate::activity::animation::STEP);
+    assert_eq!(
+        mark_colors(&mut app, crate::activity::animation::STEP),
+        still
+    );
 }

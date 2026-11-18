@@ -252,7 +252,10 @@ empty, but a question's keys and a panel's "Esc gives them back" still show.
 While the agent works, a
 small wave of six bars moves before what it is doing, and rig's mark in the
 welcome at the top of the transcript pulses with it;
-`[activity] animate = false` in `settings.toml` keeps both still. With the optional
+`[activity] animate = false` in `settings.toml` keeps both still. They are the
+working animation, `rig_basics::activity::animation::WorkingAnimationPlugin`;
+with it off (`rig plugin disable` with that path) the status has no bars, still
+says `thinking… 12s`, and the mark stays still. With the optional
 `rig_basics::budget::BudgetPlugin` (`rig plugin enable
 rig_basics::budget::BudgetPlugin`), `/budget 2.00` or `/budget 500000 tokens`
 bounds what the session spends, helpers included: at the limit the running
@@ -743,7 +746,8 @@ of its plugins comes back as you left it, and a plugin rig adds to an off
 branch later stays off. Moving a plugin to another module changes its area.
 A plugin another adds in its own `build` runs whatever its choice:
 Subagents adds Approvals, and Budget and Helpers add Usage. Folded output,
-the status line and Key hints do nothing without the terminal view, nor MCP
+the status line and Key hints do nothing without the terminal view, the
+working animation nothing without Activity and the terminal view, nor MCP
 approval without MCP servers. With the terminal view off, rig builds none of
 the plugins of `rig-tui`, such as the status line and Key hints.
 

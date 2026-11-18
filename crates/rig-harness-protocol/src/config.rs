@@ -153,7 +153,12 @@ from the shown one, through the end or an earlier message. Adds the agent picker
 in traffic.jsonl.";
             on rig_basics::activity::ActivityPlugin, "rig-basics", "Activity", [], None,
                 "What the agent is doing, in the status line: writing, running tools or the \
-question it waits on, with the pulsing wave while it works.";
+question it waits on.";
+            on rig_basics::activity::animation::WorkingAnimationPlugin, "rig-basics",
+                "Working animation", [], None,
+                "The bars before what the agent is doing in the status line, moving while it \
+works, and the pulse of rig's mark in the welcome; [activity] animate = false in \
+settings.toml keeps them still. Off, the status has no bars and the mark is still.";
             on rig_basics::coding_tools::ReadTool, "rig-basics", "Read tool", [], None,
                 "The read tool.";
             on rig_basics::coding_tools::EditTool, "rig-basics", "Edit tool", [], None,

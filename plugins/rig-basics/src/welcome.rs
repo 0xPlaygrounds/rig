@@ -3,9 +3,9 @@
 //! directory. It is an unsaved aside before the first entry
 //! ([`WELCOME`]), so it never reaches the model and scrolls away with the
 //! conversation, kept current as the model or the setting changes. While
-//! the shown agent works, the mark on screen pulses with the activity's
-//! animation ([`ActivityPlugin`](crate::activity::ActivityPlugin)); without
-//! that plugin it stays still.
+//! the shown agent works, the mark on screen pulses with the
+//! [working animation](crate::activity::animation); without it the mark
+//! stays still.
 //!
 //! ```no_run
 //! use rig_harness::prelude::*;
@@ -125,7 +125,7 @@ mod tui {
     };
 
     use super::{WELCOME, Welcome};
-    use crate::activity::{Pulse, level};
+    use crate::activity::animation::{Pulse, level};
 
     /// A panel of rig's mark, its rows from the top: one left of the gap,
     /// its inner corners (right) cut, and its mirror right of it.
@@ -137,7 +137,7 @@ mod tui {
     const SHADES: [f32; 3] = [0.6, 0.72, 0.85];
 
     /// Row `row` of rig's mark in `theme`'s grays: six panels around a
-    /// gap, three each side, at the activity's animation step `step`, or
+    /// gap, three each side, at the working animation's step `step`, or
     /// still in [`SHADES`].
     pub(super) fn mark(row: usize, theme: &Theme, step: Option<usize>) -> Vec<Span<'static>> {
         let panel = |cells: &[&'static str; 3], pair: usize| {
@@ -178,7 +178,7 @@ mod tui {
         );
     }
 
-    /// Paints the mark in the main pane in the activity's animation step,
+    /// Paints the mark in the main pane in the working animation's step,
     /// over the drawn transcript, so the transcript is not laid out again
     /// for it. It looks down the pane from the top until it has painted
     /// the mark's last row, so each row of the mark still on screen pulses
@@ -190,7 +190,7 @@ mod tui {
         mut panes: Query<&mut PanelCanvas, With<MainPane>>,
         theme: Res<Theme>,
     ) {
-        let Some(step) = pulse.0 else {
+        let Some(step) = pulse.step() else {
             return;
         };
         if theme.plain {
