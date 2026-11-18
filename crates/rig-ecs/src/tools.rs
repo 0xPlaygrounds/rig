@@ -226,19 +226,19 @@ pub struct Footprint(pub Touches);
 ///
 /// use rig_ecs::prelude::*;
 ///
-/// /// A `rustfmt src/lib.rs` call writes only that file, so a held one
-/// /// does not hold back a read of `/work/docs`.
-/// fn formats(calls: Query<(Entity, &ToolRequest), (Added<Admitted>, ToolCalls)>, mut commands: Commands) {
+/// /// A `touch /work/build.stamp` call writes only that file, so a held
+/// /// one does not hold back a read of `/work/docs`.
+/// fn stamps(calls: Query<(Entity, &ToolRequest), (Added<Admitted>, ToolCalls)>, mut commands: Commands) {
 ///     for (call, request) in &calls {
 ///         let command = request.call.function.arguments.get("command").and_then(|c| c.as_str());
-///         if command == Some("rustfmt src/lib.rs") {
-///             let src = Touches::Writes(Scope::Paths(vec![PathBuf::from("/work/src/lib.rs")]));
-///             commands.entity(call).insert((Footprint(src), DeclaredFootprint));
+///         if command == Some("touch /work/build.stamp") {
+///             let stamp = Touches::Writes(Scope::Paths(vec![PathBuf::from("/work/build.stamp")]));
+///             commands.entity(call).insert((Footprint(stamp), DeclaredFootprint));
 ///         }
 ///     }
 /// }
 ///
-/// App::new().add_systems(AgentPass, formats.in_set(PrepareSystems::Edit));
+/// App::new().add_systems(AgentPass, stamps.in_set(PrepareSystems::Edit));
 /// ```
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct DeclaredFootprint;
