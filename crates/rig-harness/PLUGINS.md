@@ -236,6 +236,12 @@ a plugin of its own too, `rig_tui::hints::KeyHintsPlugin`. Code that adds
 `rig_tui::TuiPlugin` itself gets the view without them; `rig_tui::TuiPlugins`
 adds the view with its optional parts, each unless the app already has it.
 
+The window title and the OSC 133 prompt marks around each turn come from
+`rig_tui::title::TerminalTitlePlugin`, which works only with `TuiPlugin`;
+`[title] mark_nonce_env` names the variable holding the shell's mark nonce.
+An app that lists its own plugins adds `rig_tui::TuiPlugins` for the view
+with both.
+
 A crate that also builds without the view puts `rig-tui` behind a default
 `tui` feature. The `rig_tui` crate docs have an example of each.
 

@@ -352,6 +352,7 @@ fn add_defaults(app: &mut App) {
     #[cfg(feature = "tui")]
     load::<rig_tui::status::StatusLinePlugin>(app, "rig-tui", "");
     load::<rig_tui::hints::KeyHintsPlugin>(app, "rig-tui", "");
+    load::<rig_tui::title::TerminalTitlePlugin>(app, "rig-tui", "");
 }
 
 /// R6: the plugin's Gate system is ordered against the default plugins'

@@ -222,6 +222,10 @@ parts it leaves out, such as [\"cost\", \"cache\"].";
                 "The keys an empty input lists over its text: Enter sends, / commands, @ files \
 and the rest, or while a turn runs, Enter steers and Esc stops. Off, that row is empty; \
 the keys out of a question, a panel or an earlier prompt still show.";
+            on rig_tui::title::TerminalTitlePlugin, "rig-tui", "Terminal title", [], None,
+                "The terminal's title (rig · working, needs you, error or idle) and the prompt \
+marks around each turn that let a terminal jump between prompts; [title] \
+mark_nonce_env names the variable holding the shell's mark nonce.";
             off rig_fold::FoldPlugin, "rig-fold", "Folded output", [], None,
                 "Folded tool output in the terminal view: a finished call shows its first and last \
 lines, and Ctrl+O ([fold] key) shows the selected call, or every call, whole. Off, \

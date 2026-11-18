@@ -165,3 +165,37 @@ fn the_refusal_names_the_request_but_not_its_query() {
     );
     assert!(!why.contains("sentinel-secret"), "{why}");
 }
+
+#[cfg(feature = "tui")]
+#[test]
+fn the_terminal_view_adds_only_what_the_app_lacks_of_it() {
+    use rig_harness_test_support::tui_view;
+    use rig_tui::TuiPlugin;
+    use rig_tui::title::TerminalTitlePlugin;
+
+    let adds: [fn(&mut App); 3] = [
+        |_| {},
+        |app| {
+            app.add_plugins(TerminalTitlePlugin);
+        },
+        |app| {
+            app.add_plugins(TuiPlugin);
+        },
+    ];
+    for (case, add) in adds.into_iter().enumerate() {
+        let (mut app, _wakes) = app_on(&MemoryStore::default());
+        app.add_plugins((AgentPlugin, SessionLogPlugin));
+        add(&mut app);
+        tui_view(&mut app);
+        app.finish();
+        app.update();
+        assert!(app.is_plugin_added::<TuiPlugin>(), "case {case}");
+        // The title comes with the view only when the app had no view.
+        let titled = case != 2;
+        assert_eq!(
+            app.is_plugin_added::<TerminalTitlePlugin>(),
+            titled,
+            "case {case}"
+        );
+    }
+}

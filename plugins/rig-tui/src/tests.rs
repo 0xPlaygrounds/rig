@@ -44,8 +44,8 @@ pub(crate) fn view_app() -> (App, Entity) {
 }
 
 /// [`view_app`], with `plugin` built after the terminal view and its
-/// status line (not the key hints), and every plugin's `finish` run, as a
-/// run does.
+/// status line (not the key hints or the terminal title), and every
+/// plugin's `finish` run, as a run does.
 pub(crate) fn view_app_with(plugin: impl FnOnce(&mut App)) -> (App, Entity) {
     view_app_of(|app| {
         app.add_plugins((TuiPlugin, crate::status::StatusLinePlugin));
