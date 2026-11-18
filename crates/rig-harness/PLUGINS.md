@@ -110,8 +110,8 @@ Its description tells the model what it does and when to pick it. Its
 footprint says what each call reads and writes, so calls on different things
 run side by side. Blocking work goes in `blocking`.
 
-Examples: [word_count] (a per-call tool), [ask_user] (an open tool),
-[web_fetch] (a tool with a gate of its own).
+Examples: [git_history_tools] and [sql_query_tool] (per-call tools),
+[ask_user] (an open tool), [web_fetch] (a tool with a gate of its own).
 
 # Asking the user
 
@@ -273,7 +273,8 @@ Every corpus plugin's `tests.rs` is a further example.
 [loop_breaker]: https://github.com/0xPlaygrounds/rig/blob/main/corpus/base/src/loop_breaker.rs
 [output_truncate]: https://github.com/0xPlaygrounds/rig/blob/main/corpus/base/src/output_truncate.rs
 [few_shot_examples]: https://github.com/0xPlaygrounds/rig/blob/main/corpus/shared/src/few_shot_examples.rs
-[word_count]: https://github.com/0xPlaygrounds/rig/blob/main/corpus/base/src/word_count.rs
+[git_history_tools]: https://github.com/0xPlaygrounds/rig/blob/main/corpus/ct/src/git_history_tools.rs
+[sql_query_tool]: https://github.com/0xPlaygrounds/rig/blob/main/corpus/oc/src/sql_query_tool.rs
 [ask_user]: https://github.com/0xPlaygrounds/rig/blob/main/corpus/base/src/ask_user.rs
 [web_fetch]: https://github.com/0xPlaygrounds/rig/blob/main/corpus/sn/src/web_fetch.rs
 [approval_batching]: https://github.com/0xPlaygrounds/rig/blob/main/corpus/oc/src/approval_batching.rs

@@ -14,9 +14,9 @@
 //! machine the system tells it of changes; another workspace may look
 //! every second ([`Workspace::watch`]). It reports the files
 //! [`Workspace::files`] lists with the watch's [`Listing`] (by default
-//! leaving out ignored and hidden files and `target`). The plugin guide's
-//! [files section](crate::plugin_guide#the-workspace-files-and-child-processes)
-//! has an example.
+//! leaving out ignored and hidden files and `target`). The corpus plugin
+//! [`output_styles`](https://github.com/0xPlaygrounds/rig/blob/main/corpus/sp/src/output_styles.rs)
+//! is an example.
 
 use std::path::PathBuf;
 use std::sync::Arc;

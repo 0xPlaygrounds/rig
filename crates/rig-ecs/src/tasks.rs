@@ -31,8 +31,7 @@ const STREAM_ITEMS: usize = 256;
 /// Wakes the app's loop from another thread: a finished call, a streamed
 /// fragment, terminal input or a signal. The runner that sleeps between
 /// frames inserts its own; the default does nothing, for a loop that never
-/// sleeps for long. A windowed app inserts its own too (rig-harness's
-/// PLUGINS.md, "A window").
+/// sleeps for long. A windowed app inserts its own too.
 ///
 /// A woken frame often leaves work for the next, such as a command's
 /// notice or a task that finished just after it woke the loop, so the
