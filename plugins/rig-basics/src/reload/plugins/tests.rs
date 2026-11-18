@@ -1298,10 +1298,13 @@ fn a_status_part_switch_writes_status_hide_at_once_and_leaving_asks_nothing() {
 #[test]
 fn plugins_defaults_shows_every_status_part_again() {
     let home = scratch_home("plugins-status-defaults");
-    let (mut app, agent) = status_app(&home, "[status]\nhide = [\"cost\", \"by-hand\"]\n");
+    let file = "# mine\n[status]\nhide = [\"cost\", \"by-hand\"]\n";
+    let (mut app, agent) = status_app(&home, file);
     run(&mut app, agent, "plugins defaults");
     assert_eq!(hidden(&app), [] as [String; 0]);
     assert!(!settings(&home).contains("cost"), "{}", settings(&home));
+    // The emptied table keeps the comment above it.
+    assert!(settings(&home).contains("# mine"), "{}", settings(&home));
     let told = &app.world().resource::<Told>().0;
     assert!(
         told.iter().any(|text| text.contains("status line")),
