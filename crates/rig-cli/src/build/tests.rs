@@ -1004,3 +1004,15 @@ fn a_partly_removed_backup_is_not_read_as_one() {
         Ok(Some("user's lock".to_owned()))
     );
 }
+
+#[test]
+fn a_plugin_on_another_bevy_is_told_first_which_version_to_write() {
+    let message = foreign_bevy("my_plugin", "MyPlugin", "0.19.0");
+    let first = message.split(". ").next().unwrap_or_default();
+    let range = crate::bevy_range();
+    assert!(
+        first.contains(&format!("\"{range}\"")) && first.contains("my_plugin"),
+        "{message}"
+    );
+    assert!(message.contains("0.19.0") && message.contains("rig plugin remove MyPlugin"));
+}
