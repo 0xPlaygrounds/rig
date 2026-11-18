@@ -109,7 +109,8 @@ fn a_refused_binding_is_told_once_and_the_plugins_other_keys_work() {
         .add_plugins((AgentPlugin, TuiPlugin));
     plugin(&mut printed);
     printed.finish();
-    printed.update();
+    // Only Startup, as a frame's `First` would swap its notices out of view.
+    printed.world_mut().try_run_schedule(Startup).ok();
     let notices = printed.world().get_resource::<Messages<Notice>>();
     let mut notices = notices
         .into_iter()
