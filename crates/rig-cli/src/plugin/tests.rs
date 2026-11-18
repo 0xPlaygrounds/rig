@@ -771,3 +771,29 @@ fn a_name_in_the_wrong_list_is_taken_out_by_the_fix_its_refusal_names() {
     fs::remove_dir_all(home.root()).ok();
     assert_eq!(result.ok(), Some(vec![(true, true, true); 3]));
 }
+
+/// Every branch in `[plugins] off` shows in the list, also an area of one
+/// plugin whose own choice is off.
+#[test]
+fn the_list_shows_every_branch_in_off() {
+    let home = old_home("list-off");
+    let result = (|| -> Result<_> {
+        fs::create_dir_all(home.root())?;
+        fs::write(
+            home.settings(),
+            "[plugins]\noff = [\"rig-basics/budget\", \"rig-basics/welcome\"]\n\
+             disable = [\"rig_basics::welcome::WelcomePlugin\"]\n",
+        )?;
+        listing(&home)
+    })();
+    fs::remove_dir_all(home.root()).ok();
+    let listed = result.unwrap_or_default();
+    for branch in ["rig-basics/budget", "rig-basics/welcome"] {
+        assert!(
+            listed
+                .lines()
+                .any(|line| line.trim_start().starts_with(branch) && line.contains("off")),
+            "{branch}\n{listed}"
+        );
+    }
+}
