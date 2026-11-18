@@ -452,7 +452,8 @@ pub(crate) fn typed(
 /// history shown unchanged opens none, so Up and Down walk past it. After a
 /// paste no list opens until the text changes, unless the word the paste
 /// ends in already names the selected item, so the next Enter sends what was
-/// pasted and at most closes its quote.
+/// pasted and at most closes its quote. A refused command put back in the
+/// input opens none until its text changes, so Esc goes to the turn.
 pub(crate) fn update(
     view: &mut TuiView,
     input: &Editor,
@@ -469,7 +470,7 @@ pub(crate) fn update(
         view.completion = None;
         return;
     }
-    if input.recalled() {
+    if input.recalled() || view.refused.as_deref() == Some(input.text()) {
         view.completion = None;
         view.dismissed = None;
         return;
