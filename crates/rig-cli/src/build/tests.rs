@@ -69,6 +69,25 @@ fn a_build_is_staged_with_its_report_and_one_that_cannot_describe_itself_is_reje
     assert_eq!(rejected, stamp);
 }
 
+/// A build whose plugin panics: the error's first line, which `/reload`
+/// shows, names where it panicked and why, without Rust's backtrace hint.
+#[test]
+fn a_build_that_panics_while_describing_itself_says_where_and_why_in_one_line() {
+    let panic = "printf \"thread 'main' (7) panicked at plugins/probe/src/lib.rs:10:9:\\n\
+                 deliberate plugin failure\\nnote: run with \\`RUST_BACKTRACE=1\\` environment \
+                 variable to display a backtrace\\n\" >&2; exit 101";
+    let home = built("panic", panic);
+    let refused = stage_on(&home, &home.staged(), Staging::Always).map_err(|why| why.to_string());
+    fs::remove_dir_all(home.root()).ok();
+    let refused = refused.err().unwrap_or_default();
+    let first = refused.lines().next().unwrap_or_default();
+    assert!(
+        first.contains("panicked at plugins/probe/src/lib.rs:10:9: deliberate plugin failure"),
+        "{refused}"
+    );
+    assert!(!refused.contains("RUST_BACKTRACE"), "{refused}");
+}
+
 /// A build that cannot be staged says which step failed on which file,
 /// not only the system's words: here the copy into the bin directory, where
 /// a directory is in the way.
