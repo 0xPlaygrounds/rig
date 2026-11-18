@@ -283,7 +283,10 @@ fn the_list_puts_rigs_plugins_with_their_default_before_the_users_with_their_pat
     assert!(result.is_ok(), "{result:?}");
     let (without, with) = result.unwrap_or_default();
     assert!(
-        without.ends_with("\nyour plugins (extras): none; `rig plugin new <name>` makes one.\n"),
+        without.ends_with(
+            "\nyour plugins (extras): none; `rig plugin new <name>` makes one, \
+             `rig plugin add` adds another crate's.\n"
+        ),
         "{without}"
     );
     let lines: Vec<&str> = with.lines().collect();

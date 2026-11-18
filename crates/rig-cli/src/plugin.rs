@@ -1,10 +1,10 @@
 //! `rig plugin`: turn a plugin on or off in `RIG_HOME/settings.toml`
 //! (`enable`, `disable`), show every plugin and whether it is on
 //! (`list`), make a plugin crate under `RIG_HOME/plugins` and add it to the
-//! home's `[[plugins.extra]]` (`new`), and check the settings (`check`,
-//! with `--build` also building the agent without staging it and checking
-//! how its plugins' agent-loop systems are ordered). Another crate's plugin
-//! is a `[[plugins.extra]]` table the user writes. Every change keeps the
+//! home's `[[plugins.extra]]` (`new`), add or take out another crate's
+//! plugin there (`add`, `remove`), and check the settings (`check`, with
+//! `--build` also building the agent without staging it and checking how
+//! its plugins' agent-loop systems are ordered). Every change keeps the
 //! file's comments and is checked before it is written, so a command never
 //! leaves a broken file. Plugin crates live outside every workspace, so
 //! making one never touches the rig repository or a project.
@@ -51,6 +51,20 @@ pub const USAGE: &str =
   rig plugin new <name>  Make a plugin crate in RIG_HOME/plugins/<name> and add
                          it to [[plugins.extra]]; the next start, or /reload,
                          builds it.
+  rig plugin add <type> (--path <dir> | --git <url> [--branch <b> | --rev <r>]
+                         | --version <req>) [--crate <name>]
+                         Add another crate's plugin, such as
+                         `rig plugin add my_save::SavePlugin --path ./save`,
+                         as a [[plugins.extra]] table of RIG_HOME/settings.toml,
+                         keeping its comments; the next start, or /reload,
+                         builds it. A relative --path is the working
+                         directory's, written resolved. --crate is the package
+                         name; it defaults to the package at --path, else the
+                         type's first segment (`my_save`), so a git or
+                         crates.io package named with `-` needs it.
+  rig plugin remove <type>
+                         Take that table out, and the type out of [plugins]
+                         enable and disable. The crate's files stay.
   rig plugin check [--build]
                          Check the settings and the extra crates they name by
                          path; with --build, also build the agent with them
@@ -58,9 +72,6 @@ pub const USAGE: &str =
                          staging the build, and name the plugins whose
                          systems in one agent-loop stage use the same data
                          with no order between them.
-  Another crate's plugin is a [[plugins.extra]] table of RIG_HOME/settings.toml:
-  `crate`, `plugin` and one of `path`, `git` (with `branch` or `rev`) or
-  `version`. The next start, or /reload, builds it.
 ";
 
 /// Runs `rig plugin` with `args`, the words after `plugin`.
@@ -76,6 +87,8 @@ pub fn run(launch: &Launch, args: &[&str]) -> Result<ExitCode> {
     }
     match args {
         ["new", name] => new(home, name, source),
+        ["add", type_path, flags @ ..] => add(home, type_path, flags, source),
+        ["remove", type_path] => remove(home, type_path),
         ["list"] => list(home),
         ["enable", type_path] => enable(home, type_path, true),
         ["disable", type_path] => enable(home, type_path, false),
@@ -106,7 +119,9 @@ fn new(home: &Home, name: &str, source: Option<&Path>) -> Result<()> {
     let directory = home.plugins().join(name);
     if directory.exists() {
         return Err(format!(
-            "{} exists already; add its [[plugins.extra]] table or pick another name",
+            "{} exists already; `rig plugin add <type> --path {}` adds it, or pick \
+             another name",
+            directory.display(),
             directory.display()
         )
         .into());
@@ -152,9 +167,162 @@ fn new(home: &Home, name: &str, source: Option<&Path>) -> Result<()> {
     Ok(())
 }
 
+/// `rig plugin add <type> <flags>`: adds the `[[plugins.extra]]` table of
+/// the plugin `type_path` from another crate to the home's settings. The
+/// flags give its source: `--path <dir>` (relative to the working
+/// directory, written resolved), or `--git <url>` with at most one of `--branch` and `--rev`,
+/// or `--version <requirement>`. `--crate` names the package; without it
+/// the package is the one `--path` holds, else the type path's first
+/// segment.
+///
+/// # Errors
+///
+/// A flag that is unknown, without a value or given twice, not exactly one
+/// source, `--branch` or `--rev` without `--git` or both, a `--path` that
+/// does not resolve, and whatever [`add_extra`] refuses.
+fn add(home: &Home, type_path: &str, flags: &[&str], source: Option<&Path>) -> Result<()> {
+    let mut given: Vec<(&str, &str)> = Vec::new();
+    let mut words = flags.iter();
+    while let Some(&flag) = words.next() {
+        let key = match flag {
+            "--path" | "--git" | "--branch" | "--rev" | "--version" | "--crate" => {
+                flag.trim_start_matches('-')
+            }
+            other => {
+                return Err(format!(
+                    "`rig plugin add` takes no `{other}`; `rig plugin --help` lists its flags"
+                )
+                .into());
+            }
+        };
+        let Some(&text) = words.next() else {
+            return Err(format!("{flag} needs a value").into());
+        };
+        if given.iter().any(|(other, _)| *other == key) {
+            return Err(format!("{flag} is given more than once").into());
+        }
+        given.push((key, text));
+    }
+    let get = |key: &str| {
+        given
+            .iter()
+            .find(|(other, _)| *other == key)
+            .map(|(_, text)| *text)
+    };
+    let mut keys: Vec<(&str, String)> = Vec::new();
+    match (get("path"), get("git"), get("version")) {
+        (Some(path), None, None) => {
+            let directory = fs::canonicalize(path)?;
+            let text = directory
+                .to_str()
+                .ok_or_else(|| format!("{} is not UTF-8", directory.display()))?;
+            keys.push(("path", text.to_owned()));
+        }
+        (None, Some(url), None) => keys.push(("git", url.to_owned())),
+        (None, None, Some(version)) => keys.push(("version", version.to_owned())),
+        (None, None, None) => {
+            return Err(
+                "give the crate's source: one of --path <dir>, --git <url> or --version <req>"
+                    .into(),
+            );
+        }
+        _ => return Err("give only one of --path, --git and --version".into()),
+    }
+    match (get("branch"), get("rev")) {
+        (Some(_), Some(_)) => return Err("give --branch or --rev, not both".into()),
+        (None, None) => {}
+        _ if get("git").is_none() => return Err("--branch and --rev only go with --git".into()),
+        (branch, rev) => {
+            keys.extend(branch.map(|branch| ("branch", branch.to_owned())));
+            keys.extend(rev.map(|rev| ("rev", rev.to_owned())));
+        }
+    }
+    let root = type_path.split("::").next().unwrap_or_default();
+    let krate = match (get("crate"), keys.first()) {
+        (Some(krate), _) => krate.to_owned(),
+        (None, Some(("path", directory))) => Manifest::read(Path::new(directory))
+            .ok()
+            .and_then(|manifest| manifest_string(&manifest, &["package", "name"]))
+            .unwrap_or_else(|| root.to_owned()),
+        (None, _) => root.to_owned(),
+    };
+    keys.splice(0..0, [("crate", krate), ("plugin", type_path.to_owned())]);
+    let comment = format!("Added by `rig plugin add {type_path}`.");
+    add_extra(home, &keys, &comment, &RigSource::detect(source)?)?;
+    let from = (config::chosen(home)?.extra.into_iter())
+        .find(|extra| extra.plugin == type_path)
+        .map(|extra| extra.source.to_string())
+        .unwrap_or_default();
+    println!(
+        "Added `{type_path}` ({from}) to {}.\n\
+         `rig plugin check --build` builds the agent with it; /reload in the agent,\n\
+         or the next start, builds it and runs it. `rig plugin remove {type_path}`\n\
+         takes it out.",
+        home.settings().display()
+    );
+    Ok(())
+}
+
+/// `rig plugin remove <type>`: takes the `[[plugins.extra]]` table of
+/// `type_path` out of the home's settings, with the comment lines right
+/// above it, and the name out of `[plugins] enable` and `disable`. The
+/// crate's files stay where they are.
+///
+/// # Errors
+///
+/// When no table names `type_path`, or the file does not read without it.
+fn remove(home: &Home, type_path: &str) -> Result<()> {
+    let path = home.settings();
+    let (_, directory) = config::edit(&path, |file| -> Result<_> {
+        let mut plugins = file
+            .document
+            .get_mut("plugins")
+            .and_then(Item::as_table_like_mut);
+        let tables = plugins
+            .as_deref_mut()
+            .and_then(|plugins| plugins.get_mut("extra"))
+            .and_then(Item::as_array_of_tables_mut);
+        let found = tables.and_then(|tables| {
+            let at = tables
+                .iter()
+                .position(|table| table.get("plugin").and_then(Item::as_str) == Some(type_path))?;
+            let directory = (tables.get(at))
+                .and_then(|table| table.get("path"))
+                .and_then(Item::as_str)
+                .map(str::to_owned);
+            tables.remove(at);
+            Some((directory, tables.is_empty()))
+        });
+        let Some((directory, empty)) = found else {
+            return Err(format!(
+                "{} has no [[plugins.extra]] table for `{type_path}`; `rig plugin list` shows \
+                 the plugins",
+                path.display()
+            )
+            .into());
+        };
+        if empty && let Some(plugins) = plugins {
+            plugins.remove("extra");
+        }
+        let document = &mut file.document;
+        set_on(document, type_path, false, false);
+        set_on(document, type_path, true, true);
+        config::plugins(file)?;
+        Ok((true, directory))
+    })?;
+    println!("Took `{type_path}` out of {}.", path.display());
+    if let Some(directory) = directory {
+        println!(
+            "Its crate stays in {}.",
+            home.root().join(directory).display()
+        );
+    }
+    Ok(())
+}
+
 /// Adds the `[[plugins.extra]]` table of `keys`, with `comment` above it,
 /// to the home's settings, once the result reads and the new plugin passes
-/// [`check_plugin`].
+/// [`check_plugin`]. A plugin type the file has already is refused.
 fn add_extra(
     home: &Home,
     keys: &[(&str, String)],
@@ -162,6 +330,15 @@ fn add_extra(
     source: &RigSource,
 ) -> Result<()> {
     config::edit(&home.settings(), |file| -> Result<_> {
+        if let Some((_, plugin)) = keys.iter().find(|(key, _)| *key == "plugin")
+            && self::extra(file, plugin)
+        {
+            return Err(format!(
+                "{} has `{plugin}` already; `rig plugin remove {plugin}` takes it out",
+                file.path.display()
+            )
+            .into());
+        }
         let mut extra = Table::new();
         for (key, text) in keys {
             extra.insert(key, value(text.as_str()));
@@ -252,7 +429,10 @@ fn listing(home: &Home) -> Result<String> {
         text.push('\n');
     }
     if chosen.extra.is_empty() {
-        text.push_str("\nyour plugins (extras): none; `rig plugin new <name>` makes one.\n");
+        text.push_str(
+            "\nyour plugins (extras): none; `rig plugin new <name>` makes one, \
+             `rig plugin add` adds another crate's.\n",
+        );
     }
     Ok(text)
 }

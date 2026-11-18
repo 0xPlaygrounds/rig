@@ -90,8 +90,9 @@ impl Entry {
 }
 
 /// The lines that rebuild the plugin list `text` in `settings`: a
-/// `[[plugins.extra]]` table for each crate of another source, a
-/// `rig plugin enable` or `disable` for each of rig's plugins it turns on or
+/// `rig plugin add` for each crate of another source, with a relative path
+/// made absolute against the folder of `settings`, which held the list
+/// too, a `rig plugin enable` or `disable` for each of rig's plugins it turns on or
 /// off against today's default (with the approval plugin beside MCP on, as
 /// v0.46.0's MCP plugin asked before a project's server ran), a `disable`
 /// for a crate of its own it lists off, and a line for each of rig's plugins
@@ -115,7 +116,7 @@ fn plugin_moves(text: &str, settings: &Path) -> Vec<String> {
     };
     let mut commands = Vec::new();
     let mut gone = Vec::new();
-    let mut tables = Vec::new();
+    let mut adds = Vec::new();
     for entry in &entries {
         let Some(plugin) = entry.get("plugin") else {
             continue;
@@ -141,31 +142,46 @@ fn plugin_moves(text: &str, settings: &Path) -> Vec<String> {
                 }
             }
             None => {
-                tables.push("  [[plugins.extra]]".to_owned());
+                let root = plugin.split("::").next().unwrap_or_default();
+                let mut add = format!("  rig plugin add {}", shell_word(plugin));
                 for (key, value) in &entry.keys {
-                    let value = toml_edit::Value::from(value.as_str());
-                    tables.push(format!("  {key} = {value}"));
+                    let value = match key.as_str() {
+                        "plugin" => continue,
+                        "crate" if value == root => continue,
+                        "path" => (settings.parent().unwrap_or(Path::new(".")))
+                            .join(value)
+                            .display()
+                            .to_string(),
+                        _ => value.clone(),
+                    };
+                    add.push_str(&format!(" --{key} {}", shell_word(&value)));
                 }
+                adds.push(add);
                 if !entry.on {
                     commands.push(format!("  rig plugin disable {plugin}"));
                 }
             }
         }
     }
-    let mut moves = Vec::new();
-    if !tables.is_empty() {
-        moves.push(format!(
-            "  Add to {}, before the commands below:",
-            settings.display()
-        ));
-        moves.extend(tables);
-    }
+    let mut moves = adds;
     if moves.is_empty() && commands.is_empty() {
         moves.push(empty);
     }
     moves.extend(commands);
     moves.extend(gone);
     moves
+}
+
+/// `word` as one shell word: as it is when it holds only characters no
+/// shell reads specially, else in single quotes.
+fn shell_word(word: &str) -> String {
+    let plain = !word.is_empty()
+        && (word.chars()).all(|c| c.is_ascii_alphanumeric() || "-_./:@+=,%".contains(c));
+    if plain {
+        word.to_owned()
+    } else {
+        format!("'{}'", word.replace('\'', "'\\''"))
+    }
 }
 
 /// rig's MCP plugin, and the plugin that asks before a project's server

@@ -379,8 +379,8 @@ impl fmt::Display for Error {
             } => write!(f, "{} [{table}]: {problem}", path.display()),
             Self::Unknown(plugin) => write!(
                 f,
-                "no plugin `{plugin}`; `rig plugin list` shows them, and a \
-                 [[plugins.extra]] table adds a crate's"
+                "no plugin `{plugin}`; `rig plugin list` shows them, and \
+                 `rig plugin add` adds another crate's"
             ),
             Self::Unavailable { plugin, targets } => write!(
                 f,
@@ -509,7 +509,7 @@ pub fn plugins(home: &SettingsFile) -> Result<Plugins, Error> {
                     "unknown plugin `{plugin}` in `{list}`: `rig plugin disable {plugin}` \
                      takes it out{}",
                     if list == "enable" {
-                        ", or add a [[plugins.extra]] table for its crate"
+                        ", or `rig plugin add {plugin}` adds its crate"
                     } else {
                         ""
                     }

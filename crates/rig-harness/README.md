@@ -41,7 +41,8 @@ whose README lists its modules.
 
 The agent builds rig's own crates from crates.io at the launcher's version, or
 from the rig checkout it is built from (`RIG_SOURCE`); a crate that is not
-rig's is a `[[plugins.extra]]` table of `RIG_HOME/settings.toml`. A plugin crate that adds to the
+rig's is a `[[plugins.extra]]` table of `RIG_HOME/settings.toml`, which
+`rig plugin add` writes. A plugin crate that adds to the
 terminal view (status line items, pickers, transcript render systems) does so
 behind a default `tui` cargo feature, so it also builds without `rig-tui`.
 
