@@ -66,11 +66,13 @@ fn a_plan_is_made_without_changes_then_executed_with_the_tools_back() {
         footprint: Some(Touches::Independent),
     };
     app.add_open_tool("schedule", "Run a prompt later.", independent, scheduled);
-    let mut agent = spawn_root(app.world_mut(), ());
-    if let Some(connection) = connect(&model) {
-        let choice = ModelChoice(connection.spec.reference());
-        agent.insert((connection, choice));
-    }
+    let agent = match connect(&model) {
+        Some(connection) => {
+            let choice = ModelChoice(connection.spec.reference());
+            spawn_root(app.world_mut(), (connection, choice))
+        }
+        None => spawn_root(app.world_mut(), ()),
+    };
     let agent = agent.id();
     app.finish();
     app.update();

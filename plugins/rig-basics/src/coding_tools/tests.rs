@@ -144,10 +144,10 @@ fn attaching(
     app.finish();
     app.update();
     let model = MockCompletionModel::from_stream_turns([reply("read"), reply("read")]);
-    let agent = spawn_root(app.world_mut(), ()).id();
-    if let Some(connection) = connect(&model) {
-        app.world_mut().entity_mut(agent).insert(connection);
-    }
+    let agent = match connect(&model) {
+        Some(connection) => spawn_root(app.world_mut(), connection).id(),
+        None => spawn_root(app.world_mut(), ()).id(),
+    };
     (app, wakes, agent)
 }
 

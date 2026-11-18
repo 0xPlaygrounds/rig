@@ -224,13 +224,15 @@ pub fn spawn(world: &mut World, origin: Origin, spec: AgentSpec) -> Result<Entit
     spawned
 }
 
-/// Spawns an agent nothing spawned with `bundle`, such as its
+/// Spawns a root agent (one nothing spawned) with `bundle`, such as its
 /// [`AgentId`], [`ToolAccess`] or a plugin's own components, and returns it.
 ///
-/// The bundle is on the agent before [`Agent`] is added, so `Add<Agent>`
-/// observers see all of it. What the bundle leaves out has its default: the
-/// name `agent`, a fresh id, and every tool, those registered later too.
-/// Pass `()` for an agent with only the defaults.
+/// The bundle and [`Agent`] arrive in one insert, so every observer of it,
+/// such as an `Insert<Name>` or an `Add<Agent>` one, sees the whole agent.
+/// What the bundle leaves out has its default: the name `agent`, a fresh
+/// id, and every tool, those registered later too. Pass `()` for an agent
+/// with only the defaults. An `Add<Agent>` observer runs after the bundle
+/// is on, so what it inserts replaces the bundle's.
 ///
 /// ```
 /// use rig_ecs::prelude::*;
@@ -240,10 +242,16 @@ pub fn spawn(world: &mut World, origin: Origin, spec: AgentSpec) -> Result<Entit
 /// let agent = spawn_root(&mut world, AgentId("main".into())).id();
 /// assert_eq!(world.get::<AgentId>(agent), Some(&AgentId("main".into())));
 /// ```
-pub fn spawn_root(world: &mut World, bundle: impl Bundle) -> EntityWorldMut<'_> {
-    let mut agent = world.spawn(bundle);
-    agent.insert_if_new(Name::new("agent")).insert(Agent::new());
-    agent
+pub fn spawn_root<B: Bundle>(world: &mut World, bundle: B) -> EntityWorldMut<'_> {
+    let name = world.register_component::<Name>();
+    let named = world
+        .register_bundle::<B>()
+        .contributed_components()
+        .contains(&name);
+    match named {
+        true => world.spawn((bundle, Agent::new())),
+        false => world.spawn((bundle, Agent::new(), Name::new("agent"))),
+    }
 }
 
 #[cfg(test)]

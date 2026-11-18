@@ -65,11 +65,13 @@ fn settled(id: &'static str) -> impl Fn(&World) -> bool {
 
 /// A new agent answered by `model`.
 fn agent_on(app: &mut App, model: &MockCompletionModel) -> Entity {
-    let mut agent = spawn_root(app.world_mut(), ());
-    if let Some(connection) = connect(model) {
-        let choice = ModelChoice(connection.spec.reference());
-        agent.insert((connection, choice));
-    }
+    let agent = match connect(model) {
+        Some(connection) => {
+            let choice = ModelChoice(connection.spec.reference());
+            spawn_root(app.world_mut(), (connection, choice))
+        }
+        None => spawn_root(app.world_mut(), ()),
+    };
     agent.id()
 }
 

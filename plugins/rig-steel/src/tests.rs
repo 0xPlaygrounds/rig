@@ -86,13 +86,13 @@ fn app(model: &MockCompletionModel) -> (App, Receiver<()>, Entity) {
         .init_resource::<Kept>()
         .add_systems(Last, keep)
         .add_systems(AgentPass, gate.in_set(Stage::Gate));
-    let agent = spawn_root(app.world_mut(), ()).id();
-    if let Some(connection) = connect(model) {
-        let choice = ModelChoice(connection.spec.reference());
-        app.world_mut()
-            .entity_mut(agent)
-            .insert((connection, choice));
-    }
+    let agent = match connect(model) {
+        Some(connection) => {
+            let choice = ModelChoice(connection.spec.reference());
+            spawn_root(app.world_mut(), (connection, choice)).id()
+        }
+        None => spawn_root(app.world_mut(), ()).id(),
+    };
     app.finish();
     app.update();
     (app, wakes, agent)

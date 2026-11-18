@@ -90,11 +90,13 @@ fn values_change_by_key_path_and_nothing_else_moves() {
         .init_resource::<ToolOutputs>()
         .add_observer(log_tool_outputs)
         .add_plugins((AgentPlugin, StructuredConfigEditPlugin));
-    let mut agent = spawn_root(app.world_mut(), ());
-    if let Some(connection) = connect(&model) {
-        let choice = ModelChoice(connection.spec.reference());
-        agent.insert((connection, choice));
-    }
+    let agent = match connect(&model) {
+        Some(connection) => {
+            let choice = ModelChoice(connection.spec.reference());
+            spawn_root(app.world_mut(), (connection, choice))
+        }
+        None => spawn_root(app.world_mut(), ()),
+    };
     let agent = agent.id();
     app.finish();
     app.update();
