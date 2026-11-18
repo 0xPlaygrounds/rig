@@ -711,3 +711,33 @@ fn a_branch_turns_off_in_one_line_and_an_unknown_one_is_taken_out() {
     );
     assert!(fixed.off.is_empty());
 }
+
+/// Removing a crate's last plugin takes the crate's branches out of
+/// `[plugins] off` too, which would name nothing; a branch still holding a
+/// plugin stays.
+#[test]
+fn removing_a_crates_last_plugin_takes_its_branches_out_of_off() {
+    let home = old_home("remove-off");
+    let other = "reactor_save::store::StorePlugin";
+    let result = (|| -> Result<_> {
+        fs::create_dir_all(home.root())?;
+        fs::write(home.settings(), COMMENTED)?;
+        for plugin in [SAVE, other] {
+            run(
+                &home,
+                &["add", plugin, "--version", "0.2", "--crate", "reactor-save"],
+            )?;
+        }
+        run(&home, &["disable", "reactor-save"])?;
+        run(&home, &["disable", "reactor-save/store"])?;
+        run(&home, &["remove", other])?;
+        let one = config::chosen(&home)?.off;
+        run(&home, &["remove", SAVE])?;
+        Ok((one, config::chosen(&home)?.off))
+    })();
+    fs::remove_dir_all(home.root()).ok();
+    assert_eq!(
+        result.ok(),
+        Some((vec!["reactor-save".to_owned()], Vec::new()))
+    );
+}
