@@ -1437,8 +1437,36 @@ fn a_status_part_ticked_and_left_in_one_frame_is_hidden() {
 fn plugins_defaults_clears_status_hide_without_the_status_line() {
     let home = scratch_home("plugins-status-defaults-off");
     fs::create_dir_all(home.root()).ok();
-    fs::write(home.settings(), "[status]\nhide = [\"cost\"]\n").ok();
+    fs::write(
+        home.settings(),
+        "[keep]\nthis = 1\n\n[status]\nhide = [\"cost\"]\n",
+    )
+    .ok();
     let (mut app, agent) = app(&home, true);
     run(&mut app, agent, "plugins defaults");
-    assert_eq!(written_hide(&home), None, "{}", settings(&home));
+    let text = settings(&home);
+    let file = config::SettingsFile::read(&home.settings());
+    assert!(file.is_ok(), "{text}");
+    let status = (file.iter()).find_map(|file| file.document.get("status"));
+    assert!(
+        status.is_none_or(|status| status.get("hide").is_none()),
+        "{text}"
+    );
+    assert!(text.contains("[keep]\nthis = 1"), "{text}");
+}
+
+#[test]
+fn plugins_defaults_off_a_terminal_names_the_status_hide_line_in_any_build() {
+    let home = scratch_home("plugins-status-defaults-print-any");
+    fs::create_dir_all(home.root()).ok();
+    let file = "[status]\nhide = [\"cost\"]\n";
+    fs::write(home.settings(), file).ok();
+    let (mut app, agent) = app(&home, false);
+    run(&mut app, agent, "plugins defaults");
+    assert_eq!(settings(&home), file);
+    let told = app.world().resource::<Told>().0.join("\n");
+    assert!(
+        told.contains("delete the `hide` line under [status]"),
+        "{told}"
+    );
 }
