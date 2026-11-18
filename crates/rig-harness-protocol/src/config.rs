@@ -837,14 +837,19 @@ fn set_branch(document: &mut DocumentMut, branch: &str, on: bool) -> bool {
     true
 }
 
-/// Takes the name `name` out of every list of `[plugins]` in `document`,
-/// read or not: how `rig plugin disable` removes a plugin or branch that
-/// nothing provides. Returns whether it was in one.
-pub fn forget(document: &mut DocumentMut, name: &str) -> bool {
+/// Takes the name `name` out of the lists `lists` of `[plugins]` in
+/// `document`, read or not: how `rig plugin disable` removes a name that
+/// nothing provides, or that a list cannot hold. Returns whether it was in
+/// one.
+pub fn forget<'a>(
+    document: &mut DocumentMut,
+    name: &str,
+    lists: impl IntoIterator<Item = &'a str>,
+) -> bool {
     let Some(table) = (document.get_mut("plugins")).and_then(Item::as_table_like_mut) else {
         return false;
     };
-    ["enable", "disable", "off"]
+    lists
         .into_iter()
         .fold(false, |dropped, key| drop_name(table, key, name) | dropped)
 }

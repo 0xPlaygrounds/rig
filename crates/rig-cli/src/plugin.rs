@@ -325,7 +325,7 @@ fn remove(home: &Home, type_path: &str) -> Result<()> {
                 (off.iter().filter_map(|name| name.as_str()))
                     .filter(|name| {
                         krate.as_deref().is_some_and(|krate| {
-                            name.split('/').next() == Some(krate) && !known(file, name)
+                            name.split('/').next() == Some(krate) && !holds_any(file, name)
                         })
                     })
                     .map(str::to_owned)
@@ -334,7 +334,7 @@ fn remove(home: &Home, type_path: &str) -> Result<()> {
             .unwrap_or_default();
         let document = &mut file.document;
         for branch in &stale {
-            config::forget(document, branch);
+            config::forget(document, branch, ["off"]);
         }
         if !kept.is_empty() {
             put_before_next(document, position, &kept);
@@ -686,35 +686,49 @@ fn row(chosen: &Plugins, depth: usize, plugin: &str, about: &str) -> (String, Op
 /// plugin `name` in `[plugins] enable` or `disable` of the home's settings,
 /// or takes it out of the other list when that gives rig's default; a
 /// name in this list stays. A branch `name` leaves or joins `[plugins]
-/// off`. `disable` takes a name that is neither a plugin nor a branch out
-/// of every list, and turns off a plugin that does not build here, which
-/// is how the settings' refusal of either says to fix it, even while the
-/// file holds other mistakes.
+/// off`. On a file that does not read, `disable` takes `name` out of each
+/// list that cannot hold it (a branch out of `enable` and `disable`, a
+/// plugin out of `off`, a name that is neither out of all three) and
+/// turns off a plugin that does not build here, which is how the
+/// settings' refusal of each says to fix it, even while the file holds
+/// other mistakes.
 fn enable(home: &Home, name: &str, on: bool) -> Result<()> {
     let path = home.settings();
     let (changed, forgot) = config::edit(&path, |file| -> Result<_> {
+        let mut forgot = false;
         if !on && let Err(failure) = config::plugins(file) {
-            if !known(file, name) {
-                if !config::forget(&mut file.document, name) {
-                    return Err(failure.into());
-                }
-                return Ok((true, true));
+            let plugin = built_in(name).is_some() || extra(file, name);
+            let branch = holds_any(file, name);
+            let wrong = [("enable", plugin), ("disable", plugin), ("off", branch)]
+                .into_iter()
+                .filter(|(_, fits)| !fits)
+                .map(|(list, _)| list);
+            forgot = config::forget(&mut file.document, name, wrong);
+            if !plugin && !branch {
+                return if forgot {
+                    Ok((true, true))
+                } else {
+                    Err(failure.into())
+                };
             }
-            // Turning off the plugin the file cannot run here is its fix.
-            if let config::Error::Unavailable { plugin, .. } = &failure
-                && plugin == name
-            {
-                let by_default = built_in(name).is_some_and(|built_in| built_in.on);
-                let changed = set_on(&mut file.document, name, false, by_default);
-                return Ok((changed, false));
+            match config::plugins(file) {
+                Ok(_) => {}
+                Err(_) if forgot => return Ok((true, true)),
+                // Turning off the plugin the file cannot run here is its fix.
+                Err(config::Error::Unavailable { plugin, .. }) if plugin == name => {
+                    let by_default = built_in(name).is_some_and(|built_in| built_in.on);
+                    let changed = set_on(&mut file.document, name, false, by_default);
+                    return Ok((changed, false));
+                }
+                Err(_) => {}
             }
         }
         let changed = config::turn(file, &[(name, on)])?;
-        Ok((changed, false))
+        Ok((changed || forgot, false))
     })?;
     if forgot {
         println!(
-            "Took the unknown plugin or branch `{name}` out of {}.",
+            "Took `{name}` out of the [plugins] lists of {} that cannot hold it.",
             path.display()
         );
         return Ok(());
@@ -781,10 +795,10 @@ fn extra(file: &config::SettingsFile, plugin: &str) -> bool {
         })
 }
 
-/// Whether `name` is one of rig's plugins, a plugin of a `[[plugins.extra]]`
-/// table of `file` or a branch holding one, read without the checks the
-/// rest of the file may fail.
-fn known(file: &config::SettingsFile, name: &str) -> bool {
+/// Whether `name` is a branch holding one of rig's plugins or a plugin of
+/// a `[[plugins.extra]]` table of `file`, read without the checks the rest
+/// of the file may fail.
+fn holds_any(file: &config::SettingsFile, name: &str) -> bool {
     let extras: Vec<(&str, &str)> = (file.document.get("plugins"))
         .and_then(|plugins| plugins.get("extra"))
         .and_then(Item::as_array_of_tables)
@@ -800,7 +814,7 @@ fn known(file: &config::SettingsFile, name: &str) -> bool {
     (BUILT_IN.iter())
         .map(|built_in| (built_in.krate, built_in.plugin))
         .chain(extras)
-        .any(|(krate, plugin)| plugin == name || holds(name, krate, plugin))
+        .any(|(krate, plugin)| holds(name, krate, plugin))
 }
 
 /// The string at `keys` in `manifest`, such as its `package.name`.

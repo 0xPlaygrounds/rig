@@ -755,7 +755,10 @@ fn a_name_in_the_wrong_list_is_taken_out_by_the_fix_its_refusal_names() {
     let result = (|| -> Result<_> {
         fs::create_dir_all(home.root())?;
         let mut fixed = Vec::new();
-        for (case, name) in cases.iter().zip(["rig-basics/sessions", "rig-basics", SKILLS]) {
+        for (case, name) in cases
+            .iter()
+            .zip(["rig-basics/sessions", "rig-basics", SKILLS])
+        {
             fs::write(home.settings(), case)?;
             let refused = config::chosen(&home).err().map(|why| why.to_string());
             let fix = format!("rig plugin disable {name}");
