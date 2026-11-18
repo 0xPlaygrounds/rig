@@ -1891,6 +1891,31 @@ fn one_shot_on(
     (app, lines)
 }
 
+/// Without the model picker, a run with nothing named, restored or saved
+/// still starts on the first pick and answers.
+#[test]
+fn a_run_without_the_model_picker_takes_the_first_pick() {
+    let model = MockCompletionModel::from_stream_turns([reply("Hello.")]);
+    let lines = Lines::default();
+    let invoked = Invocation {
+        print: Some("hi".to_owned()),
+        flags: vec![(JSON.to_owned(), None)],
+        ..Invocation::default()
+    };
+    let (mut app, _) = unpicked(&MemoryStore::default(), invoked);
+    app.insert_resource(JsonOut::new(lines.clone()))
+        .insert_resource(scripted_models([(MODEL, &model)]))
+        .add_plugins((SessionLogPlugin, ExitPlugin, PrintPlugin));
+    app.finish();
+    app.cleanup();
+    assert!(!app.is_plugin_added::<crate::models::ModelsPlugin>());
+    run_until(&mut app, |_| false);
+    let exit = lines.of("exit").first().cloned().unwrap_or_default();
+    assert_eq!(at(&exit, "code"), 0, "{exit}");
+    assert_eq!(at(&exit, "answer"), "Hello.", "{exit}");
+    assert_eq!(model.request_count(), 1);
+}
+
 /// A model whose provider refuses the call for good.
 fn out_of_credit() -> MockCompletionModel {
     let refused = rig_core::ProviderResponseError::without_status("the account is out of credit")

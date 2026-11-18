@@ -19,7 +19,7 @@ use rig_harness_test_support::{
 };
 
 use super::*;
-use crate::models::FirstPick;
+use crate::models::{FirstPick, ModelLabel};
 
 /// The ChatGPT backend as a test scripts it: each `GET /models` answers
 /// the next of its lists, with its status, once it is let go; every other
@@ -452,6 +452,53 @@ fn a_named_saved_or_chosen_model_is_kept_over_the_first_pick() {
             "{name}: {told:?}"
         );
     }
+}
+
+/// A model a plugin labels instead of choosing, such as a router, set
+/// while the sign-in was checking, stands once it answers.
+#[test]
+fn a_labelled_model_set_while_the_sign_in_checks_is_kept() {
+    let backend = Backend::default();
+    let release = backend.hold();
+    let (mut app, wakes, agent) = signed_in_with_a_key("login-keep-labelled", &backend, |_| {});
+    app.update();
+    let label = ModelLabel("router".to_owned());
+    app.world_mut().entity_mut(agent).insert(label.clone());
+    drop(release);
+    run_until(&mut app, &wakes, answered);
+    app.update();
+    let world = app.world();
+    assert_eq!(world.get::<ModelChoice>(agent), None);
+    assert_eq!(world.get::<ModelLabel>(agent), Some(&label));
+    assert!(world.resource::<Taken>().0.is_empty());
+}
+
+/// A saved key that cannot be read is told about when the first pick is
+/// the sign-in's default, as when it is a model listed after the key's.
+#[test]
+fn an_unreadable_saved_key_is_told_about_when_the_sign_in_is_picked() {
+    let backend = Backend::default();
+    let (mut app, wakes, agent) = signed_in_with_a_key("login-pick-broken-key", &backend, |app| {
+        let home = app.world().resource::<RigHome>().0.clone();
+        let path = keys::Keys::at(&home).path("anthropic");
+        assert!(std::fs::write(&path, "\"x\"").is_ok());
+    });
+    run_until(&mut app, &wakes, |world| {
+        world.get::<ModelChoice>(agent).is_some()
+    });
+    let default = format!("{PROVIDER}/{}", chatgpt::DEFAULT_MODEL);
+    let chosen = app.world().get::<ModelChoice>(agent).map(|it| it.0.clone());
+    assert_eq!(chosen.as_deref(), Some(default.as_str()));
+    let home = app.world().resource::<RigHome>().0.clone();
+    let shown = keys::Keys::at(&home)
+        .path("anthropic")
+        .display()
+        .to_string();
+    let told = &app.world().resource::<Collected<Notice>>().0;
+    let warned = told.iter().filter(|notice| {
+        notice.text.starts_with(&format!("Using {default}:")) && notice.text.contains(&shown)
+    });
+    assert_eq!(warned.count(), 1, "{told:?}");
 }
 
 #[test]
