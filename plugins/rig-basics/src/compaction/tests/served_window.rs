@@ -295,7 +295,7 @@ fn a_server_that_never_answers_is_given_up_on() {
 }
 
 #[test]
-fn a_failed_ask_holds_one_call_of_a_turn_and_a_refusal_is_final() {
+fn a_turn_waits_for_one_failed_ask_and_a_refusal_is_final() {
     let status = |code| move || MockHttpResponse::error(code, "no");
     let failing = status(http_client::StatusCode::INTERNAL_SERVER_ERROR);
     let refusing = status(http_client::StatusCode::NOT_FOUND);

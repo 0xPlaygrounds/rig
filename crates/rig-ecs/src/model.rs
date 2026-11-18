@@ -462,33 +462,42 @@ pub(crate) fn learn_window(
 #[derive(Component)]
 pub(crate) struct WaitingForWindow(String);
 
-/// Marks a turn one of whose model calls was held for its model's window,
-/// so a failed ask holds none of its later calls.
+/// Names the model whose window a turn last waited for, so a failed ask
+/// holds none of the turn's later calls to that model.
 #[derive(Component)]
-pub(crate) struct WaitedForWindow;
+pub(crate) struct WaitedForWindow(String);
 
-/// Holds each turn's call about to start on its agent's own connection, to
-/// a model with no context window, while that model's server is asked for
-/// one, in [`Stage::Gate`](super::stage::Stage::Gate), asking it again first
-/// when the last ask did not reach it, once per turn: measured without the
-/// window, its request would not be compacted near it. Such a call measured
-/// without a window its model now has is built anew, once, from its agent.
-/// A call a plugin routed to a connection of its own, or left behind by its
-/// agent's switch to another model, goes out as it is.
+/// Holds the calls about to start on their agent's own connection, to a
+/// model with no context window, while that model's server is asked for one,
+/// in [`Stage::Gate`](super::stage::Stage::Gate), asking it again first when
+/// the last ask did not reach it: measured without the window, a request
+/// would not be compacted near it. A turn waits for one ask of a model, and
+/// its calls ready together wait for that same ask. A call measured without
+/// a window its model now has is built anew, once for that model, from its
+/// agent. A call a plugin routed to a connection of its own, or left behind
+/// by its agent's switch to another model, goes out as it is.
 pub(crate) fn wait_for_window(
     calls: Query<
-        (Entity, &Adapted, &ModelRequest, &CallOf, &ForAgent, &Effect),
-        (ReadyToStart, With<TurnCall>, Without<BuiltWithWindow>),
+        (
+            Entity,
+            &Adapted,
+            &ModelRequest,
+            &CallOf,
+            &ForAgent,
+            &Effect,
+            Option<&BuiltWithWindow>,
+        ),
+        (ReadyToStart, With<TurnCall>),
     >,
     agents: Query<&Connection, With<Agent>>,
-    waited: Query<(), With<WaitedForWindow>>,
+    waited: Query<&WaitedForWindow>,
     asks: Query<&AskingWindow>,
     (models, wake): (Res<Models>, Res<Wake>),
     mut windows: ResMut<ServedWindows>,
     mut commands: Commands,
 ) {
     let mut started = Vec::new();
-    for (call, Adapted(adapted), model, &CallOf(turn), &ForAgent(agent), effect) in &calls {
+    for (call, Adapted(adapted), model, &CallOf(turn), &ForAgent(agent), effect, built) in &calls {
         let Ok(own) = agents.get(agent) else {
             continue;
         };
@@ -500,7 +509,8 @@ pub(crate) fn wait_for_window(
                 .connection
                 .as_ref()
                 .is_none_or(|to| to.handler.0.ptr_eq(&own.handler.0));
-        if !on_own || adapted.spec.input_limit().is_some() {
+        let built_for_it = built.is_some_and(|BuiltWithWindow(built)| *built == reference);
+        if !on_own || built_for_it || adapted.spec.input_limit().is_some() {
             continue;
         }
         if windows.0.get(&reference).is_some_and(Option::is_some) {
@@ -510,12 +520,15 @@ pub(crate) fn wait_for_window(
                     CallOf(turn),
                     ForAgent(agent),
                     Effect::with_parent_id(effect.parent),
-                    BuiltWithWindow,
+                    BuiltWithWindow(reference),
                 ))
                 .add_related::<SupersededBy>(&[call]);
             continue;
         }
-        if own.spec.input_limit().is_some() || waited.contains(turn) {
+        let turn_waited = waited
+            .get(turn)
+            .is_ok_and(|WaitedForWindow(waited)| *waited == reference);
+        if own.spec.input_limit().is_some() || turn_waited {
             continue;
         }
         if start_asking(&own.spec, &models, &wake, &mut windows, &mut commands) {
@@ -528,17 +541,18 @@ pub(crate) fn wait_for_window(
         }
         commands.spawn((
             Name::new(format!("waiting for the context window of {reference}")),
-            WaitingForWindow(reference),
+            WaitingForWindow(reference.clone()),
             HoldOf(call),
         ));
-        commands.entity(turn).try_insert(WaitedForWindow);
+        commands.entity(turn).try_insert(WaitedForWindow(reference));
     }
 }
 
-/// On a turn's call [`wait_for_window`] built anew, which it does not build
-/// again.
+/// On a turn's call [`wait_for_window`] built anew, naming the model it was
+/// built for, so a plugin that keeps a connection with no window on the call
+/// cannot make it build the call for that model forever.
 #[derive(Component)]
-pub(crate) struct BuiltWithWindow;
+pub(crate) struct BuiltWithWindow(String);
 
 /// `spec` with a context window of `window`.
 fn with_window(spec: &ModelSpec, window: u32) -> Arc<ModelSpec> {
