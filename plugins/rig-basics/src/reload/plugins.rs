@@ -180,6 +180,14 @@ fn plugins(
         }
         // The question needs a terminal to show it.
         if !interactive {
+            // `rig plugin disable` refuses a plugin another still adds, so
+            // the plugins that add others turn off first.
+            let off: Vec<&str> = (changed.iter())
+                .filter(|(_, on)| !on)
+                .map(|(row, _)| row.plugin.as_str())
+                .collect();
+            let mut changed = changed.clone();
+            changed.sort_by_key(|(row, on)| !on && off.iter().any(|it| row.added_by.contains(it)));
             let commands: Vec<String> = (changed.iter())
                 .map(|(row, on)| {
                     let verb = if *on { "enable" } else { "disable" };
@@ -241,7 +249,7 @@ fn list(
             ..PickItem::new(&row.name, "").detail(detail(
                 row,
                 *ticked,
-                needers(&rows, &on, row).as_deref(),
+                needers(&rows, &on, &branches, row).as_deref(),
                 idler(&rows, &on, &branches, row),
             ))
         })
@@ -334,11 +342,15 @@ impl Reload {
     }
 }
 
-/// The names of `rows` ticked in `on` and not off with a branch that add
-/// `row`, which keep it on whatever its own choice, joined by "and".
-fn needers(rows: &[Row], on: &[bool], row: &Row) -> Option<String> {
+/// The names of `rows` ticked in `on` that add `row`, which keep it on
+/// whatever its own choice, joined by "and". A row off with a branch
+/// counts only when that branch is among the `branches` turned back on.
+fn needers(rows: &[Row], on: &[bool], branches: &[String], row: &Row) -> Option<String> {
     let names = (rows.iter().zip(on))
-        .filter(|(it, on)| **on && it.branch_off.is_none() && row.added_by.contains(&&*it.plugin))
+        .filter(|(it, on)| {
+            **on && (it.branch_off.as_ref()).is_none_or(|branch| branches.contains(branch))
+                && row.added_by.contains(&&*it.plugin)
+        })
         .map(|(it, _)| it.name.as_str());
     and(names)
 }
@@ -352,7 +364,7 @@ fn idler<'a>(rows: &'a [Row], on: &[bool], branches: &[String], row: &Row) -> Op
             it.plugin == *with
                 && *ticked
                 && ((it.branch_off.as_ref()).is_none_or(|branch| branches.contains(branch))
-                    || needers(rows, on, it).is_some())
+                    || needers(rows, on, branches, it).is_some())
         })
     };
     let without = row.only_with.iter().find(|with| !runs(with))?;
@@ -719,7 +731,7 @@ fn mark(
             item.detail = Some(detail(
                 row,
                 *ticked,
-                needers(&list.rows, &on, row).as_deref(),
+                needers(&list.rows, &on, &list.branches, row).as_deref(),
                 idler(&list.rows, &on, &list.branches, row),
             ));
         }
@@ -785,7 +797,7 @@ fn ask(
         ));
     }
     for (row, _) in changed.iter().filter(|(_, on)| !on) {
-        if let Some(by) = needers(&rows, &on, row) {
+        if let Some(by) = needers(&rows, &on, &branches, row) {
             let (adds, is) = if by.contains(" and ") {
                 ("add", "are")
             } else {
@@ -846,7 +858,7 @@ fn names(rows: &[Row], on: &[bool], branches: &[String]) -> Vec<(&'static str, S
             let names: Vec<String> = (changed.iter())
                 .filter(|(_, on)| *on == want)
                 .map(|(row, ticked)| {
-                    let needers = needers(rows, on, row);
+                    let needers = needers(rows, on, branches, row);
                     let branch = (row.branch_off.as_ref())
                         .filter(|branch| !branches.contains(branch) && needers.is_none());
                     let why = match (*ticked, branch, idler(rows, on, branches, row), needers) {
