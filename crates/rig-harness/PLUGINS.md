@@ -231,7 +231,10 @@ readers. A plugin declares each part it draws, with a short label, in its
 `build`, so `/plugins` can show and hide it before it is first drawn:
 `app.add_status_part(&PINNED, "Pinned notes")` (`rig_tui::AppStatusPartsExt`),
 `PINNED` being the part's `StatusItem`. A part drawn without one shows in
-`/plugins` by its name once it is drawn.
+`/plugins` by its name once it is drawn. The key list over an empty input is
+a plugin of its own too, `rig_tui::hints::KeyHintsPlugin`. Code that adds
+`rig_tui::TuiPlugin` itself gets the view without them; `rig_tui::TuiPlugins`
+adds the view with its optional parts, each unless the app already has it.
 
 A crate that also builds without the view puts `rig-tui` behind a default
 `tui` feature. The `rig_tui` crate docs have an example of each.

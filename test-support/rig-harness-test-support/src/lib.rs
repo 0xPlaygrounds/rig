@@ -502,7 +502,7 @@ fn answer_asks(
 #[cfg(feature = "tui")]
 pub fn tui_view(app: &mut App) -> &mut App {
     if !app.is_plugin_added::<rig_tui::TuiPlugin>() {
-        app.add_plugins(rig_tui::TuiPlugin);
+        app.add_plugins(rig_tui::TuiPlugins);
     }
     if !app.is_plugin_added::<rig_tui::status::StatusLinePlugin>() {
         app.add_plugins(rig_tui::status::StatusLinePlugin);

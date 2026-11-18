@@ -294,7 +294,7 @@ fn the_terminal_view_draws_the_file_and_its_count() {
     use rig_tui::{TranscriptLayout, TranscriptView};
 
     let add_view = |app: &mut App| {
-        app.add_plugins(rig_tui::TuiPlugin);
+        app.add_plugins(rig_tui::TuiPlugins);
     };
     let (mut app, root) = one_turn(
         "render",
@@ -350,6 +350,7 @@ fn add_defaults(app: &mut App) {
     load::<rig_tui::TuiPlugin>(app, "rig-tui", "");
     #[cfg(feature = "tui")]
     load::<rig_tui::status::StatusLinePlugin>(app, "rig-tui", "");
+    load::<rig_tui::hints::KeyHintsPlugin>(app, "rig-tui", "");
 }
 
 /// R6: the plugin's Gate system is ordered against the default plugins'

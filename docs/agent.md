@@ -238,15 +238,18 @@ typed again, it is a command again.
 `/help` lists the commands.
 
 While an earlier prompt is shown, the input's top row says "An earlier
-prompt · Down back to your draft" (or "to an empty input"). While nothing is typed, the top row shows
-the keys and the bottom row the status line: the model, the reasoning
-setting, what the agent is doing (and for how long, see
+prompt · Down back to your draft" (or "to an empty input"). While nothing is
+typed, the top row shows the keys and the bottom row the status line: the
+model, the reasoning setting, what the agent is doing (and for how long, see
 [If rig seems stuck](#if-rig-seems-stuck)), the session's tokens (uncached input,
 output, cache reads and writes), its cost (the provider's figure, else the
 catalog's list price; `+` when some calls had no price) and the context in
 use against the model's window: after `/compact`, until the next reply
 measures it, an estimate marked `~` (`ctx ~12k/1.0M`), and `?` where
-nothing estimated it. `/usage` breaks them down. While the agent works, a
+nothing estimated it. `/usage` breaks them down. Key hints
+(`rig_tui::hints::KeyHintsPlugin`) lists those keys; disabled, that row is
+empty, but a question's keys and a panel's "Esc gives them back" still show.
+While the agent works, a
 small wave of six bars moves before what it is doing, and rig's mark in the
 welcome at the top of the transcript pulses with it;
 `[activity] animate = false` in `settings.toml` keeps both still. With the optional
@@ -739,10 +742,10 @@ in `off` holds it. Turning a branch back on takes it out of `off`, so each
 of its plugins comes back as you left it, and a plugin rig adds to an off
 branch later stays off. Moving a plugin to another module changes its area.
 A plugin another adds in its own `build` runs whatever its choice:
-Subagents adds Approvals, and Budget and Helpers add Usage. Folded output
-and the status line do nothing without the terminal view, nor MCP approval
-without MCP servers. With the terminal view off, rig builds none of the
-plugins of `rig-tui`, such as the status line.
+Subagents adds Approvals, and Budget and Helpers add Usage. Folded output,
+the status line and Key hints do nothing without the terminal view, nor MCP
+approval without MCP servers. With the terminal view off, rig builds none of
+the plugins of `rig-tui`, such as the status line and Key hints.
 
 A mistake in this file (a plugin or branch rig does not know, a branch in
 `enable` or `disable`, a plugin in `off`, an `extra` path that holds no

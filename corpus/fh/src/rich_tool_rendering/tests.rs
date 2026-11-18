@@ -13,7 +13,7 @@ use rig_harness_test_support::{
     Ended, app_on, calls, connect, first_agent, log_ended, reply, run_until, scratch_home,
 };
 use rig_tui::{
-    CallState, RenderInput, RenderKey, RenderOutput, RenderRequest, ToolRender, TuiPlugin,
+    CallState, RenderInput, RenderKey, RenderOutput, RenderRequest, ToolRender, TuiPlugins,
 };
 use serde_json::json;
 
@@ -100,7 +100,7 @@ fn edits_read_as_diffs_and_commands_as_command_lines() {
         SessionLogPlugin,
         EditTool,
         ShellTool,
-        TuiPlugin,
+        TuiPlugins,
     ))
     .add_plugins(RichToolRenderingPlugin)
     .add_systems(TranscriptRender, draw_probe.in_set(RenderSystems::Render))

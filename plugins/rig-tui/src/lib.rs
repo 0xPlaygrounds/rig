@@ -11,9 +11,9 @@
 //! a frame. [`ratatui`] and [`crossterm`] are re-exported so a plugin uses
 //! the same versions.
 //!
-//! [`TuiPlugin`] is [`TuiViewPlugin`] plus [`DefaultScreenPlugin`], and
-//! [`TuiPlugins`] adds the plugins drawing parts of that screen. Where a
-//! plugin hooks in:
+//! [`TuiPlugin`] is [`TuiViewPlugin`] plus [`DefaultScreenPlugin`];
+//! [`TuiPlugins`] adds it with the parts a user may leave out, such as
+//! the [`status`] line and the [`hints`]. Where a plugin hooks in:
 //!
 //! - **Panels:** [`TuiPanel`], drawn in [`TuiSystems::Draw`] ([`panel`]);
 //!   [`RequestRedraw`] for a frame, [`TerminalSize`] for the screen.
@@ -44,6 +44,7 @@ mod complete;
 pub mod diff;
 mod editor;
 pub mod highlight;
+pub mod hints;
 mod history;
 mod input;
 mod jsonl;
@@ -123,16 +124,30 @@ impl Plugin for TuiPlugin {
     }
 }
 
-/// The terminal view with the parts of its default screen that are plugins
-/// of their own, the [`StatusLinePlugin`](status::StatusLinePlugin): for
-/// code that adds the view itself. rig's settings add each one on its own.
+/// The terminal view ([`TuiPlugin`]) with the parts the agent adds as
+/// plugins of their own, each unless the app has it: the
+/// [`StatusLinePlugin`](status::StatusLinePlugin) and the
+/// [`KeyHintsPlugin`](hints::KeyHintsPlugin). For an app or a test that
+/// adds the view itself; the agent adds each from the settings.
+#[derive(Default)]
 pub struct TuiPlugins;
 
-impl PluginGroup for TuiPlugins {
-    fn build(self) -> bevy_app::PluginGroupBuilder {
-        bevy_app::PluginGroupBuilder::start::<Self>()
-            .add(TuiPlugin)
-            .add(status::StatusLinePlugin)
+impl Plugin for TuiPlugins {
+    fn build(&self, app: &mut App) {
+        if !app.is_plugin_added::<TuiPlugin>() {
+            app.add_plugins(TuiPlugin);
+        }
+        if !app.is_plugin_added::<status::StatusLinePlugin>() {
+            app.add_plugins(status::StatusLinePlugin);
+        }
+        if !app.is_plugin_added::<hints::KeyHintsPlugin>() {
+            app.add_plugins(hints::KeyHintsPlugin);
+        }
+    }
+
+    // Each part is added once, so it is no harm to add this again.
+    fn is_unique(&self) -> bool {
+        false
     }
 }
 
