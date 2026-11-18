@@ -742,7 +742,7 @@ fn enable(home: &Home, name: &str, on: bool) -> Result<()> {
         );
     }
     let plugins: Vec<&str> = if branch {
-        held(&chosen, name)
+        chosen.held(name)
     } else {
         vec![name]
     };
@@ -768,17 +768,6 @@ fn enable(home: &Home, name: &str, on: bool) -> Result<()> {
         }
     }
     Ok(())
-}
-
-/// The plugins of rig's and the extras of `chosen` that the branch
-/// `branch` holds.
-fn held<'a>(chosen: &'a Plugins, branch: &str) -> Vec<&'a str> {
-    (BUILT_IN.iter())
-        .map(|built_in| (built_in.krate, built_in.plugin))
-        .chain((chosen.extra.iter()).map(|extra| (extra.krate.as_str(), extra.plugin.as_str())))
-        .filter(|(krate, plugin)| holds(branch, krate, plugin))
-        .map(|(_, plugin)| plugin)
-        .collect()
 }
 
 /// Whether a `[[plugins.extra]]` table of `file` names `plugin`, read

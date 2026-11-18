@@ -483,15 +483,15 @@ impl Plugins {
             .map(String::as_str)
     }
 
-    /// Whether `name` is a branch: it holds one of rig's plugins or an
-    /// extra.
-    pub fn is_branch(&self, name: &str) -> bool {
-        is_branch(name, &self.extra)
+    /// The plugins of rig's and the extras that the branch `branch`
+    /// holds, in the order the agent adds them; none when it is no branch.
+    pub fn held(&self, branch: &str) -> Vec<&str> {
+        held(branch, &self.extra)
     }
 }
 
-/// Whether the branch `name` holds a plugin of rig's or of `extras`.
-fn is_branch(name: &str, extras: &[Extra]) -> bool {
+/// The plugins of rig's and of `extras` that the branch `branch` holds.
+fn held<'a>(branch: &str, extras: &'a [Extra]) -> Vec<&'a str> {
     (BUILT_IN.iter())
         .map(|built_in| (built_in.krate, built_in.plugin))
         .chain(
@@ -499,7 +499,9 @@ fn is_branch(name: &str, extras: &[Extra]) -> bool {
                 .iter()
                 .map(|extra| (extra.krate.as_str(), extra.plugin.as_str())),
         )
-        .any(|(krate, plugin)| holds(name, krate, plugin))
+        .filter(|(krate, plugin)| holds(branch, krate, plugin))
+        .map(|(_, plugin)| plugin)
+        .collect()
 }
 
 /// The `[plugins]` table of one file, checked.
@@ -548,7 +550,9 @@ pub fn plugins(home: &SettingsFile) -> Result<Plugins, Error> {
             });
         }
     }
-    if let Some(branch) = (changes.off.iter()).find(|branch| !is_branch(branch, &changes.extra)) {
+    if let Some(branch) =
+        (changes.off.iter()).find(|branch| held(branch, &changes.extra).is_empty())
+    {
         return Err(Error::Table {
             path: home.path.clone(),
             table: "plugins".to_owned(),
@@ -789,7 +793,7 @@ pub fn turn(file: &mut SettingsFile, changes: &[(&str, bool)]) -> Result<bool, E
     for &(plugin, on) in changes {
         if built_in(plugin).is_none()
             && !before.extra.iter().any(|extra| extra.plugin == plugin)
-            && before.is_branch(plugin)
+            && !before.held(plugin).is_empty()
         {
             changed |= set_branch(&mut file.document, plugin, on);
             continue;
