@@ -519,8 +519,8 @@ is answered.
 
 Esc stops the shown agent's turn and the turns of every subagent below it,
 even when the shown agent is idle: stopping follows who started whom.
-`/agents` (the Agent picker in `/plugins`, which subagents, forks and Steel
-programs add) lists every agent with its model, state and what it and the agents below it
+`/agents` (the Agent picker in `/plugins`, which subagents and forks add)
+lists every agent with its model, state and what it and the agents below it
 spent, and shows the one picked: its transcript, and what you type then
 goes to it. A subagent can start subagents of its own, as deep as they go. Subagents started with `peers` can also send each other
 requests with `message` and `wait` for each other; a request or `wait` that
@@ -843,15 +843,27 @@ key, on Linux and macOS: `rig plugin enable rig_claude_cloak::ClaudeCloakPlugin`
 
 Code mode is the optional [`rig-steel`](../plugins/rig-steel) plugin: a
 `run_steel` tool whose [Steel](https://github.com/mattwparas/steel) (Scheme)
-program spawns agents, messages them and calls tools, in a sandbox. Enable it
-with `rig plugin enable rig_steel::SteelPlugin`, or:
+program calls the model's tools, loops and branches on what they return, in a
+sandbox. Enable it with `rig plugin enable rig_steel::SteelPlugin`, or:
 
 ```toml
 [plugins]
 enable = ["rig_steel::SteelPlugin"]
 ```
 
-A fan-out that reviews three directories at once and gathers the findings:
+A program that reads three files and gathers their first lines:
+
+```scheme
+(define paths (list "crates/a/src/lib.rs" "crates/b/src/lib.rs" "crates/c/src/lib.rs"))
+(string-join (map (lambda (path) (call-tool "read" (hash 'path path 'limit 1))) paths) "\n")
+```
+
+With Subagents on as well (`rig plugin enable
+rig_basics::subagents::SubagentsPlugin`), a program also spawns agents
+(`spawn-agent`), sends them requests (`send`) and waits for their answers
+(`reply`), and `/agents` shows them. Without Subagents those functions refuse
+and the tool's description leaves them out. A fan-out that reviews three
+directories at once and gathers the findings:
 
 ```scheme
 (define dirs (list "crates/a" "crates/b" "crates/c"))

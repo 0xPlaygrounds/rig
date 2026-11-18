@@ -59,6 +59,12 @@ fn gate(calls: Query<(Entity, &ToolRequest), ReadyToStart>, mut commands: Comman
 /// An app with code mode, `look`, `touch` and `poke`, its gate, and an agent
 /// answered by `model`.
 fn app(model: &MockCompletionModel) -> (App, Receiver<()>, Entity) {
+    app_with(model, false)
+}
+
+/// [`app`], with [`Subagents`] when `agents`, marked after code mode is
+/// added, as a plugin added later would.
+fn app_with(model: &MockCompletionModel, agents: bool) -> (App, Receiver<()>, Entity) {
     let (mut app, wakes) = app_on(&MemoryStore::default());
     let options = |footprint| ToolOptions {
         footprint: Some(footprint),
@@ -86,6 +92,9 @@ fn app(model: &MockCompletionModel) -> (App, Receiver<()>, Entity) {
         .init_resource::<Kept>()
         .add_systems(Last, keep)
         .add_systems(AgentPass, gate.in_set(Stage::Gate));
+    if agents {
+        app.init_resource::<Subagents>();
+    }
     let agent = match connect(model) {
         Some(connection) => {
             let choice = ModelChoice(connection.spec.reference());
@@ -135,12 +144,21 @@ fn heard(world: &World, agent: Entity, text: &str) -> bool {
     format!("{messages:?}").contains(text)
 }
 
-/// `SteelPlugin` adds `/agents`, which lists and shows its programs' agents.
+/// With Subagents the description offers the agent functions as well as
+/// `call-tool`.
 #[test]
-fn steel_adds_the_agent_picker() {
+fn with_subagents_the_description_offers_the_agent_functions() {
     let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
-    let (app, _, _) = app(&model);
-    assert!(app.is_plugin_added::<AgentPickerPlugin>());
+    let (mut app, _, _) = app_with(&model, true);
+    let said = description(&mut app);
+    for function in [
+        "(spawn-agent name [options])",
+        "(send agent text)",
+        "(reply request)",
+    ] {
+        assert!(said.contains(function), "{said}");
+    }
+    assert!(said.contains("(call-tool name [args])"), "{said}");
 }
 
 #[test]
@@ -228,7 +246,7 @@ fn an_interrupt_ends_a_held_tool_call_of_a_program_and_its_hold() {
 #[test]
 fn a_program_never_gives_an_agent_a_tool_its_parent_lacks() {
     let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
-    let (mut app, wakes, agent) = app(&model);
+    let (mut app, wakes, agent) = app_with(&model, true);
     // As the drive test's intermediary: allowed `run_steel` and `look` only.
     let access = ToolAccess::only([RUN_STEEL, "look"]);
     app.world_mut().entity_mut(agent).insert(access);
@@ -268,7 +286,7 @@ fn a_program_never_gives_an_agent_a_tool_its_parent_lacks() {
 #[test]
 fn a_programs_agent_shares_its_parents_connection() {
     let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
-    let (mut app, wakes, agent) = app(&model);
+    let (mut app, wakes, agent) = app_with(&model, true);
     let code = json!({ "code": r#"(spawn-agent "leaf")"# });
     let call = start_call(app.world_mut(), agent, (RUN_STEEL, "s1"), code);
     let call = call.unwrap_or(Entity::PLACEHOLDER);
@@ -374,16 +392,20 @@ fn ran_with(limits: crate::Limits, code: &str) -> String {
     let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
     let (mut app, wakes, agent) = app(&model);
     app.insert_resource(limits);
+    ran_in(&mut app, &wakes, (agent, "s1"), code)
+}
+
+/// What the program `code` returned, run by `agent` as its call `id` in
+/// `app`.
+fn ran_in(app: &mut App, wakes: &Receiver<()>, (agent, id): (Entity, &str), code: &str) -> String {
     let call = start_call(
         app.world_mut(),
         agent,
-        (RUN_STEEL, "s1"),
+        (RUN_STEEL, id),
         json!({ "code": code }),
     );
     let call = call.unwrap_or(Entity::PLACEHOLDER);
-    run_until(&mut app, &wakes, |world| {
-        world.get::<Outcome>(call).is_some()
-    });
+    run_until(app, wakes, |world| world.get::<Outcome>(call).is_some());
     let result = app.world().get::<Outcome>(call).map(Outcome::tool_result);
     result
         .map(|result| result.output().render())
@@ -499,4 +521,46 @@ fn the_steel_table_sets_the_limits() {
         limits.max_output_bytes,
         crate::Limits::default().max_output_bytes
     );
+}
+
+/// The description `run_steel` has in `app`.
+fn description(app: &mut App) -> String {
+    let world = app.world_mut();
+    let mut tools = world.query::<&ToolDef>();
+    let steel = tools.iter(world).find(|def| def.0.name == RUN_STEEL);
+    steel
+        .map(|def| def.0.description.clone())
+        .unwrap_or_default()
+}
+
+/// Without Subagents a program calls tools, loops and returns a value; its
+/// agent functions are refused with how to turn Subagents on, and the
+/// description offers only `call-tool`.
+#[test]
+fn without_subagents_a_program_only_calls_tools() {
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let (mut app, wakes, agent) = app(&model);
+    let code = r#"(define (looks n) (if (= n 0) '() (cons (call-tool "look") (looks (- n 1)))))
+        (string-join (looks 2) ",")"#;
+    assert_eq!(ran_in(&mut app, &wakes, (agent, "s1"), code), "seen,seen");
+    for (id, code) in [
+        ("s2", r#"(call-tool "look") (spawn-agent "leaf")"#),
+        ("s3", r#"(send "agent" "Hi.")"#),
+        ("s4", r#"(reply "request")"#),
+    ] {
+        let refused = ran_in(&mut app, &wakes, (agent, id), code);
+        assert!(
+            refused.contains("rig plugin enable rig_basics::subagents::SubagentsPlugin"),
+            "{refused}"
+        );
+    }
+    let said = description(&mut app);
+    assert!(said.contains("(call-tool name [args])"), "{said}");
+    assert!(!said.contains("(spawn-agent name [options])"), "{said}");
+    let world = app.world_mut();
+    let agents = world
+        .query_filtered::<(), With<SpawnedBy>>()
+        .iter(world)
+        .count();
+    assert_eq!(agents, 0);
 }
