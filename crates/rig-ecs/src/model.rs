@@ -541,8 +541,8 @@ pub(crate) fn wait_for_window(
 pub(crate) struct RoutedTo(Connection);
 
 /// Sends each call [`wait_for_window`] built anew to its [`RoutedTo`]
-/// model, before Prepare's phases, as a plugin that routes only new calls
-/// routed the call it replaces.
+/// model before Prepare's phases, because a plugin that routes only new
+/// calls does not route it.
 pub(crate) fn keep_route(mut calls: Query<(&mut ModelRequest, &RoutedTo), Added<Admitted>>) {
     for (mut model, RoutedTo(connection)) in &mut calls {
         model.connection = Some(connection.clone());
