@@ -309,12 +309,12 @@ impl From<Option<String>> for SystemPrompt {
 /// Which registered tools the agent may call: those it keeps, saved with
 /// the session, within this run's tools ([`RunTools`]), which the session
 /// never saves.
-/// Only [`within`](Self::within), [`narrow`](Self::narrow),
-/// [`grant`](Self::grant) and the kernel build a narrower one, so an
-/// access made from another never has a tool that one lacks; before it
-/// admits anything the kernel keeps each agent's access within the run's
-/// tools and the access of every agent above it ([`SpawnedBy`]), whatever
-/// made or restored it.
+/// [`within`](Self::within), [`narrow`](Self::narrow) and
+/// [`grant`](Self::grant) build a narrower one, so an access made from
+/// another never has a tool that one lacks. [`only`](Self::only) builds an
+/// allow-list from no other access. Before it admits anything the kernel
+/// keeps each agent's access within the run's tools and the access of
+/// every agent above it ([`SpawnedBy`]), whatever made or restored it.
 #[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -382,6 +382,16 @@ impl ToolAccess {
         Self::default()
     }
 
+    /// Only the tools `names`, each once, in the order given. An agent
+    /// given it still uses no tool the run or an agent above it lacks, as
+    /// the kernel keeps every access within those.
+    pub fn only<'a>(names: impl IntoIterator<Item = &'a str>) -> Self {
+        Self {
+            kept: Kept::Only(Granted(unique(names))),
+            run: None,
+        }
+    }
+
     /// Whether the tool `name` may be called in this run. A child's tools
     /// are built with [`keeps`](Self::keeps), so they outlive the run.
     pub fn allows(&self, name: &str) -> bool {
@@ -421,12 +431,10 @@ impl ToolAccess {
     }
 
     /// This access kept to `names`, each once: never more than it was, such
-    /// as for an agent profile.
+    /// as for an agent profile. Narrowing an access that lacks a name drops
+    /// it; build an allow-list with [`only`](Self::only).
     pub fn narrow<'a>(&self, names: impl IntoIterator<Item = &'a str>) -> Self {
-        self.within(&Self {
-            kept: Kept::Only(Granted(unique(names))),
-            run: None,
-        })
+        self.within(&Self::only(names))
     }
 
     /// A child's access: the tools `asked`, each once, every one a tool of

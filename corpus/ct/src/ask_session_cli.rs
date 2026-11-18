@@ -6,7 +6,7 @@
 //! agent the answerer: its conversation starts with the session's conversation (so
 //! compaction, when the app has it, condenses one too large for the model), its system
 //! prompt says what it is for and lists the turns, and it may call only this plugin's two
-//! read-only tools, `search_session` and `fetch_message` ([`ToolAccess::narrow`]).
+//! read-only tools, `search_session` and `fetch_message` ([`ToolAccess::only`]).
 //!
 //! The answer goes to stdout and nothing else; progress and errors go to stderr. `--json`
 //! prints `{answer, cited_turns, model, tokens, cost}`: the turns of the messages the tools
@@ -316,10 +316,9 @@ fn make_answerer(
             prompt.push_str(&format!(" turn {turn} at #{at};"));
         }
     }
-    commands.entity(agent).insert((
-        SystemPrompt(prompt),
-        ToolAccess::all().narrow([SEARCH, FETCH]),
-    ));
+    commands
+        .entity(agent)
+        .insert((SystemPrompt(prompt), ToolAccess::only([SEARCH, FETCH])));
     commands.trigger(SetModel {
         entity: agent,
         model: model.clone(),

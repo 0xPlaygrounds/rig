@@ -1172,7 +1172,7 @@ fn an_agent_that_cannot_read_gets_notes_not_a_re_read() {
                 connection.spec = Arc::new(spec);
             }
         } else {
-            world.entity_mut(agent).insert(ToolAccess::all().narrow([]));
+            world.entity_mut(agent).insert(ToolAccess::only([]));
         }
         let reads = files.reads();
         ask(&mut app, &wakes, agent);

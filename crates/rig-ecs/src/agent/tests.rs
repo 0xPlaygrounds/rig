@@ -11,7 +11,7 @@ fn owned(names: &[&str]) -> Vec<String> {
 
 #[test]
 fn a_grant_gives_only_tools_the_granting_access_has() {
-    let parent = ToolAccess::all().narrow(["read", "shell"]);
+    let parent = ToolAccess::only(["read", "shell"]);
     let registered = ["edit", "read", "shell"];
     let shell = parent.grant(&owned(&["shell"]), registered);
     assert_eq!(
@@ -34,7 +34,7 @@ fn a_grant_gives_only_tools_the_granting_access_has() {
 
 #[test]
 fn narrowing_never_widens_an_access() {
-    let read = ToolAccess::all().narrow(["read"]);
+    let read = ToolAccess::only(["read"]);
     assert_eq!(read.narrow(["read", "shell"]), read);
     assert!(!read.within(&ToolAccess::all()).allows("shell"));
     assert_eq!(ToolAccess::all().within(&read), read);
@@ -91,16 +91,11 @@ fn an_access_saves_as_it_did_before_its_names_were_private() {
 fn an_agent_is_kept_within_every_agent_above_it() {
     let mut world = World::new();
     world.init_resource::<Messages<Notice>>();
-    let parent = world
-        .spawn(ToolAccess::all().narrow(["read", "run_steel"]))
-        .id();
-    let child = (world.spawn((ToolAccess::all().narrow(["run_steel"]), SpawnedBy(parent)))).id();
+    let parent = world.spawn(ToolAccess::only(["read", "run_steel"])).id();
+    let child = (world.spawn((ToolAccess::only(["run_steel"]), SpawnedBy(parent)))).id();
     // As a session saved before the check restores it: wider than its parent.
     let leaf = world
-        .spawn((
-            ToolAccess::all().narrow(["shell", "run_steel"]),
-            SpawnedBy(child),
-        ))
+        .spawn((ToolAccess::only(["shell", "run_steel"]), SpawnedBy(child)))
         .id();
     let free = world.spawn((ToolAccess::all(), SpawnedBy(child))).id();
     world.run_system_once(keep_within_parents).ok();
@@ -116,9 +111,7 @@ fn an_agent_is_kept_within_every_agent_above_it() {
 #[test]
 fn the_runs_tools_limit_an_access_and_are_never_saved() {
     let run = RunTools::new(["read", "edit"]);
-    let access = ToolAccess::all()
-        .narrow(["read", "shell"])
-        .for_run(Some(&run));
+    let access = ToolAccess::only(["read", "shell"]).for_run(Some(&run));
     assert!(access.allows("read") && !access.allows("shell") && access.keeps("shell"));
     // A child may be given what its parent keeps, and uses it within the
     // run's tools too.
@@ -161,7 +154,7 @@ fn an_agent_that_loses_tools_to_its_parent_is_told_which() {
             world.spawn(crate::tools::ToolDef(std::sync::Arc::new(def)));
         }
     }
-    let parent = world.spawn(ToolAccess::all().narrow(["read"])).id();
+    let parent = world.spawn(ToolAccess::only(["read"])).id();
     let child = world.spawn((ToolAccess::all(), SpawnedBy(parent))).id();
     world.run_system_once(keep_within_parents).ok();
     let said: Vec<(Option<Entity>, String)> = world

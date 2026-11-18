@@ -278,7 +278,7 @@ fn policy_and_persistence_are_ordered_for_every_front() {
                 reply("done"),
             ]);
             let (mut app, wakes, _lines, _input) =
-                restricted_run_with(&model, tools, ToolAccess::all().narrow(["denied"]), |app| {
+                restricted_run_with(&model, tools, ToolAccess::only(["denied"]), |app| {
                     if front != JSON {
                         let mut invoked = app.world_mut().resource_mut::<Invoked>();
                         invoked.args.flags.retain(|(name, _)| name != JSON);
@@ -324,7 +324,7 @@ fn cli_allowlist_intersects_agent_specific_access_before_requests() {
     let (mut app, wakes, lines, input) = restricted_run(
         &model,
         Some("allowed,denied"),
-        ToolAccess::all().narrow(["allowed"]),
+        ToolAccess::only(["allowed"]),
     );
     send(
         &input,
@@ -368,7 +368,7 @@ fn tools_limit_only_their_run_and_never_widen_the_session() {
         (ToolAccess::all(), "allowed", &["allowed"][..], &both[..]),
         (ToolAccess::all(), "", &[][..], &both[..]),
         (
-            ToolAccess::all().narrow(["allowed"]),
+            ToolAccess::only(["allowed"]),
             "denied",
             &[][..],
             &["allowed"][..],
@@ -476,7 +476,7 @@ fn delegated_subagents_obey_inherited_and_cli_limits() {
         let (mut app, wakes, lines, _input) = restricted_run_with(
             &parent_model,
             Some(tools),
-            ToolAccess::all().narrow(["allowed", "task"]),
+            ToolAccess::only(["allowed", "task"]),
             |app| {
                 app.insert_resource(scripted_models([
                     (MODEL, &parent_model),
