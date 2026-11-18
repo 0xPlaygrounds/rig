@@ -383,13 +383,19 @@ fn a_part_hidden_while_running_goes_at_the_next_frame_and_parts_are_declared_or_
     assert!(!row.contains("$0.12"), "{row:?}");
     assert!(row.contains("acme-model"), "{row:?}");
 
-    // The declared part though never drawn, and the drawn ones by name, in
-    // their places on the line, hidden or not.
+    // The declared parts though never drawn (the view's own `copied` among
+    // them), and the drawn ones by name, in their places on the line,
+    // hidden or not.
     let parts: Vec<(&str, &str)> = (app.world().resource::<StatusParts>().iter())
         .map(|part| (part.name, part.label))
         .collect();
     assert_eq!(
         parts,
-        [("model", "model"), ("cost", "cost"), ("budget", "Budget")]
+        [
+            ("model", "model"),
+            ("copied", "Copied lines"),
+            ("cost", "cost"),
+            ("budget", "Budget")
+        ]
     );
 }

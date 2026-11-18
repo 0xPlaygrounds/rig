@@ -16,7 +16,10 @@
 //! first two writes every change in one edit of the file
 //! ([`config::turn`]). `/plugins defaults` asks the same about going back
 //! to rig's defaults, branches turned back on. Without a terminal it lists
-//! them.
+//! them. While the status line runs, a last branch holds its parts,
+//! settings rather than plugins: ticking one writes `[status] hide` and
+//! changes the running line at once, outside the question, and
+//! `/plugins defaults` shows them all again.
 //!
 //! `rig plugin enable` and `rig plugin disable` change the same file from a
 //! shell, with the same rules.
@@ -30,6 +33,9 @@ use rig_harness::prelude::*;
 use rig_harness::services::RigHome;
 
 use crate::reload::{Rebuild, ReloadStatus};
+
+#[cfg(feature = "tui")]
+mod parts;
 
 /// `/plugins`.
 #[derive(Default)]
@@ -73,6 +79,17 @@ struct Row {
     about: String,
 }
 
+/// A part of the status line, a setting rather than a plugin.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Part {
+    /// Its items' name, which `[status] hide` takes.
+    name: &'static str,
+    /// What the list shows.
+    label: &'static str,
+    /// Whether the running `[status] hide` leaves it out.
+    shown: bool,
+}
+
 /// A row of the tree.
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Node {
@@ -80,13 +97,30 @@ enum Node {
     Branch { name: String, label: String },
     /// The plugin of [`Tree::rows`] at this position.
     Plugin(usize),
+    /// The branch of the status line's parts.
+    Parts,
+    /// The part of [`Tree::parts`] at this position.
+    Part(usize),
 }
+
+impl Node {
+    /// Whether it is of the status line's parts, which apply at once and
+    /// are never among the changes of plugins.
+    fn setting(&self) -> bool {
+        matches!(self, Node::Parts | Node::Part(_))
+    }
+}
+
+/// The label of the branch of the status line's parts.
+const PARTS: &str = "Status line parts";
 
 /// The `/plugins` list against settings.toml: its plugins, its tree, and
 /// the file as read with what it turns on, which changes are tried on.
 #[derive(Clone, Debug)]
 struct Tree {
     rows: Vec<Row>,
+    /// The status line's parts, as the list opened.
+    parts: Vec<Part>,
     /// The tree's rows in its order, each with the position of its branch.
     nodes: Vec<(Node, Option<usize>)>,
     file: SettingsFile,
@@ -105,12 +139,24 @@ struct Trial<'a> {
 
 impl Tree {
     /// The tree of the plugins `before` that `file` turns on, with whether
-    /// `running` holds each and the plugin that added it.
-    fn new(file: SettingsFile, before: Plugins, running: &[(String, Option<String>)]) -> Self {
+    /// `running` holds each and the plugin that added it, and the status
+    /// line's `parts`.
+    fn new(
+        file: SettingsFile,
+        before: Plugins,
+        running: &[(String, Option<String>)],
+        parts: Vec<Part>,
+    ) -> Self {
         let rows = rows(&before, running);
-        let nodes = nodes(&rows, &before.off);
+        let mut nodes = nodes(&rows, &before.off);
+        if !parts.is_empty() {
+            let branch = nodes.len();
+            nodes.push((Node::Parts, None));
+            nodes.extend((0..parts.len()).map(|part| (Node::Part(part), Some(branch))));
+        }
         Tree {
             rows,
+            parts,
             nodes,
             file,
             before,
@@ -121,7 +167,15 @@ impl Tree {
     fn row(&self, node: &Node) -> Option<&Row> {
         match node {
             Node::Plugin(row) => self.rows.get(*row),
-            Node::Branch { .. } => None,
+            Node::Branch { .. } | Node::Parts | Node::Part(_) => None,
+        }
+    }
+
+    /// The status line's part at node `node`.
+    fn part(&self, node: &Node) -> Option<&Part> {
+        match node {
+            Node::Part(part) => self.parts.get(*part),
+            _ => None,
         }
     }
 
@@ -132,24 +186,26 @@ impl Tree {
             .map(|(node, _)| match node {
                 Node::Branch { name, .. } => !self.before.off.contains(name),
                 Node::Plugin(_) => self.row(node).is_some_and(|row| row.on),
+                Node::Parts => true,
+                Node::Part(_) => self.part(node).is_some_and(|part| part.shown),
             })
             .collect()
     }
 
-    /// rig's defaults: each plugin's default, every branch on.
+    /// rig's defaults: each plugin's default, every branch and part on.
     fn defaults(&self) -> Vec<bool> {
         (self.nodes.iter())
             .map(|(node, _)| match node {
-                Node::Branch { .. } => true,
                 Node::Plugin(_) => self.row(node).is_some_and(|row| row.default),
+                _ => true,
             })
             .collect()
     }
 
-    /// How many nodes `on` changes.
+    /// How many plugins and branches `on` changes.
     fn changed(&self, on: &[bool]) -> usize {
-        (self.on().iter().zip(on))
-            .filter(|(was, now)| was != now)
+        (self.nodes.iter().zip(self.on()).zip(on))
+            .filter(|(((node, _), was), now)| !node.setting() && was != *now)
             .count()
     }
 
@@ -161,6 +217,7 @@ impl Tree {
         let nodes = self.nodes.iter().zip(self.on()).zip(on);
         for (((node, _), _), now) in nodes.filter(|((_, was), now)| was != *now) {
             match (node, self.row(node)) {
+                (Node::Parts | Node::Part(_), _) => {}
                 (Node::Branch { name, .. }, _) => changes.push((name.as_str(), *now)),
                 (_, Some(row)) if *now && row.unbuilt.is_some() => unbuilt.push(row),
                 (_, Some(row)) => changes.push((row.plugin.as_str(), *now)),
@@ -180,6 +237,8 @@ impl Tree {
     fn about(&self, node: usize) -> String {
         match self.nodes.get(node) {
             Some((Node::Branch { name, .. }, _)) => Some(self.branch_about(name)),
+            Some((Node::Parts, _)) => Some(PARTS_ABOUT.to_owned()),
+            Some((node @ Node::Part(_), _)) => self.part(node).map(Part::about),
             Some((node, _)) => self.row(node).map(|row| row.about.clone()),
             None => None,
         }
@@ -203,6 +262,23 @@ impl Tree {
             "{name}\nBranch of {} plugins: {}.\n\n{state}\n",
             held.len(),
             held.join(", ")
+        )
+    }
+}
+
+/// What the preview says of the branch of the status line's parts.
+const PARTS_ABOUT: &str = "Status line parts\nSettings, not plugins: the parts of the status line \
+under the input, as [status] hide in settings.toml leaves them in or out.\n\nEnter on a part \
+shows or hides it at once, and writes [status] hide; unticking the branch hides them all. A part a \
+plugin draws without declaring it shows here once it is drawn.\n";
+
+impl Part {
+    /// What the preview says of it.
+    fn about(&self) -> String {
+        format!(
+            "{}\nStatus line part `{}`, a setting\n\nEnter shows or hides it at once, and \
+             writes [status] hide in settings.toml. Other plugins still read it.\n",
+            self.label, self.name
         )
     }
 }
@@ -273,6 +349,7 @@ fn plugins(
     invoked: Option<Res<Invoked>>,
     running: Query<(&Name, Option<&ProvidedBy>), With<PluginSource>>,
     slash_commands: Query<&Name, With<SlashCommand>>,
+    #[cfg(feature = "tui")] mut status: parts::Status,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -320,15 +397,25 @@ fn plugins(
             (name.to_string(), by.map(short))
         })
         .collect();
-    let tree = Tree::new(file, chosen, &running);
+    #[cfg(feature = "tui")]
+    let parts = status.parts();
+    #[cfg(not(feature = "tui"))]
+    let parts = Vec::new();
+    let tree = Tree::new(file, chosen, &running, parts);
     let interactive = invoked.is_some_and(|invoked| invoked.interactive());
     if defaults {
+        #[cfg(feature = "tui")]
+        let shown = status.show_all(&home.settings(), args.agent, &mut notices);
+        #[cfg(not(feature = "tui"))]
+        let shown = false;
         let on = tree.defaults();
         if tree.changed(&on) == 0 {
-            notices.write(Notice::info(
-                args.agent,
-                format!("{} already runs rig's defaults.", home.settings().display()),
-            ));
+            if !shown {
+                notices.write(Notice::info(
+                    args.agent,
+                    format!("{} already runs rig's defaults.", home.settings().display()),
+                ));
+            }
             return;
         }
         // The question needs a terminal to show it.
@@ -383,11 +470,13 @@ fn list(commands: &mut Commands, tree: Tree, on: &[bool], agent: Entity, at: usi
     let details = details(&tree, on);
     picker.items = (tree.nodes.iter().zip(on).zip(details))
         .map(|(((node, parent), ticked), detail)| {
-            let (label, more) = match (node, tree.row(node)) {
-                (Node::Branch { name, label }, _) => (label.as_str(), name.clone()),
+            let (label, more) = match (node, tree.row(node), tree.part(node)) {
+                (Node::Branch { name, label }, ..) => (label.as_str(), name.clone()),
+                (Node::Parts, ..) => (PARTS, "[status] hide".to_owned()),
+                (_, _, Some(part)) => (part.label, format!("[status] hide: {}", part.name)),
                 // Typing a type path finds its plugin.
-                (_, Some(row)) => (row.name.as_str(), format!("{}: {}", row.plugin, row.state)),
-                (_, None) => ("", String::new()),
+                (_, Some(row), _) => (row.name.as_str(), format!("{}: {}", row.plugin, row.state)),
+                (_, None, None) => ("", String::new()),
             };
             PickItem {
                 checked: *ticked,
@@ -416,7 +505,7 @@ fn list(commands: &mut Commands, tree: Tree, on: &[bool], agent: Entity, at: usi
 /// The list's body: its keys and how many rows `on` changes.
 fn body(tree: &Tree, on: &[bool]) -> String {
     let keys = "Enter ticks or unticks a plugin or a branch, → and ← open and close branches, \
-                Esc leaves, type to find.";
+                Esc leaves, type to find. Status line parts apply at once.";
     match tree.changed(on) {
         0 => format!("{keys} Nothing is written until you leave."),
         1 => format!("{keys} 1 change: leaving asks whether to reload now or later."),
@@ -433,11 +522,42 @@ fn details(tree: &Tree, on: &[bool]) -> Vec<String> {
     let was = tree.on();
     (tree.nodes.iter().zip(on).zip(was))
         .map(|(((node, _), now), was)| match (node, tree.row(node)) {
+            (Node::Parts | Node::Part(_), _) => part_detail(tree, node, on),
             (Node::Branch { name, .. }, _) => branch_detail(tree, name, (was, *now), &trial),
             (_, Some(row)) => detail(tree, row, *now, &trial),
             (_, None) => String::new(),
         })
         .collect()
+}
+
+/// Which of the status line's parts `on` shows: each part's node ticked
+/// under its branch ticked.
+fn parts_shown<'a>(tree: &'a Tree, on: &'a [bool]) -> impl Iterator<Item = (&'a Part, bool)> {
+    let ticked = |node: usize| on.get(node).copied().unwrap_or(false);
+    let branch = tree.nodes.iter().position(|(node, _)| *node == Node::Parts);
+    let branch = branch.is_some_and(ticked);
+    (tree.nodes.iter().enumerate())
+        .filter_map(move |(at, (node, _))| Some((tree.part(node)?, branch && ticked(at))))
+}
+
+/// What the list shows beside the status line's part, or their branch,
+/// at `node` while `on` is ticked.
+fn part_detail(tree: &Tree, node: &Node, on: &[bool]) -> String {
+    let mut parts = parts_shown(tree, on);
+    if let Some(part) = tree.part(node) {
+        let shown = parts.find(|(other, _)| *other == part);
+        return match shown {
+            Some((_, true)) => "shown".to_owned(),
+            _ => "hidden".to_owned(),
+        };
+    }
+    let (count, hidden) = parts.fold((0, 0), |(count, hidden), (_, shown)| {
+        (count + 1, hidden + usize::from(!shown))
+    });
+    match hidden {
+        0 => "all shown".to_owned(),
+        hidden => format!("{hidden} of {count} hidden"),
+    }
 }
 
 /// What the list shows beside the branch `name`, on in settings.toml or
@@ -872,13 +992,40 @@ fn unhighlighted(
 }
 
 /// Draws `+ on`, `- off` and the count of changes on each list as the
-/// user ticks.
+/// user ticks, and shows or hides the status line's parts ticked at once;
+/// a part that cannot be written is ticked back, with an error notice.
 fn mark(
     lists: Query<(Entity, &PluginsPicker, &Picker, &Ticked), Changed<Ticked>>,
+    #[cfg(feature = "tui")] (home, highlights, mut status, mut notices): (
+        Option<Res<RigHome>>,
+        Query<&Highlighted>,
+        parts::Status,
+        MessageWriter<Notice>,
+    ),
     mut commands: Commands,
 ) {
     for (entity, list, shown, ticked) in &lists {
         let on = ticks(list.tree.nodes.len(), &ticked.0);
+        #[cfg(feature = "tui")]
+        {
+            let switches = status.switches(&list.tree, &on);
+            let path = (home.as_ref())
+                .map_or_else(Home::from_env, |home| home.0.clone())
+                .settings();
+            let switched = (!switches.is_empty()).then(|| status.switch(&path, &switches));
+            if let Some(Err(why)) = switched {
+                notices.write(Notice::error(
+                    list.agent,
+                    format!("{} is unchanged: {why}", path.display()),
+                ));
+                let on = status.as_running(&list.tree, &on);
+                let at =
+                    (highlights.get(entity)).map_or(shown.selected, |highlighted| highlighted.0);
+                commands.entity(entity).try_despawn();
+                self::list(&mut commands, list.tree.clone(), &on, list.agent, at);
+                continue;
+            }
+        }
         let mut picker = shown.clone();
         picker.body = body(&list.tree, &on);
         for (item, detail) in picker.items.iter_mut().zip(details(&list.tree, &on)) {

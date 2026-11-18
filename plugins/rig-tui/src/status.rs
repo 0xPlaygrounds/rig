@@ -9,7 +9,8 @@
 //! a panel, for the shown agent or another, and [`line()`] fits any items
 //! to a width. The [`StatusLinePlugin`] puts the shown agent's under the
 //! input, and its `[status] hide` setting keeps items of those names out of
-//! every drawn line while it is on.
+//! every drawn line while it is on. A plugin declares the parts it draws
+//! ([`AppStatusPartsExt`]) so `/plugins` can show and hide them.
 //!
 //! The default plugins' items, as name (order, keep), place a new item
 //! among them. On the left: `session` (10, 2), `title` (20, 14), `model`
@@ -234,15 +235,18 @@ pub(crate) fn add(app: &mut App) {
 /// The status line under the input: a [`StatusLine`] on the
 /// [`MainEditor`], and `[status]` in `settings.toml`, whose `hide` names
 /// the items no status line draws. Other plugins still read those items.
-/// Settings apply at the next start. Without the
-/// [`TuiViewPlugin`](crate::TuiViewPlugin), added before it or after, it
-/// draws nothing.
+/// The file is read at the start; a change to the running
+/// [`StatusSettings`], as `/plugins` makes, shows at the next frame.
+/// Without the [`TuiViewPlugin`](crate::TuiViewPlugin), added before it or
+/// after, it draws nothing.
 #[derive(Default)]
 pub struct StatusLinePlugin;
 
 impl Plugin for StatusLinePlugin {
     fn build(&self, app: &mut App) {
-        app.add_setting::<StatusSettings>("status");
+        app.add_setting::<StatusSettings>("status")
+            .init_resource::<StatusParts>()
+            .add_systems(PostUpdate, note_drawn.after(StatusSystems::Edit));
     }
 
     // In `finish`, after every plugin's `build`, so the order they were
@@ -264,12 +268,96 @@ impl Plugin for StatusLinePlugin {
     }
 }
 
-/// `[status]` in `settings.toml`.
-#[derive(Resource, Deserialize, Default)]
+/// `[status]` in `settings.toml`, as the status line runs it.
+#[derive(Resource, Deserialize, Default, Debug)]
 #[serde(default, deny_unknown_fields)]
-pub(crate) struct StatusSettings {
+pub struct StatusSettings {
     /// The names of the items no status line draws.
-    hide: Vec<String>,
+    pub hide: Vec<String>,
+}
+
+/// A part of the status line: the name of its items, a short label and
+/// its place.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct StatusPart {
+    /// Its items' name, which `[status] hide` takes.
+    pub name: &'static str,
+    /// What `/plugins` calls it, such as `Cost`; its name when no plugin
+    /// declared it.
+    pub label: &'static str,
+    side: Side,
+    order: u8,
+}
+
+/// The parts of the status line `/plugins` shows and hides: each one a
+/// plugin declares ([`AppStatusPartsExt::add_status_part`]), drawn yet or
+/// not, and each other one drawn since the start.
+#[derive(Resource, Clone, Debug, Default)]
+pub struct StatusParts(Vec<StatusPart>);
+
+impl StatusParts {
+    /// The parts in their places on the line: left, then right, by order.
+    pub fn iter(&self) -> impl Iterator<Item = &StatusPart> {
+        self.0.iter()
+    }
+
+    /// Notes the part of `item`'s name, with `label` when declared.
+    fn note(&mut self, item: &StatusItem, label: Option<&'static str>) {
+        if let Some(part) = self.0.iter_mut().find(|part| part.name == item.name) {
+            if let Some(label) = label {
+                part.label = label;
+            }
+            return;
+        }
+        self.0.push(StatusPart {
+            name: item.name,
+            label: label.unwrap_or(item.name),
+            side: item.side,
+            order: item.order,
+        });
+        self.0
+            .sort_by_key(|part| (part.side == Side::Right, part.order, part.name));
+    }
+
+    /// Whether a part has `name`.
+    fn has(&self, name: &str) -> bool {
+        self.0.iter().any(|part| part.name == name)
+    }
+}
+
+/// Declaring the status line parts a plugin draws.
+pub trait AppStatusPartsExt {
+    /// Declares the part of `item`'s name as `label`, such as `Cost`, so
+    /// `/plugins` lists it before it is first drawn. Call it in the
+    /// plugin's `build`.
+    fn add_status_part(&mut self, item: &StatusItem, label: &'static str) -> &mut Self;
+}
+
+impl AppStatusPartsExt for App {
+    fn add_status_part(&mut self, item: &StatusItem, label: &'static str) -> &mut Self {
+        let world = self.world_mut();
+        world
+            .get_resource_or_init::<StatusParts>()
+            .note(item, Some(label));
+        self
+    }
+}
+
+/// Notes each part drawn that no plugin declared, by its name.
+fn note_drawn(
+    items: Query<&StatusItems, Changed<StatusItems>>,
+    app: Option<Res<AppStatus>>,
+    mut parts: ResMut<StatusParts>,
+) {
+    let app = app
+        .as_ref()
+        .filter(|app| app.is_changed())
+        .map(|app| &app.0);
+    for item in items.iter().chain(app).flat_map(StatusItems::iter) {
+        if !parts.has(item.name) {
+            parts.note(item, None);
+        }
+    }
 }
 
 /// Puts the shown agent's status line on each main editor as it appears.

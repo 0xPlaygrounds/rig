@@ -266,7 +266,8 @@ The status line is its own plugin, `rig_tui::status::StatusLinePlugin`, on
 by default. `rig plugin disable rig_tui::status::StatusLinePlugin` leaves
 the input's bottom row empty, which also takes away the model's name and
 what the agent is doing. `[status] hide` in `settings.toml` leaves single
-parts out by name, at the next start:
+parts out by name. A hand edit applies at the next start; `/plugins` shows
+and hides them at once:
 
 ```toml
 [status]
@@ -280,6 +281,15 @@ agents at work), `turn` (what the running turn spent), `reload`, `copied`,
 are hidden by their names in the same way, and a name nothing draws does
 nothing. Hidden parts are only not drawn: plugins still read them. With no
 agent, the line says `no agent`, which is no part.
+
+While the status line is on, `/plugins` ends with a "Status line parts"
+branch: rig's parts by a short label (such as "Cost" or "Context used"),
+drawn yet or not, and another plugin's parts by name once they are drawn.
+They are settings, not plugins: each shows "shown" or "hidden", and Enter on
+one writes `[status] hide` and changes the line at once, with no question
+when you leave. Unticking the branch hides them all. When `settings.toml`
+cannot be written, a notice says why and the row goes back.
+`/plugins defaults` shows every part again at once.
 
 Typing while the agent works is fine. Enter steers the running turn (the
 message goes to the model with its next call, after the tool results it waits
