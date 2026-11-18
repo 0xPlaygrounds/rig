@@ -634,6 +634,37 @@ fn a_needed_plugin_under_an_off_branch_stays_on() {
 }
 
 #[test]
+fn a_plugin_whose_only_with_plugin_is_off_is_not_on() {
+    const FOLD: &str = "rig_fold::FoldPlugin";
+    const TUI: &str = "rig_tui::TuiPlugin";
+    let text = format!("[plugins]\nenable = [\"{FOLD}\"]\ndisable = [\"{TUI}\"]\n");
+    let chosen = plugins(&file("/h/settings.toml", &text)).unwrap_or_default();
+    assert!(
+        !chosen.on.iter().any(|plugin| plugin == FOLD),
+        "{:?}",
+        chosen.on
+    );
+    assert!(
+        chosen.own.iter().any(|plugin| plugin == FOLD),
+        "{:?}",
+        chosen.own
+    );
+    assert_eq!(
+        chosen
+            .does_nothing_without(FOLD)
+            .map(|built_in| built_in.plugin),
+        Some(TUI)
+    );
+    let with = format!("[plugins]\nenable = [\"{FOLD}\"]\n");
+    let chosen = plugins(&file("/h/settings.toml", &with)).unwrap_or_default();
+    assert!(
+        chosen.on.iter().any(|plugin| plugin == FOLD),
+        "{:?}",
+        chosen.on
+    );
+}
+
+#[test]
 fn every_link_of_the_table_names_one_of_its_rows() {
     for row in BUILT_IN {
         for linked in row.adds.iter().chain(row.only_with) {

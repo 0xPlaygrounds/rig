@@ -889,7 +889,7 @@ fn the_refusal_names_every_plugin_on_that_adds_it() {
 }
 
 #[test]
-fn the_list_says_a_plugin_on_does_nothing_without_one_off() {
+fn the_list_says_a_plugin_is_off_while_it_does_nothing_without_one_off() {
     const MCP_APPROVAL: &str = "rig_mcp_client::approval::McpApprovalPlugin";
     let home = old_home("idle");
     let result = (|| -> Result<_> {
@@ -901,7 +901,10 @@ fn the_list_says_a_plugin_on_does_nothing_without_one_off() {
     let list = result.unwrap_or_default();
     let line = list.lines().find(|line| line.contains(MCP_APPROVAL));
     assert!(
-        line.is_some_and(|line| line.contains("does nothing without MCP servers")),
+        line.is_some_and(|line| {
+            line.trim_start().starts_with("off ")
+                && line.contains("does nothing without MCP servers")
+        }),
         "{list}"
     );
 }

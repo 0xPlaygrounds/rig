@@ -966,3 +966,26 @@ fn unticking_a_plugin_two_plugins_add_names_both() {
         asked.body
     );
 }
+
+#[test]
+fn a_plugin_on_whose_only_with_plugin_is_off_shows_off() {
+    let home = scratch_home("plugins-idle");
+    fs::create_dir_all(home.root()).ok();
+    fs::write(
+        home.settings(),
+        "[plugins]\nenable = [\"rig_mcp_client::approval::McpApprovalPlugin\"]\n",
+    )
+    .ok();
+    let (mut app, agent) = app(&home, true);
+    open(&mut app, agent);
+    let found = picker(&mut app);
+    assert!(found.is_some(), "no list");
+    let Some((_, shown)) = found else {
+        return;
+    };
+    assert!(
+        detail(&shown, "MCP approval").starts_with("off, does nothing without MCP servers"),
+        "{}",
+        detail(&shown, "MCP approval")
+    );
+}
