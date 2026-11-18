@@ -795,14 +795,15 @@ fn open(mut opened: Opened) {
     if !opened.start.is_over() {
         return;
     }
-    // The answer lists the models the client can pick and the agent's, so
-    // it waits until the first pick is settled, which waits for each
-    // sign-in to know what its account offers.
-    if !opened.first_pick.is_settled() {
+    // The answer lists the models the client can pick, so it waits until
+    // each sign-in knows what its account offers, and the agent's, so it
+    // waits until the first pick is settled.
+    let first = FirstPick::of(&opened.models);
+    if first == FirstPick::Checking || !opened.first_pick.is_settled() {
         return;
     }
     let picks = !opened.session.chose && chosen.is_none();
-    if picks && let FirstPick::Nothing(Some(why)) = FirstPick::of(&opened.models) {
+    if picks && let FirstPick::Nothing(Some(why)) = first {
         let why = format!("No model can be reached: {why}.");
         opened.notices.write(Notice::error(agent, why));
     }

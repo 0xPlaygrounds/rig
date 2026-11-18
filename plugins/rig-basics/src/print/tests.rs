@@ -38,7 +38,9 @@ fn noting(store: &MemoryStore, invoked: Invocation) -> (App, Receiver<()>) {
     (app, wakes)
 }
 
-/// [`noting`] without the models plugin: a test connects the agent.
+/// [`noting`] without the models plugin. Its apps still get the first
+/// pick through [`AppHeadlessExt::run_headless`], which is why
+/// [`started`] holds the start while its setup restores a model.
 fn unpicked(store: &MemoryStore, invoked: Invocation) -> (App, Receiver<()>) {
     let (mut app, wakes) = app_on(store);
     app.insert_resource(Invoked {
@@ -58,8 +60,9 @@ fn unpicked(store: &MemoryStore, invoked: Invocation) -> (App, Receiver<()>) {
     (app, wakes)
 }
 
-/// A run of `prompt` after its first frame and `setup`; with `model`,
-/// named on the command line and connected.
+/// A run of `prompt` after its first frame and `setup`, which run before
+/// the start is over, as a restored session does; with `model`, named on
+/// the command line and connected.
 fn started(
     prompt: &str,
     model: Option<&MockCompletionModel>,
@@ -71,8 +74,8 @@ fn started(
         ..Invocation::default()
     };
     let (mut app, _) = unpicked(&MemoryStore::default(), invoked);
-    // Without one named, the run connects to none before `setup`.
     let scripted = model.cloned().unwrap_or_else(silent);
+    let starting = app.world_mut().spawn(Starting).id();
     app.insert_resource(scripted_models([(NAMED, &scripted)]))
         .add_plugins(ExitPlugin)
         .run_headless(Some(prompt.to_owned()))
@@ -83,6 +86,7 @@ fn started(
         world.entity_mut(agent).insert(connection);
     }
     setup(world, agent);
+    world.despawn(starting);
     app
 }
 

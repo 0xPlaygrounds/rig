@@ -496,17 +496,20 @@ fn with_piped(
 
 /// Starts a run nobody sits at on an [`App`].
 pub trait AppHeadlessExt {
-    /// Sends `prompt` to the main agent once it has a model, and exits when
-    /// no agent works any more and no [`KeepRunning`] exists. Without a
-    /// prompt, the run finishes the turns a plugin carries on from its
-    /// restored session (`CarryOn`), and waits for the work a `KeepRunning`
-    /// plugin sends.
+    /// Sends `prompt` to the main agent once it has a model, the
+    /// [`FirstPick`] when nothing else gave it one, and exits when no agent
+    /// works any more and no [`KeepRunning`] exists. Without a prompt, the
+    /// run finishes the turns a plugin carries on from its restored session
+    /// (`CarryOn`), and waits for the work a `KeepRunning` plugin sends.
     /// Call it once, from the front's `finish`.
     fn run_headless(&mut self, prompt: Option<String>) -> &mut Self;
 }
 
 impl AppHeadlessExt for App {
     fn run_headless(&mut self, prompt: Option<String>) -> &mut Self {
+        if !self.is_plugin_added::<FirstPickPlugin>() {
+            self.add_plugins(FirstPickPlugin);
+        }
         let invoked = self.world().get_resource::<Invoked>();
         let model = invoked.is_some_and(|invoked| invoked.args.model.is_some());
         let world = self.world_mut();
