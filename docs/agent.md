@@ -472,8 +472,8 @@ older messages summarized otherwise, and the call is sent again. An agent's
 model the catalog gives no window, such as one served by Ollama or a llama.cpp
 server, gets the window its server says (llama.cpp's `n_ctx`; Ollama's
 `num_ctx`, else the model's trained length, which can be larger than the
-window Ollama serves when no `num_ctx` is set). A turn waits for that answer
-once, a few seconds at most. A server that cannot be reached or answers
+window Ollama serves when no `num_ctx` is set). A turn on one model waits for
+that answer once, a few seconds at most. A server that cannot be reached or answers
 with a server error (5xx) is asked again on the next turn; a client error
 (4xx) is its answer. One whose server does not say
 has no window, so it is compacted only when a request is refused as too long.

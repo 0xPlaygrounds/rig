@@ -324,7 +324,7 @@ pub(crate) fn connect(
 /// gives none, by reference: `None` while asking, or when the server did
 /// not say. A server's answer, with or without a window or with a client
 /// error status, is final for the run, and so is its silence past the ask's
-/// deadline, so a server that hangs holds one turn at most. A server that
+/// deadline, so a server that hangs costs one deadline. A server that
 /// could not be reached or answered with a server error has no entry, so
 /// the next turn asks again.
 #[derive(Resource, Default)]
@@ -463,7 +463,7 @@ pub(crate) fn learn_window(
 pub(crate) struct WaitingForWindow(String);
 
 /// Names the model whose window a turn last waited for, so a failed ask
-/// holds none of the turn's later calls to that model.
+/// holds no more of the turn's calls while it stays on that model.
 #[derive(Component)]
 pub(crate) struct WaitedForWindow(String);
 
@@ -471,8 +471,9 @@ pub(crate) struct WaitedForWindow(String);
 /// model with no context window, while that model's server is asked for one,
 /// in [`Stage::Gate`](super::stage::Stage::Gate), asking it again first when
 /// the last ask did not reach it: measured without the window, a request
-/// would not be compacted near it. A turn waits for one ask of a model, and
-/// its calls ready together wait for that same ask. A call measured without
+/// would not be compacted near it. A turn does not wait again for the model
+/// it last waited for, though moving to another model and back can, and its
+/// calls ready together wait for the same ask. A call measured without
 /// a window its model now has is built anew, once for that model, from its
 /// agent. A call a plugin routed to a connection of its own, or left behind
 /// by its agent's switch to another model, goes out as it is.
