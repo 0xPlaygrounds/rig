@@ -189,7 +189,7 @@ Model classes (rig constants at `crates/rig-core/src/providers/anthropic/complet
 | A5 | `claude-opus-5` | adaptive by default | `disabled` at effort <= high | 400 | all five | high | 400 | no |
 | A6 | `claude-sonnet-5-5` | adaptive by default | `between_tools` at effort <= high (`disabled` is 400) | 400 | all five | high | non-default 400 | no |
 | A7 | `claude-opus-5-5` | adaptive by default | 400 at every effort | 400 | all five | medium | 400 | no |
-| A8 | `claude-fable-5`, `claude-fable-5-1` | always on | 400 | 400 | all five | high | 400 | Fable 5 yes, 5.1 no |
+| A8 | `claude-fable-5`, `claude-fable-5-1`, `claude-fable-5-2` | always on | 400 | 400 | all five | high | 400 | Fable 5 yes, 5.1 and 5.2 no |
 
 **Anthropic** (`"anthropic"`):
 
@@ -311,7 +311,7 @@ Cross-cutting rules:
 
 | option | JSON | notes | doc |
 |---|---|---|---|
-| `Off` | `"reasoning_effort":"none"` | a catalog row whose levels include `none` (GPT-5.1+, not the `-pro` rows, `gpt-5.2-chat-latest`, `gpt-6-astra` or `gpt-6.1-sol`); an unlisted id unless its name is o-series, `-pro` or GPT-5.0; non-reasoning models: omit | [OC] |
+| `Off` | `"reasoning_effort":"none"` | a catalog row whose levels include `none` (GPT-5.1+, not the `-pro` rows, `gpt-5.2-chat-latest`, `gpt-6-astra`, `gpt-6.1-sol`, `gpt-6.2-astra` or `gpt-6.2-sol`); an unlisted id unless its name is o-series, `-pro` or GPT-5.0; non-reasoning models: omit | [OC] |
 | `Effort(e)` | `"reasoning_effort":"minimal"\|"low"\|"medium"\|"high"\|"xhigh"\|"max"` | the levels the catalog row lists; an unlisted id takes every level; non-reasoning model unsupported | [OC] |
 | `Budget` | unsupported: effort only | | [OC] |
 | `cache None` | GPT-5.6+: `"prompt_cache_options":{"mode":"explicit"}` with no breakpoints; earlier: unsupported (always on) | | [OK] |
@@ -519,11 +519,11 @@ The Responses API has no `seed` and no `stop` parameter.
 
 | option | JSON | model dependence | doc |
 |---|---|---|---|
-| `Off` | `"reasoning":{"effort":"none"}` | models whose levels include `none`; unsupported on gpt-6-astra, gpt-6.1-sol, gpt-5, o-series, `*-pro`; omit on non-reasoning models | [RR] |
+| `Off` | `"reasoning":{"effort":"none"}` | models whose levels include `none`; unsupported on gpt-6-astra, gpt-6.1-sol, gpt-6.2-astra, gpt-6.2-sol, gpt-5, o-series, `*-pro`; omit on non-reasoning models | [RR] |
 | `Effort(Minimal)` | `{"effort":"minimal"}` | gpt-5, gpt-5-mini, gpt-5-nano only | [RR] |
 | `Effort(Low/Medium/High)` | `"reasoning":{"effort":"<level>"}`, and the `ReasoningCiphertext` rewrite adds `"include":["reasoning.encrypted_content"]` (as for every effort cell) | `*-pro` and `gpt-5.2-chat-latest` restrict levels | [RR] |
 | `Effort(XHigh)` | `{"effort":"xhigh"}` | gpt-5.2 and later | [RR] |
-| `Effort(Max)` | `{"effort":"max"}` | gpt-5.6, gpt-6, gpt-6.1-sol | [RR] |
+| `Effort(Max)` | `{"effort":"max"}` | gpt-5.6, gpt-6, gpt-6.1-sol, gpt-6.2 | [RR] |
 | `Budget` | unsupported: effort only | | [RC] |
 | `cache None` | gpt-5.6+: `"prompt_cache_options":{"mode":"explicit"}` with no breakpoints; earlier: unsupported | | [RK] |
 | `cache Short` | gpt-5.6+: omit; earlier: `"prompt_cache_retention":"in_memory"`; gpt-5.5, 5.5-pro: unsupported (24 h only) | | [RC], [RK] |
@@ -669,7 +669,7 @@ Model data (with models.dev `reasoning_options`):
 |---|---|---|---|---|---|
 | `Off` | 2.5 Flash, Flash-Lite: `{"generationConfig":{"thinkingConfig":{"thinkingBudget":0}}}`; 2.5 Pro and Gemini 3: unsupported (`minimal` is not off) | as GC | unsupported: no budget, no off | as GC | [GT], [GX] |
 | `Effort(Minimal..High)` | Gemini 3: `{"generationConfig":{"thinkingConfig":{"thinkingLevel":"<level>"}}}` where listed; 2.5: unsupported (no effort-to-budget table in the catalog) | as GC | `{"generation_config":{"thinking_level":"<level>"}}` | as GC; rig's proto declares `thinking_level`, Google's does not [unverified] | [GT], [GX], [GPR] |
-| `Effort(XHigh/Max)` | unsupported: the enum stops at `high` | as GC | as GC | as GC | [GT] |
+| `Effort(XHigh/Max)` | `xhigh` where the catalog lists it (Gemini 4 Hydrogen), as `Effort(Minimal..High)`; otherwise unsupported, `max` always | as GC | as GC | unsupported: rig's proto has no `XHIGH` | [GT] |
 | `Budget { tokens }` | 2.5: `{"generationConfig":{"thinkingConfig":{"thinkingBudget":N}}}` inside the model range; Gemini 3: unsupported | as GC (`i32`) | unsupported | as GC | [GT] |
 | `cache None` | unsupported: implicit caching cannot be turned off per request | unsupported: per project only | unsupported | unsupported | [GC], [VC], [GXC] |
 | `cache Short` | omit (implicit caching) | omit | omit | omit | [GC] |
@@ -789,7 +789,7 @@ provider docs. Every `Options` type is serialize-only; every `Extras` type reads
 
 | provider key | route sections | Options fields | Extras fields | sources |
 |---|---|---|---|---|
-| `anthropic` | `"*"` | `top_k` (refused where the model fixes its sampling), `metadata_user_id`, `inference_geo`, `speed` (`fast` + beta; refused off Opus 5.5, 5 and 4.8), `task_budget` (`output_config.task_budget` + beta), `fallbacks` (`"default"` or `[{"model"}]`) + beta, `container` (an id or `{id?, skills}`), `context_management` + beta, `mcp_servers` + beta, `diagnostics_previous_message_id` + beta | `stop_reason`, `stop_sequence`, `stop_details`, `cache_creation { ephemeral_5m_input_tokens, ephemeral_1h_input_tokens }`, `service_tier`, `inference_geo`, `speed`, `server_tool_use`, `container`, `fallback_model` | v0.43 `crates/rig-core/src/providers/anthropic/completion.rs` 57-121, 212-230, 350-355; [AM] |
+| `anthropic` | `"*"` | `top_k` (refused where the model fixes its sampling), `metadata_user_id`, `inference_geo`, `speed` (`fast` + beta; refused off Fable 5.2 and Opus 5.5, 5 and 4.8), `task_budget` (`output_config.task_budget` + beta), `fallbacks` (`"default"` or `[{"model"}]`) + beta, `container` (an id or `{id?, skills}`), `context_management` + beta, `mcp_servers` + beta, `diagnostics_previous_message_id` + beta | `stop_reason`, `stop_sequence`, `stop_details`, `cache_creation { ephemeral_5m_input_tokens, ephemeral_1h_input_tokens }`, `service_tier`, `inference_geo`, `speed`, `server_tool_use`, `container`, `fallback_model` | v0.43 `crates/rig-core/src/providers/anthropic/completion.rs` 57-121, 212-230, 350-355; [AM] |
 | `zai`, `minimax`, `moonshot`, `xiaomimimo` | `"openai.chat"`, `"anthropic.messages"` | Z.AI Chat: `do_sample`, `request_id`, `user_id`, `thinking.clear_thinking`. MiniMax Chat: `reasoning_split`; Messages: `metadata_user_id` (`metadata.user_id`). Moonshot Chat: `thinking.keep`, `prompt_cache_key`. MiMo: none (web search is a server tool). The Messages route takes no other documented field of these vendors' own | one flat type per vendor. Chat: Z.AI `request_id`; MiniMax `reasoning_details`, `base_resp`; MiMo `message.annotations`; Moonshot choice-level `usage`, `prompt_tokens_details`. Messages: `stop_reason`, `stop_sequence` | dialect docs in 6.1 and 6.2 |
 | `openai` | `"*"`, `"openai.chat"`, `"openai.responses"` | `"*"`: `store`, `metadata`, `prompt_cache_key`, `safety_identifier`. Chat: `logit_bias`, `prediction`, `logprobs`, `top_logprobs`, penalties, `modalities`, `audio`, `web_search_options`. Responses: `input` (caller-built items, which the wire claims and places ahead of the request's own), `reasoning.{summary, mode, context}`, `include`, `conversation`, `truncation`, `context_management`, `prompt_cache_options.comparison_response_id`, `background` (refused on the WebSocket route), `max_tool_calls`, `top_logprobs`, `access_programs`. Not added: `n` (the decoder folds candidate 0), `include_obfuscation` (mode-only), `previous_response_id` (the WebSocket chain owns it), `prompt_cache_options.mode`/`.ttl` (`cache` owns them), `.prewarm` (the WebSocket warm-up), `service_tier_extra` (writes `service_tier`) | `OpenAiExtras`, flat: `service_tier` on both routes. Chat: `system_fingerprint`, `prompt_tokens_details`, `completion_tokens_details`, `annotations`. Responses: effective `reasoning` effort, summary, mode and context, `prompt_cache_retention`, `incomplete_details.reason`, `phase` per message item, `billing.payer` (unary only) | v0.43 `crates/rig-core/src/providers/openai/responses_api/mod.rs` 1378-1422, 1563-1610, 1659-1895; [OC], [RC] |
 | `azure.openai` | `"openai.chat"` | the `openai` Chat fields, `data_sources`; no Responses section (unverified, and every option is refused there) | `service_tier`, `system_fingerprint`, token details, `prompt_filter_results`, `content_filter_results` | Azure docs in 6.2 |

@@ -22,7 +22,7 @@ use serde::ser::SerializeMap;
 use serde::{Deserialize, Serialize, Serializer};
 use serde_json::Value;
 
-use super::completion::{CLAUDE_OPUS_4_8, CLAUDE_OPUS_5, CLAUDE_OPUS_5_5};
+use super::completion::{CLAUDE_FABLE_5_2, CLAUDE_OPUS_4_8, CLAUDE_OPUS_5, CLAUDE_OPUS_5_5};
 use super::wire::MESSAGES_API;
 use crate::catalog::Sampling;
 use crate::completion::{
@@ -46,7 +46,12 @@ pub const MCP_CLIENT_BETA: &str = "mcp-client-2025-11-20";
 pub const CACHE_DIAGNOSIS_BETA: &str = "cache-diagnosis-2026-04-07";
 
 /// The models fast mode runs on.
-const FAST_MODELS: &[&str] = &[CLAUDE_OPUS_5_5, CLAUDE_OPUS_5, CLAUDE_OPUS_4_8];
+const FAST_MODELS: &[&str] = &[
+    CLAUDE_FABLE_5_2,
+    CLAUDE_OPUS_5_5,
+    CLAUDE_OPUS_5,
+    CLAUDE_OPUS_4_8,
+];
 
 /// Anthropic's typed options and extras.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -81,8 +86,9 @@ pub struct AnthropicShared {
     pub metadata_user_id: Option<String>,
     /// `inference_geo`: where inference runs.
     pub inference_geo: Option<InferenceGeo>,
-    /// `speed`. [`Speed::Fast`] + beta [`FAST_MODE_BETA`], on Claude Opus
-    /// 5.5, Opus 5 and Opus 4.8 only; refused on other listed models.
+    /// `speed`. [`Speed::Fast`] + beta [`FAST_MODE_BETA`], on Claude Fable
+    /// 5.2, Opus 5.5, Opus 5 and Opus 4.8 only; refused on other listed
+    /// models.
     pub speed: Option<Speed>,
     /// `output_config.task_budget` + beta [`TASK_BUDGETS_BETA`].
     pub task_budget: Option<TaskBudget>,
@@ -254,7 +260,7 @@ impl ExtensionOptions for AnthropicOptions {
         if self.shared.speed == Some(Speed::Fast) && !FAST_MODELS.contains(&spec.id.as_str()) {
             refused.push((
                 "speed",
-                "fast mode runs on Claude Opus 5.5, Opus 5 and Opus 4.8 only".to_owned(),
+                "fast mode runs on Claude Fable 5.2, Opus 5.5, Opus 5 and Opus 4.8 only".to_owned(),
             ));
         }
         refused

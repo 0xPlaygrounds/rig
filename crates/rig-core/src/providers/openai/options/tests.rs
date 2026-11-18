@@ -65,6 +65,33 @@ fn openai_model_facts_come_from_the_catalog() {
     );
 }
 
+/// OpenRouter lists effort `none` and `high` for Mistral Large 4.0, so rig
+/// sends those two and refuses the other levels and a budget.
+#[test]
+fn openrouter_mistral_large_4_takes_effort_none_and_high_only() {
+    let mistral = chat(&OPENROUTER, "mistralai/mistral-large-4-0");
+    for (reasoning, effort) in [
+        (Reasoning::Off, "none"),
+        (Reasoning::Effort(Effort::High), "high"),
+    ] {
+        let body = sent(&mistral, GenerationOptions::default().reasoning(reasoning))
+            .unwrap_or_else(|error| panic!("{reasoning:?}: {error}"));
+        assert_eq!(
+            body["reasoning"],
+            json!({"effort": effort}),
+            "{reasoning:?}"
+        );
+    }
+    for reasoning in [
+        Reasoning::Effort(Effort::Low),
+        Reasoning::Effort(Effort::XHigh),
+        Reasoning::Budget { tokens: 1024 },
+    ] {
+        let result = sent(&mistral, GenerationOptions::default().reasoning(reasoning));
+        assert_eq!(refused(result), Some("reasoning"), "{reasoning:?}");
+    }
+}
+
 /// OpenAI ids the catalog does not list (from OpenAI's own model list,
 /// `openai/models/list_models_smoke.yaml`) reason by their name: Chat sends
 /// `max_completion_tokens`, and `Off` is refused where the name says the
@@ -1108,7 +1135,7 @@ mod responses {
 use crate::completion::ToolDefinition;
 use crate::message::ToolName;
 use crate::providers::openai::completion::{
-    GPT_6_1_SOL, GPT_6_1_TERRA, GPT_6_ASTRA, GPT_6_LUNA, GPT_6_SOL,
+    GPT_6_1_SOL, GPT_6_1_TERRA, GPT_6_2_ASTRA, GPT_6_2_SOL, GPT_6_ASTRA, GPT_6_LUNA, GPT_6_SOL,
 };
 use crate::providers::openai::responses_api::wire::Responses as ResponsesWire;
 
@@ -1242,6 +1269,35 @@ fn gpt_6_sampling_parameters_fail_while_the_model_reasons_by_default() {
             "{error}"
         );
     }
+}
+
+/// GPT-6.2 Astra and Sol reject effort `none` and sampling parameters, and
+/// call tools only through Responses.
+#[test]
+fn gpt_6_2_refuses_effort_none_sampling_and_chat_tools() {
+    for model in [GPT_6_2_ASTRA, GPT_6_2_SOL] {
+        for result in [
+            on_prepared_chat(model, gpt_6_request(None).reasoning(Reasoning::Off)),
+            on_prepared_responses(model, gpt_6_request(None).reasoning(Reasoning::Off)),
+        ] {
+            assert_eq!(refusal(result).0, "reasoning", "{model}");
+        }
+        for result in [
+            on_prepared_chat(model, strict(gpt_6_request(None).temperature(0.2))),
+            on_prepared_responses(model, strict(gpt_6_request(None).temperature(0.2))),
+        ] {
+            assert_eq!(refusal(result).0, "temperature", "{model}");
+        }
+        let tools = on_prepared_chat(model, strict(with_tool(gpt_6_request(None))));
+        assert_eq!(refusal(tools).0, "tools", "{model}");
+        let body = on_prepared_responses(model, strict(with_tool(gpt_6_request(None))))
+            .unwrap_or_else(|error| panic!("{model}: {error}"));
+        assert_eq!(body["tools"][0]["name"], "lookup", "{model}");
+    }
+    let variant = "gpt-6.2-sol-codex";
+    assert!(openai_spec(crate::catalog::ModelFacts::builtin(), variant).is_none());
+    let off = on_prepared_responses(variant, gpt_6_request(None).reasoning(Reasoning::Off));
+    assert_eq!(refusal(off).0, "reasoning");
 }
 
 /// A request that sets no generation option is sent as built, as before the

@@ -109,6 +109,10 @@ fn current_model_default_max_tokens_match_anthropic_limits() {
         Some(128_000)
     );
     assert_eq!(
+        default_max_tokens_for_model(crate::catalog::ModelFacts::builtin(), CLAUDE_FABLE_5_2),
+        Some(128_000)
+    );
+    assert_eq!(
         default_max_tokens_for_model(crate::catalog::ModelFacts::builtin(), CLAUDE_FABLE_5),
         Some(128_000)
     );
@@ -1939,6 +1943,7 @@ fn context_binding_reads_anthropics_ids_and_their_snapshots() {
         "claude-opus-5",
         "anthropic/claude-opus-5",
         "claude-fable-5-1",
+        "claude-fable-5-2",
         "claude-sonnet-5-5",
     ] {
         assert!(

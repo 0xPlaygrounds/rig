@@ -531,7 +531,7 @@ plugin's settings table that does not read, or piped input that is over
 64 MiB, fails to read or is not UTF-8. Piped input is read until stdin closes; give `</dev/null` for none. A
 command that would open a list to pick from, such as `/model`, `/effort`,
 `/resume`, `/login` or `/fork at`, is refused there with the commands to
-type instead (`/model chatgpt/gpt-6.1-sol`), as is text after a command
+type instead (`/model chatgpt/gpt-6.2-sol`), as is text after a command
 that takes none (`/new hello`). Text piped in follows the prompt (`git diff
 | rig -p "review this"`), and piped in without `-p` it is the prompt: `rig`
 runs the terminal view only on an interactive terminal.

@@ -55,7 +55,7 @@ use rig::providers::openai::{self, OpenAI};
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Reads OPENAI_API_KEY.
-    let model = OpenAI::from_env()?.completion(openai::GPT_6_1_SOL);
+    let model = OpenAI::from_env()?.completion(openai::GPT_6_2_SOL);
     let agent = AgentBuilder::new(model)
         .preamble("You are a comedian.")
         .build();
