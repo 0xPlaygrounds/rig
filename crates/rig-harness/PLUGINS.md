@@ -37,7 +37,7 @@ same session; a failed build keeps the running agent.
 
 Plugins form a tree of crates, areas and plugins. A plugin's area is the first
 module under its crate in its type path:
-`rig_basics::sessions::agents::AgentsPlugin` is in `rig-basics/sessions`, and
+`rig_basics::sessions::forks::ForksPlugin` is in `rig-basics/sessions`, and
 `rig_basics::BasicCommandsPlugin`, directly under the crate root, is in none.
 Nothing declares an area, so plugins that belong together go in one module.
 

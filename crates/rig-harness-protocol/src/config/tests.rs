@@ -497,7 +497,7 @@ fn an_unknown_enabled_plugin_names_its_fixes() {
 }
 
 const SESSIONS: &str = "rig_basics::sessions::SessionsPlugin";
-const FORKS: &str = "rig_basics::sessions::agents::AgentsPlugin";
+const FORKS: &str = "rig_basics::sessions::forks::ForksPlugin";
 const TUI: &str = "rig_tui::TuiPlugin";
 
 /// `text` turned by `changes` with [`turn`], and its text after.

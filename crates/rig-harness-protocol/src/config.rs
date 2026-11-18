@@ -59,7 +59,7 @@ pub struct BuiltIn {
 
 /// The area of the plugin `plugin` within its crate: the module under the
 /// crate's root in its type path, `sessions` for
-/// `rig_basics::sessions::agents::AgentsPlugin`. A plugin at the root has
+/// `rig_basics::sessions::forks::ForksPlugin`. A plugin at the root has
 /// none. The branch `<crate>/<area>` holds every plugin of the area.
 pub fn area(plugin: &str) -> Option<&str> {
     let mut segments = plugin.split("::").skip(1);
@@ -143,10 +143,15 @@ which the last choice rewrites.";
             on rig_basics::sessions::SessionsPlugin, "rig-basics", "Sessions", [], None,
                 "/new, /resume and /name, and the listing of this session that /resume in \
 other windows reads.";
-            on rig_basics::sessions::agents::AgentsPlugin, "rig-basics",
+            off rig_basics::agent_picker::AgentPickerPlugin, "rig-basics",
+                "Agent picker", [], None,
+                "/agents: this session's agents (forks, subagents, Steel programs' agents), to \
+show one. Forks, Subagents and Steel programs add it.";
+            off rig_basics::sessions::forks::ForksPlugin, "rig-basics",
                 "Forks and rewind", [], None,
-                "/fork, /agents and rewind (Alt+Up to an earlier message of yours, then Enter): \
-the agents of this session.";
+                adds ["rig_basics::agent_picker::AgentPickerPlugin"],
+                "/fork and rewind (Alt+Up to an earlier message of yours, then Enter): a new agent \
+from the shown one, through the end or an earlier message. Adds the agent picker.";
             on rig_basics::compaction::CompactionPlugin, "rig-basics",
                 "Compaction", [], None,
                 "Summarizing a conversation near the context window, and /compact.";
@@ -156,7 +161,8 @@ the agents of this session.";
                 "Records nothing until --traffic-log or [traffic] log = true; then provider HTTP \
 in traffic.jsonl.";
             on rig_basics::activity::ActivityPlugin, "rig-basics", "Activity", [], None,
-                "What each agent is doing, for views.";
+                "What the agent is doing, in the status line: writing, running tools or the \
+question it waits on, with the pulsing wave while it works.";
             on rig_basics::coding_tools::ReadTool, "rig-basics", "Read tool", [], None,
                 "The read tool.";
             on rig_basics::coding_tools::EditTool, "rig-basics", "Edit tool", [], None,
@@ -227,12 +233,16 @@ returns their final answers.";
                 "A budget for what the session spends, helpers included: [budget] usd and tokens \
 in settings.toml, and /budget.";
             off rig_basics::subagents::SubagentsPlugin, "rig-basics", "Subagents", [], None,
-                adds ["rig_basics::approval::ApprovalPlugin"],
+                adds [
+                    "rig_basics::approval::ApprovalPlugin",
+                    "rig_basics::agent_picker::AgentPickerPlugin"
+                ],
                 "Subagents: the task, message and wait tools, with which the agent starts other \
-agents, messages them and waits on their reports.";
+agents, messages them and waits on their reports. Adds the agent picker.";
             off rig_steel::SteelPlugin, "rig-steel", "Steel programs", [], None,
+                adds ["rig_basics::agent_picker::AgentPickerPlugin"],
                 "The run_steel tool: one Scheme program that runs several agents and tool calls \
-and branches on their results.";
+and branches on their results, and /agents, to show them.";
             off rig_basics::telemetry::effect_log::EffectLogPlugin, "rig-basics",
                 "Effect log", [], None,
                 "The effect log: every model call, tool call and message, as a record in the \

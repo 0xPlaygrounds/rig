@@ -3,11 +3,10 @@
 //! Every module holds one group of rig's plugins, each named in
 //! `settings.toml` by the path of the module that defines it, its only
 //! path: [`prompt`], [`agents_md`], [`skills`], [`models`], [`login`],
-//! [`sessions`], [`compaction`], [`telemetry`], [`activity`],
-//! [`coding_tools`], [`redact`], [`reload`], [`print`](mod@print), [`helpers`],
-//! [`budget`], [`subagents`] and [`welcome`].
-//! [`approval`], [`preview`] and [`session_picker`] are the
-//! services only some plugins add.
+//! [`sessions`], [`agent_picker`], [`compaction`], [`telemetry`],
+//! [`activity`], [`coding_tools`], [`redact`], [`approval`], [`preview`],
+//! [`reload`], [`print`](mod@print), [`helpers`], [`budget`], [`subagents`]
+//! and [`welcome`]. [`session_picker`] is a service only some plugins add.
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
@@ -18,6 +17,7 @@ use rig_harness::host::exit::{Exit, ExitReason};
 use unicode_width::UnicodeWidthStr;
 
 pub mod activity;
+pub mod agent_picker;
 pub mod agents_md;
 pub mod approval;
 pub mod budget;

@@ -311,7 +311,7 @@ python3 plugins/rig-claude-cloak/tests/acceptance/run.py \
 Live preflight checks the head, tracked diff, untracked file names/content hashes,
 manifest, generated main and binary
 against that record. It checks enabled registrations for Claude Cloak, TUI,
-print/tool limits, read, sessions/agents, compaction, basic commands and effect
+print/tool limits, read, sessions/forks, compaction, basic commands and effect
 logging. It also runs the actual binary with `RIG_DESCRIBE` in an isolated home
 without credentials, rejecting stage conflicts before inference. The recorded
 command is a build provenance assertion, not a compiler attestation.

@@ -1,21 +1,27 @@
-//! The agents of this session: `/fork` makes one from the shown agent
-//! (the kernel's [`ForkAgent`]), `/agents` lists them and shows one, and,
-//! with the `tui` feature, rewind: select an earlier message of yours with
-//! Alt+Up and press Enter, and the shown agent forks just before it, the
-//! fork is shown and the message is back in the input. Showing an agent
-//! makes its top-level agent the session's current one (the harness's
-//! `CurrentAgent`), which a resumed session shows again.
+//! `/agents`, the picker of a session's agents: each listed under the
+//! agent that spawned it, marked when it is current or a fork, with the
+//! [`AgentColumn`]s other plugins add to its line. Picking one, or
+//! `/agents <id>`, shows it and makes its top-level agent the session's
+//! current one (the harness's `CurrentAgent`), which a resumed session
+//! shows again. [`AgentPickerPlugin`] is off by default; the plugins that
+//! make more than one agent add it.
+//!
+//! ```
+//! use rig_basics::agent_picker::{AgentColumn, ColumnOf};
+//! use rig_harness::prelude::*;
+//!
+//! /// Shows on each agent's line that it is on call.
+//! fn on_call(added: On<Add<Agent>>, mut commands: Commands) {
+//!     commands.spawn((AgentColumn::new("on-call", "on call"), ColumnOf(added.entity)));
+//! }
+//! ```
 
-use crate::session_picker::{SessionPicker, SessionPickerPlugin, SessionSource};
 use bevy_ecs::query::QueryData;
 use bevy_ecs::system::SystemParam;
 use rig_core::conversation::short_id;
 use rig_ecs::agent::{ActiveTurn, Agent, AgentId, Notice, Spawned, SpawnedBy};
-use rig_ecs::fork::{ForkAgent, ForkResult, ForkedFrom};
-use rig_ecs::inbox::Recalled;
+use rig_ecs::fork::ForkedFrom;
 use rig_ecs::model::ModelChoice;
-use rig_ecs::prelude::MessageId;
-use rig_ecs::requests::RequestOf;
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::pick::{PickItem, Picker};
 use rig_harness::prelude::{
@@ -26,28 +32,16 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
 
-#[cfg(feature = "tui")]
-mod rewind;
-
-/// `/fork`, `/agents` and, with the `tui` feature, rewind.
+/// `/agents`.
 #[derive(Default)]
-pub struct AgentsPlugin;
+pub struct AgentPickerPlugin;
 
-impl Plugin for AgentsPlugin {
+impl Plugin for AgentPickerPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<SessionPickerPlugin>() {
-            app.add_plugins(SessionPickerPlugin);
-        }
         if !app.is_plugin_added::<CurrentAgentPlugin>() {
             app.add_plugins(CurrentAgentPlugin);
         }
         app.add_command(
-            "fork",
-            "Fork the shown agent into a new one and show it: /fork at the end, \
-             /fork at to pick a message, /fork <message> through it",
-            fork,
-        )
-        .add_command(
             "agents",
             "Pick an agent to show; /agents <id> shows it",
             agents,
@@ -58,8 +52,6 @@ impl Plugin for AgentsPlugin {
         #[cfg(feature = "tui")]
         let relist = relist.before(rig_tui::ChoiceSystems);
         app.add_systems(Update, relist);
-        #[cfg(feature = "tui")]
-        rewind::add(app);
     }
 }
 
@@ -100,25 +92,9 @@ pub struct ColumnOf(pub Entity);
 #[relationship_target(relationship = ColumnOf, linked_spawn)]
 pub struct AgentColumns(Vec<Entity>);
 
-/// On a fork this plugin asked for: the text to put back in the input once
-/// the fork is shown.
-#[derive(Component)]
-struct Recall(Option<String>);
-
-/// Forks `agent` through `through`, then shows the fork with `recall` in
-/// its input, or says why there is none.
-fn ask_fork(
-    commands: &mut Commands,
-    (agent, through): (Entity, Option<MessageId>),
-    recall: Option<String>,
-) {
-    let fork = ForkAgent::new(agent, through);
-    commands.spawn((fork, Recall(recall))).observe(forked);
-}
-
 /// Shows `agent` in the front the user uses, and makes it the
 /// [`ShownAgent`] in any app.
-fn show(agent: Entity, commands: &mut Commands) {
+pub(crate) fn show(agent: Entity, commands: &mut Commands) {
     #[cfg(feature = "tui")]
     commands.trigger(rig_tui::ShowAgent { entity: agent });
     commands.queue(move |world: &mut World| {
@@ -126,79 +102,6 @@ fn show(agent: Entity, commands: &mut Commands) {
             shown.set_if_neq(ShownAgent(Some(agent)));
         }
     });
-}
-
-/// `/fork`: forks the agent the command is for at the end, through the
-/// message named (`m4`), or, with `at`, through the message picked from
-/// its entries.
-fn fork(
-    In(args): In<CommandArgs>,
-    ids: Query<&AgentId>,
-    mut commands: Commands,
-    mut notices: MessageWriter<Notice>,
-) {
-    let through = match args.args.trim() {
-        "" => None,
-        "at" => {
-            let agent = ids.get(args.agent).ok().map(|id| id.0.clone());
-            commands.spawn((
-                Picker::new("Fork through which message?").for_agent(args.agent),
-                SessionPicker {
-                    source: SessionSource::Entries {
-                        session: None,
-                        agent,
-                    },
-                    command: "fork {entry}".to_owned(),
-                    ..SessionPicker::default()
-                },
-            ));
-            return;
-        }
-        named => match named.parse::<MessageId>() {
-            Ok(id) => Some(id),
-            Err(_) => {
-                let why = format!("`{named}` is no message, such as `m4`; /fork at picks one.");
-                notices.write(Notice::error(args.agent, why));
-                return;
-            }
-        },
-    };
-    ask_fork(&mut commands, (args.agent, through), None);
-}
-
-/// Shows a fork this plugin asked for, with what it puts back in the
-/// input, or says why it was not made.
-fn forked(
-    made: On<Add<ForkResult>>,
-    requests: Query<(&ForkResult, &RequestOf, &Recall)>,
-    mut recalled: MessageWriter<Recalled>,
-    mut notices: MessageWriter<Notice>,
-    mut commands: Commands,
-) {
-    let Ok((ForkResult(result), &RequestOf(agent), Recall(recall))) = requests.get(made.entity)
-    else {
-        return;
-    };
-    let fork = match result {
-        Ok(fork) => *fork,
-        Err(why) => {
-            notices.write(Notice::error(
-                agent,
-                format!("Could not fork the agent: {why}."),
-            ));
-            return;
-        }
-    };
-    show(fork, &mut commands);
-    let said = "Forked into a new agent; /agents shows the other.";
-    notices.write(Notice::info(fork, said));
-    if let Some(text) = recall {
-        recalled.write(Recalled {
-            agent: fork,
-            text: text.clone(),
-            why: None,
-        });
-    }
 }
 
 /// An agent as `/agents` lists it.

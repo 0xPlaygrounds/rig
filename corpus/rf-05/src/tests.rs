@@ -332,7 +332,6 @@ fn add_defaults(app: &mut App) {
     load::<login::LoginPlugin>(app, "rig-basics", "");
     load::<models::defaults::DefaultsPlugin>(app, "rig-basics", "");
     load::<sessions::SessionsPlugin>(app, "rig-basics", "");
-    load::<sessions::agents::AgentsPlugin>(app, "rig-basics", "");
     load::<compaction::CompactionPlugin>(app, "rig-basics", "");
     load::<telemetry::usage::UsagePlugin>(app, "rig-basics", "");
     load::<activity::ActivityPlugin>(app, "rig-basics", "");

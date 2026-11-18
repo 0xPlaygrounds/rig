@@ -320,6 +320,16 @@ end of its directory and its age; → shows the whole directory) and resumes
 the one picked, in its own directory; `rig --resume <id or name>` (or
 `/resume <id or name>`) resumes a given one, such as after a crash.
 
+Forks are off by default. `rig plugin enable
+rig_basics::sessions::forks::ForksPlugin` (or `/plugins`) turns them on:
+`/fork` makes a new agent from the shown one and shows it, through the end
+of its conversation, through a message you name (`/fork m4`) or through one
+you pick (`/fork at`). Rewind is a fork too: select an earlier message of
+yours with Alt+Up and press Enter, and the shown agent forks just before it,
+with the message back in the input. `/agents` comes with forks and shows the
+other agents. A resumed session shows the agent that was shown last, or the
+top-level agent above it when that was a subagent, with forks on or off.
+
 Rig redacts nothing unless you turn redaction on with `rig plugin enable
 rig_basics::redact::RedactPlugin` (then `/reload`, or the next start). With it,
 API keys, tokens, private keys and the values of secret-named variables
@@ -509,11 +519,10 @@ is answered.
 
 Esc stops the shown agent's turn and the turns of every subagent below it,
 even when the shown agent is idle: stopping follows who started whom.
-`/agents` (`rig_basics::sessions::agents::AgentsPlugin`) lists every agent
-with its model, state and what it and the agents below it spent, and shows
-the one picked: its transcript, and what
-you type then goes to it. A subagent can start subagents of its own, as
-deep as they go. Subagents started with `peers` can also send each other
+`/agents` (the Agent picker in `/plugins`, which subagents, forks and Steel
+programs add) lists every agent with its model, state and what it and the agents below it
+spent, and shows the one picked: its transcript, and what you type then
+goes to it. A subagent can start subagents of its own, as deep as they go. Subagents started with `peers` can also send each other
 requests with `message` and `wait` for each other; a request or `wait` that
 would make agents wait on each other is refused. In the effect log, a
 subagent's model calls name the call that gave it its work as their parent.
@@ -685,7 +694,7 @@ plugin = "hello::HelloPlugin"     # implements Plugin + Default
 
 The plugins form a tree. Each crate is a branch, such as `rig-tui`, and so
 is each area in it: the module under the crate's root in a plugin's type
-path, so `rig_basics::sessions::agents::AgentsPlugin` is in
+path, so `rig_basics::sessions::forks::ForksPlugin` is in
 `rig-basics/sessions`. A plugin at a crate's root, such as
 `rig_basics::BasicCommandsPlugin`, is in no area. A plugin runs when its own
 choice (rig's default, then `disable`, then `enable`) is on and no branch
