@@ -50,7 +50,9 @@ pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
     /// representation.
     type Error: std::error::Error + WasmCompatSend + WasmCompatSync + 'static;
 
-    /// Model-facing description.
+    /// Model-facing description: what the tool does and when to pick it
+    /// over another, such as "Use it rather than `wc` in `shell`". The
+    /// model reads it with the tool's parameters.
     fn description(&self) -> String;
 
     /// JSON Schema for arguments.

@@ -646,7 +646,10 @@ pub struct TranscriptRender;
 /// phase using their own public sets.
 #[derive(SystemSet, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum RenderSystems {
-    /// Replace an item's default lines.
+    /// Replace an item's default lines. A system that replaces a shipped
+    /// look runs after that look's public set: rig-basics' `CodingToolLooks`,
+    /// `SummaryLooks`, `SubagentLooks` and `WelcomeLooks`, or
+    /// [`BuildFailedLooks`](crate::BuildFailedLooks).
     Render,
     /// Add named decorations after its lines.
     Decorate,

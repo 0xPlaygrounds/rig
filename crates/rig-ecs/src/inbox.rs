@@ -20,8 +20,8 @@
 //! takes it over, else the kernel hands what the user typed back to the
 //! views as [`Recalled`] and keeps what agents and plugins sent for the
 //! next turn. The inbox is saved with the conversation and restored after
-//! a restart. The plugin guide (rig-harness's `PLUGINS.md`, "What the user
-//! types") has the full rules.
+//! a restart. [`Unsent`], [`Recalled`] and [`DeliveredIn`] have the full
+//! rules.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -100,7 +100,9 @@ pub enum MessagePart {
 /// stages (see the [module](self)): edit it in Prepare, take it over in
 /// Gate by deciding it ([`Decision`]) with an
 /// [`Outcome`]; once accepted, it is [`Started`] until the kernel answers
-/// it. A message with no text and no attachment is ignored.
+/// it. A message with no text and no attachment is ignored. A message a
+/// restart brings back to the inbox is admitted again, already
+/// [`Started`], so a Prepare system that adds to messages skips those.
 ///
 /// ```
 /// use rig_ecs::prelude::*;
@@ -258,7 +260,9 @@ impl Deliver {
 /// refused slash command, with `why`. A view puts it back in its input. A
 /// failed turn's message comes back as the conversation holds it, after
 /// Prepare, its text only; nothing else keeps it, so it does not outlive
-/// a restart unless sent again.
+/// a restart unless sent again. Only the local user's own messages come
+/// back: a titled user's message, such as a chat bridge's, is taken out
+/// without coming back, and an agent's or a plugin's keeps its place.
 #[derive(Message, Clone, Debug)]
 pub struct Recalled {
     pub agent: Entity,
@@ -272,7 +276,10 @@ pub struct Recalled {
 /// or carried on. Inserted when the message goes into the conversation, with
 /// its answer. It is no hold: a turn's end does not wait for it. An
 /// `Inform` message to an idle agent, and what a turn that ended some other way
-/// puts in the conversation, go with no turn and have none.
+/// puts in the conversation, go with no turn and have none. The message
+/// is despawned once it settles, so a plugin that marks the turn does so
+/// as this is added (`On<Add<DeliveredIn>>`) and finds the turn's calls
+/// by their `CallOf(turn)`.
 #[derive(Component, Reflect, Clone, Copy, Debug)]
 #[reflect(Component, Clone, Debug)]
 pub struct DeliveredIn(pub Entity);

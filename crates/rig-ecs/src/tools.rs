@@ -217,6 +217,26 @@ pub struct Footprint(pub Touches);
 /// [`normalized`](Touches::normalized)) instead of asking the call's
 /// handler, so a plugin that knows what a call touches, such as a shell
 /// command that only reads, lets the reply's other calls run beside it.
+///
+/// ```
+/// use std::path::PathBuf;
+///
+/// use rig_ecs::prelude::*;
+///
+/// /// A `cargo fmt` call writes only under `/work/src`, so a held one
+/// /// does not hold back a read of `/work/docs`.
+/// fn formats(calls: Query<(Entity, &ToolRequest), (Added<Admitted>, ToolCalls)>, mut commands: Commands) {
+///     for (call, request) in &calls {
+///         let command = request.call.function.arguments.get("command").and_then(|c| c.as_str());
+///         if command == Some("cargo fmt") {
+///             let src = Touches::Writes(Scope::Paths(vec![PathBuf::from("/work/src")]));
+///             commands.entity(call).insert((Footprint(src), DeclaredFootprint));
+///         }
+///     }
+/// }
+///
+/// App::new().add_systems(AgentPass, formats.in_set(PrepareSystems::Edit));
+/// ```
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct DeclaredFootprint;
 
