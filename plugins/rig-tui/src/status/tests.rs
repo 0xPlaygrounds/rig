@@ -339,8 +339,20 @@ fn without_the_terminal_view_the_status_line_plugin_adds_nothing() {
     app.insert_resource(Settings::default())
         .add_plugins(StatusLinePlugin);
     let input = app.world_mut().spawn(MainEditor).id();
+    app.finish();
     app.update();
     let world = app.world();
-    assert!(!world.contains_resource::<super::StatusSettings>());
     assert!(world.get::<StatusLine>(input).is_none());
+}
+
+#[test]
+fn added_before_the_view_the_status_line_still_shows() {
+    use crate::tests::view_app_of;
+
+    let (mut app, agent) = view_app_of(|app| {
+        app.add_plugins((StatusLinePlugin, crate::TuiPlugin));
+    });
+    draw_with(&mut app, agent, &[("model", Side::Left, "acme-model")]);
+    let (row, _) = input_bottom_row(&mut app);
+    assert!(row.contains("acme-model"), "{row:?}");
 }
