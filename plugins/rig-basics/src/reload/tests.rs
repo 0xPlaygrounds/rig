@@ -2,6 +2,7 @@ use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness_test_support::{MemoryStore, app_on, hold_turn_calls, run_until, scripted_models};
 
 use super::*;
+use crate::reload::update::UpdatePlugin;
 use rig_ecs::spawn::spawn;
 
 #[test]
@@ -53,7 +54,7 @@ fn a_queued_update_is_refused_and_cancelled_as_an_update() {
     let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
     let (mut app, wakes) = app_on(&MemoryStore::default());
     app.insert_resource(scripted_models([("reload-main/m", &model)]))
-        .add_plugins((AgentPlugin, SessionLogPlugin, ReloadPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, ReloadPlugin, UpdatePlugin))
         .add_systems(AgentPass, hold_turn_calls.in_set(Stage::Gate));
     let choice = ModelChoice("reload-main/m".to_owned());
     let agent = spawn_root(app.world_mut(), choice).id();
@@ -101,4 +102,45 @@ fn a_queued_update_is_refused_and_cancelled_as_an_update() {
     assert!(refused.iter().all(|text| text.contains("/update cancel")));
     assert!(about_the_update(&cancelled), "{cancelled:?}");
     assert_eq!(cancelled_by_reload, cancelled);
+}
+
+/// The slash commands the app has.
+pub(super) fn slash_commands(world: &mut World) -> Vec<String> {
+    let mut commands = world.query_filtered::<&Name, With<SlashCommand>>();
+    commands.iter(world).map(ToString::to_string).collect()
+}
+
+/// With the update plugin left out, `/reload` runs and `/update` is no
+/// command, so `/update cancel` leaves a queued reload alone.
+#[test]
+fn without_the_update_plugin_reload_runs_and_update_is_no_command() {
+    let (mut app, _) = app_on(&MemoryStore::default());
+    app.add_plugins((AgentPlugin, SessionLogPlugin, ReloadPlugin));
+    let agent = spawn_root(app.world_mut(), ()).id();
+    app.finish();
+    app.update();
+    let commands = slash_commands(app.world_mut());
+    assert!(
+        commands.iter().any(|name| name == "/reload"),
+        "{commands:?}"
+    );
+    assert!(
+        !commands.iter().any(|name| name == "/update"),
+        "{commands:?}"
+    );
+
+    let queued = ReloadStatus::Queued {
+        agent,
+        rebuild: Rebuild::Build,
+    };
+    app.world_mut().insert_resource(queued.clone());
+    app.world_mut()
+        .trigger(RunCommand::new(agent, "update cancel"));
+    app.update();
+    assert_eq!(*app.world().resource::<ReloadStatus>(), queued);
+
+    app.world_mut()
+        .trigger(RunCommand::new(agent, "reload cancel"));
+    app.update();
+    assert_eq!(*app.world().resource::<ReloadStatus>(), ReloadStatus::Idle);
 }
