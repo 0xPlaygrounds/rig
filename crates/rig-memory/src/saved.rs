@@ -46,7 +46,7 @@ fn value<T: DeserializeOwned>(
     state: &BTreeMap<String, Value>,
     key: &str,
 ) -> Option<Result<T, serde_json::Error>> {
-    state.get(key).map(T::deserialize)
+    state.get(key).map(rig_core::json_utils::from_value)
 }
 
 impl Session {

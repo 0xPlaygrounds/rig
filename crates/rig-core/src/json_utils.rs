@@ -522,11 +522,27 @@ where
 pub fn from_value<T: serde::de::DeserializeOwned>(
     value: &serde_json::Value,
 ) -> serde_json::Result<T> {
-    if holds_wide_integer(value) {
-        serde_json::from_str(&value.to_string())
-    } else {
-        T::deserialize(value)
+    from_value_seed(std::marker::PhantomData, value)
+}
+
+/// [`from_value`] for a seed, such as a reflection deserializer: reads
+/// `value` through `seed` as it would read the value's JSON text.
+///
+/// # Errors
+///
+/// When `value` does not read through `seed`.
+pub fn from_value_seed<S, V>(seed: S, value: &serde_json::Value) -> serde_json::Result<V>
+where
+    S: for<'de> serde::de::DeserializeSeed<'de, Value = V>,
+{
+    if !holds_wide_integer(value) {
+        return seed.deserialize(value);
     }
+    let text = value.to_string();
+    let mut deserializer = serde_json::Deserializer::from_str(&text);
+    let read = seed.deserialize(&mut deserializer)?;
+    deserializer.end()?;
+    Ok(read)
 }
 
 /// Whether `value` holds an integer beyond u64 and i64.

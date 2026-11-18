@@ -52,7 +52,6 @@ use rig_core::effect::Decider;
 use rig_core::message::{CallId, ToolCall};
 use rig_core::tool::{ToolResult, ToolResultContext};
 use rig_memory::Session;
-use serde::de::DeserializeSeed;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use web_time::SystemTime;
@@ -547,9 +546,11 @@ fn reflected(
     value: &Value,
     registry: &TypeRegistry,
 ) -> Result<Box<dyn Reflect>, String> {
-    let reflected = TypedReflectDeserializer::new(registration, registry)
-        .deserialize(value)
-        .map_err(|failure| format!("its saved value no longer fits: {failure}"))?;
+    let reflected = rig_core::json_utils::from_value_seed(
+        TypedReflectDeserializer::new(registration, registry),
+        value,
+    )
+    .map_err(|failure| format!("its saved value no longer fits: {failure}"))?;
     registration
         .data::<ReflectFromReflect>()
         .and_then(|from| from.from_reflect(&*reflected))
