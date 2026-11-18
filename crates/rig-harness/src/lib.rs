@@ -96,8 +96,14 @@ pub use rig_memory;
 pub use rig_tools;
 
 /// What a plugin needs, so a typical one imports only this: the kernel's
-/// prelude and the harness's services. A plugin crate's own types come from
-/// that crate, such as the terminal view's panels from `rig-tui`.
+/// prelude (with Bevy's) and the harness's services. A plugin crate's own
+/// types come from that crate, such as the terminal view's panels from
+/// `rig-tui`.
+///
+/// It holds common names such as [`Project`](crate::services::Project) and
+/// [`Settings`](crate::settings::Settings). A file that also glob-imports a
+/// module with a `Project` of its own gets an ambiguity error (E0659) where
+/// it uses the name, so it imports that one by name: `use domain::{Project, *};`.
 pub mod prelude {
     pub use rig_ecs::prelude::*;
 

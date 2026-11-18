@@ -13,7 +13,11 @@
 //! starts. A gate decides in the effect's [`Decision`] (the first decision
 //! wins), a reviewer edits the [`Outcome`] in place, and any entity
 //! [`HoldOf`] an effect keeps it where it is. A failing Prepare, Gate or
-//! Review system closes its stage for that pass. From a frame's second pass
+//! Review system closes its stage for that pass, a panic included: a failed
+//! Prepare system has what that pass admitted answered with an error, a
+//! failed Gate system starts nothing, a failed Review system settles
+//! nothing, and a [`Notice`] names the system once. The app's error handler
+//! still gets the error, so one that panics ends the app. From a frame's second pass
 //! on, Bevy's clocks advance by zero, so timers count each frame once.
 //!
 //! ```
@@ -95,12 +99,22 @@ pub struct BetweenStages;
 /// The system in `Update` that runs [`AgentPass`] until nothing moves. Work
 /// done after it in a frame, such as an effect spawned in `PostUpdate`, waits
 /// for the next frame: a system that spawns, answers or releases effects
-/// runs `.before(AgentLoop)`.
+/// runs `.before(AgentLoop)`. A system that reacts to what the loop did in
+/// the frame, such as an agent it started or a call it settled, runs
+/// `.after(AgentLoop)`.
 #[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct AgentLoop;
 
 /// The stages of a pass, run in this order. The kernel's own work in each
 /// is in the [module](self) doc and the plugin guide.
+///
+/// Every stage but Arrive runs only in a pass where something moved. The
+/// kernel's stages (Arrive, Commit, Admit and Start) take plugin systems
+/// too, in no order against the kernel's own, so such a system writes only
+/// its own data, never an [`Outcome`], a [`Decision`] or a request. Arrive
+/// suits following running work. In Commit, Admit and Start a plugin
+/// reacts to what the pass did in order with the other stage systems, such
+/// as by spawning a successor agent once a turn settled.
 #[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Stage {
     /// Finished tasks become their effects' [`Outcome`]s, streamed text is
@@ -459,7 +473,8 @@ impl Published {
 /// Keeps the effect it names where it is: not started, or not settled. Any
 /// entity can be a hold; despawn it, or remove this, to release it. Holds
 /// add up: releasing one never releases another's, and every release wakes
-/// the loop.
+/// the loop. A hold's `Name` says why it holds, such as `waiting for lease
+/// on src/a.rs`, and the fronts show it.
 #[derive(Component, Reflect, Debug)]
 #[component(on_remove = moved::<HoldOf>)]
 #[reflect(Component)]

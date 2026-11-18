@@ -503,7 +503,9 @@ fn unique<'a>(names: impl IntoIterator<Item = &'a str>) -> Vec<String> {
 #[require(Recovery, Turn, Name = Name::new("turn"))]
 pub struct TurnOf(pub Entity);
 
-/// Where a turn stands, on the turn. The kernel fills it in when the turn
+/// Where a turn stands, on the turn. A turn runs from the message that
+/// asked for it to the reply that ends it, and an agent runs at most one
+/// at a time ([`ActiveTurn`]). The kernel fills it in when the turn
 /// is spawned, from the turn's record in its agent's conversation
 /// ([`TurnRecord`](conversation::TurnRecord)), and keeps it.
 #[derive(Component, Reflect, Clone, Debug, Default)]
@@ -815,7 +817,7 @@ pub enum NoticeLevel {
     Info,
 }
 
-/// A line for the user, shown by views. A system reads the notices sent
+/// A line for the user, shown by views and never saved. A system reads the notices sent
 /// before it in the frame and, from the frame before, those sent after it.
 /// So one sent late, such as the session log's write failure (in
 /// [`WriteLogs`](crate::WriteLogs), after `Last`), is read a frame late
