@@ -1,8 +1,9 @@
 use bevy_ecs::entity_disabling::Disabled;
+use bevy_ecs::system::RunSystemOnce;
 use crossterm::event::KeyEventKind;
 
 use super::*;
-use crate::tests::{Delivered, key_events, press, type_text, typed, view_app, view_app_with};
+use crate::tests::{Delivered, data, key_events, press, type_text, typed, view_app, view_app_with};
 use crate::view::TuiView;
 use crate::{CompletionSource, Placement, TuiPanel, TuiPlugin};
 use ratatui::layout::Constraint;
@@ -114,6 +115,25 @@ fn a_refused_binding_is_told_once_and_the_plugins_other_keys_work() {
         .into_iter()
         .flat_map(Messages::iter_current_update_messages);
     assert!(!notices.any(|notice| notice.text.contains("`ctrl+o`")));
+}
+
+/// A refusal the view kept across a reload is not said again by the build
+/// the reload starts: however many reloads, it is shown once.
+#[test]
+fn a_refusal_is_shown_once_across_reloads() {
+    let session = rig_harness::rig_memory::MemoryStore::default();
+    for _ in 0..3 {
+        let (mut app, _) = view_app_with(|app| {
+            app.insert_resource(data(&session));
+            app.add_key_binding(KeyBinding::new(KeyPress::ctrl('o'), "Open"), heard);
+            app.add_key_binding(KeyBinding::new(KeyPress::ctrl('o'), "Show output"), heard);
+        });
+        app.update();
+        assert_eq!(warnings(&app).len(), 1, "{:?}", warnings(&app));
+        app.insert_resource(ExitReason::Reload);
+        let kept = app.world_mut().run_system_once(crate::view::keep_notices);
+        assert!(kept.is_ok());
+    }
 }
 
 #[test]

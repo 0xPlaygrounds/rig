@@ -27,6 +27,15 @@ pub(crate) fn scratch(name: &str) -> std::path::PathBuf {
     dir
 }
 
+/// Places for plugins' files, all in memory, the session's in `session`.
+pub(crate) fn data(session: &rig_harness::rig_memory::MemoryStore) -> PluginData {
+    PluginData {
+        session: std::sync::Arc::new(session.clone()),
+        project: std::sync::Arc::new(rig_harness::rig_memory::MemoryStore::default()),
+        user: std::sync::Arc::new(rig_harness::rig_memory::MemoryStore::default()),
+    }
+}
+
 /// An agent with the terminal view's input and choices, but no terminal:
 /// its keys are the [`PendingInput`] [`press`] pushes. Also returns the
 /// agent.
