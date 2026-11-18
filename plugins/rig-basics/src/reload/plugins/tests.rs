@@ -950,8 +950,8 @@ fn plugins_opens_as_a_tree_of_crates_then_areas() {
         Some("sessions")
     );
     // A crate or an area of one plugin is that plugin's row.
-    assert_eq!(parent_of(&shown, "Terminal view"), None);
-    assert!(at(&shown, "rig-tui").is_none());
+    assert_eq!(parent_of(&shown, "Folded output"), None);
+    assert!(at(&shown, "rig-fold").is_none());
     assert_eq!(parent_of(&shown, "Skills").as_deref(), Some("rig-basics"));
     assert!(at(&shown, "skills").is_none());
     // Every branch comes before what it holds, and is ticked while it is on.
