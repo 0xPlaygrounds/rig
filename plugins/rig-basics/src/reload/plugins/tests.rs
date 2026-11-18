@@ -1432,6 +1432,65 @@ fn a_status_part_ticked_and_left_in_one_frame_is_hidden() {
     );
 }
 
+/// Enter on the item labelled `label` as the view does: its tick flipped
+/// among the ticks the view holds for the list (a list just opened holds
+/// its items ticked at first), then the frame after it.
+#[cfg(feature = "tui")]
+fn press(app: &mut App, list: Entity, label: &str) {
+    let Some(shown) = app.world().get::<Picker>(list).cloned() else {
+        return;
+    };
+    let mut ticked = app.world().get::<Ticked>(list).map_or_else(
+        || {
+            (shown.items.iter().enumerate())
+                .filter(|(_, item)| item.checked)
+                .map(|(index, _)| index)
+                .collect()
+        },
+        |ticked| ticked.0.clone(),
+    );
+    let Some(index) = at(&shown, label) else {
+        return;
+    };
+    match ticked.binary_search(&index) {
+        Ok(found) => {
+            ticked.remove(found);
+        }
+        Err(found) => ticked.insert(found, index),
+    }
+    app.world_mut().entity_mut(list).insert(Ticked(ticked));
+    app.update();
+}
+
+#[cfg(feature = "tui")]
+#[test]
+fn a_status_part_ticked_after_unticking_its_branch_is_shown() {
+    let home = scratch_home("plugins-status-branch-child");
+    let (mut app, agent) = status_app(&home, "");
+    open(&mut app, agent);
+    let found = picker(&mut app);
+    assert!(found.is_some(), "no picker");
+    let Some((list, _)) = found else {
+        return;
+    };
+    tick(&mut app, list, &[], &["Status line parts"]);
+    assert!(hidden(&app).iter().any(|name| name == "cost"));
+    let found = picker(&mut app);
+    assert!(found.is_some(), "the list stays open");
+    let Some((list, _)) = found else {
+        return;
+    };
+    press(&mut app, list, "Cost");
+    assert!(
+        !hidden(&app).iter().any(|name| name == "cost"),
+        "{:?}",
+        hidden(&app)
+    );
+    assert!(!settings(&home).contains("cost"), "{}", settings(&home));
+    let shown = picker(&mut app).map(|(_, shown)| shown).unwrap_or_default();
+    assert!(detail(&shown, "Cost").contains("shown"), "{shown:#?}");
+}
+
 #[test]
 fn plugins_defaults_clears_status_hide_without_the_status_line() {
     let home = scratch_home("plugins-status-defaults-off");
