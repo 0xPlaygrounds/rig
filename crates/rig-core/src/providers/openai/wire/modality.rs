@@ -367,9 +367,8 @@ fn json_post_to(
     encoded(provider, builder, Body::Bytes(bytes))
 }
 
-/// The `GET` whose status is the answer, for the two endpoints that send no
-/// body: the model catalogue and the credential check.
-fn get(provider: &OpenAIConfig, path: &str) -> Result<Encoded, EncodeError> {
+/// An authenticated `GET` of `path`, with whole-response framing.
+pub(crate) fn get(provider: &OpenAIConfig, path: &str) -> Result<Encoded, EncodeError> {
     encoded(
         provider,
         http::Request::get(provider.uri(path, None)),

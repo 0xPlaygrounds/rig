@@ -9,12 +9,13 @@ use std::fmt;
 use std::sync::Arc;
 
 use super::{Catalog, ModelSpec};
+use crate::error::ProviderError;
 use crate::http_client::DynHttpClient;
 use crate::operation::Completion;
 use crate::providers::registry::{ConnectError, ConnectOptions, ProviderId};
 use crate::serve::ErasedHandler;
 use crate::serve::adapters::ModelAdapter;
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use crate::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync};
 
 /// A way to reach catalog models no key is set for, such as a
 /// subscription plan signed in to. A [`Connector`] asks it for a model only
@@ -316,6 +317,25 @@ impl Connector {
         let spec = self.catalog.resolve(reference)?.shared();
         let (handler, _) = self.handler(&spec);
         Ok((spec, handler?))
+    }
+
+    /// The context window the server reaching `spec` serves it with, asked
+    /// of that server on this connector's transport: Ollama's `/api/show`
+    /// (the `num_ctx` the model is set to, else its trained context length)
+    /// or a llama.cpp server's `/props`. `None` when the model is reached
+    /// any other way, such as through a provider registered for its vendor,
+    /// which may reach another server. The future fails when the server
+    /// does not answer or names no window.
+    pub fn context_window(
+        &self,
+        spec: &ModelSpec,
+    ) -> Option<WasmBoxedFuture<'static, Result<u32, ProviderError>>> {
+        if self.is_provided(spec.provider) {
+            return None;
+        }
+        let mut options = ConnectOptions::new();
+        options.http = self.transport.shared();
+        options.context_window(spec)
     }
 
     /// The handler serving `spec`, as [`Self::connect`] finds it, and the

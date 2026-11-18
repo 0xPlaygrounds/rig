@@ -500,6 +500,8 @@ pub const OLLAMA: Dialect = Dialect {
         // A local daemon takes no credential; a proxied one takes a token.
         auth: Auth::OptionalBearer,
         base_url_env_path: "/v1",
+        // The model details live at the daemon's root, outside /v1.
+        root_relative_routes: &[crate::providers::ollama::show::SHOW_PATH],
         rewrite: BodyRewrite::Ollama,
         // A daemon is usually local; the catalog's prices are Ollama Cloud's.
         catalog_priced: false,

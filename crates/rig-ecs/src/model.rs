@@ -1,7 +1,9 @@
 //! An agent's model: the catalog model it chose, the reasoning setting it
 //! sends, and how the choice is connected. The catalog and how its models
-//! are reached are rig-core's [`Connector`].
+//! are reached are rig-core's [`Connector`]. A model whose catalog entry
+//! gives no context window takes the one its local server says it serves.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use bevy_ecs::prelude::*;
@@ -14,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use super::agent::{ActiveTurn, Agent, Notice};
 use super::effects::Handler;
 use super::session_log::ReflectSaved;
+use super::tasks::{Running, Wake};
 
 /// The models agents can use and how each is reached: rig's built-in
 /// catalog by default. A plugin adds a sign-in with
@@ -311,6 +314,103 @@ pub(crate) fn connect(
             notices.write(Notice::error(agent, why));
         }
     }
+}
+
+/// The context windows asked of the servers of models whose catalog entry
+/// gives none, by reference: `None` while asking, or when the server did
+/// not say. Each model's server is asked once per run.
+#[derive(Resource, Default)]
+pub(crate) struct ServedWindows(HashMap<String, Option<u32>>);
+
+/// The ask of a model's server for its context window, by reference, on an
+/// entity of its own until [`WindowAnswer`]ed.
+#[derive(Component)]
+pub(crate) struct AskingWindow(String);
+
+/// The window a model's server said it serves, or `None` when it did not
+/// say.
+#[derive(Component)]
+pub(crate) struct WindowAnswer(Option<u32>);
+
+impl From<Option<u32>> for WindowAnswer {
+    fn from(window: Option<u32>) -> Self {
+        Self(window)
+    }
+}
+
+/// Gives a [`Connection`] whose model's catalog entry has no context window
+/// the window its server serves it with: the one learned already, or else
+/// asks the server once ([`Connector::context_window`]), such as a local
+/// Ollama or llama.cpp server, so compaction and output limits hold to it.
+/// A model whose server cannot say keeps no window.
+pub(crate) fn ask_window(
+    inserted: On<Insert<Connection>>,
+    mut connections: Query<&mut Connection>,
+    (models, wake): (Res<Models>, Res<Wake>),
+    mut windows: ResMut<ServedWindows>,
+    mut commands: Commands,
+) {
+    let Ok(mut connection) = connections.get_mut(inserted.entity) else {
+        return;
+    };
+    if connection.spec.input_limit().is_some() {
+        return;
+    }
+    let reference = connection.spec.reference();
+    match windows.0.get(&reference) {
+        Some(Some(window)) => {
+            connection.spec = with_window(&connection.spec, *window);
+            return;
+        }
+        Some(None) => return,
+        None => {}
+    }
+    let Some(ask) = models.0.context_window(&connection.spec) else {
+        return;
+    };
+    windows.0.insert(reference.clone(), None);
+    let asked = reference.clone();
+    let work = async move {
+        ask.await
+            .inspect_err(|error| {
+                bevy_log::debug!("{asked} keeps no context window: its server said {error}");
+            })
+            .ok()
+    };
+    commands.spawn((
+        Name::new(format!("context window of {reference}")),
+        AskingWindow(reference),
+        Running::spawn_into::<WindowAnswer, _>(super::turn::model_pool(), &wake, work),
+    ));
+}
+
+/// Keeps the window a model's server answered with, and gives it to every
+/// [`Connection`] to that model without one.
+pub(crate) fn learn_window(
+    answered: On<Insert<WindowAnswer>>,
+    asks: Query<(&AskingWindow, &WindowAnswer)>,
+    mut connections: Query<&mut Connection>,
+    mut windows: ResMut<ServedWindows>,
+    mut commands: Commands,
+) {
+    let Ok((AskingWindow(reference), WindowAnswer(window))) = asks.get(answered.entity) else {
+        return;
+    };
+    commands.entity(answered.entity).despawn();
+    let Some(window) = *window else {
+        return;
+    };
+    windows.0.insert(reference.clone(), Some(window));
+    for mut connection in &mut connections {
+        if connection.spec.reference() == *reference && connection.spec.input_limit().is_none() {
+            connection.spec = with_window(&connection.spec, window);
+        }
+    }
+}
+
+/// `spec` with a context window of `window`.
+fn with_window(spec: &ModelSpec, window: u32) -> Arc<ModelSpec> {
+    Arc::new(spec.clone().with_context_window(window))
 }
 
 /// The notice that an agent now uses the model of `connection`.

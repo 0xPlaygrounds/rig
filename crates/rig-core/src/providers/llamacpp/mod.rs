@@ -13,6 +13,7 @@
 
 pub mod completion;
 pub mod extension;
+pub(crate) mod props;
 
 pub use completion::LLAMA_CPP;
 

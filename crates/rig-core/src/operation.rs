@@ -21,6 +21,7 @@ pub(crate) mod completion;
 mod listing;
 mod modality;
 mod verify;
+mod window;
 
 pub use completion::{Block, CallFragment, Completion, Finish, ReplyFold, merge};
 pub use listing::{ModelListing, ModelPage};
@@ -29,6 +30,7 @@ pub use modality::{
     Transcription,
 };
 pub use verify::{Verify, VerifyDecoder};
+pub(crate) use window::ContextWindow;
 
 /// The fold of an operation whose reply is one whole answer: it has no
 /// events, and the provider's end is the response. The stamp writes what
