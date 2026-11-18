@@ -234,19 +234,25 @@ pub(crate) fn add(app: &mut App) {
 /// The status line under the input: a [`StatusLine`] on the
 /// [`MainEditor`], and `[status]` in `settings.toml`, whose `hide` names
 /// the items no status line draws. Other plugins still read those items.
-/// Settings apply at the next start. Added before the
-/// [`TuiViewPlugin`](crate::TuiViewPlugin), it adds nothing.
+/// Settings apply at the next start. Without the
+/// [`TuiViewPlugin`](crate::TuiViewPlugin), added before it or after, it
+/// draws nothing.
 #[derive(Default)]
 pub struct StatusLinePlugin;
 
 impl Plugin for StatusLinePlugin {
     fn build(&self, app: &mut App) {
+        app.add_setting::<StatusSettings>("status");
+    }
+
+    // In `finish`, after every plugin's `build`, so the order they were
+    // added in does not matter.
+    fn finish(&self, app: &mut App) {
         if !app.is_plugin_added::<crate::TuiViewPlugin>() {
             return;
         }
-        app.add_setting::<StatusSettings>("status")
-            .add_observer(line_under_input);
-        // An editor spawned before this plugin was built gets it here.
+        app.add_observer(line_under_input);
+        // An editor spawned before this plugin finished gets it here.
         let world = app.world_mut();
         let inputs: Vec<Entity> = world
             .query_filtered::<Entity, (With<MainEditor>, Without<StatusLine>)>()
