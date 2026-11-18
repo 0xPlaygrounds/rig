@@ -145,8 +145,8 @@ which the last choice rewrites.";
 other windows reads.";
             off rig_basics::agent_picker::AgentPickerPlugin, "rig-basics",
                 "Agent picker", [], None,
-                "/agents: this session's agents (forks, subagents, Steel programs' agents), to \
-show one. Forks, Subagents and Steel programs add it.";
+                "/agents: this session's agents (forks, subagents), to show one. Forks and \
+Subagents add it.";
             off rig_basics::sessions::forks::ForksPlugin, "rig-basics",
                 "Forks and rewind", [], None,
                 adds ["rig_basics::agent_picker::AgentPickerPlugin"],
@@ -240,9 +240,8 @@ in settings.toml, and /budget.";
                 "Subagents: the task, message and wait tools, with which the agent starts other \
 agents, messages them and waits on their reports. Adds the agent picker.";
             off rig_steel::SteelPlugin, "rig-steel", "Steel programs", [], None,
-                adds ["rig_basics::agent_picker::AgentPickerPlugin"],
-                "The run_steel tool: one Scheme program that runs several agents and tool calls \
-and branches on their results, and /agents, to show them.";
+                "The run_steel tool: one Scheme program that makes several tool calls and \
+branches on their results; with Subagents on, it also runs agents.";
             off rig_basics::telemetry::effect_log::EffectLogPlugin, "rig-basics",
                 "Effect log", [], None,
                 "The effect log: every model call, tool call and message, as a record in the \

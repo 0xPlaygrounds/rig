@@ -114,7 +114,9 @@ pub const ORIGIN: &str = "subagents";
 
 /// Adds the `task`, `message` and `wait` tools, spawning the agents
 /// [`SpawnSubagent`] asks for, the subagents' lifecycle and the reports
-/// that answer their requests; with the `tui` feature (on by default),
+/// that answer their requests, and the kernel's
+/// [`Subagents`](rig_ecs::spawn::Subagents) marker, with which code mode
+/// offers agents; with the `tui` feature (on by default),
 /// also how the terminal view draws the tools' calls.
 #[derive(Default)]
 pub struct SubagentsPlugin;
@@ -127,7 +129,8 @@ impl Plugin for SubagentsPlugin {
         if !app.is_plugin_added::<AgentPickerPlugin>() {
             app.add_plugins(AgentPickerPlugin);
         }
-        app.add_setting::<SubagentDefaults>("subagents")
+        app.init_resource::<rig_ecs::spawn::Subagents>()
+            .add_setting::<SubagentDefaults>("subagents")
             .keeps_saved::<Subtask>()
             .keeps_saved::<Helper>()
             .keeps_saved::<Peers>()

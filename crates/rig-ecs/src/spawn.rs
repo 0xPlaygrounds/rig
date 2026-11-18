@@ -65,6 +65,12 @@ pub struct AgentSpec {
     pub under: Option<EffectId>,
 }
 
+/// Present when a plugin lets agents start agents of their own and talk to
+/// them, as subagents do. A plugin that spawns agents for an agent, such as
+/// a code mode, offers that only when it is here; it inserts nothing else.
+#[derive(Resource, Default, Debug)]
+pub struct Subagents;
+
 /// Why no agent was made.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum SpawnRefused {

@@ -59,6 +59,12 @@ fn gate(calls: Query<(Entity, &ToolRequest), ReadyToStart>, mut commands: Comman
 /// An app with code mode, `look`, `touch` and `poke`, its gate, and an agent
 /// answered by `model`.
 fn app(model: &MockCompletionModel) -> (App, Receiver<()>, Entity) {
+    app_with(model, false)
+}
+
+/// [`app`], with [`Subagents`] when `agents`, marked after code mode is
+/// added, as a plugin added later would.
+fn app_with(model: &MockCompletionModel, agents: bool) -> (App, Receiver<()>, Entity) {
     let (mut app, wakes) = app_on(&MemoryStore::default());
     let options = |footprint| ToolOptions {
         footprint: Some(footprint),
@@ -86,6 +92,9 @@ fn app(model: &MockCompletionModel) -> (App, Receiver<()>, Entity) {
         .init_resource::<Kept>()
         .add_systems(Last, keep)
         .add_systems(AgentPass, gate.in_set(Stage::Gate));
+    if agents {
+        app.init_resource::<Subagents>();
+    }
     let agent = match connect(model) {
         Some(connection) => {
             let choice = ModelChoice(connection.spec.reference());
@@ -135,12 +144,21 @@ fn heard(world: &World, agent: Entity, text: &str) -> bool {
     format!("{messages:?}").contains(text)
 }
 
-/// `SteelPlugin` adds `/agents`, which lists and shows its programs' agents.
+/// With Subagents the description offers the agent functions as well as
+/// `call-tool`.
 #[test]
-fn steel_adds_the_agent_picker() {
+fn with_subagents_the_description_offers_the_agent_functions() {
     let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
-    let (app, _, _) = app(&model);
-    assert!(app.is_plugin_added::<AgentPickerPlugin>());
+    let (mut app, _, _) = app_with(&model, true);
+    let said = description(&mut app);
+    for function in [
+        "(spawn-agent name [options])",
+        "(send agent text)",
+        "(reply request)",
+    ] {
+        assert!(said.contains(function), "{said}");
+    }
+    assert!(said.contains("(call-tool name [args])"), "{said}");
 }
 
 #[test]
@@ -228,7 +246,7 @@ fn an_interrupt_ends_a_held_tool_call_of_a_program_and_its_hold() {
 #[test]
 fn a_program_never_gives_an_agent_a_tool_its_parent_lacks() {
     let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
-    let (mut app, wakes, agent) = app(&model);
+    let (mut app, wakes, agent) = app_with(&model, true);
     // As the drive test's intermediary: allowed `run_steel` and `look` only.
     let access = ToolAccess::only([RUN_STEEL, "look"]);
     app.world_mut().entity_mut(agent).insert(access);
@@ -268,7 +286,7 @@ fn a_program_never_gives_an_agent_a_tool_its_parent_lacks() {
 #[test]
 fn a_programs_agent_shares_its_parents_connection() {
     let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
-    let (mut app, wakes, agent) = app(&model);
+    let (mut app, wakes, agent) = app_with(&model, true);
     let code = json!({ "code": r#"(spawn-agent "leaf")"# });
     let call = start_call(app.world_mut(), agent, (RUN_STEEL, "s1"), code);
     let call = call.unwrap_or(Entity::PLACEHOLDER);

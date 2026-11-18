@@ -72,6 +72,10 @@ const DENIED_PREFIXES: [&str; 3] = ["#", "%", "Engine::"];
 /// prefix keeps it out of the program's reach.
 const OUTPUT_PORT: &str = "#%rig-steel-output";
 
+/// Why an agent function is refused without Subagents.
+const NO_SUBAGENTS: &str = "agents come with the Subagents plugin, which is off; the user turns \
+     it on with `rig plugin enable rig_basics::subagents::SubagentsPlugin`";
+
 /// Why a host function stops when its call is cancelled.
 const CANCELLED: &str = "the run_steel call was cancelled";
 
@@ -140,7 +144,7 @@ fn refuse_denied(code: &str) -> Result<(), String> {
         if denied {
             return Err(format!(
                 "`{name}` is not available: a {RUN_STEEL} program reaches the host only \
-                 through spawn-agent, send, reply and call-tool. Nothing ran."
+                 through its host functions. Nothing ran."
             ));
         }
     }
@@ -210,32 +214,37 @@ fn options(value: Option<&SteelVal>, what: &str) -> Result<Map<String, Value>, S
     }
 }
 
-/// Binds the host functions in `engine`, each to one [`Host`] method.
+/// Binds the host functions in `engine`, each to one [`Host`] method; the
+/// agent functions refuse every call when the host has no agents.
 fn register_host_functions(engine: &mut Engine, host: &Arc<Host>) {
-    let functions: [(&'static str, HostFunction); 4] = [
-        ("spawn-agent", |host, args| match args {
+    let functions: [(&'static str, bool, HostFunction); 4] = [
+        ("spawn-agent", true, |host, args| match args {
             [name] => host.spawn_agent(name, None),
             [name, options] => host.spawn_agent(name, Some(options)),
             _ => Err("expects a name and optionally an options hash".to_owned()),
         }),
-        ("send", |host, args| match args {
+        ("send", true, |host, args| match args {
             [agent, text] => host.send(agent, text),
             _ => Err("expects an agent id and a text".to_owned()),
         }),
-        ("reply", |host, args| match args {
+        ("reply", true, |host, args| match args {
             [request] => host.reply(request),
             _ => Err("expects a request id".to_owned()),
         }),
-        ("call-tool", |host, args| match args {
+        ("call-tool", false, |host, args| match args {
             [name] => host.call_tool(name, None),
             [name, args] => host.call_tool(name, Some(args)),
             _ => Err("expects a tool name and optionally an args hash".to_owned()),
         }),
     ];
-    for (name, function) in functions {
+    for (name, agent, function) in functions {
         let host = host.clone();
         let bound = move |args: &[SteelVal]| {
-            host.count_call()
+            let allowed = match agent && !host.agents {
+                true => Err(NO_SUBAGENTS.to_owned()),
+                false => host.count_call(),
+            };
+            allowed
                 .and_then(|()| function(&host, args))
                 .map_err(|why| SteelErr::new(ErrorKind::Generic, format!("{name}: {why}")))
         };
@@ -253,6 +262,8 @@ pub(crate) struct Host {
     harness: Harness,
     /// The calling agent.
     me: AgentId,
+    /// Whether the agent functions work: Subagents is on.
+    agents: bool,
     /// The `run_steel` call's id, which prefixes the ids of its requests.
     call: String,
     /// The execution clock and the interrupt switch.
@@ -272,7 +283,7 @@ pub(crate) struct Host {
 impl Host {
     pub(crate) fn new(
         harness: Harness,
-        (me, call): (AgentId, String),
+        (me, call, agents): (AgentId, String, bool),
         control: Arc<Control>,
         cancelled: Shared<oneshot::Receiver<()>>,
         limits: Limits,
@@ -280,6 +291,7 @@ impl Host {
         Self {
             harness,
             me,
+            agents,
             call,
             control,
             cancelled,
