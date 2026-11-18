@@ -771,9 +771,17 @@ fn enable(home: &Home, name: &str, on: bool) -> Result<Vec<String>> {
             }
             (true, true) => ": each of its plugins is as its own choice says",
         };
+        let next = match chosen.does_nothing_without(name).filter(|_| on && !branch) {
+            Some(without) => format!(
+                "It does nothing without {}, which is off, so it stays off until that is on.",
+                without.name
+            ),
+            None => {
+                "The next start, or /reload in the agent, rebuilds the agent with it.".to_owned()
+            }
+        };
         said.push(format!(
-            "Turned {what}`{name}` {state} in {}{then}.\n\
-             The next start, or /reload in the agent, rebuilds the agent with it.",
+            "Turned {what}`{name}` {state} in {}{then}.\n{next}",
             path.display()
         ));
     }
