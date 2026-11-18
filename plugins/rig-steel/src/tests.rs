@@ -500,3 +500,45 @@ fn the_steel_table_sets_the_limits() {
         crate::Limits::default().max_output_bytes
     );
 }
+
+/// The description `run_steel` has in `app`.
+fn description(app: &mut App) -> String {
+    let world = app.world_mut();
+    let mut tools = world.query::<&ToolDef>();
+    let steel = tools.iter(world).find(|def| def.0.name == RUN_STEEL);
+    steel
+        .map(|def| def.0.description.clone())
+        .unwrap_or_default()
+}
+
+/// Without Subagents a program calls tools, loops and returns a value; its
+/// agent functions are refused with how to turn Subagents on, and the
+/// description offers only `call-tool`.
+#[test]
+fn without_subagents_a_program_only_calls_tools() {
+    let code = r#"(define (looks n) (if (= n 0) '() (cons (call-tool "look") (looks (- n 1)))))
+        (string-join (looks 2) ",")"#;
+    assert_eq!(ran_with(crate::Limits::default(), code), "seen,seen");
+    for code in [
+        r#"(spawn-agent "leaf")"#,
+        r#"(send "agent" "Hi.")"#,
+        r#"(reply "request")"#,
+    ] {
+        let refused = ran_with(crate::Limits::default(), code);
+        assert!(
+            refused.contains("rig plugin enable rig_basics::subagents::SubagentsPlugin"),
+            "{refused}"
+        );
+    }
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let (mut app, _, _) = app(&model);
+    let said = description(&mut app);
+    assert!(said.contains("(call-tool name [args])"), "{said}");
+    assert!(!said.contains("(spawn-agent name [options])"), "{said}");
+    let world = app.world_mut();
+    let agents = world
+        .query_filtered::<(), With<SpawnedBy>>()
+        .iter(world)
+        .count();
+    assert_eq!(agents, 0);
+}
