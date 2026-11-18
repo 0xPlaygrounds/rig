@@ -408,6 +408,36 @@ fn a_failure_rig_explains_does_not_repeat_cargos_error() {
     }
 }
 
+/// Only a failure rig explained has a `rig build: ` line, which holds the
+/// whole reason, with the manifest line to change, on one line.
+#[test]
+fn an_explained_failure_is_one_line_for_reload() {
+    let root = std::env::temp_dir().join(format!("rig-build-explains-{}", std::process::id()));
+    let log = || {
+        BuildLog::create(
+            Home::at(&root).build_log(),
+            BuildOutput::Live,
+            Box::new(Shown::default()),
+        )
+    };
+    let pin = "plugin/Cargo.toml:7: [dependencies] bevy_app = \"=0.20.0\"".to_owned();
+    let why = Explained(pinned_bevy(&"cargo failed", std::slice::from_ref(&pin)));
+    let explained = log().fail(FailedAt::Build, &why).explanation();
+    let plain = log().fail(
+        FailedAt::Build,
+        &*Box::<dyn std::error::Error>::from("cargo failed"),
+    );
+    fs::remove_dir_all(&root).ok();
+    let line = explained.unwrap_or_default();
+    assert!(line.starts_with("rig build: a plugin must write"), "{line}");
+    assert!(line.contains(&format!(": {pin} ")), "{line}");
+    assert!(
+        !line.contains('\n') && !line.ends_with(['.', ':']),
+        "{line}"
+    );
+    assert_eq!(plain.explanation(), None);
+}
+
 /// A short wait for cargo's lock in one command says nothing when a later
 /// command of the same build is silent for long.
 #[test]

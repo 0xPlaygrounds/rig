@@ -8,7 +8,7 @@ use std::thread::Builder;
 
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 use rig_harness::harness_protocol;
-use rig_harness::harness_protocol::{UPDATE_SAYS, first_errors, without_secrets};
+use rig_harness::harness_protocol::{BUILD_SAYS, UPDATE_SAYS, first_errors, without_secrets};
 use rig_harness::host::launcher::Invoked;
 use rig_harness::prelude::*;
 use rig_tools::process::{Process, STOP_GRACE};
@@ -118,9 +118,19 @@ impl ReloadBuild {
         }
     }
 
-    /// At most `count` lines of the output from the first error on, or its
-    /// end when no line starts with `error`.
+    /// Why `rig build` says the build failed, when it knows the cause.
+    fn explained(&self) -> Option<&str> {
+        let mut lines = self.output.iter();
+        lines.find_map(|line| line.strip_prefix(BUILD_SAYS))
+    }
+
+    /// What `rig build` explained, or else at most `count` lines of the
+    /// output from the first error on, or its end when no line starts with
+    /// `error`.
     fn errors(&self, count: usize) -> String {
+        if let Some(explained) = self.explained() {
+            return explained.to_owned();
+        }
         let lines = self.output.iter().map(String::as_str);
         let mut shown = first_errors(lines.clone(), count);
         if shown.is_empty() {
@@ -276,8 +286,12 @@ fn drain_reload(
         return;
     }
     *status = ReloadStatus::Failed;
-    let first = first_errors(build.output.iter().map(String::as_str), 1)
-        .first()
+    let first = build
+        .explained()
+        .or_else(|| {
+            let lines = build.output.iter().map(String::as_str);
+            first_errors(lines, 1).first().copied()
+        })
         .map(|line| format!(": {}", line.trim()))
         .unwrap_or_default();
     if build.rebuild == Rebuild::Update && !build.installed() {

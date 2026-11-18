@@ -22,7 +22,7 @@ use std::time::{Duration, Instant, UNIX_EPOCH};
 use rig_harness_protocol::config::toml_edit::Item;
 use rig_harness_protocol::fs;
 use rig_harness_protocol::launch::{Launch, Purpose};
-use rig_harness_protocol::{AgentDescription, Home, RunDir, config, first_errors};
+use rig_harness_protocol::{AgentDescription, BUILD_SAYS, Home, RunDir, config, first_errors};
 
 use super::project::{self, Manifest, PACKAGE, RigSource, workspace_dependency};
 use super::{BEVY_VERSION, COMMIT, LONG_VERSION, Result, locks};
@@ -87,6 +87,8 @@ pub struct BuildFailure {
     pub errors: Vec<String>,
     /// The build's whole output: [`Home::build_log`], or [`safe_log`].
     pub log: PathBuf,
+    /// Whether the reason is rig's own account of the cause ([`Explained`]).
+    explained: bool,
 }
 
 impl BuildFailure {
@@ -97,6 +99,16 @@ impl BuildFailure {
             .map(String::as_str)
             .collect::<Vec<_>>()
             .join("\n")
+    }
+
+    /// The [`BUILD_SAYS`] line for a failure rig explained: its reason on
+    /// one line, without the closing period, as a notice goes on after it.
+    fn explanation(&self) -> Option<String> {
+        self.explained.then(|| {
+            let lines = self.reason.lines().map(str::trim);
+            let reason = lines.collect::<Vec<_>>().join(" ");
+            format!("{BUILD_SAYS}{}", reason.trim_end_matches('.'))
+        })
     }
 
     /// What to tell about it after a build whose output went as `output`
@@ -417,7 +429,8 @@ fn local_crates(home: &Home, plugins: &config::Plugins) -> Result<()> {
 
 /// `rig build`, holding the root's build lock. It always stages, so it also
 /// retries a build that was rolled back. Run by an agent's `/reload`
-/// (`RIG_SESSION` set), it stages for that agent's launcher alone.
+/// (`RIG_SESSION` set), it stages for that agent's launcher alone. A
+/// failure rig explained is said on its [`BUILD_SAYS`] line.
 pub fn build(launch: &Launch) -> Result<()> {
     let home = &launch.home();
     let _lock = locks::hold_build_lock(home, BuildOutput::Live)?;
@@ -425,12 +438,16 @@ pub fn build(launch: &Launch) -> Result<()> {
         Some(session) => home.staged_for(session),
         None => home.staged(),
     };
-    Ok(compile(
-        launch,
-        &staged,
-        Staging::Always,
-        BuildOutput::Live,
-    )?)
+    compile(launch, &staged, Staging::Always, BuildOutput::Live).map_err(|failure| {
+        match failure.explanation() {
+            Some(line) => {
+                eprintln!("{line}");
+                let log = failure.log.display();
+                format!("the build failed (whole output: {log})").into()
+            }
+            None => failure.into(),
+        }
+    })
 }
 
 /// `rig plugin check --build`, holding the root's build lock: builds the
@@ -690,7 +707,8 @@ impl BuildLog {
     /// with cargo's first errors unless rig [`Explained`] it.
     fn fail(mut self, at: FailedAt, failure: &(dyn std::error::Error + 'static)) -> BuildFailure {
         let reason = failure.to_string();
-        let errors = match failure.is::<Explained>() {
+        let explained = failure.is::<Explained>();
+        let errors = match explained {
             true => Vec::new(),
             false => first_errors(self.lines.iter().map(String::as_str), ERROR_LINES)
                 .into_iter()
@@ -703,6 +721,7 @@ impl BuildLog {
             reason,
             errors,
             log: self.path,
+            explained,
         }
     }
 }
