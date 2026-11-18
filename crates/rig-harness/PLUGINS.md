@@ -38,11 +38,12 @@ same session; a failed build keeps the running agent.
 Plugins form a tree of crates, areas and plugins. A plugin's area is the first
 module under its crate in its type path:
 `rig_basics::sessions::agents::AgentsPlugin` is in `rig-basics/sessions`, and
-`rig_basics::BasicCommandsPlugin`, directly under the crate root, is in none. Nothing declares an area, so plugins that
-belong together go in one module.
+`rig_basics::BasicCommandsPlugin`, directly under the crate root, is in none.
+Nothing declares an area, so plugins that belong together go in one module.
 
-`[plugins] off = ["rig-basics/sessions"]` turns a crate or an area off: none
-of its plugins run, whatever their own choice in `enable` and `disable`. Each
+`[plugins] off = ["rig-basics/sessions"]` turns a crate or an area off: the
+agent loads none of its plugins, whatever their own choice in `enable` and
+`disable`. A plugin that another one adds in its own `build` still runs. Each
 keeps that choice, so turning the branch back on brings it back, and a plugin
 added to an off branch later stays off. A name in `off` that is no crate or
 area refuses the start, as an unknown plugin does.
