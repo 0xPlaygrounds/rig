@@ -9,7 +9,8 @@
 //! and [`Ollama::anthropic_completion`] its Anthropic-compatible
 //! `/v1/messages`, as the
 //! [`OLLAMA`](crate::providers::anthropic::wire::OLLAMA) Messages dialect.
-//! Embeddings use `/api/embed`, and the model listing `/api/tags`.
+//! Embeddings use `/api/embed`, the model listing `/api/tags`, and the
+//! context window a model is served with `/api/show`.
 //!
 //! ```no_run
 //! use rig_core::providers::ollama;
@@ -31,6 +32,7 @@ pub mod chat;
 pub mod embedding;
 pub mod extension;
 pub mod model_listing;
+pub(crate) mod show;
 pub mod streaming;
 pub mod wire;
 

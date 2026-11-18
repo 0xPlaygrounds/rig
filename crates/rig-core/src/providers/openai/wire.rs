@@ -40,7 +40,7 @@ pub use modality::{
 };
 pub use route::{OpenAiDecoder, OpenAiEvent, OpenAiReassembler, OpenAiWire, Route};
 
-pub(crate) use modality::{encoded, json_post};
+pub(crate) use modality::{encoded, get, json_post};
 
 /// Backend selected through the Hugging Face router.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

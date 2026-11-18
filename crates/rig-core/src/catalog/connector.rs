@@ -9,12 +9,18 @@ use std::fmt;
 use std::sync::Arc;
 
 use super::{Catalog, ModelSpec};
+use crate::error::ProviderError;
 use crate::http_client::DynHttpClient;
 use crate::operation::Completion;
 use crate::providers::registry::{ConnectError, ConnectOptions, ProviderId};
 use crate::serve::ErasedHandler;
 use crate::serve::adapters::ModelAdapter;
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use crate::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync};
+
+/// How long a local server may take to say the window it serves a model
+/// with. It answers from what it has loaded, so a server that takes longer
+/// is taken not to say.
+const WINDOW_ASK_DEADLINE: std::time::Duration = std::time::Duration::from_secs(3);
 
 /// A way to reach catalog models no key is set for, such as a
 /// subscription plan signed in to. A [`Connector`] asks it for a model only
@@ -316,6 +322,37 @@ impl Connector {
         let spec = self.catalog.resolve(reference)?.shared();
         let (handler, _) = self.handler(&spec);
         Ok((spec, handler?))
+    }
+
+    /// The context window of `spec`, asked of the server reaching it on
+    /// this connector's transport: Ollama's `/api/show` (the `num_ctx` the
+    /// model is set to, else its trained context length, which can be
+    /// larger than the window Ollama serves with no `num_ctx` set) or a
+    /// llama.cpp server's `/props`. `None` when the model is reached
+    /// any other way, such as through a provider registered for its vendor,
+    /// which may reach another server. The future fails when the server
+    /// does not answer within a few seconds or names no window.
+    pub fn context_window(
+        &self,
+        spec: &ModelSpec,
+    ) -> Option<WasmBoxedFuture<'static, Result<u32, ProviderError>>> {
+        if self.is_provided(spec.provider) {
+            return None;
+        }
+        let mut options = ConnectOptions::new();
+        options.http = self.transport.shared();
+        let (config, http) = crate::providers::registry::configured(spec.provider, options).ok()?;
+        let ask = config.context_window(&spec.id, http)?;
+        Some(Box::pin(async move {
+            crate::wasm_compat::timeout(WINDOW_ASK_DEADLINE, ask)
+                .await
+                .unwrap_or_else(|_| {
+                    Err(ProviderError::Provider(format!(
+                        "no answer within {}s",
+                        WINDOW_ASK_DEADLINE.as_secs()
+                    )))
+                })
+        }))
     }
 
     /// The handler serving `spec`, as [`Self::connect`] finds it, and the

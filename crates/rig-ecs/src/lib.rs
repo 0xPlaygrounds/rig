@@ -216,6 +216,7 @@ impl Plugin for AgentPlugin {
             .add_systems(SaveFrame, save_now.map(drop))
             .init_resource::<Wake>()
             .init_resource::<model::Models>()
+            .init_resource::<model::ServedWindows>()
             .init_resource::<retry::RetryPolicy>()
             .init_resource::<tools::UnavailableCalls>()
             .add_message::<Notice>()
@@ -250,6 +251,10 @@ impl Plugin for AgentPlugin {
                         .run_if(on_message::<AppExit>),
                 ),
             )
+            .add_systems(
+                stage::AgentPass,
+                model::wait_for_window.in_set(stage::Stage::Gate),
+            )
             .add_observer(session_log::retire)
             .add_observer(requests::end_with_settled)
             .add_observer(requests::refuse_ended)
@@ -261,6 +266,8 @@ impl Plugin for AgentPlugin {
             .add_observer(model::on_set_model)
             .add_observer(model::connect)
             .add_observer(model::check_effort)
+            .add_observer(model::ask_window)
+            .add_observer(model::learn_window)
             .add_observer(model::on_set_reasoning);
         stage::build(app);
     }
