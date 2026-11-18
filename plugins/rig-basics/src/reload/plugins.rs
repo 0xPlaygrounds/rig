@@ -60,6 +60,8 @@ struct Row {
     /// The plugins that add it ([`BuiltIn::adds`]), which keep it on while
     /// they are.
     added_by: Vec<&'static str>,
+    /// The plugins it does nothing without ([`BuiltIn::only_with`]).
+    only_with: &'static [&'static str],
     /// Whether rig's defaults turn it on here: an extra always.
     default: bool,
     /// Its state, short: `on`, `off`, or why it is off.
@@ -240,6 +242,7 @@ fn list(
                 row,
                 *ticked,
                 needers(&rows, &on, row).as_deref(),
+                idler(&rows, &on, row),
             ))
         })
         .collect();
@@ -340,22 +343,39 @@ fn needers(rows: &[Row], on: &[bool], row: &Row) -> Option<String> {
     and(names)
 }
 
+/// The name of the first plugin `row` works only with that `on` leaves
+/// off: unticked, or off with its branch while no ticked plugin adds it.
+fn idler<'a>(rows: &'a [Row], on: &[bool], row: &Row) -> Option<&'a str> {
+    let runs = |with: &&str| {
+        (rows.iter().zip(on)).any(|(it, ticked)| {
+            it.plugin == *with
+                && *ticked
+                && (it.branch_off.is_none() || needers(rows, on, it).is_some())
+        })
+    };
+    let without = row.only_with.iter().find(|with| !runs(with))?;
+    let name = rows.iter().find(|it| it.plugin == *without);
+    Some(name.map_or(*without, |it| it.name.as_str()))
+}
+
 /// `names` joined by "and", when there is any.
 fn and<'a>(names: impl Iterator<Item = &'a str>) -> Option<String> {
     let names: Vec<&str> = names.collect();
     (!names.is_empty()).then(|| names.join(" and "))
 }
 
-/// What the list shows beside `row` while `on` says whether it is ticked
-/// and `needers` add it: its state, or how ticking changes it.
-fn detail(row: &Row, on: bool, needers: Option<&str>) -> String {
+/// What the list shows beside `row` while `on` says whether it is ticked,
+/// `needers` add it and `idler` is off without which it does nothing: its
+/// state, or how ticking changes it.
+fn detail(row: &Row, on: bool, needers: Option<&str>, idler: Option<&str>) -> String {
     if let Some(by) = needers.filter(|_| row.on && !on) {
         return format!("- off, stays on: needed by {by}");
     }
     match (row.on, on, row.essential) {
-        (false, true, _) => match row.branch_off.as_ref().filter(|_| needers.is_none()) {
-            Some(branch) => format!("+ on, still off with its branch {branch}"),
-            None => "+ on".to_owned(),
+        (false, true, _) => match (row.branch_off.as_ref().filter(|_| needers.is_none()), idler) {
+            (Some(branch), _) => format!("+ on, still off with its branch {branch}"),
+            (None, Some(without)) => format!("+ on, does nothing without {without}"),
+            (None, None) => "+ on".to_owned(),
         },
         (true, false, Some(what)) => format!("- off, takes away {what}"),
         (true, false, None) => "- off".to_owned(),
@@ -544,6 +564,7 @@ fn built_in_row(built_in: &BuiltIn, choice: Choice, runs: bool) -> Row {
             .filter(|adder| adder.adds.contains(&built_in.plugin))
             .map(|adder| adder.plugin)
             .collect(),
+        only_with: built_in.only_with,
         default: built_in.on && built_in.available(),
         state,
         essential: built_in.essential,
@@ -589,6 +610,7 @@ fn extra_row(extra: &Extra, name: String, choice: Choice, runs: bool) -> Row {
         state: choice.state(runs),
         branch_off: choice.branch_off,
         added_by: Vec::new(),
+        only_with: &[],
         essential: None,
         about,
     }
@@ -696,6 +718,7 @@ fn mark(
                 row,
                 *ticked,
                 needers(&list.rows, &on, row).as_deref(),
+                idler(&list.rows, &on, row),
             ));
         }
         if picker != *shown {
@@ -809,8 +832,10 @@ fn ask(
 }
 
 /// The names of the rows `on` changes by what they turn, `on` then `off`,
-/// of those with any; a plugin turned on that a branch keeps off says so,
-/// unless that branch is one of the `branches` turned back on.
+/// of those with any. A plugin turned on that a branch keeps off says so,
+/// unless that branch is one of the `branches` turned back on, as does one
+/// that does nothing without a plugin off; one turned off that a plugin
+/// ticked adds says it stays on.
 fn names(rows: &[Row], on: &[bool], branches: &[String]) -> Vec<(&'static str, String)> {
     let changed = changed(rows, on);
     [("on", true), ("off", false)]
@@ -819,14 +844,18 @@ fn names(rows: &[Row], on: &[bool], branches: &[String]) -> Vec<(&'static str, S
             let names: Vec<String> = (changed.iter())
                 .filter(|(_, on)| *on == want)
                 .map(|(row, ticked)| {
-                    match (row.branch_off.as_ref()).filter(|branch| {
-                        *ticked && !branches.contains(branch) && needers(rows, on, row).is_none()
-                    }) {
-                        Some(branch) => {
-                            format!("{} (stays off with its branch {branch})", row.name)
+                    let needers = needers(rows, on, row);
+                    let branch = (row.branch_off.as_ref())
+                        .filter(|branch| !branches.contains(branch) && needers.is_none());
+                    let why = match (*ticked, branch, idler(rows, on, row), needers) {
+                        (true, Some(branch), _, _) => format!("stays off with its branch {branch}"),
+                        (true, None, Some(without), _) => {
+                            format!("does nothing without {without}")
                         }
-                        None => row.name.clone(),
-                    }
+                        (false, _, _, Some(by)) => format!("stays on: needed by {by}"),
+                        _ => return row.name.clone(),
+                    };
+                    format!("{} ({why})", row.name)
                 })
                 .collect();
             (!names.is_empty()).then(|| (word, names.join(", ")))

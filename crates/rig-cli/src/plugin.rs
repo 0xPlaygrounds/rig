@@ -750,6 +750,26 @@ fn enable(home: &Home, name: &str, on: bool) -> Result<Vec<String>> {
     let branch = chosen.krate(name).is_none();
     let state = if on { "on" } else { "off" };
     let what = if branch { "the branch " } else { "" };
+    let plugins: Vec<&str> = if branch {
+        chosen.held(name)
+    } else {
+        vec![name]
+    };
+    let idle: Vec<String> = (plugins.iter())
+        .filter(|_| on)
+        .filter(|plugin| chosen.own.iter().any(|own| own == *plugin))
+        .filter_map(|plugin| {
+            let without = chosen.does_nothing_without(plugin)?.name;
+            let it = if branch {
+                format!("`{plugin}` does")
+            } else {
+                "It does".to_owned()
+            };
+            Some(format!(
+                "{it} nothing without {without}, which is off, so it stays off until that is on."
+            ))
+        })
+        .collect();
     if !changed {
         let what = if branch { "The branch " } else { "" };
         // A branch keeping it off makes only its own choice on already.
@@ -771,25 +791,13 @@ fn enable(home: &Home, name: &str, on: bool) -> Result<Vec<String>> {
             }
             (true, true) => ": each of its plugins is as its own choice says",
         };
-        let next = match chosen.does_nothing_without(name).filter(|_| on && !branch) {
-            Some(without) => format!(
-                "It does nothing without {}, which is off, so it stays off until that is on.",
-                without.name
-            ),
-            None => {
-                "The next start, or /reload in the agent, rebuilds the agent with it.".to_owned()
-            }
-        };
-        said.push(format!(
-            "Turned {what}`{name}` {state} in {}{then}.\n{next}",
-            path.display()
-        ));
+        let mut line = format!("Turned {what}`{name}` {state} in {}{then}.", path.display());
+        if branch || idle.is_empty() {
+            line.push_str("\nThe next start, or /reload in the agent, rebuilds the agent with it.");
+        }
+        said.push(line);
     }
-    let plugins: Vec<&str> = if branch {
-        chosen.held(name)
-    } else {
-        vec![name]
-    };
+    said.extend(idle);
     if on {
         let mut keeping: Vec<&str> = Vec::new();
         for plugin in &plugins {
