@@ -319,8 +319,23 @@ fn hold_once(
     }
 }
 
+/// Leaves each turn's call to its agent's connection, as a plugin that
+/// clears a route does.
+fn route_to_agent(mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<TurnCall>)>) {
+    for mut call in &mut calls {
+        call.connection = None;
+    }
+}
+
 #[test]
 fn a_call_held_by_another_plugin_past_the_answer_compacts_to_the_window() {
+    // Routed explicitly, and left to its agent's connection.
+    for to_agent in [false, true] {
+        held_past_the_answer(to_agent);
+    }
+}
+
+fn held_past_the_answer(to_agent: bool) {
     let ollama = format!(r#"{{"parameters": "num_ctx {SERVED}", "model_info": {{}}}}"#);
     let server = Server::new([MockHttpResponse::success(ollama)]);
     let model = MockCompletionModel::from_stream_turns([
@@ -329,6 +344,9 @@ fn a_call_held_by_another_plugin_past_the_answer_compacts_to_the_window() {
     ]);
     let (mut app, wakes, agent) = served("ollama/qwen3", &server, &model);
     app.add_systems(AgentPass, hold_once.in_set(PrepareSystems::Edit));
+    if to_agent {
+        app.add_systems(AgentPass, route_to_agent.in_set(PrepareSystems::Edit));
+    }
     app.world_mut().trigger(Deliver::new(
         agent,
         "And the next question?",
@@ -363,7 +381,7 @@ fn a_call_held_by_another_plugin_past_the_answer_compacts_to_the_window() {
     let requests = sent(&model);
     assert!(
         requests.first().is_some_and(|first| asks_summary(first)),
-        "the conversation is summarized before the request: {} requests",
+        "the conversation is summarized before the request: {} requests (to agent: {to_agent})",
         requests.len()
     );
 }
