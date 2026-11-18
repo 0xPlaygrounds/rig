@@ -889,6 +889,24 @@ fn the_refusal_names_every_plugin_on_that_adds_it() {
 }
 
 #[test]
+fn enabling_a_plugin_that_does_nothing_without_one_off_says_it_stays_off() {
+    const MCP_APPROVAL: &str = "rig_mcp_client::approval::McpApprovalPlugin";
+    let home = old_home("idle-enable");
+    let result = (|| -> Result<_> {
+        fs::create_dir_all(home.root())?;
+        Ok(enable(&home, MCP_APPROVAL, true)?.join("\n"))
+    })();
+    fs::remove_dir_all(home.root()).ok();
+    let said = result.unwrap_or_default();
+    assert!(
+        said.contains(
+            "It does nothing without MCP servers, which is off, so it stays off until that is on."
+        ) && !said.contains("rebuilds the agent with it"),
+        "{said}"
+    );
+}
+
+#[test]
 fn the_list_says_a_plugin_is_off_while_it_does_nothing_without_one_off() {
     const MCP_APPROVAL: &str = "rig_mcp_client::approval::McpApprovalPlugin";
     let home = old_home("idle");
