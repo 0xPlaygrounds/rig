@@ -878,8 +878,9 @@ fn chunks(mut pipe: impl Read + Send + 'static) -> mpsc::Receiver<Vec<u8>> {
 
 /// Runs a describing build as a [`Build`] and waits for it, at most
 /// `timeout`, and returns its `report`, or what it said on stderr when it
-/// failed, on one line and without Rust's backtrace hint. Its group is killed once it exits or the time is up, so nothing
-/// it started outlives it or holds its stderr.
+/// failed, on one line and without Rust's backtrace hint. Its group is
+/// killed once it exits or the time is up, so nothing it started outlives
+/// it or holds its stderr.
 fn wait_described(mut command: Command, report: &Path, timeout: Duration) -> Result<String> {
     command.stderr(Stdio::piped());
     let mut build = Build::spawn(command)?;
