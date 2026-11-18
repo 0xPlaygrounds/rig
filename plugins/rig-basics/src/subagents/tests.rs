@@ -1648,3 +1648,16 @@ fn a_peers_request_is_named_by_its_asker() {
         "{request}"
     );
 }
+
+/// The plugin inserts the [`Subagents`](rig_ecs::spawn::Subagents) marker,
+/// with which code mode offers its agent functions.
+#[test]
+fn the_plugin_marks_that_agents_have_subagents() {
+    let session = Session::new(&MemoryStore::default(), None);
+    assert!(
+        session
+            .app
+            .world()
+            .contains_resource::<rig_ecs::spawn::Subagents>()
+    );
+}

@@ -67,7 +67,7 @@ pub struct AgentSpec {
 
 /// Present when a plugin lets agents start agents of their own and talk to
 /// them, as subagents do. A plugin that spawns agents for an agent, such as
-/// a code mode, offers that only when it is here; it inserts nothing else.
+/// a code mode, offers that only when it is here. The marker holds no data.
 #[derive(Resource, Default, Debug)]
 pub struct Subagents;
 

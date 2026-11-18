@@ -128,7 +128,8 @@ const INTRO: &str = "Run a Steel program (Scheme) and return the value of its la
 
 /// The rest of the description without Subagents.
 const TOOLS_ONLY: &str = "\nThe agent functions spawn-agent, send and reply come with the \
-    Subagents plugin, which is off.\n\n\
+    Subagents plugin, which is off. Never invent, simulate or paraphrase as fact another \
+    agent's reply; if the requested interaction is not supported, say so.\n\n\
     Read three files and gather their first lines:\n\
     (define paths (list \"crates/a/src/lib.rs\" \"crates/b/src/lib.rs\" \"crates/c/src/lib.rs\"))\n\
     (string-join (map (lambda (path) (call-tool \"read\" (hash 'path path 'limit 1))) paths) \"\\n\")";
@@ -146,7 +147,8 @@ const WITH_AGENTS: &str = "(spawn-agent name [options]) -> string\n    \
     (reply request) -> string\n    \
     Waits for the agent's answer to the request and returns its text; raises an error when \
     its turn failed or was stopped. Each request is replied once.\n\n\
-    A program waits for its agents' replies, so its result holds their real answers. Never \
+    A program waits for its agents' replies, so its result holds their real answers; one \
+    subagent is simpler started directly with the task tool. Never \
     invent, simulate or paraphrase as fact another agent's reply; if the requested \
     interaction is not supported, say so before offering an alternative.\n\n\
     Review three directories at once and gather the findings:\n\
@@ -157,9 +159,10 @@ const WITH_AGENTS: &str = "(spawn-agent name [options]) -> string\n    \
 /// What the model reads of `run_steel`: the agent functions only when
 /// `agents`, Subagents being on.
 fn description(agents: bool) -> String {
-    match agents {
-        true => format!("{INTRO}{WITH_AGENTS}"),
-        false => format!("{INTRO}{TOOLS_ONLY}"),
+    if agents {
+        format!("{INTRO}{WITH_AGENTS}")
+    } else {
+        format!("{INTRO}{TOOLS_ONLY}")
     }
 }
 
@@ -192,9 +195,7 @@ impl Plugin for SteelPlugin {
         let mut tools = world.query::<&mut ToolDef>();
         for mut tool in tools.iter_mut(world) {
             if tool.0.name == RUN_STEEL {
-                let mut definition = (*tool.0).clone();
-                definition.description = description(true);
-                tool.0 = Arc::new(definition);
+                Arc::make_mut(&mut tool.0).description = description(true);
             }
         }
     }

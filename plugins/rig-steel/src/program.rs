@@ -74,7 +74,8 @@ const OUTPUT_PORT: &str = "#%rig-steel-output";
 
 /// Why an agent function is refused without Subagents.
 const NO_SUBAGENTS: &str = "agents come with the Subagents plugin, which is off; the user turns \
-     it on with `rig plugin enable rig_basics::subagents::SubagentsPlugin`";
+     it on with `rig plugin enable rig_basics::subagents::SubagentsPlugin`, and it applies after \
+     a restart";
 
 /// Why a host function stops when its call is cancelled.
 const CANCELLED: &str = "the run_steel call was cancelled";
@@ -240,9 +241,10 @@ fn register_host_functions(engine: &mut Engine, host: &Arc<Host>) {
     for (name, agent, function) in functions {
         let host = host.clone();
         let bound = move |args: &[SteelVal]| {
-            let allowed = match agent && !host.agents {
-                true => Err(NO_SUBAGENTS.to_owned()),
-                false => host.count_call(),
+            let allowed = if agent && !host.agents {
+                Err(NO_SUBAGENTS.to_owned())
+            } else {
+                host.count_call()
             };
             allowed
                 .and_then(|()| function(&host, args))

@@ -392,16 +392,20 @@ fn ran_with(limits: crate::Limits, code: &str) -> String {
     let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
     let (mut app, wakes, agent) = app(&model);
     app.insert_resource(limits);
+    ran_in(&mut app, &wakes, (agent, "s1"), code)
+}
+
+/// What the program `code` returned, run by `agent` as its call `id` in
+/// `app`.
+fn ran_in(app: &mut App, wakes: &Receiver<()>, (agent, id): (Entity, &str), code: &str) -> String {
     let call = start_call(
         app.world_mut(),
         agent,
-        (RUN_STEEL, "s1"),
+        (RUN_STEEL, id),
         json!({ "code": code }),
     );
     let call = call.unwrap_or(Entity::PLACEHOLDER);
-    run_until(&mut app, &wakes, |world| {
-        world.get::<Outcome>(call).is_some()
-    });
+    run_until(app, wakes, |world| world.get::<Outcome>(call).is_some());
     let result = app.world().get::<Outcome>(call).map(Outcome::tool_result);
     result
         .map(|result| result.output().render())
@@ -534,22 +538,22 @@ fn description(app: &mut App) -> String {
 /// description offers only `call-tool`.
 #[test]
 fn without_subagents_a_program_only_calls_tools() {
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let (mut app, wakes, agent) = app(&model);
     let code = r#"(define (looks n) (if (= n 0) '() (cons (call-tool "look") (looks (- n 1)))))
         (string-join (looks 2) ",")"#;
-    assert_eq!(ran_with(crate::Limits::default(), code), "seen,seen");
-    for code in [
-        r#"(spawn-agent "leaf")"#,
-        r#"(send "agent" "Hi.")"#,
-        r#"(reply "request")"#,
+    assert_eq!(ran_in(&mut app, &wakes, (agent, "s1"), code), "seen,seen");
+    for (id, code) in [
+        ("s2", r#"(call-tool "look") (spawn-agent "leaf")"#),
+        ("s3", r#"(send "agent" "Hi.")"#),
+        ("s4", r#"(reply "request")"#),
     ] {
-        let refused = ran_with(crate::Limits::default(), code);
+        let refused = ran_in(&mut app, &wakes, (agent, id), code);
         assert!(
             refused.contains("rig plugin enable rig_basics::subagents::SubagentsPlugin"),
             "{refused}"
         );
     }
-    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
-    let (mut app, _, _) = app(&model);
     let said = description(&mut app);
     assert!(said.contains("(call-tool name [args])"), "{said}");
     assert!(!said.contains("(spawn-agent name [options])"), "{said}");
