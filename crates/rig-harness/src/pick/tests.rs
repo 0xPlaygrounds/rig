@@ -6,7 +6,7 @@ use rig_harness_protocol::Invocation;
 
 use super::*;
 use crate::ask::AskPlugin;
-use crate::commands::{AppCommandsExt, CommandArgs};
+use crate::commands::{AppCommandsExt, CommandArgs, RunCommand};
 use crate::host::cli::{AppCliExt, Front};
 use crate::host::launcher::Invoked;
 
@@ -239,4 +239,32 @@ fn a_picker_a_command_opens_after_a_nested_command_ran_is_refused_too() {
     assert_eq!(refused.len(), 1, "{refused:?}");
     let world = app.world_mut();
     assert_eq!(world.query::<&Picker>().iter(world).count(), 0);
+}
+
+/// A picked item's command refused, here because a turn runs, shows why
+/// as an error and puts nothing back in the input: the user typed none of
+/// it.
+#[test]
+fn a_picked_command_refused_shows_why_and_puts_nothing_in_the_input() {
+    let (mut app, agent) = app();
+    app.add_command(
+        "busy",
+        "Refuses while a turn runs",
+        |In(args): In<CommandArgs>, mut notices: MessageWriter<Notice>| {
+            notices.write(Notice::turn_running(args.agent));
+        },
+    );
+    let picker = Picker::new("Model").item("busy", "busy");
+    let picker = app.world_mut().spawn(picker).id();
+    app.world_mut()
+        .trigger(Pick::person(picker, Some(Chosen::item(0))));
+    app.update();
+    assert_eq!(refusals(&mut app), Vec::<String>::new());
+    let mut notices = app.world_mut().resource_mut::<Messages<Notice>>();
+    let errors: Vec<(Option<Entity>, String)> = (notices.drain())
+        .filter(|notice| notice.level == NoticeLevel::Error)
+        .map(|notice| (notice.agent, notice.text))
+        .collect();
+    let why = "A turn is running; stop it first.".to_owned();
+    assert_eq!(errors, [(Some(agent), why)]);
 }

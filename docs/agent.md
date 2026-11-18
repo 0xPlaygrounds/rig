@@ -231,10 +231,11 @@ followed by a space, or a first word with another `/` in it (a path such as
 `/etc/hosts: what is this?`, or `//x`), is no command: it goes to the model
 as typed. A path a
 space or trailing punctuation would cut is inserted quoted,
-`@"my notes.md"`, which is also how to type one by hand. A command that is
-unknown or refused comes back in the input with the reason, and Enter on it
-unchanged sends it to the model as it is; changed or cleared (Ctrl+C) and
-typed again, it is a command again.
+`@"my notes.md"`, which is also how to type one by hand. A command typed
+that is unknown or refused comes back in the input with the reason, and
+Enter on it unchanged sends it to the model as it is; changed or cleared
+(Ctrl+C) and typed again, it is a command again. One picked from a list or
+run by a key only shows the reason.
 `/help` lists the commands.
 
 While an earlier prompt is shown, the input's top row says "An earlier

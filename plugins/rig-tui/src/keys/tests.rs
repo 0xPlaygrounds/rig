@@ -164,6 +164,31 @@ fn a_binding_reads_and_edits_the_input_before_it_is_sent() {
     );
 }
 
+/// A command bound to a key and refused, here because a turn runs, shows
+/// why and leaves the input as it was: the user typed none of it.
+#[test]
+fn a_key_bound_command_refused_shows_why_and_leaves_the_input() {
+    let (mut app, _) = view_app();
+    app.add_command(
+        "busy",
+        "Refuses while a turn runs",
+        |In(args): In<CommandArgs>, mut notices: MessageWriter<Notice>| {
+            notices.write(Notice::turn_running(args.agent));
+        },
+    )
+    .add_key_binding(
+        KeyBinding::new(KeyPress::alt('b'), "Busy"),
+        run_command("busy"),
+    );
+    press(&mut app, "alt+b");
+    assert_eq!(typed(&app), "");
+    let notices = app.world().resource::<crate::view::Notices>().numbered();
+    let errors: Vec<String> = (notices.filter(|(_, notice)| notice.level == NoticeLevel::Error))
+        .map(|(_, notice)| notice.text.clone())
+        .collect();
+    assert_eq!(errors, ["A turn is running; stop it first."]);
+}
+
 #[test]
 fn a_sequence_waits_for_its_last_key() {
     let (mut app, _) = view_app();

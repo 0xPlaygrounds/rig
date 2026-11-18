@@ -17,6 +17,7 @@
 
 use std::collections::HashSet;
 
+use rig_harness::commands::run_chosen;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::{
     Aside, AsideId, Change, Conversation as Thread, MessageId,
@@ -527,7 +528,7 @@ fn passage_picked(
         }
         _ => return,
     };
-    commands.trigger(RunCommand::new(agent, line));
+    commands.queue(run_chosen(agent, line));
 }
 
 /// Keeps each comment typed as a draft, or its edit.
