@@ -42,7 +42,8 @@ const MOST_LINES: usize = 10;
 /// another text replaces it, and what [`clear`](Self::clear) empties; a
 /// question's answer never does, and Up in it stays in it. In a panel
 /// placed at the top, the bottom or below the input, it is as tall as its
-/// text, up to ten lines.
+/// text, up to ten lines. The editor the keys type into shows its keys in
+/// its top row while it is empty.
 ///
 /// ```no_run
 /// use rig_harness::prelude::*;

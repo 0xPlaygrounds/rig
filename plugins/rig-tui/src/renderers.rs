@@ -527,7 +527,9 @@ impl LookLine {
     /// The line as drawn: its code's text in the code's colors, each
     /// colored piece with the style of the laid-out text there laid over
     /// it, such as a diff's shade on the words a line changed. The text is
-    /// the laid-out text, and plain if the code has no colors for it.
+    /// the laid-out text, and plain if the code has no colors for it. A
+    /// plugin drawing look lines outside the transcript, such as in a
+    /// panel of its own, draws these.
     pub fn colored(&self) -> Line<'static> {
         let Some(CodeLine { code, index, at }) = &self.code else {
             return self.line.clone();
@@ -661,7 +663,9 @@ pub struct RenderRevision(pub u64);
 /// Lines of an item and named contributions after them. Contributions are
 /// ordered and names identify row ranges. An item with no lines and no
 /// contributions is hidden; contributions are drawn even when `lines` is
-/// empty.
+/// empty. The transcript draws the lines on the band of what the item is
+/// ([`Theme::user`], [`Theme::tool`], none for a reply); a line with a
+/// background of its own keeps it, as a diff's lines do.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct RenderOutput {
     /// The item's unwrapped lines.

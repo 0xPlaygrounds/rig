@@ -8,7 +8,8 @@ use super::{Aside, Author, MessageId};
 /// terminal view draws after the entry it follows, with what it shows
 /// collapsed, in a line, and what it shows expanded. It never reaches a
 /// model, and it is saved, restored and forked with the conversation; one
-/// made [`unsaved`](Aside::unsaved) is not saved.
+/// made [`unsaved`](Aside::unsaved) is not saved. Rig's print mode and
+/// ACP show no notes.
 ///
 /// ```
 /// use rig_core::conversation::{Author, Conversation, Note};

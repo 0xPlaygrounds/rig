@@ -4,10 +4,17 @@
 //! [`StatusSystems::Show`], and replaces or hides another plugin's in
 //! [`StatusSystems::Edit`], as plain text in a [`Tone`] or in runs of their
 //! own styles ([`StatusItem::styled`]). A plugin that also builds without
-//! the terminal view does it behind a default `tui` cargo feature. The
-//! plugin guide has an example and the default plugins' names and places.
-//! A [`StatusLine`] draws one in a panel, for the shown agent or another,
-//! and [`line()`] fits any items to a width.
+//! the terminal view does it behind a default `tui` cargo feature. A
+//! plugin that writes [`AppStatus`] inits it. A [`StatusLine`] draws one in
+//! a panel, for the shown agent or another, and [`line()`] fits any items
+//! to a width.
+//!
+//! The default plugins' items, as name (order, keep), place a new item
+//! among them. On the left: `session` (10, 2), `title` (20, 14), `model`
+//! (30, always), `reasoning` (40, 12), `status` (50, always), `subagents`
+//! (60, 15), `others` (70, 13), `turn` (80, 11), `reload` (90, 16) and the
+//! view's own `copied` (95, 20). On the right: `tokens` (10, 4), `cache`
+//! (20, 1), `cost` (30, 3), `budget` (35, 6) and `context` (40, 5).
 //!
 //! ```no_run
 //! use rig_harness::prelude::*;

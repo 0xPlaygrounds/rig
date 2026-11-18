@@ -53,7 +53,16 @@ const KEYS_PER_FRAME: usize = 1024;
 /// [`InputSystems::Dispatch`] does it. The picker or question shown takes
 /// it first, then a [`KeyBinding`](crate::KeyBinding), then the input.
 /// Items left by a run are done next; a push outside [`TuiKeys`] waits for
-/// the next frame.
+/// the next frame. A modal input is one filter, and `/` starts a slash
+/// command unless a filter or a binding takes it.
+///
+/// The mouse comes in as [`Event::Mouse`]. The wheel scrolls the
+/// transcript pane with the [`KeyFocus`](crate::KeyFocus), else the
+/// [`MainPane`], three rows a notch, or moves through an open picker or
+/// completion list as Up and Down. The view marks every drag of the left
+/// button and copies its text with [`CopyToClipboard`](crate::CopyToClipboard)
+/// on release. A plugin that takes a drag itself drops those items here in
+/// its [`InputSystems::Filter`] system.
 ///
 /// ```no_run
 /// use rig_harness::prelude::*;
@@ -86,7 +95,7 @@ pub struct PendingInput(pub Vec<KeyInput>);
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum KeyInput {
     /// What the terminal reported: a key, a paste, a resize, a change of
-    /// focus.
+    /// focus, the mouse.
     Event(Event),
     /// A built-in action of the input, done where it stands among the keys.
     Action(InputAction),
@@ -105,8 +114,9 @@ pub struct TuiKeys;
 /// in [`TuiKeys`], in this order.
 #[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum InputSystems {
-    /// Plugins read and change the item in the [`PendingInput`], with
-    /// the [`InputContext`] and the input as the keys before it left them.
+    /// Plugins read, change, drop or replace the item in the
+    /// [`PendingInput`] before any binding or the input sees it, with the
+    /// [`InputContext`] and the input as the keys before it left them.
     Filter,
     /// The view does what is left in the [`PendingInput`].
     Dispatch,
