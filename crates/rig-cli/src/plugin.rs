@@ -724,6 +724,7 @@ fn enable(home: &Home, name: &str, on: bool) -> Result<()> {
     let state = if on { "on" } else { "off" };
     let what = if branch { "the branch " } else { "" };
     if !changed {
+        let what = if branch { "The branch " } else { "" };
         println!("{what}`{name}` is {state} already in {}.", path.display());
     } else {
         let then = match (branch, on) {
