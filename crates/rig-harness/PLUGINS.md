@@ -18,8 +18,9 @@ re-exported. The prelude holds common names, such as `Project` and
 `Project` imports that one by name: `domain::{Project, *}`. Most of these
 types are reflected, so the optional `rig-inspect` plugin's `inspect`
 tool lists them in the running agent (`registry.schema` gives a type's
-fields, `world.query` with `ProvidedBy` what each plugin added): ask it before reading rig's source. Some are not, such as
-`Ask`, `ToolRequest` and `Flag`; the tool does not list those.
+fields, `world.query` with `ProvidedBy` what each plugin added): ask it
+before reading rig's source. Some are not, such as `Ask`, `ToolRequest`
+and `Flag`; the tool does not list those.
 
 | To | Read |
 |---|---|
