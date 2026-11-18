@@ -652,6 +652,12 @@ impl Notices {
         numbers.zip(&self.shown)
     }
 
+    /// Drops the notices `restored` matches. Only for Startup, before a
+    /// [`TranscriptItem::Notice`] names one by its number.
+    pub(crate) fn forget(&mut self, restored: impl Fn(&ShownNotice) -> bool) {
+        self.shown.retain(|notice| !restored(notice));
+    }
+
     /// Keeps `notice` for display, dropping the oldest past
     /// [`KEPT_NOTICES`].
     fn keep(&mut self, notice: ShownNotice) {

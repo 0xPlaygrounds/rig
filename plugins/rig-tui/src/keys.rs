@@ -434,22 +434,19 @@ fn bind(world: &mut World, binding: KeyBinding) -> Option<EntityWorldMut<'_>> {
 #[derive(Resource, Default)]
 pub(crate) struct RefusedKeys(Vec<String>);
 
-/// Says each refused binding as a warning in the view, unless the view
-/// still shows it from the build before a reload.
+/// Says each refused binding as a warning in the view, once: a copy the
+/// build before a reload kept goes, so the view shows one per refusal of
+/// this build, as the latest.
 pub(crate) fn tell_refused(
     refused: Option<ResMut<RefusedKeys>>,
-    shown: Res<Notices>,
+    mut shown: ResMut<Notices>,
     mut notices: MessageWriter<Notice>,
 ) {
     let Some(mut refused) = refused else {
         return;
     };
-    let new = refused.0.drain(..).filter(|why| {
-        !shown
-            .numbered()
-            .any(|(_, notice)| notice.level == NoticeLevel::Warn && notice.text == *why)
-    });
-    notices.write_batch(new.map(|why| Notice::warn(None, why)));
+    shown.forget(|notice| notice.level == NoticeLevel::Warn && refused.0.contains(&notice.text));
+    notices.write_batch(refused.0.drain(..).map(|why| Notice::warn(None, why)));
 }
 
 /// An observer for [`AppKeyBindingsExt::add_key_binding`] that runs the
