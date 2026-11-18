@@ -1,5 +1,4 @@
 mod anthropic;
-mod served_window;
 
 use std::collections::BTreeMap;
 use std::io;

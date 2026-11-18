@@ -149,9 +149,7 @@ pub struct ModelRequest {
     /// The model it goes to, when not its agent's, such as a fallback
     /// model; `Models::connect` makes one. Read once, after
     /// [`PrepareSystems::Edit`](super::stage::PrepareSystems::Edit), into
-    /// the call's [`Adapted`]; a later change goes there. A connection that
-    /// wraps the agent's handler counts as the plugin's own, so the call
-    /// does not wait for its model's served window.
+    /// the call's [`Adapted`]; a later change goes there.
     pub connection: Option<Connection>,
     /// The system prompt of a request the kernel built, in parts, until
     /// Start puts it in front of the request's messages; `None`

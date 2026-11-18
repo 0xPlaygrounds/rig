@@ -23,14 +23,12 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::catalog::{Catalog, ModelFacts, ModelSpec, NotFound, Reference};
 use crate::client::env::{self, EnvError};
-use crate::driver::{DynModel, Model};
-use crate::error::ProviderError;
+use crate::driver::DynModel;
 use crate::http_client::{DynHttpClient, HttpClientExt};
 use crate::operation::Completion;
 use crate::providers::{anthropic, gemini, openai};
 use crate::serve::ErasedHandler;
 use crate::serve::adapters::ModelAdapter;
-use crate::wasm_compat::WasmBoxedFuture;
 use crate::wire::Secret;
 
 /// Every dialect this build knows, for
@@ -894,33 +892,6 @@ impl ProviderConfig {
             }
         }
     }
-
-    /// The window a local server serves `model` with, asked on `http`:
-    /// Ollama's `/api/show` and llama.cpp's `/props`. `None` for any other
-    /// provider, which says no window of its own. The ask has no deadline
-    /// of its own.
-    pub(crate) fn context_window(
-        &self,
-        model: &str,
-        http: DynHttpClient,
-    ) -> Option<WasmBoxedFuture<'static, Result<u32, ProviderError>>> {
-        let Self::OpenAi(provider) = self else {
-            return None;
-        };
-        let provider = provider.clone();
-        match provider.dialect.name {
-            crate::providers::ollama::PROVIDER_NAME => {
-                let model = model.to_owned();
-                let wire = crate::providers::ollama::show::Show { provider, model };
-                Some(Box::pin(Model::new(wire, http).call(())))
-            }
-            crate::providers::llamacpp::PROVIDER_NAME => {
-                let wire = crate::providers::llamacpp::props::Props { provider };
-                Some(Box::pin(Model::new(wire, http).call(())))
-            }
-            _ => None,
-        }
-    }
 }
 
 /// What [`Catalog::connect`] connects to: a catalog entry, or a
@@ -1174,43 +1145,33 @@ impl Catalog {
                 )
             }
         };
-        let (config, http) = configured(provider, options)?;
+        let provider = match options.format {
+            Some(format) if provider.is_registered() => {
+                ProviderId::selection(provider.vendor(), format)?
+            }
+            _ => provider,
+        };
+        let registered = provider.registered()?;
+        let config = match options.api_key {
+            Some(api_key) => registered.config(api_key),
+            None => registered.config_from_env()?,
+        };
+        let config = match (config, options.account_id) {
+            (ProviderConfig::OpenAi(provider), Some(account_id)) => {
+                ProviderConfig::OpenAi(provider.with_account_id(account_id))
+            }
+            (config, _) => config,
+        };
+        let config = match options.base_url {
+            Some(base_url) => config.with_base_url(base_url),
+            None => config,
+        };
+        let http = match options.http {
+            Some(http) => http,
+            None => shared_http()?,
+        };
         Ok(config.completion_model(model, http, facts))
     }
-}
-
-/// The configuration and HTTP client `provider` is reached with as
-/// `options` say, as [`Catalog::connect_with`] reads them.
-pub(crate) fn configured(
-    provider: ProviderId,
-    options: ConnectOptions,
-) -> Result<(ProviderConfig, DynHttpClient), ConnectError> {
-    let provider = match options.format {
-        Some(format) if provider.is_registered() => {
-            ProviderId::selection(provider.vendor(), format)?
-        }
-        _ => provider,
-    };
-    let registered = provider.registered()?;
-    let config = match options.api_key {
-        Some(api_key) => registered.config(api_key),
-        None => registered.config_from_env()?,
-    };
-    let config = match (config, options.account_id) {
-        (ProviderConfig::OpenAi(provider), Some(account_id)) => {
-            ProviderConfig::OpenAi(provider.with_account_id(account_id))
-        }
-        (config, _) => config,
-    };
-    let config = match options.base_url {
-        Some(base_url) => config.with_base_url(base_url),
-        None => config,
-    };
-    let http = match options.http {
-        Some(http) => http,
-        None => shared_http()?,
-    };
-    Ok((config, http))
 }
 
 /// The shared reqwest client.

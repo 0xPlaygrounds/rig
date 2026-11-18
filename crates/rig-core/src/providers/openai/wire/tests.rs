@@ -496,14 +496,9 @@ fn llamacpp_serves_its_operational_routes_unversioned() {
         provider.uri("/rerank", None),
         "http://localhost:8080/v1/rerank"
     );
-    // Ollama's model details are at the daemon's root too.
-    assert_eq!(
-        OpenAIConfig::with_key(&OLLAMA, "").uri("/api/show", None),
-        "http://localhost:11434/api/show"
-    );
     // And no other dialect has any but DeepSeek's strict endpoint.
     for dialect in all() {
-        if !["llamacpp", "ollama", "deepseek"].contains(&dialect.name) {
+        if !["llamacpp", "deepseek"].contains(&dialect.name) {
             assert!(
                 dialect.quirks.root_relative_routes.is_empty(),
                 "{} declares root routes it never had",
