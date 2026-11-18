@@ -11,6 +11,7 @@ use bevy_reflect::prelude::*;
 use rig_core::catalog::{Connector, ModelSpec};
 use rig_core::completion::{CompletionRequest, Reasoning, UnsupportedOption};
 use rig_core::effect::EffectKind;
+use rig_core::error::ProviderError;
 use serde::{Deserialize, Serialize};
 
 use super::agent::CallOf;
@@ -321,7 +322,10 @@ pub(crate) fn connect(
 
 /// The context windows asked of the servers of models whose catalog entry
 /// gives none, by reference: `None` while asking, or when the server did
-/// not say. Each model's server is asked once per run.
+/// not say. A server's answer, with or without a window, is final for the
+/// run, and so is its silence past the ask's deadline, so a server that
+/// hangs holds one turn at most. A server that could not be reached or
+/// answered with an error status has no entry, so the next turn asks again.
 #[derive(Resource, Default)]
 pub(crate) struct ServedWindows(HashMap<String, Option<u32>>);
 
@@ -330,20 +334,19 @@ pub(crate) struct ServedWindows(HashMap<String, Option<u32>>);
 #[derive(Component)]
 pub(crate) struct AskingWindow(String);
 
-/// The window a model's server said it serves, or `None` when it did not
-/// say.
+/// How a model's server answered the ask for its window.
 #[derive(Component)]
-pub(crate) struct WindowAnswer(Option<u32>);
-
-impl From<Option<u32>> for WindowAnswer {
-    fn from(window: Option<u32>) -> Self {
-        Self(window)
-    }
+pub(crate) enum WindowAnswer {
+    /// The window it serves, or `None` when its answer named none or it
+    /// did not answer in time.
+    Said(Option<u32>),
+    /// It could not be reached, or answered with an error status.
+    Unreached,
 }
 
 /// Gives a [`Connection`] whose model's catalog entry has no context window
 /// the window its server serves it with: the one learned already, or else
-/// asks the server once ([`Connector::context_window`]), such as a local
+/// asks the server ([`Connector::context_window`]), such as a local
 /// Ollama or llama.cpp server, so compaction and output limits hold to it.
 /// A model whose server cannot say keeps no window.
 pub(crate) fn ask_window(
@@ -359,32 +362,60 @@ pub(crate) fn ask_window(
     if connection.spec.input_limit().is_some() {
         return;
     }
-    let reference = connection.spec.reference();
-    match windows.0.get(&reference) {
-        Some(Some(window)) => {
-            connection.spec = with_window(&connection.spec, *window);
-            return;
-        }
-        Some(None) => return,
-        None => {}
-    }
-    let Some(ask) = models.0.context_window(&connection.spec) else {
+    if let Some(&Some(window)) = windows.0.get(&connection.spec.reference()) {
+        connection.spec = with_window(&connection.spec, window);
         return;
+    }
+    start_asking(
+        &connection.spec,
+        &models,
+        &wake,
+        &mut windows,
+        &mut commands,
+    );
+}
+
+/// Asks the server of `spec` for its window unless it was asked already,
+/// and says whether it did.
+fn start_asking(
+    spec: &ModelSpec,
+    models: &Models,
+    wake: &Wake,
+    windows: &mut ServedWindows,
+    commands: &mut Commands,
+) -> bool {
+    let reference = spec.reference();
+    if windows.0.contains_key(&reference) {
+        return false;
+    }
+    let Some(ask) = models.0.context_window(spec) else {
+        return false;
     };
     windows.0.insert(reference.clone(), None);
     let asked = reference.clone();
     let work = async move {
-        ask.await
-            .inspect_err(|error| {
-                bevy_log::debug!("{asked} keeps no context window: its server said {error}");
-            })
-            .ok()
+        ask.await.map_or_else(
+            |error| {
+                bevy_log::debug!("{asked} has no context window yet: its server said {error}");
+                let unreached = matches!(error, ProviderError::Http(_))
+                    || error
+                        .provider_response_status()
+                        .is_some_and(|status| !status.is_success());
+                if unreached {
+                    WindowAnswer::Unreached
+                } else {
+                    WindowAnswer::Said(None)
+                }
+            },
+            |window| WindowAnswer::Said(Some(window)),
+        )
     };
     commands.spawn((
         Name::new(format!("context window of {reference}")),
         AskingWindow(reference),
-        Running::spawn_into::<WindowAnswer, _>(super::turn::model_pool(), &wake, work),
+        Running::spawn_into::<WindowAnswer, _>(super::turn::model_pool(), wake, work),
     ));
+    true
 }
 
 /// Keeps the window a model's server answered with, and gives it to every
@@ -400,10 +431,17 @@ pub(crate) fn learn_window(
     mut windows: ResMut<ServedWindows>,
     mut commands: Commands,
 ) {
-    let Ok((AskingWindow(reference), &WindowAnswer(window))) = asks.get(answered.entity) else {
+    let Ok((AskingWindow(reference), answer)) = asks.get(answered.entity) else {
         return;
     };
     commands.entity(answered.entity).despawn();
+    let window = match *answer {
+        WindowAnswer::Said(window) => window,
+        WindowAnswer::Unreached => {
+            windows.0.remove(reference);
+            None
+        }
+    };
     for (hold, WaitingForWindow(waited), &HoldOf(call)) in &holds {
         if waited != reference {
             continue;
@@ -439,21 +477,41 @@ pub(crate) fn learn_window(
 #[derive(Component)]
 pub(crate) struct WaitingForWindow(String);
 
+/// Marks a turn's model call held once for its model's window, so a failed
+/// ask does not hold it again.
+#[derive(Component)]
+pub(crate) struct WaitedForWindow;
+
 /// Holds each turn's call about to start to a model with no context window
-/// while that model's server is asked for one ([`ask_window`]), in
-/// [`Stage::Gate`](super::stage::Stage::Gate): measured without the window,
-/// its request would not be compacted near it.
+/// while that model's server is asked for one, in
+/// [`Stage::Gate`](super::stage::Stage::Gate), asking it again first when
+/// the last ask did not reach it: measured without the window, its request
+/// would not be compacted near it.
 pub(crate) fn wait_for_window(
-    calls: Query<(Entity, &Adapted), (ReadyToStart, With<TurnCall>)>,
+    calls: Query<(Entity, &Adapted), (ReadyToStart, With<TurnCall>, Without<WaitedForWindow>)>,
     asks: Query<&AskingWindow>,
+    (models, wake): (Res<Models>, Res<Wake>),
+    mut windows: ResMut<ServedWindows>,
     mut commands: Commands,
 ) {
+    let mut started = Vec::new();
     for (call, Adapted(connection)) in &calls {
         if connection.spec.input_limit().is_some() {
             continue;
         }
         let reference = connection.spec.reference();
-        if !asks.iter().any(|AskingWindow(asked)| *asked == reference) {
+        if start_asking(
+            &connection.spec,
+            &models,
+            &wake,
+            &mut windows,
+            &mut commands,
+        ) {
+            started.push(reference.clone());
+        }
+        let asking = started.contains(&reference)
+            || asks.iter().any(|AskingWindow(asked)| *asked == reference);
+        if !asking {
             continue;
         }
         commands.spawn((
@@ -461,6 +519,7 @@ pub(crate) fn wait_for_window(
             WaitingForWindow(reference),
             HoldOf(call),
         ));
+        commands.entity(call).insert(WaitedForWindow);
     }
 }
 
