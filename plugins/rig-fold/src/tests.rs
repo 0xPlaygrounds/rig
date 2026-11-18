@@ -344,3 +344,19 @@ fn told(app: &mut App, text: &str) -> usize {
     let warns = notices.filter(|notice| notice.level == NoticeLevel::Warn);
     warns.filter(|notice| notice.text.contains(text)).count()
 }
+
+#[test]
+fn without_the_terminal_view_it_adds_nothing() {
+    let mut app = App::new();
+    app.insert_resource(Settings::from_toml(""))
+        .add_plugins(FoldPlugin);
+    let world = app.world_mut();
+    assert!(world.get_resource::<FoldSettings>().is_none());
+    assert_eq!(
+        world
+            .query_filtered::<(), With<FoldKey>>()
+            .iter(world)
+            .count(),
+        0
+    );
+}

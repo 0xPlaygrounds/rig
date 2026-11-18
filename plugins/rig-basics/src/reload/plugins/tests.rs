@@ -1154,3 +1154,24 @@ fn defaults_off_a_terminal_print_an_adder_s_disable_before_the_plugin_it_adds() 
         "{told}"
     );
 }
+
+#[test]
+fn a_plugin_another_loaded_shows_on_added_by_it() {
+    let home = scratch_home("plugins-added-by");
+    fs::create_dir_all(home.root()).ok();
+    fs::write(
+        home.settings(),
+        "[plugins]\nenable = [\"rig_basics::subagents::SubagentsPlugin\"]\n\
+         disable = [\"rig_basics::approval::ApprovalPlugin\"]\n",
+    )
+    .ok();
+    let (mut app, agent) = app(&home, true);
+    rig_harness::load::<crate::subagents::SubagentsPlugin>(&mut app, "rig-basics", "");
+    open(&mut app, agent);
+    let shown = picker(&mut app).map(|(_, shown)| shown).unwrap_or_default();
+    let approvals = detail(&shown, "Approvals");
+    assert!(
+        approvals.starts_with("on, added by Subagents"),
+        "{approvals}"
+    );
+}
