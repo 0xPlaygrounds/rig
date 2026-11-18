@@ -136,3 +136,16 @@ fn tool_arguments_decode_into_a_tagged_type_holding_a_big_integer() -> anyhow::R
     anyhow::ensure!(value.to_string().contains(BIG), "{value}");
     Ok(())
 }
+
+#[test]
+fn a_session_value_reads_a_tagged_value_holding_a_big_integer() -> anyhow::Result<()> {
+    let mut session = Session::read(&MemoryStore::default())?;
+    let saved = serde_json::from_str(&format!(r#"{{"state":"settled","value":{{"n":{BIG}}}}}"#))?;
+    session.saved.insert("mark".into(), saved);
+    let Some(read) = session.value::<Mark>("mark") else {
+        anyhow::bail!("no saved mark");
+    };
+    let Mark::Settled { value } = read?;
+    anyhow::ensure!(value.to_string().contains(BIG), "{value}");
+    Ok(())
+}
