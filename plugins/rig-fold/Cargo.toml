@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license = "MIT"
 readme = "README.md"
-description = "A rig-harness plugin, on in the rig agent by default: the terminal view shows a finished tool call's result as its first and last lines, with a key that shows all of it."
+description = "An optional rig-harness plugin: the terminal view shows a finished tool call's result as its first and last lines, with a key that shows all of it."
 repository = "https://github.com/0xPlaygrounds/rig"
 
 [lints]
