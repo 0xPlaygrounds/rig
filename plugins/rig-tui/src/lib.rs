@@ -236,7 +236,11 @@ pub fn add_view(app: &mut App) {
         .add_observer(render::redraw_on_remove)
         .add_systems(
             Startup,
-            (view::load_notices, view::load_draft, keys::tell_refused),
+            (
+                view::load_notices,
+                view::load_draft,
+                keys::tell_refused.after(view::load_notices),
+            ),
         )
         .add_systems(TuiKeys, history::seed_shown.in_set(HistorySystems::Seed))
         .add_systems(

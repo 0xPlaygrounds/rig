@@ -35,9 +35,9 @@ use bevy_log::warn;
 use bevy_reflect::prelude::*;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use rig_harness::commands::RunCommand;
-use rig_harness::prelude::Notice;
+use rig_harness::prelude::{Notice, NoticeLevel};
 
-use super::view::TuiView;
+use super::view::{Notices, TuiView};
 
 /// One key with its modifiers, as the terminal reports it. A character
 /// carries its case instead of Shift (`A` is Shift+a); Shift+Tab is
@@ -434,14 +434,22 @@ fn bind(world: &mut World, binding: KeyBinding) -> Option<EntityWorldMut<'_>> {
 #[derive(Resource, Default)]
 pub(crate) struct RefusedKeys(Vec<String>);
 
-/// Says each refused binding as a warning in the view, once.
+/// Says each refused binding as a warning in the view, unless the view
+/// still shows it from the build before a reload.
 pub(crate) fn tell_refused(
     refused: Option<ResMut<RefusedKeys>>,
+    shown: Res<Notices>,
     mut notices: MessageWriter<Notice>,
 ) {
-    if let Some(mut refused) = refused {
-        notices.write_batch(refused.0.drain(..).map(|why| Notice::warn(None, why)));
-    }
+    let Some(mut refused) = refused else {
+        return;
+    };
+    let new = refused.0.drain(..).filter(|why| {
+        !shown
+            .numbered()
+            .any(|(_, notice)| notice.level == NoticeLevel::Warn && notice.text == *why)
+    });
+    notices.write_batch(new.map(|why| Notice::warn(None, why)));
 }
 
 /// An observer for [`AppKeyBindingsExt::add_key_binding`] that runs the
