@@ -57,7 +57,7 @@ impl Session {
             .add_observer(log_tool_outputs);
         collect::<Notice>(&mut app);
         if fresh {
-            spawn_root(app.world_mut()).insert(ModelChoice(MAIN.to_owned()));
+            spawn_root(app.world_mut(), ModelChoice(MAIN.to_owned()));
         }
         app.finish();
         app.update();

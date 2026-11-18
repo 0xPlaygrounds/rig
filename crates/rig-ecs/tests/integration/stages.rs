@@ -3868,8 +3868,8 @@ fn stopping_an_idle_agent_stops_the_agents_it_spawned() {
         return;
     };
     let world = app.world_mut();
-    let parent = spawn_root(world).id();
-    let other = spawn_root(world).id();
+    let parent = spawn_root(world, ()).id();
+    let other = spawn_root(world, ()).id();
     world
         .entity_mut(child)
         .insert(<SpawnedBy as Relationship>::from(parent));
@@ -5062,9 +5062,7 @@ fn a_child_never_calls_or_is_offered_a_tool_its_parent_lacks() {
     app.init_resource::<Ended>().add_observer(log_ended);
     let child = connected(&mut app, &model);
     let world = app.world_mut();
-    let parent = spawn_root(world)
-        .insert(ToolAccess::all().narrow(["look"]))
-        .id();
+    let parent = spawn_root(world, ToolAccess::all().narrow(["look"])).id();
     world
         .entity_mut(child)
         .insert(<SpawnedBy as Relationship>::from(parent));

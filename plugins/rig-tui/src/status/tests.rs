@@ -46,7 +46,7 @@ fn a_plugin_replaces_or_hides_another_plugins_item_by_name() {
         // Added first, the replacing plugin still runs after the owner.
         .add_systems(PostUpdate, gauge.in_set(StatusSystems::Edit))
         .add_systems(PostUpdate, show.in_set(StatusSystems::Show));
-    let agent = spawn_root(app.world_mut()).id();
+    let agent = spawn_root(app.world_mut(), ()).id();
     app.update();
     assert_eq!(shown(&mut app, agent), [("context", "▮▯▯".to_owned())]);
     app.world_mut().resource_mut::<Hiding>().0 = true;
@@ -162,7 +162,7 @@ fn a_status_line_shows_its_agents_items_in_their_styles() {
     let (mut app, agent) = view_app();
     app.insert_resource(TuiTestScreen::new(80, 24));
     let helper = AgentId("helper".to_owned());
-    let helper = spawn_root(app.world_mut()).insert(helper).id();
+    let helper = spawn_root(app.world_mut(), helper).id();
     let line = app
         .world_mut()
         .spawn(StatusLine {

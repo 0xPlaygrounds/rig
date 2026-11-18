@@ -85,9 +85,7 @@ fn app(
         .insert_resource(TuiTestScreen::new(80, 30));
     tui_view(&mut app);
     collect::<Notice>(&mut app);
-    let agent = spawn_root(app.world_mut())
-        .insert(ModelChoice("test/a".to_owned()))
-        .id();
+    let agent = spawn_root(app.world_mut(), ModelChoice("test/a".to_owned())).id();
     app.finish();
     app.cleanup();
     app.update();

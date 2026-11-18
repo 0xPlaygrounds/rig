@@ -88,9 +88,7 @@ fn the_passing_candidate_is_applied_and_the_worktrees_go() {
         ))
         .add_observer(note_before_apply);
     collect::<Notice>(&mut app);
-    let host = spawn_root(app.world_mut())
-        .insert(ModelChoice("best-main/m".to_owned()))
-        .id();
+    let host = spawn_root(app.world_mut(), ModelChoice("best-main/m".to_owned())).id();
     app.finish();
     app.update();
 

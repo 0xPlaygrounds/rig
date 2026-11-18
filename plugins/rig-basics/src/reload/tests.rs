@@ -13,7 +13,7 @@ fn the_users_stop_cancels_the_build_only_on_an_idle_agent() {
         .add_plugins((AgentPlugin, SessionLogPlugin, ReloadPlugin))
         .add_systems(AgentPass, hold_turn_calls.in_set(Stage::Gate));
     let choice = || ModelChoice("reload-main/m".to_owned());
-    let agent = spawn_root(app.world_mut()).insert(choice()).id();
+    let agent = spawn_root(app.world_mut(), choice()).id();
     // Idle below it, so the stop reaches an idle agent either way.
     spawn(
         app.world_mut(),
@@ -56,7 +56,7 @@ fn a_queued_update_is_refused_and_cancelled_as_an_update() {
         .add_plugins((AgentPlugin, SessionLogPlugin, ReloadPlugin))
         .add_systems(AgentPass, hold_turn_calls.in_set(Stage::Gate));
     let choice = ModelChoice("reload-main/m".to_owned());
-    let agent = spawn_root(app.world_mut()).insert(choice).id();
+    let agent = spawn_root(app.world_mut(), choice).id();
     app.finish();
     app.update();
     // A turn runs, so the queued update waits.

@@ -54,7 +54,7 @@ fn a_long_turn_and_an_unanswered_picker_notify_but_a_subagent_an_answered_questi
     let Some((top_line, sub_line)) = lines else {
         return;
     };
-    let parent = spawn_root(app.world_mut()).insert(top_line).id();
+    let parent = spawn_root(app.world_mut(), top_line).id();
     let child = spawn(
         app.world_mut(),
         Origin::ChildOf(parent),

@@ -1,6 +1,6 @@
 //! The one way an agent is made. A [`Spawner`], or [`spawn`] with the world,
 //! makes it from an [`Origin`] and an [`AgentSpec`]: what the spec leaves out
-//! is the origin's. [`spawn_root`] cannot fail.
+//! is the origin's. [`spawn_root`] makes a root from a bundle and cannot fail.
 //!
 //! ```
 //! use rig_ecs::prelude::*;
@@ -224,10 +224,26 @@ pub fn spawn(world: &mut World, origin: Origin, spec: AgentSpec) -> Result<Entit
     spawned
 }
 
-/// Spawns an agent nothing spawned, with the defaults, named `agent`. It
-/// keeps every tool, those registered later too.
-pub fn spawn_root(world: &mut World) -> EntityWorldMut<'_> {
-    world.spawn((Name::new("agent"), Agent::new(), ToolAccess::all()))
+/// Spawns an agent nothing spawned with `bundle`, such as its
+/// [`AgentId`], [`ToolAccess`] or a plugin's own components, and returns it.
+///
+/// The bundle is on the agent before [`Agent`] is added, so `Add<Agent>`
+/// observers see all of it. What the bundle leaves out has its default: the
+/// name `agent`, a fresh id, and every tool, those registered later too.
+/// Pass `()` for an agent with only the defaults.
+///
+/// ```
+/// use rig_ecs::prelude::*;
+/// use rig_ecs::spawn::spawn_root;
+///
+/// let mut world = World::new();
+/// let agent = spawn_root(&mut world, AgentId("main".into())).id();
+/// assert_eq!(world.get::<AgentId>(agent), Some(&AgentId("main".into())));
+/// ```
+pub fn spawn_root(world: &mut World, bundle: impl Bundle) -> EntityWorldMut<'_> {
+    let mut agent = world.spawn(bundle);
+    agent.insert_if_new(Name::new("agent")).insert(Agent::new());
+    agent
 }
 
 #[cfg(test)]

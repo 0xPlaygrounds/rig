@@ -60,7 +60,7 @@ fn a_typed_key_is_saved_privately_and_connects_until_logout() {
         return;
     };
     assert!(matches!(status(&app, vendor), Some(ModelStatus::NoKey(_))));
-    let agent = spawn_root(app.world_mut()).id();
+    let agent = spawn_root(app.world_mut(), ()).id();
     run(&mut app, agent, format!("login {vendor}"));
     let world = app.world_mut();
     let mut pickers = world.query::<(Entity, &Picker)>();
@@ -277,9 +277,7 @@ fn a_first_pick_past_an_unreadable_saved_key_says_so_once() {
         _ => return,
     };
     // An agent already on a model was not moved there by the first pick.
-    let on_it = spawn_root(app.world_mut())
-        .insert(ModelChoice(model.clone()))
-        .id();
+    let on_it = spawn_root(app.world_mut(), ModelChoice(model.clone())).id();
     let world = app.world_mut();
     world.trigger(SetModel {
         entity: on_it,
@@ -294,7 +292,7 @@ fn a_first_pick_past_an_unreadable_saved_key_says_so_once() {
         "an explicit choice was told about {shown}: {notices:?}"
     );
     for _ in 0..2 {
-        let entity = spawn_root(app.world_mut()).id();
+        let entity = spawn_root(app.world_mut(), ()).id();
         let world = app.world_mut();
         world.trigger(SetModel {
             entity,

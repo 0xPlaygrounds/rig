@@ -22,12 +22,14 @@ fn parent(world: &World, agent: Entity) -> Option<Entity> {
 fn a_child_takes_what_its_spec_leaves_out_from_its_origin_at_any_depth() {
     let mut app = app();
     let world = app.world_mut();
-    let root = spawn_root(world)
-        .insert((
+    let root = spawn_root(
+        world,
+        (
             SystemPrompt("root".into()),
             EffectParent(EffectId::from_raw(7)),
-        ))
-        .id();
+        ),
+    )
+    .id();
     let spec = AgentSpec {
         tools: Some(vec!["read".into(), "task".into()]),
         ..AgentSpec::default()
@@ -248,7 +250,7 @@ fn a_root_has_what_its_bundle_gives_when_its_agent_is_added() {
     let access = ToolAccess::all().narrow(["read"]);
     let id = AgentId("reviewer".to_owned());
     let bundle = (Role("review"), id.clone(), access.clone(), Name::new("r"));
-    let agent = spawn_root(world).insert(bundle).id();
+    let agent = spawn_root(world, bundle).id();
 
     let seen = world.resource::<Seen>().0.clone();
     let expected = (Some(Role("review")), id.clone(), Name::new("r"), false);
@@ -262,7 +264,7 @@ fn a_root_given_nothing_is_named_agent_and_keeps_every_tool() {
     let mut app = app();
     app.init_resource::<Seen>().add_observer(see);
     let world = app.world_mut();
-    let agent = spawn_root(world).id();
+    let agent = spawn_root(world, ()).id();
 
     let seen = world.resource::<Seen>().0.clone();
     let id = world.get::<AgentId>(agent).cloned();

@@ -51,7 +51,7 @@ fn showing_an_agent_makes_its_top_level_agent_current() {
         id(&app, first).map(|id| id.0),
         "the shown first agent is current"
     );
-    let other = spawn_root(app.world_mut()).id();
+    let other = spawn_root(app.world_mut(), ()).id();
     app.update();
     assert_eq!(app.world().resource::<Main>().0, Some(first));
 

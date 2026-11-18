@@ -86,7 +86,7 @@ fn app(model: &MockCompletionModel) -> (App, Receiver<()>, Entity) {
         .init_resource::<Kept>()
         .add_systems(Last, keep)
         .add_systems(AgentPass, gate.in_set(Stage::Gate));
-    let agent = spawn_root(app.world_mut()).id();
+    let agent = spawn_root(app.world_mut(), ()).id();
     if let Some(connection) = connect(model) {
         let choice = ModelChoice(connection.spec.reference());
         app.world_mut()

@@ -44,7 +44,7 @@ fn spending_is_split_per_model_and_purpose_and_outlives_its_agent() {
     };
     let reference = connection.spec.reference();
     let world = app.world_mut();
-    let agent = spawn_root(world).insert(connection).id();
+    let agent = spawn_root(world, connection).id();
     world.trigger(Deliver::new(agent, "hello", DeliveryMode::Steer));
     run_until(&mut app, &wakes, |world| {
         world.resource::<Ended>().0.len() == 1
@@ -101,7 +101,7 @@ fn usage_labels_catalog_costs_as_estimates_not_subscription_charges() {
     );
     let world = app.world_mut();
     world.resource_mut::<SessionUsage>().0 = spent.clone();
-    let agent = spawn_root(world).insert(spent).id();
+    let agent = spawn_root(world, spent).id();
     notices(world);
     world.trigger(RunCommand::new(agent, "usage".to_owned()));
     world.flush();
@@ -124,7 +124,7 @@ fn a_call_counts_below_every_agent_above_it_after_its_agent_is_gone() {
     let store = MemoryStore::default();
     let (mut app, _wakes) = start(&store);
     let world = app.world_mut();
-    let root = spawn_root(world).id();
+    let root = spawn_root(world, ()).id();
     let below = |world: &mut World, parent| {
         spawn(world, Origin::ChildOf(parent), AgentSpec::default()).ok()
     };
@@ -227,7 +227,7 @@ fn the_context_is_against_the_window_of_the_model_a_call_went_to() {
     app.insert_resource(RouteTo(routed))
         .add_systems(AgentPass, route.in_set(PrepareSystems::Edit));
     let world = app.world_mut();
-    let agent = spawn_root(world).insert(connection).id();
+    let agent = spawn_root(world, connection).id();
     world.trigger(Deliver::new(agent, "hello", DeliveryMode::Steer));
     run_until(&mut app, &wakes, |world| {
         world.resource::<Ended>().0.len() == 1
@@ -270,7 +270,7 @@ fn a_superseded_call_counts_its_call_usage_under_the_model_it_went_to() {
     };
     let reference = connection.spec.reference();
     let world = app.world_mut();
-    let agent = spawn_root(world).id();
+    let agent = spawn_root(world, ()).id();
     let turn = world.spawn(TurnOf(agent)).id();
     let winner = world.spawn_empty().id();
     let mut used = Usage::default();
@@ -313,7 +313,7 @@ fn stale_context_survives_restore_and_unreported_replies_for_each_agent() {
     let Some(connection) = connect(&model) else {
         return;
     };
-    let agent = spawn_root(app.world_mut()).insert(connection).id();
+    let agent = spawn_root(app.world_mut(), connection).id();
     app.world_mut()
         .trigger(Deliver::new(agent, "hello", DeliveryMode::Steer));
     run_until(&mut app, &wakes, |world| {
@@ -432,9 +432,7 @@ fn a_context_change_after_a_reply_in_the_same_pass_stays_stale() {
     let Some(connection) = connect(&model) else {
         return;
     };
-    let agent = spawn_root(app.world_mut())
-        .insert((connection, ContextStale::default()))
-        .id();
+    let agent = spawn_root(app.world_mut(), (connection, ContextStale::default())).id();
     app.add_systems(
         AgentPass,
         (|agents: Query<Entity, Changed<LastUsage>>, mut commands: Commands| {
@@ -474,8 +472,9 @@ fn the_meter_shows_unknown_until_the_stale_marker_is_removed() {
         .output_tokens(100);
     let mut spent = AgentUsage::default();
     spent.total.calls = 1;
-    let agent = spawn_root(app.world_mut())
-        .insert((
+    let agent = spawn_root(
+        app.world_mut(),
+        (
             connection,
             spent,
             LastUsage(Some(rig_memory::Anchor {
@@ -483,8 +482,9 @@ fn the_meter_shows_unknown_until_the_stale_marker_is_removed() {
                 through: MessageId::default(),
             })),
             rig_tui::StatusItems::default(),
-        ))
-        .id();
+        ),
+    )
+    .id();
     let context = |world: &World| {
         world
             .get::<rig_tui::StatusItems>(agent)
@@ -533,7 +533,7 @@ fn a_fork_starts_with_no_calls_and_the_context_it_copied() {
         return;
     };
     connection.spec = Arc::new((*connection.spec).clone().with_context_window(2_000));
-    let source = spawn_root(app.world_mut()).insert(connection).id();
+    let source = spawn_root(app.world_mut(), connection).id();
     for (said, turns) in [("hello", 1), ("more", 2)] {
         app.world_mut()
             .trigger(Deliver::new(source, said, DeliveryMode::Steer));
@@ -675,7 +675,7 @@ fn stopped(items: Vec<Relayed>, streamed: Option<&str>) -> Option<(App, Entity, 
     let (mut app, wakes) = start(&store);
     let connection = stalling(items)?;
     let world = app.world_mut();
-    let agent = spawn_root(world).insert(connection).id();
+    let agent = spawn_root(world, connection).id();
     world.trigger(Deliver::new(agent, "hello", DeliveryMode::Steer));
     run_until(&mut app, &wakes, |world| streaming(world, agent, streamed));
     app.world_mut().trigger(StopTurn::new(agent));
@@ -803,8 +803,9 @@ fn usage_shows_the_estimate_of_a_stale_context() {
         tokens: 300,
         through: MessageId::default(),
     });
-    let agent = spawn_root(app.world_mut())
-        .insert((
+    let agent = spawn_root(
+        app.world_mut(),
+        (
             connection,
             spent,
             LastUsage(Some(rig_memory::Anchor {
@@ -812,8 +813,9 @@ fn usage_shows_the_estimate_of_a_stale_context() {
                 through: MessageId::default(),
             })),
             ContextStale { estimate },
-        ))
-        .id();
+        ),
+    )
+    .id();
     app.update();
     let world = app.world_mut();
     notices(world);

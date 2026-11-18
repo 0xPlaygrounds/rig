@@ -27,8 +27,7 @@ fn session(mode: PermissionMode, model: &MockCompletionModel) -> (App, Receiver<
         .init_resource::<ToolOutputs>()
         .add_observer(log_tool_outputs);
     app.world_mut().spawn(Answerer::default());
-    let mut agent = spawn_root(app.world_mut());
-    agent.insert(mode);
+    let mut agent = spawn_root(app.world_mut(), mode);
     if let Some(connection) = connect(model) {
         let choice = ModelChoice(connection.spec.reference());
         agent.insert((connection, choice));
