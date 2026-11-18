@@ -241,7 +241,16 @@ pub struct StatusLinePlugin;
 impl Plugin for StatusLinePlugin {
     fn build(&self, app: &mut App) {
         app.add_setting::<StatusSettings>("status")
-            .add_systems(Startup, line_under_input);
+            .add_observer(line_under_input);
+        // An editor spawned before this plugin was built gets it here.
+        let world = app.world_mut();
+        let inputs: Vec<Entity> = world
+            .query_filtered::<Entity, (With<MainEditor>, Without<StatusLine>)>()
+            .iter(world)
+            .collect();
+        for input in inputs {
+            world.entity_mut(input).insert(StatusLine::default());
+        }
     }
 }
 
@@ -253,13 +262,14 @@ pub(crate) struct StatusSettings {
     hide: Vec<String>,
 }
 
-/// Puts the shown agent's status line on each main editor.
+/// Puts the shown agent's status line on each main editor as it appears.
 fn line_under_input(
-    inputs: Query<Entity, (With<MainEditor>, Without<StatusLine>)>,
+    added: On<Add<MainEditor>>,
+    lines: Query<(), With<StatusLine>>,
     mut commands: Commands,
 ) {
-    for input in &inputs {
-        commands.entity(input).insert(StatusLine::default());
+    if !lines.contains(added.entity) {
+        commands.entity(added.entity).insert(StatusLine::default());
     }
 }
 
