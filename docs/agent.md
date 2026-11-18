@@ -708,7 +708,7 @@ which plugins run. A helper, `/reload`
 and anything else a session starts run the same home's build.
 
 `rig plugin list` shows the tree: each crate, in it each area of more than
-one plugin, and each plugin, `on` or `off`, with what it adds; a branch in
+one plugin or in `off`, and each plugin, `on` or `off`, with what it adds; a branch in
 `off` says so, and a plugin it keeps off says "off with its branch".
 `rig plugin enable <type>` and `disable <type>` change `[plugins]`, keeping
 every comment; given a branch, such as `rig-basics/sessions`, they take it

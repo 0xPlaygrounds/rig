@@ -618,9 +618,9 @@ fn listing(home: &Home) -> Result<String> {
 
 /// The lines of `plugins`, each its crate, type path and what it adds, as
 /// [`listing`] shows them: a heading for each crate where its first plugin
-/// is, in it a heading for each area of more than one plugin where its
-/// first is, and each plugin under them with its state, its line's head
-/// apart from what it adds.
+/// is, in it a heading for each area of more than one plugin or in `off`
+/// where its first is, and each plugin under them with its state, its
+/// line's head apart from what it adds.
 fn tree(chosen: &Plugins, plugins: Vec<(&str, &str, String)>) -> Vec<(String, Option<String>)> {
     let heading = |depth: usize, branch: &str| {
         let mut line = format!("{:indent$}{branch}", "", indent = depth * 2);
@@ -651,7 +651,10 @@ fn tree(chosen: &Plugins, plugins: Vec<(&str, &str, String)>) -> Vec<(String, Op
                 None => Vec::new(),
             };
             match area(plugin) {
-                Some(of) if together.len() > 1 => {
+                Some(of)
+                    if together.len() > 1
+                        || chosen.off.iter().any(|off| *off == format!("{krate}/{of}")) =>
+                {
                     if !areas.contains(&of) {
                         areas.push(of);
                         lines.push(heading(1, &format!("{krate}/{of}")));
