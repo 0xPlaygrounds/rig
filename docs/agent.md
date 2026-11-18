@@ -699,9 +699,10 @@ by Subagents)" and `rig plugin list` as on, ending its line with "(needed by
 Subagents)". `rig plugin disable` of it refuses, naming each plugin on that
 adds it, and disabling its branch says it stays on. Others work only with
 another and never turn it on: MCP approval does nothing without MCP
-servers, and folded output nothing without the terminal view. While such a
-plugin is on and that one is off, both lists say it "does nothing without"
-that one.
+servers, and folded output nothing without the terminal view. While that
+one is off, such a plugin is off too and rig does not build it, whatever its
+own choice: both lists show it off and say it "does nothing without" that
+one, and `rig plugin enable` of it says it stays off until that one is on.
 
 A mistake in this file (a plugin or branch rig does not know, a branch in
 `enable` or `disable`, a plugin in `off`, an `extra` path that holds no
