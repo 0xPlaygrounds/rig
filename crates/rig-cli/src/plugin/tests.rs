@@ -899,10 +899,12 @@ fn enabling_a_plugin_that_does_nothing_without_one_off_says_it_stays_off() {
         run(&home, &["disable", "rig_tui::TuiPlugin"])?;
         run(&home, &["enable", "rig_fold::FoldPlugin"])?;
         let branch = enable(&home, "rig-fold", true)?.join("\n");
-        Ok([first, again, branch])
+        run(&home, &["disable", "rig-fold"])?;
+        let back = enable(&home, "rig-fold", true)?.join("\n");
+        Ok([first, again, branch, back])
     })();
     fs::remove_dir_all(home.root()).ok();
-    let [first, again, branch] = result.unwrap_or_default();
+    let [first, again, branch, back] = result.unwrap_or_default();
     let stays =
         "It does nothing without MCP servers, which is off, so it stays off until that is on.";
     assert!(
@@ -919,6 +921,11 @@ fn enabling_a_plugin_that_does_nothing_without_one_off_says_it_stays_off() {
              stays off until that is on."
         ),
         "{branch}"
+    );
+    assert!(
+        back.contains("`rig_fold::FoldPlugin` does nothing without Terminal view")
+            && !back.contains("is on already"),
+        "{back}"
     );
 }
 
