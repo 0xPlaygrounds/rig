@@ -652,8 +652,7 @@ fn a_model_without_its_key_given_with_model_leaves_the_agent_without_one() {
         world.resource::<Told>().0,
         [
             "--model: cannot use rig-models-flag-locked/big: no key for \
-              `rig-models-flag-locked`: set `CORP_KEY` or pass one with \
-              `ConnectOptions::api_key`. No model is picked."
+              `rig-models-flag-locked`: set `CORP_KEY`. No model is picked."
         ]
     );
 }

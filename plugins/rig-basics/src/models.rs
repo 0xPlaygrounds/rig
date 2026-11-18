@@ -169,8 +169,9 @@ pub struct ModelLabel(pub String);
 /// changed under a running turn, and the agent is told so. A model the
 /// catalog does not list, or one that does not connect, such as one with
 /// no key, leaves the agent with none at once, even under a continued
-/// turn, with one error notice naming the closest ones or why: no request
-/// goes to a model nobody named.
+/// turn, with one error notice naming the closest ones or why, and for a
+/// missing key the `/login` that saves one or the variable that holds it:
+/// no request goes to a model nobody named.
 fn choose_invoked_model(
     invoked: Option<Res<Invoked>>,
     (agents, busy, models): (MainAgentQuery, Query<Has<ActiveTurn>>, Res<Models>),
@@ -178,6 +179,8 @@ fn choose_invoked_model(
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
+    use rig_harness::rig_core::providers::{chatgpt::PROVIDER_NAME, registry::ConnectError};
+
     if *done {
         return;
     }
@@ -189,10 +192,24 @@ fn choose_invoked_model(
     let refused = match models.0.catalog().resolve(&model) {
         Ok(found) => {
             let reference = found.spec.reference();
-            let connected = models.0.connect(&reference);
-            connected
-                .err()
-                .map(|why| format!("cannot use {reference}: {why}."))
+            let why = match models.0.connect(&reference) {
+                Ok(_) => None,
+                Err(ConnectError::MissingKey { vendor, tried }) => {
+                    let envs = tried.iter().map(|name| format!("`{name}`"));
+                    let envs = envs.collect::<Vec<_>>().join(" or ");
+                    let keyed = crate::login::keys::key_vendors(&models.0);
+                    let how = if vendor == PROVIDER_NAME {
+                        format!("sign in with /login {vendor} or set {envs}")
+                    } else if keyed.contains(&vendor.as_str()) {
+                        format!("save one with /login {vendor} or set {envs}")
+                    } else {
+                        format!("set {envs}")
+                    };
+                    Some(format!("no key for `{vendor}`: {how}"))
+                }
+                Err(why) => Some(why.to_string()),
+            };
+            why.map(|why| format!("cannot use {reference}: {why}."))
         }
         Err(why) => {
             let stop = if why.suggestions.is_empty() { "." } else { "" };
