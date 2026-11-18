@@ -701,3 +701,31 @@ fn keep_editing_keeps_the_branches_plugins_defaults_turns_back_on() {
         settings(&home)
     );
 }
+
+#[test]
+fn extras_are_in_the_trees_order_by_crate_then_area() {
+    let home = scratch_home("plugins-extras-tree");
+    fs::create_dir_all(home.root()).ok();
+    let extras = [
+        ("a", "a::sessions::One"),
+        ("b", "b::B"),
+        ("a", "a::tools::Two"),
+        ("a", "a::sessions::Three"),
+    ];
+    let tables: String = (extras.iter())
+        .map(|(krate, plugin)| {
+            format!("[[plugins.extra]]\ncrate = \"{krate}\"\npath = \"{krate}\"\nplugin = \"{plugin}\"\n")
+        })
+        .collect();
+    fs::write(home.settings(), tables).ok();
+    let (mut app, agent) = app(&home, true);
+    open(&mut app, agent);
+    let rows = picked_rows(&mut app);
+    let order: Vec<&str> = (rows.iter().skip(BUILT_IN.len()))
+        .map(|row| row.plugin.as_str())
+        .collect();
+    assert_eq!(
+        order,
+        ["a::sessions::One", "a::sessions::Three", "a::tools::Two", "b::B"]
+    );
+}
