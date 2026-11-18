@@ -122,3 +122,33 @@ fn a_session_switch_refused_while_a_turn_runs_comes_back_in_the_input() {
     }
     std::fs::remove_dir_all(home.root()).ok();
 }
+
+#[test]
+fn a_command_refused_while_a_turn_runs_comes_back_in_the_input() {
+    let mut app = App::new();
+    app.add_plugins((
+        AgentPlugin,
+        crate::models::ModelsPlugin,
+        crate::compaction::CompactionPlugin,
+    ));
+    let world = app.world_mut();
+    let agent = spawn_root(world, ()).id();
+    world.spawn(TurnOf(agent));
+    for line in ["model ollama/llama3", "compact"] {
+        world.trigger(RunCommand::new(agent, line));
+        world.flush();
+        let recalled: Vec<Recalled> = world.resource_mut::<Messages<Recalled>>().drain().collect();
+        assert_eq!(recalled.len(), 1, "{line}");
+        assert!(
+            recalled.iter().all(|recalled| {
+                recalled.agent == agent
+                    && recalled.text == format!("/{line}")
+                    && recalled
+                        .why
+                        .as_ref()
+                        .is_some_and(|why| why.contains("A turn is running"))
+            }),
+            "{line}: {recalled:?}"
+        );
+    }
+}
