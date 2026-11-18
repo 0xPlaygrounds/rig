@@ -734,3 +734,39 @@ fn extras_are_in_the_trees_order_by_crate_then_area() {
         ]
     );
 }
+
+#[test]
+fn a_row_off_by_its_own_choice_too_says_its_branch_keeps_it_off() {
+    let home = scratch_home("plugins-branch-own-off");
+    fs::create_dir_all(home.root()).ok();
+    fs::write(
+        home.settings(),
+        "[plugins]\noff = [\"rig-basics/sessions\"]\n\
+         disable = [\"rig_basics::sessions::agents::AgentsPlugin\"]\n",
+    )
+    .ok();
+    let (mut app, agent) = app(&home, true);
+    open(&mut app, agent);
+    let Some((list, shown)) = picker(&mut app) else {
+        return;
+    };
+    let stays = "stays off with its branch rig-basics/sessions";
+    assert!(
+        detail(&shown, "Forks and rewind").contains("off with its branch rig-basics/sessions"),
+        "{}",
+        detail(&shown, "Forks and rewind")
+    );
+    tick(&mut app, list, &["Forks and rewind"], &[]);
+    pick(&mut app, list, None);
+    let Some((question, asked)) = picker(&mut app) else {
+        return;
+    };
+    assert!(asked.body.contains(stays), "{}", asked.body);
+    let later = at(&asked, "Later, at the next start");
+    pick(&mut app, question, later.map(Chosen::item));
+    let told = &app.world().resource::<Told>().0;
+    assert!(
+        told.iter().any(|text| text.contains("turned on") && text.contains(stays)),
+        "{told:?}"
+    );
+}
