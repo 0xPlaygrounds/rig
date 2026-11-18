@@ -50,7 +50,8 @@ pub struct BuiltIn {
     /// The plugins it turns on, which stay on while it is: the settings
     /// turn them on with it, and `rig plugin disable` refuses them.
     pub adds: &'static [&'static str],
-    /// The plugins without which it does nothing. It never turns them on.
+    /// The plugins without which it does nothing. It never turns them on,
+    /// and is off while one is.
     pub only_with: &'static [&'static str],
     /// What it adds, which `rig plugin list` and `/plugins` show.
     pub about: &'static str,
@@ -486,7 +487,8 @@ impl SettingsFile {
 /// crate of the file, on or off.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Plugins {
-    /// The plugins on, in the order the agent adds them.
+    /// The plugins on, in the order the agent adds them. A plugin whose
+    /// [`BuiltIn::only_with`] plugin is off is not, whatever its choice.
     pub on: Vec<String>,
     /// The plugins whose own choice is on (rig's default, then `disable`,
     /// then `enable`), whether or not a branch holding them is off, in the
@@ -530,7 +532,7 @@ impl Plugins {
     }
 
     /// The first plugin `plugin` works only with ([`BuiltIn::only_with`])
-    /// that is off, without which it does nothing.
+    /// that is off, which keeps it off.
     pub fn does_nothing_without(&self, plugin: &str) -> Option<&'static BuiltIn> {
         (built_in(plugin)
             .map_or(&[][..], |built_in| built_in.only_with)
@@ -572,7 +574,8 @@ struct Changes {
 /// The plugins the home's settings file `home` turns on, over
 /// [`BUILT_IN`]'s defaults: its `disable`, then its `enable`, then those
 /// its `off` branches hold turned off, then what the plugins on add
-/// ([`BuiltIn::adds`]) turned on.
+/// ([`BuiltIn::adds`]) turned on, then those whose
+/// [`BuiltIn::only_with`] plugin is off turned off.
 ///
 /// # Errors
 ///
@@ -652,6 +655,15 @@ pub fn plugins(home: &SettingsFile) -> Result<Plugins, Error> {
             }
         }
         at += 1;
+    }
+    // A plugin does nothing without what it works only with, so it is not built.
+    while let Some(idle) = (on.iter()).position(|plugin| {
+        (built_in(plugin)
+            .map_or(&[][..], |built_in| built_in.only_with)
+            .iter())
+        .any(|with| !on.contains(with))
+    }) {
+        on.remove(idle);
     }
     let on: Vec<String> = (BUILT_IN.iter().map(|built_in| built_in.plugin))
         .chain(chosen.extra.iter().map(|extra| extra.plugin.as_str()))

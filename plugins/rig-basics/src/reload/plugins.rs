@@ -483,10 +483,10 @@ impl Choice {
         let mut word = match (self.needed_by.as_deref(), &self.branch_off) {
             (Some(by), _) => format!("on (needed by {by})"),
             (None, Some(branch)) => format!("off with its branch {branch}"),
-            (None, None) if self.on => "on".to_owned(),
+            (None, None) if self.on && self.idle_without.is_none() => "on".to_owned(),
             (None, None) => "off".to_owned(),
         };
-        if let Some(without) = self.idle_without.filter(|_| self.runs_on) {
+        if let Some(without) = self.idle_without.filter(|_| self.on) {
             word.push_str(&format!(", does nothing without {without}"));
         }
         if self.runs_on == runs {
@@ -611,7 +611,7 @@ fn branch(choice: &Choice) -> String {
     };
     if let Some(without) = choice.idle_without {
         text.push_str(&format!(
-            "It does nothing without {without}, which is off.\n"
+            "It does nothing without {without}, which is off, so it is off too.\n"
         ));
     }
     text

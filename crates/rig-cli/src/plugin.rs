@@ -671,7 +671,7 @@ fn row(chosen: &Plugins, depth: usize, plugin: &str, about: &str) -> (String, Op
     if !by.is_empty() {
         about.push_str(&format!(" (needed by {})", by.join(" and ")));
     }
-    if let Some(without) = chosen.does_nothing_without(plugin).filter(|_| on) {
+    if let Some(without) = chosen.does_nothing_without(plugin).filter(|_| own) {
         about.push_str(&format!(" (does nothing without {})", without.name));
     }
     if !on && let Some(what) = essential(plugin) {
