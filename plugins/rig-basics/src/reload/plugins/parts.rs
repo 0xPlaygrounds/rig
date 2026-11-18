@@ -5,7 +5,7 @@
 use std::path::Path;
 
 use bevy_ecs::system::SystemParam;
-use rig_harness::harness_protocol::config::{self, toml_edit};
+use rig_harness::harness_protocol::config;
 use rig_harness::prelude::*;
 use rig_tui::status::{StatusParts, StatusSettings};
 
@@ -60,19 +60,35 @@ impl Status<'_> {
             .collect()
     }
 
-    /// Shows at once every part the running setting hides, saying so for
-    /// `agent`, or why the file at `path` cannot be written; whether any
-    /// was hidden.
+    /// The names the running setting or the settings file at `path` hides,
+    /// the file read even when the status line does not run.
+    pub(super) fn hidden(&self, path: &Path) -> Vec<String> {
+        let mut hidden = (self.settings.as_ref()).map_or_else(Vec::new, |it| it.hide.clone());
+        let file = config::SettingsFile::read(path).ok();
+        let hide = (file.as_ref())
+            .and_then(|file| file.document.get("status")?.get("hide")?.as_array())
+            .into_iter()
+            .flatten()
+            .filter_map(|name| name.as_str());
+        for name in hide {
+            if !hidden.iter().any(|it| it == name) {
+                hidden.push(name.to_owned());
+            }
+        }
+        hidden
+    }
+
+    /// Shows at once every part [`Self::hidden`] names, saying so for
+    /// `agent`, or why the file at `path` cannot be written.
     pub(super) fn show_all(
         &mut self,
         path: &Path,
         agent: Entity,
         notices: &mut MessageWriter<Notice>,
-    ) -> bool {
-        let hidden =
-            (self.settings.as_ref()).map_or_else(Vec::new, |settings| settings.hide.clone());
+    ) {
+        let hidden = self.hidden(path);
         if hidden.is_empty() {
-            return false;
+            return;
         }
         let changes: Vec<(&str, bool)> = hidden.iter().map(|name| (name.as_str(), true)).collect();
         notices.write(match self.switch(path, &changes) {
@@ -86,47 +102,63 @@ impl Status<'_> {
             ),
             Err(why) => Notice::error(agent, format!("{} is unchanged: {why}", path.display())),
         });
-        true
+    }
+
+    /// Applies the switches of the parts of `tree` ticked in `on` with
+    /// [`Self::switch`], when there are any. Returns the error and the
+    /// file it names when it cannot be written.
+    pub(super) fn apply(
+        &mut self,
+        path: &Path,
+        tree: &Tree,
+        on: &[bool],
+    ) -> Result<(), config::Error> {
+        let switches = self.switches(tree, on);
+        if switches.is_empty() {
+            return Ok(());
+        }
+        self.switch(path, &switches)
     }
 
     /// Shows each part `changes` names `true` and hides each named `false`,
     /// in `[status] hide` of the settings file at `path`, keeping every
-    /// other line and name, then in the running setting. Nothing changes
-    /// when the file cannot be written.
+    /// other line, name and comment, then in the running setting. Nothing
+    /// changes when the file cannot be written.
     ///
     /// # Errors
     ///
-    /// When the file does not read, its `[status]` is not a table, or it
-    /// cannot be written, naming the file.
+    /// When the file does not read, its `[status]` is not a table or its
+    /// `hide` not a list, or it cannot be written, naming the file.
     pub(super) fn switch(
         &mut self,
         path: &Path,
         changes: &[(&str, bool)],
     ) -> Result<(), config::Error> {
         config::edit(path, |file| {
-            let hide = (file.document.get("status"))
-                .and_then(|status| status.get("hide")?.as_array())
-                .map(|hide| hide.iter().filter_map(|name| name.as_str()));
-            let mut names: Vec<String> = hide.into_iter().flatten().map(str::to_owned).collect();
-            let before = names.clone();
-            switch(&mut names, changes);
-            if names == before {
+            let hides = changes.iter().any(|(_, shown)| !shown);
+            if !hides && file.document.get("status").is_none() {
                 return Ok((false, ()));
             }
-            let table = config::table(&mut file.document, "status").ok_or_else(|| {
-                config::Error::Table {
-                    path: file.path.clone(),
-                    table: "status".to_owned(),
-                    problem: "not a table".to_owned(),
-                }
-            })?;
-            if names.is_empty() {
-                table.remove("hide");
-            } else {
-                let array: toml_edit::Array = names.iter().collect();
-                table.insert("hide", toml_edit::value(array));
+            let path = file.path.clone();
+            let problem = |problem: &str| config::Error::Table {
+                path: path.clone(),
+                table: "status".to_owned(),
+                problem: problem.to_owned(),
+            };
+            let table = config::table(&mut file.document, "status")
+                .ok_or_else(|| problem("not a table"))?;
+            if table.get("hide").is_some_and(|hide| !hide.is_array()) {
+                return Err(problem("its hide is not a list"));
             }
-            Ok((true, ()))
+            let changed = changes.iter().fold(false, |changed, (name, shown)| {
+                let switched = if *shown {
+                    config::drop_name(table, "hide", name)
+                } else {
+                    config::add_name(table, "hide", name)
+                };
+                switched | changed
+            });
+            Ok((changed, ()))
         })?;
         if let Some(settings) = &mut self.settings {
             let mut hide = settings.hide.clone();

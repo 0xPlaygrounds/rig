@@ -404,36 +404,48 @@ fn plugins(
     let tree = Tree::new(file, chosen, &running, parts);
     let interactive = invoked.is_some_and(|invoked| invoked.interactive());
     if defaults {
-        #[cfg(feature = "tui")]
-        let shown = status.show_all(&home.settings(), args.agent, &mut notices);
-        #[cfg(not(feature = "tui"))]
-        let shown = false;
         let on = tree.defaults();
-        if tree.changed(&on) == 0 {
-            if !shown {
-                notices.write(Notice::info(
-                    args.agent,
-                    format!("{} already runs rig's defaults.", home.settings().display()),
-                ));
-            }
+        #[cfg(feature = "tui")]
+        let hides = !status.hidden(&home.settings()).is_empty();
+        #[cfg(not(feature = "tui"))]
+        let hides = false;
+        if tree.changed(&on) == 0 && !hides {
+            notices.write(Notice::info(
+                args.agent,
+                format!("{} already runs rig's defaults.", home.settings().display()),
+            ));
             return;
         }
-        // The question needs a terminal to show it.
+        // The question needs a terminal to show it, and without one
+        // nothing is written, `[status] hide` included.
         if !interactive {
-            let commands: Vec<String> = (tree.trial(&on).changes.iter())
+            let mut commands: Vec<String> = (tree.trial(&on).changes.iter())
                 .map(|(name, on)| {
                     let verb = if *on { "enable" } else { "disable" };
                     format!("  rig plugin {verb} {name}")
                 })
                 .collect();
+            if hides {
+                commands.push(format!(
+                    "  delete the `hide` line under [status] in {}",
+                    home.settings().display()
+                ));
+            }
             notices.write(Notice::error(
                 args.agent,
                 format!(
                     "/plugins defaults asks before it writes, which needs rig on a terminal. \
-                     In a shell, these go back to rig's defaults:\n{}",
+                     These go back to rig's defaults:\n{}",
                     commands.join("\n")
                 ),
             ));
+            return;
+        }
+        #[cfg(feature = "tui")]
+        if hides {
+            status.show_all(&home.settings(), args.agent, &mut notices);
+        }
+        if tree.changed(&on) == 0 {
             return;
         }
         let reload = Reload::here(&slash_commands);
@@ -1008,12 +1020,10 @@ fn mark(
         let on = ticks(list.tree.nodes.len(), &ticked.0);
         #[cfg(feature = "tui")]
         {
-            let switches = status.switches(&list.tree, &on);
             let path = (home.as_ref())
                 .map_or_else(Home::from_env, |home| home.0.clone())
                 .settings();
-            let switched = (!switches.is_empty()).then(|| status.switch(&path, &switches));
-            if let Some(Err(why)) = switched {
+            if let Err(why) = status.apply(&path, &list.tree, &on) {
                 notices.write(Notice::error(
                     list.agent,
                     format!("{} is unchanged: {why}", path.display()),
@@ -1037,10 +1047,11 @@ fn mark(
     }
 }
 
-/// On leaving the list: the question when what is ticked differs from
-/// settings.toml, else nothing. A front that answers with the items picked
-/// rather than ticks them gives those; one that closes it without ever
-/// saying what is ticked never showed it.
+/// On leaving the list: the status line's parts ticked since the last
+/// frame shown or hidden, then the question when what is ticked differs
+/// from settings.toml, else nothing. A front that answers with the items
+/// picked rather than ticks them gives those; one that closes it without
+/// ever saying what is ticked never showed it.
 fn leave(
     picked: On<Picked>,
     lists: Query<(
@@ -1050,6 +1061,11 @@ fn leave(
         Option<&Highlighted>,
     )>,
     slash_commands: Query<&Name, With<SlashCommand>>,
+    #[cfg(feature = "tui")] (home, mut status, mut notices): (
+        Option<Res<RigHome>>,
+        parts::Status,
+        MessageWriter<Notice>,
+    ),
     mut commands: Commands,
 ) {
     let Ok((list, shown, ticked, highlighted)) = lists.get(picked.entity) else {
@@ -1061,6 +1077,18 @@ fn leave(
         (None, Some(ticked)) => ticks(count, &ticked.0),
         (None, None) => return,
     };
+    #[cfg(feature = "tui")]
+    {
+        let path = (home.as_ref())
+            .map_or_else(Home::from_env, |home| home.0.clone())
+            .settings();
+        if let Err(why) = status.apply(&path, &list.tree, &on) {
+            notices.write(Notice::error(
+                list.agent,
+                format!("{} is unchanged: {why}", path.display()),
+            ));
+        }
+    }
     if list.tree.changed(&on) == 0 {
         return;
     }

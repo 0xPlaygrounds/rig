@@ -798,17 +798,7 @@ pub fn set_on(document: &mut DocumentMut, plugin: &str, on: bool, by_default: bo
     if on == by_default {
         return dropped;
     }
-    let list = table
-        .entry(into)
-        .or_insert_with(|| Item::Value(Value::Array(Array::new())));
-    let Some(list) = list.as_array_mut() else {
-        return dropped;
-    };
-    if list.iter().any(|value| value.as_str() == Some(plugin)) {
-        return dropped;
-    }
-    list.push(plugin);
-    true
+    add_name(table, into, plugin) | dropped
 }
 
 /// Turns each plugin or branch of `changes`, a name and whether it is on,
@@ -858,18 +848,26 @@ fn set_branch(document: &mut DocumentMut, branch: &str, on: bool) -> bool {
         return false;
     };
     if on {
-        return drop_name(table, "off", branch);
+        drop_name(table, "off", branch)
+    } else {
+        add_name(table, "off", branch)
     }
+}
+
+/// Puts `name` at the end of the list `key` of `table`, made when missing,
+/// keeping the list's comments. Returns whether it was not there before;
+/// false too when `key` is not a list.
+pub fn add_name(table: &mut dyn TableLike, key: &str, name: &str) -> bool {
     let list = table
-        .entry("off")
+        .entry(key)
         .or_insert_with(|| Item::Value(Value::Array(Array::new())));
     let Some(list) = list.as_array_mut() else {
         return false;
     };
-    if list.iter().any(|value| value.as_str() == Some(branch)) {
+    if list.iter().any(|value| value.as_str() == Some(name)) {
         return false;
     }
-    list.push(branch);
+    list.push(name);
     true
 }
 
@@ -892,7 +890,7 @@ pub fn forget<'a>(
 
 /// Takes `plugin` out of the list `key` of `table`, and the key once it is
 /// empty unless a comment goes with it. Returns whether it was there.
-fn drop_name(table: &mut dyn TableLike, key: &str, plugin: &str) -> bool {
+pub fn drop_name(table: &mut dyn TableLike, key: &str, plugin: &str) -> bool {
     let Some(list) = table.get_mut(key).and_then(Item::as_array_mut) else {
         return false;
     };
