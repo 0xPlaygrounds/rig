@@ -96,8 +96,9 @@ impl Entry {
 /// rig's plugins it turns on or off against today's default (with the
 /// approval plugin beside MCP on, as v0.46.0's MCP plugin asked before a
 /// project's server ran), a `disable` for a crate of its own it lists off,
-/// and a line for each of rig's plugins that is gone. A plugin of rig's it does not name keeps its default. When
-/// nothing is to be added, the step that ends the warning: an empty table.
+/// and a line for each of rig's plugins that is gone. A plugin of rig's it
+/// does not name keeps its default. When nothing is to be added, the step
+/// that ends the warning: an empty table.
 fn plugin_moves(text: &str, settings: &Path) -> Vec<String> {
     let empty = format!(
         "  Add an empty [plugins] table to {}: the list was rig's defaults.",

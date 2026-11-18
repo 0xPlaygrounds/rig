@@ -269,8 +269,8 @@ fn add(home: &Home, type_path: &str, flags: &[&str], source: Option<&Path>) -> R
 
 /// `rig plugin remove <type>`: takes the `[[plugins.extra]]` table of
 /// `type_path` out of the home's settings, with the comment block touching
-/// its header (comments past a blank line stay), and the name out of `[plugins] enable` and `disable`. The
-/// crate's files stay where they are.
+/// its header (comments past a blank line stay), and the name out of
+/// `[plugins] enable` and `disable`. The crate's files stay where they are.
 ///
 /// # Errors
 ///
@@ -448,7 +448,7 @@ fn add_extra(
             extra.insert(key, value(text.as_str()));
         }
         extra.decor_mut().set_prefix(format!("\n# {comment}\n"));
-        uninline(&mut file.document, "plugins");
+        uninline(file, "plugins")?;
         let plugins = table(&mut file.document, "plugins").ok_or("[plugins] is not a table")?;
         let tables = plugins
             .entry("extra")
@@ -475,12 +475,28 @@ fn add_extra(
     Ok(added)
 }
 
-/// Makes the inline table `key = { .. }` of `document` a `[key]` table with
+/// Makes the inline table `key = { .. }` of `file` a `[key]` table with
 /// the same keys, the comments above it and the one after it.
-fn uninline(document: &mut DocumentMut, key: &str) {
+///
+/// # Errors
+///
+/// When a comment, or a `#` in a string, is inside the braces: a `[key]`
+/// table would not keep it where it was written.
+fn uninline(file: &mut config::SettingsFile, key: &str) -> Result<()> {
+    let document = &mut file.document;
     let Some(inline) = document.get(key).and_then(Item::as_inline_table) else {
-        return;
+        return Ok(());
     };
+    let mut inside = inline.clone();
+    inside.decor_mut().clear();
+    if inside.to_string().contains('#') {
+        return Err(format!(
+            "{}: `{key} = {{ .. }}` holds a comment, which a [{key}] table would not keep \
+             where it is; write it as a [{key}] table",
+            file.path.display()
+        )
+        .into());
+    }
     let mut table = inline.clone().into_table();
     let suffix = inline
         .decor()
@@ -497,6 +513,7 @@ fn uninline(document: &mut DocumentMut, key: &str) {
         name.leaf_decor_mut().set_prefix("");
     }
     document.insert(key, Item::Table(table));
+    Ok(())
 }
 
 /// `rig plugin list`: prints [`listing`].
