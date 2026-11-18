@@ -38,8 +38,8 @@ the agent with your changes and keeps the session.
 
 - The [agent guide](docs/agent.md) covers updating, models, sessions, tools,
   settings and scripting.
-- The [plugin guide](crates/rig-harness/PLUGINS.md) shows how to write a
-  tool, a command or a panel.
+- The [plugin guide](crates/rig-harness/PLUGINS.md) explains the basics of a
+  plugin and points at working examples of each kind.
 
 ## The library
 

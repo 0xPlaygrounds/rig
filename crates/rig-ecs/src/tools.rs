@@ -33,7 +33,10 @@ use super::stage::{Admitted, Decision, Effect, ForAgent, Outcome, Settled, Start
 use super::turn::fail;
 
 /// What the model is told about a tool. A call naming an argument its
-/// parameters do not declare is refused before the tool runs.
+/// parameters do not declare is refused before the tool runs. Another
+/// plugin may edit it, in `finish` or later, such as to add a property to
+/// `parameters`; that plugin then takes the property out of the call's
+/// `ToolRequest` in Prepare if the tool's own arguments would refuse it.
 #[derive(Component, Reflect, Clone, Serialize, Deserialize)]
 #[reflect(opaque, Component, Clone, Serialize, Deserialize)]
 #[require(Footprint)]
@@ -217,6 +220,26 @@ pub struct Footprint(pub Touches);
 /// [`normalized`](Touches::normalized)) instead of asking the call's
 /// handler, so a plugin that knows what a call touches, such as a shell
 /// command that only reads, lets the reply's other calls run beside it.
+///
+/// ```
+/// use std::path::PathBuf;
+///
+/// use rig_ecs::prelude::*;
+///
+/// /// A `touch /work/build.stamp` call writes only that file, so a held
+/// /// one does not hold back a read of `/work/docs`.
+/// fn stamps(calls: Query<(Entity, &ToolRequest), (Added<Admitted>, ToolCalls)>, mut commands: Commands) {
+///     for (call, request) in &calls {
+///         let command = request.call.function.arguments.get("command").and_then(|c| c.as_str());
+///         if command == Some("touch /work/build.stamp") {
+///             let stamp = Touches::Writes(Scope::Paths(vec![PathBuf::from("/work/build.stamp")]));
+///             commands.entity(call).insert((Footprint(stamp), DeclaredFootprint));
+///         }
+///     }
+/// }
+///
+/// App::new().add_systems(AgentPass, stamps.in_set(PrepareSystems::Edit));
+/// ```
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct DeclaredFootprint;
 

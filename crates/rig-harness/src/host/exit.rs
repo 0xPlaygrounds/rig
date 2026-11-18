@@ -96,7 +96,9 @@ pub struct Exit(pub ExitReason);
 /// answered: a plugin delays the exit only by holding it (`HoldOf`, with a
 /// deadline of its own), and nothing cancels it. Work keeps running while
 /// it is held. A second exit asked for meanwhile is a second effect, which
-/// a holder may take as "stop waiting".
+/// a holder may take as "stop waiting". A signal's exit is held the same
+/// way, but a launcher passing on a signal waits for the agent at most
+/// [`STOP_WAIT`](rig_harness_protocol::STOP_WAIT) before it kills it.
 #[derive(Component, Clone, Debug)]
 pub struct ExitRequest(pub ExitReason);
 

@@ -4,7 +4,8 @@
 //! that type as a resource, its `Default` where the user set nothing. A
 //! table that does not read as the type refuses the run, naming the file,
 //! the table and the key, as does a file that is not TOML or cannot be
-//! read ([`Settings::problems`]). A plugin reads its table in `build`,
+//! read ([`Settings::problems`]), with exit code 2
+//! ([`AppCliExt::refuse_run`](crate::prelude::AppCliExt::refuse_run)). A plugin reads its table in `build`,
 //! whatever front takes the run, so a build describing itself checks it
 //! as a start does: a table read once the run's front is chosen refuses
 //! the run. The harness chooses it as its own plugins finish, so in

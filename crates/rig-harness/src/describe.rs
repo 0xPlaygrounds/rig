@@ -53,6 +53,9 @@ pub(crate) fn described_settings() -> Option<PathBuf> {
 /// writes its [`report`] to the file the launcher named and exits without
 /// running a frame: with code 2 and the reason on stderr when the report
 /// fails. The generated `main.rs` ends with it in place of `app.run()`.
+/// Since the launcher learns the build's commands, options and secrets
+/// this way, a plugin's `build` only declares: its work goes in `finish`
+/// or in systems.
 pub fn run(mut app: App) -> AppExit {
     let Some(path) = describing() else {
         return app.run();

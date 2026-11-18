@@ -46,8 +46,8 @@ rig's is a `[[plugins.extra]]` table of `RIG_HOME/settings.toml`, which
 terminal view (status line items, pickers, transcript render systems) does so
 behind a default `tui` cargo feature, so it also builds without `rig-tui`.
 
-[`PLUGINS.md`](https://github.com/0xPlaygrounds/rig/blob/main/crates/rig-harness/PLUGINS.md) shows how to write a plugin: an index from task to
-section, then one example per extension point.
+[`PLUGINS.md`](https://github.com/0xPlaygrounds/rig/blob/main/crates/rig-harness/PLUGINS.md) explains the basics of a plugin and points at a
+working example of each idea in the plugin corpus.
 [`keep_last_compaction`](https://github.com/0xPlaygrounds/rig/blob/main/corpus/ct/src/keep_last_compaction.rs) replaces
 a default plugin, the compaction, on public API alone. A plugin's tests run a
 small app frame by frame, and `stage_conflicts` checks that its stage systems

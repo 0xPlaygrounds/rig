@@ -31,8 +31,7 @@ const STREAM_ITEMS: usize = 256;
 /// Wakes the app's loop from another thread: a finished call, a streamed
 /// fragment, terminal input or a signal. The runner that sleeps between
 /// frames inserts its own; the default does nothing, for a loop that never
-/// sleeps for long. A windowed app inserts its own too (rig-harness's
-/// PLUGINS.md, "A window").
+/// sleeps for long. A windowed app inserts its own too.
 ///
 /// A woken frame often leaves work for the next, such as a command's
 /// notice or a task that finished just after it woke the loop, so the
@@ -208,7 +207,10 @@ impl Running {
     }
 }
 
-/// A finished task's output, or a [`Running::stream`]'s latest item.
+/// A finished task's output, or a [`Running::stream`]'s latest item. On a
+/// hold or a plugin's own entity it moves no effect, so no stage runs for
+/// it: react with an `On<Insert<Done<T>>>` observer, such as one that
+/// releases the hold, not with a stage system.
 #[derive(Component)]
 pub struct Done<T: Send + Sync + 'static>(pub T);
 

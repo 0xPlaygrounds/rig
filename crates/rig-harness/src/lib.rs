@@ -96,8 +96,14 @@ pub use rig_memory;
 pub use rig_tools;
 
 /// What a plugin needs, so a typical one imports only this: the kernel's
-/// prelude and the harness's services. A plugin crate's own types come from
-/// that crate, such as the terminal view's panels from `rig-tui`.
+/// prelude (with Bevy's) and the harness's services. A plugin crate's own
+/// types come from that crate, such as the terminal view's panels from
+/// `rig-tui`.
+///
+/// It holds common names such as [`Project`](crate::services::Project) and
+/// [`Settings`](crate::settings::Settings). A file that also glob-imports a
+/// module with a `Project` of its own gets an ambiguity error (E0659) where
+/// it uses the name, so it imports that one by name: `use domain::{Project, *};`.
 pub mod prelude {
     pub use rig_ecs::prelude::*;
 
@@ -212,7 +218,18 @@ impl PluginGroup for HeadlessPlugins {
 /// `plugins`, such as Bevy's `DefaultPlugins`, without what
 /// [`HeadlessPlugins`] already sets: the log, the task pools, the frame
 /// count, the clock, the signal handler and the loop. Its windowing plugin
-/// then runs the loop; [`plugin_guide`] shows how a window plugin wakes it.
+/// then runs the loop.
+///
+/// A window crate depends on `bevy` at exactly
+/// [`BEVY_VERSION`](rig_harness_protocol::BEVY_VERSION), without default
+/// features, with `ui`. A window beside the terminal view
+/// ([`Invoked::interactive`](prelude::Invoked::interactive)) sets
+/// `ExitCondition::DontExit`, so closing it leaves the agent running, and
+/// `WinitSettings` with `UpdateMode::reactive_low_power` of a second. In
+/// `Plugin::finish` it points the agent's [`Wake`](rig_ecs::tasks::Wake)
+/// at winit's `EventLoopProxyWrapper`, sending `WinitUserEvent::WakeUp`, so
+/// agent work wakes the window. A window that is the run's front offers
+/// itself with [`Front::on_flag`](prelude::Front::on_flag).
 pub fn windowed(plugins: impl PluginGroup) -> PluginGroupBuilder {
     let plugins = without::<LogPlugin>(plugins.build());
     let plugins = without::<TaskPoolPlugin>(plugins);

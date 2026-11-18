@@ -4,6 +4,10 @@
 //! as it streams, each tool's output and answer, and each message. The
 //! model, the conversation, the logs, every front, subagents and a resumed
 //! session hold only placeholders. Without this plugin nothing is redacted.
+//! Each effect record is redacted whole before the effect log writes it,
+//! but for a model request, which is redacted in its own text: its system
+//! prompt, documents and user messages' text. Text a plugin saves itself,
+//! such as a command's argument, is saved as the plugin gives it.
 //!
 //! A tool call that names a placeholder runs with its secret: the secrets
 //! are kept in memory for the run, never saved or sent, and a call naming

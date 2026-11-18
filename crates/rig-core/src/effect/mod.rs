@@ -731,7 +731,7 @@ pub enum RetrieveQuery {
     },
 }
 
-/// What a handler answered.
+/// What a handler answered, or what a decision gave in its place.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum Answered {

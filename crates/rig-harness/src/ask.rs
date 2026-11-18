@@ -10,10 +10,8 @@
 //! Gate after [`AskSystems`], so a line the user typed wins. A plugin asks only
 //! when [`Answerers::can_answer`], else it applies its own policy, such as
 //! refusing. While a question that takes text is open, the user's next line to
-//! the agent answers it, unless the question is [`inline`](Ask::inline). The
-//! plugin guide's
-//! [questions section](crate::plugin_guide#asking-the-user-questions-and-pickers)
-//! has the rest.
+//! the agent answers it, unless the question is [`inline`](Ask::inline).
+//! Choices from a list are a [`Picker`](crate::pick::Picker) instead.
 //!
 //! ```
 //! use rig_harness::prelude::*;

@@ -181,7 +181,10 @@ pub struct EffectParent(pub EffectId);
 ///
 /// Each change waits in the conversation's outbox until the kernel saves it
 /// and announces it as a
-/// [`ConversationChanged`](super::session_log::ConversationChanged). A value
+/// [`ConversationChanged`](super::session_log::ConversationChanged): right
+/// before `Update`, between the stages of each pass, at the end of the
+/// frame, before a tool call that may change something starts, and when a
+/// turn stops. A value
 /// inserted in place of the agent's own is saved as one reset, after the
 /// changes the old one had not saved. Saved through serde.
 ///
@@ -316,6 +319,9 @@ impl From<Option<String>> for SystemPrompt {
 /// allow-list from no other access. Before it admits anything the kernel
 /// keeps each agent's access within the run's tools and the access of
 /// every agent above it ([`SpawnedBy`]), whatever made or restored it.
+/// It is the hard limit: a tool a Prepare system takes out of a request's
+/// `tools` is not offered, but a call of it still runs when the access
+/// keeps it.
 #[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -491,7 +497,9 @@ fn unique<'a>(names: impl IntoIterator<Item = &'a str>) -> Vec<String> {
 /// Commit then removes this, so the agent is idle, and marks the turn
 /// [`Settled`](super::stage::Settled). The turn stays [`ForAgent`] its agent,
 /// and goes with it. Its retries are counted in a [`Recovery`]; its `Name` is
-/// `turn` unless spawned with another.
+/// `turn` unless spawned with another. It is spawned before its first
+/// request is built, so an `On<Add<TurnOf>>` observer's edit is in that
+/// request.
 ///
 /// [`ForAgent`]: super::stage::ForAgent
 #[derive(Component, Reflect, Debug)]
@@ -500,7 +508,9 @@ fn unique<'a>(names: impl IntoIterator<Item = &'a str>) -> Vec<String> {
 #[require(Recovery, Turn, Name = Name::new("turn"))]
 pub struct TurnOf(pub Entity);
 
-/// Where a turn stands, on the turn. The kernel fills it in when the turn
+/// Where a turn stands, on the turn. A turn runs from the message that
+/// asked for it to the reply that ends it, and an agent runs at most one
+/// at a time ([`ActiveTurn`]). The kernel fills it in when the turn
 /// is spawned, from the turn's record in its agent's conversation
 /// ([`TurnRecord`](conversation::TurnRecord)), and keeps it.
 #[derive(Component, Reflect, Clone, Debug, Default)]
@@ -719,7 +729,8 @@ pub struct StopTurn {
 }
 
 impl StopTurn {
-    /// The user stopping `agent`'s turn, and those below it.
+    /// The user stopping `agent`'s turn, and those below it. The kernel
+    /// tells the user `Stopped.`.
     pub fn new(agent: Entity) -> Self {
         Self {
             entity: agent,
@@ -730,7 +741,8 @@ impl StopTurn {
 
     /// The plugin `by` stopping `agent`'s turn, and those below it, for
     /// `why`. The request the turn answers is halted
-    /// [`Kept`](conversation::Halt::Kept), left for the next turn.
+    /// [`Kept`](conversation::Halt::Kept), left for the next turn. The
+    /// kernel shows no notice for it: the plugin says why itself.
     pub fn plugin(agent: Entity, by: &str, why: &str) -> Self {
         Self {
             entity: agent,
@@ -763,9 +775,11 @@ impl StopTurn {
 
 /// On each agent a [`StopTurn`] reached, idle or not, once, after its turn
 /// is gone: the stop's cause. Only the kernel makes it, so an observer
-/// reads one per agent instead of walking [`Spawned`] itself. A
-/// [`StopTurn::plugin_alone`] sends none, and neither do the stops of the
-/// app's exit and of a restart.
+/// reads one per agent instead of walking [`Spawned`] itself. Idle agents
+/// get theirs after every running agent the stop reached. React to an
+/// agent being stopped with this, not [`StopTurn`], which is only a
+/// request. A [`StopTurn::plugin_alone`] sends none, and neither do the
+/// stops of the app's exit and of a restart.
 ///
 /// ```compile_fail,E0451
 /// use bevy_ecs::prelude::*;
@@ -812,7 +826,7 @@ pub enum NoticeLevel {
     Info,
 }
 
-/// A line for the user, shown by views. A system reads the notices sent
+/// A line for the user, shown by views and never saved. A system reads the notices sent
 /// before it in the frame and, from the frame before, those sent after it.
 /// So one sent late, such as the session log's write failure (in
 /// [`WriteLogs`](crate::WriteLogs), after `Last`), is read a frame late

@@ -24,8 +24,8 @@ Subagents, compaction, usage and the effect log are plugins on its public API.
 - `session_log`, `restore`: the session log in any rig-memory `Store`, the
   restore after a restart, and state kept with the session (`Saved`).
 
-The rules a plugin follows, with an example per extension point, are in
-rig-harness's [plugin guide](../rig-harness/PLUGINS.md).
+The basics of a plugin, with links to working examples, are in rig-harness's
+[plugin guide](../rig-harness/PLUGINS.md).
 
 `AgentPlugin` adds Bevy's `TimePlugin` when the app has none. The crate has no
 features and builds for `wasm32-unknown-unknown`. The

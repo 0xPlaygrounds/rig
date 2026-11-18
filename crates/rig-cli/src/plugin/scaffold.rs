@@ -1,7 +1,7 @@
 //! The `__name__` plugin of the rig agent, made by `rig plugin new`.
 //!
-//! The plugin guide, rig-harness's `PLUGINS.md` (its `plugin_guide` docs), has
-//! the rules every plugin follows and a short example of each extension point.
+//! The plugin guide, rig-harness's `PLUGINS.md` (its `plugin_guide` docs),
+//! explains the basics and links a working example of each extension point.
 //! Every name it uses comes from `rig_harness::prelude` or the crate an example
 //! names; the optional `inspect` tool (crate `rig-inspect`) lists the rest.
 
@@ -28,13 +28,11 @@ impl Plugin for ScaffoldPlugin {
             "Count the words of the agent's last answer",
             command,
         );
-        // Other extension points, each a section of the plugin guide:
-        // a tool ("A tool"), gating its calls ("Gating and reviewing tool
-        // calls"), asking the user ("Asking the user"), model requests, a
-        // turn's end ("How a turn ends"), settings, a `rig <name>` command
-        // ("Commands of your own"), replacing a built-in ("Turning off or
-        // replacing"), the status line and a terminal panel (crate rig-tui),
-        // time ("Time"), and what each plugin added (`ProvidedBy`).
+        // Other extension points, each a section of the plugin guide with
+        // examples: a tool, gating its calls ("Effects and stages"), asking
+        // the user, model requests and turns, settings and saved state,
+        // subagents, the terminal view (crate rig-tui) and a `rig <name>`
+        // command ("Fronts and commands of your own").
     }
 }
 

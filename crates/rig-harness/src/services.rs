@@ -176,7 +176,10 @@ pub struct Processes {
 
 impl Processes {
     /// How the next process starts: the launcher set, keeping every secret
-    /// from the command.
+    /// from the command. A bare `std::process::Command` passes the secrets
+    /// on, so start every child from this. One that runs in the project
+    /// goes through the workspace's
+    /// [`spawn`](rig_tools::workspace::Workspace::spawn) with it.
     pub fn launcher(&self) -> Launcher {
         let launcher = self
             .launcher

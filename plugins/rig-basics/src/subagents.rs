@@ -173,7 +173,9 @@ pub struct Report;
 pub struct Peers;
 
 /// On an agent: the requests it sent other agents, oldest first, until the
-/// report on each arrives in its conversation or inbox. A restore that
+/// report on each arrives in its conversation or inbox. The report and the
+/// clearing go into the asker's log with one append, so a restore sends
+/// again a report that log lost, and never one it kept. A restore that
 /// finds a report there takes its requests off. Saved; a fork waits for none.
 #[derive(Component, Reflect, Clone, Debug, Default, Serialize, Deserialize)]
 #[reflect(

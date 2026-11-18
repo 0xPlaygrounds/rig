@@ -134,7 +134,9 @@ impl LinesShown {
     }
 }
 
-/// The files a tool call changed, in the order it changed them.
+/// The files a tool call changed, in the order it changed them. The file
+/// tools publish it for what they write. A tool that does not publish it,
+/// such as `shell`, says nothing about the files it changed.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct FilesChanged(pub Vec<FileChange>);
