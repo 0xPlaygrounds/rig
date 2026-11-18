@@ -257,6 +257,9 @@ fn removed_run_tools_stop_limiting_agents() {
     world.run_system(keep).ok();
     world.flush();
     assert_eq!(allow(&world, [parent, child], "read"), [false, false]);
+    // A pass that changes nothing, so only the removal can start the next.
+    world.run_system(keep).ok();
+    world.flush();
     world.remove_resource::<RunTools>();
     world.run_system(keep).ok();
     world.flush();
