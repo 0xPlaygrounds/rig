@@ -226,7 +226,8 @@ fn find(world: &mut World, name: &str) -> Option<(Entity, Args)> {
 }
 
 /// Run the slash command `line` (without its `/`) for the agent: its name,
-/// then its arguments.
+/// then its arguments. A refused line comes back in the input; run a line the
+/// user did not type with [`run_chosen`] instead.
 #[derive(EntityEvent, Reflect, Clone, Debug)]
 #[reflect(Event, Clone, Debug)]
 pub struct RunCommand {
