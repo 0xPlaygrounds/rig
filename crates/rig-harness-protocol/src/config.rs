@@ -240,6 +240,7 @@ in settings.toml, and /budget.";
                 "Subagents: the task, message and wait tools, with which the agent starts other \
 agents, messages them and waits on their reports. Adds the agent picker.";
             off rig_steel::SteelPlugin, "rig-steel", "Steel programs", [], None,
+                adds ["rig_basics::agent_picker::AgentPickerPlugin"],
                 "The run_steel tool: one Scheme program that runs several agents and tool calls \
 and branches on their results, and /agents, to show them.";
             off rig_basics::telemetry::effect_log::EffectLogPlugin, "rig-basics",
