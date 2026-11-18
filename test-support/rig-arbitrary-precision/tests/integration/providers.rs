@@ -21,6 +21,12 @@ fn openrouter_thresholds_read_a_number_or_percentiles() -> anyhow::Result<()> {
         anyhow::bail!("{throughput:?}");
     };
     anyhow::ensure!(percentiles.p75 == Some(1.25), "{percentiles:?}");
+    for input in ["[2.5]", r#"{"p50":1.0,"p50":2.0}"#] {
+        anyhow::ensure!(
+            serde_json::from_str::<ThroughputThreshold>(input).is_err(),
+            "{input} reads"
+        );
+    }
     let latency: LatencyThreshold = serde_json::from_str(r#"{"p50":0.50,"p99":1e1}"#)?;
     let LatencyThreshold::Percentile(percentiles) = latency else {
         anyhow::bail!("{latency:?}");

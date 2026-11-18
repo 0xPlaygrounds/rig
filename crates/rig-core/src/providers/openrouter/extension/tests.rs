@@ -380,17 +380,58 @@ async fn chat_extras_read_alike_from_a_recorded_stream() {
     assert_eq!(streamed.native_finish_reason.as_deref(), Some("stop"));
 }
 
-/// A threshold array shorter than the four percentiles is refused, as a
-/// percentile with a field missing.
+/// A threshold refuses a short array and a repeated percentile, and reads
+/// a full array, a partial object and a scalar.
 #[test]
-fn thresholds_refuse_a_short_array() {
-    for input in ["[]", "[2.5]", "[null,1.5]"] {
+fn thresholds_refuse_a_short_array_and_a_repeated_percentile() {
+    for input in ["[]", "[2.5]", "[null,1.5]", r#"{"p50":1.0,"p50":2.0}"#] {
         assert!(
             serde_json::from_str::<LatencyThreshold>(input).is_err(),
             "{input}"
         );
         assert!(
             serde_json::from_str::<ThroughputThreshold>(input).is_err(),
+            "{input}"
+        );
+    }
+    let full = PercentileThresholds {
+        p50: Some(1.0),
+        p75: None,
+        p90: Some(3.0),
+        p99: Some(4.0),
+    };
+    let partial = PercentileThresholds {
+        p75: Some(2.5),
+        ..PercentileThresholds::default()
+    };
+    for (input, read) in [
+        (
+            "[1.0,null,3.0,4.0]",
+            ThroughputThreshold::Percentile(full.clone()),
+        ),
+        (
+            r#"{"p75":2.5,"other":1}"#,
+            ThroughputThreshold::Percentile(partial.clone()),
+        ),
+        ("12.5", ThroughputThreshold::Simple(12.5)),
+    ] {
+        assert_eq!(
+            serde_json::from_str::<ThroughputThreshold>(input).ok(),
+            Some(read),
+            "{input}"
+        );
+    }
+    for (input, read) in [
+        ("[1.0,null,3.0,4.0]", LatencyThreshold::Percentile(full)),
+        (
+            r#"{"p75":2.5,"other":1}"#,
+            LatencyThreshold::Percentile(partial),
+        ),
+        ("12.5", LatencyThreshold::Simple(12.5)),
+    ] {
+        assert_eq!(
+            serde_json::from_str::<LatencyThreshold>(input).ok(),
+            Some(read),
             "{input}"
         );
     }
