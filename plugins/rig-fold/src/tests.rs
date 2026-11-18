@@ -345,18 +345,36 @@ fn told(app: &mut App, text: &str) -> usize {
     warns.filter(|notice| notice.text.contains(text)).count()
 }
 
+/// The number of fold keys bound once every plugin is built and finished,
+/// the terminal view added after the plugin if `view`.
+fn fold_keys(view: bool) -> usize {
+    let mut app = App::new();
+    app.insert_resource(Settings::from_toml(""))
+        .add_plugins(FoldPlugin);
+    if view {
+        app.add_plugins(TuiViewPlugin);
+    }
+    app.finish();
+    let world = app.world_mut();
+    world
+        .query_filtered::<(), With<FoldKey>>()
+        .iter(world)
+        .count()
+}
+
 #[test]
 fn without_the_terminal_view_it_adds_nothing() {
     let mut app = App::new();
     app.insert_resource(Settings::from_toml(""))
         .add_plugins(FoldPlugin);
-    let world = app.world_mut();
-    assert!(world.get_resource::<FoldSettings>().is_none());
-    assert_eq!(
-        world
-            .query_filtered::<(), With<FoldKey>>()
-            .iter(world)
-            .count(),
-        0
-    );
+    app.finish();
+    assert!(app.world().get_resource::<FoldSettings>().is_none());
+    assert_eq!(fold_keys(false), 0);
+}
+
+/// The plugin works added before the terminal view, as by an extra that
+/// adds the view after it.
+#[test]
+fn added_before_the_terminal_view_it_binds_its_key() {
+    assert_eq!(fold_keys(true), 1);
 }
