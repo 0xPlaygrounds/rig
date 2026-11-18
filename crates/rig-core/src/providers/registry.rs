@@ -897,8 +897,8 @@ impl ProviderConfig {
 
     /// The window a local server serves `model` with, asked on `http`:
     /// Ollama's `/api/show` and llama.cpp's `/props`. `None` for any other
-    /// provider, which says no window of its own. The future fails when the
-    /// server has not answered within [`WINDOW_ASK_DEADLINE`].
+    /// provider, which says no window of its own. The ask has no deadline
+    /// of its own.
     pub(crate) fn context_window(
         &self,
         model: &str,
@@ -908,36 +908,20 @@ impl ProviderConfig {
             return None;
         };
         let provider = provider.clone();
-        let ask: WasmBoxedFuture<'static, Result<u32, ProviderError>> = match provider.dialect.name
-        {
+        match provider.dialect.name {
             crate::providers::ollama::PROVIDER_NAME => {
                 let model = model.to_owned();
                 let wire = crate::providers::ollama::show::Show { provider, model };
-                Box::pin(Model::new(wire, http).call(()))
+                Some(Box::pin(Model::new(wire, http).call(())))
             }
             crate::providers::llamacpp::PROVIDER_NAME => {
                 let wire = crate::providers::llamacpp::props::Props { provider };
-                Box::pin(Model::new(wire, http).call(()))
+                Some(Box::pin(Model::new(wire, http).call(())))
             }
-            _ => return None,
-        };
-        Some(Box::pin(async move {
-            crate::wasm_compat::timeout(WINDOW_ASK_DEADLINE, ask)
-                .await
-                .unwrap_or_else(|_| {
-                    Err(ProviderError::Provider(format!(
-                        "no answer within {}s",
-                        WINDOW_ASK_DEADLINE.as_secs()
-                    )))
-                })
-        }))
+            _ => None,
+        }
     }
 }
-
-/// How long a local server may take to say the window it serves a model
-/// with. It answers from what it has loaded, so a server that takes longer
-/// is taken not to say.
-const WINDOW_ASK_DEADLINE: std::time::Duration = std::time::Duration::from_secs(3);
 
 /// What [`Catalog::connect`] connects to: a catalog entry, or a
 /// `vendor/model` reference, as [`Catalog::resolve`] reads one.

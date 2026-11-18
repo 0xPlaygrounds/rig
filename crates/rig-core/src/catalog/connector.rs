@@ -17,6 +17,11 @@ use crate::serve::ErasedHandler;
 use crate::serve::adapters::ModelAdapter;
 use crate::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync};
 
+/// How long a local server may take to say the window it serves a model
+/// with. It answers from what it has loaded, so a server that takes longer
+/// is taken not to say.
+const WINDOW_ASK_DEADLINE: std::time::Duration = std::time::Duration::from_secs(3);
+
 /// A way to reach catalog models no key is set for, such as a
 /// subscription plan signed in to. A [`Connector`] asks it for a model only
 /// when the provider registered for the model's vendor, else the
@@ -337,7 +342,17 @@ impl Connector {
         let mut options = ConnectOptions::new();
         options.http = self.transport.shared();
         let (config, http) = crate::providers::registry::configured(spec.provider, options).ok()?;
-        config.context_window(&spec.id, http)
+        let ask = config.context_window(&spec.id, http)?;
+        Some(Box::pin(async move {
+            crate::wasm_compat::timeout(WINDOW_ASK_DEADLINE, ask)
+                .await
+                .unwrap_or_else(|_| {
+                    Err(ProviderError::Provider(format!(
+                        "no answer within {}s",
+                        WINDOW_ASK_DEADLINE.as_secs()
+                    )))
+                })
+        }))
     }
 
     /// The handler serving `spec`, as [`Self::connect`] finds it, and the
