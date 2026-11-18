@@ -127,7 +127,7 @@ fn a_restored_session_has_its_saved_components_and_resources_and_the_messages_it
         ModelChoice("ollama/deepseek-v4-flash".to_owned()),
         ReasoningSetting(Some(Reasoning::Off)),
         SystemPrompt("You review code.".to_owned()),
-        ToolAccess::all().narrow(["read"]),
+        ToolAccess::only(["read"]),
         LastUsage(Some(rig_memory::Anchor {
             usage,
             through: rig_core::conversation::MessageId::default(),
