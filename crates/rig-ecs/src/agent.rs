@@ -19,7 +19,7 @@ use super::stage::moved;
 use super::turn::{NO_MODEL, Recovery, start_turn};
 
 /// Marks an agent. Spawning it adds every per-agent component with its
-/// default, including a fresh [`AgentId`]. An agent has no
+/// default, including a fresh [`AgentId`] and the name `agent`. An agent has no
 /// [`ModelChoice`](super::model::ModelChoice) until one is picked.
 ///
 /// Only the kernel makes one, with the settings [`spawn`](super::spawn)
@@ -49,6 +49,7 @@ use super::turn::{NO_MODEL, Recovery, start_turn};
 #[reflect(Component)]
 #[require(
     AgentId,
+    Name = Name::new("agent"),
     Conversation,
     ReasoningSetting,
     LastUsage,

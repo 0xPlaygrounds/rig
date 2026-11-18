@@ -242,16 +242,8 @@ pub fn spawn(world: &mut World, origin: Origin, spec: AgentSpec) -> Result<Entit
 /// let agent = spawn_root(&mut world, AgentId("main".into())).id();
 /// assert_eq!(world.get::<AgentId>(agent), Some(&AgentId("main".into())));
 /// ```
-pub fn spawn_root<B: Bundle>(world: &mut World, bundle: B) -> EntityWorldMut<'_> {
-    let name = world.register_component::<Name>();
-    let named = world
-        .register_bundle::<B>()
-        .contributed_components()
-        .contains(&name);
-    match named {
-        true => world.spawn((bundle, Agent::new())),
-        false => world.spawn((bundle, Agent::new(), Name::new("agent"))),
-    }
+pub fn spawn_root(world: &mut World, bundle: impl Bundle) -> EntityWorldMut<'_> {
+    world.spawn((bundle, Agent::new()))
 }
 
 #[cfg(test)]
