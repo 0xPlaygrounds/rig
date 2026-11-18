@@ -445,6 +445,14 @@ fn plugins(
         if hides {
             status.show_all(&home.settings(), args.agent, &mut notices);
         }
+        #[cfg(not(feature = "tui"))]
+        if hides {
+            let hidden = hidden_in(&home.settings());
+            let changes: Vec<(&str, bool)> =
+                hidden.iter().map(|name| (name.as_str(), true)).collect();
+            let written = write_hide(&home.settings(), &changes);
+            notices.write(shown_again(&home.settings(), &hidden, args.agent, written));
+        }
         if tree.changed(&on) == 0 {
             return;
         }
@@ -552,6 +560,65 @@ fn hidden_in(path: &std::path::Path) -> Vec<String> {
         .flatten()
         .filter_map(|name| name.as_str().map(str::to_owned))
         .collect()
+}
+
+/// Shows each part `changes` names `true` and hides each named `false`, in
+/// `[status] hide` of the settings file at `path`, keeping every other
+/// line, name and comment.
+///
+/// # Errors
+///
+/// When the file does not read, its `[status]` is not a table or its `hide`
+/// not a list, or it cannot be written, naming the file.
+fn write_hide(path: &std::path::Path, changes: &[(&str, bool)]) -> Result<(), config::Error> {
+    config::edit(path, |file| {
+        let hides = changes.iter().any(|(_, shown)| !shown);
+        if !hides && file.document.get("status").is_none() {
+            return Ok((false, ()));
+        }
+        let path = file.path.clone();
+        let problem = |problem: &str| config::Error::Table {
+            path: path.clone(),
+            table: "status".to_owned(),
+            problem: problem.to_owned(),
+        };
+        let table =
+            config::table(&mut file.document, "status").ok_or_else(|| problem("not a table"))?;
+        if table.get("hide").is_some_and(|hide| !hide.is_array()) {
+            return Err(problem("its hide is not a list"));
+        }
+        let changed = changes.iter().fold(false, |changed, (name, shown)| {
+            let switched = if *shown {
+                config::drop_name(table, "hide", name)
+            } else {
+                config::add_name(table, "hide", name)
+            };
+            switched | changed
+        });
+        Ok((changed, ()))
+    })?;
+    Ok(())
+}
+
+/// What `/plugins defaults` tells `agent` once it has written the file at
+/// `path` to show every part of `hidden` again, or why it could not.
+fn shown_again(
+    path: &std::path::Path,
+    hidden: &[String],
+    agent: Entity,
+    written: Result<(), config::Error>,
+) -> Notice {
+    match written {
+        Ok(()) => Notice::info(
+            agent,
+            format!(
+                "{}: every status line part is shown again; [status] hide named {}.",
+                path.display(),
+                hidden.join(", ")
+            ),
+        ),
+        Err(why) => Notice::error(agent, format!("{} is unchanged: {why}", path.display())),
+    }
 }
 
 /// Which of the status line's parts `on` shows: each part's node ticked

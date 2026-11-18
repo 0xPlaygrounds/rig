@@ -9,7 +9,7 @@ use rig_harness::harness_protocol::config;
 use rig_harness::prelude::*;
 use rig_tui::status::{StatusParts, StatusSettings};
 
-use super::{Node, Part, Tree, hidden_in, parts_shown};
+use super::{Node, Part, Tree, hidden_in, parts_shown, shown_again, write_hide};
 
 /// The parts the status line knows and its running `[status]`, while it
 /// runs.
@@ -85,17 +85,12 @@ impl Status<'_> {
             return;
         }
         let changes: Vec<(&str, bool)> = hidden.iter().map(|name| (name.as_str(), true)).collect();
-        notices.write(match self.switch(path, &changes) {
-            Ok(()) => Notice::info(
-                agent,
-                format!(
-                    "{}: every status line part is shown again; [status] hide named {}.",
-                    path.display(),
-                    hidden.join(", ")
-                ),
-            ),
-            Err(why) => Notice::error(agent, format!("{} is unchanged: {why}", path.display())),
-        });
+        notices.write(shown_again(
+            path,
+            &hidden,
+            agent,
+            self.switch(path, &changes),
+        ));
     }
 
     /// Applies the switches of the parts of `tree` ticked in `on` with
@@ -128,32 +123,7 @@ impl Status<'_> {
         path: &Path,
         changes: &[(&str, bool)],
     ) -> Result<(), config::Error> {
-        config::edit(path, |file| {
-            let hides = changes.iter().any(|(_, shown)| !shown);
-            if !hides && file.document.get("status").is_none() {
-                return Ok((false, ()));
-            }
-            let path = file.path.clone();
-            let problem = |problem: &str| config::Error::Table {
-                path: path.clone(),
-                table: "status".to_owned(),
-                problem: problem.to_owned(),
-            };
-            let table = config::table(&mut file.document, "status")
-                .ok_or_else(|| problem("not a table"))?;
-            if table.get("hide").is_some_and(|hide| !hide.is_array()) {
-                return Err(problem("its hide is not a list"));
-            }
-            let changed = changes.iter().fold(false, |changed, (name, shown)| {
-                let switched = if *shown {
-                    config::drop_name(table, "hide", name)
-                } else {
-                    config::add_name(table, "hide", name)
-                };
-                switched | changed
-            });
-            Ok((changed, ()))
-        })?;
+        write_hide(path, changes)?;
         if let Some(settings) = &mut self.settings {
             let mut hide = settings.hide.clone();
             switch(&mut hide, changes);
