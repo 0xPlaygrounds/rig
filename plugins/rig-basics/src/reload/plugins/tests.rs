@@ -1031,3 +1031,46 @@ fn ticking_a_plugin_whose_only_with_plugin_is_unticked_says_it_stays_off() {
         asked.body
     );
 }
+
+#[test]
+fn ticking_a_plugin_whose_only_with_plugin_is_under_a_branch_turned_back_on_says_it_runs() {
+    let home = scratch_home("plugins-idle-branch");
+    fs::create_dir_all(home.root()).ok();
+    fs::write(home.settings(), "[plugins]\noff = [\"rig-mcp-client\"]\n").ok();
+    let (mut app, agent) = app(&home, true);
+    run(&mut app, agent, "plugins defaults");
+    let found = picker(&mut app);
+    assert!(found.is_some(), "no question");
+    let Some((question, asked)) = found else {
+        return;
+    };
+    let keep = at(&asked, "Keep editing");
+    pick(&mut app, question, keep.map(Chosen::item));
+    let found = picker(&mut app);
+    assert!(found.is_some(), "no list");
+    let Some((list, _)) = found else {
+        return;
+    };
+    tick(&mut app, list, &["MCP servers", "MCP approval"], &[]);
+    pick(&mut app, list, None);
+    let found = picker(&mut app);
+    assert!(found.is_some(), "no question");
+    let Some((question, asked)) = found else {
+        return;
+    };
+    assert!(
+        asked.body.contains("MCP approval") && !asked.body.contains("does nothing without"),
+        "{}",
+        asked.body
+    );
+    let later = at(&asked, "Later, at the next start");
+    pick(&mut app, question, later.map(Chosen::item));
+    let told = &app.world().resource::<Told>().0;
+    assert!(
+        told.iter().any(|text| text.contains("MCP approval"))
+            && !told
+                .iter()
+                .any(|text| text.contains("does nothing without")),
+        "{told:?}"
+    );
+}
