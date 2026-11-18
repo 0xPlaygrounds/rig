@@ -367,3 +367,56 @@ fn a_call_held_by_another_plugin_past_the_answer_compacts_to_the_window() {
         requests.len()
     );
 }
+
+/// The connection [`route_first`] sends a turn's first call to.
+#[derive(Resource)]
+struct RouteTo(Connection);
+
+/// Routes each turn's call to [`RouteTo`], unless it took over another
+/// call, as a router that chooses per request does.
+fn route_first(
+    mut calls: Query<
+        &mut ModelRequest,
+        (
+            Added<Admitted>,
+            With<TurnCall>,
+            Without<rig_ecs::stage::Supersedes>,
+        ),
+    >,
+    to: Res<RouteTo>,
+) {
+    for mut call in &mut calls {
+        call.connection = Some(to.0.clone());
+    }
+}
+
+#[test]
+fn a_call_routed_to_a_served_model_keeps_its_route_once_the_window_comes() {
+    let ollama = format!(r#"{{"parameters": "num_ctx {SERVED}", "model_info": {{}}}}"#);
+    let server = Server::new([MockHttpResponse::success(ollama)]);
+    let routed = MockCompletionModel::from_stream_turns([
+        reply("## Goal\nAnswer the user's questions about the crate."),
+        reply("done"),
+    ]);
+    let (mut app, wakes, agent) = served("ollama/qwen3", &server, &routed);
+    let own = MockCompletionModel::from_stream_turns([reply("not this model")]);
+    let (Some(served), Some(own_connection)) =
+        (app.world().get::<Connection>(agent).cloned(), connect(&own))
+    else {
+        return;
+    };
+    app.world_mut().entity_mut(agent).insert(own_connection);
+    app.insert_resource(RouteTo(served))
+        .add_systems(AgentPass, route_first.in_set(PrepareSystems::Edit));
+    ask_before_the_answer(&mut app, &wakes, agent, &server);
+    // Compaction's resend after the summary is a call of its own, which
+    // this router does not route.
+    let own = sent(&own);
+    assert!(!own.iter().any(|request| asks_summary(request)), "{own:?}");
+    let requests = sent(&routed);
+    assert!(
+        requests.first().is_some_and(|first| asks_summary(first)),
+        "the routed model summarizes first: {} requests",
+        requests.len()
+    );
+}
