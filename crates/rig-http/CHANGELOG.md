@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.47.0](https://github.com/0xPlaygrounds/rig/compare/rig-http-v0.46.0...rig-http-v0.47.0) - 2026-11-18
+
+### Fixed
+
+- *(rig-core, rig-http)* eight small bugs, each with its failing test ([#3360](https://github.com/0xPlaygrounds/rig/pull/3360)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(io)* [**breaking**] input and output are bounded; a stop is never blocked by output ([#2974](https://github.com/0xPlaygrounds/rig/pull/2974)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(http)* [**breaking**] an error keeps its retry class from where it was made ([#2969](https://github.com/0xPlaygrounds/rig/pull/2969)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Other
+
+- *(rig-core)* [**breaking**] OpenAI wire cleanup: drop dead embeddings knobs, one model-listing wire, idioms ([#3359](https://github.com/0xPlaygrounds/rig/pull/3359)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-core, rig-http)* [**breaking**] drop the websocket cargo feature; fold infra repeats; one json_len ([#3357](https://github.com/0xPlaygrounds/rig/pull/3357)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-core)* one copy each of small internal rules; one poison-tolerant lock per crate ([#3343](https://github.com/0xPlaygrounds/rig/pull/3343)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-http)* [**breaking**] HttpClientExt takes and returns Bytes; dead rig-http and rig-core surface ([#3341](https://github.com/0xPlaygrounds/rig/pull/3341)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-core, rig-http)* the Retry-After examples use retry_after; an example that retries a failed call ([#3299](https://github.com/0xPlaygrounds/rig/pull/3299)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] remove duplicated tests, dead code and doc bloat across the workspace ([#3202](https://github.com/0xPlaygrounds/rig/pull/3202)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #3202
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
 ## [0.46.0](https://github.com/0xPlaygrounds/rig/compare/v0.45.0...v0.46.0) - 2026-10-31
 
 ### Added

@@ -6,6 +6,54 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.47.0](https://github.com/0xPlaygrounds/rig/compare/rig-cassette-v0.46.0...rig-cassette-v0.47.0) - 2026-11-18
+
+### Added
+
+- *(typesafeai)* send OpenRouter provider preferences from JevConfig ([#3118](https://github.com/0xPlaygrounds/rig/pull/3118)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Fixed
+
+- launcher, tools, plugin and memory bugs from the idiom audit (F5) ([#3365](https://github.com/0xPlaygrounds/rig/pull/3365)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #3365
+- *(rig-agent)* [**breaking**] eight bugs from the idiom audit (ChatBot EOF, hook observes, denied disposition, ...) ([#3364](https://github.com/0xPlaygrounds/rig/pull/3364)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-agent)* [**breaking**] a tool call cut at the output limit is answered as cut off, never run ([#3300](https://github.com/0xPlaygrounds/rig/pull/3300)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-core)* a tool call the provider's stream closed unfinished is one of the reply's unfinished calls ([#3298](https://github.com/0xPlaygrounds/rig/pull/3298)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(gemini)* send the API key in the x-goog-api-key header, never in the URL ([#3111](https://github.com/0xPlaygrounds/rig/pull/3111)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(gemini)* replace expired shared-prefix caches, spare replacements from late cache callbacks, batch embeddings by 100, send transcription prompt and language ([#3096](https://github.com/0xPlaygrounds/rig/pull/3096)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(cassette)* xAI recordings send `store: false` on Responses requests ([#3090](https://github.com/0xPlaygrounds/rig/pull/3090)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] schema runs fail on answers that miss the schema, and gateway Claude ids take the model's facts ([#3050](https://github.com/0xPlaygrounds/rig/pull/3050)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #3050
+- *(cassette,xtask,test-support)* scrub team ids, price one-hour cache writes, close the guard's and registry's gaps ([#3045](https://github.com/0xPlaygrounds/rig/pull/3045)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(ci)* main builds again after #3005 and #3014 crossed ([#3040](https://github.com/0xPlaygrounds/rig/pull/3040)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(usage,budget)* [**breaking**] model calls ended by a stop count toward spend and the budget ([#3003](https://github.com/0xPlaygrounds/rig/pull/3003)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(io)* [**breaking**] input and output are bounded; a stop is never blocked by output ([#2974](https://github.com/0xPlaygrounds/rig/pull/2974)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(models)* [**breaking**] only an explicit choice becomes the default; /model offers only models that answer ([#2973](https://github.com/0xPlaygrounds/rig/pull/2973)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(http)* [**breaking**] an error keeps its retry class from where it was made ([#2969](https://github.com/0xPlaygrounds/rig/pull/2969)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Other
+
+- *(rig-agent)* [**breaking**] one run setup, one response identity, one turn state; drop test-only API ([#3367](https://github.com/0xPlaygrounds/rig/pull/3367)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] callers use the existing helpers (R8) ([#3362](https://github.com/0xPlaygrounds/rig/pull/3362)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #3362
+- *(rig-core)* [**breaking**] drop rig-core surface only tests call, RunId as a plain newtype ([#3358](https://github.com/0xPlaygrounds/rig/pull/3358)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-core)* [**breaking**] one public path for the shared sign-in types ([#3356](https://github.com/0xPlaygrounds/rig/pull/3356)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-basics, rig-harness, rig-core)* [**breaking**] dedup the harness and rig-basics helpers ([#3347](https://github.com/0xPlaygrounds/rig/pull/3347)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-core)* [**breaking**] drop the dependency-free audio and image cargo features ([#3351](https://github.com/0xPlaygrounds/rig/pull/3351)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-core)* [**breaking**] Cohere chat is two explicit wires, as Ollama's is ([#3348](https://github.com/0xPlaygrounds/rig/pull/3348)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-core)* [**breaking**] OpenAI provider leftovers: one usage rule, serde tags instead of tag enums, shared cost and tier rules ([#3338](https://github.com/0xPlaygrounds/rig/pull/3338)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] remove harness, memory and cassette surface only tests used, and merge rig-memory's repeated rules ([#3337](https://github.com/0xPlaygrounds/rig/pull/3337)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #3337
+- *(rig-agent)* [**breaking**] one ChatBot, PreparedRequest holds its CompletionRequest, drop test-only API ([#3344](https://github.com/0xPlaygrounds/rig/pull/3344)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-core)* [**breaking**] one Gemini replay target, shared listing and verify wires, Copilot on the dialect listing ([#3339](https://github.com/0xPlaygrounds/rig/pull/3339)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-core)* one copy each of small internal rules; one poison-tolerant lock per crate ([#3343](https://github.com/0xPlaygrounds/rig/pull/3343)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-http)* [**breaking**] HttpClientExt takes and returns Bytes; dead rig-http and rig-core surface ([#3341](https://github.com/0xPlaygrounds/rig/pull/3341)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-core)* content accessors, to_text, json_in_text and Aside::read replace about 45 copies ([#3335](https://github.com/0xPlaygrounds/rig/pull/3335)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-core)* [**breaking**] move CacheCost and CacheRates to rig-test-support ([#3333](https://github.com/0xPlaygrounds/rig/pull/3333)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(core)* [**breaking**] rename message::Document to DocumentContent ([#3242](https://github.com/0xPlaygrounds/rig/pull/3242)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] remove duplicated tests, dead code and doc bloat across the workspace ([#3202](https://github.com/0xPlaygrounds/rig/pull/3202)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #3202
+- [**breaking**] PRs run what the change can break, one test binary per crate, one required check ([#3014](https://github.com/0xPlaygrounds/rig/pull/3014)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #3014
+- *(redact)* [**breaking**] redaction is one optional plugin; secrets become placeholders a tool call can still use ([#2990](https://github.com/0xPlaygrounds/rig/pull/2990)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
 ## [0.46.0](https://github.com/0xPlaygrounds/rig/compare/v0.45.0...v0.46.0) - 2026-10-31
 
 ### Added

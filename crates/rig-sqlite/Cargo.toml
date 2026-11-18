@@ -18,10 +18,10 @@ default = []
 memory = ["dep:rig-memory"]
 
 [dependencies]
-rig-core = { path = "../rig-core", version = "0.46.0", default-features = false, features = [
+rig-core = { path = "../rig-core", version = "0.47.0", default-features = false, features = [
   "derive",
 ] }
-rig-memory = { path = "../rig-memory", version = "0.46.0", optional = true, default-features = false }
+rig-memory = { path = "../rig-memory", version = "0.47.0", optional = true, default-features = false }
 rusqlite = { workspace = true, features = ["bundled"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
@@ -32,7 +32,7 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 rig-memory = { path = "../rig-memory", features = ["test-utils"] }
-rig-core = { path = "../rig-core", version = "0.46.0", features = ["reqwest"] }
+rig-core = { path = "../rig-core", version = "0.47.0", features = ["reqwest"] }
 anyhow = { workspace = true }
 futures = { workspace = true }
 httpmock = { workspace = true }

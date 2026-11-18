@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.47.0](https://github.com/0xPlaygrounds/rig/compare/rig-vertexai-v0.46.0...rig-vertexai-v0.47.0) - 2026-11-18
+
+### Other
+
+- *(rig-core, rig-vertexai, rig-bedrock)* [**breaking**] serde derives and one copy of each shared provider rule ([#3368](https://github.com/0xPlaygrounds/rig/pull/3368)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-core)* [**breaking**] one Gemini replay target, shared listing and verify wires, Copilot on the dialect listing ([#3339](https://github.com/0xPlaygrounds/rig/pull/3339)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] PRs run what the change can break, one test binary per crate, one required check ([#3014](https://github.com/0xPlaygrounds/rig/pull/3014)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #3014
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
 ## [0.46.0](https://github.com/0xPlaygrounds/rig/compare/v0.45.0...v0.46.0) - 2026-10-31
 
 ### Other

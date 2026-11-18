@@ -21,9 +21,9 @@ futures = { workspace = true }
 # The watchdog that enforces the execution time limit.
 futures-timer = { workspace = true }
 rig-core = { workspace = true }
-rig-ecs = { path = "../../crates/rig-ecs", version = "0.46.0", default-features = false }
+rig-ecs = { path = "../../crates/rig-ecs", version = "0.47.0", default-features = false }
 # `[steel]` in the user's settings.
-rig-harness = { path = "../../crates/rig-harness", version = "0.46.0" }
+rig-harness = { path = "../../crates/rig-harness", version = "0.47.0" }
 # `run_steel`'s parameters, derived from its arguments type.
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
