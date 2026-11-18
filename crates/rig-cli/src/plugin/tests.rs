@@ -429,7 +429,7 @@ fn add_writes_the_table_of_each_source_and_keeps_the_comments() {
 #[test]
 fn add_then_remove_leaves_the_file_as_it_was() {
     let home = old_home("round-trip");
-    let other = "[plugins] # mine\ndisable = [\"viz::VizPlugin\"] # not now\n\n\
+    let other = "[plugins] # mine\ndisable = [\"viz::VizPlugin\"] # not now\nenable = []\n\n\
                  # Charts, from crates.io.\n[[plugins.extra]]\ncrate = \"viz\"\n\
                  version = \"1\" # pinned\nplugin = \"viz::VizPlugin\"\n\n# The end.\n";
     let with_plugins = format!("{COMMENTED}{other}");
