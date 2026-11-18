@@ -242,7 +242,7 @@ fn list(
                 row,
                 *ticked,
                 needers(&rows, &on, row).as_deref(),
-                idler(&rows, &on, row),
+                idler(&rows, &on, &branches, row),
             ))
         })
         .collect();
@@ -344,13 +344,15 @@ fn needers(rows: &[Row], on: &[bool], row: &Row) -> Option<String> {
 }
 
 /// The name of the first plugin `row` works only with that `on` leaves
-/// off: unticked, or off with its branch while no ticked plugin adds it.
-fn idler<'a>(rows: &'a [Row], on: &[bool], row: &Row) -> Option<&'a str> {
+/// off: unticked, or off with a branch not among the `branches` turned
+/// back on while no ticked plugin adds it.
+fn idler<'a>(rows: &'a [Row], on: &[bool], branches: &[String], row: &Row) -> Option<&'a str> {
     let runs = |with: &&str| {
         (rows.iter().zip(on)).any(|(it, ticked)| {
             it.plugin == *with
                 && *ticked
-                && (it.branch_off.is_none() || needers(rows, on, it).is_some())
+                && ((it.branch_off.as_ref()).is_none_or(|branch| branches.contains(branch))
+                    || needers(rows, on, it).is_some())
         })
     };
     let without = row.only_with.iter().find(|with| !runs(with))?;
@@ -718,7 +720,7 @@ fn mark(
                 row,
                 *ticked,
                 needers(&list.rows, &on, row).as_deref(),
-                idler(&list.rows, &on, row),
+                idler(&list.rows, &on, &list.branches, row),
             ));
         }
         if picker != *shown {
@@ -847,7 +849,7 @@ fn names(rows: &[Row], on: &[bool], branches: &[String]) -> Vec<(&'static str, S
                     let needers = needers(rows, on, row);
                     let branch = (row.branch_off.as_ref())
                         .filter(|branch| !branches.contains(branch) && needers.is_none());
-                    let why = match (*ticked, branch, idler(rows, on, row), needers) {
+                    let why = match (*ticked, branch, idler(rows, on, branches, row), needers) {
                         (true, Some(branch), _, _) => format!("stays off with its branch {branch}"),
                         (true, None, Some(without), _) => {
                             format!("does nothing without {without}")
