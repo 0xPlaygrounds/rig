@@ -109,8 +109,9 @@ fn a_refused_binding_is_told_once_and_the_plugins_other_keys_work() {
     plugin(&mut printed);
     printed.finish();
     // Only Startup, as a frame's `First` would swap its notices out of view.
-    printed.world_mut().try_run_schedule(Startup).ok();
+    assert!(printed.world_mut().try_run_schedule(Startup).is_ok());
     let notices = printed.world().get_resource::<Messages<Notice>>();
+    assert!(notices.is_some(), "notices can be sent");
     let mut notices = notices
         .into_iter()
         .flat_map(Messages::iter_current_update_messages);
