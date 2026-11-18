@@ -6,7 +6,7 @@ use rig_harness_protocol::Invocation;
 
 use super::*;
 use crate::ask::AskPlugin;
-use crate::commands::{AppCommandsExt, CommandArgs};
+use crate::commands::{AppCommandsExt, CommandArgs, RunCommand};
 use crate::host::cli::{AppCliExt, Front};
 use crate::host::launcher::Invoked;
 

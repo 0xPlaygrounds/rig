@@ -5,7 +5,8 @@
 //! on the one the user picked from, or closed: the harness then runs the
 //! item's command, for the picker's agent or else the agent the user is
 //! looking at ([`ShownAgent`]), triggers [`Picked`] on
-//! it, and despawns it. A picker may take several items
+//! it, and despawns it. A refused command shows why and puts nothing in
+//! the input ([`run_chosen`]). A picker may take several items
 //! ([`Picker::multiple`]): the harness runs each one's command in list
 //! order. A [`Chosen`] holds the items picked and the text typed, either
 //! or both. A front answers an open [`Ask`] the same way: a `Pick` on it
@@ -47,7 +48,7 @@ use rig_ecs::agent::Notice;
 use rig_ecs::stage::{Decision, Outcome, Settled};
 
 use crate::ask::{Answer, Ask};
-use crate::commands::{CommandRuns, RunCommand};
+use crate::commands::{CommandRuns, run_chosen};
 use crate::host::cli::Cli;
 use crate::main_agent::{CurrentAgentPlugin, ShownAgent};
 
@@ -391,7 +392,7 @@ fn pick(
             .filter(|item| switched_on(item));
         if let Some(agent) = picker.agent.or(shown.0) {
             for item in items.filter(|item| !item.command.is_empty()) {
-                commands.trigger(RunCommand::new(agent, item.command.clone()));
+                commands.queue(run_chosen(agent, item.command.clone()));
             }
         }
         commands.trigger(Picked { entity, chosen });
