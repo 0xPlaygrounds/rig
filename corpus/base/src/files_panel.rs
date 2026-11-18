@@ -207,9 +207,7 @@ struct DiffBox {
 
 impl Plugin for FilesPanelPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<TuiPlugin>() {
-            app.add_plugins(TuiPlugin);
-        }
+        rig_harness::load::<TuiPlugin>(app, "rig-tui", "");
         let panel = app.world_mut().spawn(FilesPanel::default()).id();
         let diff = app.world_mut().spawn(DiffBox::default()).id();
         let key = |code| Keys::from(KeyPress::key(code));

@@ -7,7 +7,10 @@
 //! the terminal view does it behind a default `tui` cargo feature. A
 //! plugin that writes [`AppStatus`] inits it. A [`StatusLine`] draws one in
 //! a panel, for the shown agent or another, and [`line()`] fits any items
-//! to a width.
+//! to a width. The [`StatusLinePlugin`] puts the shown agent's under the
+//! input, and its `[status] hide` setting keeps items of those names out of
+//! every drawn line while it is on. A plugin declares the parts it draws
+//! ([`AppStatusPartsExt`]) so `/plugins` can show and hide them.
 //!
 //! The default plugins' items, as name (order, keep), place a new item
 //! among them. On the left: `session` (10, 2), `title` (20, 14), `model`
@@ -45,11 +48,12 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Widget;
 use rig_ecs::agent::{ActiveTurn, Agent, TurnOf};
 use rig_harness::main_agent::ShownAgent;
+use rig_harness::prelude::AppSettingsExt;
 use serde::{Deserialize, Serialize};
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
-use super::editor::Editor;
+use super::editor::{Editor, MainEditor};
 use super::panel::{PanelCanvas, Placement, TuiPanel};
 
 /// One piece of the status line: its name, what it says, how, and its
@@ -228,12 +232,151 @@ pub(crate) fn add(app: &mut App) {
         );
 }
 
+/// The status line under the input: a [`StatusLine`] on the
+/// [`MainEditor`], and `[status]` in `settings.toml`, whose `hide` names
+/// the items no status line draws. Other plugins still read those items.
+/// The file is read at the start; a change to the running
+/// [`StatusSettings`], as `/plugins` makes, shows at the next frame.
+/// Without the [`TuiViewPlugin`](crate::TuiViewPlugin), added before it or
+/// after, it draws nothing.
+#[derive(Default)]
+pub struct StatusLinePlugin;
+
+impl Plugin for StatusLinePlugin {
+    fn build(&self, app: &mut App) {
+        app.add_setting::<StatusSettings>("status")
+            .init_resource::<StatusParts>()
+            .add_systems(PostUpdate, note_drawn.after(StatusSystems::Edit));
+    }
+
+    // In `finish`, after every plugin's `build`, so the order they were
+    // added in does not matter.
+    fn finish(&self, app: &mut App) {
+        if !app.is_plugin_added::<crate::TuiViewPlugin>() {
+            return;
+        }
+        app.add_observer(line_under_input);
+        // An editor spawned before this plugin finished gets it here.
+        let world = app.world_mut();
+        let inputs: Vec<Entity> = world
+            .query_filtered::<Entity, (With<MainEditor>, Without<StatusLine>)>()
+            .iter(world)
+            .collect();
+        for input in inputs {
+            world.entity_mut(input).insert(StatusLine::default());
+        }
+    }
+}
+
+/// `[status]` in `settings.toml`, as the status line runs it.
+#[derive(Resource, Deserialize, Default, Debug)]
+#[serde(default, deny_unknown_fields)]
+pub struct StatusSettings {
+    /// The names of the items no status line draws.
+    pub hide: Vec<String>,
+}
+
+/// A part of the status line: the name of its items, a short label and
+/// its place.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct StatusPart {
+    /// Its items' name, which `[status] hide` takes.
+    pub name: &'static str,
+    /// What `/plugins` calls it, such as `Cost`; its name when no plugin
+    /// declared it.
+    pub label: &'static str,
+    side: Side,
+    order: u8,
+}
+
+/// The parts of the status line `/plugins` shows and hides: each one a
+/// plugin declares ([`AppStatusPartsExt::add_status_part`]), drawn yet or
+/// not, and each other one drawn since the start.
+#[derive(Resource, Clone, Debug, Default)]
+pub struct StatusParts(Vec<StatusPart>);
+
+impl StatusParts {
+    /// The parts in their places on the line: left, then right, by order.
+    pub fn iter(&self) -> impl Iterator<Item = &StatusPart> {
+        self.0.iter()
+    }
+
+    /// Notes the part of `item`'s name, with `label` when declared.
+    fn note(&mut self, item: &StatusItem, label: Option<&'static str>) {
+        if let Some(part) = self.0.iter_mut().find(|part| part.name == item.name) {
+            if let Some(label) = label {
+                part.label = label;
+            }
+            return;
+        }
+        self.0.push(StatusPart {
+            name: item.name,
+            label: label.unwrap_or(item.name),
+            side: item.side,
+            order: item.order,
+        });
+        self.0
+            .sort_by_key(|part| (part.side == Side::Right, part.order, part.name));
+    }
+
+    /// Whether a part has `name`.
+    fn has(&self, name: &str) -> bool {
+        self.0.iter().any(|part| part.name == name)
+    }
+}
+
+/// Declaring the status line parts a plugin draws.
+pub trait AppStatusPartsExt {
+    /// Declares the part of `item`'s name as `label`, such as `Cost`, so
+    /// `/plugins` lists it before it is first drawn. Call it in the
+    /// plugin's `build`.
+    fn add_status_part(&mut self, item: &StatusItem, label: &'static str) -> &mut Self;
+}
+
+impl AppStatusPartsExt for App {
+    fn add_status_part(&mut self, item: &StatusItem, label: &'static str) -> &mut Self {
+        let world = self.world_mut();
+        world
+            .get_resource_or_init::<StatusParts>()
+            .note(item, Some(label));
+        self
+    }
+}
+
+/// Notes each part drawn that no plugin declared, by its name.
+fn note_drawn(
+    items: Query<&StatusItems, Changed<StatusItems>>,
+    app: Option<Res<AppStatus>>,
+    mut parts: ResMut<StatusParts>,
+) {
+    let app = app
+        .as_ref()
+        .filter(|app| app.is_changed())
+        .map(|app| &app.0);
+    for item in items.iter().chain(app).flat_map(StatusItems::iter) {
+        if !parts.has(item.name) {
+            parts.note(item, None);
+        }
+    }
+}
+
+/// Puts the shown agent's status line on each main editor as it appears.
+fn line_under_input(
+    added: On<Add<MainEditor>>,
+    lines: Query<(), With<StatusLine>>,
+    mut commands: Commands,
+) {
+    if !lines.contains(added.entity) {
+        commands.entity(added.entity).insert(StatusLine::default());
+    }
+}
+
 /// A status line: `agent`'s items (the shown agent's, with `None`),
 /// those of its running turn and the app's, by place, fit to its panel's
 /// width; with no agent, `no agent` where its model would be. It draws in
 /// one row of its [`TuiPanel`]. On an [`Editor`] it is
-/// drawn by the editor instead, in its bottom row while nothing is typed;
-/// the default screen's is so, for the shown agent.
+/// drawn by the editor instead, in its bottom row while nothing is typed,
+/// as the [`StatusLinePlugin`] puts the shown agent's on the main editor.
 #[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[require(TuiPanel = TuiPanel::new(Placement::Bottom(Constraint::Length(1))))]
 pub struct StatusLine {
@@ -249,6 +392,7 @@ pub(crate) struct StatusSources<'w, 's> {
     active: Query<'w, 's, &'static ActiveTurn>,
     shown: Res<'w, ShownAgent>,
     app: Option<Res<'w, AppStatus>>,
+    settings: Option<Res<'w, StatusSettings>>,
 }
 
 impl StatusSources<'_, '_> {
@@ -262,10 +406,15 @@ impl StatusSources<'_, '_> {
         let no_agent =
             StatusItem::new("agent", Side::Left, 30, u8::MAX).says("no agent", Tone::Dim);
         let no_agent = agent.is_none().then_some(&no_agent);
+        let hide = self
+            .settings
+            .as_deref()
+            .map_or(&[][..], |settings| &settings.hide);
         let items = [app, own, turn]
             .into_iter()
             .flatten()
-            .flat_map(StatusItems::iter);
+            .flat_map(StatusItems::iter)
+            .filter(|item| !hide.iter().any(|name| name == item.name));
         self::line(items.chain(no_agent), width)
     }
 }

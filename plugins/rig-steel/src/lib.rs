@@ -1,19 +1,22 @@
 //! Code mode for rig-harness agents on [Steel](https://github.com/mattwparas/steel),
 //! an embeddable Scheme. [`SteelPlugin`] adds the `run_steel` tool: the
-//! model writes one Scheme program that spawns agents, sends them requests,
-//! waits for their replies, calls the model's own tools, and loops and
+//! model writes one Scheme program that calls its own tools, and loops and
 //! branches over the results; the value of the program's last expression is
-//! the tool's output.
+//! the tool's output. With a plugin that gives agents subagents on, which
+//! inserts [`Subagents`], the program also spawns agents, sends them
+//! requests and waits for their replies; without one those functions refuse
+//! and the tool's description leaves them out.
 //!
-//! The program reaches the host only through four functions, each one call
-//! of the [`Harness`] handle: `spawn-agent`, `send`, `reply` and
-//! `call-tool`. It runs on a thread of its own, so the agents it messages run
-//! concurrently and sending to several before waiting on any fans out; the
-//! app's loop and its task pool never wait on a program, since a pool thread
-//! blocked on a child agent would deadlock with that child's tool calls. Its
-//! tool calls are tool call effects ([`ToolRequest`](rig_ecs::tools::ToolRequest))
-//! like the model's own: gated, started and recorded, and children of its
-//! `run_steel` call, which end with it.
+//! The program reaches the host only through its host functions, each one
+//! call of the [`Harness`] handle: `call-tool`, and `spawn-agent`, `send`
+//! and `reply`. It runs on a thread of its own, so the agents it messages
+//! run concurrently and sending to several before waiting on any fans out;
+//! the app's loop and its task pool never wait on a program, since a pool
+//! thread blocked on a child agent would deadlock with that child's tool
+//! calls. Its tool calls are tool call effects
+//! ([`ToolRequest`](rig_ecs::tools::ToolRequest)) like the model's own:
+//! gated, started and recorded, and children of its `run_steel` call, which
+//! end with it.
 //!
 //! The sandbox is Steel's own sandboxed engine with every host module
 //! (process, git, network, foreign functions) replaced by an empty one, and
@@ -47,8 +50,9 @@ use futures::future::{self, Either, FutureExt};
 use futures_timer::Delay;
 use rig_core::tool::{Scope, ToolExecutionError, ToolResult, Touches};
 use rig_ecs::agent::AgentId;
+use rig_ecs::spawn::Subagents;
 use rig_ecs::tasks::{Running, Wake};
-use rig_ecs::tools::{AppToolsExt, ToolCalled, ToolOptions};
+use rig_ecs::tools::{AppToolsExt, ToolCalled, ToolDef, ToolOptions};
 use rig_harness::settings::AppSettingsExt;
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -108,19 +112,30 @@ impl Default for Limits {
     }
 }
 
-const DESCRIPTION: &str = "Run a Steel program (Scheme) that orchestrates agents and tools, and \
-    return the value of its last expression (a string as it is, anything else as JSON) with what \
-    it printed. It suits agents and tools tied together by logic: a relay between agents, a \
-    fan-out with all replies gathered, a loop until a check passes; one subagent or one tool call \
-    is simpler called directly. A program waits for its agents' replies, so its result holds \
-    their real answers. Never invent, simulate or paraphrase as fact another agent's reply; if \
-    the requested interaction is not supported, say so before offering an alternative.\n\n\
+/// What the model reads of `run_steel` before the host functions.
+const INTRO: &str = "Run a Steel program (Scheme) and return the value of its last expression \
+    (a string as it is, anything else as JSON) with what it printed. It suits tool calls tied \
+    together by logic: a loop until a check passes, a branch on what a tool returned, many \
+    calls gathered into one result; one tool call is simpler called directly.\n\n\
     The program is Steel, an R7RS-style Scheme: define, let, lambda, if, cond, when, let loop, \
     named lets, map, for-each, filter, foldl, lists, vectors, hash maps (hash, hash-ref), \
     strings (string-append, string-join, string-length), number->string, display and \
     displayln (captured). There is no file system, network, process, module loading or eval. \
     These host functions are defined; each one waits for its answer:\n\n\
-    (spawn-agent name [options]) -> string\n    \
+    (call-tool name [args]) -> string\n    \
+    Calls one of your own tools with args, a hash such as (hash 'path \"src/lib.rs\"), and \
+    returns its text output; raises an error when the tool fails.\n";
+
+/// The rest of the description without Subagents.
+const TOOLS_ONLY: &str = "\nThe agent functions spawn-agent, send and reply come with the \
+    Subagents plugin, which is off. Never invent, simulate or paraphrase as fact another \
+    agent's reply; if the requested interaction is not supported, say so.\n\n\
+    Read three files and gather their first lines:\n\
+    (define paths (list \"crates/a/src/lib.rs\" \"crates/b/src/lib.rs\" \"crates/c/src/lib.rs\"))\n\
+    (string-join (map (lambda (path) (call-tool \"read\" (hash 'path path 'limit 1))) paths) \"\\n\")";
+
+/// The rest of the description with Subagents.
+const WITH_AGENTS: &str = "(spawn-agent name [options]) -> string\n    \
     Starts an idle agent spawned by you and returns its id. options is a hash with any of \
     'model (\"vendor/model\"), 'system-prompt (string) and 'tools (list of tool names, each one \
     of yours); unset settings are yours, but for its effort on another 'model, which is \
@@ -131,16 +146,29 @@ const DESCRIPTION: &str = "Run a Steel program (Scheme) that orchestrates agents
     between requests. Agents work at the same time: send to several, then reply each.\n\
     (reply request) -> string\n    \
     Waits for the agent's answer to the request and returns its text; raises an error when \
-    its turn failed or was stopped. Each request is replied once.\n\
-    (call-tool name [args]) -> string\n    \
-    Calls one of your own tools with args, a hash such as (hash 'path \"src/lib.rs\"), and \
-    returns its text output; raises an error when the tool fails.\n\n\
+    its turn failed or was stopped. Each request is replied once.\n\n\
+    A program waits for its agents' replies, so its result holds their real answers; one \
+    subagent is simpler started directly with the task tool. Never \
+    invent, simulate or paraphrase as fact another agent's reply; if the requested \
+    interaction is not supported, say so before offering an alternative.\n\n\
     Review three directories at once and gather the findings:\n\
     (define dirs (list \"crates/a\" \"crates/b\" \"crates/c\"))\n\
     (define requests (map (lambda (dir) (send (spawn-agent \"reviewer\") (string-append \"Review the error handling in \" dir \". List each finding as file:line and one sentence.\"))) dirs))\n\
     (string-join (map reply requests) \"\\n\\n\")";
 
-/// Adds the `run_steel` tool.
+/// What the model reads of `run_steel`: the agent functions only when
+/// `agents`, Subagents being on.
+fn description(agents: bool) -> String {
+    if agents {
+        format!("{INTRO}{WITH_AGENTS}")
+    } else {
+        format!("{INTRO}{TOOLS_ONLY}")
+    }
+}
+
+/// Adds the `run_steel` tool. Its programs call the model's tools, and,
+/// when a plugin gives agents subagents ([`Subagents`]), spawn and message
+/// agents too.
 #[derive(Default)]
 pub struct SteelPlugin;
 
@@ -149,12 +177,27 @@ impl Plugin for SteelPlugin {
         app.add_setting::<Limits>("steel");
         app.add_plugins(harness::HarnessPlugin).add_open_tool(
             RUN_STEEL,
-            DESCRIPTION,
+            &description(false),
             ToolOptions {
                 footprint: Some(Touches::Writes(Scope::Anything)),
             },
             on_run_steel,
         );
+    }
+
+    /// Offers the agent functions once every plugin is built, so Subagents
+    /// counts whichever order the two are added in.
+    fn finish(&self, app: &mut App) {
+        let world = app.world_mut();
+        if !world.contains_resource::<Subagents>() {
+            return;
+        }
+        let mut tools = world.query::<&mut ToolDef>();
+        for mut tool in tools.iter_mut(world) {
+            if tool.0.name == RUN_STEEL {
+                Arc::make_mut(&mut tool.0).description = description(true);
+            }
+        }
     }
 }
 
@@ -174,13 +217,14 @@ fn on_run_steel(
     called: On<ToolCalled<SteelArgs>>,
     harness: Res<Harness>,
     limits: Res<Limits>,
+    subagents: Option<Res<Subagents>>,
     wake: Res<Wake>,
     mut commands: Commands,
 ) {
     let program = run_program(
         called.tool_call.id.to_string(),
         harness.within(called.call),
-        called.agent_id.clone(),
+        (called.agent_id.clone(), subagents.is_some()),
         called.args.code.clone(),
         *limits,
     );
@@ -191,14 +235,15 @@ fn on_run_steel(
     ));
 }
 
-/// Runs `code` on a thread of its own and waits for its end, stopping it
-/// when it runs past its [`Limits::max_seconds`]. Dropping this future, as
+/// Runs `code` for the agent `me` on a thread of its own, with the agent
+/// functions when `agents`, and waits for its end, stopping it when it runs
+/// past its [`Limits::max_seconds`]. Dropping this future, as
 /// cancelling the call does, interrupts the VM and ends the host function
 /// it waits in, so the thread stops soon after.
 async fn run_program(
     call: String,
     harness: Harness,
-    me: AgentId,
+    (me, agents): (AgentId, bool),
     code: String,
     limits: Limits,
 ) -> ToolResult {
@@ -210,7 +255,7 @@ async fn run_program(
     };
     let host = Host::new(
         harness,
-        (me, call),
+        (me, call, agents),
         control.clone(),
         cancelled.shared(),
         limits,

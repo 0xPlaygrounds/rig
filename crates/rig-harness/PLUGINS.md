@@ -6,7 +6,12 @@ that depends on `rig-harness`. The agent itself is made of plugins of the same
 kind. Its tools, commands, subagents, compaction, sessions and terminal view
 are plugins built on the same public API, and `[plugins]` in
 `RIG_HOME/settings.toml` turns each on or off. A plugin that needs another
-adds it unless `app.is_plugin_added::<P>()`.
+loads it in its `build` with `rig_harness::load::<P>`, which adds it unless
+the app has it and records which plugin added it; a plugin added any other
+way runs, but `/plugins` cannot see it. A plugin useless without
+another checks `app.is_plugin_added::<Other>()` in its `finish`, once every
+plugin is built, and adds nothing there without it; its settings are still
+read in `build`, the only place a plugin may read them.
 
 The kernel, `rig-ecs`, runs agents and their work; this crate, the harness,
 adds sessions, settings, commands and fronts (how a user drives the agent).
@@ -37,7 +42,7 @@ same session; a failed build keeps the running agent.
 
 Plugins form a tree of crates, areas and plugins. A plugin's area is the first
 module under its crate in its type path:
-`rig_basics::sessions::agents::AgentsPlugin` is in `rig-basics/sessions`, and
+`rig_basics::sessions::forks::ForksPlugin` is in `rig-basics/sessions`, and
 `rig_basics::BasicCommandsPlugin`, directly under the crate root, is in none.
 Nothing declares an area, so plugins that belong together go in one module.
 
@@ -46,17 +51,9 @@ agent loads none of its plugins, whatever their own choice in `enable` and
 `disable`. A plugin that another one adds in its own `build` still runs. Each
 keeps that choice, so turning the branch back on brings it back, and a plugin
 added to an off branch later stays off. A name in `off` that is no crate or
-area refuses the start, as an unknown plugin does.
-
-Rig's own plugins are rows of `built_in_plugins!` in `rig-harness-protocol`,
-and a row can name two kinds of link. `adds [..]` names the plugins it adds in
-its own `build`, which it still does with `is_plugin_added`, so it works
-without the settings too. The settings turn those on with it, even under an
-off branch, `rig plugin disable` of one refuses and names each plugin on that
-adds it, and the lists say "needed by" them. `only_with [..]` names what a
-plugin does nothing without, and never turns that on. While that one is off,
-the plugin is off too and not built, and the lists say it "does nothing
-without" that one.
+area refuses the start, as an unknown plugin does. `/plugins` shows the same
+tree, folded. Enter on a branch puts it into `off` or takes it out; on a
+branch whose plugins are all off by their own choice, it turns each one on.
 
 # Where the examples are
 
@@ -155,7 +152,10 @@ A question is an `Ask` effect: a title, a body, choices and whether text
 answers it. A plugin that waits on the answer spawns the `Ask` as a hold on
 what it asks about. A tool call the user should approve gets
 `NeedsApproval`, which `rig_basics::approval` turns into one question. A
-choice from a list is a `Picker`.
+choice from a list is a `Picker`. An item's `PickItem::parent` makes the list
+a tree, shown folded. In a picker of several answered with its ticks, an
+unticked branch switches its items off, and none of their commands runs; an
+item picked by itself runs its command.
 
 Examples: [ask_user], [confirm_destructive], [approval_batching].
 
@@ -224,8 +224,32 @@ plugin adds to it with ordinary systems and entities:
 - a panel, a `TuiPanel` entity drawn in `TuiSystems::Draw`;
 - a key binding, `app.add_key_binding(binding, observer)`.
 
+The line under the input is a plugin of its own,
+`rig_tui::status::StatusLinePlugin`. Its `[status] hide` setting hides items
+by name when the line is drawn; the items stay in `StatusItems` for other
+readers. A plugin declares each part it draws, with a short label, in its
+`build`, so `/plugins` can show and hide it before it is first drawn:
+`app.add_status_part(&PINNED, "Pinned notes")` (`rig_tui::AppStatusPartsExt`),
+`PINNED` being the part's `StatusItem`. A part drawn without one shows in
+`/plugins` by its name once it is drawn. The key list over an empty input is
+a plugin of its own too, `rig_tui::hints::KeyHintsPlugin`. Code that adds
+`rig_tui::TuiPlugin` itself gets the view without them; `rig_tui::TuiPlugins`
+adds the view with its optional parts, each unless the app already has it.
+
+The window title and the OSC 133 prompt marks around each turn come from
+`rig_tui::title::TerminalTitlePlugin`, which works only with `TuiPlugin`;
+`[title] mark_nonce_env` names the variable holding the shell's mark nonce.
+An app that lists its own plugins adds `rig_tui::TuiPlugins` for the view
+with both.
+
 A crate that also builds without the view puts `rig-tui` behind a default
 `tui` feature. The `rig_tui` crate docs have an example of each.
+
+The bars before the working agent's status come from
+`rig_basics::activity::animation::WorkingAnimationPlugin`. They move unless
+`[activity] animate = false`, and with that plugin off there are none. A view
+that draws its own working sign reads its `Pulse` resource to move with
+rig's; the resource exists only while that plugin runs in the terminal view.
 
 Examples: [rich_tool_rendering] (looks), [git_status_item] and [throughput_item]
 (status items), [todo_tracker] (a panel and a key), [keybindings].

@@ -276,7 +276,9 @@ fn read_setup((plugins, models, root, workspace, processes): &SetupInputs) -> Se
     let mut by_crate: BTreeMap<String, PluginVersion> = BTreeMap::new();
     for (name, source) in plugins {
         let entry = by_crate.entry(source.package.clone()).or_default();
-        entry.version = version_of(&source.source);
+        if entry.version.is_empty() || !source.source.is_empty() {
+            entry.version = version_of(&source.source);
+        }
         let short = name.as_str().rsplit("::").next().unwrap_or(name.as_str());
         entry.plugins.push(short.to_owned());
     }

@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license = "MIT"
-description = "Code mode for rig-harness agents: a `run_steel` tool whose Steel (Scheme) program orchestrates agents and tools."
+description = "Code mode for rig-harness agents: a `run_steel` tool whose Steel (Scheme) program calls the model's tools, and agents with Subagents on."
 repository = "https://github.com/0xPlaygrounds/rig"
 readme = "README.md"
 

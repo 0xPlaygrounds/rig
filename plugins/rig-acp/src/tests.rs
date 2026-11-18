@@ -9,12 +9,18 @@ use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use agent_client_protocol::schema::{ProtocolVersion, v1 as acp};
 use agent_client_protocol::{Agent, Client, ConnectionTo};
 use rig_basics::approval::{ApprovalPlugin, ApprovalSystems, NeedsApproval};
+use rig_core::catalog::{Catalog, ModelStatus, SignIn, Transport};
+use rig_core::operation::Completion;
+use rig_core::providers::registry::ConnectError;
+use rig_core::serve::ErasedHandler;
+use rig_core::serve::adapters::ModelAdapter;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
+use rig_harness::clock::WakeAt;
 use rig_harness::harness_protocol::Invocation;
 use rig_harness::host::pipes::Writer;
 use rig_harness::prelude::*;
@@ -49,6 +55,44 @@ const STAYS: &str = "RIG_ACP_TEST_MCP_STAYS";
 /// Set for the MCP stub to answer `initialize` only after this many
 /// milliseconds.
 const SLOW: &str = "RIG_ACP_TEST_MCP_SLOW";
+
+/// When set, the agent's catalog has [`HELD`], which a sign-in serves once
+/// it checked the account for [`HOLD`] after the process started.
+const HELD_SIGN_IN: &str = "RIG_ACP_TEST_HELD";
+
+/// The model the held sign-in serves.
+const HELD: &str = "acp-held/model";
+
+/// How long the held sign-in checks the account.
+const HOLD: Duration = Duration::from_secs(2);
+
+/// A sign-in that serves [`HELD`] on `model`, checking until `until`.
+struct HeldSignIn {
+    until: Instant,
+    model: MockCompletionModel,
+}
+
+impl SignIn for HeldSignIn {
+    fn handler(
+        &self,
+        spec: &ModelSpec,
+        _: &Transport,
+    ) -> Option<Result<ErasedHandler, ConnectError>> {
+        let adapter = ModelAdapter::<Completion>::new(spec.reference(), self.model.clone());
+        (spec.reference() == HELD).then(|| Ok(ErasedHandler::new(adapter)))
+    }
+
+    fn plan(&self, spec: &ModelSpec) -> Option<&'static str> {
+        (spec.reference() == HELD).then_some("Held")
+    }
+
+    fn offers(&self, _: &ModelSpec, _: &Transport) -> ModelStatus {
+        match Instant::now() < self.until {
+            true => ModelStatus::Checking,
+            false => ModelStatus::Usable,
+        }
+    }
+}
 
 /// The arguments that run this binary's ignored test `name` alone.
 fn libtest(name: &str) -> Vec<OsString> {
@@ -159,6 +203,23 @@ fn agent() {
         let spec = ModelSpec::new(nowhere, "model").with_tools(true);
         models.0.catalog_mut().insert(spec);
     }
+    let held = std::env::var_os(HELD_SIGN_IN).is_some();
+    if held && let Ok(vendor) = ProviderId::declare("acp-held") {
+        let spec = ModelSpec::new(vendor, "model").with_tools(true);
+        models.0.catalog_mut().insert(spec);
+        // No key reaches it, so the sign-in serves it.
+        models
+            .0
+            .provide(vendor, |_: &ModelSpec, _: &Catalog, _: &Transport| {
+                Err(ConnectError::MissingKey {
+                    vendor: "acp-held".to_owned(),
+                    tried: Vec::new(),
+                })
+            });
+        let until = Instant::now() + HOLD;
+        let model = replies.clone();
+        models.0.add_sign_in(HeldSignIn { until, model });
+    }
     // `--tools`, which the router hands each session after `--`.
     let tools = std::env::args().filter_map(|arg| {
         let tools = arg.strip_prefix(&format!("--{}=", rig_harness::run::TOOLS))?;
@@ -182,7 +243,7 @@ fn agent() {
         rig_basics::models::ModelsPlugin,
         rig_basics::models::defaults::DefaultsPlugin,
         rig_basics::sessions::SessionsPlugin,
-        rig_basics::sessions::agents::AgentsPlugin,
+        rig_basics::sessions::forks::ForksPlugin,
         rig_basics::coding_tools::ReadTool,
         rig_basics::coding_tools::ShellTool,
         rig_basics::BasicCommandsPlugin,
@@ -220,6 +281,11 @@ fn agent() {
         let mut args = libtest("agent");
         args.push("--".into());
         app.insert_resource(SessionCommand { program, args });
+    }
+    // A frame once the held sign-in answers, as a real one wakes the loop.
+    if held {
+        let after = SystemTime::now() + HOLD + Duration::from_millis(200);
+        app.world_mut().spawn(WakeAt(after));
     }
     let exit = rig_harness::run(app);
     std::process::exit(match exit {

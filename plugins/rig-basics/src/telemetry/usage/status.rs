@@ -5,7 +5,7 @@ use std::collections::HashSet;
 
 use rig_core::completion::{ContextUse, tokens_label};
 use rig_harness::prelude::*;
-use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
+use rig_tui::{AppStatusPartsExt, Side, StatusItem, StatusItems, StatusSystems, Tone};
 
 use super::{AgentUsage, InputLimit, TurnUsage};
 
@@ -13,7 +13,12 @@ pub(super) fn add(app: &mut App) {
     app.add_systems(
         PostUpdate,
         (show_meter, show_turn).in_set(StatusSystems::Show),
-    );
+    )
+    .add_status_part(&TURN, "This turn's spending")
+    .add_status_part(&TOKENS, "Tokens")
+    .add_status_part(&CACHE, "Cache reads")
+    .add_status_part(&COST, "Cost")
+    .add_status_part(&CONTEXT, "Context used");
 }
 
 /// Where what the running turn spent is in the status line.

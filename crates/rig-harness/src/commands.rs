@@ -14,7 +14,9 @@
 //! refusing arguments, refuses the line: it comes back whole as
 //! [`Recalled`] with the reason, in place of that notice, so nothing typed
 //! is lost. A command another command runs refuses that one's line, so what
-//! comes back is what was typed.
+//! comes back is what was typed. A line picked from a list or bound to a
+//! key runs with [`run_chosen`]: nobody typed it, so a refusal is only an
+//! error notice.
 //!
 //! ```
 //! use rig_harness::prelude::*;
@@ -224,7 +226,8 @@ fn find(world: &mut World, name: &str) -> Option<(Entity, Args)> {
 }
 
 /// Run the slash command `line` (without its `/`) for the agent: its name,
-/// then its arguments.
+/// then its arguments. A refused line comes back in the input; run a line the
+/// user did not type with [`run_chosen`] instead.
 #[derive(EntityEvent, Reflect, Clone, Debug)]
 #[reflect(Event, Clone, Debug)]
 pub struct RunCommand {
@@ -233,7 +236,7 @@ pub struct RunCommand {
     /// The command line after the `/`.
     pub line: String,
     /// How the line was sent: the mode of the message typed, else
-    /// [`DeliveryMode::Steer`], as by a key or a picker.
+    /// [`DeliveryMode::Steer`].
     pub mode: DeliveryMode,
 }
 
@@ -251,14 +254,22 @@ impl RunCommand {
 /// Runs the command a [`RunCommand`] names, with everything it triggers.
 fn on_run_command(run: On<RunCommand>, mut commands: Commands) {
     let (agent, line, mode) = (run.entity, run.line.clone(), run.mode);
-    commands.queue(move |world: &mut World| run_command(world, agent, line, mode));
+    commands.queue(move |world: &mut World| run_command(world, agent, line, mode, true));
+}
+
+/// Runs `line` (without its `/`) for `agent`, as a [`RunCommand`] does, for
+/// a line the user picked or bound to a key rather than typed: a refusal is
+/// an error notice, and nothing comes back in the input.
+pub fn run_chosen(agent: Entity, line: impl Into<String>) -> impl Command {
+    let line = line.into();
+    move |world: &mut World| run_command(world, agent, line, DeliveryMode::Steer, false)
 }
 
 /// Runs `line` for `agent`, sent as `mode`, keeping the notices written
-/// meanwhile apart, and recalls it when refused. A line another command
-/// runs is refused with an error notice instead, which refuses that
+/// meanwhile apart, and recalls it when refused if `recall`. A line another
+/// command runs is refused with an error notice instead, which refuses that
 /// command's line, so the line recalled is the one typed.
-fn run_command(world: &mut World, agent: Entity, line: String, mode: DeliveryMode) {
+fn run_command(world: &mut World, agent: Entity, line: String, mode: DeliveryMode, recall: bool) {
     let outer = world.contains_resource::<CommandRuns>();
     let typed = line.trim();
     let (name, args) = typed.split_once(char::is_whitespace).unwrap_or((typed, ""));
@@ -303,7 +314,7 @@ fn run_command(world: &mut World, agent: Entity, line: String, mode: DeliveryMod
     if refusals.is_empty() {
         return;
     }
-    if outer {
+    if outer || !recall {
         world.write_message(Notice::error(agent, refusals.join(" ")));
     } else {
         world.write_message(Recalled {

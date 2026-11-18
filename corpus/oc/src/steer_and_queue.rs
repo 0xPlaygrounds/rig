@@ -144,9 +144,7 @@ pub struct SteerQueuePlugin;
 
 impl Plugin for SteerQueuePlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<TuiPlugin>() {
-            app.add_plugins(TuiPlugin);
-        }
+        rig_harness::load::<TuiPlugin>(app, "rig-tui", "");
         let gate = (take_queued, keep_unsent).chain();
         app.register_required_components::<Agent, Kept>()
             .init_resource::<Strip>()

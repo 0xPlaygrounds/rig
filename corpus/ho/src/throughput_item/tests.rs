@@ -5,7 +5,7 @@ use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     Collected, Ended, app_on, calls, collect, connect, log_ended, run_until,
 };
-use rig_tui::TuiPlugin;
+use rig_tui::TuiPlugins;
 
 use super::*;
 
@@ -40,7 +40,7 @@ fn a_turns_call_shows_its_speed_and_a_plugins_call_only_counts() {
         return;
     };
     let (mut app, wakes) = app_on(&MemoryStore::default());
-    app.add_plugins((AgentPlugin, SessionLogPlugin, TuiPlugin, ThroughputPlugin))
+    app.add_plugins((AgentPlugin, SessionLogPlugin, TuiPlugins, ThroughputPlugin))
         .insert_resource(TimeUpdateStrategy::ManualDuration(FRAME))
         .init_resource::<Ended>()
         .add_observer(log_ended);

@@ -925,6 +925,33 @@ fn a_question_is_a_form_or_closed_with_why_for_a_client_without_forms() {
     }
 }
 
+/// A new session that has a model, the saved default, still waits for a
+/// sign-in checking the account: its opening answer lists the sign-in's
+/// models.
+#[test]
+fn the_opening_answer_waits_for_a_sign_in_still_checking() {
+    let mut place = Place::new("held");
+    place.env.push((HELD_SIGN_IN.to_owned(), "1".to_owned()));
+    let settings = "[model]\ndefault = \"test/reply\"\n";
+    assert!(std::fs::write(place.home.join("settings.toml"), settings).is_ok());
+    let router = drive(&place, acp::ClientCapabilities::new(), async |driven| {
+        let new = driven.new_session(Vec::new()).await;
+        assert!(new.is_some(), "no session");
+        let options = new.and_then(|new| new.config_options).unwrap_or_default();
+        let models = options.iter().find_map(|option| match &option.kind {
+            acp::SessionConfigKind::Select(select) if option.id.to_string() == "model" => Some((
+                select.current_value.to_string(),
+                format!("{:?}", select.options),
+            )),
+            _ => None,
+        });
+        let (current, listed) = models.unwrap_or_default();
+        assert_eq!(current, "test/reply");
+        assert!(listed.contains(HELD), "{listed}");
+    });
+    assert!(router.is_some());
+}
+
 /// The model the last options `session` was told of show.
 fn advertised_model(seen: &Seen, session: &acp::SessionId) -> Option<String> {
     let updates = seen.events.iter().filter_map(|event| match event {

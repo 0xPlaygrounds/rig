@@ -1,9 +1,10 @@
 //! What each plugin added, as data in the world: one entity per plugin the
 //! agent is built with ([`Loaded`], its `Name` and [`PluginSource`]), and
 //! [`ProvidedBy`] on what that plugin spawned, such as its commands,
-//! tools, prompt sections and observers. "What did plugin X add" is a
-//! query for `ProvidedBy(x)`; which plugin added a schedule's system is in
-//! [`PluginSystems`]; what it keeps with the session is its [`Keeps`].
+//! tools, prompt sections, observers and the plugins it loads. "What did
+//! plugin X add" is a query for `ProvidedBy(x)`; which plugin added a
+//! schedule's system is in [`PluginSystems`]; what it keeps with the
+//! session is its [`Keeps`].
 //!
 //! Every named entity, observer and schedule system a plugin adds in its
 //! `build`, `finish` and `cleanup` is attributed. What it spawns later, such as a
@@ -48,7 +49,8 @@ pub struct PluginSource {
     /// Its package, such as `rig-harness`.
     pub package: String,
     /// Where the package is built from, as the launcher names it, such
-    /// as `path /home/me/.rig/plugins/viz` or `version 0.3`.
+    /// as `path /home/me/.rig/plugins/viz` or `version 0.3`; empty for a
+    /// plugin another plugin loaded.
     pub source: String,
 }
 
@@ -271,7 +273,9 @@ impl<P: Plugin + Default> Plugin for Loaded<P> {
 
 /// Adds `P`, unless the app has it already (another plugin added it), as
 /// [`Loaded`] adds each plugin the settings turn on: with an entity of its
-/// own, named after it, from `package` at `source`.
+/// own, named after it, from `package` at `source`. Loaded in another
+/// plugin's `build`, its entity is [`ProvidedBy`] that plugin, which is how
+/// a plugin adds one it needs so the running agent shows who added it.
 pub fn load<P: Plugin + Default>(app: &mut App, package: &str, source: &str) {
     if app.is_plugin_added::<P>() {
         return;
@@ -288,10 +292,13 @@ pub fn load<P: Plugin + Default>(app: &mut App, package: &str, source: &str) {
         .get_resource::<Attributing>()
         .map(|it| it.plugin);
     Attribute::Close.bracket(app);
-    let entity = app
+    let mut entity = app
         .world_mut()
-        .spawn((Name::new(plugin.name().to_owned()), source))
-        .id();
+        .spawn((Name::new(plugin.name().to_owned()), source));
+    if let Some(outer) = outer {
+        entity.insert(ProvidedBy(outer));
+    }
+    let entity = entity.id();
     app.insert_resource(PluginEntity::<P> {
         entity,
         plugin: PhantomData,

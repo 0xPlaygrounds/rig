@@ -311,9 +311,7 @@ pub struct PasteChipsPlugin;
 
 impl Plugin for PasteChipsPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<TuiPlugin>() {
-            app.add_plugins(TuiPlugin);
-        }
+        rig_harness::load::<TuiPlugin>(app, "rig-tui", "");
         app.add_setting::<PasteChipSettings>("paste_chips")
             .init_resource::<PasteChips>()
             .init_resource::<ClipboardImages>()

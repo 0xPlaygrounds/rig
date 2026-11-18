@@ -15,6 +15,7 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::path::Path;
 
+use rig_harness::commands::run_chosen;
 use rig_harness::prelude::*;
 use rig_tools::fs::write_atomic;
 use rig_tools::{Edit, Shell, Write};
@@ -354,7 +355,7 @@ fn open(review: &mut HunkReview, agent: Entity, root: &Path, commands: &mut Comm
                 match (comment, index) {
                     (Some(Some(comment)), Some(index)) => {
                         let line = format!("review revert {index} {comment}");
-                        commands.trigger(RunCommand::new(agent, line));
+                        commands.queue(run_chosen(agent, line));
                     }
                     (None, _) => {
                         if let Ok(mut review) = reviews.get_mut(agent)

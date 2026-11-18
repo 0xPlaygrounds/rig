@@ -11,6 +11,7 @@ use rig_harness::main_agent::ShownAgent;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
+use super::hints::{self, Key, KeyHints, fit_keys};
 use super::input::InputContext;
 use super::keys::KeyFocus;
 use super::panel::PanelCanvas;
@@ -673,75 +674,13 @@ fn place((index, text): &(usize, String), history: &[String]) -> usize {
         .unwrap_or(history.len())
 }
 
-/// A key hint, with how much it matters: a row too narrow for every hint
-/// drops those that matter least first.
-type Key = (&'static str, u8);
-
-/// The keys of an empty editor that has them, over where its text goes:
-/// a message's, with Enter steering and Tab and Esc for the turn while one
-/// runs.
-fn hint(turn_running: bool, panel_keys: bool) -> &'static [Key] {
-    match (panel_keys, turn_running) {
-        (true, _) => &[("A panel has the keys", 1), ("Esc gives them back", 2)],
-        (false, true) => &[
-            ("Enter steers", 9),
-            ("Tab sends after the turn", 7),
-            ("Esc stops", 10),
-            ("Shift+Enter or Ctrl+J new line", 5),
-            ("Ctrl+V image", 1),
-            ("/ commands", 4),
-            ("@ files", 2),
-            ("Ctrl+D quits", 3),
-        ],
-        (false, false) => &[
-            ("Enter sends", 9),
-            ("Shift+Enter or Ctrl+J new line", 7),
-            ("Ctrl+V image", 4),
-            ("/ commands", 8),
-            ("@ files", 5),
-            ("Ctrl+D quits", 6),
-        ],
-    }
-}
-
-/// `keys` in `width` columns, joined by ` · `: all of them, or else the
-/// most that fit after dropping the least important, in their order and
-/// ending in `…`.
-fn fit_keys(keys: &[Key], width: usize) -> String {
-    let mut kept = keys.to_vec();
-    loop {
-        let mut items: Vec<&str> = kept.iter().map(|(item, _)| *item).collect();
-        if kept.len() < keys.len() {
-            items.push("…");
-        }
-        if items.is_empty() {
-            return String::new();
-        }
-        let row = format!(" {} ", items.join(" · "));
-        if row.width() <= width {
-            return row;
-        }
-        // The least important; of equals, the last.
-        let least = kept
-            .iter()
-            .enumerate()
-            .min_by_key(|(at, (_, keep))| (*keep, std::cmp::Reverse(*at)))
-            .map(|(at, _)| at);
-        match least {
-            Some(at) => {
-                kept.remove(at);
-            }
-            None => return String::new(),
-        }
-    }
-}
-
 /// Draws each editor with room into its canvas, on the input's band with a
 /// row above and below and a cell each side, scrolled to
 /// keep its cursor in sight. The one the keys type into is titled by the
 /// question it answers, if any, and while nothing is typed says over its
-/// text what the keys do, or while it shows a prompt of the history, that
-/// Down goes back; it places the caret, unless a picker or a panel
+/// text the question's keys, how to take the keys back from a panel, what
+/// the keys do with [`KeyHints`] on, or while it shows a prompt of the
+/// history, that Down goes back; it places the caret, unless a picker or a panel
 /// without an editor has the keys. An editor with a [`StatusLine`] draws
 /// it in its bottom row while nothing is typed.
 pub(crate) fn draw_editors(
@@ -754,7 +693,7 @@ pub(crate) fn draw_editors(
     )>,
     (state, choices, focus): (Res<InputContext>, Choices, Res<KeyFocus>),
     (shown, active): (Res<ShownAgent>, Query<(), With<ActiveTurn>>),
-    (theme, status): (Res<Theme>, StatusSources),
+    (theme, status, key_hints): (Res<Theme>, StatusSources, Option<Res<KeyHints>>),
 ) {
     let answering = state.answering().and_then(|ask| choices.shown(ask));
     let busy = shown.0.is_some_and(|agent| active.contains(agent));
@@ -779,7 +718,9 @@ pub(crate) fn draw_editors(
                         ("Esc refuses", 2),
                     ]
                 }
-                None => hint(busy, elsewhere),
+                None if elsewhere => &[("A panel has the keys", 1), ("Esc gives them back", 2)],
+                None if key_hints.is_some() => hints::keys(busy),
+                None => &[],
             };
             let keyed = !elsewhere && state.picking().is_none();
             if editor.recalled() && answering.is_none() && keyed {

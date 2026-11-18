@@ -294,7 +294,7 @@ fn the_terminal_view_draws_the_file_and_its_count() {
     use rig_tui::{TranscriptLayout, TranscriptView};
 
     let add_view = |app: &mut App| {
-        app.add_plugins(rig_tui::TuiPlugin);
+        app.add_plugins(rig_tui::TuiPlugins);
     };
     let (mut app, root) = one_turn(
         "render",
@@ -332,10 +332,10 @@ fn add_defaults(app: &mut App) {
     load::<login::LoginPlugin>(app, "rig-basics", "");
     load::<models::defaults::DefaultsPlugin>(app, "rig-basics", "");
     load::<sessions::SessionsPlugin>(app, "rig-basics", "");
-    load::<sessions::agents::AgentsPlugin>(app, "rig-basics", "");
     load::<compaction::CompactionPlugin>(app, "rig-basics", "");
     load::<telemetry::usage::UsagePlugin>(app, "rig-basics", "");
     load::<activity::ActivityPlugin>(app, "rig-basics", "");
+    load::<activity::animation::WorkingAnimationPlugin>(app, "rig-basics", "");
     load::<coding_tools::ReadTool>(app, "rig-basics", "");
     load::<coding_tools::EditTool>(app, "rig-basics", "");
     load::<coding_tools::WriteTool>(app, "rig-basics", "");
@@ -349,6 +349,10 @@ fn add_defaults(app: &mut App) {
     load::<print::PrintPlugin>(app, "rig-basics", "");
     #[cfg(feature = "tui")]
     load::<rig_tui::TuiPlugin>(app, "rig-tui", "");
+    #[cfg(feature = "tui")]
+    load::<rig_tui::status::StatusLinePlugin>(app, "rig-tui", "");
+    load::<rig_tui::hints::KeyHintsPlugin>(app, "rig-tui", "");
+    load::<rig_tui::title::TerminalTitlePlugin>(app, "rig-tui", "");
 }
 
 /// R6: the plugin's Gate system is ordered against the default plugins'

@@ -154,8 +154,15 @@ vendor/model` picks one on the command line for that run only, with the saved
 reasoning setting when that model takes it, and none when it does not
 connect (a headless run then exits 2); an editor's
 choice over ACP and an automatic pick are never saved either. With nothing
-saved or named, the terminal view asks you to pick one, and a headless run
-or an editor's new session takes the first model that can be reached.
+saved or named, the terminal view, a headless run and an editor's new session
+all start on the same automatic pick: the ChatGPT plan's latest frontier model
+when you are signed in and your account offers it, else the first model a key
+or a sign-in reaches, in catalog order, else a local server's. The sign-in goes
+first because you signed in within rig, while an exported key may be there for
+other tools. The pick lands once the start is over, after MCP servers start
+and ChatGPT says which models your account may use, and a model you pick
+meanwhile stays. With none to reach, the terminal
+view shows "no model: /model picks one".
 
 `/login` without arguments lets you pick the ChatGPT plan or a provider that
 takes an API key. `/login <provider>`, such as `/login anthropic`, asks for
@@ -224,25 +231,32 @@ followed by a space, or a first word with another `/` in it (a path such as
 `/etc/hosts: what is this?`, or `//x`), is no command: it goes to the model
 as typed. A path a
 space or trailing punctuation would cut is inserted quoted,
-`@"my notes.md"`, which is also how to type one by hand. A command that is
-unknown or refused comes back in the input with the reason, and Enter on it
-unchanged sends it to the model as it is; changed or cleared (Ctrl+C) and
-typed again, it is a command again.
+`@"my notes.md"`, which is also how to type one by hand. A command typed
+that is unknown or refused comes back in the input with the reason, and
+Enter on it unchanged sends it to the model as it is; changed or cleared
+(Ctrl+C) and typed again, it is a command again. One picked from a list or
+run by a key only shows the reason.
 `/help` lists the commands.
 
 While an earlier prompt is shown, the input's top row says "An earlier
-prompt · Down back to your draft" (or "to an empty input"). While nothing is typed, the top row shows
-the keys and the bottom row the status line: the model, the reasoning
-setting, what the agent is doing (and for how long, see
+prompt · Down back to your draft" (or "to an empty input"). While nothing is
+typed, the top row shows the keys and the bottom row the status line: the
+model, the reasoning setting, what the agent is doing (and for how long, see
 [If rig seems stuck](#if-rig-seems-stuck)), the session's tokens (uncached input,
 output, cache reads and writes), its cost (the provider's figure, else the
 catalog's list price; `+` when some calls had no price) and the context in
 use against the model's window: after `/compact`, until the next reply
 measures it, an estimate marked `~` (`ctx ~12k/1.0M`), and `?` where
-nothing estimated it. `/usage` breaks them down. While the agent works, a
+nothing estimated it. `/usage` breaks them down. Key hints
+(`rig_tui::hints::KeyHintsPlugin`) lists those keys; disabled, that row is
+empty, but a question's keys and a panel's "Esc gives them back" still show.
+While the agent works, a
 small wave of six bars moves before what it is doing, and rig's mark in the
 welcome at the top of the transcript pulses with it;
-`[activity] animate = false` in `settings.toml` keeps both still. With the optional
+`[activity] animate = false` in `settings.toml` keeps both still. They are the
+working animation, `rig_basics::activity::animation::WorkingAnimationPlugin`;
+with it off (`rig plugin disable` with that path) the status has no bars, still
+says `thinking… 12s`, and the mark stays still. With the optional
 `rig_basics::budget::BudgetPlugin` (`rig plugin enable
 rig_basics::budget::BudgetPlugin`), `/budget 2.00` or `/budget 500000 tokens`
 bounds what the session spends, helpers included: at the limit the running
@@ -254,6 +268,36 @@ way, and their refusal names them. `[budget] usd`
 and `tokens` in `settings.toml` set it for new sessions. Dollars count only
 priced calls: a subscription model's, such as a `chatgpt/*` one, has no
 price, so bound those by tokens.
+
+The status line is its own plugin, `rig_tui::status::StatusLinePlugin`, on
+by default. `rig plugin disable rig_tui::status::StatusLinePlugin` leaves
+the input's bottom row empty, which also takes away the model's name and
+what the agent is doing. `[status] hide` in `settings.toml` leaves single
+parts out by name. A hand edit applies at the next start; `/plugins` shows
+and hides them at once:
+
+```toml
+[status]
+hide = ["cost", "cache"]
+```
+
+The parts rig draws: `session`, `title` (a subagent's name), `model`,
+`reasoning`, `status` (what the agent is doing), `subagents`, `others` (other
+agents at work), `turn` (what the running turn spent), `reload`, `copied`,
+`tokens`, `cache`, `cost`, `budget` and `context`. Another plugin's parts
+are hidden by their names in the same way, and a name nothing draws does
+nothing. Hidden parts are only not drawn: plugins still read them. With no
+agent, the line says `no agent`, which is no part.
+
+While the status line is on, `/plugins` ends with a "Status line parts"
+branch: rig's parts by a short label (such as "Cost" or "Context used"),
+drawn yet or not, and another plugin's parts by name once they are drawn.
+They are settings, not plugins: each shows "shown" or "hidden", and Enter on
+one writes `[status] hide` and changes the line at once, with no question
+when you leave. Unticking the branch hides them all. When `settings.toml`
+cannot be written, a notice says why and the row goes back.
+`/plugins defaults` shows every part again at once. Without a terminal it
+writes nothing and names the `hide` line to delete.
 
 Typing while the agent works is fine. Enter steers the running turn (the
 message goes to the model with its next call, after the tool results it waits
@@ -319,6 +363,16 @@ sessions (name or first message, what it spent, its main agent's context, the
 end of its directory and its age; → shows the whole directory) and resumes
 the one picked, in its own directory; `rig --resume <id or name>` (or
 `/resume <id or name>`) resumes a given one, such as after a crash.
+
+Forks are off by default. `rig plugin enable
+rig_basics::sessions::forks::ForksPlugin` (or `/plugins`) turns them on:
+`/fork` makes a new agent from the shown one and shows it, through the end
+of its conversation, through a message you name (`/fork m4`) or through one
+you pick (`/fork at`). Rewind is a fork too: select an earlier message of
+yours with Alt+Up and press Enter, and the shown agent forks just before it,
+with the message back in the input. `/agents` comes with forks and shows the
+other agents. A resumed session shows the agent that was shown last, or the
+top-level agent above it when that was a subagent, with forks on or off.
 
 Rig redacts nothing unless you turn redaction on with `rig plugin enable
 rig_basics::redact::RedactPlugin` (then `/reload`, or the next start). With it,
@@ -509,11 +563,10 @@ is answered.
 
 Esc stops the shown agent's turn and the turns of every subagent below it,
 even when the shown agent is idle: stopping follows who started whom.
-`/agents` (`rig_basics::sessions::agents::AgentsPlugin`) lists every agent
-with its model, state and what it and the agents below it spent, and shows
-the one picked: its transcript, and what
-you type then goes to it. A subagent can start subagents of its own, as
-deep as they go. Subagents started with `peers` can also send each other
+`/agents` (the Agent picker in `/plugins`, which subagents and forks add)
+lists every agent with its model, state and what it and the agents below it
+spent, and shows the one picked: its transcript, and what you type then
+goes to it. A subagent can start subagents of its own, as deep as they go. Subagents started with `peers` can also send each other
 requests with `message` and `wait` for each other; a request or `wait` that
 would make agents wait on each other is refused. In the effect log, a
 subagent's model calls name the call that gave it its work as their parent.
@@ -685,25 +738,20 @@ plugin = "hello::HelloPlugin"     # implements Plugin + Default
 
 The plugins form a tree. Each crate is a branch, such as `rig-tui`, and so
 is each area in it: the module under the crate's root in a plugin's type
-path, so `rig_basics::sessions::agents::AgentsPlugin` is in
+path, so `rig_basics::sessions::forks::ForksPlugin` is in
 `rig-basics/sessions`. A plugin at a crate's root, such as
 `rig_basics::BasicCommandsPlugin`, is in no area. A plugin runs when its own
 choice (rig's default, then `disable`, then `enable`) is on and no branch
 in `off` holds it. Turning a branch back on takes it out of `off`, so each
 of its plugins comes back as you left it, and a plugin rig adds to an off
 branch later stays off. Moving a plugin to another module changes its area.
-
-Some plugins add others: Subagents adds Approvals, and Budget and Helpers add
-Usage. While such a plugin is on, what it adds is on too, whatever its own
-choice and even when its branch is off. `/plugins` shows it as "on (needed
-by Subagents)" and `rig plugin list` as on, ending its line with "(needed by
-Subagents)". `rig plugin disable` of it refuses, naming each plugin on that
-adds it, and disabling its branch says it stays on. Others work only with
-another and never turn it on: MCP approval does nothing without MCP
-servers, and folded output nothing without the terminal view. While that
-one is off, such a plugin is off too and rig does not build it, whatever its
-own choice: both lists show it off and say it "does nothing without" that
-one, and `rig plugin enable` of it says it stays off until that one is on.
+A plugin another adds in its own `build` runs whatever its choice:
+Subagents adds Approvals, and Budget and Helpers add Usage. Folded output,
+the status line, Key hints and the terminal title do nothing without the
+terminal view, the working animation nothing without Activity and the
+terminal view, nor MCP approval without MCP servers. With the terminal view
+off, rig builds none of the plugins of `rig-tui`, such as the status line,
+Key hints and the terminal title.
 
 A mistake in this file (a plugin or branch rig does not know, a branch in
 `enable` or `disable`, a plugin in `off`, an `extra` path that holds no
@@ -754,37 +802,48 @@ above the table with it, but not those past a blank line. It also takes the
 type out of `enable` and `disable`, and leaves the crate's files where they
 are, also for a crate `rig plugin new` made.
 
-In the agent, `/plugins` reads `settings.toml` itself and opens at once. It
-lists every plugin by a short name, such as "Terminal view", in the tree's
-order, crate then area, and your extras last by crate, each with its state:
-on, off, "off with its branch" when a branch in `off` holds it, "on (needed
-by ...)" when a plugin on adds it, or any of these with "next reload" while
-the running agent differs. Unticking a plugin while the one that adds it is
-ticked says it stays on, and so do the question on leaving and the line
-after it. Ticking a plugin while the one it works only with is unticked
-says it does nothing without that one. A tick is the
-plugin's own choice, so Enter on a plugin of an off branch changes only
-that plugin. The pane beside the list shows the highlighted plugin's area,
-crate, type path (what `settings.toml`
-and `rig plugin enable` take), default, state in `settings.toml`, whether it
-runs now, what an essential one takes away when off, and what it adds.
-Typing filters by name or type path. Enter ticks and unticks the highlighted
-plugin, also while a filter is typed; a row that differs from
-`settings.toml` shows `+ on` or `- off`, and the list counts the changes.
-Esc leaves. With changes it first names what turns on and off (a plugin
-turned on under an off branch "stays off with its branch"), and what an
-essential plugin such as `/plugins` itself takes away, and asks: "Reload
-now" (offered only when the Reload plugin is on and the `rig` launcher
-started rig; otherwise it says which is missing), "Later, at the next
-start", "Keep editing" (Esc too), or "Leave without writing". Either of the
-first two writes every change into `settings.toml` in one edit, or none when
-one is refused; a reload rebuilds and restarts once no turn runs, and a
-failed build keeps the running one. `/plugins defaults` asks the same about going back to rig's
-defaults, every branch of `off` turned back on, and "Keep editing" keeps
-those branches for when you leave; without a terminal it asks nothing and
-prints the `rig plugin enable` and `rig plugin disable` commands that do it
-from a shell. Without a terminal `/plugins` prints each plugin's name, type
-path and state. When `settings.toml` does not read, `/plugins` names the
+In the agent, `/plugins` reads `settings.toml` itself and opens at once as
+a folded tree: the crates at the top, rig-basics' areas under it (such as
+`sessions` and `coding_tools`), and each plugin by a short name, such as
+"Terminal view", your extras last by crate. A crate or an area of one
+plugin is that plugin's row, unless `off` names it. → opens the highlighted
+branch and ← closes it, or goes up from a plugin to its branch. A plugin's
+tick is its own choice, and a branch's tick says it is out of `off`; a
+branch with some of its plugins on shows `[~]`. Each plugin shows its state:
+on, off, "off with its branch" when a branch in `off` holds it, or any of these
+with "next reload" while the running agent differs. A plugin another
+running plugin added shows "on, added by" that one, such as "on, added by
+Subagents". The pane beside the list shows the highlighted
+plugin's area, crate, type path (what `settings.toml` and `rig plugin
+enable` take), default, state in `settings.toml`, whether it runs now, what
+an essential one takes away when off, and what it adds, or which plugins a
+branch holds. Typing finds plugins in folded branches too and shows them
+under their branch, by name or type path.
+
+Enter on a plugin ticks and unticks its own choice, so on a plugin of an
+off branch it changes only that plugin. Enter on a branch that is `[x]` or
+`[~]` puts it into `off`, each plugin keeping its own choice; on a `[ ]`
+branch that `off` names it takes it back out, and on a `[ ]` branch whose
+plugins are all off by their own choice it turns each of them on. A row
+that differs from `settings.toml` shows `+ on` or `- off`, also a plugin
+that goes or comes with its branch, and the list counts the changes. Esc
+leaves. With changes it first names what
+turns on and off (a plugin turned on under an off branch "stays off with its
+branch"), the plugins that go with a branch, what an essential plugin such as `/plugins` itself takes away with every
+`rig plugin enable` command that brings it back, and the plugins ticked on
+that this machine cannot build, which stay off. Then it asks:
+"Reload now" (offered only when the Reload plugin is on and the `rig`
+launcher started rig; otherwise it says which is missing), "Later, at the
+next start", "Keep editing" (Esc too), which goes back to the list with
+the ticks, or "Leave without writing". Either of the first two writes
+every change into `settings.toml` in one edit, or none when one is refused; a reload rebuilds and restarts
+once no turn runs, and a failed build keeps the running one. `/plugins
+defaults` asks the same about going back to rig's defaults, every branch of
+`off` turned back on, and "Keep editing" keeps those branches for when you
+leave; without a terminal it asks nothing and prints the `rig plugin
+enable` and `rig plugin disable` commands that do it from a shell. Without
+a terminal `/plugins` prints each plugin's name, type path and state. When
+`settings.toml` does not read, `/plugins` names the
 file, the error and its fix instead of opening.
 
 `rig plugin check` checks the list. With `--build` it also builds the agent
@@ -834,15 +893,27 @@ key, on Linux and macOS: `rig plugin enable rig_claude_cloak::ClaudeCloakPlugin`
 
 Code mode is the optional [`rig-steel`](../plugins/rig-steel) plugin: a
 `run_steel` tool whose [Steel](https://github.com/mattwparas/steel) (Scheme)
-program spawns agents, messages them and calls tools, in a sandbox. Enable it
-with `rig plugin enable rig_steel::SteelPlugin`, or:
+program calls the model's tools, loops and branches on what they return, in a
+sandbox. Enable it with `rig plugin enable rig_steel::SteelPlugin`, or:
 
 ```toml
 [plugins]
 enable = ["rig_steel::SteelPlugin"]
 ```
 
-A fan-out that reviews three directories at once and gathers the findings:
+A program that reads three files and gathers their first lines:
+
+```scheme
+(define paths (list "crates/a/src/lib.rs" "crates/b/src/lib.rs" "crates/c/src/lib.rs"))
+(string-join (map (lambda (path) (call-tool "read" (hash 'path path 'limit 1))) paths) "\n")
+```
+
+With Subagents on as well (`rig plugin enable
+rig_basics::subagents::SubagentsPlugin`), a program also spawns agents
+(`spawn-agent`), sends them requests (`send`) and waits for their answers
+(`reply`), and `/agents` shows them. Without Subagents those functions refuse
+and the tool's description leaves them out. A fan-out that reviews three
+directories at once and gathers the findings:
 
 ```scheme
 (define dirs (list "crates/a" "crates/b" "crates/c"))

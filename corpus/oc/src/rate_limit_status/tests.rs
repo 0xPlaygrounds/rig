@@ -9,7 +9,7 @@ use rig_harness::rig_core::providers::registry::{ConnectOptions, ProviderId};
 use rig_harness_test_support::{
     Collected, Ended, advance, app_in, collect, first_agent, log_ended, run_until, scratch_home,
 };
-use rig_tui::{StatusItem, StatusItems, Tone, TuiPlugin};
+use rig_tui::{StatusItem, StatusItems, Tone, TuiPlugins};
 
 use super::status::QUOTA;
 use super::*;
@@ -126,7 +126,7 @@ fn the_item_follows_the_providers_limits_and_the_model() {
     app.add_plugins((
         AgentPlugin,
         SessionLogPlugin,
-        TuiPlugin,
+        TuiPlugins,
         RateLimitStatusPlugin,
     ))
     .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO))

@@ -34,3 +34,19 @@ fn an_answer_keeps_the_answers_another_rig_gave_since() {
     );
     std::fs::remove_dir_all(dir).ok();
 }
+
+#[test]
+fn without_mcp_servers_it_adds_nothing() {
+    let mut app = App::new();
+    app.add_plugins(McpApprovalPlugin);
+    app.finish();
+    assert!(!app.is_plugin_added::<crate::McpCorePlugin>());
+    let world = app.world_mut();
+    let mut names = world.query::<&Name>();
+    assert!(
+        names
+            .iter(world)
+            .all(|name| name.as_str() != "/mcp-approve"),
+        "/mcp-approve is a command"
+    );
+}

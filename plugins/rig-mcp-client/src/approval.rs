@@ -19,7 +19,7 @@ use rig_harness::rig_memory::Files;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::{McpCorePlugin, McpHold, McpServer, McpState, McpStatus, Scope};
+use crate::{McpHold, McpPlugin, McpServer, McpState, McpStatus, Scope};
 
 #[cfg(test)]
 mod tests;
@@ -28,14 +28,18 @@ mod tests;
 const FILE: &str = "mcp/approvals.json";
 
 /// Holds each server of the project's `.rig/mcp.json` until the user
-/// approves it as written: `/mcp approve` and `/mcp deny`.
+/// approves it as written: `/mcp approve` and `/mcp deny`. It adds nothing
+/// unless [`McpPlugin`] is added too, in any order.
 #[derive(Default)]
 pub struct McpApprovalPlugin;
 
 impl Plugin for McpApprovalPlugin {
-    fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<McpCorePlugin>() {
-            app.add_plugins(McpCorePlugin);
+    fn build(&self, _app: &mut App) {}
+
+    /// Asks once every plugin is built, so [`McpPlugin`] may be added after.
+    fn finish(&self, app: &mut App) {
+        if !app.is_plugin_added::<McpPlugin>() {
+            return;
         }
         app.add_systems(PreStartup, read_approvals)
             .add_observer(hold_unapproved)

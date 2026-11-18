@@ -878,8 +878,9 @@ fn chunks(mut pipe: impl Read + Send + 'static) -> mpsc::Receiver<Vec<u8>> {
 
 /// Runs a describing build as a [`Build`] and waits for it, at most
 /// `timeout`, and returns its `report`, or what it said on stderr when it
-/// failed. Its group is killed once it exits or the time is up, so nothing
-/// it started outlives it or holds its stderr.
+/// failed, on one line and without Rust's backtrace hint. Its group is
+/// killed once it exits or the time is up, so nothing it started outlives
+/// it or holds its stderr.
 fn wait_described(mut command: Command, report: &Path, timeout: Duration) -> Result<String> {
     command.stderr(Stdio::piped());
     let mut build = Build::spawn(command)?;
@@ -915,12 +916,18 @@ fn wait_described(mut command: Command, report: &Path, timeout: Duration) -> Res
     {
         errors.extend(chunk);
     }
-    let errors = String::from_utf8_lossy(&errors);
-    let said = errors.trim();
+    // One line, since `/reload` shows the first: a panic's message comes
+    // on the line after its location.
+    let said = String::from_utf8_lossy(&errors)
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with("note: run with `RUST_BACKTRACE"))
+        .collect::<Vec<_>>()
+        .join(" ");
     Err(if said.is_empty() {
         format!("describing it failed ({status})").into()
     } else {
-        said.to_owned().into()
+        said.into()
     })
 }
 
@@ -998,15 +1005,7 @@ fn check_bevy(
         if pins.is_empty() {
             return failure;
         }
-        Explained(format!(
-            "{failure}: a plugin asks for a Bevy that is not this agent's {BEVY_VERSION}:\n  \
-             {}\nWrite its Bevy requirements as \"{range}\", such as `bevy_ecs = {{ version = \
-             \"{range}\", default-features = false }}`, or take it out with \
-             `rig plugin remove <type>`.",
-            pins.join("\n  "),
-            range = super::bevy_range(),
-        ))
-        .into()
+        Explained(pinned_bevy(&failure, &pins)).into()
     })?;
     check_rig(&packages, rig_crates, rig_version)?;
     let Some((bevy, version)) = packages.iter().find_map(|line| {
@@ -1022,16 +1021,7 @@ fn check_bevy(
         (dependents.iter()).any(|line| package(line).is_some_and(|(name, _)| name == extra.krate))
     });
     Err(Explained(match culprit {
-        Some(plugin) => format!(
-            "plugin `{name}` uses Bevy {version}, but this rig agent is built on Bevy \
-             {BEVY_VERSION}. A Bevy plugin only works with the exact Bevy version of its app. \
-             Change {name}'s bevy dependencies to \"{range}\" (with default-features = false), \
-             which cargo builds with the agent's Bevy, or take it out with \
-             `rig plugin remove {plugin}`.",
-            name = plugin.krate,
-            plugin = plugin.plugin,
-            range = super::bevy_range(),
-        ),
+        Some(plugin) => foreign_bevy(&plugin.krate, &plugin.plugin, version),
         None => format!(
             "the agent project pulls in Bevy {version}, but this rig agent is built on Bevy \
              {BEVY_VERSION}. Every Bevy crate must take {BEVY_VERSION}, as \"{}\" does.",
@@ -1039,6 +1029,32 @@ fn check_bevy(
         ),
     })
     .into())
+}
+
+/// The error for cargo's `failure` to resolve a graph in which plugins ask
+/// for a Bevy other than [`BEVY_VERSION`], as the [`bevy_pins`] `pins`.
+/// It opens with the requirement to write.
+fn pinned_bevy(failure: &dyn fmt::Display, pins: &[String]) -> String {
+    format!(
+        "a plugin must write its Bevy requirements as \"{range}\", such as `bevy_ecs = \
+         {{ version = \"{range}\", default-features = false }}`, or be taken out with \
+         `rig plugin remove <type>`. These ask for a Bevy that is not this agent's \
+         {BEVY_VERSION}:\n  {}\n{failure}.",
+        pins.join("\n  "),
+        range = super::bevy_range(),
+    )
+}
+
+/// The error for plugin `plugin` of crate `krate` built on Bevy `version`,
+/// not [`BEVY_VERSION`]. It opens with the requirement to write.
+fn foreign_bevy(krate: &str, plugin: &str, version: &str) -> String {
+    format!(
+        "plugin `{krate}` must write its bevy dependencies as \"{range}\" (with \
+         default-features = false), the agent's Bevy, or be taken out with \
+         `rig plugin remove {plugin}`. It uses Bevy {version}, and this rig agent is built on \
+         Bevy {BEVY_VERSION}.",
+        range = super::bevy_range(),
+    )
 }
 
 /// Each requirement of one of Bevy's own crates (`bevy`, a crate named in

@@ -97,9 +97,7 @@ pub struct LargeChangeGuardPlugin;
 
 impl Plugin for LargeChangeGuardPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<PreviewPlugin>() {
-            app.add_plugins(PreviewPlugin);
-        }
+        rig_harness::load::<PreviewPlugin>(app, "rig-basics", "");
         app.add_setting::<LargeChangeConfig>(SECTION)
             .init_resource::<AllowedFiles>()
             .register_type::<AllowedFiles>()

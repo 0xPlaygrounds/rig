@@ -652,10 +652,92 @@ fn a_model_without_its_key_given_with_model_leaves_the_agent_without_one() {
         world.resource::<Told>().0,
         [
             "--model: cannot use rig-models-flag-locked/big: no key for \
-              `rig-models-flag-locked`: set `CORP_KEY` or pass one with \
-              `ConnectOptions::api_key`. No model is picked."
+              `rig-models-flag-locked`: set `CORP_KEY`. No model is picked."
         ]
     );
+}
+
+#[test]
+fn a_model_without_its_key_given_with_model_names_the_login_command_when_there_is_one() {
+    let told = |vendor: &str, env: &'static str, login: bool| {
+        let Some((reference, models)) = builtin_without_a_key(vendor, env) else {
+            return Vec::new();
+        };
+        let mut app = App::new();
+        app.insert_resource(Invoked {
+            args: Invocation {
+                model: Some(reference),
+                ..Invocation::default()
+            },
+            terminal: false,
+        })
+        .insert_resource(models)
+        .add_plugins((AgentPlugin, ModelsPlugin));
+        if login {
+            // `/login` as `LoginPlugin` registers it, after `ModelsPlugin`.
+            let login = |_: In<rig_harness::commands::NoArgs>| {};
+            app.add_command("login", "Sign in", login);
+        }
+        tell(&mut app);
+        spawn_root(app.world_mut(), ());
+        app.update();
+        app.world().resource::<Told>().0.clone()
+    };
+    let says = |told: &[String], what: &str| told.iter().any(|text| text.contains(what));
+    let chatgpt = told("chatgpt", "CHATGPT_ACCESS_TOKEN", true);
+    assert!(
+        says(
+            &chatgpt,
+            "no key for `chatgpt`: sign in with /login chatgpt or set `CHATGPT_ACCESS_TOKEN`."
+        ),
+        "{chatgpt:?}"
+    );
+    let openai = told("openai", "OPENAI_API_KEY", true);
+    assert!(
+        says(
+            &openai,
+            "no key for `openai`: save one with /login openai or set `OPENAI_API_KEY`."
+        ),
+        "{openai:?}"
+    );
+    let no_login = told("chatgpt", "CHATGPT_ACCESS_TOKEN", false);
+    assert!(
+        says(
+            &no_login,
+            "no key for `chatgpt`: set `CHATGPT_ACCESS_TOKEN`. No model is picked."
+        ),
+        "{no_login:?}"
+    );
+    for text in chatgpt.iter().chain(&openai).chain(&no_login) {
+        assert!(!text.contains("ConnectOptions"), "{text}");
+    }
+}
+
+/// The built-in catalog, with `vendor`'s models refusing to connect for
+/// want of the key `env` holds; and one of them.
+fn builtin_without_a_key(vendor: &str, env: &'static str) -> Option<(String, Models)> {
+    use std::borrow::Cow;
+
+    use rig_harness::rig_core::catalog::{Connector, ModelSpec, Transport};
+    use rig_harness::rig_core::providers::registry::{ConnectError, ProviderId};
+
+    let mut connector = Connector::new(Catalog::builtin().clone());
+    let reference = connector
+        .catalog()
+        .iter()
+        .find(|spec| spec.provider.vendor() == vendor && spec.tools)?
+        .reference();
+    let owned = vendor.to_owned();
+    connector.provide(
+        ProviderId::catalog(vendor)?,
+        move |_: &ModelSpec, _: &Catalog, _: &Transport| {
+            Err(ConnectError::MissingKey {
+                vendor: owned.clone(),
+                tried: vec![Cow::Borrowed(env)],
+            })
+        },
+    );
+    Some((reference, Models(connector)))
 }
 
 #[cfg(feature = "tui")]

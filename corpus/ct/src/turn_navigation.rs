@@ -116,9 +116,7 @@ pub struct TurnNavigationPlugin;
 
 impl Plugin for TurnNavigationPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<TuiPlugin>() {
-            app.add_plugins(TuiPlugin);
-        }
+        rig_harness::load::<TuiPlugin>(app, "rig-tui", "");
         app.add_setting::<NavigationKeys>("turn-navigation")
             .init_resource::<PromptHeader>()
             .add_systems(

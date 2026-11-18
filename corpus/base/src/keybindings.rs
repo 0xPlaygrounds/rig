@@ -41,9 +41,7 @@ struct Draft(PathBuf, Option<Entity>);
 
 impl Plugin for KeyBindingsPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<TuiPlugin>() {
-            app.add_plugins(TuiPlugin);
-        }
+        rig_harness::load::<TuiPlugin>(app, "rig-tui", "");
         app.init_resource::<RigHome>()
             .add_command(
                 "keys",

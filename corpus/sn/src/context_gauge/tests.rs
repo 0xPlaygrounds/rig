@@ -8,7 +8,7 @@ use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     Collected, Ended, app_on, collect, log_ended, run_until, scripted_models,
 };
-use rig_tui::TuiPlugin;
+use rig_tui::TuiPlugins;
 use serde_json::json;
 
 use super::*;
@@ -83,7 +83,7 @@ fn the_gauge_follows_tokens_models_and_focus_and_warns_once() {
         .add_plugins((
             AgentPlugin,
             SessionLogPlugin,
-            TuiPlugin,
+            TuiPlugins,
             UsagePlugin,
             SubagentsPlugin,
             ContextGaugePlugin,

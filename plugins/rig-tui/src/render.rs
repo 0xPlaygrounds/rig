@@ -31,7 +31,7 @@ use super::panel::{
     self, PanelCanvas, PanelSpawns, Placement, RedrawArea, RequestRedraw, TerminalSize, TuiPanel,
 };
 use super::pick::{
-    ChoiceAction, Choices, InlineStrip, Item, Listing, PickerInput, Row, detail_column,
+    ChoiceAction, Choices, InlineStrip, Item, Listing, PickerInput, Row, TickBox, detail_column,
 };
 use super::renderers::{
     CallState, LookLine, Place, Renderers, ToolRender, UNNAMED_HOLD, reasoning_lines, reply_lines,
@@ -122,7 +122,11 @@ pub(crate) fn needs_redraw(
             )>,
         ),
     >,
-    (app_status, test): (Option<Res<AppStatus>>, Option<Res<TuiTestScreen>>),
+    (app_status, hidden, test): (
+        Option<Res<AppStatus>>,
+        Option<Res<crate::status::StatusSettings>>,
+        Option<Res<TuiTestScreen>>,
+    ),
     (mut requests, mut repaints): (MessageReader<RequestRedraw>, MessageReader<RedrawArea>),
     revision: Res<crate::RenderRevision>,
     mut paced: Local<Paced>,
@@ -139,6 +143,7 @@ pub(crate) fn needs_redraw(
         || focus.is_changed()
         || screen.is_changed()
         || app_status.is_some_and(|status| status.is_changed())
+        || hidden.is_some_and(|hidden| hidden.is_changed())
         || test.is_some_and(|test| test.is_changed())
         || !changed.is_empty()
         || !messages.is_empty()
@@ -1324,7 +1329,7 @@ fn draw_choice(
         &plain_lines(more.unwrap_or(shown.body), Style::new()),
         usize::from(width.saturating_sub(2).max(1)),
     );
-    let rows = shown.rows(&choosing.filter);
+    let rows = shown.rows(choosing);
     // Room for the body, the typed line and the rows, up to 3/4 of the
     // screen.
     let wanted = body.len() + usize::from(!body.is_empty()) + 1 + rows.len() + 2;
@@ -1373,7 +1378,9 @@ fn draw_choice(
         ("Enter picks", "Esc closes")
     };
     let width = usize::from(inner.width);
-    let ticks = if shown.ticks { "[ ] ".len() } else { 0 };
+    let tree = shown.tree();
+    // A tree's rows start with a fold mark, `▸ ` or `▾ `, or room for one.
+    let ticks = if shown.ticks { "[ ] ".len() } else { 0 } + if tree { 2 } else { 0 };
     let column = detail_column(&shown.items, width.saturating_sub(ticks));
     // A detail standing in for more says more only where its row cuts it.
     let room = width.saturating_sub(ticks + column);
@@ -1383,6 +1390,8 @@ fn draw_choice(
     };
     if more.is_some() {
         keys.push("← hides more");
+    } else if tree {
+        keys.push("→ opens ← closes");
     } else if shown.items.iter().any(says_more) {
         keys.push("→ shows more");
     }
@@ -1419,24 +1428,38 @@ fn draw_choice(
     frame.render_widget(Paragraph::new(body).scroll((scroll, 0)), body_area);
     let typed_text = shown.typed(&choosing.filter);
     frame.render_widget(Line::from(format!("› {typed_text}▏")), typed);
-    let items: Vec<Line<'static>> = rows
-        .iter()
-        .map(|row| match row {
+    // A branch is drawn open while the row after it sits under it.
+    let opens = |at: usize, index: usize| matches!(rows.get(at + 1), Some(Row::Item(next)) if shown.parent(*next) == Some(index));
+    let items: Vec<Line<'static>> = (rows.iter().enumerate())
+        .map(|(at, row)| match row {
             Row::Item(index) => {
                 let Some(item) = shown.items.get(*index) else {
                     return Line::default();
                 };
-                if !shown.ticks {
-                    return item.line(width, column);
-                }
-                let tick = match (shown.multiple, choosing.ticked.contains(index)) {
-                    (true, true) => "[x] ",
-                    (true, false) => "[ ] ",
-                    (false, true) => "(x) ",
-                    (false, false) => "( ) ",
+                let depth = shown.branches(*index).count();
+                let fold = match (tree, shown.is_branch(*index)) {
+                    (false, _) => "",
+                    (true, false) => "  ",
+                    (true, true) if opens(at, *index) => "▾ ",
+                    (true, true) => "▸ ",
                 };
-                let mut line = item.line(width.saturating_sub(tick.len()), column);
-                line.spans.insert(0, Span::from(tick));
+                let tick = match (shown.ticks, shown.multiple) {
+                    (false, _) => "",
+                    (true, true) => match shown.tick(*index, &choosing.ticked) {
+                        TickBox::On => "[x] ",
+                        TickBox::Mixed => "[~] ",
+                        TickBox::Off => "[ ] ",
+                    },
+                    (true, false) if choosing.ticked.contains(index) => "(x) ",
+                    (true, false) => "( ) ",
+                };
+                let lead = format!("{}{fold}{tick}", "  ".repeat(depth));
+                let indent = lead.width().saturating_sub(ticks);
+                let mut line = item.line(
+                    width.saturating_sub(lead.width()),
+                    column.saturating_sub(indent),
+                );
+                line.spans.insert(0, Span::from(lead));
                 line
             }
             Row::Typed if choosing.filter.trim().is_empty() => {

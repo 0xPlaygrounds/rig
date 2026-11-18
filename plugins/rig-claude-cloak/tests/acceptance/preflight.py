@@ -11,7 +11,7 @@ REQUIRED = {
     "rig_claude_cloak::ClaudeCloakPlugin", "rig_tui::TuiPlugin",
     "rig_basics::print::PrintPlugin", "rig_basics::coding_tools::ReadTool",
     "rig_basics::compaction::CompactionPlugin", "rig_basics::sessions::SessionsPlugin",
-    "rig_basics::sessions::agents::AgentsPlugin", "rig_basics::BasicCommandsPlugin",
+    "rig_basics::sessions::forks::ForksPlugin", "rig_basics::BasicCommandsPlugin",
     "rig_basics::telemetry::effect_log::EffectLogPlugin",
 }
 ROOT_TTL_TEST = "transport::live::tests::real_root_ttl_regression_and_control"

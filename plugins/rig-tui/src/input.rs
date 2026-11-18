@@ -347,7 +347,7 @@ pub(crate) fn note_input_context(
     let picking = picker.map(|(e, _)| e);
     let selection = picker.and_then(|(entity, choosing)| {
         let shown = choices.shown(entity)?;
-        match shown.rows(&choosing.filter).get(choosing.selected) {
+        match shown.rows(choosing).get(choosing.selected) {
             Some(&pick::Row::Item(index)) => Some(index),
             _ => None,
         }
@@ -657,7 +657,7 @@ fn moused(mouse: MouseEvent, view: &mut TuiView, pane: Option<Mut<PaneState>>) {
 }
 
 /// The status line item saying what the last drag copied.
-const COPIED: StatusItem = StatusItem::new("copied", Side::Left, 95, 20);
+pub(crate) const COPIED: StatusItem = StatusItem::new("copied", Side::Left, 95, 20);
 
 /// Shows `Copied N lines`, N the lines of the text a drag copied, while
 /// it stays selected, so it goes with the selection.

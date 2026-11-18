@@ -204,6 +204,69 @@ fn the_runs_tools_changed_after_the_start_are_said() {
     );
 }
 
+/// A parent and its child, each keeping `read`, `shell` and `edit` but the
+/// parent only `read` and `shell`, kept by the registered check.
+fn parent_and_child(world: &mut World) -> (Entity, Entity) {
+    world.init_resource::<Messages<Notice>>();
+    let parent = world.spawn(ToolAccess::only(["read", "shell"])).id();
+    let child = world
+        .spawn((
+            ToolAccess::only(["read", "shell", "edit"]),
+            SpawnedBy(parent),
+        ))
+        .id();
+    (parent, child)
+}
+
+/// Whether each of `agents` allows `name`.
+fn allow(world: &World, agents: [Entity; 2], name: &str) -> [bool; 2] {
+    agents.map(|agent| {
+        world
+            .get::<ToolAccess>(agent)
+            .is_some_and(|it| it.allows(name))
+    })
+}
+
+/// A tool the run's new tools allow is allowed to every agent that keeps
+/// it after one pass, and never one an agent above lacks.
+#[test]
+fn replaced_run_tools_reach_a_child_in_one_pass() {
+    let mut world = World::new();
+    let (parent, child) = parent_and_child(&mut world);
+    world.insert_resource(RunTools::new(["read"]));
+    let keep = world.register_system(keep_within_parents);
+    world.run_system(keep).ok();
+    world.flush();
+    assert_eq!(allow(&world, [parent, child], "shell"), [false, false]);
+    world.insert_resource(RunTools::new(["shell", "edit"]));
+    world.run_system(keep).ok();
+    world.flush();
+    assert_eq!(allow(&world, [parent, child], "shell"), [true, true]);
+    assert_eq!(allow(&world, [parent, child], "read"), [false, false]);
+    assert_eq!(allow(&world, [parent, child], "edit"), [false, false]);
+}
+
+/// Removing the run's tools gives every agent back what it keeps, within
+/// the agents above it.
+#[test]
+fn removed_run_tools_stop_limiting_agents() {
+    let mut world = World::new();
+    let (parent, child) = parent_and_child(&mut world);
+    world.insert_resource(RunTools::new(["shell"]));
+    let keep = world.register_system(keep_within_parents);
+    world.run_system(keep).ok();
+    world.flush();
+    assert_eq!(allow(&world, [parent, child], "read"), [false, false]);
+    // A pass that changes nothing, so only the removal can start the next.
+    world.run_system(keep).ok();
+    world.flush();
+    world.remove_resource::<RunTools>();
+    world.run_system(keep).ok();
+    world.flush();
+    assert_eq!(allow(&world, [parent, child], "read"), [true, true]);
+    assert_eq!(allow(&world, [parent, child], "edit"), [false, false]);
+}
+
 #[test]
 fn a_notice_level_is_saved_as_a_word_and_an_unknown_word_reads_as_info() {
     let levels = [NoticeLevel::Info, NoticeLevel::Warn, NoticeLevel::Error];

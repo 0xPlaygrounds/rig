@@ -38,9 +38,7 @@ pub struct AutoSessionNamePlugin;
 
 impl Plugin for AutoSessionNamePlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<SessionsPlugin>() {
-            app.add_plugins(SessionsPlugin);
-        }
+        rig_harness::load::<SessionsPlugin>(app, "rig-basics", "");
         app.add_setting::<AutoNameConfig>(NAME)
             .init_resource::<Failures>()
             .add_observer(ask_for_a_name)

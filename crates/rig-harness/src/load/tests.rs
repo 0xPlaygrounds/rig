@@ -141,7 +141,8 @@ impl Plugin for Nested {
 /// Each of two nested plugins owns what it spawned and added, before,
 /// inside and after the nested load, in build, `finish` and `cleanup`
 /// (including through a plugin the outer adds after it), and nothing
-/// spawned once the app runs is either's.
+/// spawned once the app runs is either's. The outer provides the nested
+/// plugin's entity.
 #[test]
 fn a_plugin_loaded_in_another_build_is_attributed_and_the_outer_carries_on() {
     let mut app = App::new();
@@ -171,6 +172,9 @@ fn a_plugin_loaded_in_another_build_is_attributed_and_the_outer_carries_on() {
     assert_eq!(by("helper finished"), Some(host));
     assert_eq!(by("helper cleaned up"), Some(host));
     assert_eq!(by("running"), None);
+    // The plugin that loaded another provides its entity.
+    assert_eq!(world.get::<ProvidedBy>(nested).map(|by| by.0), Some(host));
+    assert_eq!(world.get::<ProvidedBy>(host).map(|by| by.0), None);
     let systems = world.resource::<super::PluginSystems>();
     let of = |name: &str| {
         (systems.0.iter())

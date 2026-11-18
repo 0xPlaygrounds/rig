@@ -18,7 +18,7 @@ use rig_core::providers::registry::{ConnectError, ConnectOptions, ProviderId};
 use rig_core::serve::ErasedHandler;
 use rig_ecs::agent::{ActiveTurn, Agent, Notice};
 use rig_ecs::model::{ChoiceKind, Connection, ModelChoice, Models, SetModel};
-use rig_harness::commands::RunCommand;
+use rig_harness::commands::run_chosen;
 use rig_harness::harness_protocol::Home;
 use rig_harness::host::launcher::Invoked;
 use rig_harness::pick::{PickItem, Picked, Picker};
@@ -174,8 +174,8 @@ pub(crate) fn unreadable_key(status: &ModelStatus) -> Option<String> {
     why.starts_with(UNREADABLE).then(|| why.clone())
 }
 
-/// Says once per run, naming the file and the model, when an automatic
-/// first pick lands where it does because a saved key cannot be read.
+/// Says once per run, naming the file and the model, when a saved key
+/// for a model listed before an automatic first pick cannot be read.
 fn say_key_passed_over(
     set: On<SetModel>,
     (models, invoked): (Res<Models>, Option<Res<Invoked>>),
@@ -350,7 +350,7 @@ fn save_typed_key(
         found.is_ok_and(|found| found.spec.provider.vendor() == vendor)
     });
     if connected.is_none() && !chose_vendor {
-        commands.trigger(RunCommand::new(agent, "model".to_owned()));
+        commands.queue(run_chosen(agent, "model"));
     }
 }
 

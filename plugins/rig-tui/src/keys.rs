@@ -34,7 +34,7 @@ use bevy_ecs::system::IntoObserverSystem;
 use bevy_log::warn;
 use bevy_reflect::prelude::*;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use rig_harness::commands::RunCommand;
+use rig_harness::commands::run_chosen;
 use rig_harness::prelude::{Notice, NoticeLevel};
 
 use super::view::{Notices, TuiView};
@@ -450,14 +450,15 @@ pub(crate) fn tell_refused(
 }
 
 /// An observer for [`AppKeyBindingsExt::add_key_binding`] that runs the
-/// slash command `line` (without its `/`) for the shown agent.
+/// slash command `line` (without its `/`) for the shown agent. A refusal
+/// shows why and leaves the input as it is.
 pub fn run_command(
     line: impl Into<String>,
 ) -> impl FnMut(On<KeyPressed>, Commands) + Send + Sync + 'static {
     let line = line.into();
     move |pressed: On<KeyPressed>, mut commands: Commands| {
         if let (Some(entity), false) = (pressed.agent, pressed.released) {
-            commands.trigger(RunCommand::new(entity, line.clone()));
+            commands.queue(run_chosen(entity, line.clone()));
         }
     }
 }

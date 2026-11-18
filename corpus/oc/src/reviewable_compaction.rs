@@ -34,9 +34,7 @@ pub struct ReviewableCompactionPlugin;
 
 impl Plugin for ReviewableCompactionPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<rig_basics::compaction::CompactionPlugin>() {
-            app.add_plugins(rig_basics::compaction::CompactionPlugin);
-        }
+        rig_harness::load::<rig_basics::compaction::CompactionPlugin>(app, "rig-basics", "");
         app.add_setting::<ReviewSettings>(NAME)
             .add_systems(
                 AgentPass,

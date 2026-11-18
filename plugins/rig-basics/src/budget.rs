@@ -61,9 +61,7 @@ pub struct BudgetPlugin;
 
 impl Plugin for BudgetPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<UsagePlugin>() {
-            app.add_plugins(UsagePlugin);
-        }
+        rig_harness::load::<UsagePlugin>(app, "rig-basics", "");
         app.add_setting::<Limit>("budget");
         let limit = app.world().get_resource::<Limit>().copied();
         let limit = limit.unwrap_or_default().checked("[budget] usd");
@@ -87,11 +85,13 @@ impl Plugin for BudgetPlugin {
                     .run_if(resource_changed::<SessionUsage>.or_eager(resource_changed::<Budget>)),
             );
         #[cfg(feature = "tui")]
-        app.init_resource::<rig_tui::AppStatus>().add_systems(
-            PostUpdate,
-            show.in_set(rig_tui::StatusSystems::Show)
-                .run_if(resource_changed::<SessionUsage>.or_eager(resource_changed::<Budget>)),
-        );
+        rig_tui::AppStatusPartsExt::add_status_part(app, &ITEM, "Budget left")
+            .init_resource::<rig_tui::AppStatus>()
+            .add_systems(
+                PostUpdate,
+                show.in_set(rig_tui::StatusSystems::Show)
+                    .run_if(resource_changed::<SessionUsage>.or_eager(resource_changed::<Budget>)),
+            );
     }
 }
 

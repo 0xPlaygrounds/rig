@@ -31,8 +31,17 @@ const MODEL: &str = "test/model";
 struct Ends(Vec<HeadlessEnded>, Vec<HeadlessTurnEnded>);
 
 /// An app on `store` that keeps what [`Ends`] holds, `invoked` as its
-/// command line.
+/// command line, choosing models as the agent does.
 fn noting(store: &MemoryStore, invoked: Invocation) -> (App, Receiver<()>) {
+    let (mut app, wakes) = unpicked(store, invoked);
+    app.add_plugins(crate::models::ModelsPlugin);
+    (app, wakes)
+}
+
+/// [`noting`] without the models plugin. Its apps still get the first
+/// pick through [`AppHeadlessExt::run_headless`], which is why
+/// [`started`] holds the start while its setup restores a model.
+fn unpicked(store: &MemoryStore, invoked: Invocation) -> (App, Receiver<()>) {
     let (mut app, wakes) = app_on(store);
     app.insert_resource(Invoked {
         args: invoked,
@@ -51,8 +60,9 @@ fn noting(store: &MemoryStore, invoked: Invocation) -> (App, Receiver<()>) {
     (app, wakes)
 }
 
-/// A run of `prompt` after its first frame and `setup`; with `model`,
-/// named on the command line and connected.
+/// A run of `prompt` after its first frame and `setup`, which run before
+/// the start is over, as a restored session does; with `model`, named on
+/// the command line and connected.
 fn started(
     prompt: &str,
     model: Option<&MockCompletionModel>,
@@ -63,9 +73,9 @@ fn started(
         model: model.map(|_| NAMED.to_owned()),
         ..Invocation::default()
     };
-    let (mut app, _) = noting(&MemoryStore::default(), invoked);
-    // Without one named, the run picks this one in its first frame.
+    let (mut app, _) = unpicked(&MemoryStore::default(), invoked);
     let scripted = model.cloned().unwrap_or_else(silent);
+    let starting = app.world_mut().spawn(Starting).id();
     app.insert_resource(scripted_models([(NAMED, &scripted)]))
         .add_plugins(ExitPlugin)
         .run_headless(Some(prompt.to_owned()))
@@ -76,6 +86,7 @@ fn started(
         world.entity_mut(agent).insert(connection);
     }
     setup(world, agent);
+    world.despawn(starting);
     app
 }
 
@@ -1876,15 +1887,37 @@ fn one_shot_on(
     app.insert_resource(JsonOut::new(lines.clone()))
         .insert_resource(scripted_models([(MODEL, model)]))
         .add_plugins((SessionLogPlugin, ExitPlugin, PrintPlugin));
-    if named.is_some() {
-        app.add_plugins(crate::models::ModelsPlugin);
-    }
     setup(&mut app);
     app.finish();
     app.cleanup();
     // As the runner does, nothing after the frame that exits.
     run_until(&mut app, |_| false);
     (app, lines)
+}
+
+/// Without the model picker, a run with nothing named, restored or saved
+/// still starts on the first pick and answers.
+#[test]
+fn a_run_without_the_model_picker_takes_the_first_pick() {
+    let model = MockCompletionModel::from_stream_turns([reply("Hello.")]);
+    let lines = Lines::default();
+    let invoked = Invocation {
+        print: Some("hi".to_owned()),
+        flags: vec![(JSON.to_owned(), None)],
+        ..Invocation::default()
+    };
+    let (mut app, _) = unpicked(&MemoryStore::default(), invoked);
+    app.insert_resource(JsonOut::new(lines.clone()))
+        .insert_resource(scripted_models([(MODEL, &model)]))
+        .add_plugins((SessionLogPlugin, ExitPlugin, PrintPlugin));
+    app.finish();
+    app.cleanup();
+    assert!(!app.is_plugin_added::<crate::models::ModelsPlugin>());
+    run_until(&mut app, |_| false);
+    let exit = lines.of("exit").first().cloned().unwrap_or_default();
+    assert_eq!(at(&exit, "code"), 0, "{exit}");
+    assert_eq!(at(&exit, "answer"), "Hello.", "{exit}");
+    assert_eq!(model.request_count(), 1);
 }
 
 /// A model whose provider refuses the call for good.
@@ -2647,8 +2680,7 @@ fn a_command_that_opens_a_picker_is_refused_with_what_to_type_instead() {
     let stderr = Lines::default();
     let (app, _) = one_shot("/effort", None, &model, false, |app| {
         app.insert_resource(Printed::to(stderr.clone()))
-            .insert_resource(scripted_models([]))
-            .add_plugins(crate::models::ModelsPlugin);
+            .insert_resource(scripted_models([]));
     });
     assert_eq!(app.should_exit(), Some(AppExit::from_code(2)));
     let lines = stderr.text();

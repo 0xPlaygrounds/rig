@@ -103,7 +103,7 @@ pub struct ApprovalSystems;
 struct Approving;
 
 /// Asks the user to approve each effect that [`NeedsApproval`]. A plugin
-/// that asks adds it, unless `app.is_plugin_added::<ApprovalPlugin>()`.
+/// that asks loads it ([`rig_harness::load`]).
 #[derive(Default)]
 pub struct ApprovalPlugin;
 

@@ -50,8 +50,11 @@ to use a new one.
 - **Options:** the model, from the models you can reach, each named with
   its provider (one model can come from several), and its reasoning level.
   `/model` and `/effort` change them too, for that session only: a new
-  session starts on the terminal's saved default, and nothing chosen in an
-  editor changes it. `rig acp`'s own options, such as `--model`, do not
+  session starts on the terminal's saved default, else on the same
+  automatic pick as the terminal view (the ChatGPT plan's model when signed
+  in, else the first a key or a sign-in reaches, once the session's start
+  is over), and nothing chosen in an editor
+  changes it. `rig acp`'s own options, such as `--model`, do not
   reach the sessions: the editor's options choose.
 - **Tool calls:** each of the main agent's calls, as it is asked for, runs,
   and ends, with its arguments, output and the files it names.
@@ -66,8 +69,9 @@ to use a new one.
   `/resume`, `/reload`, `/plugins` and `/quit`, which a session from an
   editor does not need (rig refuses them there; the editor closes the
   session instead of `/quit`), and `/fork` and `/agents`, which switch the
-  session to another agent; typed anyway, they work, and the editor
-  follows the top-level agent of the one shown. With rig-acp on, `/mcp` is in every rig run,
+  session to another agent; typed anyway, they work when their plugin is
+  on, and the editor follows the top-level agent of the one shown. With
+  rig-acp on, `/mcp` is in every rig run,
   the terminal view's too, as rig-acp brings rig-mcp-client's core: it lists
   an editor's servers, and the files' ones only with `McpPlugin` on.
 - **MCP servers:** those the editor names for a session (stdio, and

@@ -27,7 +27,7 @@ use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::path::Path;
 
 use glob::Pattern;
-use rig_basics::sessions::agents::{AgentColumn, ColumnOf};
+use rig_basics::agent_picker::{AgentColumn, ColumnOf};
 use rig_basics::subagents::{MESSAGE, SpawnSubagent, SpawnedAgent, SubagentsPlugin, TASK, WAIT};
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -49,9 +49,7 @@ pub struct StandingTeamPlugin;
 
 impl Plugin for StandingTeamPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<SubagentsPlugin>() {
-            app.add_plugins(SubagentsPlugin);
-        }
+        rig_harness::load::<SubagentsPlugin>(app, "rig-basics", "");
         app.register_type::<TeamMember>()
             .init_resource::<Desk>()
             .configure_sets(AgentPass, TeamSystems.in_set(Stage::Gate))

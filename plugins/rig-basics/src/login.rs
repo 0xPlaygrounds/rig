@@ -61,6 +61,13 @@ const PROVIDER: &str = chatgpt::PROVIDER_NAME;
 /// How the user knows [`PROVIDER`].
 const TITLE: &str = chatgpt::PLAN_TITLE;
 
+/// The model a usable ChatGPT sign-in starts a run on, by reference: the
+/// plan's default, after a fresh `/login` as at a start with nothing
+/// chosen ([`FirstPick`](crate::models::FirstPick)).
+pub(crate) fn default_model() -> String {
+    format!("{PROVIDER}/{}", chatgpt::DEFAULT_MODEL)
+}
+
 pub(crate) mod keys;
 mod offered;
 
@@ -383,7 +390,7 @@ fn on_signed_in(
     match result {
         Ok(()) => {
             session.offered.forget();
-            let model = format!("{PROVIDER}/{}", chatgpt::DEFAULT_MODEL);
+            let model = default_model();
             notices.write(Notice::info(
                 asked,
                 format!(

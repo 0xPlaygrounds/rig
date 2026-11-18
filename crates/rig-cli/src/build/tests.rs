@@ -69,6 +69,25 @@ fn a_build_is_staged_with_its_report_and_one_that_cannot_describe_itself_is_reje
     assert_eq!(rejected, stamp);
 }
 
+/// A build whose plugin panics: the error's first line, which `/reload`
+/// shows, names where it panicked and why, without Rust's backtrace hint.
+#[test]
+fn a_build_that_panics_while_describing_itself_says_where_and_why_in_one_line() {
+    let panic = "printf \"thread 'main' (7) panicked at plugins/probe/src/lib.rs:10:9:\\n\
+                 deliberate plugin failure\\nnote: run with \\`RUST_BACKTRACE=1\\` environment \
+                 variable to display a backtrace\\n\" >&2; exit 101";
+    let home = built("panic", panic);
+    let refused = stage_on(&home, &home.staged(), Staging::Always).map_err(|why| why.to_string());
+    fs::remove_dir_all(home.root()).ok();
+    let refused = refused.err().unwrap_or_default();
+    let first = refused.lines().next().unwrap_or_default();
+    assert!(
+        first.contains("panicked at plugins/probe/src/lib.rs:10:9: deliberate plugin failure"),
+        "{refused}"
+    );
+    assert!(!refused.contains("RUST_BACKTRACE"), "{refused}");
+}
+
 /// A build that cannot be staged says which step failed on which file,
 /// not only the system's words: here the copy into the bin directory, where
 /// a directory is in the way.
@@ -1002,5 +1021,33 @@ fn a_partly_removed_backup_is_not_read_as_one() {
     assert_eq!(
         after.map_err(|why| why.to_string()),
         Ok(Some("user's lock".to_owned()))
+    );
+}
+
+#[test]
+fn a_plugin_on_another_bevy_is_told_first_which_version_to_write() {
+    let message = foreign_bevy("my_plugin", "MyPlugin", "0.19.0");
+    let first = message.split(". ").next().unwrap_or_default();
+    let range = crate::bevy_range();
+    assert!(
+        first.contains(&format!("\"{range}\"")) && first.contains("my_plugin"),
+        "{message}"
+    );
+    assert!(message.contains("0.19.0") && message.contains("rig plugin remove MyPlugin"));
+}
+
+#[test]
+fn a_plugin_pinning_another_bevy_is_told_first_which_version_to_write() {
+    let pin = "plugin/Cargo.toml:7: [dependencies] bevy_app = \"=0.20.0\"".to_owned();
+    let message = pinned_bevy(&"cargo could not resolve", std::slice::from_ref(&pin));
+    let first = message.lines().next().unwrap_or_default();
+    let range = crate::bevy_range();
+    assert!(first.contains(&format!("\"{range}\"")), "{message}");
+    assert!(
+        message.contains(&pin)
+            && message.contains("cargo could not resolve")
+            && message.contains(BEVY_VERSION)
+            && message.contains("rig plugin remove <type>"),
+        "{message}"
     );
 }

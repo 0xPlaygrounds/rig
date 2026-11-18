@@ -47,9 +47,7 @@ impl Plugin for CronPlugin {
         if !app.is_plugin_added::<ClockPlugin>() {
             app.add_plugins(ClockPlugin);
         }
-        if !app.is_plugin_added::<SubagentsPlugin>() {
-            app.add_plugins(SubagentsPlugin);
-        }
+        rig_harness::load::<SubagentsPlugin>(app, "rig-basics", "");
         let options = ToolOptions {
             footprint: Some(Touches::Independent),
         };

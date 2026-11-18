@@ -160,9 +160,7 @@ pub struct DebatePlugin;
 
 impl Plugin for DebatePlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<SubagentsPlugin>() {
-            app.add_plugins(SubagentsPlugin);
-        }
+        rig_harness::load::<SubagentsPlugin>(app, "rig-basics", "");
         app.add_setting::<DebateConfig>("debate")
             .add_command(
                 "debate",

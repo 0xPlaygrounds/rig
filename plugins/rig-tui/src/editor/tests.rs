@@ -148,49 +148,6 @@ fn the_cursor_never_lands_inside_a_grapheme() {
 }
 
 #[test]
-fn a_narrow_key_row_keeps_what_matters_most_and_says_it_dropped_some() {
-    for keys in [hint(true, false), hint(false, false)] {
-        let all = fit_keys(keys, 500);
-        let names: Vec<&str> = keys.iter().map(|(name, _)| *name).collect();
-        assert_eq!(all, format!(" {} ", names.join(" · ")));
-        let most = keys.iter().map(|(_, keep)| *keep).max().unwrap_or_default();
-        let top = keys.iter().find(|(_, keep)| *keep == most);
-        let top = top.map_or("", |(name, _)| *name);
-        for width in format!(" {top} · … ").width()..all.width() {
-            let row = fit_keys(keys, width);
-            assert!(row.width() <= width, "{row}");
-            assert!(row.trim_end().ends_with('…'), "{row}");
-            // Nothing dropped matters more than something kept, and what is
-            // kept keeps its order.
-            let kept: Vec<&str> = row
-                .trim()
-                .split(" · ")
-                .filter(|item| *item != "…")
-                .collect();
-            let rank = |item: &&str| {
-                keys.iter()
-                    .find(|(name, _)| name == item)
-                    .map(|(_, keep)| *keep)
-            };
-            let lowest = kept.iter().filter_map(rank).min().unwrap_or_default();
-            for (name, keep) in keys {
-                assert!(
-                    *keep < lowest || kept.contains(name),
-                    "{name} at {width}: {row}"
-                );
-            }
-            let order: Vec<&str> = names
-                .iter()
-                .copied()
-                .filter(|name| kept.contains(name))
-                .collect();
-            assert_eq!(kept, order, "{width}");
-        }
-    }
-    assert!(fit_keys(hint(true, false), 15).contains("Esc stops"));
-}
-
-#[test]
 fn a_history_entry_with_a_carriage_return_is_walked_like_any_other() {
     let history = ["old".to_owned(), "a\r\nb".to_owned(), "new".to_owned()];
     let mut editor = Editor::default();

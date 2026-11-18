@@ -2,7 +2,7 @@
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use rig_tui::{AppStatus, Side, StatusItem, StatusSystems, Tone};
+use rig_tui::{AppStatus, AppStatusPartsExt, Side, StatusItem, StatusSystems, Tone};
 
 use super::SessionTitle;
 
@@ -11,6 +11,7 @@ use super::SessionTitle;
 const NAME: StatusItem = StatusItem::new("session", Side::Left, 10, 2);
 
 pub(super) fn add(app: &mut App) {
+    app.add_status_part(&NAME, "Session name");
     app.init_resource::<AppStatus>().add_systems(
         PostUpdate,
         show_name

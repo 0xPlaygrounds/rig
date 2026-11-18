@@ -30,6 +30,8 @@ mod tests;
 #[cfg(not(target_family = "wasm"))]
 use reply::{Pending, Reply, ended, error, initialized};
 #[cfg(not(target_family = "wasm"))]
+use rig_basics::models::FirstPickPlugin;
+#[cfg(not(target_family = "wasm"))]
 use rig_harness::prelude::*;
 #[cfg(not(target_family = "wasm"))]
 use rig_harness::run::RunPlugin;
@@ -72,6 +74,9 @@ impl Plugin for AcpPlugin {
         }
         if !app.is_plugin_added::<RunPlugin>() {
             app.add_plugins(RunPlugin);
+        }
+        if !app.is_plugin_added::<FirstPickPlugin>() {
+            app.add_plugins(FirstPickPlugin);
         }
         app.add_front(Front::new("acp").sessionless().on_command(
             "acp",

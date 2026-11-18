@@ -164,9 +164,7 @@ pub struct SideQuestionPlugin;
 
 impl Plugin for SideQuestionPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<TuiPlugin>() {
-            app.add_plugins(TuiPlugin);
-        }
+        rig_harness::load::<TuiPlugin>(app, "rig-tui", "");
         // Spawned in this order, the editor is laid out under the pane.
         let world = app.world_mut();
         let editor = world
