@@ -299,3 +299,71 @@ fn a_failed_ask_holds_one_call_of_a_turn_and_a_refusal_is_final() {
         assert_eq!(server.asked().len(), asks, "{:?}", server.asked());
     }
 }
+
+/// On a hold [`hold_once`] keeps on a turn's first call.
+#[derive(Component)]
+struct OtherHold;
+
+/// Holds the first turn's call admitted, as another plugin does in Prepare.
+fn hold_once(
+    calls: Query<Entity, (Added<Admitted>, With<TurnCall>)>,
+    held: Query<(), With<OtherHold>>,
+    mut done: Local<bool>,
+    mut commands: Commands,
+) {
+    for call in &calls {
+        if !*done && held.is_empty() {
+            *done = true;
+            commands.spawn((OtherHold, HoldOf(call)));
+        }
+    }
+}
+
+#[test]
+fn a_call_held_by_another_plugin_past_the_answer_compacts_to_the_window() {
+    let ollama = format!(r#"{{"parameters": "num_ctx {SERVED}", "model_info": {{}}}}"#);
+    let server = Server::new([MockHttpResponse::success(ollama)]);
+    let model = MockCompletionModel::from_stream_turns([
+        reply("## Goal\nAnswer the user's questions about the crate."),
+        reply("done"),
+    ]);
+    let (mut app, wakes, agent) = served("ollama/qwen3", &server, &model);
+    app.add_systems(AgentPass, hold_once.in_set(PrepareSystems::Edit));
+    app.world_mut().trigger(Deliver::new(
+        agent,
+        "And the next question?",
+        DeliveryMode::Steer,
+    ));
+    let held = |world: &mut World| {
+        world
+            .query_filtered::<(), With<OtherHold>>()
+            .iter(world)
+            .next()
+            .is_some()
+    };
+    run_until(&mut app, &wakes, |world| {
+        world
+            .iter_entities()
+            .any(|entity| entity.contains::<OtherHold>())
+    });
+    server.open();
+    run_until(&mut app, &wakes, |world| !asking(world));
+    let world = app.world_mut();
+    assert!(held(world), "the call is still held when the answer comes");
+    let holds: Vec<Entity> = world
+        .query_filtered::<Entity, With<OtherHold>>()
+        .iter(world)
+        .collect();
+    for hold in holds {
+        world.despawn(hold);
+    }
+    run_until(&mut app, &wakes, |world| {
+        !world.resource::<Ended>().0.is_empty()
+    });
+    let requests = sent(&model);
+    assert!(
+        requests.first().is_some_and(|first| asks_summary(first)),
+        "the conversation is summarized before the request: {} requests",
+        requests.len()
+    );
+}
