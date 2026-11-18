@@ -344,15 +344,15 @@ exit 1";
     );
 }
 
-/// The line `rig build` explains a failure with wins over the cargo errors
-/// before it, in the notice and in the note, however many there are.
+/// The explanation `rig build` ends with opens the notice and the note,
+/// and the note keeps cargo's first errors after it, within its limit.
 #[test]
 fn a_failure_rig_build_explains_is_told_in_its_words() {
     let why = "a plugin must write its Bevy requirements as \"0.20\"";
     let script = format!(
         "i=0; while [ $i -lt 50 ]; do echo 'error: failed to select a version' >&2; \
          i=$((i+1)); done\n\
-         echo 'rig build: {why}' >&2\necho 'error: the build failed' >&2\nexit 1"
+         echo 'whole output: build.log' >&2\necho 'error: rig build: {why}' >&2\nexit 1"
     );
     let Said { notices, notes } = failed_run("explained", Rebuild::Build, &script);
     let opening = format!("The rebuild failed (exit status: 1): {why}; this build keeps running.");
@@ -361,7 +361,50 @@ fn a_failure_rig_build_explains_is_told_in_its_words() {
         "{notices:?}"
     );
     assert_eq!(notes.len(), 1);
-    assert!(notes.iter().all(|note| note.contains(why)), "{notes:?}");
+    assert!(
+        notes.iter().all(|note| {
+            let told = note.split_once(why).map(|(_, after)| after);
+            told.is_some_and(|after| {
+                !after.contains(why)
+                    && after.matches("error: failed to select").count() == MESSAGE_LINES - 1
+            })
+        }),
+        "{notes:?}"
+    );
+}
+
+/// `rig update` speaks after the `rig build` it ran, whose explanation
+/// still counts as its last word.
+#[test]
+fn an_update_tells_the_explanation_of_the_build_it_ran() {
+    let script = "cp \"$0\" \"$0.new\"; echo '# new' >> \"$0.new\"; mv \"$0.new\" \"$0\"
+echo 'error: failed to select a version' >&2
+echo 'error: rig build: write \"0.20\"' >&2
+echo 'rig update: rig is updated, but building the agent failed' >&2
+exit 1";
+    let Said { notices, .. } = failed_update("explained", script);
+    let opening = "The rebuild failed (exit status: 1): write \"0.20\"; this build keeps";
+    assert!(
+        notices.iter().any(|notice| notice.starts_with(opening)),
+        "{notices:?}"
+    );
+}
+
+/// Output that only looks like the launcher's, as a proc macro or a cargo
+/// wrapper may print, does not replace cargo's first error.
+#[test]
+fn a_line_like_rig_builds_before_its_last_is_not_its_explanation() {
+    let script = "echo 'rig build: probing' >&2
+echo 'error[E0425]: first' >&2
+echo 'error: rig build: probing' >&2
+echo 'error: cargo could not build the agent' >&2
+exit 1";
+    let Said { notices, .. } = failed_run("look-alike", Rebuild::Build, script);
+    let opening = "The rebuild failed (exit status: 1): error[E0425]: first; this build keeps";
+    assert!(
+        notices.iter().any(|notice| notice.starts_with(opening)),
+        "{notices:?}"
+    );
 }
 
 /// A compile error rig does not explain is told by cargo's first error.

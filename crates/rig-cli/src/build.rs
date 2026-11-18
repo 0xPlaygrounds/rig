@@ -1020,11 +1020,7 @@ fn check_bevy(
             _ => None,
         });
         let lock = fs::read_to_string(launch.home().project().join("Cargo.lock"));
-        let pins = bevy_pins(local, &bevy_crates(&lock.unwrap_or_default()));
-        if pins.is_empty() {
-            return failure;
-        }
-        Explained(pinned_bevy(&failure, &pins)).into()
+        unresolved(failure, &log.lines, local, &lock.unwrap_or_default())
     })?;
     check_rig(&packages, rig_crates, rig_version)?;
     let Some((bevy, version)) = packages.iter().find_map(|line| {
@@ -1048,6 +1044,21 @@ fn check_bevy(
         ),
     })
     .into())
+}
+
+/// The error for cargo's `failure` to resolve the agent project, after the
+/// output `lines`, with the plugins in `local` and the Cargo.lock `lock`.
+fn unresolved<'a>(
+    failure: Box<dyn std::error::Error>,
+    _lines: &[String],
+    local: impl IntoIterator<Item = &'a Path>,
+    lock: &str,
+) -> Box<dyn std::error::Error> {
+    let pins = bevy_pins(local, &bevy_crates(lock));
+    if pins.is_empty() {
+        return failure;
+    }
+    Explained(pinned_bevy(&failure, &pins)).into()
 }
 
 /// The error for cargo's `failure` to resolve a graph in which plugins ask

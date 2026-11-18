@@ -409,7 +409,7 @@ fn a_failure_rig_explains_does_not_repeat_cargos_error() {
 }
 
 /// Only a failure rig explained has a `rig build: ` line, which holds the
-/// whole reason, with the manifest line to change, on one line.
+/// whole reason on one line, while the reason itself keeps its lines.
 #[test]
 fn an_explained_failure_is_one_line_for_reload() {
     let root = std::env::temp_dir().join(format!("rig-build-explains-{}", std::process::id()));
@@ -420,22 +420,58 @@ fn an_explained_failure_is_one_line_for_reload() {
             Box::new(Shown::default()),
         )
     };
-    let pin = "plugin/Cargo.toml:7: [dependencies] bevy_app = \"=0.20.0\"".to_owned();
-    let why = Explained(pinned_bevy(&"cargo failed", std::slice::from_ref(&pin)));
-    let explained = log().fail(FailedAt::Build, &why).explanation();
+    let pins = [
+        "a/Cargo.toml:7: x".to_owned(),
+        "b/Cargo.toml:7: y".to_owned(),
+    ];
+    let reason = pinned_bevy(&"cargo failed", &pins);
+    let explained = log()
+        .fail(FailedAt::Build, &Explained(reason.clone()))
+        .explanation();
     let plain = log().fail(
         FailedAt::Build,
         &*Box::<dyn std::error::Error>::from("cargo failed"),
     );
     fs::remove_dir_all(&root).ok();
+    let [a, b] = &pins;
+    let kept = format!("{BEVY_VERSION}:\n  {a}\n  {b}\ncargo failed.");
+    assert!(reason.ends_with(&kept), "{reason}");
     let line = explained.unwrap_or_default();
+    let joined = format!("{BEVY_VERSION}: {a}; {b}; cargo failed");
     assert!(line.starts_with("rig build: a plugin must write"), "{line}");
-    assert!(line.contains(&format!(": {pin} ")), "{line}");
-    assert!(
-        !line.contains('\n') && !line.ends_with(['.', ':']),
-        "{line}"
-    );
+    assert!(line.ends_with(&joined), "{line}");
     assert_eq!(plain.explanation(), None);
+}
+
+/// A resolve failure is put down to a plugin's Bevy requirement only when
+/// cargo's first error names a Bevy crate; any other keeps cargo's words.
+#[test]
+fn only_a_resolve_failure_naming_bevy_is_explained_by_a_bevy_requirement() {
+    let root = std::env::temp_dir().join(format!("rig-unresolved-{}", std::process::id()));
+    fs::remove_dir_all(&root).ok();
+    manifest_at(
+        &root,
+        "[package]\nname = \"plugin\"\n\n[dependencies]\nbevy_reflect = \"0.18\"\n",
+    );
+    let explained = |first_error: &str| {
+        let lines = ["Compiling the agent…".to_owned(), first_error.to_owned()];
+        let failure = unresolved("cargo failed".into(), &lines, [root.as_path()], "");
+        failure.is::<Explained>()
+    };
+    let bevy = [
+        "error: failed to select a version for `bevy_app`.",
+        "error: failed to select a version for the requirement `bevy_app = \"=0.99\"`",
+    ];
+    let other = [
+        "error: failed to select a version for the requirement `serde = \"^99\"`",
+        "error: no matching package named `serde` found",
+        "error: failed to parse manifest at `/home/me/bevy/Cargo.toml`",
+        "    Updating crates.io index",
+    ];
+    let (bevy, other) = (bevy.map(explained), other.map(explained));
+    fs::remove_dir_all(&root).ok();
+    assert_eq!(bevy, [true; 2]);
+    assert_eq!(other, [false; 4]);
 }
 
 /// A short wait for cargo's lock in one command says nothing when a later
