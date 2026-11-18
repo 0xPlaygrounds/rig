@@ -13,8 +13,7 @@ description = "Rig's data read by a program that turns on serde_json's arbitrary
 [dependencies]
 rig-core = { path = "../../crates/rig-core", default-features = false }
 rig-memory = { path = "../../crates/rig-memory" }
-rig-cassette = { path = "../../crates/rig-cassette" }
+rig-cassette = { path = "../../crates/rig-cassette", features = ["jsonl"] }
 rig-typesafeai = { path = "../../crates/rig-typesafeai", default-features = false }
 anyhow = "1"
-serde = "1"
 serde_json = { version = "1", features = ["arbitrary_precision"] }
