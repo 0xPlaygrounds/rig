@@ -35,6 +35,7 @@ use bevy_log::warn;
 use bevy_reflect::prelude::*;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use rig_harness::commands::RunCommand;
+use rig_harness::prelude::Notice;
 
 use super::view::TuiView;
 
@@ -391,7 +392,7 @@ pub trait AppKeyBindingsExt {
     /// Spawns `binding` with `on_press`, an observer of the [`KeyPressed`]
     /// it triggers, and returns its entity, unless another binding
     /// conflicts with it ([`KeyBinding::conflicts`]): that one stays, with
-    /// a warning.
+    /// a warning, which the terminal view shows as it starts.
     fn add_key_binding<M>(
         &mut self,
         binding: KeyBinding,
@@ -412,19 +413,35 @@ impl AppKeyBindingsExt for App {
 }
 
 /// Spawns `binding`, unless one conflicts with it: that one stays, with a
-/// warning. A query skips a disabled binding.
+/// warning, which the view also shows as it starts ([`tell_refused`]). A
+/// query skips a disabled binding.
 fn bind(world: &mut World, binding: KeyBinding) -> Option<EntityWorldMut<'_>> {
     let mut bindings = world.query::<&KeyBinding>();
     if let Some(taken) = bindings.iter(world).find(|bound| bound.conflicts(&binding)) {
-        warn!(
-            "key binding `{}` ({}) not added: `{}` ({}) is bound; insert `Disabled` on it to \
-             replace it",
+        let why = format!(
+            "Key `{}` ({}) is not bound: `{}` ({}) has it.",
             binding.keys, binding.label, taken.keys, taken.label
         );
+        warn!("{why} Insert `Disabled` on that binding to replace it.");
+        world.get_resource_or_init::<RefusedKeys>().0.push(why);
         return None;
     }
     let name = Name::new(format!("key:{}", binding.keys));
     Some(world.spawn((name, binding)))
+}
+
+/// Why [`bind`] refused each binding, until the view says it.
+#[derive(Resource, Default)]
+pub(crate) struct RefusedKeys(Vec<String>);
+
+/// Says each refused binding as a warning in the view, once.
+pub(crate) fn tell_refused(
+    refused: Option<ResMut<RefusedKeys>>,
+    mut notices: MessageWriter<Notice>,
+) {
+    if let Some(mut refused) = refused {
+        notices.write_batch(refused.0.drain(..).map(|why| Notice::warn(None, why)));
+    }
 }
 
 /// An observer for [`AppKeyBindingsExt::add_key_binding`] that runs the

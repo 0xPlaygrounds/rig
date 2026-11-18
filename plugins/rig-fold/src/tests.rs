@@ -309,34 +309,38 @@ fn without_its_key_nothing_folds() {
     let (mut first, pane) = app_with("", taken);
     let drawn_taken = drawn(&mut first, (Some(pane), None), &call);
     assert_eq!(drawn_taken.first().map(Vec::len), Some(401));
-    assert!(told(&mut first, "`ctrl+o`"), "a notice names the key");
+    // The view says the refusal once, naming the binding in the way.
+    rig_tui::add_view(&mut first);
+    assert_eq!(told(&mut first, "`ctrl+o`"), 1);
     // Ctrl+E is the input's end of the line, and the view says why
     // nothing folds.
     let (mut app, pane) = app("[fold]\nkey = \"ctrl+e\"");
     let drawn_input = drawn(&mut app, (Some(pane), None), &call);
     assert_eq!(drawn_input.first().map(Vec::len), Some(401));
-    assert!(told(&mut app, "`ctrl+e`"), "a notice names the key");
+    assert_eq!(told(&mut app, "`ctrl+e`"), 1, "a notice names the key");
     // A run another front takes, such as `--print` or ACP, is not told:
     // what it sees is the same with the plugin as without it.
     let not_at_terminal = |app: &mut App| {
         app.insert_resource(Invoked::default());
     };
     let (mut printed, _) = app_with("[fold]\nkey = \"ctrl+e\"", not_at_terminal);
-    assert!(
-        !told(&mut printed, "`ctrl+e`"),
+    assert_eq!(
+        told(&mut printed, "`ctrl+e`"),
+        0,
         "no notice off the terminal"
     );
 }
 
-/// Whether a warning the app says as it starts holds `text`. Only the
+/// How many warnings the app says as it starts hold `text`. Only the
 /// plugin's `finish` runs: the terminal view's would open the terminal.
-fn told(app: &mut App, text: &str) -> bool {
+fn told(app: &mut App, text: &str) -> usize {
     FoldPlugin.finish(app);
     // An app nothing adds a startup system to has no `Startup` to run.
     app.world_mut().try_run_schedule(Startup).ok();
     let notices = app.world().get_resource::<Messages<Notice>>();
-    let mut notices = notices
+    let notices = notices
         .into_iter()
         .flat_map(Messages::iter_current_update_messages);
-    notices.any(|notice| notice.level == NoticeLevel::Warn && notice.text.contains(text))
+    let warns = notices.filter(|notice| notice.level == NoticeLevel::Warn);
+    warns.filter(|notice| notice.text.contains(text)).count()
 }
