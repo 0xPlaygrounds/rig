@@ -120,7 +120,9 @@ pub struct Spawner<'w, 's> {
 
 impl Spawner<'_, '_> {
     /// Spawns an agent from `origin` with `spec`, and returns it to insert
-    /// more; or why it may not be made.
+    /// more; or why it may not be made. `On<Add<Agent>>` observers run
+    /// before what is inserted on it afterwards, so what they must see,
+    /// such as the id or model, goes in `spec`.
     pub fn spawn(
         &mut self,
         origin: Origin,
@@ -225,7 +227,11 @@ pub fn spawn(world: &mut World, origin: Origin, spec: AgentSpec) -> Result<Entit
 }
 
 /// Spawns an agent nothing spawned, with the defaults, named `agent`. It
-/// keeps every tool, those registered later too.
+/// keeps every tool, those registered later too. `On<Add<Agent>>`
+/// observers run before what is inserted on it afterwards, and an
+/// [`AgentId`] inserted then replaces the one it was made with, so an
+/// agent with its own id or model comes from [`spawn`] with
+/// `AgentSpec { id, model, .. }`.
 pub fn spawn_root(world: &mut World) -> EntityWorldMut<'_> {
     world.spawn((Name::new("agent"), Agent::new(), ToolAccess::all()))
 }

@@ -13,10 +13,12 @@ the kernel's components and stages, the harness's services) or from the crate
 an example names: `rig_basics` (the default plugins, and the services some
 plugins add, a module each) or `rig_tui` (with `rig_tui::ratatui` and
 `rig_tui::crossterm`); `rig_harness::{rig_core, rig_memory, rig_tools}` are
-re-exported. Most of these types are reflected, so the optional
-`rig-inspect` plugin's `inspect` tool lists them in the running agent
-(`registry.schema` gives a type's fields, `world.query` with `ProvidedBy` what
-each plugin added): ask it before reading rig's source. Some are not, such as
+re-exported. The prelude holds common names, such as `Project` and
+`Settings`, so a file that also glob-imports a module with its own
+`Project` imports that one by name: `domain::{Project, *}`. Most of these
+types are reflected, so the optional `rig-inspect` plugin's `inspect`
+tool lists them in the running agent (`registry.schema` gives a type's
+fields, `world.query` with `ProvidedBy` what each plugin added): ask it before reading rig's source. Some are not, such as
 `Ask`, `ToolRequest` and `Flag`; the tool does not list those.
 
 | To | Read |
@@ -142,7 +144,9 @@ own crate the first time it is on.
 Each plugin crate is its own workspace in `RIG_HOME/plugins/<name>`, depending
 on `rig-harness` and the rig plugin crates whose types it uses (`rig-basics`,
 `rig-tui` for a terminal panel) by version, and on `bevy_ecs` and
-`bevy_reflect` (or `bevy`) at the agent's exact version. A plugin that only
+`bevy_reflect` (or `bevy`) at the agent's minor range, such as `"0.20"`,
+as `rig plugin new` writes it: cargo builds that with the agent's Bevy, so
+a Bevy patch release does not break the plugin. A plugin that only
 uses rig-basics' services and contract types (`NeedsApproval`, `Preview`)
 depends on it with
 `default-features = false`: its default `tui` feature builds rig-tui and
@@ -982,6 +986,8 @@ caching), one it cannot take is left out.
   A Prepare edit takes some out (`call.request_mut().tools.retain(..)`, and a
   `prompt.sections` line on why), but a tool left out still runs if
   called: a Gate system refuses a call; `ToolAccess` is the hard limit.
+  `narrow` never widens an access, so an allow-list starts from every
+  tool: `ToolAccess::all().narrow(names)`.
 - **Below every adapter,** `models.0.wrap_http(|inner|
   inner.with_middleware(..))` in `build` hands every model call's HTTP
   requests to a rig-core `HttpMiddleware`, such as one that rotates API
@@ -1360,9 +1366,15 @@ Every agent is made by the kernel, by one rule, so a new agent never has a
 setting its origin would not give it.
 In a system, a `Spawner` makes one from an `Origin` and an `AgentSpec`;
 with the world, `rig_ecs::spawn::spawn` does the same, and `spawn_root`
-makes a root with the defaults (as tests do). `Agent` cannot be built or
-required otherwise, and `SpawnedBy` has no public constructor (Bevy's
-`Relationship::from` still makes one, unchecked): read its `parent()`.
+makes a root with the defaults (as tests do). An `On<Add<Agent>>`
+observer runs when the kernel adds `Agent`, before anything inserted on
+the returned entity afterwards, so a setting such an observer must see
+goes in the spec: `AgentSpec { id, model, .. }`, not an `AgentId` or
+`ModelChoice` inserted later. An `AgentId` inserted later also replaces
+the id the agent was made with, which is meant never to change. `Agent`
+cannot be built or required otherwise, and `SpawnedBy` has no public
+constructor (Bevy's `Relationship::from` still makes one, unchecked): read
+its `parent()`.
 
 - **Origin.** `Root` has the defaults; `ChildOf(agent)` goes below the
   agent; `Like(agent)` goes beside it, under its parent, such as a
@@ -2578,6 +2590,11 @@ any run and inert without the view:
   `selection()`) as the keys before it left them; `Dispatch` does the
   rest. A modal input is one filter, and `/` starts a slash command unless
   a filter or binding takes it.
+- **The mouse.** Mouse events come in `PendingInput` as `Event::Mouse`.
+  The wheel scrolls, and the view copies every left-button drag
+  (`Down`, `Drag`, `Up`) to the clipboard. A plugin that takes a drag for
+  itself drops those items from `PendingInput` in its
+  `InputSystems::Filter` system, so the view selects and copies nothing.
 - **Keys.** Every key the view acts on is a `KeyBinding` entity, its own
   editing keys included. `app.add_key_binding(binding, observer)` binds a
   key or a sequence (`ctrl+x ctrl+e`), heard as `KeyPressed`
@@ -2696,8 +2713,9 @@ fn take_draft(
 
 `rig_harness::windowed(DefaultPlugins)` is Bevy's `DefaultPlugins` without
 what the agent already has; its winit plugin then runs the app's loop. The
-crate depends on `bevy` at exactly the agent's version (`BEVY_VERSION`
-in rig-harness-protocol, without default features, with `ui`). A window beside the terminal view
+crate depends on `bevy` at the agent's minor range, such as `"0.20"`
+(`BEVY_VERSION` in rig-harness-protocol without its patch, without
+default features, with `ui`). A window beside the terminal view
 (`Invoked::interactive`) sets `ExitCondition::DontExit`, so closing it
 leaves the agent running, and `WinitSettings` with
 `UpdateMode::reactive_low_power(Duration::from_secs(1))`; in `finish` it

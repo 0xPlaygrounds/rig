@@ -421,7 +421,8 @@ impl ToolAccess {
     }
 
     /// This access kept to `names`, each once: never more than it was, such
-    /// as for an agent profile.
+    /// as for an agent profile. It never widens, so an allow-list starts
+    /// from [`all`](Self::all): `ToolAccess::all().narrow(names)`.
     pub fn narrow<'a>(&self, names: impl IntoIterator<Item = &'a str>) -> Self {
         self.within(&Self {
             kept: Kept::Only(Granted(unique(names))),
