@@ -101,6 +101,8 @@ fn bad_tables_are_refused() {
         ),
         "[[plugins.extra]]\ncrate = \"x\"\npath = \"x\"\nplugin = \"x::X\"\n\
          [[plugins.extra]]\ncrate = \"x\"\nversion = \"1\"\nplugin = \"x::Y\"\n",
+        // A crate, not a type in it: the agent would not compile.
+        "[[plugins.extra]]\ncrate = \"x\"\nversion = \"1\"\nplugin = \"x\"\n",
     ] {
         assert!(plugins(&file("/h/settings.toml", text)).is_err(), "{text}");
     }
@@ -472,4 +474,24 @@ fn turning_several_plugins_writes_all_of_them_or_nothing() {
         "{on:?}"
     );
     std::fs::remove_dir_all(&root).ok();
+}
+
+/// The refusal of an unknown name in `enable` names the commands that fix
+/// it, with the name in them.
+#[test]
+fn an_unknown_enabled_plugin_names_its_fixes() {
+    let refusal = plugins(&file(
+        "/h/settings.toml",
+        "[plugins]\nenable = [\"x::XPlugin\"]\n",
+    ))
+    .err()
+    .map(|error| error.to_string());
+    assert_eq!(
+        refusal.as_deref(),
+        Some(
+            "/h/settings.toml [plugins]: unknown plugin `x::XPlugin` in `enable`: \
+             `rig plugin disable x::XPlugin` takes it out, or `rig plugin add x::XPlugin` \
+             with its crate's source adds it"
+        )
+    );
 }

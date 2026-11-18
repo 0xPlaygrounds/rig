@@ -498,7 +498,7 @@ fn remove_takes_out_one_table_and_its_name_and_keeps_the_crate() {
 fn add_and_remove_refuse_out_loud_without_changing_the_file() {
     let home = old_home("refusals");
     let original = format!("{COMMENTED}[plugins]\n");
-    let cases: [(&[&str], &str); 10] = [
+    let cases: [(&[&str], &str); 13] = [
         (&["add", SAVE, "--version", "0.2"], "already"),
         (&["add", SAVE], "--path"),
         (&["add", SAVE, "--path", "a", "--version", "1"], "one of"),
@@ -518,6 +518,12 @@ fn add_and_remove_refuse_out_loud_without_changing_the_file() {
             "rig's own",
         ),
         (&["remove", "viz::VizPlugin"], "viz::VizPlugin"),
+        (
+            &["add", "x::XPlugin", "--version", "--crate", "x"],
+            "--version needs a value",
+        ),
+        (&["add", "x::XPlugin", "--git", ""], "--git needs a value"),
+        (&["add", "my_save", "--version", "1"], "crate-qualified"),
     ];
     let result = (|| -> Result<_> {
         fs::create_dir_all(home.root())?;
@@ -543,4 +549,71 @@ fn add_and_remove_refuse_out_loud_without_changing_the_file() {
         );
         assert_eq!(text, &added, "{args:?}");
     }
+}
+
+/// `remove` takes only the comment block touching the table's header with
+/// it. Comments further up, past a blank line, stay: the end of the table
+/// before, a commented-out table, or the file's own header comment.
+#[test]
+fn remove_keeps_the_comments_past_a_blank_line() {
+    let home = old_home("remove-comments");
+    let kept = "[plugins]\ndisable = [\"rig_basics::welcome::WelcomePlugin\"]\n\
+                # welcome is off because it clutters CI logs; keep it off.\n\n\
+                # [[plugins.extra]]\n# crate = \"old\"\n# plugin = \"old::OldPlugin\"\n\n";
+    let save = format!(
+        "# Added by `rig plugin add {SAVE}`.\n[[plugins.extra]]\ncrate = \"reactor-save\"\n\
+         plugin = \"{SAVE}\"\nversion = \"0.2\"\n"
+    );
+    let table = save.split_once('\n').map_or("", |(_, table)| table);
+    let first = format!("# My settings.\n\n# The save plugin.\n{table}\n[tui]\n");
+    let cases = [
+        (format!("{kept}{save}"), kept.to_owned()),
+        (first, "# My settings.\n\n[tui]\n".to_owned()),
+    ];
+    let result = (|| -> Result<_> {
+        fs::create_dir_all(home.root())?;
+        let mut after = Vec::new();
+        for (original, _) in &cases {
+            fs::write(home.settings(), original)?;
+            run(&home, &["remove", SAVE])?;
+            after.push(fs::read_to_string(home.settings())?);
+        }
+        Ok(after)
+    })();
+    fs::remove_dir_all(home.root()).ok();
+    let expected: Vec<String> = cases.into_iter().map(|(_, after)| after).collect();
+    assert_eq!(result.ok(), Some(expected));
+}
+
+/// An inline `plugins = { .. }` table cannot hold `[[plugins.extra]]`, so
+/// `add` makes it a table, keeping its keys and comment, and the plugin is
+/// in the file it wrote.
+#[test]
+fn add_to_an_inline_plugins_table_keeps_the_plugin() {
+    let home = old_home("inline");
+    let result = (|| -> Result<_> {
+        fs::create_dir_all(home.root())?;
+        fs::write(
+            home.settings(),
+            "# Mine.\nplugins = { disable = [\"rig_basics::welcome::WelcomePlugin\"] } # quiet\n",
+        )?;
+        run(&home, &["add", SAVE, "--version", "0.2"])?;
+        let text = fs::read_to_string(home.settings())?;
+        Ok((text, config::chosen(&home)?))
+    })();
+    fs::remove_dir_all(home.root()).ok();
+    assert!(result.is_ok(), "{result:?}");
+    let (text, chosen) = result.unwrap_or_default();
+    assert!(
+        text.starts_with("# Mine.\n") && text.contains("# quiet"),
+        "{text}"
+    );
+    assert!(
+        (chosen.extra.iter()).any(|extra| extra.plugin == SAVE)
+            && !chosen
+                .on
+                .iter()
+                .any(|on| on == "rig_basics::welcome::WelcomePlugin"),
+        "{text}"
+    );
 }
