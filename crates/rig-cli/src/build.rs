@@ -1026,12 +1026,13 @@ fn check_bevy(
 
 /// The error for cargo's `failure` to resolve a graph in which plugins ask
 /// for a Bevy other than [`BEVY_VERSION`], as the [`bevy_pins`] `pins`.
+/// It opens with the requirement to write.
 fn pinned_bevy(failure: &dyn fmt::Display, pins: &[String]) -> String {
     format!(
-        "{failure}: a plugin asks for a Bevy that is not this agent's {BEVY_VERSION}:\n  \
-         {}\nWrite its Bevy requirements as \"{range}\", such as `bevy_ecs = {{ version = \
-         \"{range}\", default-features = false }}`, or take it out with \
-         `rig plugin remove <type>`.",
+        "a plugin must write its Bevy requirements as \"{range}\", such as `bevy_ecs = \
+         {{ version = \"{range}\", default-features = false }}`, or be taken out with \
+         `rig plugin remove <type>`. These ask for a Bevy that is not this agent's \
+         {BEVY_VERSION}:\n  {}\n{failure}.",
         pins.join("\n  "),
         range = super::bevy_range(),
     )
