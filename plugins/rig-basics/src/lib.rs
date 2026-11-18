@@ -6,8 +6,8 @@
 //! [`sessions`], [`compaction`], [`telemetry`], [`activity`],
 //! [`coding_tools`], [`redact`], [`reload`], [`print`](mod@print), [`helpers`],
 //! [`budget`], [`subagents`] and [`welcome`].
-//! [`approval`], [`preview`] and [`session_picker`] are the
-//! services only some plugins add.
+//! [`approval`], [`preview`], [`agent_picker`] and [`session_picker`] are
+//! the services only some plugins add.
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
@@ -18,6 +18,7 @@ use rig_harness::host::exit::{Exit, ExitReason};
 use unicode_width::UnicodeWidthStr;
 
 pub mod activity;
+pub mod agent_picker;
 pub mod agents_md;
 pub mod approval;
 pub mod budget;

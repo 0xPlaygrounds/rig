@@ -320,6 +320,16 @@ end of its directory and its age; → shows the whole directory) and resumes
 the one picked, in its own directory; `rig --resume <id or name>` (or
 `/resume <id or name>`) resumes a given one, such as after a crash.
 
+Forks are off by default. `rig plugin enable
+rig_basics::sessions::agents::AgentsPlugin` (or `/plugins`) turns them on:
+`/fork` makes a new agent from the shown one and shows it, through the end
+of its conversation, through a message you name (`/fork m4`) or through one
+you pick (`/fork at`). Rewind is a fork too: select an earlier message of
+yours with Alt+Up and press Enter, and the shown agent forks just before it,
+with the message back in the input. `/agents` comes with forks and shows the
+other agent. A resumed session shows the agent that was shown last, with
+forks on or off.
+
 Rig redacts nothing unless you turn redaction on with `rig plugin enable
 rig_basics::redact::RedactPlugin` (then `/reload`, or the next start). With it,
 API keys, tokens, private keys and the values of secret-named variables
@@ -509,8 +519,7 @@ is answered.
 
 Esc stops the shown agent's turn and the turns of every subagent below it,
 even when the shown agent is idle: stopping follows who started whom.
-`/agents` (`rig_basics::sessions::agents::AgentsPlugin`) lists every agent
-with its model, state and what it and the agents below it spent, and shows
+`/agents`, which comes with subagents, lists every agent with its model, state and what it and the agents below it spent, and shows
 the one picked: its transcript, and what
 you type then goes to it. A subagent can start subagents of its own, as
 deep as they go. Subagents started with `peers` can also send each other

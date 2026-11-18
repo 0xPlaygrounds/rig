@@ -14682,6 +14682,7 @@ dependencies = [
  "crossbeam-channel",
  "futures",
  "futures-timer",
+ "rig-basics",
  "rig-core",
  "rig-ecs",
  "rig-harness",

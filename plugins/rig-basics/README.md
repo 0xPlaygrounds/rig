@@ -17,18 +17,23 @@ rig-harness's public API. Each plugin is its own name in `[plugins]` of
 - `login`: `/login` and `/logout` for the ChatGPT plan's models and the
   providers' API keys (`LoginPlugin`), and `[login] app_name`, the app the
   ChatGPT sign-in pages send the user back to;
-- `session_picker`: the session and conversation lists of `/resume`,
-  `/fork` and `/agents` (`SessionPickerPlugin`, which the plugins of those
-  commands add, so it is not listed on its own);
-- `sessions`: `/new`, `/resume` and `/name` (`SessionsPlugin`), and `/fork`,
-  `/agents` and rewind (`agents::AgentsPlugin`);
+- `session_picker`: the session and conversation lists of `/resume` and
+  `/fork at` (`SessionPickerPlugin`, which the plugins of those commands
+  add, so it is not listed on its own);
+- `agent_picker`: `/agents`, which lists the session's agents and shows one
+  (`AgentPickerPlugin`, which forks, subagents and rig-steel add, so it is
+  not listed on its own);
+- `sessions`: `/new`, `/resume` and `/name` (`SessionsPlugin`), and `/fork`
+  and rewind (`agents::AgentsPlugin`, off by default);
 - `compaction`: summarizing a conversation near the model's window with the
   coding agent's summary prompts (`CODING_PROMPTS`), and `/compact`
   (`CompactionPlugin`);
 - `telemetry`: what model calls cost and `/usage` (`usage::UsagePlugin`),
   the effect log (`effect_log::EffectLogPlugin`), and warnings and errors
   as data (`diagnostics::DiagnosticsPlugin`);
-- `activity`: what each agent is doing, for views (`ActivityPlugin`);
+- `activity`: what the agent is doing, in the status line: writing, the
+  tool it runs or the question it waits on, with the pulsing wave while it
+  works (`ActivityPlugin`);
 - `coding_tools`: the `read`, `edit`, `write` and `shell` tools (`ReadTool`,
   `EditTool`, `WriteTool`, `ShellTool`), `@path` attachments
   (`AttachPlugin`), and `HOST:PATH` paths on other machines

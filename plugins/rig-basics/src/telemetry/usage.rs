@@ -38,7 +38,7 @@ use rig_harness::prelude::*;
 use rig_memory::{HeuristicTokenCounter, request_estimate};
 use serde::{Deserialize, Serialize};
 
-use crate::sessions::agents::{AgentColumn, ColumnOf};
+use crate::agent_picker::{AgentColumn, ColumnOf};
 
 #[cfg(feature = "tui")]
 mod status;

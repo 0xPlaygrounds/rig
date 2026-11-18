@@ -27,8 +27,9 @@
 //!   any other.
 //! - A subagent's [`Lifecycle`] says whether it works, waits on an agent
 //!   that owes it a report, or finished.
-//! - With the default `tui` feature, each agent's status line says its
-//!   name and the agents at work; `AgentsPlugin`'s `/agents` shows one.
+//! - `/agents` ([`AgentPickerPlugin`]) lists the agents and shows one.
+//!   With the default `tui` feature, each agent's status line says its
+//!   name and the agents at work.
 //! - Subagents are told their role in prompt sections of their own
 //!   ([`SectionOf`]). A request or `wait` that would make agents wait on
 //!   each other is refused.
@@ -90,6 +91,7 @@ use rig_ecs::session_log::Never;
 use rig_harness::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::agent_picker::AgentPickerPlugin;
 use crate::approval::ApprovalPlugin;
 
 #[cfg(feature = "tui")]
@@ -121,6 +123,9 @@ impl Plugin for SubagentsPlugin {
     fn build(&self, app: &mut App) {
         if !app.is_plugin_added::<ApprovalPlugin>() {
             app.add_plugins(ApprovalPlugin);
+        }
+        if !app.is_plugin_added::<AgentPickerPlugin>() {
+            app.add_plugins(AgentPickerPlugin);
         }
         app.add_setting::<SubagentDefaults>("subagents")
             .keeps_saved::<Subtask>()

@@ -23,7 +23,8 @@
 //! `[steel] max_output_bytes`; the program's own execution time (its waits
 //! on host functions not counted) and its host calls are limited by
 //! `[steel] max_seconds` and `max_calls`, 60 s and 1000 by default, and Esc
-//! cancels it like any tool call. Steel has no memory limit. The plugin is
+//! cancels it like any tool call. `/agents` shows the agents a program
+//! spawned. Steel has no memory limit. The plugin is
 //! off by default; turn it on in `settings.toml` with
 //!
 //! ```toml
@@ -45,6 +46,7 @@ use bevy_tasks::{AsyncComputeTaskPool, TaskPool};
 use futures::channel::oneshot;
 use futures::future::{self, Either, FutureExt};
 use futures_timer::Delay;
+use rig_basics::agent_picker::AgentPickerPlugin;
 use rig_core::tool::{Scope, ToolExecutionError, ToolResult, Touches};
 use rig_ecs::agent::AgentId;
 use rig_ecs::tasks::{Running, Wake};
@@ -146,6 +148,9 @@ pub struct SteelPlugin;
 
 impl Plugin for SteelPlugin {
     fn build(&self, app: &mut App) {
+        if !app.is_plugin_added::<AgentPickerPlugin>() {
+            app.add_plugins(AgentPickerPlugin);
+        }
         app.add_setting::<Limits>("steel");
         app.add_plugins(harness::HarnessPlugin).add_open_tool(
             RUN_STEEL,
