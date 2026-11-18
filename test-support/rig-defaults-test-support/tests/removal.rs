@@ -217,6 +217,12 @@ fn every_default_plugin_can_be_left_out() {
         for _ in 0..2 {
             load::<scaffold::ScaffoldPlugin>(&mut app, "rig-hello", "path plugins/hello");
         }
+        let back = app
+            .world_mut()
+            .query_filtered::<&Name, With<PluginSource>>()
+            .iter(app.world())
+            .any(|name| name.as_str() == left_out);
+        assert!(!back, "another plugin adds {left_out} back");
         app.add_systems(
             Update,
             (ask, give_up.run_if(on_real_timer(Duration::from_secs(30)))),

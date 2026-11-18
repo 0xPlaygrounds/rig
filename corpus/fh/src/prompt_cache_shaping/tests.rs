@@ -4,7 +4,7 @@ use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_core::wire::{Body, Mode, Wire};
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{Collected, Ended, app_on, collect, connect, log_ended, run_until};
-use rig_tui::TuiPlugin;
+use rig_tui::TuiPlugins;
 use serde_json::Value;
 
 use super::*;
@@ -83,12 +83,17 @@ fn requests_keep_their_prefix_and_breaks_are_named() {
         return;
     };
     let (mut app, wakes) = app_on(&MemoryStore::default());
-    app.add_plugins((AgentPlugin, SessionLogPlugin, TuiPlugin, CacheShapingPlugin))
-        .add_open_tool("zoom", "Zoom in.", ToolOptions::default(), noop)
-        .add_open_tool("aim", "Aim.", ToolOptions::default(), noop)
-        .init_resource::<Ended>()
-        .add_observer(log_ended)
-        .add_observer(tick);
+    app.add_plugins((
+        AgentPlugin,
+        SessionLogPlugin,
+        TuiPlugins,
+        CacheShapingPlugin,
+    ))
+    .add_open_tool("zoom", "Zoom in.", ToolOptions::default(), noop)
+    .add_open_tool("aim", "Aim.", ToolOptions::default(), noop)
+    .init_resource::<Ended>()
+    .add_observer(log_ended)
+    .add_observer(tick);
     collect::<Notice>(&mut app);
     let clock = app
         .world_mut()

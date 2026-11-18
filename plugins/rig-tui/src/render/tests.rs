@@ -344,10 +344,12 @@ fn the_input_hides_its_keys_while_typed_and_keeps_the_status_line_under_its_text
     use rig_core::completion::Message;
     use rig_ecs::agent::Conversation;
 
-    use crate::tests::{type_text, view_app};
-    use crate::{Side, StatusItem, StatusItems, Tone, TuiTestScreen};
+    use crate::tests::{type_text, view_app_with};
+    use crate::{Side, StatusItem, StatusItems, Tone, TuiPlugins, TuiTestScreen};
 
-    let (mut app, agent) = view_app();
+    let (mut app, agent) = view_app_with(|app| {
+        app.add_plugins(TuiPlugins);
+    });
     app.insert_resource(TuiTestScreen::new(100, 24));
     if let Some(mut items) = app.world_mut().get_mut::<StatusItems>(agent) {
         items.show(StatusItem::new("model", Side::Left, 0, u8::MAX).says("a-model", Tone::Plain));
@@ -428,10 +430,12 @@ fn a_replys_table_is_fit_again_when_the_width_changes() {
 
 #[test]
 fn the_inputs_keys_drop_from_the_end_on_a_narrow_screen() {
-    use crate::TuiTestScreen;
-    use crate::tests::view_app;
+    use crate::tests::view_app_with;
+    use crate::{TuiPlugins, TuiTestScreen};
 
-    let (mut app, _) = view_app();
+    let (mut app, _) = view_app_with(|app| {
+        app.add_plugins(TuiPlugins);
+    });
     app.insert_resource(TuiTestScreen::new(50, 12));
     app.update();
     let rows = app.world().resource::<TuiTestScreen>().rows();

@@ -7,9 +7,10 @@ the default screen is built from the same public widgets a plugin places in
 panels of its own. `status::StatusLinePlugin` draws the status line under the
 input, leaving out the parts `[status] hide` in `settings.toml` names. A
 plugin declares the parts it draws with `app.add_status_part(&item, "Label")`
-(`AppStatusPartsExt`), so `/plugins` lists them to show and hide.
-`TuiPlugins` is the view with those plugins, for code that adds the view
-itself.
+(`AppStatusPartsExt`), so `/plugins` lists them to show and hide. The keys
+listed over an empty input are a plugin of their own, `hints::KeyHintsPlugin`,
+so a user can turn them off. An app or test that adds the view itself adds
+`TuiPlugins`, the view with such parts.
 
 The view tells the terminal when a turn of an agent nothing spawned runs, as a
 shell does a command: OSC 133 marks (`C` as it starts, `D;1` as it fails or

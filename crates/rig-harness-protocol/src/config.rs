@@ -213,6 +213,10 @@ agent answers -p or what is piped in, and says so when started on a terminal.";
                 "The status line under the input: the model, what the agent is doing, what the \
 session spends. Off, that row stays empty. [status] hide in settings.toml names the \
 parts it leaves out, such as [\"cost\", \"cache\"].";
+            on rig_tui::hints::KeyHintsPlugin, "rig-tui", "Key hints", [], None,
+                "The keys an empty input lists over its text: Enter sends, / commands, @ files \
+and the rest, or while a turn runs, Enter steers and Esc stops. Off, that row is empty; \
+the keys out of a question, a panel or an earlier prompt still show.";
             off rig_fold::FoldPlugin, "rig-fold", "Folded output", [], None,
                 "Folded tool output in the terminal view: a finished call shows its first and last \
 lines, and Ctrl+O ([fold] key) shows the selected call, or every call, whole. Off, \
