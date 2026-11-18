@@ -126,6 +126,17 @@ fn signed_in(
     expires: i64,
     setup: impl FnOnce(&mut App),
 ) -> (App, Receiver<()>, Entity) {
+    signed_in_with(name, (backend, lists), (expires, &[]), setup)
+}
+
+/// [`signed_in`] with a saved key for each of `keyed` too, and their
+/// built-in models in the catalog, in the built-in catalog's order.
+fn signed_in_with(
+    name: &str,
+    (backend, lists): (&Backend, &[(u16, &'static str)]),
+    (expires, keyed): (i64, &[&str]),
+    setup: impl FnOnce(&mut App),
+) -> (App, Receiver<()>, Entity) {
     if let Ok(mut held) = backend.lists.lock() {
         held.extend(lists.iter().copied());
     }
@@ -135,10 +146,13 @@ fn signed_in(
     );
     std::fs::create_dir_all(home.auth()).ok();
     std::fs::write(home.auth().join("chatgpt.json"), credential).ok();
+    for vendor in keyed {
+        assert!(keys::Keys::at(&home).save(vendor, "sk-rig-test").is_ok());
+    }
     let mut catalog = Catalog::default();
-    let plan = Catalog::builtin()
-        .iter()
-        .filter(|spec| spec.provider.vendor() == PROVIDER);
+    let plan = Catalog::builtin().iter().filter(|spec| {
+        spec.provider.vendor() == PROVIDER || keyed.contains(&spec.provider.vendor())
+    });
     for spec in plan {
         catalog.insert(spec.clone());
     }
@@ -296,6 +310,144 @@ fn a_headless_run_with_no_model_waits_for_the_list_and_takes_an_offered_one() {
     });
     let chosen = app.world().get::<ModelChoice>(agent).map(|it| it.0.clone());
     assert_eq!(chosen.as_deref(), Some("chatgpt/gpt-6.1-sol"));
+}
+
+/// What the backend lists for an account offering the plan's default
+/// model and GPT-6.1 Sol.
+const DEFAULT_AND_SOL: &str = r#"{"models":[{"slug":"gpt-6.2-sol","visibility":"list"},{"slug":"gpt-6.1-sol","visibility":"list"}]}"#;
+
+/// The first Anthropic model of the built-in catalog that calls tools.
+fn anthropic_model() -> Option<String> {
+    let mut specs = Catalog::builtin().iter();
+    let spec = specs.find(|spec| spec.tools && spec.provider.vendor() == "anthropic");
+    spec.map(|spec| spec.reference())
+}
+
+/// An app signed in to ChatGPT through `backend`, whose account offers
+/// [`DEFAULT_AND_SOL`], with a saved Anthropic key, the built-in models
+/// of both in catalog order, the run's start, the session's log, the
+/// model plugins and what `setup` adds; its first frame ran.
+fn signed_in_with_a_key(
+    name: &str,
+    backend: &Backend,
+    setup: impl FnOnce(&mut App),
+) -> (App, Receiver<()>, Entity) {
+    assert!(DEFAULT_AND_SOL.contains(&format!(r#""{}""#, chatgpt::DEFAULT_MODEL)));
+    let lists = [(200, DEFAULT_AND_SOL)];
+    signed_in_with(name, (backend, &lists), (NEVER, &["anthropic"]), |app| {
+        app.add_plugins((
+            rig_harness::run::RunPlugin,
+            SessionLogPlugin,
+            crate::models::ModelsPlugin,
+        ))
+        .init_resource::<Taken>()
+        .add_observer(|taken: On<ChoiceTaken>, mut kept: ResMut<Taken>| {
+            kept.0.push((taken.kind, taken.model.clone()));
+        });
+        collect::<Notice>(app);
+        setup(app);
+    })
+}
+
+/// Whether `world`'s ChatGPT sign-in knows what the account offers.
+fn answered(world: &World) -> bool {
+    status(world, chatgpt::DEFAULT_MODEL).is_some_and(|status| status != ModelStatus::Checking)
+}
+
+/// With a usable ChatGPT sign-in and a key that reaches a model listed
+/// before the plan's, the first pick is the plan's default model.
+#[test]
+fn a_usable_sign_in_is_picked_first_on_its_default_model_over_a_key() {
+    let backend = Backend::default();
+    let (mut app, wakes, _) = signed_in_with_a_key("login-pick-default", &backend, |_| {});
+    run_until(&mut app, &wakes, answered);
+    let models = app.world().resource::<Models>();
+    let default = format!("{PROVIDER}/{}", chatgpt::DEFAULT_MODEL);
+    let reachable: Vec<String> = (models.0.reachable().iter())
+        .map(|spec| spec.reference())
+        .collect();
+    let first = reachable.first();
+    assert!(
+        first.is_some_and(|first| *first != default),
+        "{reachable:?}"
+    );
+    assert!(anthropic_model().is_some_and(|key| reachable.contains(&key)));
+    assert_eq!(FirstPick::of(models), FirstPick::Model(default));
+}
+
+/// A terminal view started with nothing saved or named waits for the
+/// sign-in to know what the account offers, then starts on the plan's
+/// default model for this run only.
+#[test]
+fn a_start_with_nothing_chosen_takes_the_first_pick_once_the_sign_in_answers() {
+    let backend = Backend::default();
+    let release = backend.hold();
+    let (mut app, wakes, agent) = signed_in_with_a_key("login-pick-start", &backend, |_| {});
+    for _ in 0..3 {
+        app.update();
+    }
+    assert_eq!(app.world().get::<ModelChoice>(agent), None);
+    drop(release);
+    run_until(&mut app, &wakes, |world| {
+        world.get::<ModelChoice>(agent).is_some()
+    });
+    let default = ModelChoice(format!("{PROVIDER}/{}", chatgpt::DEFAULT_MODEL));
+    let taken = &app.world().resource::<Taken>().0;
+    assert_eq!(taken, &[(ChoiceKind::ForThisRun, Some(default))]);
+}
+
+/// `--model`, a saved default and a model the user chose while the
+/// sign-in was checking each stand: the first pick never replaces them.
+#[test]
+fn a_named_saved_or_chosen_model_is_kept_over_the_first_pick() {
+    let anthropic = anthropic_model();
+    assert!(anthropic.is_some(), "the catalog lists an Anthropic model");
+    let Some(anthropic) = anthropic else { return };
+    let named = anthropic.clone();
+    let invoked = move |app: &mut App| {
+        app.insert_resource(Invoked {
+            args: rig_harness::harness_protocol::Invocation {
+                model: Some(named.clone()),
+                ..Default::default()
+            },
+            terminal: true,
+        });
+    };
+    let saved = anthropic.clone();
+    let remembered = move |app: &mut App| {
+        let home = app.world().resource::<RigHome>().0.clone();
+        let text = format!("[model]\ndefault = \"{saved}\"\n");
+        assert!(std::fs::write(home.settings(), text).is_ok());
+        app.add_plugins(crate::models::defaults::DefaultsPlugin);
+    };
+    let setups: [(&str, Box<dyn FnOnce(&mut App)>); 3] = [
+        ("login-keep-named", Box::new(invoked)),
+        ("login-keep-saved", Box::new(remembered)),
+        ("login-keep-chosen", Box::new(|_: &mut App| {})),
+    ];
+    for (name, setup) in setups {
+        let backend = Backend::default();
+        let release = backend.hold();
+        let (mut app, wakes, agent) = signed_in_with_a_key(name, &backend, setup);
+        app.update();
+        if name == "login-keep-chosen" {
+            app.world_mut().trigger(SetModel {
+                entity: agent,
+                model: anthropic.clone(),
+                kind: ChoiceKind::ByUser,
+            });
+        }
+        drop(release);
+        run_until(&mut app, &wakes, answered);
+        app.update();
+        let chosen = app.world().get::<ModelChoice>(agent).map(|it| it.0.clone());
+        let told = &app.world().resource::<Collected<Notice>>().0;
+        assert_eq!(
+            chosen.as_deref(),
+            Some(anthropic.as_str()),
+            "{name}: {told:?}"
+        );
+    }
 }
 
 #[test]
