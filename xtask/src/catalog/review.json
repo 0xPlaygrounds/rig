@@ -1821,6 +1821,12 @@
           "output": 9
         }
       },
+      "gemini-4-argon": {
+        "source": "https://ai.google.dev/gemini-api/docs/thinking",
+        "rig": {
+          "reasoning_default": "medium"
+        }
+      },
       "gemini-4-carbon": {
         "source": "https://ai.google.dev/gemini-api/docs/thinking",
         "rig": {

@@ -149,10 +149,10 @@ fn versioned_model(model: &str) -> Option<&str> {
         .find(|base| !base.is_empty())
 }
 
-/// Why `xhigh` or `max` is refused for a model whose thinking levels the
-/// catalog does not list: only some Gemini models go past `high`.
+/// Why `xhigh` or `max` is refused for a model whose catalog entry lists
+/// neither: only some Gemini models go past `high`.
 const UNLISTED_LEVEL: &str =
-    "Gemini's thinking levels stop at `high` unless the catalog lists `xhigh`";
+    "Gemini's thinking levels stop at `high`, or `xhigh` where the catalog lists it";
 
 /// `value` under `generationConfig`.
 fn config(value: serde_json::Value) -> Mapping {
@@ -186,6 +186,9 @@ pub(super) fn generate_content_options(
             ) => config(json!({"thinkingConfig": {"thinkingLevel": "minimal"}})),
             (Reasoning::Off, Thinking::None) => Mapping::Omit("the model does not think"),
             (Reasoning::Off, _) => Mapping::unsupported("this model cannot turn thinking off"),
+            (Reasoning::Effort(Effort::XHigh), _) if route == Route::Grpc => {
+                Mapping::unsupported("the gRPC proto has no `xhigh` thinking level")
+            }
             (Reasoning::Effort(effort), Thinking::Levels { levels, .. })
                 if levels.contains(effort) =>
             {

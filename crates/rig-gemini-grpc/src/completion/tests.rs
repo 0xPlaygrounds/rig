@@ -440,6 +440,29 @@ fn a_gemini_3_effort_reaches_the_thinking_level() {
     );
 }
 
+/// Gemini 4 Hydrogen lists `xhigh`, which rig's proto cannot carry, so the
+/// gRPC wire refuses it as an unsupported option instead of failing to
+/// encode.
+#[test]
+fn gemini_4_xhigh_is_refused_over_grpc() {
+    use rig_core::catalog::{Catalog, ModelFacts};
+    use rig_core::completion::ReplayTarget as _;
+    use rig_core::completion::{CompletionRequest, Effort, GenerationOptions, options::Mapping};
+
+    let resolved = Catalog::builtin()
+        .resolve("gemini-grpc/gemini-4-hydrogen")
+        .expect("the catalog lists the model over gRPC");
+    let wire =
+        GenerateContent::new("gemini-4-hydrogen").with_facts(ModelFacts::new(resolved.shared()));
+    let request =
+        CompletionRequest::new("hi").options(GenerationOptions::default().reasoning(Effort::XHigh));
+    assert!(matches!(
+        wire.map_options(&request, request.options.fields())
+            .reasoning,
+        Mapping::Unsupported(_)
+    ));
+}
+
 /// A raw `generationConfig: null` is absent, as it was before the merge:
 /// the typed fields still reach the gRPC request.
 #[test]

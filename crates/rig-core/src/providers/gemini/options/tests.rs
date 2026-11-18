@@ -86,6 +86,7 @@ fn generate_content_reasoning_follows_the_models_thinking() {
     for (model, reasoning) in [
         ("gemini-4-hydrogen", Reasoning::Effort(Effort::Max)),
         ("gemini-4-carbon", Reasoning::Effort(Effort::XHigh)),
+        ("gemini-5-unlisted", Reasoning::Effort(Effort::XHigh)),
         ("gemini-3.8-flash", Reasoning::Effort(Effort::Minimal)),
         ("gemini-3.8-flash", Reasoning::Off),
         ("gemini-3.8-flash", Reasoning::Effort(Effort::XHigh)),
@@ -334,13 +335,16 @@ fn interactions_cells() {
     )
     .expect("4 Hydrogen takes `xhigh`");
     assert_eq!(body["generation_config"]["thinking_level"], "xhigh");
-    assert!(
-        refused(sent(
-            &wire,
-            with(GenerationOptions::default().reasoning(Effort::XHigh))
-        ))
-        .is_some()
-    );
+    let unlisted = Interactions::new(GeminiConfig::new("k"), "gemini-5-unlisted");
+    for wire in [&wire, &unlisted] {
+        assert!(
+            refused(sent(
+                wire,
+                with(GenerationOptions::default().reasoning(Effort::XHigh))
+            ))
+            .is_some()
+        );
+    }
 }
 
 #[test]

@@ -110,8 +110,8 @@ fn named_can_disable(model: &str) -> bool {
 
 /// Whether a model the catalog does not list can turn reasoning off on
 /// Responses, by its id: not the o-series, a `-pro` model, GPT-5 itself
-/// (`gpt-5` and its `gpt-5-*` variants), GPT-6 Astra or GPT-6.1 Sol, whether
-/// or not its id names a reasoning model.
+/// (`gpt-5` and its `gpt-5-*` variants), GPT-6 Astra, GPT-6.1 Sol or
+/// GPT-6.2, whether or not its id names a reasoning model.
 fn named_responses_can_disable(model: &str) -> bool {
     let name = model.rsplit('/').next().unwrap_or(model);
     let o_series = named_reasons(model) == Some(true) && gpt_version(model).is_none();
@@ -120,7 +120,9 @@ fn named_responses_can_disable(model: &str) -> bool {
         || pro
         || gpt_version(model) == Some((5, 0))
         || name.starts_with(super::completion::GPT_6_ASTRA)
-        || name.starts_with(super::completion::GPT_6_1_SOL))
+        || name.starts_with(super::completion::GPT_6_1_SOL)
+        || name.starts_with(super::completion::GPT_6_2_ASTRA)
+        || name.starts_with(super::completion::GPT_6_2_SOL))
 }
 
 /// `top_p` on Responses for a model whose catalog entry gives no sampling
