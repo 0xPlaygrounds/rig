@@ -39,7 +39,7 @@ pub const PROVIDER_NAME: &str = "chatgpt";
 pub const PLAN_TITLE: &str = "ChatGPT";
 
 /// The model a fresh sign-in switches to: the plan's latest frontier model.
-pub const DEFAULT_MODEL: &str = crate::providers::openai::GPT_6_1_SOL;
+pub const DEFAULT_MODEL: &str = crate::providers::openai::GPT_6_2_SOL;
 
 /// Subscription-backend dialect with SSE replies, Codex parameters, and caller identity.
 /// All system messages become top-level instructions; replayed frames omit envelope metadata.

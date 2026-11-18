@@ -803,8 +803,11 @@ fn a_plugin_ending_a_turn_alone_keeps_a_waiting_sign_in_and_the_users_stop_cance
 
 #[test]
 fn a_sign_in_switches_the_agent_for_that_run_only() {
+    // The account offers the plan's default, so the switch is not refused.
+    const OFFERS_DEFAULT: &str = r#"{"models":[{"slug":"gpt-6.2-sol","visibility":"list"}]}"#;
+    assert!(OFFERS_DEFAULT.contains(&format!(r#""{}""#, chatgpt::DEFAULT_MODEL)));
     let backend = Backend::default();
-    let lists = [(200, SOL)];
+    let lists = [(200, OFFERS_DEFAULT)];
     let (mut app, _, agent) = signed_in("login-switch", (&backend, &lists), NEVER, |app| {
         let keep = |taken: On<ChoiceTaken>, mut kept: ResMut<Taken>| {
             kept.0.push((taken.kind, taken.model.clone()));
