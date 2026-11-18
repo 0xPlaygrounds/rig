@@ -128,3 +128,11 @@ fn an_aside_reads_a_tagged_value_holding_a_big_integer() -> anyhow::Result<()> {
     anyhow::ensure!(value.to_string().contains(BIG), "{value}");
     Ok(())
 }
+
+#[test]
+fn tool_arguments_decode_into_a_tagged_type_holding_a_big_integer() -> anyhow::Result<()> {
+    let args = serde_json::from_str(&format!(r#"{{"state":"settled","value":{{"n":{BIG}}}}}"#))?;
+    let Mark::Settled { value } = rig_core::tool::decode_args::<Mark>(&args)?;
+    anyhow::ensure!(value.to_string().contains(BIG), "{value}");
+    Ok(())
+}
