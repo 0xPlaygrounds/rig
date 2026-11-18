@@ -31,8 +31,8 @@ rig-harness's public API. Each plugin is its own name in `[plugins]` of
 - `telemetry`: what model calls cost and `/usage` (`usage::UsagePlugin`),
   the effect log (`effect_log::EffectLogPlugin`), and warnings and errors
   as data (`diagnostics::DiagnosticsPlugin`);
-- `activity`: what the agent is doing, in the status line: writing, the
-  tool it runs or the question it waits on, with the pulsing wave while it
+- `activity`: what the agent is doing, in the status line: writing,
+  running tools or the question it waits on, with the pulsing wave while it
   works (`ActivityPlugin`);
 - `coding_tools`: the `read`, `edit`, `write` and `shell` tools (`ReadTool`,
   `EditTool`, `WriteTool`, `ShellTool`), `@path` attachments

@@ -142,7 +142,8 @@ const DESCRIPTION: &str = "Run a Steel program (Scheme) that orchestrates agents
     (define requests (map (lambda (dir) (send (spawn-agent \"reviewer\") (string-append \"Review the error handling in \" dir \". List each finding as file:line and one sentence.\"))) dirs))\n\
     (string-join (map reply requests) \"\\n\\n\")";
 
-/// Adds the `run_steel` tool.
+/// Adds the `run_steel` tool, and `/agents` to show the agents its programs
+/// spawn.
 #[derive(Default)]
 pub struct SteelPlugin;
 

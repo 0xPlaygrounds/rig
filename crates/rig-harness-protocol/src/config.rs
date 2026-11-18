@@ -157,7 +157,7 @@ to show the other agents.";
                 "Records nothing until --traffic-log or [traffic] log = true; then provider HTTP \
 in traffic.jsonl.";
             on rig_basics::activity::ActivityPlugin, "rig-basics", "Activity", [], None,
-                "What the agent is doing, in the status line: writing, the tool it runs or the \
+                "What the agent is doing, in the status line: writing, running tools or the \
 question it waits on, with the pulsing wave while it works.";
             on rig_basics::coding_tools::ReadTool, "rig-basics", "Read tool", [], None,
                 "The read tool.";

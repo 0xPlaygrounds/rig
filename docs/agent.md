@@ -327,8 +327,8 @@ of its conversation, through a message you name (`/fork m4`) or through one
 you pick (`/fork at`). Rewind is a fork too: select an earlier message of
 yours with Alt+Up and press Enter, and the shown agent forks just before it,
 with the message back in the input. `/agents` comes with forks and shows the
-other agent. A resumed session shows the agent that was shown last, with
-forks on or off.
+other agent. A resumed session shows the agent that was shown last, or the
+top-level agent above it when that was a subagent, with forks on or off.
 
 Rig redacts nothing unless you turn redaction on with `rig plugin enable
 rig_basics::redact::RedactPlugin` (then `/reload`, or the next start). With it,
@@ -519,9 +519,10 @@ is answered.
 
 Esc stops the shown agent's turn and the turns of every subagent below it,
 even when the shown agent is idle: stopping follows who started whom.
-`/agents`, which comes with subagents, lists every agent with its model, state and what it and the agents below it spent, and shows
-the one picked: its transcript, and what
-you type then goes to it. A subagent can start subagents of its own, as
+`/agents`, which comes with subagents (and with forks and Steel programs),
+lists every agent with its model, state and what it and the agents below it
+spent, and shows the one picked: its transcript, and what you type then
+goes to it. A subagent can start subagents of its own, as
 deep as they go. Subagents started with `peers` can also send each other
 requests with `message` and `wait` for each other; a request or `wait` that
 would make agents wait on each other is refused. In the effect log, a

@@ -21,7 +21,7 @@ use bevy_ecs::prelude::*;
 #[cfg(feature = "tui")]
 mod rewind;
 
-/// `/fork` and, with the `tui` feature, rewind; and `/agents`.
+/// `/fork`, rewind with the `tui` feature, and the `/agents` it adds.
 #[derive(Default)]
 pub struct AgentsPlugin;
 

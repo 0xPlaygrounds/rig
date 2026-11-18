@@ -135,6 +135,14 @@ fn heard(world: &World, agent: Entity, text: &str) -> bool {
     format!("{messages:?}").contains(text)
 }
 
+/// Steel's agents are listed and shown with `/agents`.
+#[test]
+fn steel_adds_the_agent_picker() {
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let (app, _, _) = app(&model);
+    assert!(app.is_plugin_added::<AgentPickerPlugin>());
+}
+
 #[test]
 fn a_programs_tool_calls_are_gated_and_recorded_under_its_call() {
     let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
