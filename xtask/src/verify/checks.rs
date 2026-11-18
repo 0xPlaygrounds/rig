@@ -445,6 +445,31 @@ pub(super) fn all() -> Vec<Check> {
                 fixture(&["--all-features"]),
             ]
         }),
+        // Rig's data read by a consumer that turns on serde_json's
+        // `arbitrary_precision`, built alone so the feature reaches no other
+        // build: as a workspace member it would unify into every one.
+        check(
+            "guard-arbitrary-precision",
+            vec![
+                Step::new(
+                    "@copy",
+                    &[
+                        "Cargo.lock",
+                        "test-support/rig-arbitrary-precision/Cargo.lock",
+                    ],
+                ),
+                cargo(&[
+                    "nextest",
+                    "run",
+                    "--manifest-path",
+                    "test-support/rig-arbitrary-precision/Cargo.toml",
+                    "--target-dir",
+                    "target/arbitrary-precision-fixture",
+                    "--no-tests",
+                    "fail",
+                ]),
+            ],
+        ),
         guard(
             "guard-middleware-features",
             "rig-reqwest",

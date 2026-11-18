@@ -55,7 +55,7 @@ pub struct GenerationOptions {
     #[serde(default)]
     pub parallel_tool_calls: Option<bool>,
     /// Nucleus sampling probability mass.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::json_utils::floats")]
     pub top_p: Option<f64>,
     /// Sampling seed, for providers that offer best-effort determinism.
     #[serde(default)]

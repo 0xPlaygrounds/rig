@@ -26,6 +26,7 @@ pub struct VectorSearchRequest<F = Filter<serde_json::Value>> {
     /// Maximum number of results to return.
     samples: u64,
     /// Minimum similarity score for results.
+    #[serde(default, deserialize_with = "crate::json_utils::floats")]
     threshold: Option<f64>,
     /// Filter expression to narrow results by metadata.
     filter: Option<F>,

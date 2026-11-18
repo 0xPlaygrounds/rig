@@ -378,7 +378,7 @@ impl ReplyExtras for VertexExtras {
         }
         // The reply is a GenerateContent document, as rig keeps it.
         let shared = GeminiExtras::from_reply(&Api::from_static("gemini.generate_content"), raw)?;
-        let own = VertexReply::deserialize(raw)?;
+        let own: VertexReply = rig_core::json_utils::from_value(raw)?;
         let candidate = own.candidates.into_iter().next();
         Ok(Self {
             model_version: shared.model_version,

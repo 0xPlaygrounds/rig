@@ -72,7 +72,7 @@ impl Aside {
     /// kind or a value that is not a `T`.
     pub fn read<T: serde::de::DeserializeOwned>(&self, kind: &str) -> Option<T> {
         (self.kind == kind)
-            .then(|| T::deserialize(&self.value).ok())
+            .then(|| crate::json_utils::from_value(&self.value).ok())
             .flatten()
     }
 }

@@ -1931,7 +1931,7 @@ fn versioned(mut value: Value) -> Result<Request, String> {
             ));
         }
     }
-    serde_json::from_value(value).map_err(|error| format!("not a request: {error}"))
+    rig_core::json_utils::from_value(&value).map_err(|error| format!("not a request: {error}"))
 }
 
 /// Carries out `request`; what `state` asked for.

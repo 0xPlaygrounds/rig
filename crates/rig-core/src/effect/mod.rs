@@ -463,8 +463,8 @@ pub mod family {
 
         fn unwrap(outcome: Answered) -> Result<E::Answer, ErrorReport> {
             match outcome {
-                Answered::Custom { payload: value } => {
-                    serde_json::from_value(value).map_err(|error| {
+                Answered::Custom { payload: value } => crate::json_utils::from_value(&value)
+                    .map_err(|error| {
                         ErrorReport::new(
                             ErrorKind::Internal,
                             format!(
@@ -472,8 +472,7 @@ pub mod family {
                                 E::KIND
                             ),
                         )
-                    })
-                }
+                    }),
                 other => Err(Self::mismatch(&other)),
             }
         }
@@ -786,9 +785,12 @@ pub enum EmbedOutputs {
 #[serde(tag = "retrieved", content = "results", rename_all = "snake_case")]
 pub enum RetrievedDocuments {
     /// Scored documents: `(score, id, document)`.
-    Scored(Vec<(f64, String, serde_json::Value)>),
+    Scored(
+        #[serde(deserialize_with = "crate::json_utils::floats")]
+        Vec<(f64, String, serde_json::Value)>,
+    ),
     /// Scored ids: `(score, id)`.
-    Ids(Vec<(f64, String)>),
+    Ids(#[serde(deserialize_with = "crate::json_utils::floats")] Vec<(f64, String)>),
 }
 
 /// One recorded exchange: the effect, who served it, and the answer.

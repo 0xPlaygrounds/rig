@@ -838,19 +838,36 @@ impl Usage {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Cost {
     /// Uncached input tokens.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::json_utils::floats"
+    )]
     pub input: Option<f64>,
     /// Output tokens, reasoning included.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::json_utils::floats"
+    )]
     pub output: Option<f64>,
     /// Input tokens read from a cache.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::json_utils::floats"
+    )]
     pub cache_read: Option<f64>,
     /// Input tokens written to a cache.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::json_utils::floats"
+    )]
     pub cache_write: Option<f64>,
     /// The whole charge, or a lower bound of it when the cost is not
     /// complete.
+    #[serde(deserialize_with = "crate::json_utils::floats")]
     pub total: f64,
     /// Whether a part with tokens had no price, so `total` leaves it out.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -1272,6 +1289,7 @@ pub struct CompletionRequest {
     /// so copying a request copies pointers.
     pub tools: Vec<Arc<ToolDefinition>>,
     /// The temperature to be sent to the completion model provider
+    #[serde(default, deserialize_with = "crate::json_utils::floats")]
     pub temperature: Option<f64>,
     /// The max tokens to be sent to the completion model provider
     pub max_tokens: Option<u64>,

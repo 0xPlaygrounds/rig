@@ -35,7 +35,7 @@ use serde_json::{Number, Value};
 /// When `args` does not fit `A` either way: the error of the second try
 /// when there was one, else of the arguments as sent.
 pub fn decode_args<A: DeserializeOwned>(args: &Value) -> Result<A, serde_json::Error> {
-    A::deserialize(args).or_else(|error| as_integers(args).unwrap_or(Err(error)))
+    crate::json_utils::from_value(args).or_else(|error| as_integers(args).unwrap_or(Err(error)))
 }
 
 /// [`decode_args`] for arguments as JSON text, decoded straight from the
@@ -55,7 +55,7 @@ pub(crate) fn decode_text<A: DeserializeOwned>(args: &str) -> Result<A, serde_js
 /// has none, so a second try would fail as the first did.
 fn as_integers<A: DeserializeOwned>(args: &Value) -> Option<Result<A, serde_json::Error>> {
     let mut whole = args.clone();
-    integers(&mut whole).then(|| A::deserialize(&whole))
+    integers(&mut whole).then(|| crate::json_utils::from_value(&whole))
 }
 
 /// Makes each float in `value` that is a [`Whole`] number that integer;

@@ -7,8 +7,9 @@ use std::sync::Arc;
 
 use rig_core::completion::Message;
 use rig_core::conversation::{Aside, Author, Change, Conversation, Lineage, ResultFacts};
+use rig_core::json_utils::from_value;
+use serde::Serialize;
 use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::blobs::{BLOBS, blob_names, named_blobs, put_blob, read_blob, store_change};
@@ -201,7 +202,7 @@ fn map_serde<T: Serialize + DeserializeOwned>(
     if !map_strings(&mut value, f) {
         return false;
     }
-    if let Ok(read) = T::deserialize(&value) {
+    if let Ok(read) = from_value(&value) {
         *item = read;
         return true;
     }
@@ -214,7 +215,7 @@ fn map_serde<T: Serialize + DeserializeOwned>(
     for leaf in leaves {
         let mut trial = kept.clone();
         if map_leaf(&mut trial, &leaf, f)
-            && let Ok(read) = T::deserialize(&trial)
+            && let Ok(read) = from_value(&trial)
         {
             *item = read;
             kept = trial;
@@ -555,7 +556,7 @@ fn map_state(state: &mut Conversation, at: &Place<'_>, with: &dyn Rewrite) -> Re
     let mut changed = false;
     if let Some(Value::Array(messages)) = value.get_mut("messages") {
         for message in messages {
-            let mut typed = Message::deserialize(&*message).map_err(fail)?;
+            let mut typed: Message = from_value(message).map_err(fail)?;
             if with.message(at, &mut typed) {
                 *message = serde_json::to_value(&typed).map_err(fail)?;
                 changed = true;
@@ -564,7 +565,7 @@ fn map_state(state: &mut Conversation, at: &Place<'_>, with: &dyn Rewrite) -> Re
     }
     if let Some(Value::Array(metas)) = value.get_mut("meta") {
         for facts in metas.iter_mut().filter_map(|meta| meta.get_mut("facts")) {
-            let mut typed = ResultFacts::deserialize(&*facts).map_err(fail)?;
+            let mut typed: ResultFacts = from_value(facts).map_err(fail)?;
             if with.facts(at, &mut typed) {
                 *facts = serde_json::to_value(&typed).map_err(fail)?;
                 changed = true;
@@ -573,7 +574,7 @@ fn map_state(state: &mut Conversation, at: &Place<'_>, with: &dyn Rewrite) -> Re
     }
     if let Some(Value::Array(asides)) = value.get_mut("asides") {
         for aside in asides.iter_mut().filter_map(|pair| pair.get_mut(1)) {
-            let mut typed = Aside::deserialize(&*aside).map_err(fail)?;
+            let mut typed: Aside = from_value(aside).map_err(fail)?;
             if with.aside(at, &mut typed) {
                 *aside = serde_json::to_value(&typed).map_err(fail)?;
                 changed = true;
@@ -581,7 +582,7 @@ fn map_state(state: &mut Conversation, at: &Place<'_>, with: &dyn Rewrite) -> Re
         }
     }
     if changed {
-        *state = Conversation::deserialize(&value).map_err(fail)?;
+        *state = from_value(&value).map_err(fail)?;
     }
     Ok(changed)
 }

@@ -575,7 +575,7 @@ impl ReplyExtras for AnthropicExtras {
             usage,
             container,
             _content,
-        } = Reply::deserialize(raw)?;
+        } = crate::json_utils::from_value::<Reply>(raw)?;
         let usage = usage.unwrap_or_default();
         let fallback_model = raw
             .pointer("/content/0")
@@ -614,7 +614,7 @@ impl MessagesStop {
     /// When `raw` is a Messages reply but not an object.
     pub(crate) fn of(api: &Api, raw: &Value) -> Result<Option<Self>, serde_json::Error> {
         (api.as_str() == MESSAGES_API)
-            .then(|| Self::deserialize(raw))
+            .then(|| crate::json_utils::from_value(raw))
             .transpose()
     }
 }

@@ -479,7 +479,7 @@ impl wire::Responses {
         let extra = layers.raw_tools()?;
         if !extra.is_empty() {
             tools.extend(
-                serde_json::from_value::<Vec<ResponsesToolDefinition>>(Value::Array(extra))
+                crate::json_utils::from_value::<Vec<ResponsesToolDefinition>>(&Value::Array(extra))
                     .map_err(|err| {
                         EncodeError::request(format!(
                             "Invalid OpenAI Responses tools payload in additional_params: {err}"

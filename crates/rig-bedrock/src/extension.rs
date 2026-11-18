@@ -260,7 +260,7 @@ pub struct CacheDetail {
 fn at<T: DeserializeOwned>(raw: &Value, pointer: &str) -> Result<Option<T>, serde_json::Error> {
     match raw.pointer(pointer) {
         None | Some(Value::Null) => Ok(None),
-        Some(value) => T::deserialize(value).map(Some),
+        Some(value) => rig_core::json_utils::from_value(value).map(Some),
     }
 }
 

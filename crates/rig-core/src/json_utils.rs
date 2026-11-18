@@ -490,6 +490,75 @@ where
     Ok(Option::<T>::deserialize(deserializer)?.unwrap_or_default())
 }
 
+/// Deserializes `T` through a [`serde_json::Value`]: the reader for a field
+/// holding floats that serde may buffer, under `#[serde(flatten)]` or in a
+/// tagged or untagged enum. With serde_json's `arbitrary_precision` on
+/// anywhere in a build, a buffered float is a map that only a `Value` reads;
+/// the `Value` then gives `T` each number as written. A format that is not
+/// human-readable, such as bincode, reads `T` directly. An `Option` field
+/// using it also needs `#[serde(default)]` to read a missing field as `None`,
+/// which also lets a shorter array read; where that would widen what a type
+/// reads, give `floats` to the field holding the type instead.
+pub fn floats<'de, T, D>(deserializer: D) -> Result<T, D::Error>
+where
+    T: serde::de::DeserializeOwned,
+    D: Deserializer<'de>,
+{
+    if !deserializer.is_human_readable() {
+        return T::deserialize(deserializer);
+    }
+    T::deserialize(serde_json::Value::deserialize(deserializer)?).map_err(serde::de::Error::custom)
+}
+
+/// Reads `T` from `value` as it would read from the value's JSON text. With
+/// serde_json's `arbitrary_precision` on, a `Value` cannot hand an integer
+/// beyond u64 or i64 to serde's buffer for a tagged, untagged or flattened
+/// type, while the text can. Only a value holding such an integer is read
+/// from its text, so a build without the feature reads `value` directly.
+///
+/// # Errors
+///
+/// When `value` does not read as a `T`.
+pub fn from_value<T: serde::de::DeserializeOwned>(
+    value: &serde_json::Value,
+) -> serde_json::Result<T> {
+    from_value_seed(std::marker::PhantomData, value)
+}
+
+/// [`from_value`] for a seed, such as a reflection deserializer: reads
+/// `value` through `seed` as it would read the value's JSON text.
+///
+/// # Errors
+///
+/// When `value` does not read through `seed`.
+pub fn from_value_seed<S, V>(seed: S, value: &serde_json::Value) -> serde_json::Result<V>
+where
+    S: for<'de> serde::de::DeserializeSeed<'de, Value = V>,
+{
+    if !holds_wide_integer(value) {
+        return seed.deserialize(value);
+    }
+    let text = value.to_string();
+    let mut deserializer = serde_json::Deserializer::from_str(&text);
+    let read = seed.deserialize(&mut deserializer)?;
+    deserializer.end()?;
+    Ok(read)
+}
+
+/// Whether `value` holds an integer beyond u64 and i64.
+pub(crate) fn holds_wide_integer(value: &serde_json::Value) -> bool {
+    match value {
+        serde_json::Value::Number(number) => {
+            !number.is_u64()
+                && !number.is_i64()
+                && (number.as_u128().is_some() || number.as_i128().is_some())
+        }
+        serde_json::Value::Array(items) => items.iter().any(holds_wide_integer),
+        serde_json::Value::Object(fields) => fields.values().any(holds_wide_integer),
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 mod tests;
 

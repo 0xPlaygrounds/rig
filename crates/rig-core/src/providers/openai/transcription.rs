@@ -100,6 +100,7 @@ pub enum TranscriptionUsage {
     /// Duration-billed models.
     Duration {
         /// Length of the audio, in seconds.
+        #[serde(deserialize_with = "crate::json_utils::floats")]
         seconds: f64,
     },
     /// Token-billed models.

@@ -687,7 +687,7 @@ impl MessageRecord {
     pub fn read(kind: &EffectKind) -> Option<Self> {
         match kind {
             EffectKind::Custom { kind, payload } if &**kind == Self::KIND => {
-                serde_json::from_value(payload.clone()).ok()
+                rig_core::json_utils::from_value(payload).ok()
             }
             _ => None,
         }

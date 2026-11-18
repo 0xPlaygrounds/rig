@@ -110,7 +110,7 @@ pub struct CandleExtras {
 
 impl ReplyExtras for CandleExtras {
     fn from_reply(_api: &Api, raw: &Value) -> Result<Self, serde_json::Error> {
-        Self::deserialize(raw)
+        rig_core::json_utils::from_value(raw)
     }
 }
 

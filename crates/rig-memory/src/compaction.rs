@@ -643,7 +643,7 @@ impl Compacted {
     /// The record `aside` holds, if it is one.
     fn read(aside: &Aside) -> Option<Self> {
         let ours = aside.kind == COMPACTED && aside.author == summary_author();
-        ours.then(|| Self::deserialize(&aside.value).ok())?
+        ours.then(|| rig_core::json_utils::from_value(&aside.value).ok())?
     }
 }
 

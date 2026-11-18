@@ -109,6 +109,7 @@ pub struct Embedding {
     /// non-text embeddings. Used for debugging and equality.
     pub document: String,
     /// The embedding vector
+    #[serde(deserialize_with = "crate::json_utils::floats")]
     pub vec: Vec<f64>,
 }
 

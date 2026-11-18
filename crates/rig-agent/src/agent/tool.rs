@@ -65,12 +65,13 @@ impl Agent {
                 let agent = Arc::clone(&agent);
                 let inherited_context = context.for_dispatch();
                 Box::pin(async move {
-                    let args: AgentToolArgs = serde_json::from_value(args).map_err(|error| {
-                        ToolExecutionError::invalid_args(format!(
-                            "failed to parse agent tool arguments: {error}"
-                        ))
-                        .with_source(error)
-                    })?;
+                    let args: AgentToolArgs =
+                        rig_core::json_utils::from_value(&args).map_err(|error| {
+                            ToolExecutionError::invalid_args(format!(
+                                "failed to parse agent tool arguments: {error}"
+                            ))
+                            .with_source(error)
+                        })?;
                     agent
                         .prompt(args.prompt)
                         .tool_context(inherited_context)

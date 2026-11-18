@@ -489,7 +489,7 @@ impl ToolResultContent {
         T: serde::de::DeserializeOwned,
     {
         match self {
-            Self::Json { value } => T::deserialize(value),
+            Self::Json { value } => crate::json_utils::from_value(value),
             Self::Text(text) => serde_json::from_str(&text.text),
             Self::Image(_) => Err(<serde_json::Error as serde::de::Error>::custom(
                 "an image tool result is not JSON",
@@ -792,7 +792,7 @@ fn lenient<'de, D: serde::Deserializer<'de>, T: serde::de::DeserializeOwned>(
     deserializer: D,
 ) -> Result<Option<T>, D::Error> {
     let value = Option::<serde_json::Value>::deserialize(deserializer)?;
-    Ok(value.and_then(|value| T::deserialize(value).ok()))
+    Ok(value.and_then(|value| crate::json_utils::from_value(&value).ok()))
 }
 
 /// A stored [`Text`], read leniently: unreadable citations or native load

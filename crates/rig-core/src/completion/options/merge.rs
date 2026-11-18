@@ -88,6 +88,15 @@ impl FinalBody {
     /// When the body is not a `T`.
     pub fn deserialize<T: DeserializeOwned>(&self) -> Result<T, serde_json::Error> {
         // Read in place: a `Value` of the body would copy the whole history.
+        // A body holding an integer beyond u64 or i64 is read as
+        // `json_utils::from_value` reads it.
+        if self
+            .fields
+            .values()
+            .any(crate::json_utils::holds_wide_integer)
+        {
+            return crate::json_utils::from_value(&Value::Object(self.fields.clone()));
+        }
         let fields = self.fields.iter().map(|(key, value)| (key.as_str(), value));
         T::deserialize(serde::de::value::MapDeserializer::new(fields))
     }

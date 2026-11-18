@@ -66,7 +66,7 @@ use std::sync::{Arc, OnceLock};
 
 use rig_core::completion::{CompletionRequest, Message};
 use rig_core::effect::{EffectId, EffectKind, EffectRecord, EffectRow};
-use rig_core::json_utils::remove_preserving_order;
+use rig_core::json_utils::{from_value, remove_preserving_order};
 use rig_memory::Files;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -496,7 +496,7 @@ impl Known {
         self.has_lines = true;
         let value: Value = serde_json::from_str(line)?;
         if value.get("header").is_some() {
-            let HeaderLine { header } = serde_json::from_value::<HeaderLine<LogHeader>>(value)?;
+            let HeaderLine { header } = from_value::<HeaderLine<LogHeader>>(&value)?;
             merge(&mut self.header, header);
             return Ok(None);
         }
@@ -504,7 +504,7 @@ impl Known {
             self.note(&value, None, None)?;
             return Ok(Some(value));
         }
-        let (record, texts) = self.restore(serde_json::from_value(value)?, whole)?;
+        let (record, texts) = self.restore(from_value(&value)?, whole)?;
         self.note(&record, Some(texts), None)?;
         Ok(Some(record))
     }
@@ -649,7 +649,7 @@ impl Known {
                 remove_preserving_order(item, "content");
             }
         }
-        (!ids.is_empty()).then(|| (ids, Value::Object(fields)))
+        (!ids.is_empty()).then_some((ids, Value::Object(fields)))
     }
 
     /// `message`, written without the content of its tool results that
@@ -952,7 +952,7 @@ pub fn read_from(lines: impl BufRead) -> io::Result<EffectLog> {
     let mut records = Vec::new();
     for line in lines.lines() {
         if let Some(record) = known.line(&line?, true)? {
-            records.push(serde_json::from_value(record)?);
+            records.push(from_value(&record)?);
         }
     }
     Ok(EffectLog {
@@ -1017,7 +1017,7 @@ pub fn read_outcomes_from(lines: impl BufRead) -> io::Result<Vec<EffectRecord>> 
         if record.get("after").is_some() {
             let DeltaLine {
                 id, record: held, ..
-            } = serde_json::from_value::<DeltaLine<Value>>(record)?;
+            } = from_value::<DeltaLine<Value>>(&record)?;
             record = held;
             if let Some(fields) = record.as_object_mut() {
                 fields.insert("id".to_owned(), serde_json::to_value(id)?);
@@ -1031,7 +1031,7 @@ pub fn read_outcomes_from(lines: impl BufRead) -> io::Result<Vec<EffectRecord>> 
             request.insert("chat_history".to_owned(), Value::Array(Vec::new()));
             request.insert("tools".to_owned(), Value::Array(Vec::new()));
         }
-        records.push(serde_json::from_value(record)?);
+        records.push(from_value(&record)?);
     }
     Ok(records)
 }

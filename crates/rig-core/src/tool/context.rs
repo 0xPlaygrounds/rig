@@ -89,7 +89,7 @@ impl ToolResultContext {
     /// ([`with_at`](Self::with_at)); `None` when no call was recorded, as
     /// in a session saved before calls were.
     pub fn at(&self) -> Option<CallRef> {
-        CallRef::deserialize(self.0.get(AT)?).ok()
+        crate::json_utils::from_value(self.0.get(AT)?).ok()
     }
 
     /// These values, kept for the call `at`, so a reply that repeats a
@@ -187,7 +187,7 @@ fn encode<T: ContextValue>(value: &T) -> Result<serde_json::Value, ToolContextEr
 }
 
 fn decode<T: ContextValue>(value: &serde_json::Value) -> Result<T, ToolContextError> {
-    T::deserialize(value).map_err(|error| ToolContextError::Decode {
+    crate::json_utils::from_value(value).map_err(|error| ToolContextError::Decode {
         key: T::KEY,
         source: error,
     })

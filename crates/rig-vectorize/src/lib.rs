@@ -121,7 +121,7 @@ impl VectorStoreIndex for VectorizeVectorStore {
             .into_iter()
             .map(|m| {
                 let metadata = m.metadata.unwrap_or(serde_json::Value::Null);
-                let doc: T = serde_json::from_value(metadata)?;
+                let doc: T = rig_core::json_utils::from_value(&metadata)?;
                 Ok(VectorSearchResult {
                     score: m.score,
                     id: m.id,

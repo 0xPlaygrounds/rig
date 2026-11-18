@@ -794,7 +794,7 @@ where
             Ok(document) => document,
             Err(error) => return WireEvent::Corrupt(error),
         };
-        match <Op::End as serde::Deserialize>::deserialize(&document) {
+        match crate::json_utils::from_value::<Op::End>(&document) {
             Ok(end) => WireEvent::Known((end, document)),
             Err(error) => WireEvent::Corrupt(error),
         }

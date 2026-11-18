@@ -933,3 +933,11 @@ fn only_a_truncated_reply_cuts_off_its_unfinished_calls() {
     assert!(cut_off(None).is_empty());
     assert_eq!(reply.unfinished_calls().count(), 1);
 }
+
+/// A request written as an array that stops before its temperature is
+/// refused.
+#[test]
+fn a_request_array_without_its_temperature_is_refused() {
+    let read = serde_json::from_str::<CompletionRequest>(r#"[null, [], [], []]"#);
+    assert!(read.is_err(), "{read:?}");
+}

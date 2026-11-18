@@ -345,7 +345,7 @@ impl From<ProviderSortConfig> for ProviderSort {
 #[serde(untagged)]
 pub enum ThroughputThreshold {
     /// One floor.
-    Simple(f64),
+    Simple(#[serde(deserialize_with = "crate::json_utils::floats")] f64),
     /// A floor per percentile.
     Percentile(PercentileThresholds),
 }
@@ -357,7 +357,7 @@ pub enum ThroughputThreshold {
 #[serde(untagged)]
 pub enum LatencyThreshold {
     /// One ceiling.
-    Simple(f64),
+    Simple(#[serde(deserialize_with = "crate::json_utils::floats")] f64),
     /// A ceiling per percentile.
     Percentile(PercentileThresholds),
 }
@@ -365,6 +365,7 @@ pub enum LatencyThreshold {
 /// A threshold per percentile.
 #[non_exhaustive]
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(from = "PercentilesRead")]
 pub struct PercentileThresholds {
     /// The median.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -378,6 +379,33 @@ pub struct PercentileThresholds {
     /// The 99th percentile.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub p99: Option<f64>,
+}
+
+/// [`PercentileThresholds`] as read: each percentile goes through `floats`
+/// in a plain `Option`, so it reads in the thresholds' untagged buffer and
+/// keeps serde's rules for an absent, repeated or unknown key.
+#[derive(Deserialize)]
+struct PercentilesRead {
+    p50: Option<Percentile>,
+    p75: Option<Percentile>,
+    p90: Option<Percentile>,
+    p99: Option<Percentile>,
+}
+
+/// One percentile's threshold.
+#[derive(Deserialize)]
+struct Percentile(#[serde(deserialize_with = "crate::json_utils::floats")] f64);
+
+impl From<PercentilesRead> for PercentileThresholds {
+    fn from(read: PercentilesRead) -> Self {
+        let value = |percentile: Option<Percentile>| percentile.map(|Percentile(value)| value);
+        Self {
+            p50: value(read.p50),
+            p75: value(read.p75),
+            p90: value(read.p90),
+            p99: value(read.p99),
+        }
+    }
 }
 
 impl PercentileThresholds {
