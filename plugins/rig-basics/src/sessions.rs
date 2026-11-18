@@ -604,7 +604,7 @@ fn on_switch_session(
     mut commands: Commands,
 ) {
     if !turns.is_empty() {
-        notices.write(Notice::info(
+        notices.write(Notice::error(
             None,
             "A turn is running. Press Esc to stop it first.",
         ));
