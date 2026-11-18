@@ -347,7 +347,7 @@ pub enum ThroughputThreshold {
     /// One floor.
     Simple(#[serde(deserialize_with = "crate::json_utils::floats")] f64),
     /// A floor per percentile.
-    Percentile(PercentileThresholds),
+    Percentile(#[serde(deserialize_with = "crate::json_utils::floats")] PercentileThresholds),
 }
 
 /// A latency ceiling in seconds, alone or per percentile. Providers above
@@ -359,7 +359,7 @@ pub enum LatencyThreshold {
     /// One ceiling.
     Simple(#[serde(deserialize_with = "crate::json_utils::floats")] f64),
     /// A ceiling per percentile.
-    Percentile(PercentileThresholds),
+    Percentile(#[serde(deserialize_with = "crate::json_utils::floats")] PercentileThresholds),
 }
 
 /// A threshold per percentile.
@@ -367,32 +367,16 @@ pub enum LatencyThreshold {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct PercentileThresholds {
     /// The median.
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "crate::json_utils::floats"
-    )]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub p50: Option<f64>,
     /// The 75th percentile.
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "crate::json_utils::floats"
-    )]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub p75: Option<f64>,
     /// The 90th percentile.
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "crate::json_utils::floats"
-    )]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub p90: Option<f64>,
     /// The 99th percentile.
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "crate::json_utils::floats"
-    )]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub p99: Option<f64>,
 }
 

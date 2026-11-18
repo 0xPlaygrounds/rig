@@ -496,7 +496,9 @@ where
 /// anywhere in a build, a buffered float is a map that only a `Value` reads;
 /// the `Value` then gives `T` each number as written. A format that is not
 /// human-readable, such as bincode, reads `T` directly. An `Option` field
-/// using it also needs `#[serde(default)]` to read a missing field as `None`.
+/// using it also needs `#[serde(default)]` to read a missing field as `None`,
+/// which also lets a shorter array read; where that would widen what a type
+/// reads, give `floats` to the field holding the type instead.
 pub fn floats<'de, T, D>(deserializer: D) -> Result<T, D::Error>
 where
     T: serde::de::DeserializeOwned,
