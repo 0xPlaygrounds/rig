@@ -190,31 +190,79 @@ fn a_model_with_no_catalog_window_compacts_near_the_window_its_server_serves() {
     }
 }
 
+/// Asks `agent` a question, then runs frames until `turns` turns ended.
+fn ask_until(app: &mut App, wakes: &Receiver<()>, agent: Entity, turns: usize) {
+    app.world_mut().trigger(Deliver::new(
+        agent,
+        "And the next question?",
+        DeliveryMode::Steer,
+    ));
+    run_until(app, wakes, |world| {
+        world.resource::<Ended>().0.len() == turns
+    });
+}
+
 #[test]
 fn a_server_that_does_not_say_leaves_the_window_unknown() {
-    let server = Server::new([]);
+    let server = Server::new([MockHttpResponse::success(
+        r#"{"parameters": "", "model_info": {}}"#,
+    )]);
     server.open();
-    let model = MockCompletionModel::from_stream_turns([reply("done")]);
+    let model = MockCompletionModel::from_stream_turns([reply("first"), reply("done")]);
     let (mut app, wakes, agent) = served("ollama/qwen3", &server, &model);
-    ask(&mut app, &wakes, agent);
+    ask_until(&mut app, &wakes, agent, 1);
+    ask_until(&mut app, &wakes, agent, 2);
     let limit = app
         .world()
         .get::<Connection>(agent)
         .and_then(|connection| connection.spec.input_limit());
     assert_eq!(limit, None);
-    assert_eq!(answer(&app).as_deref(), Some("done"));
     assert!(!sent(&model).iter().any(|request| asks_summary(request)));
+    // Its answer is final: the second turn does not ask again.
     assert_eq!(server.asked().len(), 1, "{:?}", server.asked());
+}
+
+#[test]
+fn a_server_that_fails_the_ask_is_asked_again_on_the_next_turn() {
+    let ollama = format!(r#"{{"parameters": "num_ctx {SERVED}", "model_info": {{}}}}"#);
+    let loading =
+        || MockHttpResponse::error(http_client::StatusCode::INTERNAL_SERVER_ERROR, "loading");
+    let server = Server::new([loading(), loading(), MockHttpResponse::success(ollama)]);
+    server.open();
+    let model = MockCompletionModel::from_stream_turns([
+        reply("first"),
+        reply("## Goal\nAnswer the user's questions about the crate."),
+        reply("done"),
+    ]);
+    let (mut app, wakes, agent) = served("ollama/qwen3", &server, &model);
+    // The ask made on connecting fails, and so does the first turn's.
+    run_until(&mut app, &wakes, |world| !asking(world));
+    ask_until(&mut app, &wakes, agent, 1);
+    let first = sent(&model).len();
+    ask_until(&mut app, &wakes, agent, 2);
+    let requests = sent(&model);
+    assert!(
+        requests
+            .get(first)
+            .is_some_and(|request| asks_summary(request)),
+        "the second turn summarizes first: {} requests, {first} in the first turn",
+        requests.len()
+    );
+    assert_eq!(first, 1, "the first turn has no window to compact to");
+    assert_eq!(server.asked().len(), 3, "{:?}", server.asked());
 }
 
 #[test]
 fn a_server_that_never_answers_is_given_up_on() {
     let server = Server::new([]);
-    let model = MockCompletionModel::from_stream_turns([reply("done")]);
+    let model = MockCompletionModel::from_stream_turns([reply("done"), reply("again")]);
     let (mut app, wakes, agent) = served("ollama/qwen3", &server, &model);
     ask(&mut app, &wakes, agent);
     assert_eq!(answer(&app).as_deref(), Some("done"));
     run_until(&mut app, &wakes, |world| !asking(world));
+    // Its silence is final: the next turn neither asks nor waits again.
+    ask_until(&mut app, &wakes, agent, 2);
+    assert!(!asking(app.world()));
     let limit = app
         .world()
         .get::<Connection>(agent)
