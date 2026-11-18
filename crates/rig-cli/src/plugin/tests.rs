@@ -296,13 +296,13 @@ fn the_list_is_a_tree_of_crates_areas_and_plugins_rigs_before_the_users() {
     let (rigs, yours) = (at("rig's plugins:"), at("your plugins (extras):"));
     let basics = lines.iter().position(|line| *line == "rig-basics");
     let sessions = at("rig-basics/sessions");
-    let (skills, forks, hello) = (
+    let (skills, own, hello) = (
         at(SKILLS),
-        at("rig_basics::sessions::forks::ForksPlugin"),
+        at("rig_basics::sessions::SessionsPlugin"),
         at("hello::HelloPlugin"),
     );
     let tui = lines.iter().position(|line| *line == "rig-tui");
-    let order = [rigs, basics, skills, sessions, forks, tui, yours, hello];
+    let order = [rigs, basics, skills, sessions, own, tui, yours, hello];
     assert!(
         order.iter().all(Option::is_some) && order.is_sorted(),
         "{order:?}\n{with}"
@@ -314,10 +314,10 @@ fn the_list_is_a_tree_of_crates_areas_and_plugins_rigs_before_the_users() {
         "{skills}"
     );
     assert!(line(sessions).starts_with("  rig-basics/sessions") && line(sessions).contains("off"));
-    let forks = line(forks);
+    let own = line(own);
     assert!(
-        forks.starts_with("    off ") && forks.contains("off with its branch rig-basics/sessions"),
-        "{forks}"
+        own.starts_with("    off ") && own.contains("off with its branch rig-basics/sessions"),
+        "{own}"
     );
     let hello = line(hello);
     let path = home.plugins().join("hello");

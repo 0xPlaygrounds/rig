@@ -623,7 +623,7 @@ fn a_plugin_of_an_off_branch_keeps_its_own_tick_and_says_its_branch_is_off() {
     assert!(detail(&shown, "Skills").starts_with("on"));
 
     // Enter changes only that plugin's own choice; the branch stays off.
-    tick(&mut app, list, &[], &["Forks and rewind"]);
+    tick(&mut app, list, &["Forks and rewind"], &[]);
     pick(&mut app, list, None);
     let found = picker(&mut app);
     assert!(found.is_some(), "no question");
@@ -634,9 +634,7 @@ fn a_plugin_of_an_off_branch_keeps_its_own_tick_and_says_its_branch_is_off() {
     pick(&mut app, question, later.map(Chosen::item));
     let chosen = config::chosen(&home).unwrap_or_default();
     assert_eq!(chosen.off, ["rig-basics/sessions"]);
-    assert!(
-        !(chosen.own.iter()).any(|plugin| plugin == "rig_basics::sessions::forks::ForksPlugin")
-    );
+    assert!((chosen.own.iter()).any(|plugin| plugin == "rig_basics::sessions::forks::ForksPlugin"));
     assert!((chosen.own.iter()).any(|plugin| plugin == "rig_basics::sessions::SessionsPlugin"));
 }
 
@@ -836,7 +834,7 @@ fn plugins_defaults_says_no_plugin_stays_off_under_a_branch_it_turns_back_on() {
     fs::write(
         home.settings(),
         "[plugins]\noff = [\"rig-basics/sessions\"]\n\
-         disable = [\"rig_basics::sessions::forks::ForksPlugin\"]\n",
+         disable = [\"rig_basics::sessions::SessionsPlugin\"]\n",
     )
     .ok();
     let (mut app, agent) = app(&home, true);
@@ -846,19 +844,19 @@ fn plugins_defaults_says_no_plugin_stays_off_under_a_branch_it_turns_back_on() {
     let Some((question, asked)) = found else {
         return;
     };
-    assert!(asked.body.contains("Forks and rewind"), "{}", asked.body);
+    assert!(asked.body.contains("Sessions"), "{}", asked.body);
     assert!(!asked.body.contains("stays off"), "{}", asked.body);
     let later = at(&asked, "Later, at the next start");
     pick(&mut app, question, later.map(Chosen::item));
     let told = &app.world().resource::<Told>().0;
     assert!(
-        told.iter().any(|text| text.contains("Forks and rewind"))
+        told.iter().any(|text| text.contains("Sessions"))
             && !told.iter().any(|text| text.contains("stays off")),
         "{told:?}"
     );
     let back = config::chosen(&home).unwrap_or_default();
     assert!(
-        (back.on.iter()).any(|plugin| plugin == "rig_basics::sessions::forks::ForksPlugin"),
+        (back.on.iter()).any(|plugin| plugin == "rig_basics::sessions::SessionsPlugin"),
         "{}",
         settings(&home)
     );
