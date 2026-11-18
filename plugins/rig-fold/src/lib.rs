@@ -138,27 +138,20 @@ impl Plugin for FoldPlugin {
                 bound.keys, bound.label
             );
             warn!("{why}");
-            tell(app, why);
+            app.insert_resource(Refused(why));
             return;
         }
         // Global, so no other binding of the key shadows it unseen: one
-        // bound first refuses it, with a warning, instead.
-        let binding = KeyBinding::new(key.clone(), LABEL).in_scope(KeyScope::Global);
-        match app.add_key_binding(binding, flip) {
-            Some(bound) => {
-                app.world_mut().entity_mut(bound).insert(FoldKey);
-            }
-            // rig-tui's own warning names the binding in the way.
-            None => tell(
-                app,
-                format!("[fold] key `{key}` is bound already: nothing is folded"),
-            ),
+        // bound first refuses it, and rig-tui says so.
+        let binding = KeyBinding::new(key, LABEL).in_scope(KeyScope::Global);
+        if let Some(bound) = app.add_key_binding(binding, flip) {
+            app.world_mut().entity_mut(bound).insert(FoldKey);
         }
     }
 
-    /// Says why the key was refused, as a notice, when the terminal view
-    /// is the run's front; another front, such as `--print`, `--json` or
-    /// ACP, sees the same with the plugin as without it.
+    /// Says why the key is the input's, as a notice, when the terminal
+    /// view is the run's front; another front, such as `--print`, `--json`
+    /// or ACP, sees the same with the plugin as without it.
     fn finish(&self, app: &mut App) {
         let Some(Refused(why)) = app.world_mut().remove_resource::<Refused>() else {
             return;
@@ -171,15 +164,10 @@ impl Plugin for FoldPlugin {
     }
 }
 
-/// Why the fold key was refused, which the terminal view says as it starts.
+/// Why the fold key, an input key, was refused, which the terminal view
+/// says as it starts.
 #[derive(Resource)]
 struct Refused(String);
-
-/// Keeps `why` the fold key was refused for the terminal view
-/// ([`FoldPlugin::finish`]).
-fn tell(app: &mut App, why: String) {
-    app.insert_resource(Refused(why));
-}
 
 /// The call the main transcript has selected, if a call or one of its
 /// decorations is.

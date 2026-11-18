@@ -1,20 +1,9 @@
-use std::sync::Arc;
-
 use bevy_ecs::system::RunSystemOnce;
 use rig_harness::prelude::*;
 use rig_harness::rig_memory::MemoryStore;
 
 use super::*;
-use crate::tests::{line_of, say, transcript, view_app};
-
-/// Places for plugins' files, all in memory, the session's in `session`.
-fn data(session: &MemoryStore) -> PluginData {
-    PluginData {
-        session: Arc::new(session.clone()),
-        project: Arc::new(MemoryStore::default()),
-        user: Arc::new(MemoryStore::default()),
-    }
-}
+use crate::tests::{data, line_of, say, transcript, view_app};
 
 #[test]
 fn a_notice_stays_before_what_an_edit_adds_to_the_message_it_followed() {

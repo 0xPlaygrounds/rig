@@ -1,12 +1,14 @@
 use bevy_ecs::entity_disabling::Disabled;
+use bevy_ecs::system::RunSystemOnce;
 use crossterm::event::KeyEventKind;
 
 use super::*;
-use crate::tests::{Delivered, key_events, press, type_text, typed, view_app};
+use crate::tests::{Delivered, data, key_events, press, type_text, typed, view_app, view_app_with};
 use crate::view::TuiView;
-use crate::{CompletionSource, Placement, TuiPanel};
+use crate::{CompletionSource, Placement, TuiPanel, TuiPlugin};
 use ratatui::layout::Constraint;
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
+use rig_harness::prelude::*;
 
 /// What the test bindings heard: for each, whether it was a release.
 #[derive(Resource, Default)]
@@ -65,6 +67,78 @@ fn a_global_binding_shadows_the_inputs_and_a_taken_key_stays_until_disabled() {
     assert!(app.add_key_binding(edit(), heard).is_some());
     press(&mut app, "ctrl+e");
     assert_eq!(heard_count(&app), 2);
+}
+
+/// The warnings the view shows.
+fn warnings(app: &App) -> Vec<String> {
+    let notices = app.world().resource::<crate::view::Notices>().numbered();
+    let warnings = notices.filter(|(_, notice)| notice.level == NoticeLevel::Warn);
+    warnings.map(|(_, notice)| notice.text.clone()).collect()
+}
+
+/// A plugin's binding of a taken key is refused with one warning in the
+/// view, naming both bindings, and its other keys still work. With nothing
+/// refused, or off the terminal view, nothing is said.
+#[test]
+fn a_refused_binding_is_told_once_and_the_plugins_other_keys_work() {
+    let plugin = |app: &mut App| {
+        app.init_resource::<Heard>();
+        app.add_key_binding(KeyBinding::new(KeyPress::ctrl('o'), "Open"), heard);
+        app.add_key_binding(KeyBinding::new(KeyPress::ctrl('o'), "Show output"), heard);
+        app.add_key_binding(KeyBinding::new(KeyPress::ctrl('g'), "Go"), heard);
+    };
+    let (mut app, _) = view_app_with(plugin);
+    app.update();
+    let told = warnings(&app);
+    assert_eq!(told.len(), 1, "{told:?}");
+    let warning = told.first().map_or("", String::as_str);
+    for named in ["`ctrl+o`", "Show output", "Open"] {
+        assert!(warning.contains(named), "{named} in {warning}");
+    }
+    press(&mut app, "ctrl+g");
+    assert_eq!(heard_count(&app), 1);
+
+    let (app, _) = view_app();
+    assert_eq!(warnings(&app), Vec::<String>::new());
+
+    // Another front, such as `--print`, adds no view, and is not told.
+    let mut printed = App::new();
+    printed
+        .insert_resource(Invoked::default())
+        .add_plugins((AgentPlugin, TuiPlugin));
+    plugin(&mut printed);
+    printed.finish();
+    // Only Startup, as a frame's `First` would swap its notices out of view.
+    assert!(printed.world_mut().try_run_schedule(Startup).is_ok());
+    let notices = printed.world().get_resource::<Messages<Notice>>();
+    assert!(notices.is_some(), "notices can be sent");
+    let mut notices = notices
+        .into_iter()
+        .flat_map(Messages::iter_current_update_messages);
+    assert!(!notices.any(|notice| notice.text.contains("`ctrl+o`")));
+}
+
+/// Across reloads the view shows one warning for each refusal of the
+/// build running, the copies the build before kept replaced. A build with
+/// none keeps the earlier warnings as they were.
+#[test]
+fn each_build_shows_one_warning_per_refusal_across_reloads() {
+    let session = rig_harness::rig_memory::MemoryStore::default();
+    // (refusals of the build, warnings it shows)
+    for (refusals, shown) in [(1, 1), (1, 1), (2, 2), (0, 2), (1, 1)] {
+        let (mut app, _) = view_app_with(|app| {
+            app.insert_resource(data(&session));
+            app.add_key_binding(KeyBinding::new(KeyPress::ctrl('o'), "Open"), heard);
+            for _ in 0..refusals {
+                app.add_key_binding(KeyBinding::new(KeyPress::ctrl('o'), "Show output"), heard);
+            }
+        });
+        app.update();
+        assert_eq!(warnings(&app).len(), shown, "{:?}", warnings(&app));
+        app.insert_resource(ExitReason::Reload);
+        let kept = app.world_mut().run_system_once(crate::view::keep_notices);
+        assert!(kept.is_ok());
+    }
 }
 
 #[test]

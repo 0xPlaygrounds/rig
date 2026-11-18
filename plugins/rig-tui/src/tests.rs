@@ -27,24 +27,38 @@ pub(crate) fn scratch(name: &str) -> std::path::PathBuf {
     dir
 }
 
+/// Places for plugins' files, all in memory, the session's in `session`.
+pub(crate) fn data(session: &rig_harness::rig_memory::MemoryStore) -> PluginData {
+    PluginData {
+        session: std::sync::Arc::new(session.clone()),
+        project: std::sync::Arc::new(rig_harness::rig_memory::MemoryStore::default()),
+        user: std::sync::Arc::new(rig_harness::rig_memory::MemoryStore::default()),
+    }
+}
+
 /// An agent with the terminal view's input and choices, but no terminal:
 /// its keys are the [`PendingInput`] [`press`] pushes. Also returns the
 /// agent.
 pub(crate) fn view_app() -> (App, Entity) {
+    view_app_with(|_| {})
+}
+
+/// [`view_app`], with `plugin` built after the terminal view's plugin.
+pub(crate) fn view_app_with(plugin: impl FnOnce(&mut App)) -> (App, Entity) {
     let mut app = App::new();
     app.set_error_handler(rig_harness::error::panic)
         .insert_resource(Invoked::default())
-        .add_plugins((AgentPlugin, AskPlugin, PickPlugin, TuiPlugin))
-        .init_resource::<Delivered>()
-        .add_observer(
-            |accepted: On<Add<Started>>,
-             messages: Query<&Incoming>,
-             mut delivered: ResMut<Delivered>| {
-                if let Ok(message) = messages.get(accepted.entity) {
-                    delivered.0.push(message.text().to_owned());
-                }
-            },
-        );
+        .add_plugins((AgentPlugin, AskPlugin, PickPlugin, TuiPlugin));
+    plugin(&mut app);
+    app.init_resource::<Delivered>().add_observer(
+        |accepted: On<Add<Started>>,
+         messages: Query<&Incoming>,
+         mut delivered: ResMut<Delivered>| {
+            if let Ok(message) = messages.get(accepted.entity) {
+                delivered.0.push(message.text().to_owned());
+            }
+        },
+    );
     add_view(&mut app);
     app.update();
     let world = app.world_mut();
