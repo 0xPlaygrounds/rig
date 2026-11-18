@@ -236,7 +236,11 @@ fn list(
             checked: *ticked,
             // Typing a type path finds its plugin; → shows it with the whole state.
             more: Some(format!("{}: {}", row.plugin, row.state)),
-            ..PickItem::new(&row.name, "").detail(detail(row, *ticked, needer(&rows, &on, row)))
+            ..PickItem::new(&row.name, "").detail(detail(
+                row,
+                *ticked,
+                needers(&rows, &on, row).as_deref(),
+            ))
         })
         .collect();
     // The terminal view gives the preview its half of the screen from the
@@ -327,22 +331,29 @@ impl Reload {
     }
 }
 
-/// The first of `rows` ticked in `on` and not off with a branch that adds
-/// `row`, which keeps it on whatever its own choice.
-fn needer<'a>(rows: &'a [Row], on: &[bool], row: &Row) -> Option<&'a Row> {
-    (rows.iter().zip(on))
-        .find(|(it, on)| **on && it.branch_off.is_none() && row.added_by.contains(&&*it.plugin))
-        .map(|(it, _)| it)
+/// The names of `rows` ticked in `on` and not off with a branch that add
+/// `row`, which keep it on whatever its own choice, joined by "and".
+fn needers(rows: &[Row], on: &[bool], row: &Row) -> Option<String> {
+    let names = (rows.iter().zip(on))
+        .filter(|(it, on)| **on && it.branch_off.is_none() && row.added_by.contains(&&*it.plugin))
+        .map(|(it, _)| it.name.as_str());
+    and(names)
+}
+
+/// `names` joined by "and", when there is any.
+fn and<'a>(names: impl Iterator<Item = &'a str>) -> Option<String> {
+    let names: Vec<&str> = names.collect();
+    (!names.is_empty()).then(|| names.join(" and "))
 }
 
 /// What the list shows beside `row` while `on` says whether it is ticked
-/// and `needer` adds it: its state, or how ticking changes it.
-fn detail(row: &Row, on: bool, needer: Option<&Row>) -> String {
-    if let Some(by) = needer.filter(|_| row.on && !on) {
-        return format!("- off, stays on: needed by {}", by.name);
+/// and `needers` add it: its state, or how ticking changes it.
+fn detail(row: &Row, on: bool, needers: Option<&str>) -> String {
+    if let Some(by) = needers.filter(|_| row.on && !on) {
+        return format!("- off, stays on: needed by {by}");
     }
     match (row.on, on, row.essential) {
-        (false, true, _) => match row.branch_off.as_ref().filter(|_| needer.is_none()) {
+        (false, true, _) => match row.branch_off.as_ref().filter(|_| needers.is_none()) {
             Some(branch) => format!("+ on, still off with its branch {branch}"),
             None => "+ on".to_owned(),
         },
@@ -441,8 +452,8 @@ struct Choice {
     branch_off: Option<String>,
     /// Whether it is on, by its own choice or because a plugin on adds it.
     runs_on: bool,
-    /// The short name of the plugin on that adds it, if one does.
-    needed_by: Option<&'static str>,
+    /// The short names of the plugins on that add it, if any do.
+    needed_by: Option<String>,
     /// The short name of the plugin it does nothing without, while that is
     /// off.
     idle_without: Option<&'static str>,
@@ -451,12 +462,14 @@ struct Choice {
 impl Choice {
     /// What `chosen` makes of `plugin`.
     fn of(chosen: &Plugins, plugin: &str) -> Self {
-        let needed_by = chosen.needed_by(plugin).next().and_then(config::built_in);
         Choice {
             on: chosen.own.iter().any(|on| on == plugin),
             branch_off: chosen.off_with(plugin).map(str::to_owned),
             runs_on: chosen.on.iter().any(|on| on == plugin),
-            needed_by: needed_by.map(|built_in| built_in.name),
+            needed_by: and(chosen
+                .needed_by(plugin)
+                .filter_map(config::built_in)
+                .map(|built_in| built_in.name)),
             idle_without: chosen
                 .does_nothing_without(plugin)
                 .map(|built_in| built_in.name),
@@ -467,7 +480,7 @@ impl Choice {
     /// whatever its own choice, on because a plugin adds it, and whether
     /// that waits for the next reload because this build runs it or not.
     fn state(&self, runs: bool) -> String {
-        let mut word = match (self.needed_by, &self.branch_off) {
+        let mut word = match (self.needed_by.as_deref(), &self.branch_off) {
             (Some(by), _) => format!("on (needed by {by})"),
             (None, Some(branch)) => format!("off with its branch {branch}"),
             (None, None) if self.on => "on".to_owned(),
@@ -585,7 +598,7 @@ fn extra_row(extra: &Extra, name: String, choice: Choice, runs: bool) -> Row {
 /// plugin, of the plugin that adds it, and of the one it does nothing
 /// without.
 fn branch(choice: &Choice) -> String {
-    let mut text = match (&choice.branch_off, choice.needed_by) {
+    let mut text = match (&choice.branch_off, choice.needed_by.as_deref()) {
         (Some(branch), None) => format!(
             "Its branch {branch} is off ([plugins] off), which keeps it off whatever its own \
              choice. Enter changes only its own choice; `rig plugin enable {branch}` turns the \
@@ -622,7 +635,7 @@ fn states(default: Option<bool>, choice: &Choice, runs: bool) -> String {
         parts.push(format!("default {}", word(default)));
     }
     parts.push(format!("{} in settings", word(choice.on)));
-    match (&choice.branch_off, choice.needed_by) {
+    match (&choice.branch_off, choice.needed_by.as_deref()) {
         (_, Some(by)) => parts.push(format!("needed by {by}")),
         (Some(branch), None) => parts.push(format!("off with its branch {branch}")),
         (None, None) => {}
@@ -679,7 +692,11 @@ fn mark(
         let mut picker = shown.clone();
         picker.body = body(&list.rows, &on, &list.branches);
         for (item, (row, ticked)) in picker.items.iter_mut().zip(list.rows.iter().zip(&on)) {
-            item.detail = Some(detail(row, *ticked, needer(&list.rows, &on, row)));
+            item.detail = Some(detail(
+                row,
+                *ticked,
+                needers(&list.rows, &on, row).as_deref(),
+            ));
         }
         if picker != *shown {
             commands.entity(entity).insert(picker);
@@ -743,12 +760,16 @@ fn ask(
         ));
     }
     for (row, _) in changed.iter().filter(|(_, on)| !on) {
-        if let Some(by) = needer(&rows, &on, row) {
+        if let Some(by) = needers(&rows, &on, row) {
+            let (adds, is) = if by.contains(" and ") {
+                ("add", "are")
+            } else {
+                ("adds", "is")
+            };
             lines.push(format!(
-                "\n{} stays on while {by}, which adds it, is on. Keep editing and untick {by} \
-                 too to turn it off.",
-                row.name,
-                by = by.name
+                "\n{} stays on while {by}, which {adds} it, {is} on. Keep editing and untick \
+                 {by} too to turn it off.",
+                row.name
             ));
         }
         if let Some(what) = row.essential {
@@ -799,7 +820,7 @@ fn names(rows: &[Row], on: &[bool], branches: &[String]) -> Vec<(&'static str, S
                 .filter(|(_, on)| *on == want)
                 .map(|(row, ticked)| {
                     match (row.branch_off.as_ref()).filter(|branch| {
-                        *ticked && !branches.contains(branch) && needer(rows, on, row).is_none()
+                        *ticked && !branches.contains(branch) && needers(rows, on, row).is_none()
                     }) {
                         Some(branch) => {
                             format!("{} (stays off with its branch {branch})", row.name)

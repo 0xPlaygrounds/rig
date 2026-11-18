@@ -665,8 +665,11 @@ fn row(chosen: &Plugins, depth: usize, plugin: &str, about: &str) -> (String, Op
     if let Some(branch) = chosen.off_with(plugin).filter(|_| own && !on) {
         about.push_str(&format!(" (off with its branch {branch})"));
     }
-    if let Some(by) = chosen.needed_by(plugin).next().and_then(built_in) {
-        about.push_str(&format!(" (needed by {})", by.name));
+    let by: Vec<&str> = (chosen.needed_by(plugin).filter_map(built_in))
+        .map(|by| by.name)
+        .collect();
+    if !by.is_empty() {
+        about.push_str(&format!(" (needed by {})", by.join(" and ")));
     }
     if let Some(without) = chosen.does_nothing_without(plugin).filter(|_| on) {
         about.push_str(&format!(" (does nothing without {})", without.name));
