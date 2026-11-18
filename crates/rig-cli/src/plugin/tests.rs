@@ -894,15 +894,31 @@ fn enabling_a_plugin_that_does_nothing_without_one_off_says_it_stays_off() {
     let home = old_home("idle-enable");
     let result = (|| -> Result<_> {
         fs::create_dir_all(home.root())?;
-        Ok(enable(&home, MCP_APPROVAL, true)?.join("\n"))
+        let first = enable(&home, MCP_APPROVAL, true)?.join("\n");
+        let again = enable(&home, MCP_APPROVAL, true)?.join("\n");
+        run(&home, &["disable", "rig_tui::TuiPlugin"])?;
+        run(&home, &["enable", "rig_fold::FoldPlugin"])?;
+        let branch = enable(&home, "rig-fold", true)?.join("\n");
+        Ok([first, again, branch])
     })();
     fs::remove_dir_all(home.root()).ok();
-    let said = result.unwrap_or_default();
+    let [first, again, branch] = result.unwrap_or_default();
+    let stays =
+        "It does nothing without MCP servers, which is off, so it stays off until that is on.";
     assert!(
-        said.contains(
-            "It does nothing without MCP servers, which is off, so it stays off until that is on."
-        ) && !said.contains("rebuilds the agent with it"),
-        "{said}"
+        first.contains(stays) && !first.contains("rebuilds the agent with it"),
+        "{first}"
+    );
+    assert!(
+        again.contains("is on already") && again.contains(stays),
+        "{again}"
+    );
+    assert!(
+        branch.contains(
+            "`rig_fold::FoldPlugin` does nothing without Terminal view, which is off, so it \
+             stays off until that is on."
+        ),
+        "{branch}"
     );
 }
 

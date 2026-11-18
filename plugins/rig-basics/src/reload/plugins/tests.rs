@@ -886,7 +886,7 @@ fn a_plugin_another_adds_says_so_and_unticking_it_says_it_stays_on() {
     pick(&mut app, list, None);
     let found = picker(&mut app);
     assert!(found.is_some(), "no question");
-    let Some((_, asked)) = found else {
+    let Some((question, asked)) = found else {
         return;
     };
     assert!(
@@ -895,6 +895,13 @@ fn a_plugin_another_adds_says_so_and_unticking_it_says_it_stays_on() {
             .contains("Approvals stays on while Subagents, which adds it, is on"),
         "{}",
         asked.body
+    );
+    let later = at(&asked, "Later, at the next start");
+    pick(&mut app, question, later.map(Chosen::item));
+    let told = app.world().resource::<Told>().0.join("\n");
+    assert!(
+        told.contains("turned off Approvals (stays on: needed by Subagents)"),
+        "{told}"
     );
 }
 
@@ -987,5 +994,40 @@ fn a_plugin_on_whose_only_with_plugin_is_off_shows_off() {
         detail(&shown, "MCP approval").starts_with("off, does nothing without MCP servers"),
         "{}",
         detail(&shown, "MCP approval")
+    );
+}
+
+#[test]
+fn ticking_a_plugin_whose_only_with_plugin_is_unticked_says_it_stays_off() {
+    let home = scratch_home("plugins-idle-tick");
+    let (mut app, agent) = app(&home, true);
+    open(&mut app, agent);
+    let found = picker(&mut app);
+    assert!(found.is_some(), "no list");
+    let Some((list, _)) = found else {
+        return;
+    };
+    tick(&mut app, list, &["MCP approval"], &[]);
+    let ticked = app.world().get::<Picker>(list).cloned().unwrap_or_default();
+    assert_eq!(
+        detail(&ticked, "MCP approval"),
+        "+ on, does nothing without MCP servers"
+    );
+    tick(&mut app, list, &["MCP approval", "MCP servers"], &[]);
+    let both = app.world().get::<Picker>(list).cloned().unwrap_or_default();
+    assert_eq!(detail(&both, "MCP approval"), "+ on");
+    tick(&mut app, list, &["MCP approval"], &[]);
+    pick(&mut app, list, None);
+    let found = picker(&mut app);
+    assert!(found.is_some(), "no question");
+    let Some((_, asked)) = found else {
+        return;
+    };
+    assert!(
+        asked
+            .body
+            .contains("Turn on: MCP approval (does nothing without MCP servers)"),
+        "{}",
+        asked.body
     );
 }
