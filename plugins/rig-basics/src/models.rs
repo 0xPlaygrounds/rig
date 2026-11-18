@@ -170,7 +170,8 @@ pub struct ModelLabel(pub String);
 /// catalog does not list, or one that does not connect, such as one with
 /// no key, leaves the agent with none at once, even under a continued
 /// turn, with one error notice naming the closest ones or why, and for a
-/// missing key the `/login` that saves one or the variable that holds it:
+/// missing key the `/login` that saves one, when there is one, or the
+/// variable that holds it:
 /// no request goes to a model nobody named.
 fn choose_invoked_model(
     invoked: Option<Res<Invoked>>,
@@ -178,6 +179,7 @@ fn choose_invoked_model(
     (mut done, mut told): (Local<bool>, Local<bool>),
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
+    slash: Query<&bevy_ecs::name::Name, With<rig_harness::commands::SlashCommand>>,
 ) {
     use rig_harness::rig_core::providers::{chatgpt::PROVIDER_NAME, registry::ConnectError};
 
@@ -197,8 +199,12 @@ fn choose_invoked_model(
                 Err(ConnectError::MissingKey { vendor, tried }) => {
                     let envs = tried.iter().map(|name| format!("`{name}`"));
                     let envs = envs.collect::<Vec<_>>().join(" or ");
+                    // `/login` is named only when a plugin added it.
+                    let login = slash.iter().any(|name| name.as_str() == "/login");
                     let keyed = crate::login::keys::key_vendors(&models.0);
-                    let how = if vendor == PROVIDER_NAME {
+                    let how = if !login {
+                        format!("set {envs}")
+                    } else if vendor == PROVIDER_NAME {
                         format!("sign in with /login {vendor} or set {envs}")
                     } else if keyed.contains(&vendor.as_str()) {
                         format!("save one with /login {vendor} or set {envs}")
