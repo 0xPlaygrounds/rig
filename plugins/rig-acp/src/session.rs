@@ -23,7 +23,7 @@ use agent_client_protocol::schema::v1 as acp;
 use agent_client_protocol::{Agent, Client, ConnectionTo, Error};
 use async_channel::{Receiver, Sender};
 use bevy_ecs::system::SystemParam;
-use rig_basics::models::{FirstPick, TypedChoices};
+use rig_basics::models::{FirstPick, FirstPickSystems, TypedChoices};
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::host::pipes::Writer;
 use rig_harness::host::signals;
@@ -128,7 +128,8 @@ pub(crate) struct Session {
     /// The client's MCP servers it opened with, as rig runs them
     /// ([`running`]).
     servers: Running,
-    /// Whether the main agent was given a model once, before the answer.
+    /// Whether an opening was answered once: only the first says why no
+    /// model can be reached.
     chose: bool,
     /// The options the client was last told of.
     advertised: Vec<acp::SessionConfigOption>,
@@ -332,7 +333,7 @@ pub(crate) fn install(app: &mut App) {
     })
     .add_systems(
         Update,
-        (requests_in, open, stop_cancelled)
+        (requests_in, open.after(FirstPickSystems), stop_cancelled)
             .chain()
             .after(PollTasks)
             .after(RunStartSystems)
@@ -794,22 +795,11 @@ fn open(mut opened: Opened) {
         return;
     }
     // The answer lists the models the client can pick, so it waits until
-    // each sign-in knows what its account offers. A new session's agent then
-    // gets the first model it can reach, as a headless run's does; the
-    // answer waits a frame, so its options show it.
+    // each sign-in knows what its account offers. A new session's agent has
+    // the first pick by then, as in every front.
     let picks = !opened.session.chose && chosen.is_none();
     match FirstPick::of(&opened.models) {
         FirstPick::Checking => return,
-        FirstPick::Model(model) if picks => {
-            opened.session.chose = true;
-            opened.commands.trigger(SetModel {
-                entity: agent,
-                model,
-                kind: ChoiceKind::ForThisRun,
-            });
-            opened.session.wake.wake();
-            return;
-        }
         FirstPick::Nothing(Some(why)) if picks => {
             let why = format!("No model can be reached: {why}.");
             opened.notices.write(Notice::error(agent, why));

@@ -20,8 +20,9 @@
 //!
 //! [`AppHeadlessExt::run_headless`] is the run loop of both, and of any
 //! front nobody sits at. It sends the prompt to the main agent once it has
-//! a model (`--model`, else its restored session's, else the first one
-//! reachable; a `/command` needs none) and exits once no agent works, so
+//! a model (`--model`, else its restored session's, else the saved
+//! default, else the models plugin's [`FirstPick`]; a `/command` needs
+//! none) and exits once no agent works, so
 //! the subagents it started have answered. A plugin that sends the agent
 //! work over time, such as a file watch, keeps the run going with a
 //! [`KeepRunning`] entity, and one whose tools come in the background holds
@@ -757,15 +758,17 @@ fn drive(
             let Ok((chosen, connected)) = agents.choices.get(agent) else {
                 return;
             };
-            let model = match (run.model, chosen) {
-                // `--model` chose it, or the restored session did, and it
-                // was connected, or refused with a notice, already.
-                (true, _) | (false, Some(_)) => None,
-                (false, None) => match FirstPick::of(&models) {
+            // `--model` chose it, the restored session, the saved default
+            // or the first pick did, earlier in the frame the start ended,
+            // and it was connected, or refused with a notice, already.
+            if !run.model && chosen.is_none() {
+                match FirstPick::of(&models) {
                     // The answer wakes the loop and changes the models.
                     FirstPick::Checking => return,
-                    FirstPick::Model(model) => Some(model),
-                    FirstPick::Nothing(_) if command => None,
+                    // The first pick was refused, with a notice, or no
+                    // plugin picks: the run ends unconnected.
+                    FirstPick::Model(_) => {}
+                    FirstPick::Nothing(_) if command => {}
                     FirstPick::Nothing(refused) => {
                         let why = match refused {
                             Some(refused) => format!("no model can be reached: {refused}"),
@@ -776,21 +779,14 @@ fn drive(
                         let ended = ended(Some(agent), 1);
                         return end(&mut run, (ended, Reason::Said(&why)), commands);
                     }
-                },
-            };
-            // Connected already, as `--model` or the restored session
-            // leaves it: the prompt goes out in the first frame after the
-            // start, so a kill soon after leaves it in the session to resume.
-            if model.is_none() && (connected || command) {
+                }
+            }
+            // Connected already: the prompt goes out in the first frame
+            // after the start, so a kill soon after leaves it in the
+            // session to resume.
+            if connected || command {
                 send(&mut run, agent, &agents, command, restarted, &mut commands)
             } else {
-                if let Some(model) = model {
-                    commands.trigger(SetModel {
-                        entity: agent,
-                        model,
-                        kind: ChoiceKind::ForThisRun,
-                    });
-                }
                 run.step = Step::Connecting { agent };
                 // The model connects as this frame ends, or a refusal says
                 // why not; nothing else may ask for the frame that sees it.

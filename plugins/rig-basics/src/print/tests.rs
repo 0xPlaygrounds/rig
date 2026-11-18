@@ -31,8 +31,15 @@ const MODEL: &str = "test/model";
 struct Ends(Vec<HeadlessEnded>, Vec<HeadlessTurnEnded>);
 
 /// An app on `store` that keeps what [`Ends`] holds, `invoked` as its
-/// command line.
+/// command line, choosing models as the agent does.
 fn noting(store: &MemoryStore, invoked: Invocation) -> (App, Receiver<()>) {
+    let (mut app, wakes) = unpicked(store, invoked);
+    app.add_plugins(crate::models::ModelsPlugin);
+    (app, wakes)
+}
+
+/// [`noting`] without the models plugin: a test connects the agent.
+fn unpicked(store: &MemoryStore, invoked: Invocation) -> (App, Receiver<()>) {
     let (mut app, wakes) = app_on(store);
     app.insert_resource(Invoked {
         args: invoked,
@@ -63,8 +70,8 @@ fn started(
         model: model.map(|_| NAMED.to_owned()),
         ..Invocation::default()
     };
-    let (mut app, _) = noting(&MemoryStore::default(), invoked);
-    // Without one named, the run picks this one in its first frame.
+    let (mut app, _) = unpicked(&MemoryStore::default(), invoked);
+    // Without one named, the run connects to none before `setup`.
     let scripted = model.cloned().unwrap_or_else(silent);
     app.insert_resource(scripted_models([(NAMED, &scripted)]))
         .add_plugins(ExitPlugin)
@@ -1876,9 +1883,6 @@ fn one_shot_on(
     app.insert_resource(JsonOut::new(lines.clone()))
         .insert_resource(scripted_models([(MODEL, model)]))
         .add_plugins((SessionLogPlugin, ExitPlugin, PrintPlugin));
-    if named.is_some() {
-        app.add_plugins(crate::models::ModelsPlugin);
-    }
     setup(&mut app);
     app.finish();
     app.cleanup();
@@ -2647,8 +2651,7 @@ fn a_command_that_opens_a_picker_is_refused_with_what_to_type_instead() {
     let stderr = Lines::default();
     let (app, _) = one_shot("/effort", None, &model, false, |app| {
         app.insert_resource(Printed::to(stderr.clone()))
-            .insert_resource(scripted_models([]))
-            .add_plugins(crate::models::ModelsPlugin);
+            .insert_resource(scripted_models([]));
     });
     assert_eq!(app.should_exit(), Some(AppExit::from_code(2)));
     let lines = stderr.text();

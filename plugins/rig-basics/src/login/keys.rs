@@ -185,7 +185,10 @@ fn say_key_passed_over(
 ) {
     let named = invoked.is_some_and(|invoked| invoked.args.model.is_some());
     let auto = !named && set.kind == ChoiceKind::ForThisRun && unchosen.contains(set.entity);
-    if *said || !auto || FirstPick::of(&models) != FirstPick::Model(set.model.clone()) {
+    // A usable sign-in's model goes before every key.
+    let signed_in = set.model == super::default_model();
+    if *said || !auto || signed_in || FirstPick::of(&models) != FirstPick::Model(set.model.clone())
+    {
         return;
     }
     let specs = || models.0.catalog().iter();
