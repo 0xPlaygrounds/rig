@@ -110,15 +110,30 @@ pub(super) fn slash_commands(world: &mut World) -> Vec<String> {
     commands.iter(world).map(ToString::to_string).collect()
 }
 
+/// An app with `rebuild` whose agent runs a turn, so a queued rebuild
+/// waits, and the agent.
+pub(super) fn app_in_a_turn(rebuild: impl Plugin) -> (App, Entity) {
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let (mut app, wakes) = app_on(&MemoryStore::default());
+    app.insert_resource(scripted_models([("reload-main/m", &model)]))
+        .add_plugins((AgentPlugin, SessionLogPlugin, rebuild))
+        .add_systems(AgentPass, hold_turn_calls.in_set(Stage::Gate));
+    let agent = spawn_root(app.world_mut(), ModelChoice("reload-main/m".to_owned())).id();
+    app.finish();
+    app.update();
+    app.world_mut()
+        .trigger(Deliver::new(agent, "go", DeliveryMode::Steer));
+    run_until(&mut app, &wakes, |world| {
+        world.get::<ActiveTurn>(agent).is_some()
+    });
+    (app, agent)
+}
+
 /// With the update plugin left out, `/reload` runs and `/update` is no
 /// command, so `/update cancel` leaves a queued reload alone.
 #[test]
 fn without_the_update_plugin_reload_runs_and_update_is_no_command() {
-    let (mut app, _) = app_on(&MemoryStore::default());
-    app.add_plugins((AgentPlugin, SessionLogPlugin, ReloadPlugin));
-    let agent = spawn_root(app.world_mut(), ()).id();
-    app.finish();
-    app.update();
+    let (mut app, agent) = app_in_a_turn(ReloadPlugin);
     let commands = slash_commands(app.world_mut());
     assert!(
         commands.iter().any(|name| name == "/reload"),

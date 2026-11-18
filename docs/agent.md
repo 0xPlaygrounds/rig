@@ -77,7 +77,8 @@ install root, not in the directory rig was started in, so a
 
 A failed install, such as one offline, leaves the installed rig as it was and
 exits 1. In the agent, `/update` runs it, showing its lines and cargo's latest
-one, and then restarts: the launcher, whose own file was replaced, starts the
+one, and then restarts (`rig_basics::reload::update::UpdatePlugin`, on by
+default, adds `/update`; with it off, `rig update` in a shell still works): the launcher, whose own file was replaced, starts the
 new one on the same session. Unlike `/reload`, the restart ends the background
 jobs the agent started, and asks again for the keys you typed at the terminal.
 Installing by hand works too: the next start, or the next `/reload`, `/new` or
@@ -659,7 +660,7 @@ the config file. Changing the toolchain or the flags rebuilds everything once.
 Plugins are Bevy plugins. Everything but the harness (the session and the
 launcher protocol) is one: the project context, models, sign-in, sessions,
 compaction, usage, activity, each tool, `@path` attachments, `/reload`,
-`/plugins`, the commands, `--print` and the terminal view, each from a plugin
+`/update`, `/plugins`, the commands, `--print` and the terminal view, each from a plugin
 crate in [`plugins/`](../plugins), most from
 [`rig-basics`](../plugins/rig-basics), so any of them can be turned off or
 replaced ([`crates/rig-harness`](../crates/rig-harness/README.md) lists them).

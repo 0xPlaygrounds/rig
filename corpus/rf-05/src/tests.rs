@@ -342,6 +342,7 @@ fn add_defaults(app: &mut App) {
     load::<coding_tools::ShellTool>(app, "rig-basics", "");
     load::<coding_tools::AttachPlugin>(app, "rig-basics", "");
     load::<reload::ReloadPlugin>(app, "rig-basics", "");
+    load::<reload::update::UpdatePlugin>(app, "rig-basics", "");
     load::<reload::plugins::PluginsPlugin>(app, "rig-basics", "");
     load::<BasicCommandsPlugin>(app, "rig-basics", "");
     load::<welcome::WelcomePlugin>(app, "rig-basics", "");
