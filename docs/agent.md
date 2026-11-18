@@ -697,11 +697,11 @@ A mistake in this file (a plugin or branch rig does not know, a branch in
 crate, a file that is not TOML) or a `RIG_SOURCE` that is not a rig checkout
 is refused, naming it, and `rig` starts no agent until it is fixed: a build
 from before was built from other settings. `rig plugin disable <name>` takes
-the name out of each list that cannot hold it. A build that cargo cannot
-resolve or compile instead starts the previous build, whose conversation is
-told why, except under `rig -p`, which refuses on stderr with rig's
-explanation (such as a plugin's Bevy pin, by file and line), else cargo's
-errors, and the path of the build log.
+the name out of each list that cannot hold it and changes nothing else. A
+build that cargo cannot resolve or compile instead starts the previous build,
+whose conversation is told why, except under `rig -p`, which refuses on
+stderr with rig's explanation (such as a plugin's Bevy pin, by file and
+line), else cargo's errors, and the path of the build log.
 
 Turning a plugin on or off, or changing an `extra` crate, rebuilds the agent
 at the next start or `/reload`: only the generated crate compiles again, and
@@ -759,10 +759,10 @@ turned on under an off branch "stays off with its branch"), and what an
 essential plugin such as `/plugins` itself takes away, and asks: "Reload
 now" (offered only when the Reload plugin is on and the `rig` launcher
 started rig; otherwise it says which is missing), "Later, at the next
-start", or "Keep editing" (Esc too). Either of the first two writes every
-change into `settings.toml` in one edit, or none when one is refused; a
-reload rebuilds and restarts once no turn runs, and a failed build keeps the
-running one. `/plugins defaults` asks the same about going back to rig's
+start", "Keep editing" (Esc too), or "Leave without writing". Either of the
+first two writes every change into `settings.toml` in one edit, or none when
+one is refused; a reload rebuilds and restarts once no turn runs, and a
+failed build keeps the running one. `/plugins defaults` asks the same about going back to rig's
 defaults, every branch of `off` turned back on, and "Keep editing" keeps
 those branches for when you leave; without a terminal it asks nothing and
 prints the `rig plugin enable` and `rig plugin disable` commands that do it

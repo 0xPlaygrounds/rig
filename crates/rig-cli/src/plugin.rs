@@ -675,16 +675,15 @@ fn row(chosen: &Plugins, depth: usize, plugin: &str, about: &str) -> (String, Op
 /// plugin `name` in `[plugins] enable` or `disable` of the home's settings,
 /// or takes it out of the other list when that gives rig's default; a
 /// name in this list stays. A branch `name` leaves or joins `[plugins]
-/// off`. On a file that does not read, `disable` takes `name` out of each
-/// list that cannot hold it (a branch out of `enable` and `disable`, a
-/// plugin out of `off`, a name that is neither out of all three) and
-/// turns off a plugin that does not build here, which is how the
+/// off`. On a file that does not read, `disable` only takes `name` out of
+/// each list that cannot hold it (a branch out of `enable` and `disable`,
+/// a plugin out of `off`, a name that is neither out of all three), or
+/// else turns off a plugin that does not build here, which is how the
 /// settings' refusal of each says to fix it, even while the file holds
 /// other mistakes.
 fn enable(home: &Home, name: &str, on: bool) -> Result<()> {
     let path = home.settings();
     let (changed, forgot) = config::edit(&path, |file| -> Result<_> {
-        let mut forgot = false;
         if !on && let Err(failure) = config::plugins(file) {
             let plugin = built_in(name).is_some() || extra(file, name);
             let branch = holds_any(file, name);
@@ -692,28 +691,22 @@ fn enable(home: &Home, name: &str, on: bool) -> Result<()> {
                 .into_iter()
                 .filter(|(_, fits)| !fits)
                 .map(|(list, _)| list);
-            forgot = config::forget(&mut file.document, name, wrong);
-            if !plugin && !branch {
-                return if forgot {
-                    Ok((true, true))
-                } else {
-                    Err(failure.into())
-                };
+            if config::forget(&mut file.document, name, wrong) {
+                return Ok((true, true));
             }
-            match config::plugins(file) {
-                Ok(_) => {}
-                Err(_) if forgot => return Ok((true, true)),
-                // Turning off the plugin the file cannot run here is its fix.
-                Err(config::Error::Unavailable { plugin, .. }) if plugin == name => {
-                    let by_default = built_in(name).is_some_and(|built_in| built_in.on);
-                    let changed = set_on(&mut file.document, name, false, by_default);
-                    return Ok((changed, false));
-                }
-                Err(_) => {}
+            if !plugin && !branch {
+                return Err(failure.into());
+            }
+            // Turning off the plugin the file cannot run here is its fix.
+            if let config::Error::Unavailable { plugin, .. } = &failure
+                && plugin == name
+            {
+                let by_default = built_in(name).is_some_and(|built_in| built_in.on);
+                let changed = set_on(&mut file.document, name, false, by_default);
+                return Ok((changed, false));
             }
         }
-        let changed = config::turn(file, &[(name, on)])?;
-        Ok((changed || forgot, false))
+        Ok((config::turn(file, &[(name, on)])?, false))
     })?;
     if forgot {
         println!(

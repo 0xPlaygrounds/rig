@@ -98,6 +98,8 @@ enum Leave {
     Later,
     /// Back to the list, with the ticks.
     Edit,
+    /// Close the list and write nothing.
+    Discard,
 }
 
 impl Leave {
@@ -107,6 +109,7 @@ impl Leave {
             Leave::Reload => "Reload now",
             Leave::Later => "Later, at the next start",
             Leave::Edit => "Keep editing",
+            Leave::Discard => "Leave without writing",
         }
     }
 }
@@ -651,8 +654,8 @@ fn leave(
 }
 
 /// Asks whether to reload now with what `on` changes in `rows` and the
-/// `branches` turned back on, at the next start, or to go back to the list
-/// at row `at`. It offers to reload now only where `reload` says one can
+/// `branches` turned back on, at the next start, to go back to the list
+/// at row `at`, or to leave without writing. It offers to reload now only where `reload` says one can
 /// run, and else says why.
 fn ask(
     commands: &mut Commands,
@@ -663,7 +666,7 @@ fn ask(
 ) {
     let changed = changed(&rows, &on);
     let mut lines = Vec::new();
-    for (word, names) in names(&changed) {
+    for (word, names) in names(&changed, &branches) {
         lines.push(format!("Turn {word}: {names}"));
     }
     if !branches.is_empty() {
@@ -686,8 +689,8 @@ fn ask(
     }
     lines.push("Esc goes back to the list.".to_owned());
     let answers: Vec<Leave> = match reload {
-        Reload::Can => vec![Leave::Reload, Leave::Later, Leave::Edit],
-        Reload::NoPlugin | Reload::NoLauncher => vec![Leave::Later, Leave::Edit],
+        Reload::Can => vec![Leave::Reload, Leave::Later, Leave::Edit, Leave::Discard],
+        Reload::NoPlugin | Reload::NoLauncher => vec![Leave::Later, Leave::Edit, Leave::Discard],
     };
     let title = match changed.len() + branches.len() {
         1 => "1 plugin change".to_owned(),
@@ -710,21 +713,24 @@ fn ask(
 }
 
 /// The names of the `changed` rows by what they turn, `on` then `off`, of
-/// those with any; a plugin turned on that a branch keeps off says so.
-fn names(changed: &[(&Row, bool)]) -> Vec<(&'static str, String)> {
+/// those with any; a plugin turned on that a branch keeps off says so,
+/// unless that branch is one of the `branches` turned back on.
+fn names(changed: &[(&Row, bool)], branches: &[String]) -> Vec<(&'static str, String)> {
     [("on", true), ("off", false)]
         .into_iter()
         .filter_map(|(word, want)| {
             let names: Vec<String> = (changed.iter())
                 .filter(|(_, on)| *on == want)
-                .map(
-                    |(row, on)| match row.branch_off.as_deref().filter(|_| *on) {
+                .map(|(row, on)| {
+                    match (row.branch_off.as_ref())
+                        .filter(|branch| *on && !branches.contains(branch))
+                    {
                         Some(branch) => {
                             format!("{} (stays off with its branch {branch})", row.name)
                         }
                         None => row.name.clone(),
-                    },
-                )
+                    }
+                })
                 .collect();
             (!names.is_empty()).then(|| (word, names.join(", ")))
         })
@@ -768,10 +774,14 @@ fn answer(
         reload,
         ..
     } = question;
-    if leave == Leave::Edit {
-        let question = (rows.clone(), on.clone(), branches.clone());
-        list(&mut commands, question, *agent, *at);
-        return;
+    match leave {
+        Leave::Edit => {
+            let question = (rows.clone(), on.clone(), branches.clone());
+            list(&mut commands, question, *agent, *at);
+            return;
+        }
+        Leave::Discard => return,
+        Leave::Reload | Leave::Later => {}
     }
     let changed = changed(rows, on);
     let path = home
@@ -791,7 +801,7 @@ fn answer(
         ));
         return;
     }
-    let mut said: Vec<String> = (names(&changed).into_iter())
+    let mut said: Vec<String> = (names(&changed, branches).into_iter())
         .map(|(word, names)| format!("turned {word} {names}"))
         .collect();
     if !branches.is_empty() {
