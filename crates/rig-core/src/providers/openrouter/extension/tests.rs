@@ -379,3 +379,19 @@ async fn chat_extras_read_alike_from_a_recorded_stream() {
     assert_eq!(streamed.cost, Some(2.7e-6));
     assert_eq!(streamed.native_finish_reason.as_deref(), Some("stop"));
 }
+
+/// A threshold array shorter than the four percentiles is refused, as a
+/// percentile with a field missing.
+#[test]
+fn thresholds_refuse_a_short_array() {
+    for input in ["[]", "[2.5]", "[null,1.5]"] {
+        assert!(
+            serde_json::from_str::<LatencyThreshold>(input).is_err(),
+            "{input}"
+        );
+        assert!(
+            serde_json::from_str::<ThroughputThreshold>(input).is_err(),
+            "{input}"
+        );
+    }
+}

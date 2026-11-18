@@ -93,3 +93,11 @@ fn sql_condition_keeps_placeholders_through_serde() {
         "(k$ = ?) AND (id IN ())"
     );
 }
+
+/// A search request written as an array that stops before its threshold is
+/// refused.
+#[test]
+fn a_search_array_without_its_threshold_is_refused() {
+    let read = serde_json::from_str::<super::VectorSearchRequest>(r#"["query", 1]"#);
+    assert!(read.is_err(), "{read:?}");
+}
