@@ -118,21 +118,25 @@ impl ReloadBuild {
         }
     }
 
-    /// Why `rig build` says the build failed, when it knows the cause.
+    /// Why `rig build` says the build failed, when it knows the cause: its
+    /// last line, before anything `rig update` said after it. An earlier
+    /// line like it is some other program's.
     fn explained(&self) -> Option<&str> {
-        let mut lines = self.output.iter();
-        lines.find_map(|line| line.strip_prefix(BUILD_SAYS))
+        let mut lines = self.output.iter().rev();
+        explanation(lines.find(|line| !line.starts_with(UPDATE_SAYS))?)
     }
 
-    /// What `rig build` explained, or else at most `count` lines of the
-    /// output from the first error on, or its end when no line starts with
-    /// `error`.
+    /// At most `count` lines: what `rig build` explained, then the output
+    /// from the first error on, or its end when there is neither.
     fn errors(&self, count: usize) -> String {
-        if let Some(explained) = self.explained() {
-            return explained.to_owned();
-        }
-        let lines = self.output.iter().map(String::as_str);
-        let mut shown = first_errors(lines.clone(), count);
+        let explained = self.explained();
+        let lines = (self.output.iter().map(String::as_str))
+            .filter(|line| explained.is_none() || explanation(line) != explained);
+        let mut shown: Vec<&str> = explained.into_iter().collect();
+        shown.extend(first_errors(
+            lines.clone(),
+            count.saturating_sub(shown.len()),
+        ));
         if shown.is_empty() {
             shown = lines
                 .skip(self.output.len().saturating_sub(count))
@@ -153,6 +157,11 @@ impl Drop for ReloadBuild {
             .unwrap_or_else(PoisonError::into_inner);
         process.stop(STOP_GRACE).ok();
     }
+}
+
+/// The explanation on `line`, when it is as `rig build` closes with one.
+fn explanation(line: &str) -> Option<&str> {
+    line.strip_prefix("error: ")?.strip_prefix(BUILD_SAYS)
 }
 
 /// Sends each line of the build's stderr, and wakes the loop for each and

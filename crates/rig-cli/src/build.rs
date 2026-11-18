@@ -105,9 +105,14 @@ impl BuildFailure {
     /// one line, without the closing period, as a notice goes on after it.
     fn explanation(&self) -> Option<String> {
         self.explained.then(|| {
-            let lines = self.reason.lines().map(str::trim);
-            let reason = lines.collect::<Vec<_>>().join(" ");
-            format!("{BUILD_SAYS}{}", reason.trim_end_matches('.'))
+            let mut line = BUILD_SAYS.to_owned();
+            for (index, part) in self.reason.lines().map(str::trim).enumerate() {
+                if index > 0 {
+                    line.push_str(if line.ends_with(':') { " " } else { "; " });
+                }
+                line.push_str(part);
+            }
+            line.trim_end_matches('.').to_owned()
         })
     }
 
@@ -429,8 +434,8 @@ fn local_crates(home: &Home, plugins: &config::Plugins) -> Result<()> {
 
 /// `rig build`, holding the root's build lock. It always stages, so it also
 /// retries a build that was rolled back. Run by an agent's `/reload`
-/// (`RIG_SESSION` set), it stages for that agent's launcher alone. A
-/// failure rig explained is said on its [`BUILD_SAYS`] line.
+/// (`RIG_SESSION` set), it stages for that agent's launcher alone. The error
+/// of a failure rig explained is its [`BUILD_SAYS`] line, after the log's path.
 pub fn build(launch: &Launch) -> Result<()> {
     let home = &launch.home();
     let _lock = locks::hold_build_lock(home, BuildOutput::Live)?;
@@ -441,9 +446,8 @@ pub fn build(launch: &Launch) -> Result<()> {
     compile(launch, &staged, Staging::Always, BuildOutput::Live).map_err(|failure| {
         match failure.explanation() {
             Some(line) => {
-                eprintln!("{line}");
-                let log = failure.log.display();
-                format!("the build failed (whole output: {log})").into()
+                eprintln!("whole output: {}", failure.log.display());
+                line.into()
             }
             None => failure.into(),
         }
@@ -1047,15 +1051,26 @@ fn check_bevy(
 }
 
 /// The error for cargo's `failure` to resolve the agent project, after the
-/// output `lines`, with the plugins in `local` and the Cargo.lock `lock`.
+/// output `lines`, with the plugins in `local` and the Cargo.lock `lock`:
+/// [`pinned_bevy`] when cargo's first error names a Bevy crate and a plugin
+/// has a [`bevy_pins`] requirement, else `failure`.
 fn unresolved<'a>(
     failure: Box<dyn std::error::Error>,
-    _lines: &[String],
+    lines: &[String],
     local: impl IntoIterator<Item = &'a Path>,
     lock: &str,
 ) -> Box<dyn std::error::Error> {
-    let pins = bevy_pins(local, &bevy_crates(lock));
-    if pins.is_empty() {
+    let bevy = bevy_crates(lock);
+    let first = first_errors(lines.iter().map(String::as_str), 1);
+    // Cargo quotes a crate as `name` or as `name = "requirement"`.
+    let names_bevy = first.iter().any(|line| {
+        let quoted = line.split('`').skip(1).step_by(2);
+        quoted
+            .filter_map(|quote| quote.split_whitespace().next())
+            .any(|name| bevy.contains(name))
+    });
+    let pins = bevy_pins(local, &bevy);
+    if !names_bevy || pins.is_empty() {
         return failure;
     }
     Explained(pinned_bevy(&failure, &pins)).into()
@@ -1069,8 +1084,8 @@ fn pinned_bevy(failure: &dyn fmt::Display, pins: &[String]) -> String {
         "a plugin must write its Bevy requirements as \"{range}\", such as `bevy_ecs = \
          {{ version = \"{range}\", default-features = false }}`, or be taken out with \
          `rig plugin remove <type>`. These ask for a Bevy that is not this agent's \
-         {BEVY_VERSION}:\n  {}\n({failure})",
-        pins.join(";\n  "),
+         {BEVY_VERSION}:\n  {}\n{failure}.",
+        pins.join("\n  "),
         range = super::bevy_range(),
     )
 }
