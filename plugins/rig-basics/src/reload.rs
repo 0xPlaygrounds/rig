@@ -4,7 +4,7 @@
 //! output is the progress; quitting during the build kills it.
 //!
 //! `/reload` typed while a turn runs is queued: the build starts once no
-//! turn runs, and `/reload cancel` or `/update cancel` drops it. A plugin
+//! turn runs, and `/reload cancel` drops it. A plugin
 //! queues one with [`ReloadStatus::ask`], and views read progress from that
 //! resource. A turn started while the build runs delays the restart until it
 //! ends. A stop that reaches an idle agent no agent spawned (Esc in the
@@ -15,13 +15,10 @@
 //! that fails to start. A run nobody sits at (`--print`) waits for a reload
 //! too.
 //!
-//! `/update` reinstalls rig through the launcher's `rig update`, which says
-//! the command it runs and builds the agent with the new launcher, then
-//! restarts the same way; the launcher, whose own file was replaced, starts
-//! the new one on the same session.
-//!
-//! [`PluginsPlugin`](plugins::PluginsPlugin) adds `/plugins`, which turns plugins on and
-//! off in `settings.toml` and reloads.
+//! [`UpdatePlugin`](update::UpdatePlugin) adds `/update`, which reinstalls
+//! rig and restarts the same way. [`PluginsPlugin`](plugins::PluginsPlugin)
+//! adds `/plugins`, which turns plugins on and off in `settings.toml` and
+//! reloads.
 
 use rig_harness::harness_protocol;
 use rig_harness::prelude::*;
@@ -31,8 +28,9 @@ pub mod plugins;
 mod rebuild;
 #[cfg(feature = "tui")]
 mod status;
+pub mod update;
 
-/// `/reload` and `/update`, the rebuild in flight and the restart.
+/// `/reload`, with the rebuild in flight and the restart.
 #[derive(Default)]
 pub struct ReloadPlugin;
 
@@ -43,16 +41,26 @@ impl Plugin for ReloadPlugin {
             "Rebuild what changed and restart with the plugins settings.toml turns on once no \
              turn runs; `/reload cancel` cancels",
             reload,
-        )
-        .add_command(
-            "update",
-            "Reinstall rig with cargo (from crates.io, or the checkout it was installed from), \
-             build the agent with it and restart once no turn runs; `/update cancel` cancels",
-            update,
-        )
-        .init_resource::<ReloadStatus>()
-        .add_observer(on_cancel_reload)
-        .add_observer(cancel_on_interrupt);
+        );
+        rebuilds(app);
+    }
+}
+
+/// Adds the rebuild `/reload` and `/update` share, once.
+fn rebuilds(app: &mut App) {
+    if !app.is_plugin_added::<RebuildPlugin>() {
+        app.add_plugins(RebuildPlugin);
+    }
+}
+
+/// [`ReloadStatus`], the rebuild's process and the restart.
+struct RebuildPlugin;
+
+impl Plugin for RebuildPlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<ReloadStatus>()
+            .add_observer(on_cancel_reload)
+            .add_observer(cancel_on_interrupt);
         if let Some(launcher) = harness_protocol::launcher()
             && !app.world().contains_resource::<LauncherFile>()
         {
@@ -184,16 +192,6 @@ fn reload(
     notices: MessageWriter<Notice>,
 ) {
     queue(args, Rebuild::Build, turns, status, commands, notices);
-}
-
-fn update(
-    In(args): In<CommandArgs>,
-    turns: Query<(), With<TurnOf>>,
-    status: ResMut<ReloadStatus>,
-    commands: Commands,
-    notices: MessageWriter<Notice>,
-) {
-    queue(args, Rebuild::Update, turns, status, commands, notices);
 }
 
 /// Queues `rebuild` for `/reload` or `/update`, or cancels on `cancel`.

@@ -188,6 +188,9 @@ SubagentsPlugin adds it.";
                 Some("/reload, so a change applies only when rig starts again"),
                 "/reload, which rebuilds the agent when the plugins settings.toml turns on or a \
 plugin crate changed, and restarts it. Without it the agent runs as it started.";
+            on rig_basics::reload::update::UpdatePlugin, "rig-basics", "Update", [], None,
+                "/update, which reinstalls rig with cargo, builds the agent with it and restarts \
+on the same session. `rig update` in a shell works without it.";
             on rig_basics::reload::plugins::PluginsPlugin, "rig-basics",
                 "Plugins picker", [],
                 Some("/plugins itself"),

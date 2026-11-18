@@ -13,16 +13,25 @@ use super::*;
 #[derive(Resource, Default)]
 struct Told(Vec<String>);
 
-/// An app with `/plugins` in `home`, on a terminal or not, keeping its
-/// notices, and an agent.
+/// An app with `/plugins` and `/reload` in `home`, on a terminal or not,
+/// keeping its notices, and an agent.
 fn app(home: &rig_harness::harness_protocol::Home, terminal: bool) -> (App, Entity) {
+    app_with(home, terminal, crate::reload::ReloadPlugin)
+}
+
+/// [`app`] with `rebuild` in place of the reload plugin.
+fn app_with(
+    home: &rig_harness::harness_protocol::Home,
+    terminal: bool,
+    rebuild: impl Plugin,
+) -> (App, Entity) {
     let mut app = App::new();
     app.add_plugins((
         rig_harness::rig_ecs::AgentPlugin,
         rig_harness::pick::PickPlugin,
         PluginsPlugin,
     ))
-    .init_resource::<ReloadStatus>()
+    .add_plugins(rebuild)
     .insert_resource(RigHome(home.clone()))
     .insert_resource(Invoked {
         args: Invocation::default(),
@@ -539,8 +548,8 @@ fn plugins_defaults_asks_to_go_back_to_rigs_defaults() {
 #[test]
 fn the_question_says_why_it_cannot_reload_and_esc_goes_back_to_the_list() {
     let home = scratch_home("plugins-no-reload");
-    let (mut app, agent) = app(&home, true);
-    app.world_mut().remove_resource::<ReloadStatus>();
+    // `/update` keeps the rebuild machinery, but no `/reload` to run.
+    let (mut app, agent) = app_with(&home, true, crate::reload::update::UpdatePlugin);
     open(&mut app, agent);
     let found = picker(&mut app);
     assert!(found.is_some(), "no list");

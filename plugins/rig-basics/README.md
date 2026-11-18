@@ -41,8 +41,8 @@ rig-harness's public API. Each plugin is its own name in `[plugins]` of
   (`ApprovalPlugin`);
 - `preview`: what a tool call would change on disk, before it runs
   (`PreviewPlugin`);
-- `reload`: `/reload` (`ReloadPlugin`), and
-  `/plugins` (`plugins::PluginsPlugin`);
+- `reload`: `/reload` (`ReloadPlugin`), `/update` (`update::UpdatePlugin`)
+  and `/plugins` (`plugins::PluginsPlugin`);
 - `print`: `--print` and `--json`, the fronts of a run with `-p`, piped
   stdin or JSON lines (`PrintPlugin`), and the loop of any run nobody sits
   at (`AppHeadlessExt`);

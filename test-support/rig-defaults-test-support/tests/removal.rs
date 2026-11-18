@@ -3,7 +3,8 @@
 //! answers a `--print` prompt with a tool call on a scripted model, and so
 //! does the app with every built-in plugin that is off by default on top
 //! ([`OPTIONAL`]). `/reload` is there exactly when
-//! `rig_basics::reload::ReloadPlugin` is. The plugin `rig plugin new`
+//! `rig_basics::reload::ReloadPlugin` is, and `/update` exactly when
+//! `rig_basics::reload::update::UpdatePlugin` is. The plugin `rig plugin new`
 //! writes comes last, listed twice and added once. No case leaves systems
 //! of one agent-loop stage that write the same data unordered (the debug
 //! build's ambiguity warning). Each case is a child process of this test
@@ -171,7 +172,15 @@ fn answered(
         .iter()
         .any(|name| name.as_str() == "rig_basics::reload::ReloadPlugin");
     let reloads = slash_commands.iter().any(|name| name.as_str() == "/reload");
-    let ok = answered && added_once && provided.iter().any(command) && reload == reloads;
+    let update = names
+        .iter()
+        .any(|name| name.as_str() == "rig_basics::reload::update::UpdatePlugin");
+    let updates = slash_commands.iter().any(|name| name.as_str() == "/update");
+    let ok = answered
+        && added_once
+        && provided.iter().any(command)
+        && reload == reloads
+        && update == updates;
     exits.write(AppExit::from_code(u8::from(!ok)));
 }
 
