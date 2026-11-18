@@ -1058,8 +1058,8 @@ fn pinned_bevy(failure: &dyn fmt::Display, pins: &[String]) -> String {
         "a plugin must write its Bevy requirements as \"{range}\", such as `bevy_ecs = \
          {{ version = \"{range}\", default-features = false }}`, or be taken out with \
          `rig plugin remove <type>`. These ask for a Bevy that is not this agent's \
-         {BEVY_VERSION}:\n  {}\n{failure}.",
-        pins.join("\n  "),
+         {BEVY_VERSION}:\n  {}\n({failure})",
+        pins.join(";\n  "),
         range = super::bevy_range(),
     )
 }
