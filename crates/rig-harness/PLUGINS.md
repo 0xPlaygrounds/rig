@@ -239,6 +239,12 @@ adds the view with its optional parts, each unless the app already has it.
 A crate that also builds without the view puts `rig-tui` behind a default
 `tui` feature. The `rig_tui` crate docs have an example of each.
 
+The bars before the working agent's status come from
+`rig_basics::activity::animation::WorkingAnimationPlugin`. They move unless
+`[activity] animate = false`, and with that plugin off there are none. A view
+that draws its own working sign reads its `Pulse` resource to move with
+rig's; the resource exists only while that plugin runs in the terminal view.
+
 Examples: [rich_tool_rendering] (looks), [git_status_item] and [throughput_item]
 (status items), [todo_tracker] (a panel and a key), [keybindings].
 

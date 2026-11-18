@@ -85,3 +85,46 @@ fn agent_commands_come_with_the_plugins_that_make_agents() {
         assert_eq!(count(&names, "/resume"), 1, "{names:?}");
     }
 }
+
+/// Whether the working animation runs in the harness on the terminal
+/// view's front with the defaults, the animation at index `at` among
+/// them, finished and cleaned up as the agent's loop does.
+fn animates_at(at: usize) -> bool {
+    const ANIMATION: &str = "rig_basics::activity::animation::WorkingAnimationPlugin";
+    let mut defaults: Vec<_> = DEFAULTS
+        .iter()
+        .filter(|(path, _)| *path != ANIMATION)
+        .collect();
+    if let Some(animation) = DEFAULTS.iter().find(|(path, _)| *path == ANIMATION) {
+        defaults.insert(at.min(defaults.len()), animation);
+    }
+    let home = std::env::current_exe()
+        .unwrap_or_default()
+        .with_file_name("animation-order");
+    let mut app = App::new();
+    app.insert_resource(RigHome(Home::at(home)))
+        .insert_resource(Invoked {
+            terminal: true,
+            ..Invoked::default()
+        })
+        .add_plugins((HeadlessPlugins, RigHarnessPlugins));
+    for (_, add) in defaults {
+        add(&mut app);
+    }
+    drop(std::panic::take_hook());
+    app.finish();
+    app.cleanup();
+    app.world()
+        .contains_resource::<rig_basics::activity::animation::Pulse>()
+}
+
+#[test]
+fn the_working_animation_runs_wherever_it_is_added() {
+    let own = DEFAULTS
+        .iter()
+        .position(|(path, _)| path.ends_with("WorkingAnimationPlugin"))
+        .unwrap_or_default();
+    assert!(animates_at(own), "in its own place");
+    assert!(animates_at(0), "first");
+    assert!(animates_at(DEFAULTS.len()), "last");
+}

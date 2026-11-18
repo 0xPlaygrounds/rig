@@ -335,6 +335,7 @@ fn add_defaults(app: &mut App) {
     load::<compaction::CompactionPlugin>(app, "rig-basics", "");
     load::<telemetry::usage::UsagePlugin>(app, "rig-basics", "");
     load::<activity::ActivityPlugin>(app, "rig-basics", "");
+    load::<activity::animation::WorkingAnimationPlugin>(app, "rig-basics", "");
     load::<coding_tools::ReadTool>(app, "rig-basics", "");
     load::<coding_tools::EditTool>(app, "rig-basics", "");
     load::<coding_tools::WriteTool>(app, "rig-basics", "");
