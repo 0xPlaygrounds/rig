@@ -126,7 +126,7 @@ fn shown(app: &App) -> Option<Entity> {
     app.world().resource::<ShownAgent>().0
 }
 
-/// An app on `store` with the agents plugin, keeping how turns end.
+/// An app on `store` with the agent picker, keeping how turns end.
 fn on(store: &MemoryStore, model: &MockCompletionModel) -> (App, Receiver<()>) {
     let (mut app, wakes) = app_on(store);
     app.insert_resource(Settings::default())
