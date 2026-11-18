@@ -78,7 +78,9 @@ impl Deref for SessionPaths {
 /// message, so `/resume` lists it (not a sessionless run's), and unmarks
 /// it while none has; a program that saves a new session through this
 /// marks it itself ([`SessionDir::mark_saved`]). [`Self::relist`] keeps
-/// the listing of a session no rig runs current.
+/// the listing of a session no rig runs current. Opening, reading and
+/// writing a store may block the frame: do it in commands and at startup,
+/// as `/resume` does.
 #[derive(Resource, Clone)]
 pub struct StoreOpener {
     /// How a store is opened.

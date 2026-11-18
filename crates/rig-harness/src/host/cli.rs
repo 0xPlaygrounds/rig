@@ -17,9 +17,10 @@
 //! terminal view or `--print`. One front takes each run: the one whose
 //! command or flag was given, else the first offered (in the order the
 //! plugins are added) for the kind of run. Each sets itself up in `finish` only if
-//! `app.runs_front(name)`. The plugin guide's
-//! [fronts section](crate::plugin_guide#fronts-options-and-commands) covers
-//! sessionless fronts and fronts with a store of their own.
+//! `app.runs_front(name)`, and alone owns stdin and stdout. A command is a
+//! front of its own ([`Front::on_command`]); one that keeps no session is
+//! [`Front::sessionless`], and one whose runs keep their session elsewhere,
+//! such as in a chat thread, says where with [`Front::session_store`].
 //!
 //! ```
 //! use rig_harness::prelude::*;
@@ -209,8 +210,9 @@ impl Front {
 
     /// It takes any run of `rig <name> …`, a command whose arguments are
     /// `usage` and which does what `help` says; the words after the name
-    /// are read with [`Invoked::command`]. Two plugins with one command,
-    /// or a command of the launcher's own name, fail the build.
+    /// are read with [`Invoked::command`]. `rig -r <id or name> <name>`
+    /// runs it in that session. Two plugins with one command, or a command
+    /// of the launcher's own name, fail the build.
     pub fn on_command(
         mut self,
         name: &'static str,

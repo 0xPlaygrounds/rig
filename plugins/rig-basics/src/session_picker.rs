@@ -2,7 +2,9 @@
 //! sessions, or the entries of one agent's conversation, in a plain
 //! [`Picker`] that [`SessionPickerPlugin`] fills in place as items are
 //! read off the main thread, newest first, and previews the highlighted item
-//! ([`PickPreview`]). A plugin opens one with its
+//! ([`PickPreview`]). `/resume` and `/fork at` are this view; a program
+//! without Bevy reads the same with `Home::saved_sessions`,
+//! `SessionMeta::read` and `read_conversation`. A plugin opens one with its
 //! own source, filter, labels and command:
 //!
 //! ```no_run

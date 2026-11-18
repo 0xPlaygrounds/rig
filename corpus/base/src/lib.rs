@@ -41,6 +41,7 @@ pub mod share;
 pub mod shell_rewrite;
 pub mod shell_sandbox;
 pub mod skills;
+pub mod src_only_writes;
 pub mod summarize_tool_output;
 pub mod supervisor;
 pub mod text_tool_calls;

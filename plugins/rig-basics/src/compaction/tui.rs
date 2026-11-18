@@ -20,7 +20,8 @@ use rig_tui::{
 use crate::compaction::summary_author;
 
 /// The system that draws summaries in the terminal view, in
-/// [`RenderSystems::Render`].
+/// [`RenderSystems::Render`]. A plugin that draws them its own way runs
+/// after it.
 #[derive(SystemSet, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SummaryLooks;
 

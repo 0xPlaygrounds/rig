@@ -33,7 +33,10 @@ use super::stage::{Admitted, Decision, Effect, ForAgent, Outcome, Settled, Start
 use super::turn::fail;
 
 /// What the model is told about a tool. A call naming an argument its
-/// parameters do not declare is refused before the tool runs.
+/// parameters do not declare is refused before the tool runs. Another
+/// plugin may edit it, in `finish` or later, such as to add a property to
+/// `parameters`; that plugin then takes the property out of the call's
+/// `ToolRequest` in Prepare if the tool's own arguments would refuse it.
 #[derive(Component, Reflect, Clone, Serialize, Deserialize)]
 #[reflect(opaque, Component, Clone, Serialize, Deserialize)]
 #[require(Footprint)]
