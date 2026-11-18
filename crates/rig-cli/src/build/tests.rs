@@ -1035,3 +1035,19 @@ fn a_plugin_on_another_bevy_is_told_first_which_version_to_write() {
     );
     assert!(message.contains("0.19.0") && message.contains("rig plugin remove MyPlugin"));
 }
+
+#[test]
+fn a_plugin_pinning_another_bevy_is_told_first_which_version_to_write() {
+    let pin = "plugin/Cargo.toml:7: [dependencies] bevy_app = \"=0.20.0\"".to_owned();
+    let message = pinned_bevy(&"cargo could not resolve", std::slice::from_ref(&pin));
+    let first = message.lines().next().unwrap_or_default();
+    let range = crate::bevy_range();
+    assert!(first.contains(&format!("\"{range}\"")), "{message}");
+    assert!(
+        message.contains(&pin)
+            && message.contains("cargo could not resolve")
+            && message.contains(BEVY_VERSION)
+            && message.contains("rig plugin remove <type>"),
+        "{message}"
+    );
+}
