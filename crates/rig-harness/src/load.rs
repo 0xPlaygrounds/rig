@@ -49,7 +49,8 @@ pub struct PluginSource {
     /// Its package, such as `rig-harness`.
     pub package: String,
     /// Where the package is built from, as the launcher names it, such
-    /// as `path /home/me/.rig/plugins/viz` or `version 0.3`.
+    /// as `path /home/me/.rig/plugins/viz` or `version 0.3`; empty for a
+    /// plugin another plugin loaded.
     pub source: String,
 }
 
