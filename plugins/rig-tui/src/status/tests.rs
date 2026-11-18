@@ -329,3 +329,18 @@ fn an_input_spawned_after_startup_gets_the_status_line() {
     let (row, _) = input_bottom_row(&mut app);
     assert!(row.contains("acme-model"), "{row:?}");
 }
+
+#[test]
+fn without_the_terminal_view_the_status_line_plugin_adds_nothing() {
+    use crate::MainEditor;
+    use rig_harness::settings::Settings;
+
+    let mut app = App::new();
+    app.insert_resource(Settings::default())
+        .add_plugins(StatusLinePlugin);
+    let input = app.world_mut().spawn(MainEditor).id();
+    app.update();
+    let world = app.world();
+    assert!(!world.contains_resource::<super::StatusSettings>());
+    assert!(world.get::<StatusLine>(input).is_none());
+}

@@ -210,7 +210,6 @@ interactive terminal.";
                 "The terminal view, the front of a run on an interactive terminal. Without it the \
 agent answers -p or what is piped in, and says so when started on a terminal.";
             on rig_tui::status::StatusLinePlugin, "rig-tui", "Status line", [], None,
-                only_with ["rig_tui::TuiPlugin"],
                 "The status line under the input: the model, what the agent is doing, what the \
 session spends. Off, that row stays empty. [status] hide in settings.toml names the \
 parts it leaves out, such as [\"cost\", \"cache\"].";
