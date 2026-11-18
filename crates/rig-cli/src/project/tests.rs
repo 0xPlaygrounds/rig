@@ -416,7 +416,7 @@ fn the_safe_build_holds_rigs_defaults_and_no_extra() {
 }
 
 #[test]
-fn the_safe_build_ignores_branches_turned_off() {
+fn the_generated_program_leaves_out_a_branch_turned_off() {
     let source = RigSource::Local(checkout());
     let home = Home::at("/home/rig");
     let off = home_with("[plugins]\noff = [\"rig-basics\"]\n");
