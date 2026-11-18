@@ -490,6 +490,20 @@ where
     Ok(Option::<T>::deserialize(deserializer)?.unwrap_or_default())
 }
 
+/// Deserializes `T` through a [`serde_json::Value`]: the reader for a field
+/// holding floats that serde may buffer, under `#[serde(flatten)]` or in a
+/// tagged or untagged enum. With serde_json's `arbitrary_precision` on
+/// anywhere in a build, a buffered float is a map that only a `Value` reads;
+/// the `Value` then gives `T` each number as written. An `Option` field
+/// using it also needs `#[serde(default)]` to read a missing field as `None`.
+pub fn floats<'de, T, D>(deserializer: D) -> Result<T, D::Error>
+where
+    T: serde::de::DeserializeOwned,
+    D: Deserializer<'de>,
+{
+    T::deserialize(serde_json::Value::deserialize(deserializer)?).map_err(serde::de::Error::custom)
+}
+
 #[cfg(test)]
 mod tests;
 
