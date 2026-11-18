@@ -766,7 +766,8 @@ fn a_row_off_by_its_own_choice_too_says_its_branch_keeps_it_off() {
     pick(&mut app, question, later.map(Chosen::item));
     let told = &app.world().resource::<Told>().0;
     assert!(
-        told.iter().any(|text| text.contains("turned on") && text.contains(stays)),
+        told.iter()
+            .any(|text| text.contains("turned on") && text.contains(stays)),
         "{told:?}"
     );
 }

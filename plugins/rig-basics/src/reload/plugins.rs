@@ -509,10 +509,10 @@ fn extra_row(extra: &Extra, name: String, (on, branch_off): Choice, runs: bool) 
 }
 
 /// A plugin's short state: on or off in settings.toml, off with the
-/// branch `branch_off` despite its own choice `on`, and whether that waits
-/// for the next reload because this build runs it or not.
+/// branch `branch_off` whatever its own choice `on`, and whether that
+/// waits for the next reload because this build runs it or not.
 fn state(on: bool, branch_off: Option<&str>, runs: bool) -> String {
-    let word = match branch_off.filter(|_| on) {
+    let word = match branch_off {
         Some(branch) => format!("off with its branch {branch}"),
         None if on => "on".to_owned(),
         None => "off".to_owned(),
@@ -663,14 +663,8 @@ fn ask(
 ) {
     let changed = changed(&rows, &on);
     let mut lines = Vec::new();
-    for (word, want) in [("on", true), ("off", false)] {
-        let names: Vec<&str> = (changed.iter())
-            .filter(|(_, on)| *on == want)
-            .map(|(row, _)| row.name.as_str())
-            .collect();
-        if !names.is_empty() {
-            lines.push(format!("Turn {word}: {}", names.join(", ")));
-        }
+    for (word, names) in names(&changed) {
+        lines.push(format!("Turn {word}: {names}"));
     }
     if !branches.is_empty() {
         lines.push(format!(
@@ -713,6 +707,28 @@ fn ask(
         answers,
     };
     commands.spawn((picker, question)).observe(answer);
+}
+
+/// The names of the `changed` rows by what they turn, `on` then `off`, of
+/// those with any; a plugin turned on that a branch keeps off says so.
+fn names(changed: &[(&Row, bool)]) -> Vec<(&'static str, String)> {
+    [("on", true), ("off", false)]
+        .into_iter()
+        .filter_map(|(word, want)| {
+            let names: Vec<String> = (changed.iter())
+                .filter(|(_, on)| *on == want)
+                .map(
+                    |(row, on)| match row.branch_off.as_deref().filter(|_| *on) {
+                        Some(branch) => {
+                            format!("{} (stays off with its branch {branch})", row.name)
+                        }
+                        None => row.name.clone(),
+                    },
+                )
+                .collect();
+            (!names.is_empty()).then(|| (word, names.join(", ")))
+        })
+        .collect()
 }
 
 /// Carries out the answer to the question: writes the changes to
@@ -775,16 +791,9 @@ fn answer(
         ));
         return;
     }
-    let mut said = Vec::new();
-    for (word, want) in [("on", true), ("off", false)] {
-        let names: Vec<&str> = (changed.iter())
-            .filter(|(_, on)| *on == want)
-            .map(|(row, _)| row.name.as_str())
-            .collect();
-        if !names.is_empty() {
-            said.push(format!("turned {word} {}", names.join(", ")));
-        }
-    }
+    let mut said: Vec<String> = (names(&changed).into_iter())
+        .map(|(word, names)| format!("turned {word} {names}"))
+        .collect();
     if !branches.is_empty() {
         said.push(format!(
             "turned back on the branches {}",
