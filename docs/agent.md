@@ -289,7 +289,8 @@ They are settings, not plugins: each shows "shown" or "hidden", and Enter on
 one writes `[status] hide` and changes the line at once, with no question
 when you leave. Unticking the branch hides them all. When `settings.toml`
 cannot be written, a notice says why and the row goes back.
-`/plugins defaults` shows every part again at once.
+`/plugins defaults` shows every part again at once. Without a terminal it
+writes nothing and names the `hide` line to delete.
 
 Typing while the agent works is fine. Enter steers the running turn (the
 message goes to the model with its next call, after the tool results it waits
