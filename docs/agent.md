@@ -470,10 +470,11 @@ messages are summarized next. When the conversation outgrows the window
 anyway, the outputs are cleared if every one reads back unchanged, and the
 older messages summarized otherwise, and the call is sent again. A model
 the catalog gives no window, such as one served by Ollama or a llama.cpp
-server, gets the window its server says it serves (Ollama's `num_ctx`, else
-the model's trained length; llama.cpp's `n_ctx`); one whose server does not
-say has no window, so it is compacted only when a request is refused as
-too long.
+server, gets the window its server says (llama.cpp's `n_ctx`; Ollama's
+`num_ctx`, else the model's trained length, which can be larger than the
+window Ollama serves when no `num_ctx` is set). Its first request waits a few
+seconds at most for that answer. One whose server does not say has no window,
+so it is compacted only when a request is refused as too long.
 `/compact` compacts now, and `/compact <focus>` says what the summary should
 keep. The summarized messages stay in the transcript, under a line that shows
 the summary; a resumed session starts from the messages the summary kept.

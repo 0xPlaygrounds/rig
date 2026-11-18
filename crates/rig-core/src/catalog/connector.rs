@@ -319,10 +319,11 @@ impl Connector {
         Ok((spec, handler?))
     }
 
-    /// The context window the server reaching `spec` serves it with, asked
-    /// of that server on this connector's transport: Ollama's `/api/show`
-    /// (the `num_ctx` the model is set to, else its trained context length)
-    /// or a llama.cpp server's `/props`. `None` when the model is reached
+    /// The context window of `spec`, asked of the server reaching it on
+    /// this connector's transport: Ollama's `/api/show` (the `num_ctx` the
+    /// model is set to, else its trained context length, which can be
+    /// larger than the window Ollama serves with no `num_ctx` set) or a
+    /// llama.cpp server's `/props`. `None` when the model is reached
     /// any other way, such as through a provider registered for its vendor,
     /// which may reach another server. The future fails when the server
     /// does not answer within a few seconds or names no window.

@@ -27,8 +27,9 @@ pub(crate) struct ShowResponse {
 }
 
 impl ShowResponse {
-    /// The window the daemon cuts a prompt to: the `num_ctx` the model is
-    /// set to, else the context length its weights were trained for.
+    /// The model's window: the `num_ctx` it is set to, which the daemon
+    /// cuts a prompt to, else the context length its weights were trained
+    /// for, which can be larger than the daemon's own default window.
     pub(crate) fn window(&self) -> Option<u32> {
         let set = self.parameters.lines().find_map(|line| {
             let mut words = line.split_whitespace();
