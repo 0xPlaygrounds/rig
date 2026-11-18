@@ -5,7 +5,9 @@ front of a run on an interactive terminal. `TuiPlugin` is `TuiViewPlugin`
 (terminal, keys, frame) plus `DefaultScreenPlugin` (transcript, input), and
 the default screen is built from the same public widgets a plugin places in
 panels of its own. `status::StatusLinePlugin` draws the status line under the
-input, leaving out the parts `[status] hide` in `settings.toml` names.
+input, leaving out the parts `[status] hide` in `settings.toml` names. A
+plugin declares the parts it draws with `app.add_status_part(&item, "Label")`
+(`AppStatusPartsExt`), so `/plugins` lists them to show and hide.
 `TuiPlugins` is the view with those plugins, for code that adds the view
 itself.
 

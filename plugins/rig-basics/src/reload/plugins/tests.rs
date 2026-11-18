@@ -97,6 +97,12 @@ fn detail(picker: &Picker, label: &str) -> String {
 /// Ticks the list as the view does, from what is on now: `on` ticked and
 /// `off` unticked, then the frame after it.
 fn tick(app: &mut App, list: Entity, on: &[&str], off: &[&str]) {
+    tick_unseen(app, list, on, off);
+    app.update();
+}
+
+/// [`tick`] without the frame after it.
+fn tick_unseen(app: &mut App, list: Entity, on: &[&str], off: &[&str]) {
     let Some(shown) = app.world().get::<Picker>(list).cloned() else {
         return;
     };
@@ -107,7 +113,6 @@ fn tick(app: &mut App, list: Entity, on: &[&str], off: &[&str]) {
         .map(|(index, _)| index)
         .collect();
     app.world_mut().entity_mut(list).insert(Ticked(ticked));
-    app.update();
 }
 
 /// Closes or answers `entity` as a person, then the frame after it.
@@ -950,8 +955,8 @@ fn plugins_opens_as_a_tree_of_crates_then_areas() {
         Some("sessions")
     );
     // A crate or an area of one plugin is that plugin's row.
-    assert_eq!(parent_of(&shown, "Terminal view"), None);
-    assert!(at(&shown, "rig-tui").is_none());
+    assert_eq!(parent_of(&shown, "Folded output"), None);
+    assert!(at(&shown, "rig-fold").is_none());
     assert_eq!(parent_of(&shown, "Skills").as_deref(), Some("rig-basics"));
     assert!(at(&shown, "skills").is_none());
     // Every branch comes before what it holds, and is ticked while it is on.
@@ -1172,4 +1177,356 @@ fn typing_a_name_in_plugins_selects_the_row_of_that_name() {
             "{typed} with {off:?}"
         );
     }
+}
+
+/// The status line parts of these tests: two declared, of which only
+/// `cost` is drawn.
+#[cfg(feature = "tui")]
+const COST: rig_tui::StatusItem = rig_tui::StatusItem::new("cost", rig_tui::Side::Right, 30, 3);
+#[cfg(feature = "tui")]
+const BUDGET: rig_tui::StatusItem = rig_tui::StatusItem::new("budget", rig_tui::Side::Right, 35, 6);
+
+/// [`app`] on a terminal with the status line, `settings` in its file, the
+/// parts `Cost` and `Budget left` declared, and `cost` and the undeclared
+/// `git` drawn on the agent.
+#[cfg(feature = "tui")]
+fn status_app(home: &rig_harness::harness_protocol::Home, settings: &str) -> (App, Entity) {
+    use rig_tui::status::{AppStatusPartsExt, StatusLinePlugin};
+    use rig_tui::{Side, StatusItem, StatusItems, Tone};
+
+    fs::create_dir_all(home.root()).ok();
+    fs::write(home.settings(), settings).ok();
+    let (mut app, agent) = app(home, true);
+    app.add_plugins(StatusLinePlugin)
+        .add_status_part(&COST, "Cost")
+        .add_status_part(&BUDGET, "Budget left");
+    let mut items = StatusItems::default();
+    items.show(COST.says("$0.12", Tone::Dim));
+    items.show(StatusItem::new("git", Side::Left, 50, 5).says("main", Tone::Plain));
+    app.world_mut().entity_mut(agent).insert(items);
+    app.update();
+    (app, agent)
+}
+
+/// The running `[status] hide`.
+#[cfg(feature = "tui")]
+fn hidden(app: &App) -> Vec<String> {
+    let settings = app
+        .world()
+        .get_resource::<rig_tui::status::StatusSettings>();
+    settings
+        .map(|settings| settings.hide.clone())
+        .unwrap_or_default()
+}
+
+/// Whether the item labelled `label` of `picker` is ticked.
+#[cfg(feature = "tui")]
+fn checked(picker: &Picker, label: &str) -> Option<bool> {
+    let item = picker.items.iter().find(|item| item.label == label);
+    item.map(|item| item.checked)
+}
+
+#[cfg(feature = "tui")]
+#[test]
+fn status_line_parts_are_a_branch_of_settings_declared_or_drawn() {
+    let home = scratch_home("plugins-status-parts");
+    let file = "[status]\nhide = [\"budget\", \"by-hand\"]\n";
+    let (mut app, agent) = status_app(&home, file);
+    open(&mut app, agent);
+    let found = picker(&mut app);
+    assert!(
+        found.is_some(),
+        "no picker: {:?}",
+        app.world().resource::<Told>().0
+    );
+    let Some((_, shown)) = found else {
+        return;
+    };
+    let branch = "Status line parts";
+    assert_eq!(parent_of(&shown, branch), None);
+    // Declared, drawn or not, and drawn though undeclared, by its name.
+    for part in ["Cost", "Budget left", "git"] {
+        assert_eq!(parent_of(&shown, part).as_deref(), Some(branch), "{part}");
+    }
+    // A name hidden by hand that nothing draws or declares is no row.
+    assert!(at(&shown, "by-hand").is_none());
+    assert_eq!(checked(&shown, "Cost"), Some(true));
+    assert_eq!(checked(&shown, "Budget left"), Some(false));
+    // They read as settings, not plugins.
+    assert!(detail(&shown, "Cost").contains("shown"), "{shown:#?}");
+    assert!(
+        detail(&shown, "Budget left").contains("hidden"),
+        "{shown:#?}"
+    );
+}
+
+#[cfg(feature = "tui")]
+#[test]
+fn a_status_part_switch_writes_status_hide_at_once_and_leaving_asks_nothing() {
+    let home = scratch_home("plugins-status-switch");
+    let file = "# mine\n[status]\nhide = [\"by-hand\"]\n";
+    let (mut app, agent) = status_app(&home, file);
+    open(&mut app, agent);
+    let found = picker(&mut app);
+    assert!(found.is_some(), "no picker");
+    let Some((list, _)) = found else {
+        return;
+    };
+    tick(&mut app, list, &[], &["Cost"]);
+    let written = config::SettingsFile::read(&home.settings());
+    let hide = written.ok().and_then(|file| {
+        let hide = file.document.get("status")?.get("hide")?.as_array()?;
+        Some(
+            hide.iter()
+                .filter_map(|name| name.as_str().map(str::to_owned))
+                .collect(),
+        )
+    });
+    assert_eq!(hide, Some(vec!["by-hand".to_owned(), "cost".to_owned()]));
+    assert!(settings(&home).contains("# mine"), "{}", settings(&home));
+    assert_eq!(hidden(&app), ["by-hand", "cost"]);
+    let shown = app.world().get::<Picker>(list).cloned().unwrap_or_default();
+    assert!(detail(&shown, "Cost").contains("hidden"), "{shown:#?}");
+    assert!(!shown.body.contains("change"), "{}", shown.body);
+
+    // Shown again, the name leaves the list; leaving asks nothing.
+    tick(&mut app, list, &["Cost"], &[]);
+    assert_eq!(hidden(&app), ["by-hand"]);
+    assert!(!settings(&home).contains("cost"), "{}", settings(&home));
+    pick(&mut app, list, None);
+    assert!(
+        picker(&mut app).is_none(),
+        "the leave question ignores parts"
+    );
+}
+
+#[cfg(feature = "tui")]
+#[test]
+fn plugins_defaults_shows_every_status_part_again() {
+    let home = scratch_home("plugins-status-defaults");
+    let file = "# mine\n[status]\nhide = [\"cost\", \"by-hand\"]\n";
+    let (mut app, agent) = status_app(&home, file);
+    run(&mut app, agent, "plugins defaults");
+    assert_eq!(hidden(&app), [] as [String; 0]);
+    assert!(!settings(&home).contains("cost"), "{}", settings(&home));
+    // The emptied table keeps the comment above it.
+    assert!(settings(&home).contains("# mine"), "{}", settings(&home));
+    let told = &app.world().resource::<Told>().0;
+    assert!(
+        told.iter().any(|text| text.contains("status line")),
+        "{told:?}"
+    );
+    // The plugins were at the defaults already: nothing is asked.
+    assert!(picker(&mut app).is_none());
+}
+
+#[cfg(feature = "tui")]
+#[test]
+fn a_status_part_switch_that_cannot_be_written_flips_back_with_a_notice() {
+    let home = scratch_home("plugins-status-unwritable");
+    let (mut app, agent) = status_app(&home, "");
+    open(&mut app, agent);
+    let found = picker(&mut app);
+    assert!(found.is_some(), "no picker");
+    let Some((list, _)) = found else {
+        return;
+    };
+    // The file can no longer be read or written.
+    fs::remove_file(home.settings()).ok();
+    fs::create_dir_all(home.settings()).ok();
+    tick(&mut app, list, &[], &["Cost"]);
+    assert_eq!(hidden(&app), [] as [String; 0]);
+    let told = &app.world().resource::<Told>().0;
+    assert!(
+        told.iter().any(|text| text.contains("is unchanged")),
+        "{told:?}"
+    );
+    app.update();
+    let found = picker(&mut app);
+    assert!(found.is_some(), "the list stays open");
+    let Some((_, shown)) = found else {
+        return;
+    };
+    assert_eq!(checked(&shown, "Cost"), Some(true));
+    assert!(detail(&shown, "Cost").contains("shown"), "{shown:#?}");
+}
+
+/// The names of the settings file's `[status] hide`.
+#[cfg(feature = "tui")]
+fn written_hide(home: &rig_harness::harness_protocol::Home) -> Option<Vec<String>> {
+    let file = config::SettingsFile::read(&home.settings()).ok()?;
+    let hide = file.document.get("status")?.get("hide")?.as_array()?;
+    Some(
+        hide.iter()
+            .filter_map(|name| name.as_str().map(str::to_owned))
+            .collect(),
+    )
+}
+
+#[cfg(feature = "tui")]
+#[test]
+fn a_status_part_switch_keeps_every_comment_on_status_hide() {
+    let files = [
+        "[status]\nhide = [\"budget\", \"by-hand\"] # mine\n",
+        "[status]\nhide = [\n  # mine\n  \"budget\",\n  \"by-hand\",\n]\n",
+        "[status]\n# mine\nhide = [\"budget\", \"by-hand\"]\n",
+    ];
+    for (at, file) in files.into_iter().enumerate() {
+        let home = scratch_home(&format!("plugins-status-comment-{at}"));
+        let (mut app, agent) = status_app(&home, file);
+        open(&mut app, agent);
+        let found = picker(&mut app);
+        assert!(found.is_some(), "no picker for {file}");
+        let Some((list, _)) = found else {
+            return;
+        };
+        tick(&mut app, list, &["Budget left"], &["Cost"]);
+        let text = settings(&home);
+        assert!(text.contains("# mine"), "{file} became {text}");
+        assert_eq!(
+            written_hide(&home),
+            Some(vec!["by-hand".to_owned(), "cost".to_owned()]),
+            "{text}"
+        );
+    }
+}
+
+#[cfg(feature = "tui")]
+#[test]
+fn plugins_defaults_off_a_terminal_writes_no_status_hide_and_says_how_to_clear_it() {
+    let home = scratch_home("plugins-status-defaults-print");
+    let file = "[status]\nhide = [\"cost\", \"by-hand\"]\n";
+    let (mut app, agent) = status_app(&home, file);
+    app.insert_resource(Invoked {
+        args: Invocation::default(),
+        terminal: false,
+    });
+    run(&mut app, agent, "plugins defaults");
+    assert_eq!(settings(&home), file);
+    assert_eq!(hidden(&app), ["cost", "by-hand"]);
+    let told = app.world().resource::<Told>().0.join("\n");
+    assert!(
+        told.contains("hide") && told.contains(&home.settings().display().to_string()),
+        "{told}"
+    );
+    assert!(!told.contains("shown again"), "{told}");
+}
+
+#[cfg(feature = "tui")]
+#[test]
+fn a_status_part_ticked_and_left_in_one_frame_is_hidden() {
+    let home = scratch_home("plugins-status-enter-esc");
+    let (mut app, agent) = status_app(&home, "[status]\nhide = [\"by-hand\"]\n");
+    open(&mut app, agent);
+    let found = picker(&mut app);
+    assert!(found.is_some(), "no picker");
+    let Some((list, _)) = found else {
+        return;
+    };
+    tick_unseen(&mut app, list, &[], &["Cost"]);
+    pick(&mut app, list, None);
+    assert_eq!(hidden(&app), ["by-hand", "cost"]);
+    assert_eq!(
+        written_hide(&home),
+        Some(vec!["by-hand".to_owned(), "cost".to_owned()])
+    );
+}
+
+/// Enter on the item labelled `label` as the view does: its tick flipped
+/// among the ticks the view holds for the list (a list just opened holds
+/// its items ticked at first), then the frame after it.
+#[cfg(feature = "tui")]
+fn press(app: &mut App, list: Entity, label: &str) {
+    let Some(shown) = app.world().get::<Picker>(list).cloned() else {
+        return;
+    };
+    let mut ticked = app.world().get::<Ticked>(list).map_or_else(
+        || {
+            (shown.items.iter().enumerate())
+                .filter(|(_, item)| item.checked)
+                .map(|(index, _)| index)
+                .collect()
+        },
+        |ticked| ticked.0.clone(),
+    );
+    let Some(index) = at(&shown, label) else {
+        return;
+    };
+    match ticked.binary_search(&index) {
+        Ok(found) => {
+            ticked.remove(found);
+        }
+        Err(found) => ticked.insert(found, index),
+    }
+    app.world_mut().entity_mut(list).insert(Ticked(ticked));
+    app.update();
+}
+
+#[cfg(feature = "tui")]
+#[test]
+fn a_status_part_ticked_after_unticking_its_branch_is_shown() {
+    let home = scratch_home("plugins-status-branch-child");
+    let (mut app, agent) = status_app(&home, "");
+    open(&mut app, agent);
+    let found = picker(&mut app);
+    assert!(found.is_some(), "no picker");
+    let Some((list, _)) = found else {
+        return;
+    };
+    tick(&mut app, list, &[], &["Status line parts"]);
+    assert!(hidden(&app).iter().any(|name| name == "cost"));
+    let found = picker(&mut app);
+    assert!(found.is_some(), "the list stays open");
+    let Some((list, _)) = found else {
+        return;
+    };
+    press(&mut app, list, "Cost");
+    assert!(
+        !hidden(&app).iter().any(|name| name == "cost"),
+        "{:?}",
+        hidden(&app)
+    );
+    assert!(!settings(&home).contains("cost"), "{}", settings(&home));
+    let shown = picker(&mut app).map(|(_, shown)| shown).unwrap_or_default();
+    assert!(detail(&shown, "Cost").contains("shown"), "{shown:#?}");
+}
+
+#[test]
+fn plugins_defaults_clears_status_hide_without_the_status_line() {
+    let home = scratch_home("plugins-status-defaults-off");
+    fs::create_dir_all(home.root()).ok();
+    fs::write(
+        home.settings(),
+        "[keep]\nthis = 1\n\n[status]\nhide = [\"cost\"]\n",
+    )
+    .ok();
+    let (mut app, agent) = app(&home, true);
+    run(&mut app, agent, "plugins defaults");
+    let text = settings(&home);
+    let file = config::SettingsFile::read(&home.settings());
+    assert!(file.is_ok(), "{text}");
+    let status = (file.iter()).find_map(|file| file.document.get("status"));
+    assert!(
+        status.is_none_or(|status| status.get("hide").is_none()),
+        "{text}"
+    );
+    assert!(text.contains("[keep]\nthis = 1"), "{text}");
+    let told = app.world().resource::<Told>().0.join("\n");
+    assert!(told.contains("shown again"), "{told}");
+}
+
+#[test]
+fn plugins_defaults_off_a_terminal_names_the_status_hide_line_in_any_build() {
+    let home = scratch_home("plugins-status-defaults-print-any");
+    fs::create_dir_all(home.root()).ok();
+    let file = "[status]\nhide = [\"cost\"]\n";
+    fs::write(home.settings(), file).ok();
+    let (mut app, agent) = app(&home, false);
+    run(&mut app, agent, "plugins defaults");
+    assert_eq!(settings(&home), file);
+    let told = app.world().resource::<Told>().0.join("\n");
+    assert!(
+        told.contains("delete the `hide` line under [status]"),
+        "{told}"
+    );
 }

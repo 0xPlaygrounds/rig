@@ -95,7 +95,9 @@ pub use renderers::{
     RenderRevision, RenderSystems, ToolRender, TranscriptRender, text_rows,
 };
 pub use screen::DefaultScreenPlugin;
-pub use status::{AppStatus, Side, StatusItem, StatusItems, StatusLine, StatusSystems, Tone};
+pub use status::{
+    AppStatus, AppStatusPartsExt, Side, StatusItem, StatusItems, StatusLine, StatusSystems, Tone,
+};
 pub use terminal::{
     CopyToClipboard, RunInTerminal, TerminalExit, TerminalFocus, TerminalWrite, TuiTestScreen,
 };
@@ -146,6 +148,7 @@ impl Plugin for TuiViewPlugin {
         // What other plugins use is there in any run; without the
         // terminal, no frame is ever due.
         status::add(app);
+        app.add_status_part(&input::COPIED, "Copied lines");
         // Spawned in `build`, so a plugin's `finish` may disable one.
         keys::add_built_in(app);
         renderers::add(app);

@@ -38,6 +38,8 @@ impl Plugin for ActivityPlugin {
             )
             .add_systems(PostUpdate, show_status.in_set(rig_tui::StatusSystems::Show))
             .add_setting::<ActivitySettings>("activity");
+        #[cfg(feature = "tui")]
+        rig_tui::AppStatusPartsExt::add_status_part(app, &STATUS, "What it is doing");
     }
 
     #[cfg(feature = "tui")]

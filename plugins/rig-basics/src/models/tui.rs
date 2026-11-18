@@ -3,7 +3,8 @@
 
 use rig_harness::prelude::*;
 use rig_tui::{
-    CompletionSource, Editor, MainEditor, Side, StatusItem, StatusItems, StatusSystems, Tone,
+    AppStatusPartsExt, CompletionSource, Editor, MainEditor, Side, StatusItem, StatusItems,
+    StatusSystems, Tone,
 };
 
 use super::pick::catalog;
@@ -16,7 +17,9 @@ const REASONING: StatusItem = StatusItem::new("reasoning", Side::Left, 40, 12);
 
 pub(super) fn add(app: &mut App) {
     app.add_systems(PostUpdate, show.in_set(StatusSystems::Show))
-        .add_systems(Update, complete_models);
+        .add_systems(Update, complete_models)
+        .add_status_part(&MODEL, "Model")
+        .add_status_part(&REASONING, "Reasoning effort");
 }
 
 /// On the entity of `/model`'s completions.

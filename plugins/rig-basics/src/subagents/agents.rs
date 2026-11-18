@@ -6,7 +6,7 @@
 use rig_harness::prelude::*;
 
 use rig_ecs::agent::{ActiveTurn, Agent, Spawned, SpawnedBy};
-use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
+use rig_tui::{AppStatusPartsExt, Side, StatusItem, StatusItems, StatusSystems, Tone};
 
 /// Where a spawned agent's name is: before its model.
 const TITLE: StatusItem = StatusItem::new("title", Side::Left, 20, 14);
@@ -16,6 +16,9 @@ const SUBAGENTS: StatusItem = StatusItem::new("subagents", Side::Left, 60, 15);
 const OTHERS: StatusItem = StatusItem::new("others", Side::Left, 70, 13);
 
 pub(super) fn add(app: &mut App) {
+    app.add_status_part(&TITLE, "Agent name")
+        .add_status_part(&SUBAGENTS, "Subagents at work")
+        .add_status_part(&OTHERS, "Other agents at work");
     app.add_systems(
         PostUpdate,
         show.in_set(StatusSystems::Show)

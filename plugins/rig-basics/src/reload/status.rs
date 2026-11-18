@@ -1,7 +1,7 @@
 //! How a rebuild goes, in the terminal view's status line.
 
 use rig_harness::prelude::*;
-use rig_tui::{AppStatus, Side, StatusItem, StatusSystems, Tone};
+use rig_tui::{AppStatus, AppStatusPartsExt, Side, StatusItem, StatusSystems, Tone};
 
 use crate::reload::{Rebuild, ReloadStatus};
 
@@ -9,6 +9,7 @@ use crate::reload::{Rebuild, ReloadStatus};
 const RELOAD: StatusItem = StatusItem::new("reload", Side::Left, 90, 16);
 
 pub(crate) fn add(app: &mut App) {
+    app.add_status_part(&RELOAD, "Reload progress");
     app.init_resource::<AppStatus>().add_systems(
         PostUpdate,
         show_reload

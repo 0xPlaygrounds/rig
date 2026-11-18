@@ -122,7 +122,11 @@ pub(crate) fn needs_redraw(
             )>,
         ),
     >,
-    (app_status, test): (Option<Res<AppStatus>>, Option<Res<TuiTestScreen>>),
+    (app_status, hidden, test): (
+        Option<Res<AppStatus>>,
+        Option<Res<crate::status::StatusSettings>>,
+        Option<Res<TuiTestScreen>>,
+    ),
     (mut requests, mut repaints): (MessageReader<RequestRedraw>, MessageReader<RedrawArea>),
     revision: Res<crate::RenderRevision>,
     mut paced: Local<Paced>,
@@ -139,6 +143,7 @@ pub(crate) fn needs_redraw(
         || focus.is_changed()
         || screen.is_changed()
         || app_status.is_some_and(|status| status.is_changed())
+        || hidden.is_some_and(|hidden| hidden.is_changed())
         || test.is_some_and(|test| test.is_changed())
         || !changed.is_empty()
         || !messages.is_empty()
