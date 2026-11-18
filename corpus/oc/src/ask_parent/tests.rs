@@ -123,7 +123,7 @@ impl Session {
             .add_systems(AgentPass, name_the_subagent.in_set(PrepareSystems::Input))
             .add_observer(log_tool_outputs);
         if fresh {
-            spawn_root(app.world_mut()).insert(ModelChoice(PARENT.to_owned()));
+            spawn_root(app.world_mut(), ModelChoice(PARENT.to_owned()));
         }
         app.finish();
         app.update();

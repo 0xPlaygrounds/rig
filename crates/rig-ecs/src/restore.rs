@@ -423,7 +423,7 @@ pub(crate) fn restore_session(world: &mut World) {
                 Err(unread) => notices.extend(skipped("component", key, unread)),
             }
         }
-        let mut spawned = world.spawn((Name::new("agent"), Agent::new(), id.clone(), conversation));
+        let mut spawned = world.spawn((Agent::new(), id.clone(), conversation));
         for (component, value) in read {
             component.insert(&mut spawned, value.as_partial_reflect(), &registry);
         }

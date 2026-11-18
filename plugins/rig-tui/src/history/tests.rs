@@ -307,9 +307,7 @@ fn a_resumed_conversations_prompts_come_first_filtered_and_are_not_saved_again()
 fn showing_another_agent_seeds_its_prompts_and_keeps_the_draft() {
     let (mut app, _) = view_app();
     app.world_mut().resource_mut::<PromptHistory>().entries = vec!["older".into()];
-    let other = spawn_root(app.world_mut())
-        .insert(conversation(&["review the diff"]))
-        .id();
+    let other = spawn_root(app.world_mut(), conversation(&["review the diff"])).id();
     // Picking the agent shows it, and the Up after it in the same frame
     // browses its prompts.
     app.add_observer(move |_: On<Picked>, mut commands: Commands| {

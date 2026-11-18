@@ -39,9 +39,7 @@ fn choosing_a_model_for_an_unconnected_agent_connects_it_once() {
     }
     world.add_observer(on_set_model);
     world.add_observer(connect);
-    let agent = spawn_root(&mut world)
-        .insert(ModelRefused("Cannot use test/gone.".into()))
-        .id();
+    let agent = spawn_root(&mut world, ModelRefused("Cannot use test/gone.".into())).id();
     world.trigger(SetModel {
         entity: agent,
         model: "test/one".into(),

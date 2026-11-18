@@ -314,7 +314,7 @@ fn an_earlier_saved_form_is_read_or_skipped_with_a_notice() {
     // second's of one whose items were plain strings.
     let before_call = json!({ "items": [{ "id": 1, "text": "parse", "done": true }] });
     let world = app.world_mut();
-    let second = spawn_root(world).id();
+    let second = spawn_root(world, ()).id();
     app.update();
     // Values set after the agents were spawned, so their logs are kept.
     let world = app.world_mut();

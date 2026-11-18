@@ -3868,8 +3868,8 @@ fn stopping_an_idle_agent_stops_the_agents_it_spawned() {
         return;
     };
     let world = app.world_mut();
-    let parent = spawn_root(world).id();
-    let other = spawn_root(world).id();
+    let parent = spawn_root(world, ()).id();
+    let other = spawn_root(world, ()).id();
     world
         .entity_mut(child)
         .insert(<SpawnedBy as Relationship>::from(parent));
@@ -5062,9 +5062,7 @@ fn a_child_never_calls_or_is_offered_a_tool_its_parent_lacks() {
     app.init_resource::<Ended>().add_observer(log_ended);
     let child = connected(&mut app, &model);
     let world = app.world_mut();
-    let parent = spawn_root(world)
-        .insert(ToolAccess::all().narrow(["look"]))
-        .id();
+    let parent = spawn_root(world, ToolAccess::only(["look"])).id();
     world
         .entity_mut(child)
         .insert(<SpawnedBy as Relationship>::from(parent));
@@ -5092,7 +5090,7 @@ fn a_tool_the_agent_may_not_use_is_refused_and_reads_as_unknown() {
     ]);
     app.init_resource::<Ended>().add_observer(log_ended);
     let agent = agent_on(&mut app, &model);
-    let only_look = ToolAccess::all().narrow(["look"]);
+    let only_look = ToolAccess::only(["look"]);
     app.world_mut().entity_mut(agent).insert(only_look);
     let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
     assert!(run_until(&mut app, done), "{:?}", notices(&app));
@@ -5260,7 +5258,7 @@ fn a_call_the_agent_may_not_make_is_refused_not_answered_in_its_place() {
     let call = spawn_call(world, "look", "look");
     let agent = world.get::<ForAgent>(call).map(|of| of.0);
     if let Some(agent) = agent {
-        world.entity_mut(agent).insert(ToolAccess::all().narrow([]));
+        world.entity_mut(agent).insert(ToolAccess::only([]));
     }
     let done = |world: &mut World| world.get::<Settled>(call).is_some();
     assert!(run_until(&mut app, done), "{:?}", notices(&app));

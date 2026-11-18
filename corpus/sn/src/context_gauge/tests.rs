@@ -93,9 +93,7 @@ fn the_gauge_follows_tokens_models_and_focus_and_warns_once() {
     collect::<Notice>(&mut app);
     app.finish();
     app.update();
-    let agent = spawn_root(app.world_mut())
-        .insert(ModelChoice("scripted/w200k".to_owned()))
-        .id();
+    let agent = spawn_root(app.world_mut(), ModelChoice("scripted/w200k".to_owned())).id();
     app.update();
     assert!(
         shows(app.world(), agent, "ctx —", Tone::Dim),

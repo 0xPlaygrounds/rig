@@ -58,9 +58,7 @@ fn start(user: &MemoryStore, dir: &Path, no_color: bool) -> (App, Receiver<()>, 
         .insert_resource(TuiTestScreen::new(100, 30));
     tui_view(&mut app);
     app.add_plugins(ThemeFilesPlugin);
-    let agent = spawn_root(app.world_mut())
-        .insert(ModelChoice("test/model".to_owned()))
-        .id();
+    let agent = spawn_root(app.world_mut(), ModelChoice("test/model".to_owned())).id();
     app.finish();
     app.cleanup();
     app.update();

@@ -40,7 +40,7 @@ fn app(home: &rig_harness::harness_protocol::Home, terminal: bool) -> (App, Enti
                 .extend(refused.read().filter_map(|line| line.why.clone()));
         },
     );
-    let agent = spawn_root(app.world_mut()).id();
+    let agent = spawn_root(app.world_mut(), ()).id();
     (app, agent)
 }
 

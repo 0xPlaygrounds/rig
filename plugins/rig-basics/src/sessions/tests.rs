@@ -224,7 +224,7 @@ fn resume_opens_the_session_picker() {
         return;
     };
     let world = app.world_mut();
-    let agent = spawn_root(world).id();
+    let agent = spawn_root(world, ()).id();
     let resume = || rig_harness::commands::RunCommand::new(agent, "resume".to_owned());
     world.trigger(resume());
     world.flush();
@@ -331,7 +331,7 @@ fn new_refuses_text_without_switching_sessions() {
     let mut conversation = Conversation::default();
     conversation.push(Message::user("Keep this session"));
     let world = app.world_mut();
-    let agent = spawn_root(world).insert(conversation).id();
+    let agent = spawn_root(world, conversation).id();
     world.trigger(RunCommand::new(agent, "new PELICAN"));
     world.flush();
     let recalled: Vec<_> = world
@@ -366,7 +366,7 @@ fn name_refuses_another_saved_sessions_normalized_name_but_accepts_its_own() {
     let Some(mut app) = running else { return };
     app.update();
     let world = app.world_mut();
-    let agent = spawn_root(world).id();
+    let agent = spawn_root(world, ()).id();
     let line = format!("name   {name}  extra");
     world.trigger(RunCommand::new(agent, line.clone()));
     world.flush();
@@ -418,7 +418,7 @@ fn naming_another_session_refuses_the_name_this_session_has() {
     let Some(mut app) = running else { return };
     app.update();
     let world = app.world_mut();
-    let agent = spawn_root(world).id();
+    let agent = spawn_root(world, ()).id();
     world.trigger(RunCommand::new(agent, "name Old"));
     world.flush();
     app.update();
@@ -492,7 +492,7 @@ fn resume_runs_the_session_a_name_names() {
     app.init_resource::<Exits>()
         .add_observer(|exit: On<Exit>, mut exits: ResMut<Exits>| exits.0.push(exit.0.clone()));
     let world = app.world_mut();
-    let agent = spawn_root(world).id();
+    let agent = spawn_root(world, ()).id();
     for args in ["resume Parser", "resume Nobody"] {
         world.trigger(rig_harness::commands::RunCommand::new(agent, args));
     }
@@ -543,7 +543,7 @@ fn name_refuses_the_name_of_a_session_another_rig_runs_unsaved() {
     let Some(mut app) = running else { return };
     app.update();
     let world = app.world_mut();
-    let agent = spawn_root(world).id();
+    let agent = spawn_root(world, ()).id();
     world.trigger(RunCommand::new(agent, "name alpha"));
     world.flush();
     let recalled: Vec<_> = world.resource_mut::<Messages<Recalled>>().drain().collect();
@@ -570,7 +570,7 @@ fn two_sessions_named_alike_in_one_frame_never_share_the_name() {
     let name = |app: &mut App| {
         app.update();
         let world = app.world_mut();
-        let agent = spawn_root(world).id();
+        let agent = spawn_root(world, ()).id();
         world.trigger(RunCommand::new(agent, "name alpha"));
         world.flush();
         let mut recalled = world.resource_mut::<Messages<Recalled>>();

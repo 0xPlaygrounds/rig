@@ -94,9 +94,7 @@ fn agent_app(
         connection.handler = Handler(connection.handler.0.layered(SlowStart));
     }
     let choice = ModelChoice(connection.spec.reference());
-    let agent = spawn_root(app.world_mut())
-        .insert((connection, choice))
-        .id();
+    let agent = spawn_root(app.world_mut(), (connection, choice)).id();
     (app, wakes, agent)
 }
 

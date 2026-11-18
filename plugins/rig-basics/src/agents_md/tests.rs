@@ -88,7 +88,7 @@ fn the_files_are_in_the_system_prompt() {
     let Some(connection) = connect(&model) else {
         return;
     };
-    let agent = spawn_root(app.world_mut()).insert(connection).id();
+    let agent = spawn_root(app.world_mut(), connection).id();
     app.world_mut()
         .trigger(Deliver::new(agent, "hello", DeliveryMode::Steer));
     run_until(&mut app, &wakes, |world| {

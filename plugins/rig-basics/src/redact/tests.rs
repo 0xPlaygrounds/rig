@@ -94,9 +94,11 @@ fn a_session_meeting_secrets(redacting: bool) -> (String, String) {
     app.cleanup();
     app.update();
     let world = app.world_mut();
-    let agent = spawn_root(world)
-        .insert((ModelChoice("test/model".to_owned()), WorkDir(dir.clone())))
-        .id();
+    let agent = spawn_root(
+        world,
+        (ModelChoice("test/model".to_owned()), WorkDir(dir.clone())),
+    )
+    .id();
     world.spawn(PromptSection::new(
         400,
         "deploy",
@@ -495,7 +497,7 @@ fn a_spilled_commands_output_holds_no_key() {
         app.finish();
         app.update();
         let world = app.world_mut();
-        let agent = spawn_root(world).id();
+        let agent = spawn_root(world, ()).id();
         // Its own text holds no key: the model's call would be redacted.
         let printed =
             "printf 'GITHUB_TO''KEN=ghp_''abcdefghijklmnopqrstuvwxyz0123456789\\n'; seq 1 3000";
@@ -585,9 +587,7 @@ fn a_prompt_seeded_from_a_shown_conversation_comes_back_redacted() {
     conversation.push(rig_harness::rig_core::completion::Message::user(
         "deploy ‹SECRET_1› now",
     ));
-    let agent = spawn_root(app.world_mut())
-        .insert(Conversation::from(conversation))
-        .id();
+    let agent = spawn_root(app.world_mut(), Conversation::from(conversation)).id();
     app.world_mut()
         .trigger(rig_tui::ShowAgent { entity: agent });
     rig_harness_test_support::press(&mut app, "up");
@@ -627,9 +627,11 @@ fn a_call_naming_a_placeholder_runs_with_its_secret() {
     app.finish();
     app.update();
     let world = app.world_mut();
-    let agent = spawn_root(world)
-        .insert((ModelChoice("test/model".to_owned()), WorkDir(dir.clone())))
-        .id();
+    let agent = spawn_root(
+        world,
+        (ModelChoice("test/model".to_owned()), WorkDir(dir.clone())),
+    )
+    .id();
     // A key in the system prompt, such as in an AGENTS.md, is sent as a
     // placeholder too.
     world.spawn(PromptSection::new(
@@ -728,7 +730,7 @@ fn what_the_exit_frame_keeps_is_redacted() {
     app.finish();
     app.update();
     let world = app.world_mut();
-    let agent = spawn_root(world).id();
+    let agent = spawn_root(world, ()).id();
     let quiet = ToolResult::success(ToolOutput::text("so far nothing"));
     let call = world.spawn(IfStopped(Outcome::from(quiet))).id();
     // After `AgentLoop`, in the frame that exits.

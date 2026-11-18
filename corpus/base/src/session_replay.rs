@@ -718,7 +718,7 @@ impl Plugin for SessionReplayPlugin {
         let first = source.effects.records.iter().find_map(|r| r.scope.clone());
         if let (true, Some(first)) = (app.runs_front(REPLAY), first) {
             let first = AgentId(first.to_string());
-            spawn_root(app.world_mut()).insert(first);
+            spawn_root(app.world_mut(), first);
         }
         let timed = source.flags.original_timing;
         let recorded = source.effects.records.iter();

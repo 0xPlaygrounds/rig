@@ -269,6 +269,6 @@ impl Plugin for AgentPlugin {
 fn spawn_first_agent(world: &mut World) {
     let mut agents = world.query_filtered::<(), With<Agent>>();
     if agents.iter(world).next().is_none() {
-        spawn::spawn_root(world);
+        spawn::spawn_root(world, ());
     }
 }

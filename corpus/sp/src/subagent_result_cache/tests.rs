@@ -57,7 +57,7 @@ impl Session {
             .add_observer(log_tool_outputs);
         collect::<Notice>(&mut app);
         if fresh {
-            spawn_root(app.world_mut()).insert(ModelChoice(MAIN.to_owned()));
+            spawn_root(app.world_mut(), ModelChoice(MAIN.to_owned()));
         }
         app.finish();
         app.update();
@@ -328,7 +328,7 @@ fn a_list_task_refuses_is_never_answered_from_a_record() {
     );
     let sub = MockCompletionModel::from_stream_turns([reply("src/config.rs:12")]);
     let mut session = Session::new(&MemoryStore::default(), &dir, main, &sub);
-    let keeps = ToolAccess::all().narrow([TASK, "read"]);
+    let keeps = ToolAccess::only([TASK, "read"]);
     session
         .app
         .world_mut()

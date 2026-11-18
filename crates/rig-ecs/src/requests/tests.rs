@@ -81,7 +81,7 @@ fn a_request_ends_when_its_owner_settles() {
 #[test]
 fn a_stop_ends_the_requests_of_an_idle_agent_it_reaches() {
     let mut app = app();
-    let agent = spawn_root(app.world_mut()).id();
+    let agent = spawn_root(app.world_mut(), ()).id();
     let request = app.world_mut().spawn(RequestOf(agent)).id();
     app.world_mut()
         .trigger(StopTurn::plugin_alone(agent, "test", "its turn alone"));

@@ -86,13 +86,13 @@ fn app(model: &MockCompletionModel) -> (App, Receiver<()>, Entity) {
         .init_resource::<Kept>()
         .add_systems(Last, keep)
         .add_systems(AgentPass, gate.in_set(Stage::Gate));
-    let agent = spawn_root(app.world_mut()).id();
-    if let Some(connection) = connect(model) {
-        let choice = ModelChoice(connection.spec.reference());
-        app.world_mut()
-            .entity_mut(agent)
-            .insert((connection, choice));
-    }
+    let agent = match connect(model) {
+        Some(connection) => {
+            let choice = ModelChoice(connection.spec.reference());
+            spawn_root(app.world_mut(), (connection, choice)).id()
+        }
+        None => spawn_root(app.world_mut(), ()).id(),
+    };
     app.finish();
     app.update();
     (app, wakes, agent)
@@ -222,7 +222,7 @@ fn a_program_never_gives_an_agent_a_tool_its_parent_lacks() {
     let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
     let (mut app, wakes, agent) = app(&model);
     // As the drive test's intermediary: allowed `run_steel` and `look` only.
-    let access = ToolAccess::all().narrow([RUN_STEEL, "look"]);
+    let access = ToolAccess::only([RUN_STEEL, "look"]);
     app.world_mut().entity_mut(agent).insert(access);
     let run = |app: &mut App, id: &str, tools: &str| {
         let code = format!(r#"(spawn-agent "leaf" (hash 'tools (list {tools})))"#);

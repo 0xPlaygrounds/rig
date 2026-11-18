@@ -24,9 +24,7 @@ fn debaters_answer_each_other_and_the_judges_verdict_reaches_the_agent() {
     app.insert_resource(models)
         .insert_resource(Settings::from_toml(settings))
         .add_plugins((AgentPlugin, SessionLogPlugin, DebatePlugin));
-    let host = spawn_root(app.world_mut())
-        .insert(ModelChoice("debate-main/m".to_owned()))
-        .id();
+    let host = spawn_root(app.world_mut(), ModelChoice("debate-main/m".to_owned())).id();
     app.finish();
     app.update();
 
@@ -83,9 +81,7 @@ fn a_plugin_ending_the_hosts_turn_alone_leaves_the_debate_running_and_the_users_
         .add_systems(AgentPass, hold_turn_calls.in_set(Stage::Gate))
         .init_resource::<StillRunning>()
         .add_observer(note_still_running);
-    let host = spawn_root(app.world_mut())
-        .insert(ModelChoice("debate-pro/m".to_owned()))
-        .id();
+    let host = spawn_root(app.world_mut(), ModelChoice("debate-pro/m".to_owned())).id();
     app.finish();
     app.update();
 

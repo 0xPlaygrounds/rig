@@ -268,7 +268,7 @@ fn fork_now(
     let connection = world.get::<Connection>(from).cloned();
     let conversation = Conversation(copy.conversation);
     let empty = conversation.messages().is_empty();
-    let mut spawned = world.spawn((Name::new("agent"), Agent::new(), to.clone(), conversation));
+    let mut spawned = world.spawn((Agent::new(), to.clone(), conversation));
     for (component, value) in &saved {
         component.insert(&mut spawned, value.as_ref(), &registry);
     }
