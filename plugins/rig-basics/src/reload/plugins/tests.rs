@@ -1074,3 +1074,76 @@ fn ticking_a_plugin_whose_only_with_plugin_is_under_a_branch_turned_back_on_says
         "{told:?}"
     );
 }
+
+#[test]
+fn unticking_a_plugin_whose_adder_is_under_a_branch_turned_back_on_says_it_stays_on() {
+    let home = scratch_home("plugins-needed-branch-back");
+    fs::create_dir_all(home.root()).ok();
+    fs::write(
+        home.settings(),
+        "[plugins]\noff = [\"rig-basics/subagents\"]\n\
+         enable = [\"rig_basics::approval::ApprovalPlugin\"]\n",
+    )
+    .ok();
+    let (mut app, agent) = app(&home, true);
+    run(&mut app, agent, "plugins defaults");
+    let found = picker(&mut app);
+    assert!(found.is_some(), "no question");
+    let Some((question, asked)) = found else {
+        return;
+    };
+    let keep = at(&asked, "Keep editing");
+    pick(&mut app, question, keep.map(Chosen::item));
+    let found = picker(&mut app);
+    assert!(found.is_some(), "no list");
+    let Some((list, _)) = found else {
+        return;
+    };
+    tick(&mut app, list, &["Subagents"], &["Approvals"]);
+    let shown = app.world().get::<Picker>(list).cloned().unwrap_or_default();
+    assert_eq!(
+        detail(&shown, "Approvals"),
+        "- off, stays on: needed by Subagents"
+    );
+    pick(&mut app, list, None);
+    let found = picker(&mut app);
+    assert!(found.is_some(), "no question");
+    let Some((question, asked)) = found else {
+        return;
+    };
+    assert!(
+        asked
+            .body
+            .contains("Approvals stays on while Subagents, which adds it, is on"),
+        "{}",
+        asked.body
+    );
+    let later = at(&asked, "Later, at the next start");
+    pick(&mut app, question, later.map(Chosen::item));
+    let told = app.world().resource::<Told>().0.join("\n");
+    assert!(
+        told.contains("turned off Approvals (stays on: needed by Subagents)"),
+        "{told}"
+    );
+}
+
+#[test]
+fn defaults_off_a_terminal_print_an_adder_s_disable_before_the_plugin_it_adds() {
+    let home = scratch_home("plugins-defaults-order");
+    fs::create_dir_all(home.root()).ok();
+    fs::write(
+        home.settings(),
+        "[plugins]\nenable = [\"rig_basics::approval::ApprovalPlugin\", \
+         \"rig_basics::subagents::SubagentsPlugin\"]\n",
+    )
+    .ok();
+    let (mut app, agent) = app(&home, false);
+    run(&mut app, agent, "plugins defaults");
+    let told = app.world().resource::<Told>().0.join("\n");
+    let subagents = told.find("rig plugin disable rig_basics::subagents::SubagentsPlugin");
+    let approvals = told.find("rig plugin disable rig_basics::approval::ApprovalPlugin");
+    assert!(
+        subagents.is_some() && approvals.is_some() && subagents < approvals,
+        "{told}"
+    );
+}
