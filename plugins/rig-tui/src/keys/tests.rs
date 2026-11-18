@@ -4,12 +4,10 @@ use crossterm::event::KeyEventKind;
 use super::*;
 use crate::tests::{Delivered, key_events, press, type_text, typed, view_app, view_app_with};
 use crate::view::TuiView;
-use crate::{CompletionSource, Placement, TuiPanel};
+use crate::{CompletionSource, Placement, TuiPanel, TuiPlugin};
 use ratatui::layout::Constraint;
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::prelude::*;
-
-use crate::TuiPlugin;
 
 /// What the test bindings heard: for each, whether it was a release.
 #[derive(Resource, Default)]
