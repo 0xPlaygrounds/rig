@@ -867,7 +867,9 @@ fn a_plugin_another_adds_says_so_and_unticking_it_says_it_stays_on() {
     .ok();
     let (mut app, agent) = app(&home, true);
     open(&mut app, agent);
-    let Some((list, shown)) = picker(&mut app) else {
+    let found = picker(&mut app);
+    assert!(found.is_some(), "no list");
+    let Some((list, shown)) = found else {
         return;
     };
     assert!(
@@ -882,7 +884,9 @@ fn a_plugin_another_adds_says_so_and_unticking_it_says_it_stays_on() {
         "- off, stays on: needed by Subagents"
     );
     pick(&mut app, list, None);
-    let Some((_, asked)) = picker(&mut app) else {
+    let found = picker(&mut app);
+    assert!(found.is_some(), "no question");
+    let Some((_, asked)) = found else {
         return;
     };
     assert!(
@@ -906,7 +910,9 @@ fn ticking_a_needed_plugin_after_unticking_its_adder_says_its_branch_keeps_it_of
     .ok();
     let (mut app, agent) = app(&home, true);
     open(&mut app, agent);
-    let Some((list, _)) = picker(&mut app) else {
+    let found = picker(&mut app);
+    assert!(found.is_some(), "no list");
+    let Some((list, _)) = found else {
         return;
     };
     tick(&mut app, list, &["Approvals"], &["Subagents"]);
@@ -914,5 +920,49 @@ fn ticking_a_needed_plugin_after_unticking_its_adder_says_its_branch_keeps_it_of
     assert_eq!(
         detail(&shown, "Approvals"),
         "+ on, still off with its branch rig-basics/approval"
+    );
+}
+
+#[test]
+fn unticking_a_plugin_two_plugins_add_names_both() {
+    let home = scratch_home("plugins-needed-twice");
+    fs::create_dir_all(home.root()).ok();
+    fs::write(
+        home.settings(),
+        "[plugins]\nenable = [\"rig_basics::budget::BudgetPlugin\", \
+         \"rig_basics::helpers::HelpersPlugin\"]\n",
+    )
+    .ok();
+    let (mut app, agent) = app(&home, true);
+    open(&mut app, agent);
+    let found = picker(&mut app);
+    assert!(found.is_some(), "no list");
+    let Some((list, shown)) = found else {
+        return;
+    };
+    assert!(
+        detail(&shown, "Usage").starts_with("on (needed by Helpers and Budget)"),
+        "{}",
+        detail(&shown, "Usage")
+    );
+    tick(&mut app, list, &[], &["Usage"]);
+    let unticked = app.world().get::<Picker>(list).cloned().unwrap_or_default();
+    assert_eq!(
+        detail(&unticked, "Usage"),
+        "- off, stays on: needed by Helpers and Budget"
+    );
+    pick(&mut app, list, None);
+    let found = picker(&mut app);
+    assert!(found.is_some(), "no question");
+    let Some((_, asked)) = found else {
+        return;
+    };
+    assert!(
+        asked.body.contains(
+            "Usage stays on while Helpers and Budget, which add it, are on. Keep editing and \
+             untick Helpers and Budget too"
+        ),
+        "{}",
+        asked.body
     );
 }
