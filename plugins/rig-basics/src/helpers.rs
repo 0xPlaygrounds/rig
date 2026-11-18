@@ -119,9 +119,7 @@ impl Plugin for HelpersPlugin {
              session and what it cost, or that some of that is unknown.",
             set.at_once, set.timeout_secs
         );
-        if !app.is_plugin_added::<UsagePlugin>() {
-            app.add_plugins(UsagePlugin);
-        }
+        rig_harness::load::<UsagePlugin>(app, "rig-basics", "");
         app.init_resource::<HelperCommand>()
             .init_resource::<Processes>()
             .init_resource::<ProjectRoot>()

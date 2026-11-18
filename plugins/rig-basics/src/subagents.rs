@@ -123,12 +123,8 @@ pub struct SubagentsPlugin;
 
 impl Plugin for SubagentsPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<ApprovalPlugin>() {
-            app.add_plugins(ApprovalPlugin);
-        }
-        if !app.is_plugin_added::<AgentPickerPlugin>() {
-            app.add_plugins(AgentPickerPlugin);
-        }
+        rig_harness::load::<ApprovalPlugin>(app, "rig-basics", "");
+        rig_harness::load::<AgentPickerPlugin>(app, "rig-basics", "");
         app.init_resource::<rig_ecs::spawn::Subagents>()
             .add_setting::<SubagentDefaults>("subagents")
             .keeps_saved::<Subtask>()

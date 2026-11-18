@@ -6,7 +6,10 @@ that depends on `rig-harness`. The agent itself is made of plugins of the same
 kind. Its tools, commands, subagents, compaction, sessions and terminal view
 are plugins built on the same public API, and `[plugins]` in
 `RIG_HOME/settings.toml` turns each on or off. A plugin that needs another
-adds it unless `app.is_plugin_added::<P>()`.
+loads it in its `build` with `rig_harness::load::<P>`, which adds it unless
+the app has it and records which plugin added it. A plugin useless without
+another returns from `build` unless `app.is_plugin_added::<Other>()`, so it
+must be added after that one.
 
 The kernel, `rig-ecs`, runs agents and their work; this crate, the harness,
 adds sessions, settings, commands and fronts (how a user drives the agent).
@@ -47,16 +50,6 @@ agent loads none of its plugins, whatever their own choice in `enable` and
 keeps that choice, so turning the branch back on brings it back, and a plugin
 added to an off branch later stays off. A name in `off` that is no crate or
 area refuses the start, as an unknown plugin does.
-
-Rig's own plugins are rows of `built_in_plugins!` in `rig-harness-protocol`,
-and a row can name two kinds of link. `adds [..]` names the plugins it adds in
-its own `build`, which it still does with `is_plugin_added`, so it works
-without the settings too. The settings turn those on with it, even under an
-off branch, `rig plugin disable` of one refuses and names each plugin on that
-adds it, and the lists say "needed by" them. `only_with [..]` names what a
-plugin does nothing without, and never turns that on. While that one is off,
-the plugin is off too and not built, and the lists say it "does nothing
-without" that one.
 
 # Where the examples are
 

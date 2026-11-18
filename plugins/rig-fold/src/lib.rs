@@ -39,7 +39,8 @@ mod tests;
 const LABEL: &str = "Show the selected tool call whole, or every call";
 
 /// Folds finished tool calls in the terminal view and binds the key that
-/// shows them whole ([`FoldSettings`]).
+/// shows them whole ([`FoldSettings`]). It adds nothing unless the
+/// terminal view ([`rig_tui::TuiViewPlugin`]) was added before it.
 #[derive(Default)]
 pub struct FoldPlugin;
 
@@ -119,6 +120,9 @@ struct FoldKey;
 
 impl Plugin for FoldPlugin {
     fn build(&self, app: &mut App) {
+        if !app.is_plugin_added::<rig_tui::TuiViewPlugin>() {
+            return;
+        }
         app.add_setting::<FoldSettings>("fold")
             .add_message::<Notice>()
             .init_resource::<Unfolded>()
