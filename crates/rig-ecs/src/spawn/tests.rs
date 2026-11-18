@@ -275,3 +275,32 @@ fn a_root_given_nothing_is_named_agent_and_keeps_every_tool() {
     assert_eq!(first, Some((None, id, Name::new("agent"), true)));
     assert_eq!(world.get::<ToolAccess>(agent), Some(&ToolAccess::all()));
 }
+
+/// The agents an `Insert` observer found already an agent, by what it saw.
+#[derive(Resource, Default)]
+struct Found(Vec<&'static str>);
+
+fn found<C: Component>(
+    what: &'static str,
+) -> impl Fn(On<Insert<C>>, Query<(), With<Agent>>, ResMut<Found>) {
+    move |inserted: On<Insert<C>>, agents: Query<(), With<Agent>>, mut found: ResMut<Found>| {
+        if agents.contains(inserted.entity) {
+            found.0.push(what);
+        }
+    }
+}
+
+#[test]
+fn what_a_root_is_given_or_named_by_default_arrives_with_its_agent() {
+    let mut app = app();
+    app.init_resource::<Found>()
+        .add_observer(found::<Role>("role"))
+        .add_observer(found::<Name>("name"));
+    let world = app.world_mut();
+    spawn_root(world, Role("review"));
+    spawn_root(world, (Role("review"), Name::new("r")));
+
+    let mut found = world.resource::<Found>().0.clone();
+    found.sort_unstable();
+    assert_eq!(found, ["name", "name", "role", "role"]);
+}
