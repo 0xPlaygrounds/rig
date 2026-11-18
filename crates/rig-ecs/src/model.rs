@@ -322,10 +322,11 @@ pub(crate) fn connect(
 
 /// The context windows asked of the servers of models whose catalog entry
 /// gives none, by reference: `None` while asking, or when the server did
-/// not say. A server's answer, with or without a window, is final for the
-/// run, and so is its silence past the ask's deadline, so a server that
-/// hangs holds one turn at most. A server that could not be reached or
-/// answered with an error status has no entry, so the next turn asks again.
+/// not say. A server's answer, with or without a window or with a client
+/// error status, is final for the run, and so is its silence past the ask's
+/// deadline, so a server that hangs holds one turn at most. A server that
+/// could not be reached or answered with a server error has no entry, so
+/// the next turn asks again.
 #[derive(Resource, Default)]
 pub(crate) struct ServedWindows(HashMap<String, Option<u32>>);
 
@@ -340,7 +341,7 @@ pub(crate) enum WindowAnswer {
     /// The window it serves, or `None` when its answer named none or it
     /// did not answer in time.
     Said(Option<u32>),
-    /// It could not be reached, or answered with an error status.
+    /// It could not be reached, or answered with a server error.
     Unreached,
 }
 
@@ -400,7 +401,7 @@ fn start_asking(
                 let unreached = matches!(error, ProviderError::Http(_))
                     || error
                         .provider_response_status()
-                        .is_some_and(|status| !status.is_success());
+                        .is_some_and(|status| status.is_server_error());
                 if unreached {
                     WindowAnswer::Unreached
                 } else {
@@ -477,26 +478,27 @@ pub(crate) fn learn_window(
 #[derive(Component)]
 pub(crate) struct WaitingForWindow(String);
 
-/// Marks a turn's model call held once for its model's window, so a failed
-/// ask does not hold it again.
+/// Marks a turn one of whose model calls was held for its model's window,
+/// so a failed ask holds none of its later calls.
 #[derive(Component)]
 pub(crate) struct WaitedForWindow;
 
 /// Holds each turn's call about to start to a model with no context window
 /// while that model's server is asked for one, in
 /// [`Stage::Gate`](super::stage::Stage::Gate), asking it again first when
-/// the last ask did not reach it: measured without the window, its request
-/// would not be compacted near it.
+/// the last ask did not reach it, once per turn: measured without the
+/// window, its request would not be compacted near it.
 pub(crate) fn wait_for_window(
-    calls: Query<(Entity, &Adapted), (ReadyToStart, With<TurnCall>, Without<WaitedForWindow>)>,
+    calls: Query<(Entity, &Adapted, &CallOf), (ReadyToStart, With<TurnCall>)>,
+    waited: Query<(), With<WaitedForWindow>>,
     asks: Query<&AskingWindow>,
     (models, wake): (Res<Models>, Res<Wake>),
     mut windows: ResMut<ServedWindows>,
     mut commands: Commands,
 ) {
     let mut started = Vec::new();
-    for (call, Adapted(connection)) in &calls {
-        if connection.spec.input_limit().is_some() {
+    for (call, Adapted(connection), &CallOf(turn)) in &calls {
+        if connection.spec.input_limit().is_some() || waited.contains(turn) {
             continue;
         }
         let reference = connection.spec.reference();
@@ -519,7 +521,7 @@ pub(crate) fn wait_for_window(
             WaitingForWindow(reference),
             HoldOf(call),
         ));
-        commands.entity(call).insert(WaitedForWindow);
+        commands.entity(turn).try_insert(WaitedForWindow);
     }
 }
 
