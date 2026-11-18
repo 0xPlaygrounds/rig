@@ -219,6 +219,11 @@ plugin adds to it with ordinary systems and entities:
 - a panel, a `TuiPanel` entity drawn in `TuiSystems::Draw`;
 - a key binding, `app.add_key_binding(binding, observer)`.
 
+The line under the input is a plugin of its own,
+`rig_tui::status::StatusLinePlugin`. Its `[status] hide` setting hides items
+by name when the line is drawn; the items stay in `StatusItems` for other
+readers.
+
 A crate that also builds without the view puts `rig-tui` behind a default
 `tui` feature. The `rig_tui` crate docs have an example of each.
 
