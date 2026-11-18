@@ -438,7 +438,7 @@ fn add_writes_the_table_of_each_source_and_keeps_the_comments() {
         assert!(chosen.on.iter().any(|on| on == SAVE), "{flags:?}");
         let line = list.lines().find(|line| line.contains(SAVE)).unwrap_or("");
         assert!(
-            line.starts_with("on ") && line.ends_with(&source.to_string()),
+            line.trim_start().starts_with("on ") && line.ends_with(&source.to_string()),
             "{flags:?}: {line}"
         );
     }

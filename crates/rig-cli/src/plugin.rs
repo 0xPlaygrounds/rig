@@ -275,8 +275,10 @@ fn add(home: &Home, type_path: &str, flags: &[&str], source: Option<&Path>) -> R
 
 /// `rig plugin remove <type>`: takes the `[[plugins.extra]]` table of
 /// `type_path` out of the home's settings, with the comment block touching
-/// its header (comments past a blank line stay), and the name out of
-/// `[plugins] enable` and `disable`. The crate's files stay where they are.
+/// its header (comments past a blank line stay), the name out of
+/// `[plugins] enable` and `disable`, and out of `[plugins] off` each branch
+/// of its crate that then holds no plugin. The crate's files stay where
+/// they are.
 ///
 /// # Errors
 ///
@@ -298,13 +300,14 @@ fn remove(home: &Home, type_path: &str) -> Result<()> {
                 .position(|table| table.get("plugin").and_then(Item::as_str) == Some(type_path))?;
             let table = tables.get(at)?;
             let directory = (table.get("path").and_then(Item::as_str)).map(str::to_owned);
+            let krate = (table.get("crate").and_then(Item::as_str)).map(str::to_owned);
             let prefix = table.decor().prefix().and_then(|it| it.as_str());
             let kept = kept_comments(prefix.unwrap_or_default());
             let position = table.position();
             tables.remove(at);
-            Some((directory, tables.is_empty(), kept, position))
+            Some((directory, krate, tables.is_empty(), kept, position))
         });
-        let Some((directory, empty, kept, position)) = found else {
+        let Some((directory, krate, empty, kept, position)) = found else {
             return Err(format!(
                 "{} has no [[plugins.extra]] table for `{type_path}`; `rig plugin list` shows \
                  the plugins",
@@ -315,7 +318,24 @@ fn remove(home: &Home, type_path: &str) -> Result<()> {
         if empty && let Some(plugins) = plugins {
             plugins.remove("extra");
         }
+        let stale: Vec<String> = (file.document.get("plugins"))
+            .and_then(|plugins| plugins.get("off"))
+            .and_then(Item::as_array)
+            .map(|off| {
+                (off.iter().filter_map(|name| name.as_str()))
+                    .filter(|name| {
+                        krate.as_deref().is_some_and(|krate| {
+                            name.split('/').next() == Some(krate) && !known(file, name)
+                        })
+                    })
+                    .map(str::to_owned)
+                    .collect()
+            })
+            .unwrap_or_default();
         let document = &mut file.document;
+        for branch in &stale {
+            config::forget(document, branch);
+        }
         if !kept.is_empty() {
             put_before_next(document, position, &kept);
         }
