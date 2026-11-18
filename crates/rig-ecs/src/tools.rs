@@ -500,21 +500,28 @@ pub(crate) fn offered<'a>(
 /// however its access was made or restored. An agent that so loses a
 /// registered tool gets a warning naming it, but for the run's tools as
 /// the run started, which the user gave. Looks only when an access, a
-/// parent or the run's tools changed.
+/// parent or the run's tools changed, or the run's tools were removed.
 pub(crate) fn keep_within_parents(
     agents: Query<(Entity, Ref<ToolAccess>, Option<Ref<SpawnedBy>>)>,
     tools: Query<&ToolDef>,
     run: Option<Res<RunTools>>,
+    mut had_run: Local<bool>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
     let changed = (agents.iter())
         .any(|(_, access, parent)| access.is_changed() || parent.is_some_and(|it| it.is_changed()));
-    if !changed && !run.as_ref().is_some_and(Res::is_changed) {
+    let removed = std::mem::replace(&mut *had_run, run.is_some()) && run.is_none();
+    if !changed && !removed && !run.as_ref().is_some_and(Res::is_changed) {
         return;
     }
+    // Every agent above is taken within this run's tools too, as its own
+    // access is only set when this pass's commands apply.
     let above: HashMap<Entity, (ToolAccess, Option<Entity>)> = (agents.iter())
-        .map(|(agent, access, parent)| (agent, ((*access).clone(), parent.map(|it| it.parent()))))
+        .map(|(agent, access, parent)| {
+            let access = access.for_run(run.as_deref());
+            (agent, (access, parent.map(|it| it.parent())))
+        })
         .collect();
     let run_changed = run
         .as_ref()
