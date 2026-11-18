@@ -224,7 +224,8 @@ pub struct Deliver {
 
 impl Deliver {
     /// `text` for `agent`, as `mode` says, as the user's own text unless
-    /// [`with_author`](Self::with_author) names who wrote it.
+    /// [`with_author`](Self::with_author) names who wrote it: a plugin's
+    /// note without an author reads as the user's, to plugins too.
     pub fn new(agent: Entity, text: impl Into<String>, mode: DeliveryMode) -> Self {
         Self {
             entity: agent,

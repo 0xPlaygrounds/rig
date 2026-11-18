@@ -304,7 +304,8 @@ impl Effect {
 /// handler it is open: Start marks it [`Started`], and it waits for any
 /// system to answer it. One that may change something carries a
 /// [`Footprint`] that says so, and then does not start once the session
-/// can no longer be saved.
+/// can no longer be saved; one without a `Footprint` changes nothing, so it
+/// still starts, as an exit or a question for the user must.
 #[derive(Component, Clone)]
 #[require(Effect)]
 pub struct EffectRequest {

@@ -494,7 +494,9 @@ fn unique<'a>(names: impl IntoIterator<Item = &'a str>) -> Vec<String> {
 /// Commit then removes this, so the agent is idle, and marks the turn
 /// [`Settled`](super::stage::Settled). The turn stays [`ForAgent`] its agent,
 /// and goes with it. Its retries are counted in a [`Recovery`]; its `Name` is
-/// `turn` unless spawned with another.
+/// `turn` unless spawned with another. It is spawned before its first
+/// request is built, so an `On<Add<TurnOf>>` observer's edit is in that
+/// request.
 ///
 /// [`ForAgent`]: super::stage::ForAgent
 #[derive(Component, Reflect, Debug)]
@@ -724,7 +726,8 @@ pub struct StopTurn {
 }
 
 impl StopTurn {
-    /// The user stopping `agent`'s turn, and those below it.
+    /// The user stopping `agent`'s turn, and those below it. The kernel
+    /// tells the user `Stopped.`.
     pub fn new(agent: Entity) -> Self {
         Self {
             entity: agent,
@@ -735,7 +738,8 @@ impl StopTurn {
 
     /// The plugin `by` stopping `agent`'s turn, and those below it, for
     /// `why`. The request the turn answers is halted
-    /// [`Kept`](conversation::Halt::Kept), left for the next turn.
+    /// [`Kept`](conversation::Halt::Kept), left for the next turn. The
+    /// kernel shows no notice for it: the plugin says why itself.
     pub fn plugin(agent: Entity, by: &str, why: &str) -> Self {
         Self {
             entity: agent,
@@ -768,9 +772,11 @@ impl StopTurn {
 
 /// On each agent a [`StopTurn`] reached, idle or not, once, after its turn
 /// is gone: the stop's cause. Only the kernel makes it, so an observer
-/// reads one per agent instead of walking [`Spawned`] itself. A
-/// [`StopTurn::plugin_alone`] sends none, and neither do the stops of the
-/// app's exit and of a restart.
+/// reads one per agent instead of walking [`Spawned`] itself. Idle agents
+/// get theirs after every running agent the stop reached. React to an
+/// agent being stopped with this, not [`StopTurn`], which is only a
+/// request. A [`StopTurn::plugin_alone`] sends none, and neither do the
+/// stops of the app's exit and of a restart.
 ///
 /// ```compile_fail,E0451
 /// use bevy_ecs::prelude::*;

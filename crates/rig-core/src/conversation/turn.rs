@@ -22,8 +22,9 @@ pub struct TurnRecord {
     /// [`asked`](Conversation::asked) is what it answers,
     /// [`request`](Conversation::request) the message that asked for it.
     pub start: MessageId,
-    /// How it ended; `None` while it runs, and when a crash or an exit cut
-    /// it short.
+    /// How it ended; `None` while it runs, when a crash cut it short, and
+    /// when a plugin kept it running past an exit for the restart. An exit
+    /// otherwise stops it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub end: Option<TurnEnd>,
 }
