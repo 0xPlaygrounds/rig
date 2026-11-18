@@ -64,11 +64,13 @@ struct Row {
     about: String,
 }
 
-/// The `/plugins` list: its rows, in its order, against settings.toml, and
-/// the agent it is for.
+/// The `/plugins` list: its rows, in its order, against settings.toml, the
+/// branches of `[plugins] off` that leaving it turns back on, and the agent
+/// it is for.
 #[derive(Component)]
 struct PluginsPicker {
     rows: Vec<Row>,
+    branches: Vec<String>,
     agent: Entity,
 }
 
@@ -204,18 +206,23 @@ fn plugins(
         return;
     }
     let on: Vec<bool> = rows.iter().map(|row| row.on).collect();
-    list(&mut commands, rows, &on, args.agent, 0);
+    list(&mut commands, (rows, on, Vec::new()), args.agent, 0);
 }
 
-/// Opens the list of `rows` for `agent` with `on` ticked and row `at`
-/// selected.
-fn list(commands: &mut Commands, rows: Vec<Row>, on: &[bool], agent: Entity, at: usize) {
+/// Opens the list of `rows` for `agent` with `on` ticked, `branches` to
+/// turn back on and row `at` selected.
+fn list(
+    commands: &mut Commands,
+    (rows, on, branches): (Vec<Row>, Vec<bool>, Vec<String>),
+    agent: Entity,
+    at: usize,
+) {
     let mut picker = Picker::new("Plugins")
         .for_agent(agent)
-        .body(body(&rows, on))
+        .body(body(&rows, &on, &branches))
         .multiple();
     picker.selected = at;
-    picker.items = (rows.iter().zip(on))
+    picker.items = (rows.iter().zip(&on))
         .map(|(row, on)| PickItem {
             checked: *on,
             // Typing a type path finds its plugin; → shows it with the whole state.
@@ -232,7 +239,11 @@ fn list(commands: &mut Commands, rows: Vec<Row>, on: &[bool], agent: Entity, at:
     let mut list = commands.spawn((
         picker,
         PickPreview::Text(shown),
-        PluginsPicker { rows, agent },
+        PluginsPicker {
+            rows,
+            branches,
+            agent,
+        },
     ));
     #[cfg(feature = "tui")]
     list.insert(rig_tui::ChoiceKeys(vec![(
@@ -242,10 +253,11 @@ fn list(commands: &mut Commands, rows: Vec<Row>, on: &[bool], agent: Entity, at:
     list.observe(leave);
 }
 
-/// The list's body: its keys and how many rows `on` changes.
-fn body(rows: &[Row], on: &[bool]) -> String {
+/// The list's body: its keys and how many changes `on` and `branches`
+/// make.
+fn body(rows: &[Row], on: &[bool], branches: &[String]) -> String {
     let keys = "Enter ticks or unticks, Esc leaves, type to filter.";
-    match changed(rows, on).len() {
+    match changed(rows, on).len() + branches.len() {
         0 => format!("{keys} Nothing is written until you leave."),
         1 => format!("{keys} 1 change: leaving asks whether to reload now or later."),
         changes => {
@@ -618,7 +630,7 @@ fn mark(
     for (entity, list, shown, ticked) in &lists {
         let on = ticks(list.rows.len(), &ticked.0);
         let mut picker = shown.clone();
-        picker.body = body(&list.rows, &on);
+        picker.body = body(&list.rows, &on, &list.branches);
         for (item, (row, on)) in picker.items.iter_mut().zip(list.rows.iter().zip(&on)) {
             item.detail = Some(detail(row, *on));
         }
@@ -629,7 +641,7 @@ fn mark(
 }
 
 /// On leaving the list: the question when what is ticked differs from
-/// settings.toml, else nothing. A front that answers with the items picked
+/// settings.toml or branches wait to turn back on, else nothing. A front that answers with the items picked
 /// rather than ticks them gives those; one that closes it without ever
 /// saying what is ticked never showed it.
 fn leave(
@@ -652,12 +664,12 @@ fn leave(
         (None, Some(ticked)) => ticks(count, &ticked.0),
         (None, None) => return,
     };
-    if changed(&list.rows, &on).is_empty() {
+    if changed(&list.rows, &on).is_empty() && list.branches.is_empty() {
         return;
     }
     let at = highlighted.map_or(shown.selected, |highlighted| highlighted.0);
     let reload = Reload::here(reloads.is_some());
-    let question = (list.rows.clone(), on, Vec::new());
+    let question = (list.rows.clone(), on, list.branches.clone());
     ask(&mut commands, question, list.agent, at, reload);
 }
 
@@ -764,7 +776,8 @@ fn answer(
         ..
     } = question;
     if leave == Leave::Edit {
-        list(&mut commands, rows.clone(), on, *agent, *at);
+        let question = (rows.clone(), on.clone(), branches.clone());
+        list(&mut commands, question, *agent, *at);
         return;
     }
     let changed = changed(rows, on);

@@ -666,7 +666,11 @@ fn keep_editing_keeps_the_branches_plugins_defaults_turns_back_on() {
     let Some((question, asked)) = picker(&mut app) else {
         return;
     };
-    pick(&mut app, question, at(&asked, "Keep editing").map(Chosen::item));
+    pick(
+        &mut app,
+        question,
+        at(&asked, "Keep editing").map(Chosen::item),
+    );
     let found = picker(&mut app);
     assert_eq!(
         found.as_ref().map(|(_, shown)| shown.title.as_str()),
