@@ -110,7 +110,7 @@ pub(crate) fn reply_field<T: serde::de::DeserializeOwned>(
     match raw.pointer(pointer) {
         None | Some(Value::Null) => Ok(None),
         Some(Value::Array(items)) if items.is_empty() => Ok(None),
-        Some(value) => T::deserialize(value).map(Some),
+        Some(value) => crate::json_utils::from_value(value).map(Some),
     }
 }
 

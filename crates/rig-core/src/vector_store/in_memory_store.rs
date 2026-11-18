@@ -426,7 +426,7 @@ where
                 Ok(VectorSearchResult {
                     score: distance.0,
                     id: id.clone(),
-                    document: serde_json::from_value(serde_json::to_value(doc)?)?,
+                    document: crate::json_utils::from_value(&serde_json::to_value(doc)?)?,
                 })
             })
             .collect::<Result<Vec<_>, _>>()

@@ -175,7 +175,8 @@ impl VectorStoreIndex for QdrantVectorStore {
             .map(|item| {
                 let id = stringify_id(item.id.ok_or_else(missing_point_id)?)?;
                 let score = item.score as f64;
-                let payload = serde_json::from_value(serde_json::to_value(item.payload)?)?;
+                let payload =
+                    rig_core::json_utils::from_value(&serde_json::to_value(item.payload)?)?;
                 Ok(VectorSearchResult {
                     score,
                     id,

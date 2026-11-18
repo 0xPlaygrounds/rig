@@ -510,6 +510,39 @@ where
     T::deserialize(serde_json::Value::deserialize(deserializer)?).map_err(serde::de::Error::custom)
 }
 
+/// Reads `T` from `value` as it would read from the value's JSON text. With
+/// serde_json's `arbitrary_precision` on, a `Value` cannot hand an integer
+/// beyond u64 or i64 to serde's buffer for a tagged, untagged or flattened
+/// type, while the text can. Only a value holding such an integer is read
+/// from its text, so a build without the feature reads `value` directly.
+///
+/// # Errors
+///
+/// When `value` does not read as a `T`.
+pub fn from_value<T: serde::de::DeserializeOwned>(
+    value: &serde_json::Value,
+) -> serde_json::Result<T> {
+    if holds_wide_integer(value) {
+        serde_json::from_str(&value.to_string())
+    } else {
+        T::deserialize(value)
+    }
+}
+
+/// Whether `value` holds an integer beyond u64 and i64.
+fn holds_wide_integer(value: &serde_json::Value) -> bool {
+    match value {
+        serde_json::Value::Number(number) => {
+            !number.is_u64()
+                && !number.is_i64()
+                && (number.as_u128().is_some() || number.as_i128().is_some())
+        }
+        serde_json::Value::Array(items) => items.iter().any(holds_wide_integer),
+        serde_json::Value::Object(fields) => fields.values().any(holds_wide_integer),
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 mod tests;
 

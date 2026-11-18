@@ -511,7 +511,8 @@ impl VectorStoreIndex for LanceDbVectorIndex {
                 Ok(VectorSearchResult {
                     score: distance(&value, &self.id_field)?,
                     id: self.row_id(&value)?,
-                    document: serde_json::from_value(value).map_err(VectorStoreError::JsonError)?,
+                    document: rig_core::json_utils::from_value(&value)
+                        .map_err(VectorStoreError::JsonError)?,
                 })
             })
             .collect()

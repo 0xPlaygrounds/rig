@@ -750,7 +750,7 @@ impl IndexHandle {
             RetrievedDocuments::Scored(results) => results
                 .into_iter()
                 .map(
-                    |(score, id, document)| match serde_json::from_value(document) {
+                    |(score, id, document)| match rig_core::json_utils::from_value(&document) {
                         Ok(document) => Ok(VectorSearchResult {
                             score,
                             id,

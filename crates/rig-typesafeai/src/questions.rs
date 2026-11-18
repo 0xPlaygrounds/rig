@@ -466,7 +466,7 @@ fn select_response<Q: Query>(query: &Q, response: &Value) -> Result<Q::Response,
                 .ok_or_else(|| ProviderError::Response(format!("missing answer: {id}")))
         })
         .collect::<Result<serde_json::Map<_, _>, _>>()?;
-    Ok(serde_json::from_value(Value::Object(selected))?)
+    Ok(rig_core::json_utils::from_value(&Value::Object(selected))?)
 }
 
 /// A serializable query with a typed projection of its validated answers.

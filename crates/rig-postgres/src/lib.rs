@@ -240,7 +240,8 @@ impl SearchResult {
         Ok(VectorSearchResult {
             score: self.distance,
             id: self.id.to_string(),
-            document: serde_json::from_value(self.document).map_err(VectorStoreError::JsonError)?,
+            document: rig_core::json_utils::from_value(&self.document)
+                .map_err(VectorStoreError::JsonError)?,
         })
     }
 }

@@ -435,7 +435,8 @@ where
             .await?
             .into_iter()
             .map(|(score, id, doc)| {
-                let doc_t: T = serde_json::from_value(doc).map_err(VectorStoreError::JsonError)?;
+                let doc_t: T =
+                    rig_core::json_utils::from_value(&doc).map_err(VectorStoreError::JsonError)?;
                 Ok(VectorSearchResult {
                     score,
                     id,

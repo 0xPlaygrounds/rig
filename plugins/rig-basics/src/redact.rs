@@ -278,7 +278,7 @@ impl Secrets {
                 }
             }
         }
-        T::deserialize(&redacted).ok()
+        rig_core::json_utils::from_value(&redacted).ok()
     }
 
     /// `request` redacted in its own text: its system prompt, its documents
@@ -588,7 +588,7 @@ fn redact_facts(
         let mut changed = false;
         for (key, value) in slots {
             let redacted = match key == FilesChanged::KEY {
-                true => serde_json::from_value::<FilesChanged>(value.clone())
+                true => rig_core::json_utils::from_value::<FilesChanged>(value)
                     .ok()
                     .and_then(|mut files| {
                         let changed = files.0.iter_mut().fold(false, |any, change| {
@@ -613,7 +613,7 @@ fn redact_facts(
     if changed {
         pass(&mut slots);
     }
-    if changed && let Ok(redacted) = serde_json::from_value(Value::Object(slots)) {
+    if changed && let Ok(redacted) = rig_core::json_utils::from_value(&Value::Object(slots)) {
         published.0 = redacted;
     }
 }

@@ -751,7 +751,7 @@ where
             .into_iter()
             .map(|(document, embeddings)| {
                 let document = serde_json::to_value(document)?;
-                let row = serde_json::from_value::<T>(document)?;
+                let row = rig_core::json_utils::from_value::<T>(&document)?;
 
                 Ok((row, embeddings))
             })
@@ -2063,7 +2063,7 @@ impl<T: SqliteVectorStoreTable> VectorStoreIndex for SqliteVectorIndex<T> {
         debug!("Found {} potential matches", rows.len());
         let mut top_n = Vec::new();
         for (id, doc_value, score) in rows {
-            match serde_json::from_value::<D>(doc_value) {
+            match rig_core::json_utils::from_value::<D>(&doc_value) {
                 Ok(doc) => {
                     top_n.push(VectorSearchResult {
                         score,

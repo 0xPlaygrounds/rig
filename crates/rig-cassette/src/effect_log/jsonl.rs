@@ -66,7 +66,7 @@ use std::sync::{Arc, OnceLock};
 
 use rig_core::completion::{CompletionRequest, Message};
 use rig_core::effect::{EffectId, EffectKind, EffectRecord, EffectRow};
-use rig_core::json_utils::remove_preserving_order;
+use rig_core::json_utils::{from_value, remove_preserving_order};
 use rig_memory::Files;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -952,7 +952,7 @@ pub fn read_from(lines: impl BufRead) -> io::Result<EffectLog> {
     let mut records = Vec::new();
     for line in lines.lines() {
         if let Some(record) = known.line(&line?, true)? {
-            records.push(record_of(&record)?);
+            records.push(from_value(&record)?);
         }
     }
     Ok(EffectLog {
@@ -1031,16 +1031,9 @@ pub fn read_outcomes_from(lines: impl BufRead) -> io::Result<Vec<EffectRecord>> 
             request.insert("chat_history".to_owned(), Value::Array(Vec::new()));
             request.insert("tools".to_owned(), Value::Array(Vec::new()));
         }
-        records.push(record_of(&record)?);
+        records.push(from_value(&record)?);
     }
     Ok(records)
-}
-
-/// A record read from its text rather than from `record`: with serde_json's
-/// `arbitrary_precision` on, a `Value` cannot hand an integer beyond u64 or
-/// i64 to serde's buffer for a tagged enum, while the text can.
-fn record_of(record: &Value) -> serde_json::Result<EffectRecord> {
-    serde_json::from_str(&record.to_string())
 }
 
 /// Folds a later header into the merged one.

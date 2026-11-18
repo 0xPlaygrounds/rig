@@ -290,7 +290,7 @@ impl StreamRecord {
     /// [`Self::parse`] for a stream that stopped early (an error or a
     /// cancellation): parts may still be open at its end.
     pub fn parse_prefix(value: serde_json::Value) -> Result<Self, SequenceError> {
-        let items: Vec<Item<StreamEvent>> = serde_json::from_value(value)
+        let items: Vec<Item<StreamEvent>> = crate::json_utils::from_value(&value)
             .map_err(|error| SequenceError::Shape(error.to_string()))?;
         Self::from_items(items)
     }

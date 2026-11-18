@@ -55,7 +55,7 @@ pub(crate) fn decode_text<A: DeserializeOwned>(args: &str) -> Result<A, serde_js
 /// has none, so a second try would fail as the first did.
 fn as_integers<A: DeserializeOwned>(args: &Value) -> Option<Result<A, serde_json::Error>> {
     let mut whole = args.clone();
-    integers(&mut whole).then(|| A::deserialize(&whole))
+    integers(&mut whole).then(|| crate::json_utils::from_value(&whole))
 }
 
 /// Makes each float in `value` that is a [`Whole`] number that integer;
