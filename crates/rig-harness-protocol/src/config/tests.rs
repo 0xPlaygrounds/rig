@@ -609,3 +609,35 @@ fn an_unknown_branch_is_refused_naming_it_and_its_fix() {
         assert!(turned_off.is_err(), "{name}");
     }
 }
+
+#[test]
+fn a_needed_plugin_under_an_off_branch_stays_on() {
+    const SUBAGENTS: &str = "rig_basics::subagents::SubagentsPlugin";
+    const APPROVALS: &str = "rig_basics::approval::ApprovalPlugin";
+    let text = format!("[plugins]\nenable = [\"{SUBAGENTS}\"]\noff = [\"rig-basics/approval\"]\n");
+    let chosen = plugins(&file("/h/settings.toml", &text)).unwrap_or_default();
+    assert!(
+        chosen.on.iter().any(|plugin| plugin == APPROVALS),
+        "{:?}",
+        chosen.on
+    );
+    assert_eq!(chosen.needed_by(APPROVALS), Some(SUBAGENTS));
+    let order = |plugin: &str| chosen.on.iter().position(|it| it == plugin);
+    assert!(order(APPROVALS) < order(SUBAGENTS), "in the table's order");
+    let alone = plugins(&file(
+        "/h/settings.toml",
+        "[plugins]\noff = [\"rig-basics/approval\"]\n",
+    ))
+    .unwrap_or_default();
+    assert!(!alone.on.iter().any(|plugin| plugin == APPROVALS));
+    assert_eq!(alone.needed_by(APPROVALS), None);
+}
+
+#[test]
+fn every_link_of_the_table_names_one_of_its_rows() {
+    for row in BUILT_IN {
+        for linked in row.adds.iter().chain(row.only_with) {
+            assert!(built_in(linked).is_some(), "{} links {linked}", row.plugin);
+        }
+    }
+}

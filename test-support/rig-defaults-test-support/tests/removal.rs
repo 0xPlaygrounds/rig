@@ -55,6 +55,35 @@ macro_rules! off_by_default {
 const OPTIONAL: &[(&str, fn(&mut App))] =
     rig_harness::harness_protocol::built_in_plugins!(off_by_default);
 
+/// The `(path, how the agent adds it, whether an app has it)` triples of
+/// every plugin
+/// [`built_in_plugins!`](rig_harness::harness_protocol::built_in_plugins)
+/// lists but rig-steel's.
+macro_rules! every_row {
+    (@keep [$($kept:tt)*]) => { &[$($kept)*] };
+    (@keep [$($kept:tt)*] $state:ident rig_steel::SteelPlugin, $krate:literal, $name:literal,
+        [$($os:literal),*], $essential:expr, $(adds [$($adds:literal),*],)?
+        $(only_with [$($only:literal),*],)? $about:literal; $($more:tt)*) => {
+        every_row!(@keep [$($kept)*] $($more)*)
+    };
+    (@keep [$($kept:tt)*] $state:ident $first:ident $(:: $rest:ident)*, $krate:literal,
+        $name:literal, [$($os:literal),*], $essential:expr, $(adds [$($adds:literal),*],)?
+        $(only_with [$($only:literal),*],)? $about:literal; $($more:tt)*) => {
+        every_row!(@keep [$($kept)* (
+            concat!(stringify!($first) $(, "::", stringify!($rest))*),
+            |app: &mut App| load::<$first $(:: $rest)*>(app, $krate, ""),
+            |app: &App| app.is_plugin_added::<$first $(:: $rest)*>(),
+        ),] $($more)*)
+    };
+    ($($entries:tt)*) => { every_row!(@keep [] $($entries)*) };
+}
+
+/// Every built-in plugin but rig-steel's.
+type Row = (&'static str, fn(&mut App), fn(&App) -> bool);
+
+/// Every built-in plugin but rig-steel's, in their order.
+const ROWS: &[Row] = rig_harness::harness_protocol::built_in_plugins!(every_row);
+
 /// The case that adds every [`OPTIONAL`] plugin to the defaults.
 const WITH_EVERY: &str = "with every optional plugin";
 
@@ -245,4 +274,33 @@ fn every_default_plugin_can_be_left_out() {
         failed.is_empty(),
         "runs without {failed:?} failed; logs in {homes:?}"
     );
+}
+
+/// Each built-in plugin added alone adds exactly the rows its entry says
+/// it adds, so the lists that show "needed by" tell the truth. Plugins
+/// that are not rows, such as the MCP engine, are not checked.
+#[test]
+fn each_plugin_alone_adds_exactly_the_rows_its_entry_names() {
+    let built_in = rig_harness::harness_protocol::config::built_in;
+    let home = Path::new(env!("CARGO_TARGET_TMPDIR")).join("adds");
+    let mut wrong = Vec::new();
+    for (plugin, add, _) in ROWS {
+        let mut app = App::new();
+        app.insert_resource(RigHome(Home::at(home.clone())))
+            .insert_resource(Invoked {
+                args: Invocation::default(),
+                terminal: false,
+            })
+            .add_plugins((HeadlessPlugins, RigHarnessPlugins));
+        add(&mut app);
+        let named = built_in(plugin).map_or(&[][..], |row| row.adds);
+        for (other, _, added) in ROWS.iter().filter(|(other, ..)| other != plugin) {
+            if added(&app) != named.contains(other) {
+                wrong.push(format!("{plugin} adds {other}: {}", added(&app)));
+            }
+        }
+    }
+    // The session plugin sends panics to the session's log.
+    drop(std::panic::take_hook());
+    assert!(wrong.is_empty(), "{wrong:#?}");
 }

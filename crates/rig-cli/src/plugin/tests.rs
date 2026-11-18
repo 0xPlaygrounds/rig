@@ -800,3 +800,38 @@ fn the_list_shows_every_branch_in_off() {
         );
     }
 }
+
+#[test]
+fn disabling_a_plugin_another_adds_is_refused_naming_it() {
+    const SUBAGENTS: &str = "rig_basics::subagents::SubagentsPlugin";
+    const APPROVALS: &str = "rig_basics::approval::ApprovalPlugin";
+    let home = old_home("needed");
+    let result = (|| -> Result<_> {
+        fs::create_dir_all(home.root())?;
+        run(&home, &["enable", SUBAGENTS])?;
+        run(&home, &["enable", APPROVALS])?;
+        let before = fs::read_to_string(home.settings())?;
+        let refused = run(&home, &["disable", APPROVALS]).err();
+        let after = fs::read_to_string(home.settings())?;
+        Ok((
+            before,
+            refused.map(|why| why.to_string()),
+            after,
+            listing(&home)?,
+        ))
+    })();
+    fs::remove_dir_all(home.root()).ok();
+    assert!(result.is_ok(), "{result:?}");
+    let (before, refused, after, list) = result.unwrap_or_default();
+    let refused = refused.unwrap_or_default();
+    assert!(
+        refused.contains(APPROVALS) && refused.contains(SUBAGENTS),
+        "{refused}"
+    );
+    assert_eq!(before, after, "a refusal leaves the file");
+    let approvals = list.lines().find(|line| line.contains(APPROVALS));
+    assert!(
+        approvals.is_some_and(|line| line.contains("on ") && line.contains("needed by Subagents")),
+        "{list}"
+    );
+}
