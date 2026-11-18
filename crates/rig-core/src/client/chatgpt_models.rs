@@ -24,8 +24,8 @@ use crate::http_client::{DynHttpClient, HttpClientExt};
 use crate::providers::auth::AuthContext;
 use crate::providers::chatgpt::signed_in_config;
 
-/// The Codex release whose request contract the ChatGPT dialect follows.
-/// The backend lists only the models a client this new may use.
+/// The Codex version the model list is requested as. The backend lists
+/// only the models a client this new may use.
 pub const CLIENT_VERSION: &str = "0.166.0";
 /// The largest model-list response body read, in bytes.
 pub const LIST_LIMIT: usize = 8 << 20;
