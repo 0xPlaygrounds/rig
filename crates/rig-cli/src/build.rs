@@ -998,15 +998,7 @@ fn check_bevy(
         if pins.is_empty() {
             return failure;
         }
-        Explained(format!(
-            "{failure}: a plugin asks for a Bevy that is not this agent's {BEVY_VERSION}:\n  \
-             {}\nWrite its Bevy requirements as \"{range}\", such as `bevy_ecs = {{ version = \
-             \"{range}\", default-features = false }}`, or take it out with \
-             `rig plugin remove <type>`.",
-            pins.join("\n  "),
-            range = super::bevy_range(),
-        ))
-        .into()
+        Explained(pinned_bevy(&failure, &pins)).into()
     })?;
     check_rig(&packages, rig_crates, rig_version)?;
     let Some((bevy, version)) = packages.iter().find_map(|line| {
@@ -1030,6 +1022,19 @@ fn check_bevy(
         ),
     })
     .into())
+}
+
+/// The error for cargo's `failure` to resolve a graph in which plugins ask
+/// for a Bevy other than [`BEVY_VERSION`], as the [`bevy_pins`] `pins`.
+fn pinned_bevy(failure: &dyn fmt::Display, pins: &[String]) -> String {
+    format!(
+        "{failure}: a plugin asks for a Bevy that is not this agent's {BEVY_VERSION}:\n  \
+         {}\nWrite its Bevy requirements as \"{range}\", such as `bevy_ecs = {{ version = \
+         \"{range}\", default-features = false }}`, or take it out with \
+         `rig plugin remove <type>`.",
+        pins.join("\n  "),
+        range = super::bevy_range(),
+    )
 }
 
 /// The error for plugin `plugin` of crate `krate` built on Bevy `version`,
