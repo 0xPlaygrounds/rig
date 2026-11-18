@@ -4,7 +4,8 @@
 //! plugins, `off` names branches of the plugin tree (a crate, such as
 //! `rig-tui`, or an area of one, such as `rig-basics/sessions`), and
 //! `[[plugins.extra]]` tables add crates that are not rig's. A plugin runs
-//! when its own choice is on and no branch holding it is off. The agent is
+//! when its own choice is on and no branch holding it is off, or when a
+//! plugin that runs adds it ([`BuiltIn::adds`]). The agent is
 //! built with exactly the plugins on. Every edit rig makes ([`edit`])
 //! keeps the user's comments and layout.
 //!
@@ -46,6 +47,12 @@ pub struct BuiltIn {
     /// What goes when it is left out, for a plugin whose absence takes away
     /// the way back from inside the agent.
     pub essential: Option<&'static str>,
+    /// The plugins it turns on, which stay on while it is: the settings
+    /// turn them on with it, and `rig plugin disable` refuses them.
+    pub adds: &'static [&'static str],
+    /// The plugins without which it does nothing. It never turns them on,
+    /// and is off while one is.
+    pub only_with: &'static [&'static str],
     /// What it adds, which `rig plugin list` and `/plugins` show.
     pub about: &'static str,
 }
@@ -104,7 +111,8 @@ impl BuiltIn {
 /// order the agent adds them: whether it is on by default, its type, its
 /// crate, its short name, the `target_os` values it builds
 /// on (none for every one), what goes without it when that takes away the
-/// way back, and what it adds.
+/// way back, optionally `adds [..]`, the plugins it turns on, and
+/// `only_with [..]`, those without which it does nothing, and what it adds.
 /// [`BUILT_IN`] is made from it, and so is a test's list of the defaults,
 /// so there is one list.
 #[macro_export]
@@ -202,17 +210,21 @@ interactive terminal.";
                 "The terminal view, the front of a run on an interactive terminal. Without it the \
 agent answers -p or what is piped in, and says so when started on a terminal.";
             off rig_fold::FoldPlugin, "rig-fold", "Folded output", [], None,
+                only_with ["rig_tui::TuiPlugin"],
                 "Folded tool output in the terminal view: a finished call shows its first and last \
 lines, and Ctrl+O ([fold] key) shows the selected call, or every call, whole. Off, \
 every call is drawn whole.";
             off rig_basics::helpers::HelpersPlugin, "rig-basics", "Helpers", [], None,
+                adds ["rig_basics::telemetry::usage::UsagePlugin"],
                 "The helper tool: hands tasks to other rig agents, each a `rig -p --json` child \
 process with this session's plugins, one, several side by side or a chain, and \
 returns their final answers.";
             off rig_basics::budget::BudgetPlugin, "rig-basics", "Budget", [], None,
+                adds ["rig_basics::telemetry::usage::UsagePlugin"],
                 "A budget for what the session spends, helpers included: [budget] usd and tokens \
 in settings.toml, and /budget.";
             off rig_basics::subagents::SubagentsPlugin, "rig-basics", "Subagents", [], None,
+                adds ["rig_basics::approval::ApprovalPlugin"],
                 "Subagents: the task, message and wait tools, with which the agent starts other \
 agents, messages them and waits on their reports.";
             off rig_steel::SteelPlugin, "rig-steel", "Steel programs", [], None,
@@ -231,6 +243,7 @@ tools as <server>__<tool>, and /mcp.";
             // Off: rig trusts a project's MCP servers as it trusts its other files.
             off rig_mcp_client::approval::McpApprovalPlugin, "rig-mcp-client",
                 "MCP approval", [], None,
+                only_with ["rig_mcp_client::McpPlugin"],
                 "With McpPlugin on, asks before a server of the project's .rig/mcp.json starts, \
 and again once its entry changes: /mcp approve and /mcp deny.";
             off rig_acp::AcpPlugin, "rig-acp", "Editor protocol (ACP)", [], None,
@@ -248,7 +261,8 @@ the editor names, and /mcp.";
 /// [`BUILT_IN`] from [`built_in_plugins!`](crate::built_in_plugins).
 macro_rules! built_in_table {
     ($($state:ident $first:ident $(:: $rest:ident)*, $krate:literal, $name:literal,
-        [$($os:literal),*], $essential:expr, $about:literal;)*) => {
+        [$($os:literal),*], $essential:expr, $(adds [$($adds:literal),*],)?
+        $(only_with [$($only:literal),*],)? $about:literal;)*) => {
         /// Every one of rig's own plugins, in the order the agent adds them.
         pub const BUILT_IN: &[BuiltIn] = &[$(BuiltIn {
             plugin: concat!(stringify!($first) $(, "::", stringify!($rest))*),
@@ -257,6 +271,8 @@ macro_rules! built_in_table {
             on: built_in_table!(@on $state),
             targets: &[$($os),*],
             essential: $essential,
+            adds: &[$($($adds),*)?],
+            only_with: &[$($($only),*)?],
             about: $about,
         }),*];
     };
@@ -471,7 +487,8 @@ impl SettingsFile {
 /// crate of the file, on or off.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Plugins {
-    /// The plugins on, in the order the agent adds them.
+    /// The plugins on, in the order the agent adds them. A plugin whose
+    /// [`BuiltIn::only_with`] plugin is off is not, whatever its choice.
     pub on: Vec<String>,
     /// The plugins whose own choice is on (rig's default, then `disable`,
     /// then `enable`), whether or not a branch holding them is off, in the
@@ -507,6 +524,23 @@ impl Plugins {
             .map(String::as_str)
     }
 
+    /// The plugins on that add `plugin` ([`BuiltIn::adds`]), which keep it
+    /// on, in the order of [`Plugins::on`].
+    pub fn needed_by<'a>(&'a self, plugin: &'a str) -> impl Iterator<Item = &'a str> {
+        (self.on.iter().map(String::as_str))
+            .filter(move |on| built_in(on).is_some_and(|built_in| built_in.adds.contains(&plugin)))
+    }
+
+    /// The first plugin `plugin` works only with ([`BuiltIn::only_with`])
+    /// that is off, which keeps it off.
+    pub fn does_nothing_without(&self, plugin: &str) -> Option<&'static BuiltIn> {
+        (built_in(plugin)
+            .map_or(&[][..], |built_in| built_in.only_with)
+            .iter())
+        .filter(|with| !self.on.iter().any(|on| on == *with))
+        .find_map(|with| built_in(with))
+    }
+
     /// The plugins of rig's and the extras that the branch `branch`
     /// holds, in the order the agent adds them; none when it is no branch.
     pub fn held(&self, branch: &str) -> Vec<&str> {
@@ -539,7 +573,9 @@ struct Changes {
 
 /// The plugins the home's settings file `home` turns on, over
 /// [`BUILT_IN`]'s defaults: its `disable`, then its `enable`, then those
-/// its `off` branches hold turned off.
+/// its `off` branches hold turned off, then what the plugins on add
+/// ([`BuiltIn::adds`]) turned on, then those whose
+/// [`BuiltIn::only_with`] plugin is off turned off.
 ///
 /// # Errors
 ///
@@ -606,10 +642,35 @@ pub fn plugins(home: &SettingsFile) -> Result<Plugins, Error> {
         off: changes.off,
         extra: changes.extra,
     };
-    chosen.on = (chosen.own.iter())
+    let mut on: Vec<&str> = (chosen.own.iter())
+        .map(String::as_str)
         .filter(|plugin| chosen.off_with(plugin).is_none())
-        .cloned()
         .collect();
+    // What those on add is on with them, whatever its own choice and branch.
+    let mut at = 0;
+    while let Some(plugin) = on.get(at).copied() {
+        for added in built_in(plugin).map_or(&[][..], |built_in| built_in.adds) {
+            if !on.contains(added) {
+                on.push(added);
+            }
+        }
+        at += 1;
+    }
+    // A plugin does nothing without what it works only with, so it is not built.
+    while let Some(idle) = (on.iter()).position(|plugin| {
+        (built_in(plugin)
+            .map_or(&[][..], |built_in| built_in.only_with)
+            .iter())
+        .any(|with| !on.contains(with))
+    }) {
+        on.remove(idle);
+    }
+    let on: Vec<String> = (BUILT_IN.iter().map(|built_in| built_in.plugin))
+        .chain(chosen.extra.iter().map(|extra| extra.plugin.as_str()))
+        .filter(|plugin| on.contains(plugin))
+        .map(str::to_owned)
+        .collect();
+    chosen.on = on;
     for plugin in &chosen.on {
         if let Some(missing) = built_in(plugin).filter(|built_in| !built_in.available()) {
             return Err(Error::Unavailable {

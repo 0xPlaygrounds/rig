@@ -692,6 +692,18 @@ in `off` holds it. Turning a branch back on takes it out of `off`, so each
 of its plugins comes back as you left it, and a plugin rig adds to an off
 branch later stays off. Moving a plugin to another module changes its area.
 
+Some plugins add others: Subagents adds Approvals, and Budget and Helpers add
+Usage. While such a plugin is on, what it adds is on too, whatever its own
+choice and even when its branch is off. `/plugins` shows it as "on (needed
+by Subagents)" and `rig plugin list` as on, ending its line with "(needed by
+Subagents)". `rig plugin disable` of it refuses, naming each plugin on that
+adds it, and disabling its branch says it stays on. Others work only with
+another and never turn it on: MCP approval does nothing without MCP
+servers, and folded output nothing without the terminal view. While that
+one is off, such a plugin is off too and rig does not build it, whatever its
+own choice: both lists show it off and say it "does nothing without" that
+one, and `rig plugin enable` of it says it stays off until that one is on.
+
 A mistake in this file (a plugin or branch rig does not know, a branch in
 `enable` or `disable`, a plugin in `off`, an `extra` path that holds no
 crate, a file that is not TOML) or a `RIG_SOURCE` that is not a rig checkout
@@ -744,8 +756,12 @@ are, also for a crate `rig plugin new` made.
 In the agent, `/plugins` reads `settings.toml` itself and opens at once. It
 lists every plugin by a short name, such as "Terminal view", in the tree's
 order, crate then area, and your extras last by crate, each with its state:
-on, off, "off with its branch" when a branch in `off` holds it, or any of
-these with "next reload" while the running agent differs. A tick is the
+on, off, "off with its branch" when a branch in `off` holds it, "on (needed
+by ...)" when a plugin on adds it, or any of these with "next reload" while
+the running agent differs. Unticking a plugin while the one that adds it is
+ticked says it stays on, and so do the question on leaving and the line
+after it. Ticking a plugin while the one it works only with is unticked
+says it does nothing without that one. A tick is the
 plugin's own choice, so Enter on a plugin of an off branch changes only
 that plugin. The pane beside the list shows the highlighted plugin's area,
 crate, type path (what `settings.toml`

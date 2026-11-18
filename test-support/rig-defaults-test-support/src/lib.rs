@@ -16,14 +16,16 @@ pub use rig_harness as __rig_harness;
 macro_rules! on_by_default {
     (@keep [$($kept:tt)*]) => { &[$($kept)*] };
     (@keep [$($kept:tt)*] on $first:ident $(:: $rest:ident)*, $krate:literal, $name:literal,
-        [$($os:literal),*], $essential:expr, $about:literal; $($more:tt)*) => {
+        [$($os:literal),*], $essential:expr, $(adds [$($adds:literal),*],)?
+        $(only_with [$($only:literal),*],)? $about:literal; $($more:tt)*) => {
         on_by_default!(@keep [$($kept)* (
             concat!(stringify!($first) $(, "::", stringify!($rest))*),
             |app: &mut App| rig_harness::load::<$first $(:: $rest)*>(app, $krate, ""),
         ),] $($more)*)
     };
     (@keep [$($kept:tt)*] off $first:ident $(:: $rest:ident)*, $krate:literal, $name:literal,
-        [$($os:literal),*], $essential:expr, $about:literal; $($more:tt)*) => {
+        [$($os:literal),*], $essential:expr, $(adds [$($adds:literal),*],)?
+        $(only_with [$($only:literal),*],)? $about:literal; $($more:tt)*) => {
         on_by_default!(@keep [$($kept)*] $($more)*)
     };
     ($($entries:tt)*) => { on_by_default!(@keep [] $($entries)*) };

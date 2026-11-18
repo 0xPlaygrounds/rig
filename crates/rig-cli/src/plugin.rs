@@ -97,8 +97,8 @@ pub fn run(launch: &Launch, args: &[&str]) -> Result<ExitCode> {
         ["add", type_path, flags @ ..] => add(home, type_path, flags, source),
         ["remove", type_path] => remove(home, type_path),
         ["list"] => list(home),
-        ["enable", type_path] => enable(home, type_path, true),
-        ["disable", type_path] => enable(home, type_path, false),
+        ["enable", type_path] => say(enable(home, type_path, true)),
+        ["disable", type_path] => say(enable(home, type_path, false)),
         ["check"] => check(home, source),
         ["check", "--build"] => check(home, source).and_then(|()| check_build(launch)),
         _ => {
@@ -553,8 +553,9 @@ fn list(home: &Home) -> Result<()> {
 /// it each area of more than one plugin, then the plugins, one line each:
 /// `on` or `off`, the type and what it adds. A branch `[plugins] off` turns
 /// off says so. A plugin of rig's ends with its default and whether the
-/// settings changed it, with a warning on an essential plugin turned off;
-/// an extra ends with where its crate comes from.
+/// settings changed it, with a warning on an essential plugin turned off,
+/// the plugin that adds it and the one it does nothing without; an extra
+/// ends with where its crate comes from.
 fn listing(home: &Home) -> Result<String> {
     let chosen = config::chosen(home)?;
     let mut rigs = Vec::new();
@@ -661,14 +662,31 @@ fn row(chosen: &Plugins, depth: usize, plugin: &str, about: &str) -> (String, Op
     let own = chosen.own.iter().any(|it| it == plugin);
     let state = if on { "on" } else { "off" };
     let mut about = about.to_owned();
-    if let Some(branch) = chosen.off_with(plugin).filter(|_| own) {
+    if let Some(branch) = chosen.off_with(plugin).filter(|_| own && !on) {
         about.push_str(&format!(" (off with its branch {branch})"));
+    }
+    let by: Vec<&str> = (chosen.needed_by(plugin).filter_map(built_in))
+        .map(|by| by.name)
+        .collect();
+    if !by.is_empty() {
+        about.push_str(&format!(" (needed by {})", by.join(" and ")));
+    }
+    if let Some(without) = chosen.does_nothing_without(plugin).filter(|_| own) {
+        about.push_str(&format!(" (does nothing without {})", without.name));
     }
     if !on && let Some(what) = essential(plugin) {
         about.push_str(&format!(" (warning: off, which takes away {what})"));
     }
     let head = format!("{:indent$}{state:<3} {plugin}", "", indent = depth * 2);
     (head, Some(about))
+}
+
+/// Prints each line `said` holds.
+fn say(said: Result<Vec<String>>) -> Result<()> {
+    for line in said? {
+        println!("{line}");
+    }
+    Ok(())
 }
 
 /// `rig plugin enable <name>` and `rig plugin disable <name>`: names the
@@ -680,8 +698,10 @@ fn row(chosen: &Plugins, depth: usize, plugin: &str, about: &str) -> (String, Op
 /// a plugin out of `off`, a name that is neither out of all three), or
 /// else turns off a plugin that does not build here, which is how the
 /// settings' refusal of each says to fix it, even while the file holds
-/// other mistakes.
-fn enable(home: &Home, name: &str, on: bool) -> Result<()> {
+/// other mistakes. It refuses to disable a plugin that a plugin on adds,
+/// naming that one. It returns what it tells the user.
+fn enable(home: &Home, name: &str, on: bool) -> Result<Vec<String>> {
+    let mut said = Vec::new();
     let path = home.settings();
     let (changed, forgot) = config::edit(&path, |file| -> Result<_> {
         if !on && let Err(failure) = config::plugins(file) {
@@ -706,19 +726,50 @@ fn enable(home: &Home, name: &str, on: bool) -> Result<()> {
                 return Ok((changed, false));
             }
         }
+        if !on
+            && let Ok(chosen) = config::plugins(file)
+            && let Some(by) = adders(&chosen, name)
+        {
+            let them = if chosen.needed_by(name).count() > 1 {
+                "them"
+            } else {
+                "it"
+            };
+            return Err(format!("{by}: disable {them} first").into());
+        }
         Ok((config::turn(file, &[(name, on)])?, false))
     })?;
     if forgot {
-        println!(
+        said.push(format!(
             "Took `{name}` out of the [plugins] lists of {} that cannot hold it.",
             path.display()
-        );
-        return Ok(());
+        ));
+        return Ok(said);
     }
     let chosen = config::chosen(home)?;
     let branch = chosen.krate(name).is_none();
     let state = if on { "on" } else { "off" };
     let what = if branch { "the branch " } else { "" };
+    let plugins: Vec<&str> = if branch {
+        chosen.held(name)
+    } else {
+        vec![name]
+    };
+    let idle: Vec<String> = (plugins.iter())
+        .filter(|_| on)
+        .filter(|plugin| chosen.own.iter().any(|own| own == *plugin))
+        .filter_map(|plugin| {
+            let without = chosen.does_nothing_without(plugin)?.name;
+            let it = if branch {
+                format!("`{plugin}` does")
+            } else {
+                "It does".to_owned()
+            };
+            Some(format!(
+                "{it} nothing without {without}, which is off, so it stays off until that is on."
+            ))
+        })
+        .collect();
     if !changed {
         let what = if branch { "The branch " } else { "" };
         // A branch keeping it off makes only its own choice on already.
@@ -727,10 +778,10 @@ fn enable(home: &Home, name: &str, on: bool) -> Result<()> {
         } else {
             ""
         };
-        println!(
+        said.push(format!(
             "{what}`{name}`{whose} is {state} already in {}.",
             path.display()
-        );
+        ));
     } else {
         let then = match (branch, on) {
             (false, _) => "",
@@ -740,39 +791,60 @@ fn enable(home: &Home, name: &str, on: bool) -> Result<()> {
             }
             (true, true) => ": each of its plugins is as its own choice says",
         };
-        println!(
-            "Turned {what}`{name}` {state} in {}{then}.\n\
-             The next start, or /reload in the agent, rebuilds the agent with it.",
-            path.display()
-        );
+        let mut line = format!("Turned {what}`{name}` {state} in {}{then}.", path.display());
+        if branch || idle.is_empty() {
+            line.push_str("\nThe next start, or /reload in the agent, rebuilds the agent with it.");
+        }
+        said.push(line);
     }
-    let plugins: Vec<&str> = if branch {
-        chosen.held(name)
-    } else {
-        vec![name]
-    };
+    said.extend(idle);
     if on {
         let mut keeping: Vec<&str> = Vec::new();
         for plugin in &plugins {
             if let Some(off) = chosen.off_with(plugin)
+                && !chosen.on.iter().any(|it| it == plugin)
                 && !keeping.contains(&off)
             {
                 keeping.push(off);
             }
         }
         for off in keeping {
-            println!(
+            said.push(format!(
                 "The branch `{off}` is still off, which keeps {} off; \
                  `rig plugin enable {off}` turns it on.",
                 if branch { "some of them" } else { "it" }
-            );
+            ));
         }
     } else {
+        if branch {
+            let kept = plugins.iter().filter_map(|plugin| adders(&chosen, plugin));
+            said.extend(kept.map(|kept| format!("{kept}.")));
+        }
         for what in plugins.iter().filter_map(|plugin| essential(plugin)) {
-            println!("Warning: this takes away {what}; `rig plugin enable {name}` brings it back.");
+            said.push(format!(
+                "Warning: this takes away {what}; `rig plugin enable {name}` brings it back."
+            ));
         }
     }
-    Ok(())
+    Ok(said)
+}
+
+/// That `plugin` stays on while the plugins on that add it are, naming
+/// each, when one does.
+fn adders(chosen: &Plugins, plugin: &str) -> Option<String> {
+    let by: Vec<String> = chosen
+        .needed_by(plugin)
+        .map(|by| format!("`{by}`"))
+        .collect();
+    let (adds, is) = match by.len() {
+        0 => return None,
+        1 => ("adds", "is"),
+        _ => ("add", "are"),
+    };
+    Some(format!(
+        "`{plugin}` stays on while {}, which {adds} it, {is} on",
+        by.join(" and ")
+    ))
 }
 
 /// Whether a `[[plugins.extra]]` table of `file` names `plugin`, read
