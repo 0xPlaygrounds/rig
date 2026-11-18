@@ -487,9 +487,8 @@ pub(crate) fn wait_for_window(
 ) {
     let mut started = Vec::new();
     for (call, Adapted(adapted), model, &CallOf(turn), &ForAgent(agent), effect) in &calls {
-        let Some(connection) = model.connection.as_ref() else {
-            continue;
-        };
+        // A call with no connection of its own was routed to its agent's.
+        let connection = model.connection.as_ref().unwrap_or(adapted);
         if adapted.spec.input_limit().is_some() || connection.spec.input_limit().is_some() {
             continue;
         }
