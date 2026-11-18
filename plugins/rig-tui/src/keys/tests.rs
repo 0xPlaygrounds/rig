@@ -117,19 +117,23 @@ fn a_refused_binding_is_told_once_and_the_plugins_other_keys_work() {
     assert!(!notices.any(|notice| notice.text.contains("`ctrl+o`")));
 }
 
-/// A refusal the view kept across a reload is not said again by the build
-/// the reload starts: however many reloads, it is shown once.
+/// Across reloads the view shows one warning for each refusal of the
+/// build running, the copies the build before kept replaced. A build with
+/// none keeps the earlier warnings as they were.
 #[test]
-fn a_refusal_is_shown_once_across_reloads() {
+fn each_build_shows_one_warning_per_refusal_across_reloads() {
     let session = rig_harness::rig_memory::MemoryStore::default();
-    for _ in 0..3 {
+    // (refusals of the build, warnings it shows)
+    for (refusals, shown) in [(1, 1), (1, 1), (2, 2), (0, 2), (1, 1)] {
         let (mut app, _) = view_app_with(|app| {
             app.insert_resource(data(&session));
             app.add_key_binding(KeyBinding::new(KeyPress::ctrl('o'), "Open"), heard);
-            app.add_key_binding(KeyBinding::new(KeyPress::ctrl('o'), "Show output"), heard);
+            for _ in 0..refusals {
+                app.add_key_binding(KeyBinding::new(KeyPress::ctrl('o'), "Show output"), heard);
+            }
         });
         app.update();
-        assert_eq!(warnings(&app).len(), 1, "{:?}", warnings(&app));
+        assert_eq!(warnings(&app).len(), shown, "{:?}", warnings(&app));
         app.insert_resource(ExitReason::Reload);
         let kept = app.world_mut().run_system_once(crate::view::keep_notices);
         assert!(kept.is_ok());
