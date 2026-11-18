@@ -1083,8 +1083,9 @@ fn unhighlighted(
 }
 
 /// Draws `+ on`, `- off` and the count of changes on each list as the
-/// user ticks, and shows or hides the status line's parts ticked at once;
-/// a part that cannot be written is ticked back, with an error notice.
+/// user ticks, and shows or hides the status line's parts ticked at once,
+/// then ticks each part as shown; a part that cannot be written is ticked
+/// back, with an error notice.
 fn mark(
     lists: Query<(Entity, &PluginsPicker, &Picker, &Ticked), Changed<Ticked>>,
     #[cfg(feature = "tui")] (home, highlights, mut status, mut notices): (
@@ -1107,7 +1108,12 @@ fn mark(
                     list.agent,
                     format!("{} is unchanged: {why}", path.display()),
                 ));
-                let on = status.as_running(&list.tree, &on);
+            }
+            // A branch switch leaves its parts' own ticks behind: the list
+            // opens again with each part ticked as shown.
+            let running = status.as_running(&list.tree, &on);
+            if running != on {
+                let on = running;
                 let at =
                     (highlights.get(entity)).map_or(shown.selected, |highlighted| highlighted.0);
                 commands.entity(entity).try_despawn();

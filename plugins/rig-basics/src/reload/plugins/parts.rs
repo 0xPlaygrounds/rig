@@ -49,7 +49,7 @@ impl Status<'_> {
     }
 
     /// `on` with the parts of `tree` ticked as the running setting shows
-    /// them.
+    /// them, under their branch ticked.
     pub(super) fn as_running(&self, tree: &Tree, on: &[bool]) -> Vec<bool> {
         (tree.nodes.iter().zip(on))
             .map(|((node, _), now)| match (node, tree.part(node)) {
