@@ -14,11 +14,22 @@ use rig_tui::TuiTestScreen;
 
 use super::*;
 
-/// The test plugin whose version changes between runs.
+/// The test plugin whose version changes between runs. It loads a part of
+/// its own package the way a plugin adds one it needs, with no source.
 #[derive(Default)]
 struct AlphaPlugin;
 
 impl Plugin for AlphaPlugin {
+    fn build(&self, app: &mut App) {
+        load::<AlphaPartPlugin>(app, "alpha", "");
+    }
+}
+
+/// The part [`AlphaPlugin`] loads.
+#[derive(Default)]
+struct AlphaPartPlugin;
+
+impl Plugin for AlphaPartPlugin {
     fn build(&self, _app: &mut App) {}
 }
 
