@@ -52,3 +52,9 @@ fn only_writes_outside_src_are_refused_and_the_stages_are_ordered() {
     assert_eq!(refusal(&mut app, agent, "c2", "src/lib.rs"), None);
     assert!(refusal(&mut app, agent, "c3", "srcs/lib.rs").is_some());
 }
+
+/// Beside the default plugins.
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(SrcOnlyWritesPlugin);
+}

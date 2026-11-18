@@ -319,6 +319,9 @@ impl From<Option<String>> for SystemPrompt {
 /// allow-list from no other access. Before it admits anything the kernel
 /// keeps each agent's access within the run's tools and the access of
 /// every agent above it ([`SpawnedBy`]), whatever made or restored it.
+/// It is the hard limit: a tool a Prepare system takes out of a request's
+/// `tools` is not offered, but a call of it still runs when the access
+/// keeps it.
 #[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
 #[serde(transparent)]

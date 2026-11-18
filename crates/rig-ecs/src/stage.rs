@@ -130,15 +130,16 @@ pub enum Stage {
     /// turns nothing holds.
     Commit,
     /// The kernel admits what was spawned since the last pass, builds the
-    /// requests of [`TurnCall`](super::turn::TurnCall)s and [`SideCall`](super::turn::SideCall)s,
-    /// and marks the calls that wait for an earlier one [`Waiting`].
+    /// requests of [`TurnCall`](super::turn::TurnCall)s and
+    /// [`SideCall`](super::turn::SideCall)s.
     Admit,
     /// Plugins edit the requests admitted this pass (`Added<Admitted>`), in
     /// the [`PrepareSystems`] phases.
     Prepare,
     /// Plugins hold ([`HoldOf`]) or decide ([`Decision`]) what is about to
     /// start ([`ReadyToStart`]), once the kernel answered the tool calls it
-    /// refuses ([`ToolRequest`]).
+    /// refuses ([`ToolRequest`]), gave each tool call its [`Footprint`] and
+    /// marked [`Waiting`] a call behind a conflicting one.
     Gate,
     /// The kernel applies the decisions made since the last pass as
     /// [`Outcome`]s, then starts what is admitted, unheld and unanswered: it

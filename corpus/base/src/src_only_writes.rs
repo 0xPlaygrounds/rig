@@ -1,5 +1,6 @@
-//! Writes only under `src/`. A Gate system refuses every `write` call whose `path` is outside
-//! `src/`, before the tool runs, with a reason the model reads. Its test shows how a plugin is
+//! Writes only under `src/`. A Gate system refuses every `write` call whose `path` does not start
+//! with `src/` (a text check: `src/../a` passes, which a real guard resolves first), before the
+//! tool runs, with a reason the model reads. Its test shows how a plugin is
 //! tested without a model: a small app of the kernel and the plugin, a call spawned for the
 //! agent as its model would ask for it, and a check that the plugin's stage systems are ordered.
 

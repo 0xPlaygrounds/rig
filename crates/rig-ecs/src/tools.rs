@@ -226,13 +226,13 @@ pub struct Footprint(pub Touches);
 ///
 /// use rig_ecs::prelude::*;
 ///
-/// /// A `cargo fmt` call writes only under `/work/src`, so a held one
+/// /// A `rustfmt src/lib.rs` call writes only that file, so a held one
 /// /// does not hold back a read of `/work/docs`.
 /// fn formats(calls: Query<(Entity, &ToolRequest), (Added<Admitted>, ToolCalls)>, mut commands: Commands) {
 ///     for (call, request) in &calls {
 ///         let command = request.call.function.arguments.get("command").and_then(|c| c.as_str());
-///         if command == Some("cargo fmt") {
-///             let src = Touches::Writes(Scope::Paths(vec![PathBuf::from("/work/src")]));
+///         if command == Some("rustfmt src/lib.rs") {
+///             let src = Touches::Writes(Scope::Paths(vec![PathBuf::from("/work/src/lib.rs")]));
 ///             commands.entity(call).insert((Footprint(src), DeclaredFootprint));
 ///         }
 ///     }

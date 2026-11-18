@@ -8,6 +8,8 @@ are plugins built on the same public API, and `[plugins]` in
 `RIG_HOME/settings.toml` turns each on or off. A plugin that needs another
 adds it unless `app.is_plugin_added::<P>()`.
 
+The kernel, `rig-ecs`, runs agents and their work; this crate, the harness,
+adds sessions, settings, commands and fronts (how a user drives the agent).
 `use rig_harness::prelude::*;` brings in Bevy's preludes, the kernel's
 components and stages, and the harness's services. The default plugins live
 in `rig-basics`, the terminal view in `rig-tui`, and `rig_core`,
@@ -17,7 +19,7 @@ named here has its own docs, which hold the details this guide leaves out.
 # Making one
 
 ```sh
-rig plugin new hello       # a crate in RIG_HOME/plugins/hello, added to [[plugins.extra]]
+rig plugin new hello       # a crate in RIG_HOME/plugins/hello, turned on
 rig plugin list            # every plugin, on or off, with what it adds
 rig plugin disable NAME    # turn one off in [plugins]; `enable` undoes it
 rig plugin check --build   # build the agent as /reload would, and check it
@@ -25,14 +27,13 @@ rig plugin check --build   # build the agent as /reload would, and check it
 
 `rig plugin new` writes a crate with a working, commented slash command and
 adds it to `[[plugins.extra]]` in `RIG_HOME/settings.toml`. Its `Cargo.toml`
-already depends on the crates the agent builds with, at the versions it
-builds with; add `rig-basics` or `rig-tui` the same way when you use their
-types. `/reload` in a running agent rebuilds it with the plugins that are on
-and restarts in the same session. A failed build keeps the running agent.
+already depends on `rig-harness`, Bevy's ECS and the serde and schemars crates
+a tool needs, at the versions the agent builds with, and its comments say how
+to add `rig-basics` or `rig-tui` when you use their types. `/reload` in a
+running agent rebuilds it with the plugins that are on and restarts in the
+same session; a failed build keeps the running agent.
 
 # Where the examples are
-
-Read a working plugin before writing one:
 
 - The [plugin corpus] holds many plugins written against this public API,
   one per module, each with its tests in `<plugin>/tests.rs`. CI builds,
@@ -42,27 +43,28 @@ Read a working plugin before writing one:
 - The optional `rig-inspect` plugin adds an `inspect` tool that lists the
   reflected types of the running agent and what each plugin added.
 
-The sections below name the ideas most plugins use, each with an example to
-read.
-
 # Effects and stages
 
 Every step of an agent's work is an entity called an effect: a model call
 ([`ModelRequest`]), a tool call ([`ToolRequest`]), a message to an agent
 ([`Incoming`]), a question for the user (`Ask`), or a plugin's own
 ([`EffectRequest`]). Each frame the kernel moves effects through the stages of
-the [`AgentPass`] schedule, in the order of [`Stage`]:
+the [`AgentPass`] schedule, one [`Stage`] after another, until nothing moves:
 
-- `Prepare` edits a request once, as it is admitted;
-- `Gate` holds, refuses or answers an effect that is about to start;
-- `Start` runs what nobody held or answered;
-- `Review` reads or edits an outcome before it is settled;
-- `Arrive`, `Commit` and `Admit` are the kernel's own bookkeeping.
+- `Arrive`: finished work becomes an [`Outcome`];
+- `Review`: plugins read or edit an outcome before it is settled;
+- `Commit`: the kernel settles what is answered and records it;
+- `Admit`: the kernel admits new effects;
+- `Prepare`: plugins edit a request once, as it is admitted;
+- `Gate`: plugins hold, refuse or answer an effect that is about to start;
+- `Start`: the kernel runs what nobody held or answered.
 
 A plugin steps in with an ordinary Bevy system in a stage. A gate decides
 through the effect's [`Decision`], and the first decision wins. A hold is any
 entity with [`HoldOf`] the effect. A reviewer edits the [`Outcome`] in place.
-An observer suits reactions that need no order, such as counting.
+An observer suits reactions that need no order, such as counting. Observers
+of one event run in no fixed order, so an observer never edits stage data
+another plugin edits; it may decide an effect, since the first decision wins.
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -79,8 +81,9 @@ impl Plugin for SrcOnlyPlugin {
 /// Refuses a `write` outside `src/` when it is about to run.
 fn src_only(mut calls: Query<(&ToolRequest, &mut Decision), (ReadyToStart, ToolCalls)>) {
     for (request, mut decision) in &mut calls {
-        let path = request.call.function.arguments["path"].as_str().unwrap_or_default();
-        if request.call.function.name.as_str() == "write" && !path.starts_with("src/") {
+        let function = &request.call.function;
+        let path = function.arguments.get("path").and_then(|path| path.as_str());
+        if function.name.as_str() == "write" && !path.is_some_and(|path| path.starts_with("src/")) {
             decision.decide(Decider::plugin("src-only"), Outcome::refused("write only under src/"));
         }
     }
@@ -90,12 +93,16 @@ fn src_only(mut calls: Query<(&ToolRequest, &mut Decision), (ReadyToStart, ToolC
 `Prepare`, `Gate` and `Review` have phases and public system sets, such as
 [`PrepareSystems`], [`ReviewSystems`] and [`GateSystems`]. A system that edits
 data another plugin also edits goes in a public `SystemSet` of its own,
-configured in its phase, so others can order against it.
+configured in its phase, so others can order against it. Order against
+another plugin's public set only where you must, never against a private
+system. Two plugins of other authors never depend on each other only to order
+themselves: where two meant to be used together edit the same data in one
+phase, the later one depends on the earlier one's crate, orders against its
+set, and tests both in one app.
 
 Examples: [src_only_writes] (the plugin above, with its test),
-[confirm_destructive] (a gate that asks first),
-[loop_breaker] (a gate that counts), [output_truncate] (a reviewer),
-[few_shot_examples] (a `Prepare` edit of model requests).
+[confirm_destructive] (a gate that asks first), [loop_breaker] (a gate that
+counts), [output_truncate] (a reviewer), [few_shot_examples] (a `Prepare` edit).
 
 # A tool
 
@@ -103,15 +110,18 @@ A tool is any `rig_core::tool::Tool`. Register it in `build`:
 
 - `app.add_tool(tool)` for a tool that runs on its own;
 - `app.add_tool_per_call(tool, options)` for one built for each call's place,
-  its workspace and working directory ([`PerCallTool`]);
+  its workspace and working directory ([`PerCallTool`]), as a tool that reads
+  the project's files is;
 - `app.add_open_tool(name, description, options, observer)` for a tool the
   plugin answers itself, later, from an observer of `ToolCalled`.
 
 Its description tells the model what it does and when to pick it. Its
 footprint says what each call reads and writes, so calls on different things
-run side by side. Blocking work goes in `blocking`.
+run side by side; a tool whose annotations say it only reads needs nothing
+more. Blocking work goes in [`blocking`].
 
-Examples: [git_history_tools] and [sql_query_tool] (per-call tools),
+Examples: [word_count] (a small per-call tool, with a test that runs a scripted
+model's call), [git_history_tools] and [sql_query_tool] (larger per-call tools),
 [ask_user] (an open tool), [web_fetch] (a tool with a gate of its own).
 
 # Asking the user
@@ -158,8 +168,7 @@ the system prompt in parts and the messages sent; a `Prepare` system edits it
 or routes it to another model. A turn ends with a [`TurnOutcome`] the kernel
 proposes and a `Review` system may edit, hold or carry on.
 
-Examples: [model_router], [model_fallback], [auto_continue],
-[check_after_turn].
+Examples: [model_router], [model_fallback], [auto_continue], [check_after_turn].
 
 # Settings and saved state
 
@@ -173,9 +182,9 @@ Examples: [loop_breaker] (a setting and saved state), [read_before_edit].
 
 # Agents and subagents
 
-Every agent is made by the kernel's [`Spawner`] from an [`Origin`] and an
-[`AgentSpec`]. The `rig_basics::subagents` plugin spawns the agents of the
-model's `task` tool and of plugins' `SpawnSubagent` effects.
+Every agent is made by the kernel from an [`Origin`] and an [`AgentSpec`], in
+a system through a [`Spawner`]. The `rig_basics::subagents` plugin spawns the
+agents of the model's `task` tool and of plugins' `SpawnSubagent` effects.
 
 Examples: [handoff], [map_reduce], [review_agent].
 
@@ -193,9 +202,8 @@ plugin adds to it with ordinary systems and entities:
 A crate that also builds without the view puts `rig-tui` behind a default
 `tui` feature. The `rig_tui` crate docs have an example of each.
 
-Examples: [rich_tool_rendering] (looks), [git_status_item] and
-[throughput_item] (status items), [todo_tracker] (a panel and a key),
-[keybindings].
+Examples: [rich_tool_rendering] (looks), [git_status_item] and [throughput_item]
+(status items), [todo_tracker] (a panel and a key), [keybindings].
 
 # Turning off or replacing what another plugin added
 
@@ -207,7 +215,7 @@ how another plugin's tool runs is rarely a replacement: a `Prepare` or `Gate`
 system on its calls does it, and a `Review` system changes its results.
 
 Examples: [keep_last_compaction] (replaces the default compaction),
-[submit_result] (turns a tool off), [shell_rewrite] (edits another tool's
+[submit_result] (a tool that starts off), [shell_rewrite] (edits another tool's
 calls).
 
 # Fronts and commands of your own
@@ -220,17 +228,21 @@ Examples: [usage_report_cli], [export], [window_gui].
 
 # Testing a plugin
 
-A plugin's test builds a small app with the kernel, the plugin and the
-services it needs, then runs it frame by frame with `app.update()`. An effect
-spawned for an agent stands in for what its model would ask; a whole turn
-runs on rig-core's scripted `MockCompletionModel` (its `test-utils` feature).
+A plugin's test builds a small app with the kernel (`AgentPlugin` and
+`SessionLogPlugin`, on a `SessionStore` of a rig-memory `MemoryStore`), the
+plugin and the services it needs, then runs it frame by frame with
+`app.update()`. An effect spawned for an agent stands in for what its model
+would ask; a whole turn runs on rig-core's scripted `MockCompletionModel`
+(its `test-utils` feature).
 [`stage_conflicts`](crate::stage_conflicts) lists the systems of one stage
 that write the same data in no order, and `rig plugin check --build` runs the
 same check on the plugins that are on.
 
-Example: [src_only_writes] is a plugin with such a test, in its
-[`tests.rs`][src_only_writes tests]. Every corpus plugin's `tests.rs` is a
-further example.
+Examples: [src_only_writes] tests a gate with no model, in its
+[`tests.rs`][src_only_writes tests]; [word_count]'s test runs a scripted
+model's tool call to its end. Corpus tests use the repository's unpublished
+`rig-harness-test-support` crate for scripted models and for running until
+something happens; copy what you need from it.
 
 [plugin corpus]: https://github.com/0xPlaygrounds/rig/tree/main/corpus
 [`rig-basics`]: https://github.com/0xPlaygrounds/rig/tree/main/plugins/rig-basics
@@ -247,6 +259,7 @@ further example.
 [`ReviewSystems`]: crate::prelude::ReviewSystems
 [`GateSystems`]: crate::prelude::GateSystems
 [`PerCallTool`]: crate::prelude::PerCallTool
+[`blocking`]: crate::prelude::blocking
 [`Deliver`]: crate::prelude::Deliver
 [`TurnOutcome`]: crate::prelude::TurnOutcome
 [`Spawner`]: crate::prelude::Spawner
@@ -283,3 +296,4 @@ further example.
 [shell_rewrite]: https://github.com/0xPlaygrounds/rig/blob/main/corpus/base/src/shell_rewrite.rs
 [src_only_writes]: https://github.com/0xPlaygrounds/rig/blob/main/corpus/base/src/src_only_writes.rs
 [src_only_writes tests]: https://github.com/0xPlaygrounds/rig/blob/main/corpus/base/src/src_only_writes/tests.rs
+[word_count]: https://github.com/0xPlaygrounds/rig/blob/main/corpus/base/src/word_count.rs

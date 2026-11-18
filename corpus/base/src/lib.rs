@@ -51,3 +51,4 @@ pub mod tool_rate_limit;
 pub mod tool_search;
 pub mod voice;
 pub mod window_gui;
+pub mod word_count;

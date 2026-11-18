@@ -135,12 +135,8 @@ impl LinesShown {
 }
 
 /// The files a tool call changed, in the order it changed them. The file
-/// tools publish it for what they write. A call that may write anywhere
-/// ([`Touches::Writes`] of [`Scope::Anything`], such as `shell` or a tool
-/// that is not read-only and states no footprint) publishes none.
-///
-/// [`Touches::Writes`]: crate::tool::Touches::Writes
-/// [`Scope::Anything`]: crate::tool::Scope::Anything
+/// tools publish it for what they write. A tool that does not publish it,
+/// such as `shell`, says nothing about the files it changed.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct FilesChanged(pub Vec<FileChange>);
