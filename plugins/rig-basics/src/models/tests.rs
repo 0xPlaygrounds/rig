@@ -658,8 +658,8 @@ fn a_model_without_its_key_given_with_model_leaves_the_agent_without_one() {
 }
 
 #[test]
-fn a_model_without_its_key_given_with_model_names_the_login_command() {
-    let told = |vendor: &str, env: &'static str| {
+fn a_model_without_its_key_given_with_model_names_the_login_command_when_there_is_one() {
+    let told = |vendor: &str, env: &'static str, login: bool| {
         let Some((reference, models)) = builtin_without_a_key(vendor, env) else {
             return Vec::new();
         };
@@ -673,13 +673,18 @@ fn a_model_without_its_key_given_with_model_names_the_login_command() {
         })
         .insert_resource(models)
         .add_plugins((AgentPlugin, ModelsPlugin));
+        if login {
+            // `/login` as `LoginPlugin` registers it, after `ModelsPlugin`.
+            let login = |_: In<rig_harness::commands::NoArgs>| {};
+            app.add_command("login", "Sign in", login);
+        }
         tell(&mut app);
         spawn_root(app.world_mut(), ());
         app.update();
         app.world().resource::<Told>().0.clone()
     };
-    let chatgpt = told("chatgpt", "CHATGPT_ACCESS_TOKEN");
     let says = |told: &[String], what: &str| told.iter().any(|text| text.contains(what));
+    let chatgpt = told("chatgpt", "CHATGPT_ACCESS_TOKEN", true);
     assert!(
         says(
             &chatgpt,
@@ -687,7 +692,7 @@ fn a_model_without_its_key_given_with_model_names_the_login_command() {
         ),
         "{chatgpt:?}"
     );
-    let openai = told("openai", "OPENAI_API_KEY");
+    let openai = told("openai", "OPENAI_API_KEY", true);
     assert!(
         says(
             &openai,
@@ -695,7 +700,15 @@ fn a_model_without_its_key_given_with_model_names_the_login_command() {
         ),
         "{openai:?}"
     );
-    for text in chatgpt.iter().chain(&openai) {
+    let no_login = told("chatgpt", "CHATGPT_ACCESS_TOKEN", false);
+    assert!(
+        says(
+            &no_login,
+            "no key for `chatgpt`: set `CHATGPT_ACCESS_TOKEN`. No model is picked."
+        ),
+        "{no_login:?}"
+    );
+    for text in chatgpt.iter().chain(&openai).chain(&no_login) {
         assert!(!text.contains("ConnectOptions"), "{text}");
     }
 }
