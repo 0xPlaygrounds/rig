@@ -413,3 +413,25 @@ fn the_safe_build_holds_rigs_defaults_and_no_extra() {
     let plain = home_with("").unwrap_or_default();
     assert_eq!(defaults().on, plain.on);
 }
+
+#[test]
+fn the_safe_build_ignores_branches_turned_off() {
+    let source = RigSource::Local(checkout());
+    let home = Home::at("/home/rig");
+    let off = home_with("[plugins]\noff = [\"rig-basics\"]\n");
+    assert!(off.is_ok(), "{off:?}");
+    let off = off.unwrap_or_default();
+    assert!(
+        !off.on
+            .iter()
+            .any(|plugin| plugin.starts_with("rig_basics::"))
+    );
+    let main = main_rs(&home, &defaults(), &source);
+    assert!(
+        main.contains(&added("rig_basics::prompt::DefaultPromptPlugin")),
+        "{main}"
+    );
+    // The generated program is the same list of plugins, without the branch.
+    let main = main_rs(&home, &off, &source);
+    assert!(!main.contains("rig_basics::"), "{main}");
+}

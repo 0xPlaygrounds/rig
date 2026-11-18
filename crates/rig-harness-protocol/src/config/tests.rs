@@ -495,3 +495,117 @@ fn an_unknown_enabled_plugin_names_its_fixes() {
         )
     );
 }
+
+const SESSIONS: &str = "rig_basics::sessions::SessionsPlugin";
+const FORKS: &str = "rig_basics::sessions::agents::AgentsPlugin";
+const TUI: &str = "rig_tui::TuiPlugin";
+
+/// `text` turned by `changes` with [`turn`], and its text after.
+fn turned(text: &str, changes: &[(&str, bool)]) -> (Result<bool, Error>, String) {
+    let mut home = file("/home/.rig/settings.toml", text);
+    let changed = turn(&mut home, changes);
+    (changed, home.document.to_string())
+}
+
+#[test]
+fn a_plugins_area_is_the_module_under_its_crate() {
+    assert_eq!(area(FORKS), Some("sessions"));
+    assert_eq!(area(SESSIONS), Some("sessions"));
+    assert_eq!(area("rig_basics::BasicCommandsPlugin"), None);
+    assert_eq!(area(TUI), None);
+}
+
+#[test]
+fn a_branch_off_then_on_brings_back_each_plugins_own_choice() {
+    let mine = format!("# mine\n[plugins]\nenable = [\"{BUDGET}\"]\ndisable = [\"{SKILLS}\"]\n");
+    let before = plugins(&file("/home/.rig/settings.toml", &mine)).unwrap_or_default();
+    let (changed, off) = turned(&mine, &[("rig-basics", false)]);
+    assert_eq!(changed, Ok(true));
+    let chosen = plugins(&file("/home/.rig/settings.toml", &off)).unwrap_or_default();
+    assert_eq!(chosen.off, ["rig-basics"], "{off}");
+    assert!(
+        !chosen
+            .on
+            .iter()
+            .any(|plugin| plugin.starts_with("rig_basics::")),
+        "{:?}",
+        chosen.on
+    );
+    assert!(
+        chosen.on.iter().any(|plugin| plugin == TUI),
+        "other crates stay"
+    );
+    assert_eq!(chosen.off_with(BUDGET), Some("rig-basics"));
+    assert_eq!(chosen.own, before.own, "each plugin's own choice stays");
+    let (changed, back) = turned(&off, &[("rig-basics", true)]);
+    assert_eq!(changed, Ok(true));
+    assert_eq!(back, mine, "on again, the file is as it was");
+}
+
+#[test]
+fn plugins_of_an_off_branch_stay_off_whatever_their_default() {
+    // Every plugin of the area, its defaults on or off and any added later.
+    let text = "[plugins]\noff = [\"rig-basics/sessions\", \"mine\"]\n\
+                [[plugins.extra]]\ncrate = \"mine\"\nversion = \"1\"\nplugin = \"mine::MinePlugin\"\n";
+    let first = plugins(&file("/h/settings.toml", text)).unwrap_or_default();
+    let added = format!(
+        "{text}[[plugins.extra]]\ncrate = \"mine\"\nversion = \"1\"\nplugin = \"mine::NewPlugin\"\n"
+    );
+    let later = plugins(&file("/h/settings.toml", &added));
+    assert!(later.is_ok(), "{later:?}");
+    let later = later.unwrap_or_default();
+    for chosen in [&first, &later] {
+        assert!(
+            !chosen.on.iter().any(|plugin| plugin.starts_with("mine::")
+                || plugin.starts_with("rig_basics::sessions::")),
+            "{:?}",
+            chosen.on
+        );
+    }
+    assert!(later.own.iter().any(|plugin| plugin == "mine::NewPlugin"));
+    assert_eq!(later.off_with("mine::NewPlugin"), Some("mine"));
+    assert_eq!(later.off_with(SKILLS), None);
+}
+
+#[test]
+fn nested_branches_each_keep_their_plugins_off() {
+    let text = "[plugins]\noff = [\"rig-basics\", \"rig-basics/sessions\"]\n";
+    let (changed, crate_on) = turned(text, &[("rig-basics", true)]);
+    assert_eq!(changed, Ok(true));
+    let chosen = plugins(&file("/h/settings.toml", &crate_on)).unwrap_or_default();
+    assert_eq!(chosen.off, ["rig-basics/sessions"], "{crate_on}");
+    assert!(chosen.on.iter().any(|plugin| plugin == SKILLS));
+    assert!(
+        !chosen
+            .on
+            .iter()
+            .any(|plugin| plugin == SESSIONS || plugin == FORKS)
+    );
+    let (_, area_on) = turned(text, &[("rig-basics/sessions", true)]);
+    let chosen = plugins(&file("/h/settings.toml", &area_on)).unwrap_or_default();
+    assert_eq!(chosen.off_with(SESSIONS), Some("rig-basics"));
+    assert!(
+        !chosen
+            .on
+            .iter()
+            .any(|plugin| plugin.starts_with("rig_basics::"))
+    );
+}
+
+#[test]
+fn an_unknown_branch_is_refused_naming_it_and_its_fix() {
+    for name in ["rig-basics/nope", "nope", "rig-basics/BasicCommandsPlugin"] {
+        let text = format!("[plugins]\noff = [\"{name}\"]\n");
+        let refused = (plugins(&file("/home/.rig/settings.toml", &text)).err())
+            .map(|why| why.to_string())
+            .unwrap_or_default();
+        assert!(
+            refused.contains("/home/.rig/settings.toml")
+                && refused.contains(&format!("`{name}`"))
+                && refused.contains(&format!("rig plugin disable {name}")),
+            "{refused}"
+        );
+        let (turned_off, _) = turned("", &[(name, false)]);
+        assert!(turned_off.is_err(), "{name}");
+    }
+}

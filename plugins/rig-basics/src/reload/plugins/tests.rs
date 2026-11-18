@@ -150,9 +150,8 @@ fn plugins_opens_from_settings_with_short_names_and_a_preview_from_the_start() {
     );
 
     let first = preview(&app, *picker);
-    // The first row is the first plugin of the first group.
-    let first_built_in = BUILT_IN.iter().min_by_key(|built_in| built_in.group);
-    let first_path = first_built_in.map_or("-", |built_in| built_in.plugin);
+    // The first row is rig's first plugin: its crate and area come first.
+    let first_path = BUILT_IN.first().map_or("-", |built_in| built_in.plugin);
     assert!(first.contains(first_path), "{first:?} names {first_path}");
     let more = shown.items.first().and_then(|item| item.more.as_deref());
     assert!(
@@ -582,4 +581,73 @@ fn the_question_says_why_it_cannot_reload_and_esc_goes_back_to_the_list() {
         said.is_some_and(|text| text.contains("starts again") && !text.contains("/reload")),
         "{told:?}"
     );
+}
+
+#[test]
+fn a_plugin_of_an_off_branch_keeps_its_own_tick_and_says_its_branch_is_off() {
+    let home = scratch_home("plugins-branch-off");
+    fs::create_dir_all(home.root()).ok();
+    let off = "[plugins]\noff = [\"rig-basics/sessions\"]\n";
+    fs::write(home.settings(), off).ok();
+    let (mut app, agent) = app(&home, true);
+    open(&mut app, agent);
+    let found = picker(&mut app);
+    assert!(found.is_some(), "{:?}", app.world().resource::<Told>().0);
+    let Some((list, shown)) = found else {
+        return;
+    };
+    let checked = |label: &str| {
+        (shown.items.iter().find(|item| item.label == label)).map(|item| item.checked)
+    };
+    assert_eq!(checked("Sessions"), Some(true), "its own choice is on");
+    assert!(
+        detail(&shown, "Sessions").starts_with("off with its branch"),
+        "{shown:#?}"
+    );
+    assert_eq!(detail(&shown, "Skills"), "on");
+
+    // Enter changes only that plugin's own choice; the branch stays off.
+    tick(&mut app, list, &[], &["Forks and rewind"]);
+    pick(&mut app, list, None);
+    let found = picker(&mut app);
+    assert!(found.is_some(), "no question");
+    let Some((question, asked)) = found else {
+        return;
+    };
+    let later = at(&asked, "Later, at the next start");
+    pick(&mut app, question, later.map(Chosen::item));
+    let chosen = config::chosen(&home).unwrap_or_default();
+    assert_eq!(chosen.off, ["rig-basics/sessions"]);
+    assert!(
+        !(chosen.own.iter()).any(|plugin| plugin == "rig_basics::sessions::agents::AgentsPlugin")
+    );
+    assert!((chosen.own.iter()).any(|plugin| plugin == "rig_basics::sessions::SessionsPlugin"));
+}
+
+#[test]
+fn plugins_defaults_turns_off_branches_back_on() {
+    let home = scratch_home("plugins-defaults-branch");
+    fs::create_dir_all(home.root()).ok();
+    fs::write(
+        home.settings(),
+        "[plugins]\noff = [\"rig-basics/sessions\"]\n",
+    )
+    .ok();
+    let (mut app, agent) = app(&home, true);
+    run(&mut app, agent, "plugins defaults");
+    let found = picker(&mut app);
+    assert!(found.is_some(), "{:?}", app.world().resource::<Told>().0);
+    let Some((question, asked)) = found else {
+        return;
+    };
+    assert!(asked.body.contains("rig-basics/sessions"), "{}", asked.body);
+    let later = at(&asked, "Later, at the next start");
+    pick(&mut app, question, later.map(Chosen::item));
+    let back = config::chosen(&home).unwrap_or_default();
+    assert!(back.off.is_empty(), "{}", settings(&home));
+    let defaults: Vec<&str> = (BUILT_IN.iter())
+        .filter(|built_in| built_in.on && built_in.available())
+        .map(|built_in| built_in.plugin)
+        .collect();
+    assert_eq!(back.on, defaults);
 }
