@@ -16,4 +16,5 @@ rig-memory = { path = "../../crates/rig-memory" }
 rig-cassette = { path = "../../crates/rig-cassette", features = ["jsonl"] }
 rig-typesafeai = { path = "../../crates/rig-typesafeai", default-features = false }
 anyhow = "1"
+serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["arbitrary_precision"] }
