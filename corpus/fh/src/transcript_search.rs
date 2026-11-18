@@ -345,9 +345,7 @@ pub struct TranscriptSearchPlugin;
 
 impl Plugin for TranscriptSearchPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<TuiPlugin>() {
-            app.add_plugins(TuiPlugin);
-        }
+        rig_harness::load::<TuiPlugin>(app, "rig-tui", "");
         // Shadows the input's Ctrl+F (a character forward, as Right does).
         app.add_key_binding(
             KeyBinding::new(KeyPress::ctrl('f'), "Search the transcript"),

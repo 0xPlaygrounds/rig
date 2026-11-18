@@ -122,7 +122,6 @@ fn plugins(
     home: Option<Res<RigHome>>,
     invoked: Option<Res<Invoked>>,
     running: Query<(&Name, Option<&ProvidedBy>), With<PluginSource>>,
-    names: Query<&Name>,
     slash_commands: Query<&Name, With<SlashCommand>>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -163,7 +162,9 @@ fn plugins(
         |name: &Name| config::built_in(name).map_or(name.to_string(), |it| it.name.to_owned());
     let running: Vec<(String, Option<String>)> = (running.iter())
         .map(|(name, by)| {
-            let by = by.and_then(|by| names.get(by.0).ok());
+            let by = by
+                .and_then(|by| running.get(by.0).ok())
+                .map(|(name, _)| name);
             (name.to_string(), by.map(short))
         })
         .collect();
@@ -463,7 +464,7 @@ fn built_in_row(built_in: &BuiltIn, (on, branch_off): Choice, (runs, by): Runs) 
             built_in.targets.join(" and ")
         ));
     }
-    about.push_str(&branch(branch_off.as_deref()));
+    about.push_str(&branch(branch_off.as_deref().filter(|_| by.is_none())));
     about.push_str(reload(runs_on, runs));
     match (built_in.essential, runs_on) {
         (Some(what), true) => {
@@ -514,7 +515,7 @@ fn extra_row(extra: &Extra, name: String, (on, branch_off): Choice, (runs, by): 
         place(&extra.krate, &extra.plugin),
         extra.plugin,
         states(None, (on, branch_off.as_deref()), (runs, by)),
-        branch(branch_off.as_deref()),
+        branch(branch_off.as_deref().filter(|_| by.is_none())),
         reload(on && branch_off.is_none() || by.is_some(), runs),
         extra.source,
     );

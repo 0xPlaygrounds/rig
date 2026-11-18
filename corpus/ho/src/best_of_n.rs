@@ -68,9 +68,7 @@ pub struct BestOfPlugin;
 
 impl Plugin for BestOfPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<SubagentsPlugin>() {
-            app.add_plugins(SubagentsPlugin);
-        }
+        rig_harness::load::<SubagentsPlugin>(app, "rig-basics", "");
         app.init_resource::<ProjectRoot>()
             .init_resource::<Processes>()
             .add_setting::<BestOfConfig>("best_of")

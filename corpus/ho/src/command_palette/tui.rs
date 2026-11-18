@@ -52,9 +52,7 @@ impl Palette {
 pub struct PaletteSystems;
 
 pub(super) fn add(app: &mut App) {
-    if !app.is_plugin_added::<TuiPlugin>() {
-        app.add_plugins(TuiPlugin);
-    }
+    rig_harness::load::<TuiPlugin>(app, "rig-tui", "");
     // Shadows the input's Ctrl-P (the line above, which Up does too).
     app.add_key_binding(
         KeyBinding::new(KeyPress::ctrl('p'), "Command palette"),

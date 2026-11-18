@@ -92,9 +92,7 @@ pub struct VimPlugin;
 
 impl Plugin for VimPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<TuiPlugin>() {
-            app.add_plugins(TuiPlugin);
-        }
+        rig_harness::load::<TuiPlugin>(app, "rig-tui", "");
         app.add_setting::<VimSettings>("vim");
         let start = match app.world().get_resource::<VimSettings>().map(|s| s.start) {
             Some(StartMode::Normal) => Mode::Normal,

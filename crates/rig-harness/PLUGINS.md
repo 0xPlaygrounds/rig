@@ -7,7 +7,8 @@ kind. Its tools, commands, subagents, compaction, sessions and terminal view
 are plugins built on the same public API, and `[plugins]` in
 `RIG_HOME/settings.toml` turns each on or off. A plugin that needs another
 loads it in its `build` with `rig_harness::load::<P>`, which adds it unless
-the app has it and records which plugin added it. A plugin useless without
+the app has it and records which plugin added it; a plugin added any other
+way runs, but `/plugins` cannot see it. A plugin useless without
 another returns from `build` unless `app.is_plugin_added::<Other>()`, so it
 must be added after that one.
 

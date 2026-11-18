@@ -42,9 +42,7 @@ pub struct WindowGuiPlugin;
 
 impl Plugin for WindowGuiPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<ActivityPlugin>() {
-            app.add_plugins(ActivityPlugin);
-        }
+        rig_harness::load::<ActivityPlugin>(app, "rig-basics", "");
         app.init_resource::<GuiAgents>()
             .init_resource::<GuiTranscript>()
             .init_resource::<GuiInput>()

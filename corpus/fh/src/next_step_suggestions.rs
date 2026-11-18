@@ -48,9 +48,7 @@ pub struct NextStepSuggestionsPlugin;
 
 impl Plugin for NextStepSuggestionsPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<TuiPlugin>() {
-            app.add_plugins(TuiPlugin);
-        }
+        rig_harness::load::<TuiPlugin>(app, "rig-tui", "");
         app.add_setting::<SuggestConfig>(NAME)
             .init_resource::<SuggestOff>()
             .add_command(
