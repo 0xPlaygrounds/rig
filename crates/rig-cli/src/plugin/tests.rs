@@ -503,7 +503,7 @@ fn remove_takes_out_one_table_and_its_name_and_keeps_the_crate() {
 fn add_and_remove_refuse_out_loud_without_changing_the_file() {
     let home = old_home("refusals");
     let original = format!("{COMMENTED}[plugins]\n");
-    let cases: [(&[&str], &str); 13] = [
+    let cases: [(&[&str], &str); 14] = [
         (&["add", SAVE, "--version", "0.2"], "already"),
         (&["add", SAVE], "--path"),
         (&["add", SAVE, "--path", "a", "--version", "1"], "one of"),
@@ -528,6 +528,10 @@ fn add_and_remove_refuse_out_loud_without_changing_the_file() {
             "--version needs a value",
         ),
         (&["add", "x::XPlugin", "--git", ""], "--git needs a value"),
+        (
+            &["add", "x::XPlugin", "--version", "--crate"],
+            "--version needs a value, not `--crate`",
+        ),
         (&["add", "my_save", "--version", "1"], "crate-qualified"),
     ];
     let result = (|| -> Result<_> {
@@ -621,4 +625,38 @@ fn add_to_an_inline_plugins_table_keeps_the_plugin() {
                 .any(|on| on == "rig_basics::welcome::WelcomePlugin"),
         "{text}"
     );
+}
+
+/// A comment inside a multi-line inline `plugins = { .. }` has no place in
+/// a `[plugins]` table that keeps it as written, so `add` refuses the file
+/// with the fix and changes nothing.
+#[test]
+fn add_refuses_an_inline_plugins_table_with_comments_inside() {
+    let home = old_home("inline-comments");
+    let cases = [
+        "plugins = {\n  # quiet in CI\n  disable = [\"rig_basics::welcome::WelcomePlugin\"],\n}\n",
+        "plugins = {\n  disable = [\"rig_basics::welcome::WelcomePlugin\"],\n  # the end\n}\n",
+    ];
+    let result = (|| -> Result<_> {
+        fs::create_dir_all(home.root())?;
+        let mut found = Vec::new();
+        for original in cases {
+            fs::write(home.settings(), original)?;
+            let refusal = run(&home, &["add", SAVE, "--version", "0.2"]).err();
+            let text = fs::read_to_string(home.settings())?;
+            found.push((refusal.map(|why| why.to_string()), text == original));
+        }
+        Ok(found)
+    })();
+    fs::remove_dir_all(home.root()).ok();
+    assert!(result.is_ok(), "{result:?}");
+    for (refusal, unchanged) in result.unwrap_or_default() {
+        assert!(
+            refusal
+                .as_ref()
+                .is_some_and(|why| why.contains("write it as a [plugins] table"))
+                && unchanged,
+            "{refusal:?}"
+        );
+    }
 }
