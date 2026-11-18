@@ -759,12 +759,38 @@
           ]
         }
       },
+      "global.openai.gpt-5.6-luna": {
+        "source": "unverified: models.dev set temperature on every GPT-5.5 and later row on 2026-11-17 with no other change, against OpenAI's guidance to omit sampling parameters while these models reason; main's value is kept, so rig's rule by the model's name still decides",
+        "temperature": false
+      },
+      "global.openai.gpt-5.6-sol": {
+        "source": "unverified: models.dev set temperature on every GPT-5.5 and later row on 2026-11-17 with no other change, against OpenAI's guidance to omit sampling parameters while these models reason; main's value is kept, so rig's rule by the model's name still decides",
+        "temperature": false
+      },
+      "global.openai.gpt-5.6-terra": {
+        "source": "unverified: models.dev set temperature on every GPT-5.5 and later row on 2026-11-17 with no other change, against OpenAI's guidance to omit sampling parameters while these models reason; main's value is kept, so rig's rule by the model's name still decides",
+        "temperature": false
+      },
+      "global.openai.gpt-6-luna": {
+        "source": "unverified: models.dev set temperature on every GPT-5.5 and later row on 2026-11-17 with no other change, against OpenAI's guidance to omit sampling parameters while these models reason; main's value is kept, so rig's rule by the model's name still decides",
+        "temperature": false
+      },
+      "global.openai.gpt-6-sol": {
+        "source": "unverified: models.dev set temperature on every GPT-5.5 and later row on 2026-11-17 with no other change, against OpenAI's guidance to omit sampling parameters while these models reason; main's value is kept, so rig's rule by the model's name still decides",
+        "temperature": false
+      },
+      "global.openai.gpt-6.1-terra": {
+        "source": "unverified: models.dev set temperature on every GPT-5.5 and later row on 2026-11-17 with no other change, against OpenAI's guidance to omit sampling parameters while these models reason; main's value is kept, so rig's rule by the model's name still decides",
+        "temperature": false
+      },
       "in.openai.gpt-5.6-luna": {
-        "source": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-luna.md (Converse takes no document blocks)",
+        "source": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-luna.md (Converse takes no document blocks); temperature: unverified: models.dev set temperature on every GPT-5.5 and later row on 2026-11-17 with no other change, against OpenAI's guidance to omit sampling parameters while these models reason; main's value is kept, so rig's rule by the model's name still decides",
+        "temperature": false,
         "modalities": {"input": ["text", "image"]}
       },
       "in.openai.gpt-5.6-terra": {
-        "source": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-terra.md (Converse takes no document blocks)",
+        "source": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-terra.md (Converse takes no document blocks); temperature: unverified: models.dev set temperature on every GPT-5.5 and later row on 2026-11-17 with no other change, against OpenAI's guidance to omit sampling parameters while these models reason; main's value is kept, so rig's rule by the model's name still decides",
+        "temperature": false,
         "modalities": {"input": ["text", "image"]}
       },
       "meta.llama3-70b-instruct-v1:0": {
@@ -851,6 +877,34 @@
           "context": 32768
         }
       },
+      "openai.gpt-5.5": {
+        "source": "unverified: models.dev set temperature on every GPT-5.5 and later row on 2026-11-17 with no other change, against OpenAI's guidance to omit sampling parameters while these models reason; main's value is kept, so rig's rule by the model's name still decides",
+        "temperature": false
+      },
+      "openai.gpt-5.6-luna": {
+        "source": "unverified: models.dev set temperature on every GPT-5.5 and later row on 2026-11-17 with no other change, against OpenAI's guidance to omit sampling parameters while these models reason; main's value is kept, so rig's rule by the model's name still decides",
+        "temperature": false
+      },
+      "openai.gpt-5.6-sol": {
+        "source": "unverified: models.dev set temperature on every GPT-5.5 and later row on 2026-11-17 with no other change, against OpenAI's guidance to omit sampling parameters while these models reason; main's value is kept, so rig's rule by the model's name still decides",
+        "temperature": false
+      },
+      "openai.gpt-5.6-terra": {
+        "source": "unverified: models.dev set temperature on every GPT-5.5 and later row on 2026-11-17 with no other change, against OpenAI's guidance to omit sampling parameters while these models reason; main's value is kept, so rig's rule by the model's name still decides",
+        "temperature": false
+      },
+      "openai.gpt-6-luna": {
+        "source": "unverified: models.dev set temperature on every GPT-5.5 and later row on 2026-11-17 with no other change, against OpenAI's guidance to omit sampling parameters while these models reason; main's value is kept, so rig's rule by the model's name still decides",
+        "temperature": false
+      },
+      "openai.gpt-6-sol": {
+        "source": "unverified: models.dev set temperature on every GPT-5.5 and later row on 2026-11-17 with no other change, against OpenAI's guidance to omit sampling parameters while these models reason; main's value is kept, so rig's rule by the model's name still decides",
+        "temperature": false
+      },
+      "openai.gpt-6.1-terra": {
+        "source": "unverified: models.dev set temperature on every GPT-5.5 and later row on 2026-11-17 with no other change, against OpenAI's guidance to omit sampling parameters while these models reason; main's value is kept, so rig's rule by the model's name still decides",
+        "temperature": false
+      },
       "stability.sd3-5-large-v1:0": {
         "name": "Stable Diffusion 3.5 Large",
         "modalities": {
@@ -875,6 +929,30 @@
             "text"
           ]
         }
+      },
+      "us.openai.gpt-5.6-luna": {
+        "source": "unverified: models.dev set temperature on every GPT-5.5 and later row on 2026-11-17 with no other change, against OpenAI's guidance to omit sampling parameters while these models reason; main's value is kept, so rig's rule by the model's name still decides",
+        "temperature": false
+      },
+      "us.openai.gpt-5.6-sol": {
+        "source": "unverified: models.dev set temperature on every GPT-5.5 and later row on 2026-11-17 with no other change, against OpenAI's guidance to omit sampling parameters while these models reason; main's value is kept, so rig's rule by the model's name still decides",
+        "temperature": false
+      },
+      "us.openai.gpt-5.6-terra": {
+        "source": "unverified: models.dev set temperature on every GPT-5.5 and later row on 2026-11-17 with no other change, against OpenAI's guidance to omit sampling parameters while these models reason; main's value is kept, so rig's rule by the model's name still decides",
+        "temperature": false
+      },
+      "us.openai.gpt-6-luna": {
+        "source": "unverified: models.dev set temperature on every GPT-5.5 and later row on 2026-11-17 with no other change, against OpenAI's guidance to omit sampling parameters while these models reason; main's value is kept, so rig's rule by the model's name still decides",
+        "temperature": false
+      },
+      "us.openai.gpt-6-sol": {
+        "source": "unverified: models.dev set temperature on every GPT-5.5 and later row on 2026-11-17 with no other change, against OpenAI's guidance to omit sampling parameters while these models reason; main's value is kept, so rig's rule by the model's name still decides",
+        "temperature": false
+      },
+      "us.openai.gpt-6.1-terra": {
+        "source": "unverified: models.dev set temperature on every GPT-5.5 and later row on 2026-11-17 with no other change, against OpenAI's guidance to omit sampling parameters while these models reason; main's value is kept, so rig's rule by the model's name still decides",
+        "temperature": false
       }
     }
   },
@@ -907,6 +985,10 @@
           ]
         },
         "tool_call": true
+      },
+      "gpt-5.5": {
+        "source": "unverified: models.dev set temperature on every GPT-5.5 and later row on 2026-11-17 with no other change, against OpenAI's guidance to omit sampling parameters while these models reason; main's value is kept, so rig's rule by the model's name still decides",
+        "temperature": false
       },
       "o1-mini": {
         "from": "openai/o1-mini"
@@ -1290,6 +1372,10 @@
             "image"
           ]
         }
+      },
+      "gpt-5.5": {
+        "source": "unverified: models.dev set temperature on every GPT-5.5 and later row on 2026-11-17 with no other change, against OpenAI's guidance to omit sampling parameters while these models reason; main's value is kept, so rig's rule by the model's name still decides",
+        "temperature": false
       },
       "o3-mini": {
         "name": "o3-mini",
@@ -3272,7 +3358,8 @@
         }
       },
       "gpt-5.5": {
-        "source": "https://developers.openai.com/api/docs/pricing",
+        "source": "https://developers.openai.com/api/docs/pricing; temperature: unverified: models.dev set temperature on every GPT-5.5 and later row on 2026-11-17 with no other change, against OpenAI's guidance to omit sampling parameters while these models reason; main's value is kept, so rig's rule by the model's name still decides",
+        "temperature": false,
         "rig": {
           "cache": [
             "long"
@@ -3438,6 +3525,10 @@
           "chat_tools": "never",
           "reasoning_default": "medium"
         }
+      },
+      "gpt-daybreak-blue-latest": {
+        "source": "unverified: models.dev set temperature on every GPT-5.5 and later row on 2026-11-17 with no other change, against OpenAI's guidance to omit sampling parameters while these models reason; main's value is kept, so rig's rule by the model's name still decides",
+        "temperature": false
       },
       "o1": {
         "source": "https://developers.openai.com/api/docs/pricing",
@@ -3632,6 +3723,14 @@
             "audio"
           ]
         }
+      }
+    }
+  },
+  "opencode": {
+    "models": {
+      "gpt-5.5": {
+        "source": "unverified: models.dev set temperature on every GPT-5.5 and later row on 2026-11-17 with no other change, against OpenAI's guidance to omit sampling parameters while these models reason; main's value is kept, so rig's rule by the model's name still decides",
+        "temperature": false
       }
     }
   },
@@ -4012,6 +4111,46 @@
             "audio"
           ]
         }
+      },
+      "openai-gpt-55": {
+        "source": "https://api.venice.ai/api/v1/models (read 2026-11-17: no temperature constraint for this model, as there is for models that take one)",
+        "temperature": false
+      },
+      "openai-gpt-56-luna": {
+        "source": "https://api.venice.ai/api/v1/models (read 2026-11-17: no temperature constraint for this model, as there is for models that take one)",
+        "temperature": false
+      },
+      "openai-gpt-56-luna-pro": {
+        "source": "https://api.venice.ai/api/v1/models (read 2026-11-17: no temperature constraint for this model, as there is for models that take one)",
+        "temperature": false
+      },
+      "openai-gpt-56-sol": {
+        "source": "https://api.venice.ai/api/v1/models (read 2026-11-17: no temperature constraint for this model, as there is for models that take one)",
+        "temperature": false
+      },
+      "openai-gpt-56-sol-pro": {
+        "source": "https://api.venice.ai/api/v1/models (read 2026-11-17: no temperature constraint for this model, as there is for models that take one)",
+        "temperature": false
+      },
+      "openai-gpt-56-terra": {
+        "source": "https://api.venice.ai/api/v1/models (read 2026-11-17: no temperature constraint for this model, as there is for models that take one)",
+        "temperature": false
+      },
+      "openai-gpt-56-terra-pro": {
+        "source": "https://api.venice.ai/api/v1/models (read 2026-11-17: no temperature constraint for this model, as there is for models that take one)",
+        "temperature": false
+      },
+      "openai-gpt-6-luna": {
+        "source": "https://api.venice.ai/api/v1/models (read 2026-11-17: no temperature constraint for this model, as there is for models that take one)",
+        "temperature": false
+      },
+      "openai-gpt-6-sol": {
+        "source": "https://api.venice.ai/api/v1/models (read 2026-11-17: no temperature constraint for this model, as there is for models that take one)",
+        "temperature": false
+      },
+      "openai-gpt-61-terra": {
+        "source": "https://api.venice.ai/api/v1/models (read 2026-11-17: no temperature constraint for this model, as there is for models that take one)",
+        "temperature": false
       },
       "openai/whisper-large-v3": {
         "name": "openai/whisper-large-v3",
