@@ -15,8 +15,8 @@ When the shell's marks carry a nonce, `mark_nonce_env` under `[tui]` in
 `settings.toml` names the variable holding it (for fux, `FUX_MARK_NONCE`).
 
 Plugins add panels, transcript looks, status line items, key bindings and
-completion without touching the view. The plugin guide shows each
-([PLUGINS.md](https://github.com/0xPlaygrounds/rig/blob/main/crates/rig-harness/PLUGINS.md#the-transcript-notes-looks-and-scrolling)),
+completion without touching the view. The plugin guide points at an example of each
+([PLUGINS.md](https://github.com/0xPlaygrounds/rig/blob/main/crates/rig-harness/PLUGINS.md#the-terminal-view)),
 and the crate docs list every type. Transcript looks are systems in
 `TranscriptRender`, ordered in `RenderSystems::Render`, `Decorate`, and `Edit`.
 They select owned inputs from `RenderBatch` and write lines and named

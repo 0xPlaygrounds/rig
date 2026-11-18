@@ -759,8 +759,7 @@ types it uses (such as `rig-tui` for a terminal panel), and registers tools,
 slash commands, transcript render systems, terminal panels or a window the way
 the built-in ones do, never by editing rig's crates.
 [`crates/rig-harness/PLUGINS.md`](../crates/rig-harness/PLUGINS.md) is the
-plugin guide, with a copy-ready example of each kind, its names from
-`rig_harness::prelude` and the plugin crates, and the `src/lib.rs` that `rig
+plugin guide: the basics, with links to a working example of each kind. The `src/lib.rs` that `rig
 plugin new` writes is a working, commented slash command.
 
 When rig sets up a new home, at its first build, it writes the
