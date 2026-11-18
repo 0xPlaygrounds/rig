@@ -16,6 +16,11 @@ fn openai_duration_usage_keeps_its_seconds() -> anyhow::Result<()> {
 fn openrouter_thresholds_read_a_number_or_percentiles() -> anyhow::Result<()> {
     let simple: ThroughputThreshold = serde_json::from_str("12.5")?;
     anyhow::ensure!(simple == ThroughputThreshold::Simple(12.5), "{simple:?}");
+    let throughput: ThroughputThreshold = serde_json::from_str(r#"{"p75":1.25}"#)?;
+    let ThroughputThreshold::Percentile(percentiles) = throughput else {
+        anyhow::bail!("{throughput:?}");
+    };
+    anyhow::ensure!(percentiles.p75 == Some(1.25), "{percentiles:?}");
     let latency: LatencyThreshold = serde_json::from_str(r#"{"p50":0.50,"p99":1e1}"#)?;
     let LatencyThreshold::Percentile(percentiles) = latency else {
         anyhow::bail!("{latency:?}");
@@ -33,6 +38,21 @@ fn typesafe_answers_keep_their_numbers() -> anyhow::Result<()> {
     anyhow::ensure!(
         matches!(noul, Answer::Noul { noul } if noul == 0.75),
         "{noul:?}"
+    );
+    let choice: Answer = serde_json::from_str(
+        r#"{"type":"choice","choice":"yes","probabilities":{"yes":0.6},"confidence":0.5}"#,
+    )?;
+    let Answer::Choice {
+        probabilities,
+        confidence,
+        ..
+    } = choice
+    else {
+        anyhow::bail!("{choice:?}");
+    };
+    anyhow::ensure!(
+        (probabilities.get("yes").copied(), confidence) == (Some(0.6), 0.5),
+        "{probabilities:?} {confidence}"
     );
     let score: Answer = serde_json::from_str(
         r#"{"type":"score","score":3.0,"probabilities":{"3":0.9},"legend":{},"confidence":0.8}"#,

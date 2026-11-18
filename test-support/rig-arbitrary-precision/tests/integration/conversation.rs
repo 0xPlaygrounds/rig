@@ -54,7 +54,15 @@ fn every_kind_of_change_record_reads_back() -> anyhow::Result<()> {
     records.push(reset);
     let kinds: Vec<_> = records
         .iter()
-        .map(|record| serde_json::to_value(record).map(|value| value["type"].clone()))
+        .map(|record| {
+            serde_json::to_value(record).map(|value| {
+                value
+                    .get("type")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_owned)
+                    .unwrap_or_default()
+            })
+        })
         .collect::<Result<_, _>>()?;
     anyhow::ensure!(
         kinds == ["push", "push", "splice", "push", "halt", "aside", "reset"],

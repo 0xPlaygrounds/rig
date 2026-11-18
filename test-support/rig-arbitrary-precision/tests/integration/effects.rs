@@ -29,15 +29,15 @@ fn every_golden_effect_log_loads_as_it_was_written() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// No golden retrieval sets a threshold, so one is set here.
+/// No golden retrieval sets a threshold, so this record does.
 #[test]
 fn a_retrieval_keeps_its_threshold() -> anyhow::Result<()> {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../crates/rig-cassette/fixtures/effects/gemini_retrieval_context_and_tools.effects.json");
-    let log: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path)?)?;
-    let mut kind = log["records"][0]["kind"].clone();
-    kind["query"]["req"]["threshold"] = serde_json::json!(0.5);
-    let read: rig_core::effect::EffectKind = serde_json::from_str(&kind.to_string())?;
-    anyhow::ensure!(serde_json::to_value(&read)? == kind, "{read:?}");
+    let text = r#"{"effect":"retrieve","query":{"query":"top_n","req":{"query":"q","samples":1,"threshold":0.5,"filter":null}}}"#;
+    let read: rig_core::effect::EffectKind = serde_json::from_str(text)?;
+    let written = serde_json::to_value(&read)?;
+    anyhow::ensure!(
+        written == serde_json::from_str::<serde_json::Value>(text)?,
+        "{written}"
+    );
     Ok(())
 }
