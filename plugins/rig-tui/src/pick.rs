@@ -85,7 +85,14 @@ pub enum ChoiceAction {
 ///   choice a typed note goes with). Once anything is ticked, Enter
 ///   answers exactly the ticked rows.
 /// - **Right** and **Left** show and hide a choice's or an item's
-///   [`more`](rig_harness::ask::Choice::more).
+///   [`more`](rig_harness::ask::Choice::more). In a picker with a tree
+///   ([`PickItem::parent`](rig_harness::pick::PickItem::parent)) they open
+///   and close the selected branch instead, and Left on an item goes up to
+///   its branch. Branches start folded; what is typed finds items in folded
+///   ones and shows them under their branch.
+/// - Ticking a branch switches it over its items: one with every item on,
+///   or some (`[~]`), turns off, keeping its items' ticks; one off turns
+///   back on; one on whose items are all off turns each of them on.
 /// - **Shift+Up** and **Shift+Down** scroll a long body; **PageUp** and
 ///   **PageDown** page the list. A picker adds keys with [`ChoiceKeys`].
 /// - A question with initial text or a multi-line answer is answered in
@@ -112,9 +119,11 @@ pub struct PickerInput {
     /// Whether ticks are in play: an item started ticked, or the user
     /// ticked or unticked one. Enter then answers exactly the ticked.
     pub(crate) touched: bool,
-    /// The item highlighted last, by its command (a choice's id) and its
-    /// label, which a picker filled again selects again.
-    pub(crate) picked: Option<(String, String)>,
+    /// The item highlighted last, by its position, its command (a choice's
+    /// id) and its label, which a picker filled again selects again.
+    pub(crate) picked: Option<(usize, String, String)>,
+    /// The positions of the branches open, in a picker with a tree.
+    pub(crate) open: Vec<usize>,
 }
 
 impl PickerInput {
@@ -159,6 +168,19 @@ pub(crate) struct Item<'a> {
     pub(crate) checked: bool,
     /// What it says beyond its label, shown when the user asks.
     pub(crate) more: Option<&'a str>,
+    /// The position of the branch it sits under, in a picker with a tree.
+    pub(crate) parent: Option<usize>,
+}
+
+/// How a branch's tick box shows its items, or an item's its tick.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TickBox {
+    /// Ticked, and every item under it on.
+    On,
+    /// Some items under it on, some off.
+    Mixed,
+    /// Unticked, or every item under it off.
+    Off,
 }
 
 impl Item<'_> {
@@ -218,37 +240,164 @@ impl Listing<'_> {
     /// What the selected row says beyond its label, when the user asked
     /// for it.
     pub(crate) fn more(&self, choosing: &PickerInput) -> Option<&str> {
-        let rows = self.rows(&choosing.filter);
+        let rows = self.rows(choosing);
         match rows.get(choosing.selected) {
             Some(Row::Item(index)) if choosing.more => self.items.get(*index)?.more,
             _ => None,
         }
     }
 
-    /// The rows that `filter` leaves: the items whose label, detail or, as
-    /// [`finds_more`](Self::finds_more) says, more holds every word of it,
-    /// ignoring case, those whose label does first; then, for free text, the
-    /// typed answer.
-    pub(crate) fn rows(&self, filter: &str) -> Vec<Row> {
-        let lower = filter.to_lowercase();
-        let holds = |said: &[Option<&str>]| {
-            let said = said.iter().flatten().copied().collect::<Vec<_>>();
-            let said = said.join("\n").to_lowercase();
-            lower.split_whitespace().all(|word| said.contains(word))
+    /// The rows that what `choosing` typed leaves: the items whose label,
+    /// detail or, as [`finds_more`](Self::finds_more) says, more holds every
+    /// word of it, ignoring case, those whose label does first; then, for
+    /// free text, the typed answer. In a tree they keep the list's order:
+    /// with nothing typed, the items whose branches are all open; else
+    /// those found, the branches above them, and what an open branch found
+    /// holds.
+    pub(crate) fn rows(&self, choosing: &PickerInput) -> Vec<Row> {
+        let lower = choosing.filter.to_lowercase();
+        let holds = |said: &[Option<&str>]| holds(&lower, said);
+        let finds = |item: &Item<'_>| self.finds(&lower, item);
+        let mut rows: Vec<Row> = if self.tree() {
+            let shown = self.shown(&choosing.open, (!lower.trim().is_empty()).then_some(&finds));
+            (shown.into_iter().enumerate())
+                .filter(|(_, shown)| *shown)
+                .map(|(index, _)| Row::Item(index))
+                .collect()
+        } else {
+            let found = (self.items.iter().enumerate()).filter(|(_, item)| finds(item));
+            let (named, beside): (Vec<_>, Vec<_>) =
+                found.partition(|(_, item)| holds(&[Some(item.label)]));
+            (named.into_iter().chain(beside))
+                .map(|(index, _)| Row::Item(index))
+                .collect()
         };
-        let found = (self.items.iter().enumerate()).filter(|(_, item)| {
-            let more = item.more.filter(|_| self.finds_more);
-            holds(&[Some(item.label), item.detail, more])
-        });
-        let (named, beside): (Vec<_>, Vec<_>) =
-            found.partition(|(_, item)| holds(&[Some(item.label)]));
-        let mut rows: Vec<Row> = (named.into_iter().chain(beside))
-            .map(|(index, _)| Row::Item(index))
-            .collect();
         if self.free_text {
             rows.push(Row::Typed);
         }
         rows
+    }
+
+    /// Whether `lower`, typed in lower case, finds `item`: its label,
+    /// detail or, as [`finds_more`](Self::finds_more) says, more holds
+    /// every word.
+    fn finds(&self, lower: &str, item: &Item<'_>) -> bool {
+        let more = item.more.filter(|_| self.finds_more);
+        holds(lower, &[Some(item.label), item.detail, more])
+    }
+
+    /// The row what `choosing` typed selects among `rows`: in a tree, the
+    /// first item whose label or, as [`finds_more`](Self::finds_more)
+    /// says, more is what was typed; else the first item whose label holds
+    /// it and no such item under it follows; else the first item found
+    /// with no item found under it. So a search lands on what it names
+    /// rather than on what only mentions it. Without a tree, the first.
+    pub(crate) fn found_row(&self, choosing: &PickerInput, rows: &[Row]) -> usize {
+        let lower = choosing.filter.trim().to_lowercase();
+        if !self.tree() || lower.is_empty() {
+            return 0;
+        }
+        let item = |row: &Row| match row {
+            Row::Item(index) => self.items.get(*index).map(|item| (*index, item)),
+            Row::Typed => None,
+        };
+        let is = |said: &str| said.to_lowercase() == lower;
+        let named = |item: &Item<'_>| {
+            is(item.label) || item.more.filter(|_| self.finds_more).is_some_and(is)
+        };
+        let labelled = |item: &Item<'_>| holds(&lower, &[Some(item.label)]);
+        let found = |item: &Item<'_>| self.finds(&lower, item);
+        // The first row `matches` takes that no row it takes under it follows.
+        let deepest = |matches: &dyn Fn(&Item<'_>) -> bool| {
+            rows.iter().position(|row| {
+                item(row).is_some_and(|(index, shown)| {
+                    matches(shown)
+                        && !(rows.iter().filter_map(item)).any(|(other, below)| {
+                            matches(below) && self.branches(other).any(|branch| branch == index)
+                        })
+                })
+            })
+        };
+        (rows
+            .iter()
+            .position(|row| item(row).is_some_and(|(_, shown)| named(shown))))
+        .or_else(|| deepest(&labelled))
+        .or_else(|| deepest(&found))
+        .unwrap_or(0)
+    }
+
+    /// Whether it has a tree: an item sits under another.
+    pub(crate) fn tree(&self) -> bool {
+        self.items.iter().any(|item| item.parent.is_some())
+    }
+
+    /// Which items a tree shows with the branches `open`: with nothing
+    /// typed, those whose branches are all open; else those `finds` finds,
+    /// the branches above them, and those under an open branch found
+    /// through open branches.
+    fn shown(&self, open: &[usize], finds: Option<&dyn Fn(&Item<'_>) -> bool>) -> Vec<bool> {
+        let Some(finds) = finds else {
+            return (0..self.items.len())
+                .map(|index| self.branches(index).all(|branch| open.contains(&branch)))
+                .collect();
+        };
+        let found: Vec<bool> = self.items.iter().map(finds).collect();
+        let mut shown = found.clone();
+        for index in (0..self.items.len()).rev() {
+            if shown.get(index) == Some(&true)
+                && let Some(parent) = self.parent(index)
+                && let Some(above) = shown.get_mut(parent)
+            {
+                *above = true;
+            }
+        }
+        for (index, shown) in shown.iter_mut().enumerate() {
+            let mut branches = self.branches(index);
+            *shown |= branches
+                .find(|branch| !open.contains(branch) || found.get(*branch) == Some(&true))
+                .is_some_and(|branch| open.contains(&branch));
+        }
+        shown
+    }
+
+    /// The branch the item at `index` sits under, when it is listed before
+    /// it.
+    pub(crate) fn parent(&self, index: usize) -> Option<usize> {
+        let parent = self.items.get(index)?.parent?;
+        (parent < index).then_some(parent)
+    }
+
+    /// The branches above the item at `index`, nearest first.
+    pub(crate) fn branches(&self, index: usize) -> impl Iterator<Item = usize> + '_ {
+        std::iter::successors(self.parent(index), |branch| self.parent(*branch))
+    }
+
+    /// Whether the item at `index` is a branch: another sits under it.
+    pub(crate) fn is_branch(&self, index: usize) -> bool {
+        (0..self.items.len()).any(|other| self.parent(other) == Some(index))
+    }
+
+    /// How the item at `index` shows with `ticked`: an item its tick; a
+    /// branch unticked is off, else as the items under it are, each on
+    /// while it and the branches between are ticked.
+    pub(crate) fn tick(&self, index: usize, ticked: &[usize]) -> TickBox {
+        let on = |index: usize| ticked.contains(&index);
+        if !on(index) {
+            return TickBox::Off;
+        }
+        let items: Vec<bool> = (0..self.items.len())
+            .filter(|item| self.branches(*item).any(|branch| branch == index))
+            .filter(|item| !self.is_branch(*item))
+            .map(|item| {
+                let mut between = self.branches(item).take_while(|branch| *branch != index);
+                on(item) && between.all(on)
+            })
+            .collect();
+        match (items.iter().all(|on| *on), items.iter().any(|on| *on)) {
+            (true, _) => TickBox::On,
+            (false, true) => TickBox::Mixed,
+            (false, false) => TickBox::Off,
+        }
     }
 }
 
@@ -286,6 +435,7 @@ impl Choices<'_, '_> {
                         detail: item.detail.as_deref(),
                         checked: item.checked,
                         more: item.more.as_deref().or(item.detail.as_deref()),
+                        parent: item.parent,
                     })
                     .collect(),
                 free_text: picker.free_text,
@@ -316,6 +466,7 @@ fn listing<'a>(ask: &'a Ask, keys: &'a [(KeyCode, ChoiceAction)]) -> Listing<'a>
                 detail: None,
                 checked: choice.checked,
                 more: choice.more.as_deref(),
+                parent: None,
             })
             .collect(),
         free_text: ask.free_text,
@@ -348,8 +499,8 @@ fn carried(choosing: PickerInput, old: &Ask, new: &Ask) -> PickerInput {
         false => new.multiple && choice.checked,
     });
     let (old_rows, new_rows) = (
-        listing(old, &[]).rows(&choosing.filter),
-        listing(new, &[]).rows(&choosing.filter),
+        listing(old, &[]).rows(&choosing),
+        listing(new, &[]).rows(&choosing),
     );
     let row = match old_rows.get(choosing.selected) {
         Some(Row::Item(index)) => id_at(index)
@@ -466,23 +617,27 @@ pub(crate) fn queue_choices(
 pub struct ChoiceSystems;
 
 /// Selects again, in `shown` filled again, the item `state` had selected,
-/// by its command, else its label, among the rows what is typed leaves;
-/// else the row it was on, as far as there are rows.
+/// at its place with its command and label, else by its command, else by
+/// its label, among the rows what is typed leaves; else the row it was on,
+/// as far as there are rows.
 fn refill(state: &mut PickerInput, shown: &Listing<'_>) {
-    let rows = shown.rows(&state.filter);
+    state.open.retain(|index| *index < shown.items.len());
+    let rows = shown.rows(state);
     let item = |row: &Row| match row {
-        Row::Item(index) => shown.items.get(*index),
+        Row::Item(index) => shown.items.get(*index).map(|item| (*index, item)),
         Row::Typed => None,
     };
     let picked = state.picked.as_ref();
-    let by = |same: &dyn Fn(&Item<'_>, &(String, String)) -> bool| {
+    let by = |same: &dyn Fn((usize, &Item<'_>), &(usize, String, String)) -> bool| {
         picked.and_then(|picked| {
             rows.iter()
                 .position(|row| item(row).is_some_and(|item| same(item, picked)))
         })
     };
-    let found = by(&|item, (id, _)| !id.is_empty() && item.id == id)
-        .or_else(|| by(&|item, (_, label)| item.label == label));
+    let found =
+        by(&|(index, item), (at, id, label)| index == *at && item.id == id && item.label == label)
+            .or_else(|| by(&|(_, item), (_, id, _)| !id.is_empty() && item.id == id))
+            .or_else(|| by(&|(_, item), (_, _, label)| item.label == label));
     let selected = found.unwrap_or(state.selected);
     state.selected = selected.min(rows.len().saturating_sub(1));
     state.ticked.retain(|index| *index < shown.items.len());
@@ -518,8 +673,8 @@ pub(crate) fn show_first(
         // Noted at once, so a picker filled again before its first frame
         // finds the item it opened on, not the row at that index.
         let item = shown.items.get(selected).filter(|_| draft.is_none());
-        let picked = item.map(|item| (item.id.to_owned(), item.label.to_owned()));
-        let state = PickerInput {
+        let picked = item.map(|item| (selected, item.id.to_owned(), item.label.to_owned()));
+        let mut state = PickerInput {
             filter: String::new(),
             selected,
             touched: !ticked.is_empty(),
@@ -528,7 +683,13 @@ pub(crate) fn show_first(
             draft,
             more: false,
             picked,
+            // The branches above the item selected at first are open.
+            open: shown.branches(selected).collect(),
         };
+        let rows = shown.rows(&state);
+        if let Some(row) = rows.iter().position(|row| *row == Row::Item(selected)) {
+            state.selected = row;
+        }
         Some((entity, state))
     });
     if let Some((entity, state)) = first {
@@ -561,13 +722,15 @@ pub(crate) fn mark_highlighted(
                 .entity(entity)
                 .try_insert(Ticked(state.ticked.clone()));
         }
-        let rows = shown.rows(&state.filter);
+        let rows = shown.rows(&state);
         let index = match rows.get(state.selected) {
             Some(Row::Item(index)) => Some(*index),
             _ => None,
         };
-        let item = index.and_then(|index| shown.items.get(index));
-        let picked = item.map(|item| (item.id.to_owned(), item.label.to_owned()));
+        let picked = index.and_then(|index| {
+            let item = shown.items.get(index)?;
+            Some((index, item.id.to_owned(), item.label.to_owned()))
+        });
         if state.picked != picked && !filled.contains(entity) {
             state.bypass_change_detection().picked = picked;
         }
@@ -593,7 +756,7 @@ pub(crate) fn choice_key(
     let control = key.modifiers.contains(KeyModifiers::CONTROL);
     let alt = key.modifiers.contains(KeyModifiers::ALT);
     let shift = key.modifiers.contains(KeyModifiers::SHIFT);
-    let rows = shown.rows(&choosing.filter);
+    let rows = shown.rows(choosing);
     let last = rows.len().saturating_sub(1);
     let typing =
         !choosing.filter.is_empty() || matches!(rows.get(choosing.selected), Some(Row::Typed));
@@ -611,16 +774,18 @@ pub(crate) fn choice_key(
         KeyCode::Char(_) if control || key.modifiers.contains(KeyModifiers::ALT) => {}
         KeyCode::Char(character) => {
             choosing.filter.push(character);
-            choosing.selected = 0;
+            choosing.selected = shown.found_row(choosing, &shown.rows(choosing));
         }
         KeyCode::Backspace => {
             choosing.filter.pop();
-            choosing.selected = 0;
+            choosing.selected = shown.found_row(choosing, &shown.rows(choosing));
         }
         KeyCode::Up => choosing.selected = choosing.selected.saturating_sub(1),
         KeyCode::Down => choosing.selected = (choosing.selected + 1).min(last),
         KeyCode::PageUp => choosing.selected = choosing.selected.saturating_sub(PAGE),
         KeyCode::PageDown => choosing.selected = (choosing.selected + PAGE).min(last),
+        KeyCode::Right if shown.tree() => unfold(choosing, shown, &rows, true),
+        KeyCode::Left if shown.tree() => unfold(choosing, shown, &rows, false),
         KeyCode::Right => choosing.more = true,
         KeyCode::Left => choosing.more = false,
         KeyCode::Tab if shown.ticks => {
@@ -667,11 +832,53 @@ fn choice_action(
     None
 }
 
-/// Ticks or unticks the selected item; whether one is selected.
+/// In a tree, opens the selected branch or goes to its first item
+/// (`open`), else closes it or goes up to the selected item's branch.
+fn unfold(choosing: &mut PickerInput, shown: &Listing<'_>, rows: &[Row], open: bool) {
+    let Some(&Row::Item(index)) = rows.get(choosing.selected) else {
+        return;
+    };
+    let is_open = choosing.open.contains(&index);
+    let to = match (open, shown.is_branch(index), is_open) {
+        (true, true, false) => {
+            choosing.open.push(index);
+            return;
+        }
+        (true, true, true) => rows.get(choosing.selected + 1).copied(),
+        (false, true, true) => {
+            choosing.open.retain(|branch| *branch != index);
+            return;
+        }
+        (false, _, _) => shown.parent(index).map(Row::Item),
+        (true, false, _) => None,
+    };
+    if let Some(at) = to.and_then(|to| rows.iter().position(|row| *row == to)) {
+        choosing.selected = at;
+    }
+}
+
+/// Ticks or unticks the selected item, switching a branch over its items
+/// as [`PickerInput`] says; whether one is selected.
 fn tick(choosing: &mut PickerInput, shown: &Listing<'_>, rows: &[Row]) -> bool {
     let Some(Row::Item(index)) = rows.get(choosing.selected) else {
         return false;
     };
+    if shown.multiple && shown.is_branch(*index) {
+        let on = choosing.ticked.contains(index);
+        match shown.tick(*index, &choosing.ticked) {
+            TickBox::On | TickBox::Mixed => choosing.ticked.retain(|ticked| ticked != index),
+            TickBox::Off if !on => choosing.ticked.push(*index),
+            TickBox::Off => {
+                let under = (0..shown.items.len())
+                    .filter(|item| shown.branches(*item).any(|branch| branch == *index));
+                choosing.ticked.extend(under);
+            }
+        }
+        choosing.ticked.sort_unstable();
+        choosing.ticked.dedup();
+        choosing.touched = true;
+        return true;
+    }
     match choosing.ticked.binary_search(index) {
         Ok(at) => {
             choosing.ticked.remove(at);
@@ -698,6 +905,13 @@ fn answer(choosing: &PickerInput, shown: &Listing<'_>, rows: &[Row]) -> Option<O
             Some(Some(chosen.with_text(choosing.filter.trim())))
         }
     }
+}
+
+/// Whether `said`, joined and in lower case, holds every word of `lower`.
+fn holds(lower: &str, said: &[Option<&str>]) -> bool {
+    let said = said.iter().flatten().copied().collect::<Vec<_>>();
+    let said = said.join("\n").to_lowercase();
+    lower.split_whitespace().all(|word| said.contains(word))
 }
 
 /// Marks the transcript pane that draws a picker's conversation preview.

@@ -2,22 +2,28 @@
 //! read from that file in this process, each with whether it is on and
 //! whether this build runs it (its `PluginSource` entity) and which plugin
 //! loaded it, if one did (its `ProvidedBy`). In the terminal view it is a
-//! picker of short names in the plugin tree's order (crate, then area)
-//! with each plugin's own choice ticked, and the highlighted plugin's
-//! detail beside it ([`PickPreview`]). A plugin a branch of
-//! `[plugins] off` holds says it is off with its branch. Enter ticks and
-//! unticks that plugin's own choice; each row that differs from the file
-//! shows `+ on` or `- off`. Leaving with changes asks whether to reload now
-//! ([`ReloadStatus::ask`]), at the next start, or to keep editing; either
-//! of the first two writes every change in one edit of the file
-//! ([`config::turn`]). `/plugins defaults` asks the same about going back to
-//! rig's defaults, branches turned back on. Without a terminal it lists
+//! picker with a tree: crates at the top, then areas, then
+//! plugins by short name, branches folded, each plugin's own choice ticked
+//! and each branch ticked while `[plugins] off` leaves it on, with the
+//! highlighted row's detail beside it ([`PickPreview`]). A crate or an area
+//! of one plugin is that plugin's row, unless `off` names it. Enter ticks
+//! and unticks a plugin's own choice, and switches a branch over its
+//! plugins as the view does ([`PickItem::parent`]); each row that differs
+//! from the file shows `+ on` or `- off`, worked out by making the changes
+//! to a copy of the file. Leaving with changes asks whether to reload now
+//! ([`ReloadStatus::ask`]), at the next start, to keep editing or to leave
+//! without writing, and adds up what the changes take away; either of the
+//! first two writes every change in one edit of the file
+//! ([`config::turn`]). `/plugins defaults` asks the same about going back
+//! to rig's defaults, branches turned back on. Without a terminal it lists
 //! them.
 //!
 //! `rig plugin enable` and `rig plugin disable` change the same file from a
 //! shell, with the same rules.
 
-use rig_harness::harness_protocol::config::{self, BUILT_IN, BuiltIn, Extra, Plugins};
+use rig_harness::harness_protocol::config::{
+    self, BUILT_IN, BuiltIn, Extra, Plugins, SettingsFile,
+};
 use rig_harness::harness_protocol::{self, Home};
 use rig_harness::pick::{Highlighted, PickPreview, Picked, Picker, Ticked};
 use rig_harness::prelude::*;
@@ -49,14 +55,16 @@ impl Plugin for PluginsPlugin {
 struct Row {
     /// Its type path, which settings.toml names.
     plugin: String,
+    /// Its crate, the top of its place in the tree.
+    krate: String,
     /// What the list shows: a built-in's short name, an extra's crate.
     name: String,
     /// Whether its own choice in settings.toml is on.
     on: bool,
-    /// The branch of `[plugins] off` that keeps it off, if one does.
-    branch_off: Option<String>,
     /// Whether rig's defaults turn it on here: an extra always.
     default: bool,
+    /// The `target_os` values it builds on, when this is none of them.
+    unbuilt: Option<&'static [&'static str]>,
     /// Its state, short: `on`, `off`, or why it is off.
     state: String,
     /// What goes when it is off, for an essential plugin.
@@ -65,25 +73,167 @@ struct Row {
     about: String,
 }
 
-/// The `/plugins` list: its rows, in its order, against settings.toml, the
-/// branches of `[plugins] off` that leaving it turns back on, and the agent
-/// it is for.
+/// A row of the tree.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Node {
+    /// A branch, by its name in `[plugins] off`, shown as `label`.
+    Branch { name: String, label: String },
+    /// The plugin of [`Tree::rows`] at this position.
+    Plugin(usize),
+}
+
+/// The `/plugins` list against settings.toml: its plugins, its tree, and
+/// the file as read with what it turns on, which changes are tried on.
+#[derive(Clone, Debug)]
+struct Tree {
+    rows: Vec<Row>,
+    /// The tree's rows in its order, each with the position of its branch.
+    nodes: Vec<(Node, Option<usize>)>,
+    file: SettingsFile,
+    before: Plugins,
+}
+
+/// What ticking a [`Tree`]'s rows makes of settings.toml.
+struct Trial<'a> {
+    /// The changes to write: a plugin or a branch and whether it is on.
+    changes: Vec<(&'a str, bool)>,
+    /// What the file turns on with them, or why it would not read.
+    after: Result<Plugins, config::Error>,
+    /// The plugins ticked on that do not build here, which stay off.
+    unbuilt: Vec<&'a Row>,
+}
+
+impl Tree {
+    /// The tree of the plugins `before` that `file` turns on, with whether
+    /// `running` holds each and the plugin that added it.
+    fn new(file: SettingsFile, before: Plugins, running: &[(String, Option<String>)]) -> Self {
+        let rows = rows(&before, running);
+        let nodes = nodes(&rows, &before.off);
+        Tree {
+            rows,
+            nodes,
+            file,
+            before,
+        }
+    }
+
+    /// The row of the plugin at node `node`.
+    fn row(&self, node: &Node) -> Option<&Row> {
+        match node {
+            Node::Plugin(row) => self.rows.get(*row),
+            Node::Branch { .. } => None,
+        }
+    }
+
+    /// Whether settings.toml has each node on: a plugin's own choice, a
+    /// branch out of `[plugins] off`.
+    fn on(&self) -> Vec<bool> {
+        (self.nodes.iter())
+            .map(|(node, _)| match node {
+                Node::Branch { name, .. } => !self.before.off.contains(name),
+                Node::Plugin(_) => self.row(node).is_some_and(|row| row.on),
+            })
+            .collect()
+    }
+
+    /// rig's defaults: each plugin's default, every branch on.
+    fn defaults(&self) -> Vec<bool> {
+        (self.nodes.iter())
+            .map(|(node, _)| match node {
+                Node::Branch { .. } => true,
+                Node::Plugin(_) => self.row(node).is_some_and(|row| row.default),
+            })
+            .collect()
+    }
+
+    /// How many nodes `on` changes.
+    fn changed(&self, on: &[bool]) -> usize {
+        (self.on().iter().zip(on))
+            .filter(|(was, now)| was != now)
+            .count()
+    }
+
+    /// What ticking the nodes as `on` makes of settings.toml, tried on a
+    /// copy of it.
+    fn trial(&self, on: &[bool]) -> Trial<'_> {
+        let mut changes = Vec::new();
+        let mut unbuilt = Vec::new();
+        let nodes = self.nodes.iter().zip(self.on()).zip(on);
+        for (((node, _), _), now) in nodes.filter(|((_, was), now)| was != *now) {
+            match (node, self.row(node)) {
+                (Node::Branch { name, .. }, _) => changes.push((name.as_str(), *now)),
+                (_, Some(row)) if *now && row.unbuilt.is_some() => unbuilt.push(row),
+                (_, Some(row)) => changes.push((row.plugin.as_str(), *now)),
+                (_, None) => {}
+            }
+        }
+        let mut file = self.file.clone();
+        let after = config::turn(&mut file, &changes).and_then(|_| config::plugins(&file));
+        Trial {
+            changes,
+            after,
+            unbuilt,
+        }
+    }
+
+    /// What the preview says of node `node`.
+    fn about(&self, node: usize) -> String {
+        match self.nodes.get(node) {
+            Some((Node::Branch { name, .. }, _)) => Some(self.branch_about(name)),
+            Some((node, _)) => self.row(node).map(|row| row.about.clone()),
+            None => None,
+        }
+        .unwrap_or_default()
+    }
+
+    /// What the preview says of the branch `name`.
+    fn branch_about(&self, name: &str) -> String {
+        let held: Vec<&str> = (self.rows.iter())
+            .filter(|row| config::holds(name, &row.krate, &row.plugin))
+            .map(|row| row.name.as_str())
+            .collect();
+        let state = if self.before.off.iter().any(|off| off == name) {
+            "Off: [plugins] off names it, which keeps each of its plugins off whatever its own \
+             choice. Enter turns it back on, and each plugin comes back as its own choice says."
+        } else {
+            "On. Enter turns it off, into [plugins] off, and each plugin keeps its own choice for \
+             when it is back on; on with every plugin off, Enter turns each of them on."
+        };
+        format!(
+            "{name}\nBranch of {} plugins: {}.\n\n{state}\n",
+            held.len(),
+            held.join(", ")
+        )
+    }
+}
+
+impl Trial<'_> {
+    /// What the file turns on with the changes, when it reads.
+    fn after(&self) -> Option<&Plugins> {
+        self.after.as_ref().ok()
+    }
+}
+
+/// Whether `plugins` turns `plugin` on.
+fn runs(plugins: &Plugins, plugin: &str) -> bool {
+    plugins.on.iter().any(|on| on == plugin)
+}
+
+/// The `/plugins` list: its tree, against settings.toml, and the agent it
+/// is for.
 #[derive(Component)]
 struct PluginsPicker {
-    rows: Vec<Row>,
-    branches: Vec<String>,
+    tree: Tree,
     agent: Entity,
 }
 
-/// The question asked on leaving the list with changes: the list's rows,
-/// which are ticked, the row highlighted, whether a reload can run and the
-/// answers offered.
+/// The question asked on leaving the list with changes: the list's tree,
+/// which nodes are ticked, the node highlighted, whether a reload can run
+/// and the answers offered.
 #[derive(Component)]
 struct LeaveQuestion {
-    rows: Vec<Row>,
+    tree: Tree,
     on: Vec<bool>,
-    /// The branches of `[plugins] off` to turn back on.
-    branches: Vec<String>,
     agent: Entity,
     at: usize,
     reload: Reload,
@@ -138,8 +288,10 @@ fn plugins(
         }
     };
     let home = home.map_or_else(Home::from_env, |home| home.0.clone());
-    let chosen = match config::chosen(&home) {
-        Ok(chosen) => chosen,
+    let read = SettingsFile::read(&home.settings())
+        .and_then(|file| config::plugins(&file).map(|chosen| (file, chosen)));
+    let (file, chosen) = match read {
+        Ok(read) => read,
         Err(why) => {
             // An unknown plugin's refusal names its own fix.
             let fix = match &why {
@@ -168,12 +320,11 @@ fn plugins(
             (name.to_string(), by.map(short))
         })
         .collect();
-    let rows = rows(&chosen, &running);
+    let tree = Tree::new(file, chosen, &running);
     let interactive = invoked.is_some_and(|invoked| invoked.interactive());
     if defaults {
-        let on: Vec<bool> = rows.iter().map(|row| row.default).collect();
-        let changed = changed(&rows, &on);
-        if changed.is_empty() && chosen.off.is_empty() {
+        let on = tree.defaults();
+        if tree.changed(&on) == 0 {
             notices.write(Notice::info(
                 args.agent,
                 format!("{} already runs rig's defaults.", home.settings().display()),
@@ -182,12 +333,11 @@ fn plugins(
         }
         // The question needs a terminal to show it.
         if !interactive {
-            let commands: Vec<String> = (changed.iter())
-                .map(|(row, on)| {
+            let commands: Vec<String> = (tree.trial(&on).changes.iter())
+                .map(|(name, on)| {
                     let verb = if *on { "enable" } else { "disable" };
-                    format!("  rig plugin {verb} {}", row.plugin)
+                    format!("  rig plugin {verb} {name}")
                 })
-                .chain((chosen.off.iter()).map(|branch| format!("  rig plugin enable {branch}")))
                 .collect();
             notices.write(Notice::error(
                 args.agent,
@@ -200,11 +350,11 @@ fn plugins(
             return;
         }
         let reload = Reload::here(&slash_commands);
-        let question = (rows, on, chosen.off);
-        ask(&mut commands, question, args.agent, 0, reload);
+        ask(&mut commands, (tree, on), args.agent, 0, reload);
         return;
     }
     if !interactive {
+        let rows = &tree.rows;
         let names = rows.iter().map(|row| row.name.len()).max().unwrap_or(0);
         let paths = rows.iter().map(|row| row.plugin.len()).max().unwrap_or(0);
         let lines: Vec<String> = (rows.iter())
@@ -218,45 +368,42 @@ fn plugins(
         notices.write(Notice::info(args.agent, lines.join("\n")));
         return;
     }
-    let on: Vec<bool> = rows.iter().map(|row| row.on).collect();
-    list(&mut commands, (rows, on, Vec::new()), args.agent, 0);
+    let on = tree.on();
+    list(&mut commands, tree, &on, args.agent, 0);
 }
 
-/// Opens the list of `rows` for `agent` with `on` ticked, `branches` to
-/// turn back on and row `at` selected.
-fn list(
-    commands: &mut Commands,
-    (rows, on, branches): (Vec<Row>, Vec<bool>, Vec<String>),
-    agent: Entity,
-    at: usize,
-) {
+/// Opens the list of `tree` for `agent` with `on` ticked and node `at`
+/// selected.
+fn list(commands: &mut Commands, tree: Tree, on: &[bool], agent: Entity, at: usize) {
     let mut picker = Picker::new("Plugins")
         .for_agent(agent)
-        .body(body(&rows, &on, &branches))
+        .body(body(&tree, on))
         .multiple();
     picker.selected = at;
-    picker.items = (rows.iter().zip(&on))
-        .map(|(row, on)| PickItem {
-            checked: *on,
-            // Typing a type path finds its plugin; → shows it with the whole state.
-            more: Some(format!("{}: {}", row.plugin, row.state)),
-            ..PickItem::new(&row.name, "").detail(detail(row, *on))
+    let details = details(&tree, on);
+    picker.items = (tree.nodes.iter().zip(on).zip(details))
+        .map(|(((node, parent), ticked), detail)| {
+            let (label, more) = match (node, tree.row(node)) {
+                (Node::Branch { name, label }, _) => (label.as_str(), name.clone()),
+                // Typing a type path finds its plugin.
+                (_, Some(row)) => (row.name.as_str(), format!("{}: {}", row.plugin, row.state)),
+                (_, None) => ("", String::new()),
+            };
+            PickItem {
+                checked: *ticked,
+                more: Some(more),
+                parent: *parent,
+                ..PickItem::new(label, "").detail(detail)
+            }
         })
         .collect();
     // The terminal view gives the preview its half of the screen from the
     // first frame only when the picker comes with one.
-    let shown = rows
-        .get(at)
-        .map(|row| row.about.clone())
-        .unwrap_or_default();
+    let shown = tree.about(at);
     let mut list = commands.spawn((
         picker,
         PickPreview::Text(shown),
-        PluginsPicker {
-            rows,
-            branches,
-            agent,
-        },
+        PluginsPicker { tree, agent },
     ));
     #[cfg(feature = "tui")]
     list.insert(rig_tui::ChoiceKeys(vec![(
@@ -266,11 +413,11 @@ fn list(
     list.observe(leave);
 }
 
-/// The list's body: its keys and how many changes `on` and `branches`
-/// make.
-fn body(rows: &[Row], on: &[bool], branches: &[String]) -> String {
-    let keys = "Enter ticks or unticks, Esc leaves, type to filter.";
-    match changed(rows, on).len() + branches.len() {
+/// The list's body: its keys and how many rows `on` changes.
+fn body(tree: &Tree, on: &[bool]) -> String {
+    let keys = "Enter ticks or unticks a plugin or a branch, → and ← open and close branches, \
+                Esc leaves, type to find.";
+    match tree.changed(on) {
         0 => format!("{keys} Nothing is written until you leave."),
         1 => format!("{keys} 1 change: leaving asks whether to reload now or later."),
         changes => {
@@ -279,11 +426,156 @@ fn body(rows: &[Row], on: &[bool], branches: &[String]) -> String {
     }
 }
 
-/// The rows that `on` turns on or off, each with whether it turns it on.
-fn changed<'a>(rows: &'a [Row], on: &[bool]) -> Vec<(&'a Row, bool)> {
-    (rows.iter().zip(on.iter().copied()))
-        .filter(|(row, on)| row.on != *on)
+/// What the list shows beside each node while `on` is ticked: its state,
+/// or how the ticks change it.
+fn details(tree: &Tree, on: &[bool]) -> Vec<String> {
+    let trial = tree.trial(on);
+    let was = tree.on();
+    (tree.nodes.iter().zip(on).zip(was))
+        .map(|(((node, _), now), was)| match (node, tree.row(node)) {
+            (Node::Branch { name, .. }, _) => branch_detail(tree, name, (was, *now), &trial),
+            (_, Some(row)) => detail(tree, row, *now, &trial),
+            (_, None) => String::new(),
+        })
         .collect()
+}
+
+/// What the list shows beside the branch `name`, on in settings.toml or
+/// not and ticked or not (`was`, `now`) as `trial` tries.
+fn branch_detail(tree: &Tree, name: &str, (was, now): (bool, bool), trial: &Trial) -> String {
+    match (was, now) {
+        (true, false) => "- off".to_owned(),
+        (false, true) => "+ on".to_owned(),
+        (false, false) => "off ([plugins] off)".to_owned(),
+        (true, true) => {
+            let plugins = trial.after().unwrap_or(&tree.before);
+            let held = tree.before.held(name);
+            let on = held.iter().filter(|plugin| runs(plugins, plugin)).count();
+            format!("{on} of {} on", held.len())
+        }
+    }
+}
+
+/// What the list shows beside `row`, ticked or not (`now`), as `trial`
+/// tries: its state, or how the ticks change it.
+fn detail(tree: &Tree, row: &Row, now: bool, trial: &Trial) -> String {
+    if let Some(targets) = row.unbuilt.filter(|_| now && !row.on) {
+        return format!("+ on, but it builds on {} only", targets.join("/"));
+    }
+    let Some(after) = trial.after() else {
+        return row.state.clone();
+    };
+    let plugin = row.plugin.as_str();
+    let (was, will) = (runs(&tree.before, plugin), runs(after, plugin));
+    let branch = after.off_with(plugin);
+    let moved = branch != tree.before.off_with(plugin);
+    let what = (row.essential.filter(|_| was && !will))
+        .map(|what| format!(", takes away {what}"))
+        .unwrap_or_default();
+    match (row.on, now, branch) {
+        (true, false, _) => format!("- off{what}"),
+        (false, true, Some(branch)) if !will => {
+            format!("+ on, still off with its branch {branch}")
+        }
+        (false, true, _) => "+ on".to_owned(),
+        // The branch is the row above, or the preview names it.
+        _ if was != will && moved => {
+            let word = if will { "+ on" } else { "- off" };
+            format!("{word} with its branch{what}")
+        }
+        _ => row.state.clone(),
+    }
+}
+
+/// Which of `count` nodes `positions` ticks.
+fn ticks(count: usize, positions: &[usize]) -> Vec<bool> {
+    (0..count).map(|index| positions.contains(&index)).collect()
+}
+
+/// Every plugin, rig's and then the extras, in the tree's order
+/// ([`config::tree_order`]), with their own choice in `chosen`, the
+/// branch keeping each off, and whether `running` holds each and the
+/// plugin that added it.
+fn rows(chosen: &Plugins, running: &[(String, Option<String>)]) -> Vec<Row> {
+    let on = |plugin: &str| chosen.own.iter().any(|on| on == plugin);
+    let off = |plugin: &str| chosen.off_with(plugin).map(str::to_owned);
+    let runs = |plugin: &str| {
+        let found = running.iter().find(|(runs, _)| runs == plugin);
+        (found.is_some(), found.and_then(|(_, by)| by.as_deref()))
+    };
+    let built_ins = (BUILT_IN.iter()).map(|built_in| {
+        let plugin = built_in.plugin;
+        built_in_row(built_in, (on(plugin), off(plugin)), runs(plugin))
+    });
+    let mut names: Vec<String> = (BUILT_IN.iter())
+        .map(|built_in| built_in.name.to_owned())
+        .chain(
+            chosen
+                .extra
+                .iter()
+                .map(|extra| extra_name(extra, &chosen.extra)),
+        )
+        .collect();
+    for (index, extra) in chosen.extra.iter().enumerate() {
+        unique(&mut names, BUILT_IN.len() + index, extra);
+    }
+    let extras = (chosen
+        .extra
+        .iter()
+        .zip(names.into_iter().skip(BUILT_IN.len())))
+    .map(|(extra, name)| {
+        let plugin = &extra.plugin;
+        extra_row(extra, name, (on(plugin), off(plugin)), runs(plugin))
+    });
+    // Every extra's crate is after rig's.
+    config::tree_order(built_ins.chain(extras).collect(), |row: &Row| {
+        (row.krate.as_str(), row.plugin.as_str())
+    })
+}
+
+/// The tree over `rows`, in the tree's order: a branch for each crate and
+/// each area of several plugins, or that `off` names, before what it
+/// holds, and a node for each plugin, each with the position of its
+/// branch.
+fn nodes(rows: &[Row], off: &[String]) -> Vec<(Node, Option<usize>)> {
+    let mut nodes = Vec::new();
+    // The crate and area of the row before, and the node of each.
+    let mut krate: Option<(&str, Option<usize>)> = None;
+    let mut area: Option<(&str, Option<usize>)> = None;
+    for (index, row) in rows.iter().enumerate() {
+        let mut branch = |name: String, label: &str, parent: Option<usize>, holds: usize| {
+            (holds > 1 || off.contains(&name)).then(|| {
+                let label = label.to_owned();
+                nodes.push((Node::Branch { name, label }, parent));
+                nodes.len() - 1
+            })
+        };
+        if krate.is_none_or(|(name, _)| name != row.krate) {
+            let holds = rows.iter().filter(|other| other.krate == row.krate).count();
+            krate = Some((
+                row.krate.as_str(),
+                branch(row.krate.clone(), &row.krate, None, holds),
+            ));
+            area = None;
+        }
+        let parent = krate.and_then(|(_, node)| node);
+        match config::area(&row.plugin) {
+            Some(name) if area.is_none_or(|(was, _)| was != name) => {
+                let holds = (rows.iter())
+                    .filter(|other| {
+                        other.krate == row.krate && config::area(&other.plugin) == Some(name)
+                    })
+                    .count();
+                let node = branch(format!("{}/{name}", row.krate), name, parent, holds);
+                area = Some((name, node));
+            }
+            Some(_) => {}
+            None => area = None,
+        }
+        let parent = area.and_then(|(_, node)| node).or(parent);
+        nodes.push((Node::Plugin(index), parent));
+    }
+    nodes
 }
 
 /// Whether "Reload now" can run here, else why not.
@@ -331,63 +623,6 @@ impl Reload {
             Reload::NoPlugin | Reload::NoLauncher => "They apply when rig starts again.",
         }
     }
-}
-
-/// What the list shows beside `row` while `on` says whether it is ticked:
-/// its state, or how ticking changes it.
-fn detail(row: &Row, on: bool) -> String {
-    match (row.on, on, row.essential) {
-        (false, true, _) => match &row.branch_off {
-            Some(branch) => format!("+ on, still off with its branch {branch}"),
-            None => "+ on".to_owned(),
-        },
-        (true, false, Some(what)) => format!("- off, takes away {what}"),
-        (true, false, None) => "- off".to_owned(),
-        _ => row.state.clone(),
-    }
-}
-
-/// Which of `count` rows `positions` ticks.
-fn ticks(count: usize, positions: &[usize]) -> Vec<bool> {
-    (0..count).map(|index| positions.contains(&index)).collect()
-}
-
-/// Every plugin, rig's and then the extras, each in the tree's order
-/// ([`config::tree_order`]), with their own choice in `chosen`, the branch
-/// keeping each off, and whether `running` holds each and the plugin that
-/// added it.
-fn rows(chosen: &Plugins, running: &[(String, Option<String>)]) -> Vec<Row> {
-    let built_ins = config::tree_order(BUILT_IN.iter().collect(), |built_in: &&BuiltIn| {
-        (built_in.krate, built_in.plugin)
-    });
-    let extra = config::tree_order(chosen.extra.iter().collect(), |extra: &&Extra| {
-        (extra.krate.as_str(), extra.plugin.as_str())
-    });
-    let on = |plugin: &str| chosen.own.iter().any(|on| on == plugin);
-    let off = |plugin: &str| chosen.off_with(plugin).map(str::to_owned);
-    let runs = |plugin: &str| {
-        let found = running.iter().find(|(runs, _)| runs == plugin);
-        (found.is_some(), found.and_then(|(_, by)| by.as_deref()))
-    };
-    let built_ins = (built_ins.into_iter()).map(|built_in| {
-        let plugin = built_in.plugin;
-        built_in_row(built_in, (on(plugin), off(plugin)), runs(plugin))
-    });
-    let mut names: Vec<String> = (BUILT_IN.iter())
-        .map(|built_in| built_in.name.to_owned())
-        .chain(extra.iter().map(|extra| extra_name(extra, &chosen.extra)))
-        .collect();
-    for (index, extra) in extra.iter().enumerate() {
-        unique(&mut names, BUILT_IN.len() + index, extra);
-    }
-    let extras = (extra
-        .into_iter()
-        .zip(names.into_iter().skip(BUILT_IN.len())))
-    .map(|(extra, name)| {
-        let plugin = &extra.plugin;
-        extra_row(extra, name, (on(plugin), off(plugin)), runs(plugin))
-    });
-    built_ins.chain(extras).collect()
 }
 
 /// An area's title, from its module name: `coding_tools` is `Coding tools`.
@@ -479,10 +714,11 @@ fn built_in_row(built_in: &BuiltIn, (on, branch_off): Choice, (runs, by): Runs) 
     about.push_str(built_in.about);
     Row {
         plugin: built_in.plugin.to_owned(),
+        krate: built_in.krate.to_owned(),
         name: built_in.name.to_owned(),
         on,
-        branch_off,
         default: built_in.on && built_in.available(),
+        unbuilt: (!built_in.available()).then_some(built_in.targets),
         state,
         essential: built_in.essential,
         about,
@@ -521,11 +757,12 @@ fn extra_row(extra: &Extra, name: String, (on, branch_off): Choice, (runs, by): 
     );
     Row {
         plugin: extra.plugin.clone(),
+        krate: extra.krate.clone(),
         name,
         on,
         default: true,
+        unbuilt: None,
         state: state(on, branch_off.as_deref(), (runs, by)),
-        branch_off,
         essential: None,
         about,
     }
@@ -557,8 +794,8 @@ fn branch(branch_off: Option<&str>) -> String {
     branch_off.map_or_else(String::new, |branch| {
         format!(
             "Its branch {branch} is off ([plugins] off), which keeps it off whatever its own \
-             choice. Enter changes only its own choice; `rig plugin enable {branch}` turns the \
-             branch back on.\n"
+             choice. Enter changes only its own choice; Enter on {branch} turns the branch \
+             back on.\n"
         )
     })
 }
@@ -597,7 +834,7 @@ fn states(
     parts.join(" · ")
 }
 
-/// Shows the highlighted plugin's detail beside each `/plugins` picker.
+/// Shows the highlighted row's detail beside each `/plugins` picker.
 fn preview(
     pickers: Query<
         (Entity, &PluginsPicker, &Highlighted, Option<&PickPreview>),
@@ -606,10 +843,10 @@ fn preview(
     mut commands: Commands,
 ) {
     for (entity, picker, highlighted, shown) in &pickers {
-        let Some(row) = picker.rows.get(highlighted.0) else {
+        if highlighted.0 >= picker.tree.nodes.len() {
             continue;
-        };
-        let preview = PickPreview::Text(row.about.clone());
+        }
+        let preview = PickPreview::Text(picker.tree.about(highlighted.0));
         if shown != Some(&preview) {
             commands.entity(entity).insert(preview);
         }
@@ -641,11 +878,11 @@ fn mark(
     mut commands: Commands,
 ) {
     for (entity, list, shown, ticked) in &lists {
-        let on = ticks(list.rows.len(), &ticked.0);
+        let on = ticks(list.tree.nodes.len(), &ticked.0);
         let mut picker = shown.clone();
-        picker.body = body(&list.rows, &on, &list.branches);
-        for (item, (row, on)) in picker.items.iter_mut().zip(list.rows.iter().zip(&on)) {
-            item.detail = Some(detail(row, *on));
+        picker.body = body(&list.tree, &on);
+        for (item, detail) in picker.items.iter_mut().zip(details(&list.tree, &on)) {
+            item.detail = Some(detail);
         }
         if picker != *shown {
             commands.entity(entity).insert(picker);
@@ -654,7 +891,7 @@ fn mark(
 }
 
 /// On leaving the list: the question when what is ticked differs from
-/// settings.toml or branches wait to turn back on, else nothing. A front that answers with the items picked
+/// settings.toml, else nothing. A front that answers with the items picked
 /// rather than ticks them gives those; one that closes it without ever
 /// saying what is ticked never showed it.
 fn leave(
@@ -671,61 +908,159 @@ fn leave(
     let Ok((list, shown, ticked, highlighted)) = lists.get(picked.entity) else {
         return;
     };
-    let count = list.rows.len();
+    let count = list.tree.nodes.len();
     let on = match (&picked.chosen, ticked) {
         (Some(chosen), _) => ticks(count, &chosen.items),
         (None, Some(ticked)) => ticks(count, &ticked.0),
         (None, None) => return,
     };
-    if changed(&list.rows, &on).is_empty() && list.branches.is_empty() {
+    if list.tree.changed(&on) == 0 {
         return;
     }
     let at = highlighted.map_or(shown.selected, |highlighted| highlighted.0);
     let reload = Reload::here(&slash_commands);
-    let question = (list.rows.clone(), on, list.branches.clone());
-    ask(&mut commands, question, list.agent, at, reload);
+    ask(
+        &mut commands,
+        (list.tree.clone(), on),
+        list.agent,
+        at,
+        reload,
+    );
 }
 
-/// Asks whether to reload now with what `on` changes in `rows` and the
-/// `branches` turned back on, at the next start, to go back to the list
-/// at row `at`, or to leave without writing. It offers to reload now only where `reload` says one can
-/// run, and else says why.
+/// The short names of the plugins and the branches among `changes` turned
+/// on (`on`) or off, in `tree`. A plugin turned on that a branch keeps off
+/// in `after` says so.
+fn turned<'a>(
+    (tree, after): (&'a Tree, Option<&Plugins>),
+    changes: &[(&'a str, bool)],
+    on: bool,
+) -> (Vec<String>, Vec<&'a str>) {
+    let changed = changes.iter().filter(|(_, turned)| *turned == on);
+    let name = |plugin: &str| (tree.rows.iter()).find(|row| row.plugin == plugin);
+    let plugins = changed.clone().filter_map(|(plugin, _)| name(plugin));
+    let branches = changed.filter(|(plugin, _)| name(plugin).is_none());
+    let branch = |row: &Row| {
+        let after = after.filter(|after| on && !runs(after, &row.plugin))?;
+        after.off_with(&row.plugin)
+    };
+    (
+        plugins
+            .map(|row| match branch(row) {
+                Some(branch) => format!("{} (stays off with its branch {branch})", row.name),
+                None => row.name.clone(),
+            })
+            .collect(),
+        branches.map(|(branch, _)| *branch).collect(),
+    )
+}
+
+/// What `trial` takes away beyond the changes themselves, in `tree` with
+/// `on` ticked: the plugins that go off or come on with a branch, the
+/// essentials that go with every command that brings each back, and the
+/// plugins ticked on that do not build here.
+fn sum(tree: &Tree, on: &[bool], trial: &Trial, after: &Plugins) -> Vec<String> {
+    let own: Vec<(&Row, bool)> = (tree.nodes.iter().zip(on))
+        .filter_map(|((node, _), on)| Some((tree.row(node)?, *on)))
+        .collect();
+    let mut lines = Vec::new();
+    for (word, gone) in [("off", true), ("on", false)] {
+        let moving: Vec<&Row> = (own.iter())
+            .filter(|(row, now)| row.on == *now)
+            .filter(|(row, _)| {
+                let (was, will) = (runs(&tree.before, &row.plugin), runs(after, &row.plugin));
+                was != will && was == gone
+            })
+            .map(|(row, _)| *row)
+            .collect();
+        let branched: Vec<&str> = moving.iter().map(|row| row.name.as_str()).collect();
+        if !branched.is_empty() {
+            lines.push(format!(
+                "With their branch, {word}: {}",
+                branched.join(", ")
+            ));
+        }
+    }
+    for (row, _) in &own {
+        let plugin = row.plugin.as_str();
+        let gone = runs(&tree.before, plugin) && !runs(after, plugin);
+        if let Some(what) = row.essential.filter(|_| gone) {
+            // Every branch that holds it, and its own choice when that is off.
+            let own = after.own.iter().any(|on| on == plugin);
+            let back: Vec<String> = (after.off.iter())
+                .filter(|branch| config::holds(branch, &row.krate, plugin))
+                .map(String::as_str)
+                .chain((!own).then_some(plugin))
+                .map(|back| format!("  rig plugin enable {back}"))
+                .collect();
+            let these = if back.len() == 1 {
+                "this brings"
+            } else {
+                "these bring"
+            };
+            lines.push(format!(
+                "\nTurning off {} takes away {what}. In a shell, {these} it back:\n{}",
+                row.name,
+                back.join("\n")
+            ));
+        }
+    }
+    for row in &trial.unbuilt {
+        let targets = row.unbuilt.unwrap_or_default().join(" and ");
+        lines.push(format!(
+            "\n{} stays off: it builds on {targets} only.",
+            row.name
+        ));
+    }
+    lines
+}
+
+/// Asks whether to reload now with what `on` changes in `tree`, at the
+/// next start, to go back to the list at node `at`, or to leave without
+/// writing. It offers to reload now only where `reload` says one can run,
+/// and else says why; changes that leave the file unreadable offer only to
+/// keep editing or leave.
 fn ask(
     commands: &mut Commands,
-    (rows, on, branches): (Vec<Row>, Vec<bool>, Vec<String>),
+    (tree, on): (Tree, Vec<bool>),
     agent: Entity,
     at: usize,
     reload: Reload,
 ) {
-    let changed = changed(&rows, &on);
+    let trial = tree.trial(&on);
     let mut lines = Vec::new();
-    for (word, names) in names(&changed, &branches) {
-        lines.push(format!("Turn {word}: {names}"));
-    }
-    if !branches.is_empty() {
-        lines.push(format!(
-            "Turn back on the branches: {}",
-            branches.join(", ")
-        ));
-    }
-    for (row, _) in changed.iter().filter(|(_, on)| !on) {
-        if let Some(what) = row.essential {
-            lines.push(format!(
-                "\nTurning off {} takes away {what}. In a shell, this brings it back:\n  \
-                 rig plugin enable {}",
-                row.name, row.plugin
-            ));
+    for (word, want) in [("on", true), ("off", false)] {
+        let (plugins, branches) = turned((&tree, trial.after()), &trial.changes, want);
+        if !plugins.is_empty() {
+            lines.push(format!("Turn {word}: {}", plugins.join(", ")));
+        }
+        if !branches.is_empty() {
+            let back = if want { "back on" } else { "off" };
+            lines.push(format!("Turn {back} the branches: {}", branches.join(", ")));
         }
     }
-    if let Some(why) = reload.why_not() {
-        lines.push(format!("\n{why}"));
-    }
-    lines.push("Esc goes back to the list.".to_owned());
-    let answers: Vec<Leave> = match reload {
-        Reload::Can => vec![Leave::Reload, Leave::Later, Leave::Edit, Leave::Discard],
-        Reload::NoPlugin | Reload::NoLauncher => vec![Leave::Later, Leave::Edit, Leave::Discard],
+    let answers: Vec<Leave> = match (&trial.after, reload) {
+        (Err(why), _) => {
+            lines.push(format!(
+                "\nWith these changes, settings.toml would not read: {why}"
+            ));
+            vec![Leave::Edit, Leave::Discard]
+        }
+        (Ok(after), reload) => {
+            lines.extend(sum(&tree, &on, &trial, after));
+            if let Some(why) = reload.why_not() {
+                lines.push(format!("\n{why}"));
+            }
+            match reload {
+                Reload::Can => vec![Leave::Reload, Leave::Later, Leave::Edit, Leave::Discard],
+                Reload::NoPlugin | Reload::NoLauncher => {
+                    vec![Leave::Later, Leave::Edit, Leave::Discard]
+                }
+            }
+        }
     };
-    let title = match changed.len() + branches.len() {
+    lines.push("Esc goes back to the list.".to_owned());
+    let title = match tree.changed(&on) {
         1 => "1 plugin change".to_owned(),
         count => format!("{count} plugin changes"),
     };
@@ -733,41 +1068,16 @@ fn ask(
     picker.items = (answers.iter())
         .map(|answer| PickItem::new(answer.label(), ""))
         .collect();
+    drop(trial);
     let question = LeaveQuestion {
-        rows,
+        tree,
         on,
-        branches,
         agent,
         at,
         reload,
         answers,
     };
     commands.spawn((picker, question)).observe(answer);
-}
-
-/// The names of the `changed` rows by what they turn, `on` then `off`, of
-/// those with any; a plugin turned on that a branch keeps off says so,
-/// unless that branch is one of the `branches` turned back on.
-fn names(changed: &[(&Row, bool)], branches: &[String]) -> Vec<(&'static str, String)> {
-    [("on", true), ("off", false)]
-        .into_iter()
-        .filter_map(|(word, want)| {
-            let names: Vec<String> = (changed.iter())
-                .filter(|(_, on)| *on == want)
-                .map(|(row, on)| {
-                    match (row.branch_off.as_ref())
-                        .filter(|branch| *on && !branches.contains(branch))
-                    {
-                        Some(branch) => {
-                            format!("{} (stays off with its branch {branch})", row.name)
-                        }
-                        None => row.name.clone(),
-                    }
-                })
-                .collect();
-            (!names.is_empty()).then(|| (word, names.join(", ")))
-        })
-        .collect()
 }
 
 /// Carries out the answer to the question: writes the changes to
@@ -799,9 +1109,8 @@ fn answer(
         return;
     };
     let LeaveQuestion {
-        rows,
+        tree,
         on,
-        branches,
         agent,
         at,
         reload,
@@ -809,23 +1118,19 @@ fn answer(
     } = question;
     match leave {
         Leave::Edit => {
-            let question = (rows.clone(), on.clone(), branches.clone());
-            list(&mut commands, question, *agent, *at);
+            list(&mut commands, tree.clone(), on, *agent, *at);
             return;
         }
         Leave::Discard => return,
         Leave::Reload | Leave::Later => {}
     }
-    let changed = changed(rows, on);
+    let trial = tree.trial(on);
+    let changes = &trial.changes;
     let path = home
         .map_or_else(Home::from_env, |home| home.0.clone())
         .settings();
-    let changes: Vec<(&str, bool)> = (changed.iter())
-        .map(|(row, on)| (row.plugin.as_str(), *on))
-        .chain(branches.iter().map(|branch| (branch.as_str(), true)))
-        .collect();
     let edited = config::edit(&path, |file| {
-        config::turn(file, &changes).map(|changed| (changed, ()))
+        config::turn(file, changes).map(|changed| (changed, ()))
     });
     if let Err(why) = edited {
         notices.write(Notice::error(
@@ -834,14 +1139,19 @@ fn answer(
         ));
         return;
     }
-    let mut said: Vec<String> = (names(&changed, branches).into_iter())
-        .map(|(word, names)| format!("turned {word} {names}"))
-        .collect();
-    if !branches.is_empty() {
-        said.push(format!(
-            "turned back on the branches {}",
-            branches.join(", ")
-        ));
+    let mut said = Vec::new();
+    for (word, want) in [("on", true), ("off", false)] {
+        let (plugins, branches) = turned((tree, trial.after()), changes, want);
+        if !plugins.is_empty() {
+            said.push(format!("turned {word} {}", plugins.join(", ")));
+        }
+        if !branches.is_empty() {
+            let back = if want { "back on" } else { "off" };
+            said.push(format!(
+                "turned {back} the branches {}",
+                branches.join(", ")
+            ));
+        }
     }
     let then = match (leave, status) {
         (Leave::Reload, Some(mut status)) => match status.ask(*agent, Rebuild::Build) {

@@ -51,7 +51,9 @@ agent loads none of its plugins, whatever their own choice in `enable` and
 `disable`. A plugin that another one adds in its own `build` still runs. Each
 keeps that choice, so turning the branch back on brings it back, and a plugin
 added to an off branch later stays off. A name in `off` that is no crate or
-area refuses the start, as an unknown plugin does.
+area refuses the start, as an unknown plugin does. `/plugins` shows the same
+tree, folded. Enter on a branch puts it into `off` or takes it out; on a
+branch whose plugins are all off by their own choice, it turns each one on.
 
 # Where the examples are
 
@@ -150,7 +152,10 @@ A question is an `Ask` effect: a title, a body, choices and whether text
 answers it. A plugin that waits on the answer spawns the `Ask` as a hold on
 what it asks about. A tool call the user should approve gets
 `NeedsApproval`, which `rig_basics::approval` turns into one question. A
-choice from a list is a `Picker`.
+choice from a list is a `Picker`. An item's `PickItem::parent` makes the list
+a tree, shown folded. In a picker of several answered with its ticks, an
+unticked branch switches its items off, and none of their commands runs; an
+item picked by itself runs its command.
 
 Examples: [ask_user], [confirm_destructive], [approval_batching].
 
