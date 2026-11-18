@@ -17,26 +17,38 @@ use rig_core::wasm_compat::WasmCompatSend;
 const SERVED: u32 = 40_000;
 
 /// A local server that answers with `replies` once the test opens it
-/// ([`Self::open`]), and never if it does not.
+/// ([`Self::open`]), and never if it does not. Its llama.cpp route opens
+/// apart from the others ([`Self::open_ollama`]).
 #[derive(Clone)]
 struct Server {
     replies: SequencedHttpClient,
     opened: async_channel::Receiver<()>,
     open: async_channel::Sender<()>,
+    props_opened: async_channel::Receiver<()>,
+    props_open: async_channel::Sender<()>,
 }
 
 impl Server {
     fn new(replies: impl IntoIterator<Item = MockHttpResponse>) -> Self {
         let (open, opened) = async_channel::bounded(1);
+        let (props_open, props_opened) = async_channel::bounded(1);
         Self {
             replies: SequencedHttpClient::new(replies),
             opened,
             open,
+            props_opened,
+            props_open,
         }
     }
 
     /// Lets every answer, held or later, go out.
     fn open(&self) {
+        self.open.close();
+        self.props_open.close();
+    }
+
+    /// Lets every answer but llama.cpp's `/props` go out.
+    fn open_ollama(&self) {
         self.open.close();
     }
 
@@ -56,8 +68,12 @@ impl HttpClientExt for Server {
         request: Request<Bytes>,
     ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
     {
+        let opened = if request.uri().path().ends_with("/props") {
+            self.props_opened.clone()
+        } else {
+            self.opened.clone()
+        };
         let reply = self.replies.send(request);
-        let opened = self.opened.clone();
         async move {
             opened.recv().await.ok();
             reply.await
@@ -95,21 +111,8 @@ fn served(
     let (mut app, wakes) = start_with(&MemoryStore::default(), |app| {
         app.insert_resource(Models(connector));
     });
-    let spec = Catalog::builtin()
-        .resolve(reference)
-        .map(|found| found.shared());
-    assert!(
-        spec.as_ref().is_ok_and(|spec| spec.input_limit().is_none()),
-        "the catalog lists {reference} with no window"
-    );
-    let Ok(spec) = spec else {
+    let Some(connection) = connection_to(reference, model) else {
         return (app, wakes, Entity::PLACEHOLDER);
-    };
-    let handler =
-        ModelAdapter::<rig_core::operation::Completion>::new(spec.reference(), model.clone());
-    let connection = Connection {
-        spec,
-        handler: rig_ecs::effects::Handler(ErasedHandler::new(handler)),
     };
     let world = app.world_mut();
     let agent = world
@@ -129,6 +132,25 @@ fn served(
         commit_message(world, agent, message).ok();
     }
     (app, wakes, agent)
+}
+
+/// A connection to the catalog model `reference`, which has no window,
+/// answered by `model`.
+fn connection_to(reference: &str, model: &MockCompletionModel) -> Option<Connection> {
+    let spec = Catalog::builtin()
+        .resolve(reference)
+        .map(|found| found.shared());
+    assert!(
+        spec.as_ref().is_ok_and(|spec| spec.input_limit().is_none()),
+        "the catalog lists {reference} with no window"
+    );
+    let spec = spec.ok()?;
+    let handler =
+        ModelAdapter::<rig_core::operation::Completion>::new(spec.reference(), model.clone());
+    Some(Connection {
+        spec,
+        handler: rig_ecs::effects::Handler(ErasedHandler::new(handler)),
+    })
 }
 
 /// Asks `agent` a question while its server holds its answer back, runs
@@ -550,4 +572,138 @@ fn an_adapter_wraps_a_call_built_again_once() {
     );
     assert_eq!(model.request_count(), 1);
     assert_eq!(served.load(Ordering::Relaxed), 1, "wrapped once");
+}
+
+/// Routes every turn's call to [`RouteTo`], a call built again too, as a
+/// plugin that keeps a connection for its agent's calls does.
+fn route_every(
+    mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<TurnCall>)>,
+    to: Res<RouteTo>,
+) {
+    for mut call in &mut calls {
+        call.connection = Some(to.0.clone());
+    }
+}
+
+#[test]
+fn a_kept_clone_of_the_agents_connection_is_built_again_once() {
+    let ollama = r#"{"parameters": "num_ctx 1000000", "model_info": {}}"#;
+    let server = Server::new([MockHttpResponse::success(ollama)]);
+    let model = MockCompletionModel::from_stream_turns([reply("done")]);
+    let (mut app, wakes, agent) = served("ollama/qwen3", &server, &model);
+    // Cloned before the answer, so it never gets the window.
+    let Some(kept) = app.world().get::<Connection>(agent).cloned() else {
+        return;
+    };
+    let counting = Counting(Arc::new(AtomicUsize::new(0)));
+    app.insert_resource(RouteTo(kept))
+        .insert_resource(Wrapping(counting, 0))
+        .add_systems(
+            AgentPass,
+            (
+                (hold_once, route_every).in_set(PrepareSystems::Edit),
+                wrap.in_set(PrepareSystems::Adapt),
+            ),
+        );
+    hold_past_the_answer(&mut app, &wakes, agent, &server);
+    assert_eq!(app.world().resource::<Wrapping>().1, 2, "built again once");
+    assert_eq!(model.request_count(), 1);
+}
+
+/// The connection [`switch_when_built_again`] moves the agent to.
+#[derive(Resource)]
+struct SwitchTo(Option<Connection>);
+
+/// Moves the agent of the first call built again to [`SwitchTo`], before
+/// that call is admitted.
+fn switch_when_built_again(
+    built: Query<&rig_ecs::stage::ForAgent, (Added<rig_ecs::stage::Supersedes>, With<TurnCall>)>,
+    mut to: ResMut<SwitchTo>,
+    mut commands: Commands,
+) {
+    for &rig_ecs::stage::ForAgent(agent) in &built {
+        if let Some(connection) = to.0.take() {
+            commands.entity(agent).insert(connection);
+        }
+    }
+}
+
+#[test]
+fn a_call_built_again_on_another_model_waits_for_that_models_window() {
+    // After the gate's own hold on the first model, and another plugin's.
+    for other_hold in [false, true] {
+        built_again_on_another_model(other_hold);
+    }
+}
+
+fn built_again_on_another_model(other_hold: bool) {
+    const SECOND: &str = "llamacpp/LLaMA_CPP";
+    let server = Server::new([
+        MockHttpResponse::success(r#"{"parameters": "num_ctx 1000000", "model_info": {}}"#),
+        MockHttpResponse::success(format!(
+            r#"{{"default_generation_settings": {{"n_ctx": {SERVED}}}}}"#
+        )),
+    ]);
+    let first = MockCompletionModel::from_stream_turns([reply("not this model")]);
+    let second = MockCompletionModel::from_stream_turns([
+        reply("## Goal\nAnswer the user's questions about the crate."),
+        reply("done"),
+    ]);
+    let (mut app, wakes, agent) = served("ollama/qwen3", &server, &first);
+    app.insert_resource(SwitchTo(connection_to(SECOND, &second)))
+        .add_systems(
+            AgentPass,
+            switch_when_built_again.in_set(GateSystems::After),
+        );
+    if other_hold {
+        app.add_systems(AgentPass, hold_once.in_set(PrepareSystems::Edit));
+    }
+    app.world_mut().trigger(Deliver::new(
+        agent,
+        "And the next question?",
+        DeliveryMode::Steer,
+    ));
+    run_until(&mut app, &wakes, |world| {
+        world.iter_entities().any(|entity| {
+            entity.contains::<OtherHold>()
+                || (entity.contains::<TurnCall>() && entity.contains::<Adapted>())
+        })
+    });
+    server.open_ollama();
+    if other_hold {
+        run_until(&mut app, &wakes, |world| !asking(world));
+        let world = app.world_mut();
+        let holds: Vec<Entity> = world
+            .query_filtered::<Entity, With<OtherHold>>()
+            .iter(world)
+            .collect();
+        for hold in holds {
+            world.despawn(hold);
+        }
+    }
+    let waiting = format!("waiting for the context window of {SECOND}");
+    let held = |world: &World| {
+        world
+            .iter_entities()
+            .any(|entity| entity.get::<Name>().is_some_and(|name| **name == *waiting))
+    };
+    run_until(&mut app, &wakes, |world| {
+        held(world) || !world.resource::<Ended>().0.is_empty()
+    });
+    assert!(
+        held(app.world()),
+        "the call waits for its new model's window (other hold: {other_hold})"
+    );
+    assert_eq!(second.request_count(), 0, "other hold: {other_hold}");
+    server.open();
+    run_until(&mut app, &wakes, |world| {
+        !world.resource::<Ended>().0.is_empty()
+    });
+    let requests = sent(&second);
+    assert!(
+        requests.first().is_some_and(|first| asks_summary(first)),
+        "compacted to the new model's window: {} requests (other hold: {other_hold})",
+        requests.len()
+    );
+    assert!(sent(&first).is_empty(), "other hold: {other_hold}");
 }
