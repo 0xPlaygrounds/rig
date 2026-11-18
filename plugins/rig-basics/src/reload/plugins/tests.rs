@@ -430,7 +430,14 @@ fn esc_with_changes_asks_to_reload_now_or_later_naming_them() {
         asked.body
     );
     // Without the launcher a reload cannot run, so it is not offered.
-    assert_eq!(labels, ["Later, at the next start", "Keep editing"]);
+    assert_eq!(
+        labels,
+        [
+            "Later, at the next start",
+            "Keep editing",
+            "Leave without writing"
+        ]
+    );
     assert!(asked.body.contains("`rig`"), "{}", asked.body);
     assert_eq!(settings(&home), "", "asking writes nothing");
 
@@ -663,7 +670,9 @@ fn keep_editing_keeps_the_branches_plugins_defaults_turns_back_on() {
     .ok();
     let (mut app, agent) = app(&home, true);
     run(&mut app, agent, "plugins defaults");
-    let Some((question, asked)) = picker(&mut app) else {
+    let found = picker(&mut app);
+    assert!(found.is_some(), "no question");
+    let Some((question, asked)) = found else {
         return;
     };
     pick(
@@ -747,7 +756,9 @@ fn a_row_off_by_its_own_choice_too_says_its_branch_keeps_it_off() {
     .ok();
     let (mut app, agent) = app(&home, true);
     open(&mut app, agent);
-    let Some((list, shown)) = picker(&mut app) else {
+    let found = picker(&mut app);
+    assert!(found.is_some(), "no list");
+    let Some((list, shown)) = found else {
         return;
     };
     let stays = "stays off with its branch rig-basics/sessions";
@@ -758,7 +769,9 @@ fn a_row_off_by_its_own_choice_too_says_its_branch_keeps_it_off() {
     );
     tick(&mut app, list, &["Forks and rewind"], &[]);
     pick(&mut app, list, None);
-    let Some((question, asked)) = picker(&mut app) else {
+    let found = picker(&mut app);
+    assert!(found.is_some(), "no question");
+    let Some((question, asked)) = found else {
         return;
     };
     assert!(asked.body.contains(stays), "{}", asked.body);
@@ -769,5 +782,75 @@ fn a_row_off_by_its_own_choice_too_says_its_branch_keeps_it_off() {
         told.iter()
             .any(|text| text.contains("turned on") && text.contains(stays)),
         "{told:?}"
+    );
+}
+
+#[test]
+fn plugins_defaults_can_be_left_without_writing_after_keep_editing() {
+    let home = scratch_home("plugins-defaults-leave");
+    fs::create_dir_all(home.root()).ok();
+    let before = "[plugins]\noff = [\"rig-basics/sessions\"]\n";
+    fs::write(home.settings(), before).ok();
+    let (mut app, agent) = app(&home, true);
+    run(&mut app, agent, "plugins defaults");
+    let found = picker(&mut app);
+    assert!(found.is_some(), "no question");
+    let Some((question, asked)) = found else {
+        return;
+    };
+    let keep = at(&asked, "Keep editing");
+    pick(&mut app, question, keep.map(Chosen::item));
+    let found = picker(&mut app);
+    assert!(found.is_some(), "no list");
+    let Some((list, _)) = found else {
+        return;
+    };
+    // Esc with nothing ticked differently, as a terminal reports it.
+    tick(&mut app, list, &[], &[]);
+    pick(&mut app, list, None);
+    let found = picker(&mut app);
+    assert!(found.is_some(), "no question");
+    let Some((question, asked)) = found else {
+        return;
+    };
+    let leave = at(&asked, "Leave without writing");
+    assert!(leave.is_some(), "{asked:#?}");
+    pick(&mut app, question, leave.map(Chosen::item));
+    assert!(picker(&mut app).is_none());
+    assert_eq!(settings(&home), before);
+}
+
+#[test]
+fn plugins_defaults_says_no_plugin_stays_off_under_a_branch_it_turns_back_on() {
+    let home = scratch_home("plugins-defaults-own-off");
+    fs::create_dir_all(home.root()).ok();
+    fs::write(
+        home.settings(),
+        "[plugins]\noff = [\"rig-basics/sessions\"]\n\
+         disable = [\"rig_basics::sessions::agents::AgentsPlugin\"]\n",
+    )
+    .ok();
+    let (mut app, agent) = app(&home, true);
+    run(&mut app, agent, "plugins defaults");
+    let found = picker(&mut app);
+    assert!(found.is_some(), "no question");
+    let Some((question, asked)) = found else {
+        return;
+    };
+    assert!(asked.body.contains("Forks and rewind"), "{}", asked.body);
+    assert!(!asked.body.contains("stays off"), "{}", asked.body);
+    let later = at(&asked, "Later, at the next start");
+    pick(&mut app, question, later.map(Chosen::item));
+    let told = &app.world().resource::<Told>().0;
+    assert!(
+        told.iter().any(|text| text.contains("Forks and rewind"))
+            && !told.iter().any(|text| text.contains("stays off")),
+        "{told:?}"
+    );
+    let back = config::chosen(&home).unwrap_or_default();
+    assert!(
+        (back.on.iter()).any(|plugin| plugin == "rig_basics::sessions::agents::AgentsPlugin"),
+        "{}",
+        settings(&home)
     );
 }

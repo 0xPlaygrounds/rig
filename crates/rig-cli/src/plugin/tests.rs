@@ -743,7 +743,8 @@ fn removing_a_crates_last_plugin_takes_its_branches_out_of_off() {
 }
 
 /// A branch in `enable` or `disable`, or a plugin in `off`, refuses the
-/// start, and the command the refusal names takes it out of that list.
+/// start, and the command the refusal names takes it out of that list and
+/// changes nothing else.
 #[test]
 fn a_name_in_the_wrong_list_is_taken_out_by_the_fix_its_refusal_names() {
     let home = old_home("wrong-list");
@@ -764,12 +765,14 @@ fn a_name_in_the_wrong_list_is_taken_out_by_the_fix_its_refusal_names() {
             let fix = format!("rig plugin disable {name}");
             let named = refused.is_some_and(|why| why.contains(&fix));
             let ran = run(&home, &["disable", name]).map(|_| ());
-            fixed.push((named, ran.is_ok(), config::chosen(&home).is_ok()));
+            // The fix only takes the name out: nothing else is turned off.
+            let kept = fs::read_to_string(home.settings())?.contains(name);
+            fixed.push((named, ran.is_ok(), config::chosen(&home).is_ok(), kept));
         }
         Ok(fixed)
     })();
     fs::remove_dir_all(home.root()).ok();
-    assert_eq!(result.ok(), Some(vec![(true, true, true); 3]));
+    assert_eq!(result.ok(), Some(vec![(true, true, true, false); 3]));
 }
 
 /// Every branch in `[plugins] off` shows in the list, also an area of one
