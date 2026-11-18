@@ -1,0 +1,20 @@
+[package]
+name = "rig-arbitrary-precision"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "Rig's data read by a program that turns on serde_json's arbitrary_precision."
+
+# Its own workspace: Cargo unifies features across one build, so as a member
+# it would turn arbitrary_precision on for every crate a workspace command
+# builds. `cargo xtask verify --check guard-arbitrary-precision` runs it.
+[workspace]
+
+[dependencies]
+rig-core = { path = "../../crates/rig-core", default-features = false }
+rig-memory = { path = "../../crates/rig-memory" }
+rig-cassette = { path = "../../crates/rig-cassette" }
+rig-typesafeai = { path = "../../crates/rig-typesafeai", default-features = false }
+anyhow = "1"
+serde = "1"
+serde_json = { version = "1", features = ["arbitrary_precision"] }

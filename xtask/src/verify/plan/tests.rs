@@ -134,6 +134,7 @@ fn a_core_change_runs_the_isolated_graphs_and_every_store() {
         "core-all",
         "conformance",
         "effect-corpus",
+        "guard-arbitrary-precision",
         "guard-macro-hygiene",
         "wasm-rig-core",
     ] {

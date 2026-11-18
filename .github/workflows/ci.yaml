@@ -212,8 +212,8 @@ jobs:
         env:
           RIG_CI_PLAN: ${{ needs.plan.outputs.plan }}
 
-  # Builds that start a nested Cargo: facade feature forwarding, the
-  # middleware TLS selectors, the runtime-free agent stepper, the telemetry
+  # Builds that start a nested Cargo: facade feature forwarding, rig's data
+  # under serde_json's arbitrary_precision, the middleware TLS selectors, the runtime-free agent stepper, the telemetry
   # macro's hygiene and derive's dependency renames. Each guard keeps its own
   # target directory under `target/`.
   compile-guards:
