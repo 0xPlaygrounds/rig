@@ -498,11 +498,14 @@ fn answer_asks(
 /// The terminal view on `app`, as in a run at the terminal but with no
 /// terminal: its input, key bindings, completion, pickers and questions,
 /// and the transcript it lays out, driven by the keys [`press`] puts in.
-/// Adds the [`TuiPlugin`](rig_tui::TuiPlugin) when the app has none.
+/// Adds the [`TuiPlugins`](rig_tui::TuiPlugins) the app does not have.
 #[cfg(feature = "tui")]
 pub fn tui_view(app: &mut App) -> &mut App {
     if !app.is_plugin_added::<rig_tui::TuiPlugin>() {
         app.add_plugins(rig_tui::TuiPlugin);
+    }
+    if !app.is_plugin_added::<rig_tui::status::StatusLinePlugin>() {
+        app.add_plugins(rig_tui::status::StatusLinePlugin);
     }
     rig_tui::add_view(app);
     app

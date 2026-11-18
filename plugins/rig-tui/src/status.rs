@@ -7,7 +7,9 @@
 //! the terminal view does it behind a default `tui` cargo feature. A
 //! plugin that writes [`AppStatus`] inits it. A [`StatusLine`] draws one in
 //! a panel, for the shown agent or another, and [`line()`] fits any items
-//! to a width.
+//! to a width. The [`StatusLinePlugin`] puts the shown agent's under the
+//! input, and its `[status] hide` setting keeps items of those names out of
+//! every drawn line while it is on.
 //!
 //! The default plugins' items, as name (order, keep), place a new item
 //! among them. On the left: `session` (10, 2), `title` (20, 14), `model`
@@ -45,11 +47,12 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Widget;
 use rig_ecs::agent::{ActiveTurn, Agent, TurnOf};
 use rig_harness::main_agent::ShownAgent;
+use rig_harness::prelude::AppSettingsExt;
 use serde::{Deserialize, Serialize};
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
-use super::editor::Editor;
+use super::editor::{Editor, MainEditor};
 use super::panel::{PanelCanvas, Placement, TuiPanel};
 
 /// One piece of the status line: its name, what it says, how, and its
@@ -228,12 +231,64 @@ pub(crate) fn add(app: &mut App) {
         );
 }
 
+/// The status line under the input: a [`StatusLine`] on the
+/// [`MainEditor`], and `[status]` in `settings.toml`, whose `hide` names
+/// the items no status line draws. Other plugins still read those items.
+/// Settings apply at the next start. Without the
+/// [`TuiViewPlugin`](crate::TuiViewPlugin), added before it or after, it
+/// draws nothing.
+#[derive(Default)]
+pub struct StatusLinePlugin;
+
+impl Plugin for StatusLinePlugin {
+    fn build(&self, app: &mut App) {
+        app.add_setting::<StatusSettings>("status");
+    }
+
+    // In `finish`, after every plugin's `build`, so the order they were
+    // added in does not matter.
+    fn finish(&self, app: &mut App) {
+        if !app.is_plugin_added::<crate::TuiViewPlugin>() {
+            return;
+        }
+        app.add_observer(line_under_input);
+        // An editor spawned before this plugin finished gets it here.
+        let world = app.world_mut();
+        let inputs: Vec<Entity> = world
+            .query_filtered::<Entity, (With<MainEditor>, Without<StatusLine>)>()
+            .iter(world)
+            .collect();
+        for input in inputs {
+            world.entity_mut(input).insert(StatusLine::default());
+        }
+    }
+}
+
+/// `[status]` in `settings.toml`.
+#[derive(Resource, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+pub(crate) struct StatusSettings {
+    /// The names of the items no status line draws.
+    hide: Vec<String>,
+}
+
+/// Puts the shown agent's status line on each main editor as it appears.
+fn line_under_input(
+    added: On<Add<MainEditor>>,
+    lines: Query<(), With<StatusLine>>,
+    mut commands: Commands,
+) {
+    if !lines.contains(added.entity) {
+        commands.entity(added.entity).insert(StatusLine::default());
+    }
+}
+
 /// A status line: `agent`'s items (the shown agent's, with `None`),
 /// those of its running turn and the app's, by place, fit to its panel's
 /// width; with no agent, `no agent` where its model would be. It draws in
 /// one row of its [`TuiPanel`]. On an [`Editor`] it is
-/// drawn by the editor instead, in its bottom row while nothing is typed;
-/// the default screen's is so, for the shown agent.
+/// drawn by the editor instead, in its bottom row while nothing is typed,
+/// as the [`StatusLinePlugin`] puts the shown agent's on the main editor.
 #[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[require(TuiPanel = TuiPanel::new(Placement::Bottom(Constraint::Length(1))))]
 pub struct StatusLine {
@@ -249,6 +304,7 @@ pub(crate) struct StatusSources<'w, 's> {
     active: Query<'w, 's, &'static ActiveTurn>,
     shown: Res<'w, ShownAgent>,
     app: Option<Res<'w, AppStatus>>,
+    settings: Option<Res<'w, StatusSettings>>,
 }
 
 impl StatusSources<'_, '_> {
@@ -262,10 +318,15 @@ impl StatusSources<'_, '_> {
         let no_agent =
             StatusItem::new("agent", Side::Left, 30, u8::MAX).says("no agent", Tone::Dim);
         let no_agent = agent.is_none().then_some(&no_agent);
+        let hide = self
+            .settings
+            .as_deref()
+            .map_or(&[][..], |settings| &settings.hide);
         let items = [app, own, turn]
             .into_iter()
             .flatten()
-            .flat_map(StatusItems::iter);
+            .flat_map(StatusItems::iter)
+            .filter(|item| !hide.iter().any(|name| name == item.name));
         self::line(items.chain(no_agent), width)
     }
 }

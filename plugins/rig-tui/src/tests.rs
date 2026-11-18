@@ -43,13 +43,23 @@ pub(crate) fn view_app() -> (App, Entity) {
     view_app_with(|_| {})
 }
 
-/// [`view_app`], with `plugin` built after the terminal view's plugin.
+/// [`view_app`], with `plugin` built after the terminal view's plugins.
 pub(crate) fn view_app_with(plugin: impl FnOnce(&mut App)) -> (App, Entity) {
+    view_app_of(|app| {
+        app.add_plugins(TuiPlugins);
+        plugin(app);
+    })
+}
+
+/// [`view_app`] with the view's plugins `add` adds, and every plugin's
+/// `finish` run, as a run does.
+pub(crate) fn view_app_of(add: impl FnOnce(&mut App)) -> (App, Entity) {
     let mut app = App::new();
     app.set_error_handler(rig_harness::error::panic)
         .insert_resource(Invoked::default())
-        .add_plugins((AgentPlugin, AskPlugin, PickPlugin, TuiPlugin));
-    plugin(&mut app);
+        .add_plugins((AgentPlugin, AskPlugin, PickPlugin));
+    add(&mut app);
+    app.finish();
     app.init_resource::<Delivered>().add_observer(
         |accepted: On<Add<Started>>,
          messages: Query<&Incoming>,

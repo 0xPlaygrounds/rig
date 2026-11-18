@@ -262,6 +262,25 @@ and `tokens` in `settings.toml` set it for new sessions. Dollars count only
 priced calls: a subscription model's, such as a `chatgpt/*` one, has no
 price, so bound those by tokens.
 
+The status line is its own plugin, `rig_tui::status::StatusLinePlugin`, on
+by default. `rig plugin disable rig_tui::status::StatusLinePlugin` leaves
+the input's bottom row empty, which also takes away the model's name and
+what the agent is doing. `[status] hide` in `settings.toml` leaves single
+parts out by name, at the next start:
+
+```toml
+[status]
+hide = ["cost", "cache"]
+```
+
+The parts rig draws: `session`, `title` (a subagent's name), `model`,
+`reasoning`, `status` (what the agent is doing), `subagents`, `others` (other
+agents at work), `turn` (what the running turn spent), `reload`, `copied`,
+`tokens`, `cache`, `cost`, `budget` and `context`. Another plugin's parts
+are hidden by their names in the same way, and a name nothing draws does
+nothing. Hidden parts are only not drawn: plugins still read them. With no
+agent, the line says `no agent`, which is no part.
+
 Typing while the agent works is fine. Enter steers the running turn (the
 message goes to the model with its next call, after the tool results it waits
 for) and Tab queues a follow-up that is sent when the turn would end. Both
@@ -710,8 +729,9 @@ of its plugins comes back as you left it, and a plugin rig adds to an off
 branch later stays off. Moving a plugin to another module changes its area.
 A plugin another adds in its own `build` runs whatever its choice:
 Subagents adds Approvals, and Budget and Helpers add Usage. Folded output
-does nothing without the terminal view, nor MCP approval without MCP
-servers.
+and the status line do nothing without the terminal view, nor MCP approval
+without MCP servers. With the terminal view off, rig builds none of the
+plugins of `rig-tui`, such as the status line.
 
 A mistake in this file (a plugin or branch rig does not know, a branch in
 `enable` or `disable`, a plugin in `off`, an `extra` path that holds no
