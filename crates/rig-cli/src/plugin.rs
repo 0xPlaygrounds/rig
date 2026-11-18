@@ -553,8 +553,9 @@ fn list(home: &Home) -> Result<()> {
 /// it each area of more than one plugin, then the plugins, one line each:
 /// `on` or `off`, the type and what it adds. A branch `[plugins] off` turns
 /// off says so. A plugin of rig's ends with its default and whether the
-/// settings changed it, with a warning on an essential plugin turned off;
-/// an extra ends with where its crate comes from.
+/// settings changed it, with a warning on an essential plugin turned off,
+/// the plugin that adds it and the one it does nothing without; an extra
+/// ends with where its crate comes from.
 fn listing(home: &Home) -> Result<String> {
     let chosen = config::chosen(home)?;
     let mut rigs = Vec::new();
@@ -661,8 +662,14 @@ fn row(chosen: &Plugins, depth: usize, plugin: &str, about: &str) -> (String, Op
     let own = chosen.own.iter().any(|it| it == plugin);
     let state = if on { "on" } else { "off" };
     let mut about = about.to_owned();
-    if let Some(branch) = chosen.off_with(plugin).filter(|_| own) {
+    if let Some(branch) = chosen.off_with(plugin).filter(|_| own && !on) {
         about.push_str(&format!(" (off with its branch {branch})"));
+    }
+    if let Some(by) = chosen.needed_by(plugin).and_then(built_in) {
+        about.push_str(&format!(" (needed by {})", by.name));
+    }
+    if let Some(without) = chosen.does_nothing_without(plugin).filter(|_| on) {
+        about.push_str(&format!(" (does nothing without {})", without.name));
     }
     if !on && let Some(what) = essential(plugin) {
         about.push_str(&format!(" (warning: off, which takes away {what})"));
@@ -680,7 +687,8 @@ fn row(chosen: &Plugins, depth: usize, plugin: &str, about: &str) -> (String, Op
 /// a plugin out of `off`, a name that is neither out of all three), or
 /// else turns off a plugin that does not build here, which is how the
 /// settings' refusal of each says to fix it, even while the file holds
-/// other mistakes.
+/// other mistakes. It refuses to disable a plugin that a plugin on adds,
+/// naming that one.
 fn enable(home: &Home, name: &str, on: bool) -> Result<()> {
     let path = home.settings();
     let (changed, forgot) = config::edit(&path, |file| -> Result<_> {
@@ -705,6 +713,16 @@ fn enable(home: &Home, name: &str, on: bool) -> Result<()> {
                 let changed = set_on(&mut file.document, name, false, by_default);
                 return Ok((changed, false));
             }
+        }
+        if !on
+            && let Ok(chosen) = config::plugins(file)
+            && let Some(by) = chosen.needed_by(name)
+        {
+            return Err(format!(
+                "`{name}` stays on while `{by}`, which adds it, is on: \
+                 `rig plugin disable {by}` turns that off"
+            )
+            .into());
         }
         Ok((config::turn(file, &[(name, on)])?, false))
     })?;
@@ -755,6 +773,7 @@ fn enable(home: &Home, name: &str, on: bool) -> Result<()> {
         let mut keeping: Vec<&str> = Vec::new();
         for plugin in &plugins {
             if let Some(off) = chosen.off_with(plugin)
+                && !chosen.on.iter().any(|it| it == plugin)
                 && !keeping.contains(&off)
             {
                 keeping.push(off);
