@@ -157,10 +157,11 @@ choice over ACP and an automatic pick are never saved either. With nothing
 saved or named, the terminal view, a headless run and an editor's new session
 all start on the same automatic pick: the ChatGPT plan's latest frontier model
 when you are signed in and your account offers it, else the first model a key
-reaches, in catalog order, else a local server's. The sign-in goes first
-because you signed in within rig, while an exported key may be there for other
-tools. The pick waits while ChatGPT is asked which models your account may
-use, and a model you pick meanwhile stays. With none to reach, the terminal
+or a sign-in reaches, in catalog order, else a local server's. The sign-in goes
+first because you signed in within rig, while an exported key may be there for
+other tools. The pick lands once the start is over, after MCP servers start
+and ChatGPT says which models your account may use, and a model you pick
+meanwhile stays. With none to reach, the terminal
 view shows "no model: /model picks one".
 
 `/login` without arguments lets you pick the ChatGPT plan or a provider that

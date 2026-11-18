@@ -52,7 +52,8 @@ to use a new one.
   `/model` and `/effort` change them too, for that session only: a new
   session starts on the terminal's saved default, else on the same
   automatic pick as the terminal view (the ChatGPT plan's model when signed
-  in, else the first a key reaches), and nothing chosen in an editor
+  in, else the first a key or a sign-in reaches, once the session's start
+  is over), and nothing chosen in an editor
   changes it. `rig acp`'s own options, such as `--model`, do not
   reach the sessions: the editor's options choose.
 - **Tool calls:** each of the main agent's calls, as it is asked for, runs,

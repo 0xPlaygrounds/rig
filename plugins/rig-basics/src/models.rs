@@ -192,16 +192,31 @@ pub struct FirstPickPlugin;
 
 impl Plugin for FirstPickPlugin {
     fn build(&self, app: &mut App) {
-        app.configure_sets(
-            Update,
-            FirstPickSystems.after(RunStartSystems).before(AgentLoop),
-        )
-        .add_systems(
-            Update,
-            start_on_first_pick
-                .in_set(FirstPickSystems)
-                .run_if(resource_exists::<RunStart>),
-        );
+        app.init_resource::<FirstPickSettled>()
+            .configure_sets(
+                Update,
+                FirstPickSystems.after(RunStartSystems).before(AgentLoop),
+            )
+            .add_systems(
+                Update,
+                start_on_first_pick
+                    .in_set(FirstPickSystems)
+                    .run_if(resource_exists::<RunStart>),
+            );
+    }
+}
+
+/// Whether the first pick is settled for this run: given, found to be
+/// nothing, or not needed because the agent has a model. A front that
+/// answers with the agent's model, such as ACP's opening, waits for it
+/// rather than deciding again.
+#[derive(Resource, Default, Debug)]
+pub struct FirstPickSettled(bool);
+
+impl FirstPickSettled {
+    /// Whether the first pick is settled.
+    pub fn is_settled(&self) -> bool {
+        self.0
     }
 }
 
@@ -222,10 +237,10 @@ fn start_on_first_pick(
         ),
     >,
     models: Res<Models>,
-    mut done: Local<bool>,
+    mut settled: ResMut<FirstPickSettled>,
     mut commands: Commands,
 ) {
-    if *done || !start.is_over() {
+    if settled.0 || !start.is_over() {
         return;
     }
     let Some(agent) = main_agent(&agents) else {
@@ -235,7 +250,7 @@ fn start_on_first_pick(
     let busy = match unchosen.get(agent) {
         Ok(busy) if !named => busy,
         _ => {
-            *done = true;
+            settled.0 = true;
             return;
         }
     };
@@ -246,14 +261,14 @@ fn start_on_first_pick(
         // The answer wakes the loop and changes the models.
         FirstPick::Checking => {}
         FirstPick::Model(model) => {
-            *done = true;
+            settled.0 = true;
             commands.trigger(SetModel {
                 entity: agent,
                 model,
                 kind: ChoiceKind::ForThisRun,
             });
         }
-        FirstPick::Nothing(_) => *done = true,
+        FirstPick::Nothing(_) => settled.0 = true,
     }
 }
 

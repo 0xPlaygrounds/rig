@@ -23,7 +23,7 @@ use agent_client_protocol::schema::v1 as acp;
 use agent_client_protocol::{Agent, Client, ConnectionTo, Error};
 use async_channel::{Receiver, Sender};
 use bevy_ecs::system::SystemParam;
-use rig_basics::models::{FirstPick, FirstPickSystems, TypedChoices};
+use rig_basics::models::{FirstPick, FirstPickSettled, FirstPickSystems, TypedChoices};
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::host::pipes::Writer;
 use rig_harness::host::signals;
@@ -747,6 +747,7 @@ struct Opened<'w, 's> {
     workspace: Res<'w, ProjectWorkspace>,
     slash: Query<'w, 's, (&'static Name, &'static SlashCommand)>,
     models: Res<'w, Models>,
+    first_pick: Res<'w, FirstPickSettled>,
     options: options::Options<'w, 's>,
     notices: MessageWriter<'w, Notice>,
     commands: Commands<'w, 's>,
@@ -794,17 +795,16 @@ fn open(mut opened: Opened) {
     if !opened.start.is_over() {
         return;
     }
-    // The answer lists the models the client can pick, so it waits until
-    // each sign-in knows what its account offers. A new session's agent has
-    // the first pick by then, as in every front.
+    // The answer lists the models the client can pick and the agent's, so
+    // it waits until the first pick is settled, which waits for each
+    // sign-in to know what its account offers.
+    if !opened.first_pick.is_settled() {
+        return;
+    }
     let picks = !opened.session.chose && chosen.is_none();
-    match FirstPick::of(&opened.models) {
-        FirstPick::Checking => return,
-        FirstPick::Nothing(Some(why)) if picks => {
-            let why = format!("No model can be reached: {why}.");
-            opened.notices.write(Notice::error(agent, why));
-        }
-        _ => {}
+    if picks && let FirstPick::Nothing(Some(why)) = FirstPick::of(&opened.models) {
+        let why = format!("No model can be reached: {why}.");
+        opened.notices.write(Notice::error(agent, why));
     }
     opened.session.chose = true;
     let replay = opened.session.replay.take().unwrap_or_default();

@@ -174,8 +174,8 @@ pub(crate) fn unreadable_key(status: &ModelStatus) -> Option<String> {
     why.starts_with(UNREADABLE).then(|| why.clone())
 }
 
-/// Says once per run, naming the file and the model, when an automatic
-/// first pick lands where it does because a saved key cannot be read.
+/// Says once per run, naming the file and the model, when a saved key
+/// for a model listed before an automatic first pick cannot be read.
 fn say_key_passed_over(
     set: On<SetModel>,
     (models, invoked): (Res<Models>, Option<Res<Invoked>>),
@@ -185,10 +185,7 @@ fn say_key_passed_over(
 ) {
     let named = invoked.is_some_and(|invoked| invoked.args.model.is_some());
     let auto = !named && set.kind == ChoiceKind::ForThisRun && unchosen.contains(set.entity);
-    // A usable sign-in's model goes before every key.
-    let signed_in = set.model == super::default_model();
-    if *said || !auto || signed_in || FirstPick::of(&models) != FirstPick::Model(set.model.clone())
-    {
+    if *said || !auto || FirstPick::of(&models) != FirstPick::Model(set.model.clone()) {
         return;
     }
     let specs = || models.0.catalog().iter();
