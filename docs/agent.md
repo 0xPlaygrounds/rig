@@ -474,7 +474,8 @@ server, gets the window its server says (llama.cpp's `n_ctx`; Ollama's
 `num_ctx`, else the model's trained length, which can be larger than the
 window Ollama serves when no `num_ctx` is set). Its first request waits a few
 seconds at most for that answer. A server that cannot be reached or answers
-with an error is asked again on the next turn. One whose server does not say
+with a server error (5xx) is asked again on the next turn; a client error
+(4xx) is its answer. One whose server does not say
 has no window, so it is compacted only when a request is refused as too long.
 `/compact` compacts now, and `/compact <focus>` says what the summary should
 keep. The summarized messages stay in the transcript, under a line that shows
