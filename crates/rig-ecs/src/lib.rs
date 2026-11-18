@@ -251,6 +251,10 @@ impl Plugin for AgentPlugin {
                         .run_if(on_message::<AppExit>),
                 ),
             )
+            .add_systems(
+                stage::AgentPass,
+                model::wait_for_window.in_set(stage::Stage::Gate),
+            )
             .add_observer(session_log::retire)
             .add_observer(requests::end_with_settled)
             .add_observer(requests::refuse_ended)

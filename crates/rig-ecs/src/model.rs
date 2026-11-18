@@ -13,10 +13,13 @@ use rig_core::completion::{CompletionRequest, Reasoning, UnsupportedOption};
 use rig_core::effect::EffectKind;
 use serde::{Deserialize, Serialize};
 
+use super::agent::CallOf;
 use super::agent::{ActiveTurn, Agent, Notice};
 use super::effects::Handler;
 use super::session_log::ReflectSaved;
+use super::stage::{Effect, ForAgent, HoldOf, ReadyToStart, SupersededBy};
 use super::tasks::{Running, Wake};
+use super::turn::{Adapted, TurnCall};
 
 /// The models agents can use and how each is reached: rig's built-in
 /// catalog by default. A plugin adds a sign-in with
@@ -385,19 +388,42 @@ pub(crate) fn ask_window(
 }
 
 /// Keeps the window a model's server answered with, and gives it to every
-/// [`Connection`] to that model without one.
+/// [`Connection`] to that model without one. The turns' calls held for the
+/// answer ([`wait_for_window`]) are released, and those measured without a
+/// window are built anew when one came.
 pub(crate) fn learn_window(
     answered: On<Insert<WindowAnswer>>,
     asks: Query<(&AskingWindow, &WindowAnswer)>,
+    holds: Query<(Entity, &WaitingForWindow, &HoldOf)>,
+    calls: Query<(&CallOf, &ForAgent, &Effect), Without<SupersededBy>>,
     mut connections: Query<&mut Connection>,
     mut windows: ResMut<ServedWindows>,
     mut commands: Commands,
 ) {
-    let Ok((AskingWindow(reference), WindowAnswer(window))) = asks.get(answered.entity) else {
+    let Ok((AskingWindow(reference), &WindowAnswer(window))) = asks.get(answered.entity) else {
         return;
     };
     commands.entity(answered.entity).despawn();
-    let Some(window) = *window else {
+    for (hold, WaitingForWindow(waited), &HoldOf(call)) in &holds {
+        if waited != reference {
+            continue;
+        }
+        commands.entity(hold).despawn();
+        let Some((&CallOf(turn), &ForAgent(agent), effect)) =
+            calls.get(call).ok().filter(|_| window.is_some())
+        else {
+            continue;
+        };
+        commands
+            .spawn((
+                TurnCall,
+                CallOf(turn),
+                ForAgent(agent),
+                Effect::with_parent_id(effect.parent),
+            ))
+            .add_related::<SupersededBy>(&[call]);
+    }
+    let Some(window) = window else {
         return;
     };
     windows.0.insert(reference.clone(), Some(window));
@@ -405,6 +431,36 @@ pub(crate) fn learn_window(
         if connection.spec.reference() == *reference && connection.spec.input_limit().is_none() {
             connection.spec = with_window(&connection.spec, window);
         }
+    }
+}
+
+/// A hold on a turn's model call while the server of its model, named by
+/// reference, is asked for the model's window.
+#[derive(Component)]
+pub(crate) struct WaitingForWindow(String);
+
+/// Holds each turn's call about to start to a model with no context window
+/// while that model's server is asked for one ([`ask_window`]), in
+/// [`Stage::Gate`](super::stage::Stage::Gate): measured without the window,
+/// its request would not be compacted near it.
+pub(crate) fn wait_for_window(
+    calls: Query<(Entity, &Adapted), (ReadyToStart, With<TurnCall>)>,
+    asks: Query<&AskingWindow>,
+    mut commands: Commands,
+) {
+    for (call, Adapted(connection)) in &calls {
+        if connection.spec.input_limit().is_some() {
+            continue;
+        }
+        let reference = connection.spec.reference();
+        if !asks.iter().any(|AskingWindow(asked)| *asked == reference) {
+            continue;
+        }
+        commands.spawn((
+            Name::new(format!("waiting for the context window of {reference}")),
+            WaitingForWindow(reference),
+            HoldOf(call),
+        ));
     }
 }
 
