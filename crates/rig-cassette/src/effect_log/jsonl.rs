@@ -952,7 +952,7 @@ pub fn read_from(lines: impl BufRead) -> io::Result<EffectLog> {
     let mut records = Vec::new();
     for line in lines.lines() {
         if let Some(record) = known.line(&line?, true)? {
-            records.push(serde_json::from_value(record)?);
+            records.push(record_of(&record)?);
         }
     }
     Ok(EffectLog {
@@ -1031,9 +1031,16 @@ pub fn read_outcomes_from(lines: impl BufRead) -> io::Result<Vec<EffectRecord>> 
             request.insert("chat_history".to_owned(), Value::Array(Vec::new()));
             request.insert("tools".to_owned(), Value::Array(Vec::new()));
         }
-        records.push(serde_json::from_value(record)?);
+        records.push(record_of(&record)?);
     }
     Ok(records)
+}
+
+/// A record read from its text rather than from `record`: with serde_json's
+/// `arbitrary_precision` on, a `Value` cannot hand an integer beyond u64 or
+/// i64 to serde's buffer for a tagged enum, while the text can.
+fn record_of(record: &Value) -> serde_json::Result<EffectRecord> {
+    serde_json::from_str(&record.to_string())
 }
 
 /// Folds a later header into the merged one.
