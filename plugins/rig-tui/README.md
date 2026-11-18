@@ -2,9 +2,12 @@
 
 The terminal view of the [rig coding agent](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-harness), and the
 front of a run on an interactive terminal. `TuiPlugin` is `TuiViewPlugin`
-(terminal, keys, frame) plus `DefaultScreenPlugin` (transcript, status line,
-input), and the default screen is built from the same public widgets a plugin
-places in panels of its own.
+(terminal, keys, frame) plus `DefaultScreenPlugin` (transcript, input), and
+the default screen is built from the same public widgets a plugin places in
+panels of its own. `status::StatusLinePlugin` draws the status line under the
+input, leaving out the parts `[status] hide` in `settings.toml` names.
+`TuiPlugins` is the view with those plugins, for code that adds the view
+itself.
 
 The view tells the terminal when a turn of an agent nothing spawned runs, as a
 shell does a command: OSC 133 marks (`C` as it starts, `D;1` as it fails or

@@ -294,7 +294,9 @@ fn hidden_parts_are_not_drawn_but_stay_among_the_items() {
         [] as [String; 0]
     );
     // The placeholder for no agent is no part.
+    app.world_mut().despawn(agent);
     app.insert_resource(ShownAgent(None));
+    app.world_mut().write_message(crate::RequestRedraw);
     app.update();
     let (row, _) = input_bottom_row(&mut app);
     assert!(row.contains("no agent"), "{row:?}");

@@ -1,8 +1,9 @@
 //! The default screen, built from the view's public widgets only: a
 //! [`TranscriptPane`] over the shown agent, which takes what the other
 //! panels leave, the [`InlineStrip`] of a question asked beside the work,
-//! and the input, an [`Editor`] with the shown agent's [`StatusLine`] in
-//! its bottom row. An app
+//! and the input, an [`Editor`], in whose bottom row the
+//! [`StatusLinePlugin`](crate::status::StatusLinePlugin) draws the shown
+//! agent's status line. An app
 //! that builds its own screen adds [`TuiViewPlugin`](crate::TuiViewPlugin)
 //! without this one and spawns its own, marking the transcript and the
 //! editor the keys go to [`MainPane`] and [`MainEditor`].
@@ -12,7 +13,7 @@ use bevy_ecs::prelude::*;
 use ratatui::layout::Constraint;
 
 use crate::{
-    Editor, InlineStrip, MainEditor, MainPane, PaneKeys, Placement, StatusLine, TranscriptPane,
+    Editor, InlineStrip, MainEditor, MainPane, PaneKeys, Placement, TranscriptPane,
     TranscriptSource, TuiPanel,
 };
 
@@ -32,7 +33,6 @@ impl Plugin for DefaultScreenPlugin {
             Name::new("tui:input"),
             Editor::default(),
             MainEditor,
-            StatusLine::default(),
             bottom(3),
         ));
         world.spawn((Name::new("tui:strip"), InlineStrip));

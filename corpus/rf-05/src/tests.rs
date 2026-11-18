@@ -348,6 +348,8 @@ fn add_defaults(app: &mut App) {
     load::<print::PrintPlugin>(app, "rig-basics", "");
     #[cfg(feature = "tui")]
     load::<rig_tui::TuiPlugin>(app, "rig-tui", "");
+    #[cfg(feature = "tui")]
+    load::<rig_tui::status::StatusLinePlugin>(app, "rig-tui", "");
 }
 
 /// R6: the plugin's Gate system is ordered against the default plugins'

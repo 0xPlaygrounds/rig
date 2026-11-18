@@ -11,7 +11,8 @@
 //! a frame. [`ratatui`] and [`crossterm`] are re-exported so a plugin uses
 //! the same versions.
 //!
-//! [`TuiPlugin`] is [`TuiViewPlugin`] plus [`DefaultScreenPlugin`]. Where a
+//! [`TuiPlugin`] is [`TuiViewPlugin`] plus [`DefaultScreenPlugin`], and
+//! [`TuiPlugins`] adds the plugins drawing parts of that screen. Where a
 //! plugin hooks in:
 //!
 //! - **Panels:** [`TuiPanel`], drawn in [`TuiSystems::Draw`] ([`panel`]);
@@ -23,7 +24,8 @@
 //!   agent's conversation on screen.
 //! - **Looks:** [`TranscriptRender`] for tool calls, notes, content
 //!   blocks, asides, message text and decorations; [`BuildFailedLooks`].
-//! - **Status line:** [`StatusItems`], [`AppStatus`] ([`status`]).
+//! - **Status line:** [`StatusItems`], [`AppStatus`] ([`status`]); the
+//!   [`StatusLinePlugin`](status::StatusLinePlugin) draws it under the input.
 //! - **Keys:** [`KeyBinding`], [`KeyFocus`] ([`keys`]); [`PendingInput`]
 //!   in [`InputSystems::Filter`] for keys before any binding, with the
 //!   [`InputContext`].
@@ -116,6 +118,19 @@ pub struct TuiPlugin;
 impl Plugin for TuiPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((TuiViewPlugin, DefaultScreenPlugin));
+    }
+}
+
+/// The terminal view with the parts of its default screen that are plugins
+/// of their own, the [`StatusLinePlugin`](status::StatusLinePlugin): for
+/// code that adds the view itself. rig's settings add each one on its own.
+pub struct TuiPlugins;
+
+impl PluginGroup for TuiPlugins {
+    fn build(self) -> bevy_app::PluginGroupBuilder {
+        bevy_app::PluginGroupBuilder::start::<Self>()
+            .add(TuiPlugin)
+            .add(status::StatusLinePlugin)
     }
 }
 
