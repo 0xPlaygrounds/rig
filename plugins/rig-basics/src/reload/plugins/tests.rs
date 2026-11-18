@@ -651,3 +651,49 @@ fn plugins_defaults_turns_off_branches_back_on() {
         .collect();
     assert_eq!(back.on, defaults);
 }
+
+#[test]
+fn keep_editing_keeps_the_branches_plugins_defaults_turns_back_on() {
+    let home = scratch_home("plugins-defaults-edit");
+    fs::create_dir_all(home.root()).ok();
+    fs::write(
+        home.settings(),
+        "[plugins]\noff = [\"rig-basics/sessions\"]\n",
+    )
+    .ok();
+    let (mut app, agent) = app(&home, true);
+    run(&mut app, agent, "plugins defaults");
+    let Some((question, asked)) = picker(&mut app) else {
+        return;
+    };
+    pick(&mut app, question, at(&asked, "Keep editing").map(Chosen::item));
+    let found = picker(&mut app);
+    assert_eq!(
+        found.as_ref().map(|(_, shown)| shown.title.as_str()),
+        Some("Plugins")
+    );
+    let Some((list, _)) = found else {
+        return;
+    };
+    tick(&mut app, list, &["Budget"], &[]);
+    pick(&mut app, list, None);
+    let found = picker(&mut app);
+    assert!(
+        found
+            .as_ref()
+            .is_some_and(|(_, asked)| asked.body.contains("rig-basics/sessions")),
+        "{found:?}"
+    );
+    let Some((question, asked)) = found else {
+        return;
+    };
+    let later = at(&asked, "Later, at the next start");
+    pick(&mut app, question, later.map(Chosen::item));
+    let back = config::chosen(&home).unwrap_or_default();
+    assert!(back.off.is_empty(), "{}", settings(&home));
+    assert!(
+        (back.on.iter()).any(|plugin| plugin == "rig_basics::budget::BudgetPlugin"),
+        "{}",
+        settings(&home)
+    );
+}
