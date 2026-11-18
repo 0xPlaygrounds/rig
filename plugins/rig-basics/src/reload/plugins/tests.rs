@@ -318,10 +318,10 @@ fn every_row_has_a_name_of_its_own() {
         ("Welcome", "welcome::Plugin"),
         ("viz", "viz::charts::Plugin"),
         ("viz", "viz::tables::Plugin"),
-        ("Plugin", "Other"),
-        ("lone", "Plugin"),
-        ("Model", "picker"),
-        ("Model", "picker2"),
+        ("Plugin", "other::Other"),
+        ("lone", "lone::Plugin"),
+        ("Model", "model::picker"),
+        ("Model", "model::picker2"),
         ("picker", "x::picker"),
     ];
     let tables: String = (extras.iter())

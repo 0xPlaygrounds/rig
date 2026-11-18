@@ -700,8 +700,28 @@ and anything else a session starts run the same home's build.
 what it adds. `rig plugin enable <type>` and `disable <type>` change
 `[plugins]`, keeping every comment. `rig plugin new hello` makes that crate in
 `$RIG_HOME/plugins/hello`, outside any workspace, and adds its
-`[[plugins.extra]]`, checked before `settings.toml` is written. Another
-crate's plugin is a `[[plugins.extra]]` table you write.
+`[[plugins.extra]]`, checked before `settings.toml` is written.
+
+`rig plugin add` adds another crate's plugin as its `[[plugins.extra]]`
+table, keeping every comment, and `rig plugin remove` takes it out again:
+
+```sh
+rig plugin add my_save::SavePlugin --path ./save          # a local crate
+rig plugin add my_save::SavePlugin --git https://example.com/save.git --branch main
+rig plugin add my_save::SavePlugin --version 0.2          # from crates.io
+rig plugin remove my_save::SavePlugin
+```
+
+`--git` takes `--branch` or `--rev`. A relative `--path` is read against the
+directory you run it in and written as its full resolved path, since
+`settings.toml` reads relative paths against `RIG_HOME`. The package is the one
+at `--path`, else the type path's first segment (`my_save`); `--crate
+my-save` names a git or crates.io package whose name has a `-`. A plugin type
+the file has already, a second source, or a path that holds no crate is
+refused and the file stays as it was. `remove` takes the comment lines right
+above the table with it, but not those past a blank line. It also takes the
+type out of `enable` and `disable`, and leaves the crate's files where they
+are, also for a crate `rig plugin new` made.
 
 In the agent, `/plugins` reads `settings.toml` itself and opens at once. It
 lists every plugin by a short name, such as "Terminal view", in groups, and

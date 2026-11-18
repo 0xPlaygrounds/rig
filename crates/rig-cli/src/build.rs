@@ -1001,8 +1001,8 @@ fn check_bevy(
         Explained(format!(
             "{failure}: a plugin asks for a Bevy that is not this agent's {BEVY_VERSION}:\n  \
              {}\nWrite its Bevy requirements as \"{range}\", such as `bevy_ecs = {{ version = \
-             \"{range}\", default-features = false }}`, or remove it from [[plugins.extra]] in \
-             settings.toml.",
+             \"{range}\", default-features = false }}`, or take it out with \
+             `rig plugin remove <type>`.",
             pins.join("\n  "),
             range = super::bevy_range(),
         ))
@@ -1018,17 +1018,18 @@ fn check_bevy(
     };
     // Every package that depends on the foreign Bevy, directly or not.
     let dependents = tree(launch, &["--invert", &format!("{bevy}@{version}")], log)?;
-    let culprit = plugins.extras_on().map(|extra| &extra.krate).find(|krate| {
-        (dependents.iter()).any(|line| package(line).is_some_and(|(name, _)| name == *krate))
+    let culprit = plugins.extras_on().find(|extra| {
+        (dependents.iter()).any(|line| package(line).is_some_and(|(name, _)| name == extra.krate))
     });
     Err(Explained(match culprit {
         Some(plugin) => format!(
             "plugin `{name}` uses Bevy {version}, but this rig agent is built on Bevy \
              {BEVY_VERSION}. A Bevy plugin only works with the exact Bevy version of its app. \
              Change {name}'s bevy dependencies to \"{range}\" (with default-features = false), \
-             which cargo builds with the agent's Bevy, or remove it from [[plugins.extra]] in \
-             settings.toml.",
-            name = plugin,
+             which cargo builds with the agent's Bevy, or take it out with \
+             `rig plugin remove {plugin}`.",
+            name = plugin.krate,
+            plugin = plugin.plugin,
             range = super::bevy_range(),
         ),
         None => format!(
