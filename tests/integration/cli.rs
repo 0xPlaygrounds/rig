@@ -74,7 +74,7 @@ fn a_fresh_home_lists_the_defaults_with_what_they_add_and_writes_nothing() {
         let row = |plugin: &str| {
             text.lines()
                 .find(|line| line.split_whitespace().nth(1) == Some(plugin))
-                .map(str::to_owned)
+                .map(|line| line.trim_start().to_owned())
                 .unwrap_or_default()
         };
         let tui = row("rig_tui::TuiPlugin");
