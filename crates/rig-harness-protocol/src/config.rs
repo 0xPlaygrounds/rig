@@ -101,14 +101,16 @@ model to read, and /skill:<name>.";
             on rig_basics::models::ModelsPlugin, "rig-basics", "Model picker", [], None,
                 "/model, /effort and the model picker.";
             on rig_basics::login::LoginPlugin, "rig-basics", "Sign-in", [], None,
-                "/login and /logout: the ChatGPT plan, and providers' API keys; [login] app_name in \
-settings.toml names the app the sign-in pages return to.";
+                "/login and /logout: the ChatGPT plan, and providers' API keys; the keys saved \
+with /login, which it loads at start; [login] app_name in settings.toml names the \
+app the sign-in pages return to.";
             on rig_basics::models::defaults::DefaultsPlugin, "rig-basics",
                 "Model defaults", [], None,
                 "The model and reasoning a new session starts with: [model] in settings.toml, \
 which the last choice rewrites.";
             on rig_basics::sessions::SessionsPlugin, "rig-basics", "Sessions", [], None,
-                "/new, /resume and /name.";
+                "/new, /resume and /name, and the listing of this session that /resume in \
+other windows reads.";
             on rig_basics::sessions::agents::AgentsPlugin, "rig-basics",
                 "Forks and rewind", [], None,
                 "/fork, /agents and rewind (Alt+Up to an earlier message of yours, then Enter): \
@@ -119,7 +121,8 @@ the agents of this session.";
             on rig_basics::telemetry::usage::UsagePlugin, "rig-basics", "Usage", [], None,
                 "What model calls cost, and /usage.";
             on rig_traffic::TrafficPlugin, "rig-traffic", "Traffic log", [], None,
-                "With --traffic-log or [traffic] log = true, provider HTTP in traffic.jsonl.";
+                "Records nothing until --traffic-log or [traffic] log = true; then provider HTTP \
+in traffic.jsonl.";
             on rig_basics::activity::ActivityPlugin, "rig-basics", "Activity", [], None,
                 "What each agent is doing, for views.";
             on rig_basics::coding_tools::ReadTool, "rig-basics", "Read tool", [], None,
@@ -209,7 +212,7 @@ and again once its entry changes: /mcp approve and /mcp deny.";
             off rig_acp::AcpPlugin, "rig-acp", "Editor protocol (ACP)", [], None,
                 "ACP: `rig acp` serves the Agent Client Protocol on stdin and stdout, so an editor \
 such as Zed uses rig, each session in a process of its own, with the MCP servers \
-the editor names.";
+the editor names, and /mcp.";
             off rig_claude_cloak::ClaudeCloakPlugin, "rig-claude-cloak",
                 "Claude subscription", ["linux", "macos"], None,
                 "Claude Cloak: `claude-cloak/*` models signed in with a Claude subscription \
