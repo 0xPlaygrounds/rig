@@ -112,6 +112,8 @@ fn enable_and_disable_change_the_programs_plugin_group() {
     assert!(manifest.contains("\nrig-steel = "), "{manifest}");
     // Without the terminal view, nothing builds rig-tui.
     let headless = home_with(&format!("[plugins]\ndisable = [\"{TUI}\"]\n")).unwrap_or_default();
+    let main = main_rs(&home, &headless, &source);
+    assert!(!main.contains("rig_tui::"), "{main}");
     let manifest = super::manifest(&home, &headless, &source).unwrap_or_default();
     assert!(
         !manifest.contains("rig-tui") && !manifest.contains("\"tui\""),

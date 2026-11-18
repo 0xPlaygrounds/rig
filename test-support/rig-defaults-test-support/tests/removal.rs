@@ -1,6 +1,7 @@
 //! Every default plugin can be left out: the app the generated `main.rs`
-//! builds with rig's default plugins on, less any one of them,
-//! answers a `--print` prompt with a tool call on a scripted model, and so
+//! builds with rig's default plugins on, less any one of them, which none
+//! of the others adds back, answers a `--print` prompt with a tool call on
+//! a scripted model, and so
 //! does the app with every built-in plugin that is off by default on top
 //! ([`OPTIONAL`]). `/reload` is there exactly when
 //! `rig_basics::reload::ReloadPlugin` is, and `/update` exactly when
@@ -207,6 +208,11 @@ fn every_default_plugin_can_be_left_out() {
                 add(&mut app);
             }
         }
+        // No other default adds back the one left out.
+        let added_back = ROWS
+            .iter()
+            .any(|(name, _, added)| *name == left_out && added(&app));
+        assert!(!added_back, "{left_out} was added back");
         for _ in 0..2 {
             load::<scaffold::ScaffoldPlugin>(&mut app, "rig-hello", "path plugins/hello");
         }

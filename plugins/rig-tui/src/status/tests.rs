@@ -196,3 +196,106 @@ fn a_status_line_shows_its_agents_items_in_their_styles() {
     let first = buffer.cell((area.x, area.y)).map(|cell| cell.fg);
     assert_eq!(first, Some(Color::Red));
 }
+
+/// The main input's bottom row on the test screen, and the input's height.
+fn input_bottom_row(app: &mut App) -> (String, u16) {
+    use crate::{MainEditor, TuiFrame, TuiTestScreen};
+
+    let world = app.world_mut();
+    let input = world
+        .query_filtered::<Entity, With<MainEditor>>()
+        .single(world)
+        .unwrap_or(Entity::PLACEHOLDER);
+    let world = app.world();
+    let area = world.resource::<TuiFrame>().area(input).unwrap_or_default();
+    let buffer = world.resource::<TuiTestScreen>().buffer();
+    let bottom = area.bottom().saturating_sub(1);
+    let row = (area.left()..area.right())
+        .filter_map(|x| {
+            buffer
+                .cell((x, bottom))
+                .map(|cell| cell.symbol().to_owned())
+        })
+        .collect();
+    (row, area.height)
+}
+
+/// Shows `items` on `agent`, the shown agent, on an 80 by 24 test screen,
+/// then draws a frame.
+fn draw_with(app: &mut App, agent: Entity, items: &[(&'static str, Side, &str)]) {
+    use crate::TuiTestScreen;
+    use rig_harness::main_agent::ShownAgent;
+
+    app.insert_resource(TuiTestScreen::new(80, 24))
+        .insert_resource(ShownAgent(Some(agent)));
+    if let Some(mut status) = app.world_mut().get_mut::<StatusItems>(agent) {
+        for (order, (name, side, text)) in (0u8..).zip(items) {
+            status.show(StatusItem::new(name, *side, order, 5).says(*text, Tone::Plain));
+        }
+    }
+    app.update();
+}
+
+#[test]
+fn without_the_status_line_plugin_the_input_keeps_an_empty_bottom_row() {
+    use crate::TuiPlugin;
+    use crate::tests::{Delivered, press, type_text, view_app, view_app_of};
+
+    let (mut app, agent) = view_app_of(|app| {
+        app.add_plugins(TuiPlugin);
+    });
+    draw_with(&mut app, agent, &[("model", Side::Left, "acme-model")]);
+    let (row, height) = input_bottom_row(&mut app);
+    assert_eq!(row.trim(), "", "{row:?}");
+    assert_eq!(height, 3);
+    type_text(&mut app, "hello");
+    press(&mut app, "enter");
+    assert_eq!(app.world().resource::<Delivered>().0, ["hello"]);
+    // With it, the same row shows the line.
+    let (mut app, agent) = view_app();
+    draw_with(&mut app, agent, &[("model", Side::Left, "acme-model")]);
+    let (row, height) = input_bottom_row(&mut app);
+    assert!(row.contains("acme-model"), "{row:?}");
+    assert_eq!(height, 3);
+}
+
+#[test]
+fn hidden_parts_are_not_drawn_but_stay_among_the_items() {
+    use crate::TuiPlugins;
+    use crate::tests::view_app_of;
+    use rig_harness::main_agent::ShownAgent;
+    use rig_harness::settings::Settings;
+
+    let settings = "[status]\nhide = [\"cost\", \"cache\", \"agent\", \"nothing-draws-this\"]\n";
+    let (mut app, agent) = view_app_of(|app| {
+        app.insert_resource(Settings::from_toml(settings))
+            .add_plugins(TuiPlugins);
+    });
+    let items = [
+        ("tokens", Side::Right, "12k tok"),
+        ("cache", Side::Right, "cache 80%"),
+        ("cost", Side::Right, "$0.12"),
+    ];
+    draw_with(&mut app, agent, &items);
+    let (row, _) = input_bottom_row(&mut app);
+    assert!(row.contains("12k tok"), "{row:?}");
+    assert!(
+        !row.contains("cache 80%") && !row.contains("$0.12"),
+        "{row:?}"
+    );
+    let mut kept: Vec<&str> = (app.world().get::<StatusItems>(agent).into_iter())
+        .flat_map(StatusItems::iter)
+        .map(|item| item.name)
+        .collect();
+    kept.sort_unstable();
+    assert_eq!(kept, ["cache", "cost", "tokens"]);
+    assert_eq!(
+        app.world().resource::<Settings>().problems(),
+        [] as [String; 0]
+    );
+    // The placeholder for no agent is no part.
+    app.insert_resource(ShownAgent(None));
+    app.update();
+    let (row, _) = input_bottom_row(&mut app);
+    assert!(row.contains("no agent"), "{row:?}");
+}
