@@ -34,7 +34,7 @@ fn shown(app: &App) -> Option<Entity> {
     app.world().resource::<ShownAgent>().0
 }
 
-/// An app on `store` with the agents plugin, keeping how turns end.
+/// An app on `store` with the forks plugin, keeping how turns end.
 fn on(store: &MemoryStore, model: &MockCompletionModel) -> (App, Receiver<()>) {
     let (mut app, wakes) = app_on(store);
     app.insert_resource(Settings::default())
@@ -56,7 +56,7 @@ fn rewind_forks_before_a_message_shows_the_fork_and_a_resume_continues_it() {
     let (mut app, wakes) = on(&store, &model);
     app.insert_resource(TuiTestScreen::new(100, 30));
     tui_view(&mut app);
-    app.add_plugins(AgentsPlugin);
+    app.add_plugins(ForksPlugin);
     let first = AgentId("00000000-0000-4000-8000-000000000000".to_owned());
     let agent = spawn_root(
         app.world_mut(),
@@ -111,7 +111,7 @@ fn rewind_forks_before_a_message_shows_the_fork_and_a_resume_continues_it() {
     // The session resumed shows the agent shown when it stopped, and talks
     // to it.
     let (mut again, _wakes) = on(&store, &model);
-    again.add_plugins(AgentsPlugin);
+    again.add_plugins(ForksPlugin);
     again.finish();
     again.update();
     let id = |agent: Option<Entity>| agent.and_then(|agent| again.world().get::<AgentId>(agent));
@@ -142,7 +142,7 @@ fn a_failed_fork_leaves_nothing_pending_for_a_later_rewind() {
     let (mut app, wakes) = on(&MemoryStore::default(), &model);
     app.insert_resource(TuiTestScreen::new(100, 30));
     tui_view(&mut app);
-    app.add_plugins(AgentsPlugin);
+    app.add_plugins(ForksPlugin);
     let model = ModelChoice("test/model".to_owned());
     let agent = spawn_root(app.world_mut(), model).id();
     app.finish();
@@ -270,7 +270,7 @@ fn a_forks_first_request_starts_with_the_bytes_of_its_sources_last() {
         ]);
         let unused = MockCompletionModel::from_stream_turns([reply("unused")]);
         let (mut app, wakes) = on(&MemoryStore::default(), &unused);
-        app.add_plugins(AgentsPlugin);
+        app.add_plugins(ForksPlugin);
         let Some(connection) = responses((dialect, model), &http) else {
             return;
         };

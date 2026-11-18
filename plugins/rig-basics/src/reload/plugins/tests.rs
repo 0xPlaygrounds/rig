@@ -635,7 +635,7 @@ fn a_plugin_of_an_off_branch_keeps_its_own_tick_and_says_its_branch_is_off() {
     let chosen = config::chosen(&home).unwrap_or_default();
     assert_eq!(chosen.off, ["rig-basics/sessions"]);
     assert!(
-        !(chosen.own.iter()).any(|plugin| plugin == "rig_basics::sessions::agents::AgentsPlugin")
+        !(chosen.own.iter()).any(|plugin| plugin == "rig_basics::sessions::forks::ForksPlugin")
     );
     assert!((chosen.own.iter()).any(|plugin| plugin == "rig_basics::sessions::SessionsPlugin"));
 }
@@ -760,7 +760,7 @@ fn a_row_off_by_its_own_choice_too_says_its_branch_keeps_it_off() {
     fs::write(
         home.settings(),
         "[plugins]\noff = [\"rig-basics/sessions\"]\n\
-         disable = [\"rig_basics::sessions::agents::AgentsPlugin\"]\n",
+         disable = [\"rig_basics::sessions::forks::ForksPlugin\"]\n",
     )
     .ok();
     let (mut app, agent) = app(&home, true);
@@ -836,7 +836,7 @@ fn plugins_defaults_says_no_plugin_stays_off_under_a_branch_it_turns_back_on() {
     fs::write(
         home.settings(),
         "[plugins]\noff = [\"rig-basics/sessions\"]\n\
-         disable = [\"rig_basics::sessions::agents::AgentsPlugin\"]\n",
+         disable = [\"rig_basics::sessions::forks::ForksPlugin\"]\n",
     )
     .ok();
     let (mut app, agent) = app(&home, true);
@@ -858,7 +858,7 @@ fn plugins_defaults_says_no_plugin_stays_off_under_a_branch_it_turns_back_on() {
     );
     let back = config::chosen(&home).unwrap_or_default();
     assert!(
-        (back.on.iter()).any(|plugin| plugin == "rig_basics::sessions::agents::AgentsPlugin"),
+        (back.on.iter()).any(|plugin| plugin == "rig_basics::sessions::forks::ForksPlugin"),
         "{}",
         settings(&home)
     );

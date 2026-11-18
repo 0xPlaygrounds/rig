@@ -67,9 +67,9 @@ fn commands_with(more: &[fn(&mut App)]) -> (Vec<String>, bool) {
 /// `/resume` stays without them.
 #[test]
 fn agent_commands_come_with_the_plugins_that_make_agents() {
-    use rig_basics::sessions::agents::AgentsPlugin;
+    use rig_basics::sessions::forks::ForksPlugin;
     use rig_basics::subagents::SubagentsPlugin;
-    let forks: fn(&mut App) = |app| rig_harness::load::<AgentsPlugin>(app, "rig-basics", "");
+    let forks: fn(&mut App) = |app| rig_harness::load::<ForksPlugin>(app, "rig-basics", "");
     let subagents: fn(&mut App) = |app| rig_harness::load::<SubagentsPlugin>(app, "rig-basics", "");
     let count = |names: &[String], name: &str| names.iter().filter(|it| *it == name).count();
     for (more, fork, agents) in [

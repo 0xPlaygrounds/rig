@@ -2,7 +2,7 @@
 //! (the kernel's [`ForkAgent`]) and shows it, and, with the `tui` feature,
 //! rewind: select an earlier message of yours with Alt+Up and press Enter,
 //! and the shown agent forks just before it, the fork is shown and the
-//! message is back in the input. [`AgentsPlugin`] is off by default; it adds
+//! message is back in the input. [`ForksPlugin`] is off by default; it adds
 //! the [`AgentPickerPlugin`]'s `/agents`, which shows the other agents.
 
 use crate::agent_picker::{AgentPickerPlugin, show};
@@ -23,9 +23,9 @@ mod rewind;
 
 /// `/fork`, rewind with the `tui` feature, and the `/agents` it adds.
 #[derive(Default)]
-pub struct AgentsPlugin;
+pub struct ForksPlugin;
 
-impl Plugin for AgentsPlugin {
+impl Plugin for ForksPlugin {
     fn build(&self, app: &mut App) {
         if !app.is_plugin_added::<SessionPickerPlugin>() {
             app.add_plugins(SessionPickerPlugin);

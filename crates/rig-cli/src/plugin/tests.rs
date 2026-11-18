@@ -298,7 +298,7 @@ fn the_list_is_a_tree_of_crates_areas_and_plugins_rigs_before_the_users() {
     let sessions = at("rig-basics/sessions");
     let (skills, forks, hello) = (
         at(SKILLS),
-        at("rig_basics::sessions::agents::AgentsPlugin"),
+        at("rig_basics::sessions::forks::ForksPlugin"),
         at("hello::HelloPlugin"),
     );
     let tui = lines.iter().position(|line| *line == "rig-tui");

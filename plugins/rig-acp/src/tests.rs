@@ -182,7 +182,7 @@ fn agent() {
         rig_basics::models::ModelsPlugin,
         rig_basics::models::defaults::DefaultsPlugin,
         rig_basics::sessions::SessionsPlugin,
-        rig_basics::sessions::agents::AgentsPlugin,
+        rig_basics::sessions::forks::ForksPlugin,
         rig_basics::coding_tools::ReadTool,
         rig_basics::coding_tools::ShellTool,
         rig_basics::BasicCommandsPlugin,

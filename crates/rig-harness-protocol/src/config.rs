@@ -59,7 +59,7 @@ pub struct BuiltIn {
 
 /// The area of the plugin `plugin` within its crate: the module under the
 /// crate's root in its type path, `sessions` for
-/// `rig_basics::sessions::agents::AgentsPlugin`. A plugin at the root has
+/// `rig_basics::sessions::forks::ForksPlugin`. A plugin at the root has
 /// none. The branch `<crate>/<area>` holds every plugin of the area.
 pub fn area(plugin: &str) -> Option<&str> {
     let mut segments = plugin.split("::").skip(1);
@@ -143,7 +143,7 @@ which the last choice rewrites.";
             on rig_basics::sessions::SessionsPlugin, "rig-basics", "Sessions", [], None,
                 "/new, /resume and /name, and the listing of this session that /resume in \
 other windows reads.";
-            off rig_basics::sessions::agents::AgentsPlugin, "rig-basics",
+            off rig_basics::sessions::forks::ForksPlugin, "rig-basics",
                 "Forks and rewind", [], None,
                 "/fork and rewind (Alt+Up to an earlier message of yours, then Enter): a new agent \
 from the shown one, through the end or an earlier message. /agents comes with it, \

@@ -41,7 +41,7 @@ use rig_harness::prelude::{
     main_agent,
 };
 
-pub mod agents;
+pub mod forks;
 #[cfg(feature = "tui")]
 mod tui;
 

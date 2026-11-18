@@ -321,7 +321,7 @@ the one picked, in its own directory; `rig --resume <id or name>` (or
 `/resume <id or name>`) resumes a given one, such as after a crash.
 
 Forks are off by default. `rig plugin enable
-rig_basics::sessions::agents::AgentsPlugin` (or `/plugins`) turns them on:
+rig_basics::sessions::forks::ForksPlugin` (or `/plugins`) turns them on:
 `/fork` makes a new agent from the shown one and shows it, through the end
 of its conversation, through a message you name (`/fork m4`) or through one
 you pick (`/fork at`). Rewind is a fork too: select an earlier message of
@@ -694,7 +694,7 @@ plugin = "hello::HelloPlugin"     # implements Plugin + Default
 
 The plugins form a tree. Each crate is a branch, such as `rig-tui`, and so
 is each area in it: the module under the crate's root in a plugin's type
-path, so `rig_basics::sessions::agents::AgentsPlugin` is in
+path, so `rig_basics::sessions::forks::ForksPlugin` is in
 `rig-basics/sessions`. A plugin at a crate's root, such as
 `rig_basics::BasicCommandsPlugin`, is in no area. A plugin runs when its own
 choice (rig's default, then `disable`, then `enable`) is on and no branch

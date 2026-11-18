@@ -24,7 +24,7 @@ rig-harness's public API. Each plugin is its own name in `[plugins]` of
   (`AgentPickerPlugin`, which forks, subagents and rig-steel add, so it is
   not listed on its own);
 - `sessions`: `/new`, `/resume` and `/name` (`SessionsPlugin`), and `/fork`
-  and rewind (`agents::AgentsPlugin`, off by default);
+  and rewind (`forks::ForksPlugin`, off by default);
 - `compaction`: summarizing a conversation near the model's window with the
   coding agent's summary prompts (`CODING_PROMPTS`), and `/compact`
   (`CompactionPlugin`);
