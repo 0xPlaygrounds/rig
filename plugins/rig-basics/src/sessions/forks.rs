@@ -30,9 +30,7 @@ impl Plugin for ForksPlugin {
         if !app.is_plugin_added::<SessionPickerPlugin>() {
             app.add_plugins(SessionPickerPlugin);
         }
-        if !app.is_plugin_added::<AgentPickerPlugin>() {
-            app.add_plugins(AgentPickerPlugin);
-        }
+        rig_harness::load::<AgentPickerPlugin>(app, "rig-basics", "");
         app.add_command(
             "fork",
             "Fork the shown agent into a new one and show it: /fork at the end, \

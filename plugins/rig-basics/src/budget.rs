@@ -61,9 +61,7 @@ pub struct BudgetPlugin;
 
 impl Plugin for BudgetPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<UsagePlugin>() {
-            app.add_plugins(UsagePlugin);
-        }
+        rig_harness::load::<UsagePlugin>(app, "rig-basics", "");
         app.add_setting::<Limit>("budget");
         let limit = app.world().get_resource::<Limit>().copied();
         let limit = limit.unwrap_or_default().checked("[budget] usd");

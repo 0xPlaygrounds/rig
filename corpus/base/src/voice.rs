@@ -194,9 +194,7 @@ pub struct VoicePlugin;
 
 impl Plugin for VoicePlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<rig_tui::TuiPlugin>() {
-            app.add_plugins(rig_tui::TuiPlugin);
-        }
+        rig_harness::load::<rig_tui::TuiPlugin>(app, "rig-tui", "");
         app.add_setting::<VoiceConfig>("voice")
             .init_resource::<RigHome>()
             .init_resource::<Processes>()

@@ -178,9 +178,7 @@ pub struct HistoryPlugin;
 
 impl Plugin for HistoryPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<TuiPlugin>() {
-            app.add_plugins(TuiPlugin);
-        }
+        rig_harness::load::<TuiPlugin>(app, "rig-tui", "");
         app.add_setting::<HistorySettings>("history")
             .init_resource::<RigHome>()
             .init_resource::<ProjectRoot>()

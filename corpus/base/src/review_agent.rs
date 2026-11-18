@@ -146,9 +146,7 @@ pub struct ReviewAgentPlugin;
 
 impl Plugin for ReviewAgentPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<SubagentsPlugin>() {
-            app.add_plugins(SubagentsPlugin);
-        }
+        rig_harness::load::<SubagentsPlugin>(app, "rig-basics", "");
         app.add_setting::<ReviewSettings>("review")
             .init_resource::<ProjectRoot>()
             .init_resource::<Processes>()

@@ -39,7 +39,8 @@ mod tests;
 const LABEL: &str = "Show the selected tool call whole, or every call";
 
 /// Folds finished tool calls in the terminal view and binds the key that
-/// shows them whole ([`FoldSettings`]).
+/// shows them whole ([`FoldSettings`]). It folds nothing unless the
+/// terminal view ([`rig_tui::TuiViewPlugin`]) is added too, in any order.
 #[derive(Default)]
 pub struct FoldPlugin;
 
@@ -118,9 +119,21 @@ impl Unfolded {
 struct FoldKey;
 
 impl Plugin for FoldPlugin {
+    /// Reads `[fold]`, which settings allow only in `build`.
     fn build(&self, app: &mut App) {
-        app.add_setting::<FoldSettings>("fold")
-            .add_message::<Notice>()
+        app.add_setting::<FoldSettings>("fold");
+    }
+
+    /// Folds once every plugin is built, so the terminal view may be added
+    /// after this plugin. Says why the key is the input's, as a notice,
+    /// when the terminal view is the run's front; another front, such as
+    /// `--print`, `--json` or ACP, sees the same with the plugin as without
+    /// it.
+    fn finish(&self, app: &mut App) {
+        if !app.is_plugin_added::<rig_tui::TuiViewPlugin>() {
+            return;
+        }
+        app.add_message::<Notice>()
             .init_resource::<Unfolded>()
             .add_systems(TranscriptRender, fold.in_set(RenderSystems::Edit));
         let key = app.world().resource::<FoldSettings>().key.clone();
@@ -138,36 +151,21 @@ impl Plugin for FoldPlugin {
                 bound.keys, bound.label
             );
             warn!("{why}");
-            app.insert_resource(Refused(why));
+            if app.runs_front(rig_tui::FRONT) {
+                app.add_systems(Startup, move |mut notices: MessageWriter<Notice>| {
+                    notices.write(Notice::warn(None, why.clone()));
+                });
+            }
             return;
         }
         // Global, so no other binding of the key shadows it unseen: one
-        // bound first refuses it, and rig-tui says so.
+        // bound before this `finish` refuses it, and rig-tui says so.
         let binding = KeyBinding::new(key, LABEL).in_scope(KeyScope::Global);
         if let Some(bound) = app.add_key_binding(binding, flip) {
             app.world_mut().entity_mut(bound).insert(FoldKey);
         }
     }
-
-    /// Says why the key is the input's, as a notice, when the terminal
-    /// view is the run's front; another front, such as `--print`, `--json`
-    /// or ACP, sees the same with the plugin as without it.
-    fn finish(&self, app: &mut App) {
-        let Some(Refused(why)) = app.world_mut().remove_resource::<Refused>() else {
-            return;
-        };
-        if app.runs_front(rig_tui::FRONT) {
-            app.add_systems(Startup, move |mut notices: MessageWriter<Notice>| {
-                notices.write(Notice::warn(None, why.clone()));
-            });
-        }
-    }
 }
-
-/// Why the fold key, an input key, was refused, which the terminal view
-/// says as it starts.
-#[derive(Resource)]
-struct Refused(String);
 
 /// The call the main transcript has selected, if a call or one of its
 /// decorations is.

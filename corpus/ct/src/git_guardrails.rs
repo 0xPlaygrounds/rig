@@ -199,9 +199,7 @@ pub struct GitGuardPlugin;
 
 impl Plugin for GitGuardPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<ApprovalPlugin>() {
-            app.add_plugins(ApprovalPlugin);
-        }
+        rig_harness::load::<ApprovalPlugin>(app, "rig-basics", "");
         if !app.world().contains_resource::<GitGuardConfig>() {
             let (config, problems) = read_config(&RigHome::of(app.world()).root().join(CONFIG));
             app.insert_resource(config);

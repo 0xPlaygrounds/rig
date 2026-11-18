@@ -49,9 +49,7 @@ pub struct StandingTeamPlugin;
 
 impl Plugin for StandingTeamPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<SubagentsPlugin>() {
-            app.add_plugins(SubagentsPlugin);
-        }
+        rig_harness::load::<SubagentsPlugin>(app, "rig-basics", "");
         app.register_type::<TeamMember>()
             .init_resource::<Desk>()
             .configure_sets(AgentPass, TeamSystems.in_set(Stage::Gate))

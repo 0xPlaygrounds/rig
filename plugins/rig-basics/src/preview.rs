@@ -58,8 +58,8 @@ pub struct Preview;
 pub struct Previewed(pub Result<Vec<FileChange>, ErrorReport>);
 
 /// Previews the tool calls that ask for it ([`Preview`]), after every gate,
-/// before Start. A plugin that puts [`Preview`] on calls adds it, unless
-/// `app.is_plugin_added::<PreviewPlugin>()`.
+/// before Start. A plugin that puts [`Preview`] on calls loads it
+/// ([`rig_harness::load`]).
 #[derive(Default)]
 pub struct PreviewPlugin;
 

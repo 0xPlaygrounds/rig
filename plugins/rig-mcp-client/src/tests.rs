@@ -537,6 +537,37 @@ fn with_approval_a_project_server_waits_for_approve_and_a_changed_one_is_asked_a
     std::fs::remove_dir_all(project).ok();
 }
 
+/// Asking added before [`McpPlugin`], as `app.add_plugins((McpApprovalPlugin, McpPlugin))`.
+#[derive(Default)]
+struct AskingFirst;
+
+impl Plugin for AskingFirst {
+    fn build(&self, app: &mut App) {
+        app.add_plugins((approval::McpApprovalPlugin, McpPlugin));
+    }
+}
+
+#[test]
+fn approval_added_before_mcp_servers_holds_an_unapproved_project_server() {
+    let project = project("approval-first");
+    write_servers(
+        &project.join(".rig/mcp.json"),
+        json!({ "stub": stub_server(json!({})) }),
+    );
+    let (mut app, _) = app_with::<AskingFirst>(&project, "[mcp]\nfirst_retry_secs = 3600", None);
+    app.finish();
+    app.update();
+    let world = app.world_mut();
+    let mut names = world.query::<&Name>();
+    let approve = names
+        .iter(world)
+        .any(|name| name.as_str() == "/mcp-approve");
+    assert!(approve, "/mcp-approve is a command");
+    let state = status(world, "stub").map(|status| status.state);
+    assert_eq!(state, Some(McpState::Held));
+    std::fs::remove_dir_all(project).ok();
+}
+
 #[test]
 fn with_approval_a_users_server_is_never_held() {
     let project = project("approval-home");

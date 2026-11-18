@@ -77,9 +77,7 @@ impl Plugin for InboxFolderPlugin {
         if !app.is_plugin_added::<rig_harness::clock::ClockPlugin>() {
             app.add_plugins(rig_harness::clock::ClockPlugin);
         }
-        if !app.is_plugin_added::<SubagentsPlugin>() {
-            app.add_plugins(SubagentsPlugin);
-        }
+        rig_harness::load::<SubagentsPlugin>(app, "rig-basics", "");
         app.add_setting::<InboxSettings>(INBOX).add_flag(
             Flag::new(INBOX, "Answer each Markdown file dropped in a folder").value("DIR"),
         );

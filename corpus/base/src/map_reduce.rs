@@ -88,9 +88,7 @@ pub struct MapReducePlugin;
 
 impl Plugin for MapReducePlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<rig_basics::subagents::SubagentsPlugin>() {
-            app.add_plugins(rig_basics::subagents::SubagentsPlugin);
-        }
+        rig_harness::load::<rig_basics::subagents::SubagentsPlugin>(app, "rig-basics", "");
         let options = ToolOptions {
             footprint: Some(Touches::Writes(Scope::Anything)),
         };

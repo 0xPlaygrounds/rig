@@ -168,3 +168,27 @@ fn note_still_running(
 }
 
 rig_defaults_test_support::stages_ordered_test!(DebatePlugin);
+
+#[test]
+fn debate_loads_subagents_and_subagents_loads_approvals_each_named_by_its_adder() {
+    let (mut app, _) = app_on(&MemoryStore::default());
+    app.add_plugins((AgentPlugin, SessionLogPlugin));
+    rig_harness::load::<DebatePlugin>(&mut app, "corpus-base", "");
+    let world = app.world_mut();
+    let mut loaded = world.query::<(Entity, &Name, Option<&ProvidedBy>)>();
+    let found: Vec<(Entity, String, Option<Entity>)> = (loaded.iter(world))
+        .map(|(entity, name, by)| (entity, name.to_string(), by.map(|by| by.0)))
+        .collect();
+    let adder = |plugin: &str| {
+        let by = found.iter().find(|(_, name, _)| name == plugin)?.2?;
+        Some(found.iter().find(|(entity, _, _)| *entity == by)?.1.clone())
+    };
+    assert_eq!(
+        adder("rig_basics::subagents::SubagentsPlugin").as_deref(),
+        Some("corpus_base::debate::DebatePlugin")
+    );
+    assert_eq!(
+        adder("rig_basics::approval::ApprovalPlugin").as_deref(),
+        Some("rig_basics::subagents::SubagentsPlugin")
+    );
+}

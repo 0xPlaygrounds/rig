@@ -40,9 +40,7 @@ pub struct TaskQueuePlugin;
 
 impl Plugin for TaskQueuePlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<SubagentsPlugin>() {
-            app.add_plugins(SubagentsPlugin);
-        }
+        rig_harness::load::<SubagentsPlugin>(app, "rig-basics", "");
         app.register_type::<TaskQueue>()
             .register_type::<QueuedTask>()
             .add_setting::<QueueSettings>("queue")

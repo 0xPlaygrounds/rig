@@ -85,9 +85,7 @@ pub struct StructuredCompactionSystems;
 
 impl Plugin for StructuredCompactionPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<CompactionPlugin>() {
-            app.add_plugins(CompactionPlugin);
-        }
+        rig_harness::load::<CompactionPlugin>(app, "rig-basics", "");
         let world = app.world_mut();
         if let Some(mut default) = world.get_resource_mut::<CompactionDefault>() {
             let policy = &mut default.policy;

@@ -111,16 +111,10 @@ fn enable_and_disable_change_the_programs_plugin_group() {
     let manifest = manifest(&home, &plugins, &source).unwrap_or_default();
     assert!(manifest.contains("\nrig-steel = "), "{manifest}");
     // Without the terminal view, nothing builds rig-tui.
-    // Folded output works only with the terminal view, so it is left out too.
-    let headless = home_with(&format!(
-        "[plugins]\ndisable = [\"{TUI}\"]\nenable = [\"rig_fold::FoldPlugin\"]\n"
-    ))
-    .unwrap_or_default();
+    let headless = home_with(&format!("[plugins]\ndisable = [\"{TUI}\"]\n")).unwrap_or_default();
     let manifest = super::manifest(&home, &headless, &source).unwrap_or_default();
     assert!(
-        !manifest.contains("rig-tui")
-            && !manifest.contains("rig-fold")
-            && !manifest.contains("\"tui\""),
+        !manifest.contains("rig-tui") && !manifest.contains("\"tui\""),
         "{manifest}"
     );
     assert!(

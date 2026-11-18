@@ -320,9 +320,7 @@ pub struct RelayPipelinePlugin;
 
 impl Plugin for RelayPipelinePlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<SubagentsPlugin>() {
-            app.add_plugins(SubagentsPlugin);
-        }
+        rig_harness::load::<SubagentsPlugin>(app, "rig-basics", "");
         app.init_resource::<RigHome>()
             .init_resource::<ProjectRoot>()
             .add_command(
