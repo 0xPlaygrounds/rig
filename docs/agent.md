@@ -596,9 +596,10 @@ Safe mode: when a plugin keeps rig from building or starting, `rig --safe`
 starts a build of rig's default plugins alone. `--safe` counts only as the
 first word, before any option, so `rig --safe -r <id>` works and a prompt or
 an option value that reads `--safe` stays the agent's. It ignores `[plugins]`
-in `settings.toml`, `off` included; the rest of the file, such as the model and sign-in, still
-applies. That build is kept in `RIG_HOME/bin/safe` with its own log,
-`RIG_HOME/safe-build.log`, so `build.log` keeps the failed build's output.
+in `settings.toml`, `off` included; the rest of the file, such as the model
+and sign-in, still applies. That build is kept in `RIG_HOME/bin/safe` with
+its own log, `RIG_HOME/safe-build.log`, so `build.log` keeps the failed
+build's output.
 With rig from crates.io, the next `rig --safe` starts it without running cargo
 while the launcher is the same and the build still describes itself; from a
 rig checkout (`RIG_SOURCE`, or a launcher installed from one), every
@@ -691,11 +692,12 @@ in `off` holds it. Turning a branch back on takes it out of `off`, so each
 of its plugins comes back as you left it, and a plugin rig adds to an off
 branch later stays off. Moving a plugin to another module changes its area.
 
-A mistake in this file (a plugin or branch rig does not know, an `extra` path
-that holds no crate, a file that is not TOML) or a `RIG_SOURCE` that is not a rig
-checkout is refused, naming it, and `rig` starts no agent until it is fixed:
-a build from before was built from other settings. `rig plugin disable <name>`
-takes a plugin or branch name rig does not know out of the file. A build that cargo cannot
+A mistake in this file (a plugin or branch rig does not know, a branch in
+`enable` or `disable`, a plugin in `off`, an `extra` path that holds no
+crate, a file that is not TOML) or a `RIG_SOURCE` that is not a rig checkout
+is refused, naming it, and `rig` starts no agent until it is fixed: a build
+from before was built from other settings. `rig plugin disable <name>` takes
+the name out of each list that cannot hold it. A build that cargo cannot
 resolve or compile instead starts the previous build, whose conversation is
 told why, except under `rig -p`, which refuses on stderr with rig's
 explanation (such as a plugin's Bevy pin, by file and line), else cargo's
@@ -708,12 +710,13 @@ which plugins run. A helper, `/reload`
 and anything else a session starts run the same home's build.
 
 `rig plugin list` shows the tree: each crate, in it each area of more than
-one plugin or in `off`, and each plugin, `on` or `off`, with what it adds; a branch in
-`off` says so, and a plugin it keeps off says "off with its branch".
-`rig plugin enable <type>` and `disable <type>` change `[plugins]`, keeping
-every comment; given a branch, such as `rig-basics/sessions`, they take it
-out of or put it in `off`. Turning off a branch that holds an essential
-plugin warns, and turning on a plugin a branch keeps off names that branch. `rig plugin new hello` makes that crate in
+one plugin or in `off`, and each plugin, `on` or `off`, with what it adds; a
+branch in `off` says so, and a plugin it keeps off says "off with its
+branch". `rig plugin enable <type>` and `disable <type>` change `[plugins]`,
+keeping every comment; given a branch, such as `rig-basics/sessions`, they
+take it out of or put it in `off`. Turning off a branch that holds an
+essential plugin warns, and turning on a plugin a branch keeps off names
+that branch. `rig plugin new hello` makes that crate in
 `$RIG_HOME/plugins/hello`, outside any workspace, and adds its
 `[[plugins.extra]]`, checked before `settings.toml` is written.
 
@@ -759,10 +762,11 @@ start", or "Keep editing" (Esc too). Either of the first two writes every
 change into `settings.toml` in one edit, or none when one is refused; a
 reload rebuilds and restarts once no turn runs, and a failed build keeps the
 running one. `/plugins defaults` asks the same about going back to rig's
-defaults, every branch of `off` turned back on; without a terminal it asks nothing and prints the `rig plugin
-enable` and `rig plugin disable` commands that do it from a shell. Without a
-terminal `/plugins` prints each plugin's name,
-type path and state. When `settings.toml` does not read, `/plugins` names the
+defaults, every branch of `off` turned back on, and "Keep editing" keeps
+those branches for when you leave; without a terminal it asks nothing and
+prints the `rig plugin enable` and `rig plugin disable` commands that do it
+from a shell. Without a terminal `/plugins` prints each plugin's name, type
+path and state. When `settings.toml` does not read, `/plugins` names the
 file, the error and its fix instead of opening.
 
 `rig plugin check` checks the list. With `--build` it also builds the agent

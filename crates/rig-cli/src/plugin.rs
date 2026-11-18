@@ -728,7 +728,16 @@ fn enable(home: &Home, name: &str, on: bool) -> Result<()> {
     let what = if branch { "the branch " } else { "" };
     if !changed {
         let what = if branch { "The branch " } else { "" };
-        println!("{what}`{name}` is {state} already in {}.", path.display());
+        // A branch keeping it off makes only its own choice on already.
+        let whose = if on && !branch && chosen.off_with(name).is_some() {
+            "'s own choice"
+        } else {
+            ""
+        };
+        println!(
+            "{what}`{name}`{whose} is {state} already in {}.",
+            path.display()
+        );
     } else {
         let then = match (branch, on) {
             (false, _) => "",
