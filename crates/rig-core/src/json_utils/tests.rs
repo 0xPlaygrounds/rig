@@ -170,3 +170,38 @@ fn json_len_counts_the_serialized_bytes_and_is_zero_on_failure() {
     let unserializable: std::collections::BTreeMap<(u8, u8), u8> = [((1, 2), 3)].into();
     assert_eq!(json_len(&unserializable), 0);
 }
+
+/// A binary format's deserializer: not human-readable and not
+/// self-describing, so it reads only the type its caller names.
+struct Binary(f64);
+
+impl<'de> Deserializer<'de> for Binary {
+    type Error = serde::de::value::Error;
+
+    fn deserialize_any<V: serde::de::Visitor<'de>>(self, _: V) -> Result<V::Value, Self::Error> {
+        Err(serde::de::Error::custom("not self-describing"))
+    }
+
+    fn deserialize_f64<V: serde::de::Visitor<'de>>(
+        self,
+        visitor: V,
+    ) -> Result<V::Value, Self::Error> {
+        visitor.visit_f64(self.0)
+    }
+
+    fn is_human_readable(&self) -> bool {
+        false
+    }
+
+    serde::forward_to_deserialize_any! {
+        bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 char str string bytes
+        byte_buf option unit unit_struct newtype_struct seq tuple tuple_struct
+        map struct enum identifier ignored_any
+    }
+}
+
+#[test]
+fn floats_reads_a_binary_format_directly() {
+    let read: Result<f64, _> = floats(Binary(0.5));
+    assert_eq!(read.ok(), Some(0.5));
+}
