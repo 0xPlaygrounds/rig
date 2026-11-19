@@ -454,7 +454,9 @@ fn switch_model(
 ) -> Result<(), String> {
     match choice.filter(|choice| now != Some(choice)) {
         Some(choice) => {
-            let connection = models.connect(&choice.0)?;
+            let connection = models
+                .connect(&choice.0)
+                .map_err(|why| Models::cannot_use(&choice.0, why))?;
             agent.insert((connection, choice, effort));
         }
         None => {

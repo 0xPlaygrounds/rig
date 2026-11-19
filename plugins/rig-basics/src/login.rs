@@ -111,6 +111,7 @@ impl Plugin for LoginPlugin {
             .0
             .add_sign_in(ChatGptSignIn(session.clone()));
         app.insert_resource(session);
+        crate::models::word_refusals(app);
         keys::add(app);
         app.add_command(
             "login",

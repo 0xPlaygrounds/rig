@@ -2,6 +2,7 @@
 //! sends, and how the choice is connected. The catalog and how its models
 //! are reached are rig-core's [`Connector`].
 
+use std::fmt::Display;
 use std::sync::Arc;
 
 use bevy_ecs::prelude::*;
@@ -9,6 +10,7 @@ use bevy_reflect::prelude::*;
 use rig_core::catalog::{Connector, ModelSpec};
 use rig_core::completion::{CompletionRequest, Reasoning, UnsupportedOption};
 use rig_core::effect::EffectKind;
+use rig_core::providers::registry::ConnectError;
 use serde::{Deserialize, Serialize};
 
 use super::agent::{ActiveTurn, Agent, Notice};
@@ -44,15 +46,38 @@ unsafe impl Sync for Models {}
 impl Models {
     /// A connection to the catalog model `reference` (`vendor/model`), such
     /// as for a turn or a call a plugin sends to another model than its
-    /// agent's; or why it cannot be used.
-    pub fn connect(&self, reference: &str) -> Result<Connection, String> {
-        match self.0.connect(reference) {
-            Ok((spec, handler)) => Ok(Connection {
-                spec,
-                handler: Handler(handler),
-            }),
-            Err(why) => Err(format!("Cannot use {reference}: {why}.")),
-        }
+    /// agent's.
+    ///
+    /// # Errors
+    ///
+    /// Why it cannot be used, which [`Self::cannot_use`] words.
+    pub fn connect(&self, reference: &str) -> Result<Connection, ConnectError> {
+        let (spec, handler) = self.0.connect(reference)?;
+        Ok(Connection {
+            spec,
+            handler: Handler(handler),
+        })
+    }
+
+    /// The sentence refusing the model `reference` for the reason `why`.
+    pub fn cannot_use(reference: &str, why: impl Display) -> String {
+        format!("Cannot use {reference}: {why}.")
+    }
+}
+
+/// How the app words a [`ConnectError`] in the notices and [`ModelRefused`]
+/// of a refused model: the reason to show, or `None` for the error's own
+/// text, which is also what an app without this resource shows.
+#[derive(Resource, Clone, Copy)]
+pub struct ConnectWording(pub fn(&World, &ConnectError) -> Option<String>);
+
+/// The sentence refusing the model `reference` for the reason `why`, in the
+/// app's [`ConnectWording`].
+fn refusal(world: &World, reference: &str, why: &ConnectError) -> String {
+    let worded = (world.get_resource::<ConnectWording>()).and_then(|words| words.0(world, why));
+    match worded {
+        Some(worded) => Models::cannot_use(reference, worded),
+        None => Models::cannot_use(reference, why),
     }
 }
 
@@ -206,14 +231,14 @@ pub(crate) fn on_set_model(
         With<Agent>,
     >,
     models: Res<Models>,
+    world: &World,
     mut commands: Commands,
-    mut notices: MessageWriter<Notice>,
 ) {
     let Ok((busy, current, connected, effort)) = agents.get(set.entity) else {
         return;
     };
     if busy {
-        notices.write(Notice::turn_running(set.entity));
+        commands.write_message(Notice::turn_running(set.entity));
         return;
     }
     let why = match models.0.catalog().resolve(&set.model) {
@@ -221,23 +246,24 @@ pub(crate) fn on_set_model(
             let model = ModelChoice(found.spec.reference());
             match models.connect(&model.0) {
                 Ok(connection) => {
-                    let mut agent = commands.entity(set.entity);
                     match connected {
                         Some(old) if old.spec.reference() == model.0 => {
-                            agent.insert(model.clone());
+                            commands.entity(set.entity).insert(model.clone());
                         }
                         // One insert, so `check_effort` never sees the old
                         // setting with the new model.
                         Some(old) => {
                             let effort = effort.copied().unwrap_or_default();
                             let effort = carried(&old.spec, effort, &connection.spec);
-                            notices.write(Notice::info(set.entity, switched(&connection)));
-                            agent
+                            commands.write_message(Notice::info(set.entity, switched(&connection)));
+                            commands
+                                .entity(set.entity)
                                 .insert((model.clone(), connection, effort))
                                 .remove::<ModelRefused>();
                         }
                         None => {
-                            agent
+                            commands
+                                .entity(set.entity)
                                 .insert((model.clone(), connection))
                                 .remove::<ModelRefused>();
                         }
@@ -250,14 +276,15 @@ pub(crate) fn on_set_model(
                     return;
                 }
                 Err(why) if current == Some(&model) => {
-                    let mut agent = commands.entity(set.entity);
-                    agent
+                    let why = refusal(world, &model.0, &why);
+                    commands.write_message(Notice::error(set.entity, why.clone()));
+                    commands
+                        .entity(set.entity)
                         .remove::<Connection>()
-                        .insert(ModelRefused(why.clone()));
-                    notices.write(Notice::error(set.entity, why));
+                        .insert(ModelRefused(why));
                     return;
                 }
-                Err(why) => why,
+                Err(why) => refusal(world, &model.0, &why),
             }
         }
         Err(why) => {
@@ -269,7 +296,7 @@ pub(crate) fn on_set_model(
         Some(ModelChoice(model)) => format!(" Still on {model}."),
         None => String::new(),
     };
-    notices.write(Notice::error(set.entity, format!("{why}{kept}")));
+    commands.write_message(Notice::error(set.entity, format!("{why}{kept}")));
 }
 
 /// Connects an agent whose [`ModelChoice`] was inserted, by [`SetModel`],
@@ -282,8 +309,8 @@ pub(crate) fn connect(
     inserted: On<Insert<ModelChoice>>,
     agents: Query<(&ModelChoice, Option<&Connection>)>,
     models: Res<Models>,
+    world: &World,
     mut commands: Commands,
-    mut notices: MessageWriter<Notice>,
 ) {
     let agent = inserted.entity;
     let Ok((choice, connected)) = agents.get(agent) else {
@@ -295,7 +322,7 @@ pub(crate) fn connect(
     match models.connect(&choice.0) {
         Ok(connection) => {
             if connected.is_some() {
-                notices.write(Notice::info(agent, switched(&connection)));
+                commands.write_message(Notice::info(agent, switched(&connection)));
             }
             commands
                 .entity(agent)
@@ -303,12 +330,12 @@ pub(crate) fn connect(
                 .remove::<ModelRefused>();
         }
         Err(why) => {
-            let refused = ModelRefused(why.clone());
+            let why = refusal(world, &choice.0, &why);
+            commands.write_message(Notice::error(agent, why.clone()));
             commands
                 .entity(agent)
                 .remove::<Connection>()
-                .insert(refused);
-            notices.write(Notice::error(agent, why));
+                .insert(ModelRefused(why));
         }
     }
 }

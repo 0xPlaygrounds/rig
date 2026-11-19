@@ -277,7 +277,10 @@ fn architect_requests(
                 .push(Section::new("architect_mode", ARCHITECT_PROMPT));
         }
         if let Some(model) = &settings.architect {
-            match models.connect(model) {
+            match models
+                .connect(model)
+                .map_err(|why| Models::cannot_use(model, why))
+            {
                 Ok(connection) => call.connection = Some(connection),
                 Err(why) => {
                     notices.write(Notice::warn(

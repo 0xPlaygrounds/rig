@@ -743,10 +743,11 @@ fn fold_command(
         notices.write(Notice::error(agent, why));
         return;
     }
-    let configured = config
-        .summary_model
-        .as_deref()
-        .map(|reference| models.connect(reference));
+    let configured = config.summary_model.as_deref().map(|reference| {
+        models
+            .connect(reference)
+            .map_err(|why| Models::cannot_use(reference, why))
+    });
     let connection = match configured {
         Some(Ok(connection)) => Some(connection),
         Some(Err(why)) => {

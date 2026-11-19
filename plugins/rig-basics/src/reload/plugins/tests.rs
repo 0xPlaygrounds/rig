@@ -9,6 +9,9 @@ use rig_harness_test_support::scratch_home;
 
 use super::*;
 
+const SESSIONS: &str = "rig_basics::sessions::SessionsPlugin";
+const FORKS: &str = "rig_basics::sessions::forks::ForksPlugin";
+
 /// Every notice written so far, and why each refused line was.
 #[derive(Resource, Default)]
 struct Told(Vec<String>);
@@ -1016,6 +1019,124 @@ fn a_branch_unticked_goes_into_off_and_one_ticked_comes_out() {
     assert_eq!(chosen.off, ["rig-basics/sessions"], "{}", settings(&home));
     assert!((chosen.own.iter()).any(|plugin| plugin == "rig_basics::sessions::SessionsPlugin"));
     assert!((chosen.on.iter()).any(|plugin| plugin == "rig_basics::telemetry::usage::UsagePlugin"));
+}
+
+/// The preview of a branch gives the state its tick box shows and what Enter
+/// does from there, adds what an unticked branch above means, and follows the
+/// ticks without the highlight moving.
+#[test]
+fn a_branchs_preview_follows_its_tick_box() {
+    const COUNTS: &str = "Enter turns it back on, and what is under it follows its own ticks. \
+                          While it is off, the choices under it count as off, though another \
+                          plugin can still turn one on.";
+    const KEEPS: &str = "Enter turns it off, into [plugins] off, and each plugin keeps its own \
+                         choice for when it is back on.";
+    const NONE_ON: &str = "On, but every plugin under it is unticked or held off by a branch. \
+                           Enter ticks everything under it.";
+    let opened = |name: &str, settings: &str| {
+        let home = scratch_home(name);
+        fs::create_dir_all(home.root()).ok();
+        fs::write(home.settings(), settings).ok();
+        let (mut app, agent) = app(&home, true);
+        open(&mut app, agent);
+        let (list, shown) = picker(&mut app).unwrap_or((agent, Picker::default()));
+        (app, list, shown)
+    };
+    let highlight = |app: &mut App, list: Entity, shown: &Picker, label: &str| {
+        let row = at(shown, label).unwrap_or(usize::MAX);
+        app.world_mut().entity_mut(list).insert(Highlighted(row));
+        app.update();
+    };
+    // The paragraph about the branch's state. The preview must be only the
+    // branch's name, that paragraph, and one line listing its plugins, so no
+    // other text can contradict the state.
+    let state = |app: &App, list: Entity| {
+        let text = preview(app, list);
+        let parts: Vec<&str> = text.split("\n\n").collect();
+        let head = parts.first().and_then(|part| part.split_once('\n'));
+        let held = parts.get(1..).and_then(|rest| match rest {
+            [held] => held.strip_prefix("Branch of ")?.strip_suffix(".\n"),
+            _ => None,
+        });
+        let listed = held
+            .and_then(|held| held.split_once(" plugins: "))
+            .filter(|(n, names)| {
+                !names.contains('\n') && n.parse() == Ok(names.split(", ").count())
+            });
+        match (head, listed) {
+            (Some((name, state)), Some(_)) if !name.contains(char::is_whitespace) => {
+                state.to_owned()
+            }
+            _ => format!("not a branch preview: {text}"),
+        }
+    };
+
+    let telemetry_off = "[plugins]\noff = [\"rig-basics/telemetry\"]\n";
+    let forks_on = format!("[plugins]\nenable = [\"{FORKS}\"]\n");
+    let sessions_off = format!("[plugins]\ndisable = [\"{SESSIONS}\"]\n");
+    let named = format!("Off: [plugins] off names it. {COUNTS}");
+    let leaving = format!("Off if you write this on leaving: it goes into [plugins] off. {COUNTS}");
+    let partly =
+        format!("Partly on: some plugins under it are unticked or held off by a branch. {KEEPS}");
+    let all_on = format!("On. {KEEPS}");
+    let cases: [(&str, &str, &str, &[&str], &str); 5] = [
+        ("named", telemetry_off, "telemetry", &[], &named),
+        (
+            "leaving",
+            telemetry_off,
+            "sessions",
+            &["sessions"],
+            &leaving,
+        ),
+        ("none-on", &sessions_off, "sessions", &[], NONE_ON),
+        ("partly", telemetry_off, "sessions", &[], &partly),
+        ("all-on", &forks_on, "sessions", &[], &all_on),
+    ];
+    for (name, settings, label, unticked, expected) in cases {
+        let (mut app, list, shown) = opened(&format!("plugins-preview-{name}"), settings);
+        highlight(&mut app, list, &shown, label);
+        tick(&mut app, list, &[], unticked);
+        assert_eq!(state(&app, list), expected, "{name}");
+        // The box keeps its state under an unticked parent, which adds its own.
+        let parent: Vec<&str> = unticked.iter().copied().chain(["rig-basics"]).collect();
+        tick(&mut app, list, &[], &parent);
+        assert_eq!(
+            state(&app, list),
+            format!(
+                "{expected} rig-basics above it is off, so this branch's choices count as off \
+                 until rig-basics is back on."
+            ),
+            "{name} under an unticked parent"
+        );
+    }
+
+    // It follows the ticks, and says when a branch of `off` comes out of it.
+    let (mut app, list, shown) = opened("plugins-preview-follows", telemetry_off);
+    highlight(&mut app, list, &shown, "sessions");
+    tick(&mut app, list, &[], &["sessions"]);
+    assert_eq!(state(&app, list), leaving);
+    tick(&mut app, list, &[], &[]);
+    assert_eq!(state(&app, list), partly);
+    highlight(&mut app, list, &shown, "telemetry");
+    tick(&mut app, list, &["telemetry"], &[]);
+    assert_eq!(
+        state(&app, list),
+        format!("Comes out of [plugins] off if you write this on leaving. {partly}")
+    );
+
+    // A crate whose only ticked plugin sits under an unticked area shows `[ ]`.
+    let (mut app, list, shown) = opened("plugins-preview-held", telemetry_off);
+    let plugin = (shown.items.iter()).position(|item| {
+        item.more
+            .as_deref()
+            .is_some_and(|more| more.starts_with(SESSIONS))
+    });
+    let ticked = [at(&shown, "rig-basics"), plugin];
+    assert!(ticked.iter().all(Option::is_some), "{ticked:?}");
+    let ticked = ticked.into_iter().flatten().collect();
+    app.world_mut().entity_mut(list).insert(Ticked(ticked));
+    highlight(&mut app, list, &shown, "rig-basics");
+    assert_eq!(state(&app, list), NONE_ON);
 }
 
 #[test]

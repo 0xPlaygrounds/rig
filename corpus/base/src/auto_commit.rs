@@ -225,7 +225,10 @@ fn ask_subject(
             Ok(changed) if !changed.is_empty() => changed,
             _ => continue,
         };
-        let connection = match models.connect(reference) {
+        let connection = match models
+            .connect(reference)
+            .map_err(|why| Models::cannot_use(reference, why))
+        {
             Ok(connection) => connection,
             Err(why) => {
                 said.once(agent, why, &mut notices);

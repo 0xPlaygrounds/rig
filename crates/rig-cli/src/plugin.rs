@@ -542,6 +542,13 @@ fn uninline(file: &mut config::SettingsFile, key: &str) -> Result<()> {
     Ok(())
 }
 
+/// How [`listing`] ends, since it shows what the settings choose.
+const TURNS_ON: &str = "Plugins can turn on others while rig runs";
+/// Added to [`TURNS_ON`] when [`PLUGINS_COMMAND`] will run.
+const SHOWS_RUNNING: &str = "/plugins shows what runs.";
+/// The plugin of the `/plugins` command.
+const PLUGINS_COMMAND: &str = "rig_basics::reload::plugins::PluginsPlugin";
+
 /// `rig plugin list`: prints [`listing`].
 fn list(home: &Home) -> Result<()> {
     print!("{}", listing(home)?);
@@ -554,7 +561,7 @@ fn list(home: &Home) -> Result<()> {
 /// `on` or `off`, the type and what it adds. A branch `[plugins] off` turns
 /// off says so. A plugin of rig's ends with its default and whether the
 /// settings changed it, with a warning on an essential plugin turned off;
-/// an extra ends with where its crate comes from.
+/// an extra ends with where its crate comes from. [`TURNS_ON`] ends it.
 fn listing(home: &Home) -> Result<String> {
     let chosen = config::chosen(home)?;
     let mut rigs = Vec::new();
@@ -599,6 +606,13 @@ fn listing(home: &Home) -> Result<String> {
         lines.push(("your plugins (extras):".to_owned(), None));
         lines.extend(tree(&chosen, yours));
     }
+    lines.push((String::new(), None));
+    let last = if chosen.on.iter().any(|plugin| plugin == PLUGINS_COMMAND) {
+        format!("{TURNS_ON}; {SHOWS_RUNNING}")
+    } else {
+        format!("{TURNS_ON}.")
+    };
+    lines.push((last, None));
     let width = (lines.iter())
         .filter(|(_, about)| about.is_some())
         .map(|(head, _)| head.len())

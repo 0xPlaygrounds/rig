@@ -226,6 +226,44 @@ impl Chosen {
 #[reflect(Component, Clone, Debug, Default, PartialEq)]
 pub struct Highlighted(pub usize);
 
+/// How a tick box shows an item of a tree, or an item its own tick.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TickBox {
+    /// Ticked, and every item under it on.
+    On,
+    /// Some items under it on, some off.
+    Mixed,
+    /// Unticked, or every item under it off.
+    Off,
+}
+
+impl TickBox {
+    /// How the item at `index` shows with `ticked`, among items each under
+    /// the one `parents` gives ([`PickItem::parent`]), which is listed
+    /// before it: an item its tick; a branch unticked is off, else as the
+    /// items under it are, each on while it and the branches between are
+    /// ticked.
+    pub fn of(parents: &[Option<usize>], index: usize, ticked: &[usize]) -> Self {
+        let on = |index: usize| ticked.contains(&index);
+        if !on(index) {
+            return Self::Off;
+        }
+        let parent = |item: usize| parents.get(item).copied().flatten().filter(|up| *up < item);
+        let branches = |item: usize| std::iter::successors(parent(item), move |up| parent(*up));
+        let is_branch = |item: usize| (0..parents.len()).any(|other| parent(other) == Some(item));
+        let items: Vec<bool> = (0..parents.len())
+            .filter(|item| branches(*item).any(|branch| branch == index))
+            .filter(|item| !is_branch(*item))
+            .map(|item| on(item) && branches(item).take_while(|up| *up != index).all(on))
+            .collect();
+        match (items.iter().all(|on| *on), items.iter().any(|on| *on)) {
+            (true, _) => Self::On,
+            (false, true) => Self::Mixed,
+            (false, false) => Self::Off,
+        }
+    }
+}
+
 /// The positions of the items ticked in a [`Picker`] of several, in list
 /// order, branches among them ([`PickItem::parent`]), set by the front on
 /// the picker's entity as the user ticks, so a plugin can show what changed

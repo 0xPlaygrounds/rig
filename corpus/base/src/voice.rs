@@ -457,7 +457,10 @@ fn on_turn_ended(
     let connection = config.summary_model.as_deref().and_then(|model| {
         let connected = models.as_ref()?.connect(model);
         connected
-            .inspect_err(|why| warn!("voice summary model {model}: {why}"))
+            .inspect_err(|why| {
+                let why = Models::cannot_use(model, why);
+                warn!("voice summary model {model}: {why}");
+            })
             .ok()
     });
     let Some(connection) = connection else {

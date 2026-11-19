@@ -773,12 +773,13 @@ and anything else a session starts run the same home's build.
 `rig plugin list` shows the tree: each crate, in it each area of more than
 one plugin or in `off`, and each plugin, `on` or `off`, with what it adds; a
 branch in `off` says so, and a plugin it keeps off says "off with its
-branch". `rig plugin enable <type>` and `disable <type>` change `[plugins]`,
-keeping every comment; given a branch, such as `rig-basics/sessions`, they
-take it out of or put it in `off`. Turning off a branch that holds an
-essential plugin warns, and turning on a plugin a branch keeps off names
-that branch. `rig plugin new hello` makes that crate in
-`$RIG_HOME/plugins/hello`, outside any workspace, and adds its
+branch". It shows what the settings choose: plugins can turn on others while
+rig runs, and `/plugins`, while it is on, shows what runs. `rig plugin enable
+<type>` and `disable <type>` change `[plugins]`, keeping every comment; given
+a branch, such as `rig-basics/sessions`, they take it out of or put it in
+`off`. Turning off a branch that holds an essential plugin warns, and turning
+on a plugin a branch keeps off names that branch. `rig plugin new hello` makes
+that crate in `$RIG_HOME/plugins/hello`, outside any workspace, and adds its
 `[[plugins.extra]]`, checked before `settings.toml` is written.
 
 `rig plugin add` adds another crate's plugin as its `[[plugins.extra]]`
@@ -816,19 +817,20 @@ running plugin added shows "on, added by" that one, such as "on, added by
 Subagents". The pane beside the list shows the highlighted
 plugin's area, crate, type path (what `settings.toml` and `rig plugin
 enable` take), default, state in `settings.toml`, whether it runs now, what
-an essential one takes away when off, and what it adds, or which plugins a
-branch holds. Typing finds plugins in folded branches too and shows them
-under their branch, by name or type path.
+an essential one takes away when off, and what it adds; for a branch, the
+state its tick box shows, what Enter does there, an unticked branch above it,
+and then which plugins it holds. Typing finds plugins in folded branches too and
+shows them under their branch, by name or type path.
 
 Enter on a plugin ticks and unticks its own choice, so on a plugin of an
 off branch it changes only that plugin. Enter on a branch that is `[x]` or
-`[~]` puts it into `off`, each plugin keeping its own choice; on a `[ ]`
-branch that `off` names it takes it back out, and on a `[ ]` branch whose
-plugins are all off by their own choice it turns each of them on. A row
-that differs from `settings.toml` shows `+ on` or `- off`, also a plugin
-that goes or comes with its branch, and the list counts the changes. Esc
-leaves. With changes it first names what
-turns on and off (a plugin turned on under an off branch "stays off with its
+`[~]` puts it into `off`, each plugin keeping its own choice. On an unticked
+branch it ticks the branch again, which takes it out of `off`, and on a
+ticked `[ ]` branch, whose plugins are all unticked or held off by a branch,
+it ticks everything under it. A row that differs from `settings.toml` shows
+`+ on` or `- off`, also a plugin that goes or comes with its branch, and the
+list counts the changes. Esc leaves. With changes it first names what turns on
+and off (a plugin turned on under an off branch "stays off with its
 branch"), the plugins that go with a branch, what an essential plugin such as `/plugins` itself takes away with every
 `rig plugin enable` command that brings it back, and the plugins ticked on
 that this machine cannot build, which stay off. Then it asks:

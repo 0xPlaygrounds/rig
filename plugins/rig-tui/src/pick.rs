@@ -11,7 +11,7 @@ use rig_core::json_utils::json_len;
 use rig_core::message::{AssistantContent, Message, ToolResultContent, UserContent};
 use rig_ecs::stage::{Effect, Outcome, Settled, SupersededBy};
 use rig_harness::ask::Ask;
-use rig_harness::pick::{Chosen, Highlighted, PickPreview, Picker, Ticked};
+use rig_harness::pick::{Chosen, Highlighted, PickPreview, Picker, TickBox, Ticked};
 use rig_tools::shorten;
 use unicode_width::UnicodeWidthStr;
 
@@ -170,17 +170,6 @@ pub(crate) struct Item<'a> {
     pub(crate) more: Option<&'a str>,
     /// The position of the branch it sits under, in a picker with a tree.
     pub(crate) parent: Option<usize>,
-}
-
-/// How a branch's tick box shows its items, or an item's its tick.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum TickBox {
-    /// Ticked, and every item under it on.
-    On,
-    /// Some items under it on, some off.
-    Mixed,
-    /// Unticked, or every item under it off.
-    Off,
 }
 
 impl Item<'_> {
@@ -377,27 +366,10 @@ impl Listing<'_> {
         (0..self.items.len()).any(|other| self.parent(other) == Some(index))
     }
 
-    /// How the item at `index` shows with `ticked`: an item its tick; a
-    /// branch unticked is off, else as the items under it are, each on
-    /// while it and the branches between are ticked.
+    /// How the item at `index` shows with `ticked`.
     pub(crate) fn tick(&self, index: usize, ticked: &[usize]) -> TickBox {
-        let on = |index: usize| ticked.contains(&index);
-        if !on(index) {
-            return TickBox::Off;
-        }
-        let items: Vec<bool> = (0..self.items.len())
-            .filter(|item| self.branches(*item).any(|branch| branch == index))
-            .filter(|item| !self.is_branch(*item))
-            .map(|item| {
-                let mut between = self.branches(item).take_while(|branch| *branch != index);
-                on(item) && between.all(on)
-            })
-            .collect();
-        match (items.iter().all(|on| *on), items.iter().any(|on| *on)) {
-            (true, _) => TickBox::On,
-            (false, true) => TickBox::Mixed,
-            (false, false) => TickBox::Off,
-        }
+        let parents: Vec<_> = self.items.iter().map(|item| item.parent).collect();
+        TickBox::of(&parents, index, ticked)
     }
 }
 

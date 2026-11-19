@@ -496,6 +496,64 @@ fn an_unknown_enabled_plugin_names_its_fixes() {
     );
 }
 
+/// `rig plugin add` is offered only for a name it can take: a type path
+/// with its crate.
+#[test]
+fn an_unknown_name_that_is_no_type_path_is_not_offered_to_add() {
+    for name in ["rig-basics/gone", "gone"] {
+        let text = format!("[plugins]\nenable = [\"{name}\"]\n");
+        let refused = (plugins(&file("/h/settings.toml", &text)).err())
+            .map(|why| why.to_string())
+            .unwrap_or_default();
+        assert!(
+            refused.contains(&format!("`rig plugin disable {name}` takes it out"))
+                && !refused.contains("rig plugin add"),
+            "{refused}"
+        );
+    }
+}
+
+/// A branch in `enable` or `disable` is told where branches go, with the
+/// fix that takes it out, and not to add it as a plugin's crate.
+#[test]
+fn a_branch_in_a_plugin_list_is_told_it_goes_in_off() {
+    for list in ["enable", "disable"] {
+        for name in ["rig-basics/sessions", "rig-tui"] {
+            let text = format!("[plugins]\n{list} = [\"{name}\"]\n");
+            let refused = (plugins(&file("/h/settings.toml", &text)).err())
+                .map(|why| why.to_string())
+                .unwrap_or_default();
+            assert!(
+                refused.contains(&format!("`{name}` in `{list}` is a branch"))
+                    && refused.contains("[plugins] off")
+                    && refused.contains(&format!("`rig plugin disable {name}` takes it out"))
+                    && !refused.contains("rig plugin add"),
+                "{refused}"
+            );
+        }
+    }
+}
+
+/// A plugin rig renamed is refused naming what it is now, and not as one
+/// to add from its crate's source.
+#[test]
+fn a_renamed_plugin_is_refused_naming_its_new_name() {
+    const OLD: &str = "rig_basics::sessions::agents::AgentsPlugin";
+    assert!(built_in(FORKS).is_some());
+    for list in ["enable", "disable"] {
+        let text = format!("[plugins]\n{list} = [\"{OLD}\"]\n");
+        let refused = (plugins(&file("/h/settings.toml", &text)).err())
+            .map(|why| why.to_string())
+            .unwrap_or_default();
+        assert!(
+            refused.contains(&format!("`rig plugin disable {OLD}` takes it out"))
+                && refused.contains(&format!("`rig plugin {list} {FORKS}`"))
+                && !refused.contains("rig plugin add"),
+            "{refused}"
+        );
+    }
+}
+
 const SESSIONS: &str = "rig_basics::sessions::SessionsPlugin";
 const FORKS: &str = "rig_basics::sessions::forks::ForksPlugin";
 const TUI: &str = "rig_tui::TuiPlugin";

@@ -604,8 +604,8 @@ fn a_model_without_its_key_keeps_the_current_one_connected() {
     assert_eq!(
         recalled(&app),
         ["Cannot use rig-models-keyless-locked/big: no key for \
-              `rig-models-keyless-locked`: set `CORP_KEY` or pass one with \
-              `ConnectOptions::api_key`. Still on rig-models-keyless/small."]
+              `rig-models-keyless-locked`: set `CORP_KEY`. Still on \
+              rig-models-keyless/small."]
     );
     app.update();
     let world = app.world();
@@ -614,6 +614,105 @@ fn a_model_without_its_key_keeps_the_current_one_connected() {
     let connected = connected.map(|connection| connection.spec.reference());
     assert_eq!(connected.as_deref(), Some("rig-models-keyless/small"));
     assert!(world.get::<ModelRefused>(agent).is_none());
+}
+
+/// For each [`ModelRefused`] inserted, whether its notice was written first.
+#[derive(Resource, Default)]
+struct NoticeFirst(Vec<bool>);
+
+/// `/model`, a model restored or set by a plugin and the agent's own model
+/// chosen again say what `--model` says of a missing key, with or without
+/// `/login`, and a refusal stored on the agent was written as a notice first.
+#[test]
+fn a_model_without_its_key_is_refused_in_the_words_of_model_everywhere() {
+    for (login, how) in [
+        (
+            true,
+            "no key for `openai`: save one with /login openai or set `OPENAI_API_KEY`.",
+        ),
+        (false, "no key for `openai`: set `OPENAI_API_KEY`."),
+    ] {
+        let Some((reference, models)) = builtin_without_a_key("openai", "OPENAI_API_KEY") else {
+            return;
+        };
+        let (mut app, agent) = routed();
+        app.insert_resource(models)
+            .init_resource::<NoticeFirst>()
+            .add_observer(
+                |added: On<Insert<ModelRefused>>,
+                 refused: Query<&ModelRefused>,
+                 notices: Res<Messages<Notice>>,
+                 mut first: ResMut<NoticeFirst>| {
+                    let written = refused.get(added.entity).is_ok_and(|refused| {
+                        (notices.iter_current_update_messages())
+                            .any(|notice| notice.text == refused.0)
+                    });
+                    first.0.push(written);
+                },
+            );
+        if login {
+            let login = |_: In<rig_harness::commands::NoArgs>| {};
+            app.add_command("login", "Sign in", login);
+        }
+        run(&mut app, agent, &format!("model {reference}"));
+        let said = format!("Cannot use {reference}: {how}");
+        assert_eq!(recalled(&app), std::slice::from_ref(&said));
+
+        let world = app.world_mut();
+        world
+            .entity_mut(agent)
+            .insert(ModelChoice(reference.clone()));
+        world.flush();
+        let refused = Some(ModelRefused(said));
+        assert_eq!(world.get::<ModelRefused>(agent), refused.as_ref());
+
+        world.entity_mut(agent).remove::<ModelRefused>();
+        run(&mut app, agent, &format!("model {reference}"));
+        let world = app.world();
+        assert_eq!(world.get::<ModelRefused>(agent), refused.as_ref());
+        assert_eq!(world.resource::<NoticeFirst>().0, [true, true]);
+    }
+}
+
+/// `LoginPlugin` alone words a missing key, naming itself, and a wording
+/// the app set first stays, whichever plugins run.
+#[test]
+fn login_alone_words_a_missing_key_and_an_apps_own_wording_stays() {
+    fn mine(_: &World, _: &ConnectError) -> Option<String> {
+        Some("mine".to_owned())
+    }
+    for own in [false, true] {
+        let Some((reference, models)) = builtin_without_a_key("openai", "OPENAI_API_KEY") else {
+            return;
+        };
+        let home = scratch_home("models-login-wording");
+        let (mut app, _) = app_in(&home, &SessionId::generate());
+        app.insert_resource(models);
+        if own {
+            app.insert_resource(ConnectWording(mine));
+        }
+        app.add_plugins(AgentPlugin);
+        if own {
+            app.add_plugins(ModelsPlugin);
+        }
+        app.add_plugins(crate::login::LoginPlugin);
+        let world = app.world_mut();
+        let agent = spawn_root(world, ()).id();
+        world
+            .entity_mut(agent)
+            .insert(ModelChoice(reference.clone()));
+        world.flush();
+        let how = if own {
+            "mine"
+        } else {
+            "no key for `openai`: save one with /login openai or set `OPENAI_API_KEY`"
+        };
+        assert_eq!(
+            world.get::<ModelRefused>(agent),
+            Some(&ModelRefused(format!("Cannot use {reference}: {how}.")))
+        );
+        fs::remove_dir_all(home.root()).ok();
+    }
 }
 
 #[test]

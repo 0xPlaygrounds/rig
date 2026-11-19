@@ -183,7 +183,9 @@ fn connect_targets(
             continue;
         }
         let connected = match config.targets.get(&rule.target) {
-            Some(reference) => models.connect(reference),
+            Some(reference) => models
+                .connect(reference)
+                .map_err(|why| Models::cannot_use(reference, why)),
             None => Err(format!("`{}` is not in [router.targets]", rule.target)),
         };
         match connected {

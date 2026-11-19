@@ -110,7 +110,10 @@ fn ask_for_a_name(
     let mut request =
         ModelRequest::new(CompletionRequest::new(Message::user(prompt)).preamble(PREAMBLE));
     if let Some(reference) = config.model.as_deref() {
-        match models.connect(reference) {
+        match models
+            .connect(reference)
+            .map_err(|why| Models::cannot_use(reference, why))
+        {
             Ok(connection) => request = request.on(connection),
             Err(why) => {
                 warn!("auto-name: cannot use {reference}, so the agent's model names: {why}");
