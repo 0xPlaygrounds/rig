@@ -423,6 +423,58 @@ fn a_plugins_unnamed_call_with_its_own_recovery_is_retried() {
     assert_eq!(model.request_count(), 2, "sent again");
 }
 
+/// A [`Recovery`] a plugin puts on a turn's own call changes nothing: the
+/// call's retries are judged and counted on its turn, so one allowed retry
+/// is one retry.
+#[test]
+fn a_recovery_on_a_turns_own_call_does_not_reset_its_retries() {
+    let (mut app, wakes) = kernel(&MemoryStore::default());
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO))
+        .insert_resource(rig_ecs::retry::RetryPolicy {
+            max_retries: 1,
+            ..rig_ecs::retry::RetryPolicy::DEFAULT
+        })
+        .add_observer(
+            |added: On<bevy_ecs::lifecycle::Add<TurnCall>>, mut commands: Commands| {
+                commands.entity(added.entity).insert(Recovery::default());
+            },
+        );
+    let failed = || {
+        let overloaded =
+            ProviderResponseError::without_status("overloaded").with_transient(Some(true));
+        vec![MockStreamEvent::Error(MockError::ProviderResponse(
+            overloaded,
+        ))]
+    };
+    let model = MockCompletionModel::from_stream_turns([
+        failed(),
+        failed(),
+        vec![
+            MockStreamEvent::text("5"),
+            MockStreamEvent::final_response_with_default_usage(),
+        ],
+    ]);
+    let agent = connected(&mut app, &model);
+    assert!(agent.is_some(), "the built-in catalog lists the model");
+    let Some(agent) = agent else {
+        return;
+    };
+    ask(&mut app, agent);
+    for _ in 0..200 {
+        if a_turn_ended(app.world_mut()) {
+            break;
+        }
+        advance(&mut app, Duration::from_secs(3));
+        wakes.recv_timeout(Duration::from_millis(10)).ok();
+    }
+    let ended = &app.world().resource::<Ended>().0;
+    assert!(
+        matches!(ended.as_slice(), [TurnOutcome::Failed(_)]),
+        "{ended:?}"
+    );
+    assert_eq!(model.request_count(), 2, "one retry");
+}
+
 #[test]
 fn an_interrupt_during_a_backoff_cancels_the_retry() {
     let started = backing_off();

@@ -1567,7 +1567,7 @@ pub(crate) fn judge_failures(
             &Effect,
             &Outcome,
             Option<&CallOf>,
-            Option<&Recovery>,
+            (Option<&Recovery>, Has<TurnCall>),
         ),
         (With<ModelRequest>, Added<Outcome>, Without<Settled>),
     >,
@@ -1576,6 +1576,7 @@ pub(crate) fn judge_failures(
     mut commands: Commands,
 ) {
     for (call, effect, Outcome(outcome), of, own) in &failed {
+        let own = own_count(own);
         let Err(report) = outcome else {
             continue;
         };
@@ -1591,6 +1592,13 @@ pub(crate) fn judge_failures(
         let verdict = policy.verdict(report, retries, now);
         commands.entity(call).try_insert(RetryVerdict(verdict));
     }
+}
+
+/// The count a failed call's retries go by when it is not its turn's: the
+/// call's own [`Recovery`], unless it is a [`TurnCall`], which counts on
+/// its turn whatever it carries.
+fn own_count((own, turn_call): (Option<&Recovery>, bool)) -> Option<&Recovery> {
+    own.filter(|_| !turn_call)
 }
 
 /// Holds each failed [`TurnCall`], and each failed model call with a
@@ -1630,8 +1638,7 @@ pub(crate) fn back_off(
         if ending.is_some_and(TurnOutcome::is_stopping) {
             continue;
         }
-        // A turn's own call counts on its turn, whatever it carries.
-        let own = own.filter(|_| !turn_call).map(|own| Recovery {
+        let own = own_count((own, turn_call)).map(|own| Recovery {
             retries: own.retries + 1,
         });
         let attempt = own.map_or_else(
