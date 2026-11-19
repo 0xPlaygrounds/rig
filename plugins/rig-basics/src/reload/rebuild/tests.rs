@@ -382,10 +382,27 @@ echo 'error: failed to select a version' >&2
 echo 'error: rig build: write \"0.20\"' >&2
 echo 'rig update: rig is updated, but building the agent failed' >&2
 exit 1";
-    let Said { notices, .. } = failed_update("explained", script);
+    let Said { notices, .. } = failed_update("update-explained", script);
     let opening = "The rebuild failed (exit status: 1): write \"0.20\"; this build keeps";
     assert!(
         notices.iter().any(|notice| notice.starts_with(opening)),
+        "{notices:?}"
+    );
+}
+
+/// An update that failed before it installed anything ran no `rig build`,
+/// so a line like its explanation is the install's, and cargo's first error
+/// is told.
+#[test]
+fn an_update_that_installed_nothing_has_no_build_explanation() {
+    let script = "echo 'error[E0425]: first' >&2
+echo 'error: rig build: probing' >&2
+echo 'rig update: the install failed' >&2
+exit 1";
+    let Said { notices, .. } = failed_update("update-look-alike", script);
+    let opening = "The update failed: error[E0425]: first; this rig keeps running.";
+    assert!(
+        notices.iter().any(|notice| notice == opening),
         "{notices:?}"
     );
 }

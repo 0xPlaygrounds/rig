@@ -438,13 +438,15 @@ fn an_explained_failure_is_one_line_for_reload() {
     assert!(reason.ends_with(&kept), "{reason}");
     let line = explained.unwrap_or_default();
     let joined = format!("{BEVY_VERSION}: {a}; {b}; cargo failed");
+    assert!(!line.contains('\n'), "{line}");
     assert!(line.starts_with("rig build: a plugin must write"), "{line}");
     assert!(line.ends_with(&joined), "{line}");
     assert_eq!(plain.explanation(), None);
 }
 
 /// A resolve failure is put down to a plugin's Bevy requirement only when
-/// cargo's first error names a Bevy crate; any other keeps cargo's words.
+/// cargo's first error is a version conflict over a Bevy crate; any other
+/// keeps cargo's words.
 #[test]
 fn only_a_resolve_failure_naming_bevy_is_explained_by_a_bevy_requirement() {
     let root = std::env::temp_dir().join(format!("rig-unresolved-{}", std::process::id()));
@@ -465,13 +467,16 @@ fn only_a_resolve_failure_naming_bevy_is_explained_by_a_bevy_requirement() {
     let other = [
         "error: failed to select a version for the requirement `serde = \"^99\"`",
         "error: no matching package named `serde` found",
+        "error: no matching package named `bevy_reflect` found",
+        "error: failed to get `bevy_reflect` as a dependency of package `plugin v0.1.0`",
+        "error: failed to get `serde` as a dependency of package `bevy_reflect v0.18.0`",
         "error: failed to parse manifest at `/home/me/bevy/Cargo.toml`",
         "    Updating crates.io index",
     ];
     let (bevy, other) = (bevy.map(explained), other.map(explained));
     fs::remove_dir_all(&root).ok();
     assert_eq!(bevy, [true; 2]);
-    assert_eq!(other, [false; 4]);
+    assert_eq!(other, [false; 7]);
 }
 
 /// A short wait for cargo's lock in one command says nothing when a later
