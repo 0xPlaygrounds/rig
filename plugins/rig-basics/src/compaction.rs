@@ -46,6 +46,10 @@ pub use tui::SummaryLooks;
 /// The purpose of a summary's model call.
 pub const PURPOSE: &str = "compaction";
 
+/// The kind of the saved aside that keeps a reply the window cut short and recovery left out of
+/// the conversation: its value is the reply's message.
+pub const OMITTED: &str = "compaction.omitted";
+
 /// Compacts agents' conversations near their model's input limit, after an overflow, and on
 /// `/compact`, by [`CompactionDefault`].
 #[derive(Default)]
@@ -72,6 +76,11 @@ impl Plugin for CompactionPlugin {
                     check_after_run.in_set(ReviewSystems::Act),
                     read_replies.in_set(ReviewSystems::Edit),
                     (retry_compaction_calls, recover_from_overflow).in_set(ReviewSystems::Act),
+                    // After every plugin had its say on a message, before the kernel hands it back.
+                    send_after_own_turn
+                        .after(GateSystems::After)
+                        .after(crate::approval::ApprovalSystems)
+                        .before(GateSystems::Fallback),
                 ),
             )
             .add_systems(
@@ -1492,11 +1501,46 @@ fn take_summary(
                 (step, overflowed),
             );
         }
-        // The user's own compaction turn ends with it, unless it ended.
-        None if !ended => {
-            commands.trigger(StopTurn::plugin_alone(agent, "compaction", "compacted"))
-        }
+        // Compaction's own turn ends with it, unless it ended.
+        None if !ended => commands.trigger(StopTurn::plugin_alone(agent, "compaction", COMPACTED)),
         None => {}
+    }
+}
+
+/// Why compaction's own turn stops once its summary settled.
+const COMPACTED: &str = "compacted";
+
+/// Sends again, whole, each message of the user's its agent accepted while compaction's own turn
+/// ran, once that turn ended with its summary, as pi delivers what was queued during a compaction:
+/// the message starts a turn with its attachments, where the kernel would hand back its text
+/// alone.
+fn send_after_own_turn(
+    mut unsent: Query<
+        (&Unsent, &Effect, &Incoming, &ForAgent, &mut Decision),
+        (Added<Unsent>, With<Started>),
+    >,
+    mut commands: Commands,
+) {
+    let mut waiting: Vec<_> = unsent
+        .iter_mut()
+        .filter(|(unsent, _, message, _, decision)| {
+            let compacted = matches!(
+                &unsent.ended,
+                Some(TurnOutcome::Stopped(stop)) if matches!(
+                    stop.cause(),
+                    StopCause::Plugin { by, why } if by == "compaction" && why == COMPACTED
+                )
+            );
+            compacted && message.author == Author::user() && !decision.is_decided()
+        })
+        .collect();
+    waiting.sort_unstable_by_key(|(_, effect, ..)| effect.id());
+    for (_, _, message, &ForAgent(agent), mut decision) in waiting {
+        decision.decide(Decider::plugin("compaction"), Outcome::custom("sent again"));
+        commands.trigger(Deliver {
+            entity: agent,
+            message: message.clone(),
+        });
     }
 }
 
@@ -1504,11 +1548,13 @@ fn take_summary(
 /// cut short, whose compaction did not go in (`why`, when it failed or was cancelled, a notice
 /// already said). As pi omits the attempt and ends the run, the reply is dropped and the turn
 /// stops there, the user's prompt and its attachments kept; a refusal nothing could be compacted
-/// for is shown.
+/// for is shown. As pi keeps the omitted attempt in its session file, a reply cut short stays in
+/// the saved conversation as an [`OMITTED`] aside, which no request sends.
 fn fail_recovered(world: &mut World, (call, agent): (Entity, Entity), why: Option<&str>) {
     let Some(mut outcome) = world.get_mut::<Outcome>(call) else {
         return;
     };
+    let omitted = outcome.completion().and_then(|reply| reply.message());
     let (refused, cut) = match &outcome.0 {
         Err(report) => (
             Some(report.to_string()),
@@ -1518,6 +1564,13 @@ fn fail_recovered(world: &mut World, (call, agent): (Entity, Entity), why: Optio
     };
     outcome.0 = Err(ErrorReport::new(ErrorKind::Cancelled, cut));
     world.entity_mut(call).remove::<Partial>();
+    if let Some(omitted) = omitted
+        && let Ok(value) = serde_json::to_value(&omitted)
+        && let Some(mut conversation) = world.get_mut::<Conversation>(agent)
+    {
+        let after = conversation.entries().next_back().map(|entry| entry.id);
+        conversation.add_aside(Aside::new(OMITTED, summary_author(), value).after(after));
+    }
     if why.is_none() {
         let text = match refused {
             Some(refused) => {

@@ -748,11 +748,14 @@ fn stopping_between_the_two_summaries_of_a_split_turn_cancels_the_compaction() {
     assert!(sent(&model).len() <= 2, "{:?}", sent(&model));
 }
 
-/// Each summary call of a split turn gets its own retries: the history summary and the turn-prefix
-/// summary each fail once and are sent again, and the summary goes in.
+/// Each summary call of a split turn gets its own retries: the history summary spends all three
+/// and goes in on the last, and the turn-prefix summary still fails once and is sent again, which
+/// a count the two shared would refuse.
 #[test]
 fn each_summary_call_is_retried_on_its_own() {
     let model = MockCompletionModel::from_stream_turns([
+        unavailable(),
+        unavailable(),
         unavailable(),
         reply("## Goal\nAnswer the questions."),
         unavailable(),
@@ -768,9 +771,9 @@ fn each_summary_call_is_retried_on_its_own() {
         entity: agent,
         focus: String::new(),
     });
-    // The two calls fail on their own frames, so the clock moves on until both waits passed.
+    // The calls fail on their own frames, so the clock moves on until every wait passed.
     until_ended_with_retries(&mut app, &wakes, 1);
-    assert_eq!(sent(&model).len(), 4, "{:?}", notices(&app));
+    assert_eq!(sent(&model).len(), 6, "{:?}", notices(&app));
     let live = entries(app.world(), agent);
     let summary = live.first().filter(|entry| holds_summary(entry));
     let text = summary.map(|entry| entry.message.rag_text().unwrap_or_default());
@@ -926,7 +929,8 @@ fn a_held_summary_is_applied_as_reviewed_or_cancelled_and_undone_with_its_ids() 
 
 /// A request refused as too long whose recovery does not go in, because its summary fails or
 /// there is nothing to compact, is dropped as pi omits it: the turn stops there with a notice of
-/// why, and the user's prompt and its image stay in the conversation, not given back.
+/// why, the provider's own reason for a failed summary included, and the user's prompt and its
+/// image stay in the conversation, not given back.
 #[test]
 fn a_refused_request_whose_recovery_does_not_go_in_keeps_the_prompt() {
     let refused = ProviderResponseError::without_status("invalid request: bad summary");
@@ -955,12 +959,12 @@ fn a_refused_request_whose_recovery_does_not_go_in_keeps_the_prompt() {
             "{nothing}: {ended:?}"
         );
         let said = notices(&app);
-        let why = match nothing {
-            true => "nothing to compact",
-            false => "Context overflow recovery failed",
+        let why: &[&str] = match nothing {
+            true => &["nothing to compact"],
+            false => &["Context overflow recovery failed", "bad summary"],
         };
         assert!(
-            said.iter().any(|it| it.contains(why)),
+            said.iter().any(|it| why.iter().all(|why| it.contains(why))),
             "{nothing}: {said:?}"
         );
         let live = serde_json::to_string(&entries(app.world(), agent)).unwrap_or_default();
@@ -2210,4 +2214,115 @@ fn a_second_refusal_after_recovery_is_not_compacted_again() {
         "{ended:?}"
     );
     assert_eq!(sent(&model).len(), 3, "{:?}", notices(&app));
+}
+
+/// A reply the window cut short that recovery leaves out, here with nothing to compact, stays in
+/// the saved conversation as an aside, as pi keeps the attempt in its session file: the next
+/// request does not send it, and the session reopened still holds it.
+#[test]
+fn a_reply_cut_short_and_left_out_stays_in_the_saved_session() {
+    let cut = vec![
+        MockStreamEvent::text("A half"),
+        MockStreamEvent::FinalResponse(rig_core::operation::Finish {
+            reason: Some(FinishReason::Length),
+            ..rig_core::test_utils::mock_final(Usage::new().output_tokens(10))
+        }),
+    ];
+    let model = MockCompletionModel::from_stream_turns([cut, reply("The whole answer.")]);
+    let store = MemoryStore::default();
+    let (mut app, wakes) = start_with(&store, 1_000_000, |_| {});
+    let agent = agent(&mut app, &model, 200_000, turns(0, 4));
+    let Some(agent) = agent else {
+        return;
+    };
+    ask(&mut app, &wakes, agent, "Write it.", 1);
+    ask(&mut app, &wakes, agent, "Write it again.", 2);
+    assert_eq!(answer(&app).as_deref(), Some("The whole answer."));
+    let requests = sent(&model);
+    assert_eq!(requests.len(), 2, "{:?}", notices(&app));
+    assert!(
+        !requests.iter().any(|request| request.contains("A half")),
+        "{requests:?}"
+    );
+    let omitted = |world: &World, agent: Entity| -> Vec<String> {
+        let conversation = world.get::<Conversation>(agent);
+        let asides = conversation.into_iter().flat_map(|it| it.asides());
+        asides
+            .filter(|(_, aside)| aside.kind == OMITTED && aside.saved)
+            .map(|(_, aside)| aside.value.to_string())
+            .collect()
+    };
+    let live = omitted(app.world(), agent);
+    assert!(
+        matches!(live.as_slice(), [one] if one.contains("A half")),
+        "{live:?}"
+    );
+    app.update();
+    let id = app.world().get::<AgentId>(agent).cloned();
+    drop(app);
+
+    let (mut reopened, _wakes) = start_with(&store, 1_000_000, |_| {});
+    let world = reopened.world_mut();
+    let mut agents = world.query::<(Entity, &AgentId)>();
+    let restored = id.and_then(|id| id.find_in(agents.iter(world)));
+    assert!(restored.is_some(), "the agent was restored");
+    let Some(restored) = restored else {
+        return;
+    };
+    assert_eq!(omitted(reopened.world(), restored), live);
+    let messages = serde_json::to_string(&entries(reopened.world(), restored)).unwrap_or_default();
+    assert!(!messages.contains("A half"), "{messages}");
+}
+
+/// A follow-up with an image sent while the compaction turn after an error writes its summary is
+/// answered once that turn ends, image and all, as pi delivers what was queued during a
+/// compaction: nothing is handed back as text.
+#[test]
+fn a_follow_up_sent_during_the_compaction_after_an_error_keeps_its_image() {
+    let refused = ProviderResponseError::without_status("invalid request: refused");
+    let model = MockCompletionModel::from_stream_turns([
+        measured("first answer", 20_000),
+        vec![MockStreamEvent::Error(MockError::ProviderResponse(refused))],
+        reply("## Goal\nAnswer."),
+        measured("A greeting.", 100),
+    ]);
+    let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |app| {
+        collect::<rig_ecs::inbox::Recalled>(app);
+        app.add_systems(AgentPass, hold_for_review.in_set(ReviewSystems::Act));
+    });
+    let agent = agent(&mut app, &model, 40_000, turns(0, 4));
+    let Some(agent) = agent else {
+        return;
+    };
+    ask(&mut app, &wakes, agent, "The first question?", 1);
+    let note = format!("From the watcher: {}", "word ".repeat(4_000));
+    app.world_mut().trigger(
+        Deliver::new(agent, note, DeliveryMode::Steer).with_author(Author::plugin("watcher")),
+    );
+    assert!(held(&mut app, &wakes).is_some(), "{:?}", notices(&app));
+    let mut follow_up = with_image(agent, "What is in the picture?");
+    follow_up.message.mode = DeliveryMode::Queue;
+    app.world_mut().trigger(follow_up);
+    run_until(&mut app, &wakes, |world| {
+        world.iter_entities().any(|it| {
+            it.contains::<Incoming>() && it.contains::<Started>() && !it.contains::<Outcome>()
+        })
+    });
+    decide(&mut app, &wakes, Some("## Goal\nAnswer."));
+    run_until(&mut app, &wakes, |world| {
+        world.resource::<Ended>().0.len() >= 4
+    });
+    assert_eq!(answer(&app).as_deref(), Some("A greeting."));
+    let requests = sent(&model);
+    let last = requests.get(3).cloned().unwrap_or_default();
+    assert!(
+        last.contains("What is in the picture?") && last.contains("aGk="),
+        "{:?}: {last}",
+        notices(&app)
+    );
+    let recalled = &app
+        .world()
+        .resource::<Collected<rig_ecs::inbox::Recalled>>()
+        .0;
+    assert!(recalled.is_empty(), "{recalled:?}");
 }

@@ -476,16 +476,23 @@ new messages. When the provider refuses a request as too long, or the window
 cuts a reply with no tool calls short, rig drops that attempt, compacts and
 sends the request once more; when there is nothing to compact, or that summary
 fails or is cancelled, the turn stops there with a notice, and the user's
-prompt and its attachments stay in the conversation. A summary that fails or
-is cut short replaces nothing, and a notice says why. A failed summary call is
-retried as pi retries it, with pi's defaults rather than `[retry]`: by its
-error message, three times, waiting 2, 4 then 8 seconds (doubling, at most 60),
-not as long as `Retry-After` asks. Stopping the turn (Esc) cancels a summary
-being written, and with it the turn; a message the turn accepted while a
-summary after its run was written stays in the conversation for the next
-request, where pi answers it at once. As in pi, compaction summarizes only what
-lies before the newest `keep_recent_tokens`: a small window near its limit
-compacts again whenever something lies before them, and a conversation that
+prompt and its attachments stay in the conversation; a reply cut short that is
+left out this way stays in the saved session, where no request sends it. A
+summary that fails or is cut short replaces nothing, and a notice says why. A
+summary call that fails with a retryable error is retried as pi retries it,
+with pi's defaults rather than `[retry]`, which covers a turn's own model
+calls only: by its error message, up to three times, waiting 2, 4 then 8
+seconds (doubling, at most 60), not as long as `Retry-After` asks; any other
+error is not retried. A message sent while `/compact`, or the compaction after
+a turn that ended in an error, writes its summary is sent, attachments and
+all, once that compaction ends. Stopping the turn (Esc) cancels a summary
+being written, and with it the turn; a message the turn had taken into the
+conversation while a summary after its run was written stays there for the
+next request, where pi answers it at once, and one still waiting behind it
+comes back to the input as its text only, without its attachments. As in pi,
+compaction summarizes only what lies before the newest `keep_recent_tokens`: a
+small window near its limit compacts again whenever something lies before
+them, and a conversation that
 fits inside them (very dense content, or a keep larger than the window leaves)
 has nothing to summarize; a single tool result bigger than the window stays
 with its call, so recovery can summarize only what came before it and the
