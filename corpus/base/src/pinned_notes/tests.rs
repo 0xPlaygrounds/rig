@@ -1,6 +1,6 @@
 use std::sync::mpsc::Receiver;
 
-use rig_basics::compaction::CompactionPlugin;
+use rig_basics::compaction::{CompactionDefault, CompactionPlugin};
 use rig_basics::subagents::SubagentsPlugin;
 use rig_core::catalog::{Catalog, Connector};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
@@ -11,8 +11,8 @@ use rig_harness_test_support::{
     Collected, Ended, app_on, collect, connect, first_agent, log_ended, reply, run_until, say,
 };
 
-/// The kernel, compaction, subagents and pinned notes on `store`, after
-/// the first frame restored the session, with its loop's wakes and its
+/// The kernel, compaction (keeping 1 token), subagents and pinned notes on
+/// `store`, after the first frame restored the session, with its loop's wakes and its
 /// agent, answered by `model` when given.
 fn start(
     store: &MemoryStore,
@@ -36,6 +36,11 @@ fn start(
     }
     collect::<Notice>(&mut app).finish();
     app.update();
+    // `/compact` summarizes all but the newest message of a short conversation.
+    app.world_mut()
+        .resource_mut::<CompactionDefault>()
+        .0
+        .keep_recent_tokens = 1;
     let agent = first_agent(app.world_mut())?;
     Some((app, wakes, agent))
 }

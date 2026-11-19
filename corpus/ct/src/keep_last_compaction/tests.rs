@@ -60,7 +60,7 @@ fn a_request_near_the_window_drops_the_oldest_turns_with_no_model_call() {
     let model =
         MockCompletionModel::from_stream_turns((1..=4).map(|turn| reply(&format!("A{turn}"))));
     // No reserve and a one-token window: every request is over it.
-    let (mut app, wakes, agent) = start(&model, 1, "[compaction]\nlimits = { reserve = 0 }");
+    let (mut app, wakes, agent) = start(&model, 1, "[compaction]\nreserve_tokens = 0");
     for question in ["apples?", "bananas?", "cherries?", "dates?"] {
         say(&mut app, &wakes, agent, question);
     }
@@ -92,7 +92,7 @@ fn the_tools_a_request_offers_count_toward_the_window() {
         MockCompletionModel::from_stream_turns((1..=3).map(|turn| reply(&format!("A{turn}"))));
     // The messages fit the window; with the tool's 5,000-token description
     // every request is over it.
-    let (mut app, wakes, agent) = start(&model, 2_000, "[compaction]\nlimits = { reserve = 0 }");
+    let (mut app, wakes, agent) = start(&model, 2_000, "[compaction]\nreserve_tokens = 0");
     let description = "word ".repeat(4_000);
     app.add_open_tool(
         "lookup",

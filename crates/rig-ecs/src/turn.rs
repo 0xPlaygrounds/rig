@@ -50,7 +50,7 @@ use rig_core::now_ms;
 use rig_core::serve::{Reply, stream_truncated};
 use rig_core::streaming::{Item, Part, Relayed, StreamEvent};
 use rig_core::tool::{ToolErrorKind, ToolExecutionError, ToolResult, Touches, feedback};
-use rig_memory::{Anchor, is_output_notes};
+use rig_memory::Anchor;
 use web_time::Instant;
 
 use super::agent::{
@@ -424,8 +424,8 @@ fn way_on(taken: bool) -> &'static str {
 /// that has one, in the order they were sent; `None` when no message was
 /// taken. They follow the last reply that counts, or the note that the
 /// user stopped a request; failed replies among them go too, and the
-/// results that reply asked for stay, wherever they are, with any notes
-/// on cleared outputs beside them. A titled user's message, such as a chat bridge's or a skill's,
+/// results that reply asked for stay, wherever they are, with any notes an
+/// earlier version wrote on cleared outputs beside them. A titled user's message, such as a chat bridge's or a skill's,
 /// goes without coming back; an agent's or a plugin's keeps its place. A
 /// text is what the conversation holds, after Prepare, its text blocks
 /// joined; what is not text, such as an image or a file attached, does
@@ -507,6 +507,16 @@ fn take_unanswered(conversation: &mut Conversation) -> Option<Vec<String>> {
         conversation.restore(from.., kept, Author::rig());
     }
     taken.then_some(texts)
+}
+
+/// Whether `text` holds the notes an earlier version wrote beside tool outputs it cleared, in
+/// the shape it wrote them, which a session saved then may still have: they stay with their
+/// results.
+fn is_output_notes(text: &str) -> bool {
+    text.starts_with(
+        "<cleared-output-notes>\nNotes on the tool outputs above, written before they were \
+         cleared:\n",
+    ) && text.ends_with("\n</cleared-output-notes>")
 }
 
 /// Stops the agent's running turn at once, and, unless the stop is
@@ -1775,7 +1785,12 @@ fn commit_reply(
     }
     let reply = response.message().map(|message| {
         let through = answered.conversation.push(message);
-        if response.usage.context_tokens().is_some() {
+        // A reply that reports no context, or none at all, keeps the last measure.
+        if response
+            .usage
+            .context_tokens()
+            .is_some_and(|tokens| tokens > 0)
+        {
             let usage = response.usage;
             *answered.last = LastUsage(Some(Anchor { usage, through }));
             commands.entity(agent).remove::<ContextStale>();

@@ -24,9 +24,8 @@ rig-harness's public API. Each plugin is its own name in `[plugins]` of
   (`AgentPickerPlugin`, off by default; forks and subagents add it);
 - `sessions`: `/new`, `/resume` and `/name` (`SessionsPlugin`), and `/fork`
   and rewind (`forks::ForksPlugin`, off by default);
-- `compaction`: summarizing a conversation near the model's window with the
-  coding agent's summary prompts (`CODING_PROMPTS`), and `/compact`
-  (`CompactionPlugin`);
+- `compaction`: summarizing a conversation near the model's window, after an
+  overflow and on `/compact`, as the pi coding agent does (`CompactionPlugin`);
 - `telemetry`: what model calls cost and `/usage` (`usage::UsagePlugin`),
   the effect log (`effect_log::EffectLogPlugin`), and warnings and errors
   as data (`diagnostics::DiagnosticsPlugin`);
@@ -78,12 +77,9 @@ in that run.
 The kernel keeps every agent within the run's tools (`rig_ecs::agent::RunTools`)
 before anything is admitted, as it keeps each within its parents.
 
-Without an explicit output limit, a turn asks for `[compaction] answer_tokens`
-plus any thinking budget and 1,024, else the model's output limit within its
-window, thinking included, or no limit for a model whose output limit is
-unknown (the server's default; rig-core's own for an Anthropic-format
-gateway). The room left in the window caps it. An explicit limit past the
-model's output limit is held to it, with a warning.
+A turn's request asks for its own output limit, else the model's, fitted to
+the room its input leaves in the window, as pi asks; compaction keeps
+`[compaction] reserve_tokens` of the window free for the reply.
 
 `/usage` reports what the agent, the agents below it (despawned ones
 included) and the session spent: provider-supplied cost when available, otherwise API list-price

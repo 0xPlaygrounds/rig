@@ -174,8 +174,11 @@ fn a_summary_without_its_headings_twice_falls_back_and_the_turn_goes_on() {
     let (mut app, wakes) = app_on(&MemoryStore::default());
     let summarizer =
         MockCompletionModel::from_stream_turns([reply("Just some prose."), reply("More prose.")]);
+    // The fallback is the default compaction, whose cut splits the last turn: a history summary,
+    // then one of the turn's earlier part.
     let model = MockCompletionModel::from_stream_turns([
         reply("## Goal\nThe default summary (DEFAULT-SUMMARY)."),
+        reply("## Original Request\nThe next question."),
         reply("done"),
     ]);
     app.insert_resource(scripted_models([("test/summarizer", &summarizer)]))
@@ -221,7 +224,7 @@ fn a_summary_without_its_headings_twice_falls_back_and_the_turn_goes_on() {
     let requests = sent(&model);
     let default = requests.first().map(String::as_str).unwrap_or_default();
     assert!(
-        default.contains("You summarize a conversation"),
+        default.contains("You are a context summarization assistant"),
         "{default}"
     );
     assert!(

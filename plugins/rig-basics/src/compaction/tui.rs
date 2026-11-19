@@ -158,7 +158,7 @@ fn draw(
     }
 }
 
-/// A summary's banner, markdown and tracked paths, or its plain text without a record.
+/// A summary's banner, markdown and file lists, or its plain text without a record.
 fn summary_lines(
     entry: &EntryRender,
     state: Option<&SummaryState>,
@@ -183,25 +183,14 @@ fn summary_lines(
         theme,
         Some(width),
     ));
-    // A path a later set holds (changed) is not listed again in an earlier
-    // one (read), as the model-facing message does.
-    for (index, set) in state.tracked.iter().enumerate() {
-        let later = state.tracked.get(index + 1..).unwrap_or_default();
-        let values: Vec<_> = set
-            .values
-            .iter()
-            .filter(|value| !later.iter().any(|set| set.values.contains(*value)))
-            .map(String::as_str)
-            .collect();
-        if values.is_empty() {
-            continue;
+    for (label, files) in [
+        ("Read", &state.read_files),
+        ("Changed", &state.modified_files),
+    ] {
+        if !files.is_empty() {
+            let text = format!("{label}: {}", files.join(", "));
+            lines.push(Line::styled(text, style.dim()).into());
         }
-        let label = match set.name.as_str() {
-            "read-files" => "Read",
-            "modified-files" => "Changed",
-            name => name,
-        };
-        lines.push(Line::styled(format!("{label}: {}", values.join(", ")), style.dim()).into());
     }
     lines
 }

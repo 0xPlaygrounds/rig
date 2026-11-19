@@ -529,7 +529,7 @@ class Matrix:
             private_json(self.checks_path, self.checks)
 
     def auto_controls(self):
-        (self.scratch / "rig-home/settings.toml").write_text("[compaction]\nkeep_recent = 1024\nkeep_asked = 0\nlimits = { reserve = 970000, summary_tokens = 1024 }\n")
+        (self.scratch / "rig-home/settings.toml").write_text("[compaction]\nkeep_recent_tokens = 1024\nreserve_tokens = 970000\n")
         self.launch()
         self.phase("auto_seed", SEED)
         self.phase("auto_trigger", APPEND)

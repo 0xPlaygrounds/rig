@@ -12,8 +12,8 @@
 //! compaction's messages leave the archive. The archive survives restarts with the log, and
 //! a message deleted or redacted while the session is stopped is gone from it too.
 //!
-//! An archived message is shown as the log last had it, but for `rig_basics::compaction`'s
-//! clearing of old tool outputs, so the real output is found, not the placeholder. Each
+//! An archived message is shown as the log last had it, but for the clearing of old tool outputs
+//! an earlier `rig_basics::compaction` saved, so the real output is found, not the placeholder. Each
 //! agent searches its own log. A subagent also searches the log of the agent that spawned
 //! it only with the `share_with_subagents` setting of the `[compaction_archive]` table.
 

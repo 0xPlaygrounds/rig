@@ -50,12 +50,12 @@ fn start(store: &MemoryStore) -> (App, Receiver<()>) {
         "corpus-ct-compaction-archive",
         "path corpus/ct-compaction-archive",
     );
-    // A compaction the user asks for keeps the newest 20 estimated tokens:
-    // the last two turns of short messages.
+    // A compaction keeps the newest 5 estimated tokens (four characters a
+    // token): the last two turns of short messages.
     app.world_mut()
         .resource_mut::<CompactionDefault>()
-        .policy
-        .keep_asked = 20;
+        .0
+        .keep_recent_tokens = 5;
     app.finish();
     app.update();
     (app, wakes)

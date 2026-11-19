@@ -200,8 +200,8 @@ use a new evidence directory and keep both reports.
 
 ## Boundaries and remaining coverage
 
-The reduced policy uses `reserve = 970000`, `summary_tokens = 1024`,
-`keep_recent = 1024`, `keep_asked = 0`. It tests a local roughly 30k trigger, not
+The reduced policy uses `reserve_tokens = 970000` and
+`keep_recent_tokens = 1024`. It tests a local roughly 30k trigger, not
 million-token server overflow. The live driver deliberately does not trigger
 summary failure, deliberate token-refresh cancellation, malformed provider
 output, TTL expiration, or expensive true context exhaustion. Those require

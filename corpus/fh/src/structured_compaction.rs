@@ -8,20 +8,17 @@
 //! for once more, then the compaction runs the way it would have without this plugin, with a
 //! notice.
 //!
-//! It sets the summary prompts of `rig_basics::compaction`'s default policy
-//! ([`CompactionDefault`]). In the terminal view the summary is a "Summary" entry.
-
-use std::borrow::Cow;
+//! It replaces the requests of `rig_basics::compaction`'s summary calls ([`Summarizing`]) with its
+//! own. In the terminal view the summary is a "Summary" entry.
 
 use rig_basics::compaction::{
-    CODING_PROMPTS, CompactionDefault, CompactionPlugin, Summarizing, plan, summarized_prefix,
-    summary_state,
+    CompactionDefault, CompactionPlugin, CutPoint, Summarizing, summarized_prefix,
 };
 use rig_core::catalog::ModelSpec;
-use rig_core::completion::{CompletionRequest, Message};
+use rig_core::completion::{CompletionRequest, Message, UnsupportedOption};
 use rig_core::message::UserContent;
 use rig_harness::prelude::*;
-use rig_memory::{CompactReason, Compacted, CompactionPolicy, Summarizer, SummaryPrompts};
+use rig_memory::{Compacted, serialize_conversation, summarization_request, summary_text};
 use serde::Deserialize;
 
 /// The headings every structured summary has, in order.
@@ -38,40 +35,67 @@ pub const HEADINGS: [&str; 6] = [
 /// and one retry.
 const TRIES: u8 = 2;
 
-/// What the template's summarizer asks.
-const TEMPLATE: SummaryPrompts = SummaryPrompts {
-    system: Cow::Borrowed(
-        "You condense a conversation between a user and a coding agent into a summary the \
-         agent will continue the work from. Keep the user's instructions and the reasons \
-         behind what was done. Do not continue the conversation and do not answer questions \
-         in it. Output only the summary.",
-    ),
-    initial: Cow::Borrowed("Summarize the conversation."),
-    update: Cow::Borrowed(
-        "An earlier part of the conversation may be summarized already, in <previous-summary> \
-         or in a summary the conversation opens with. Then write one summary of both: keep everything in the \
-         previous summary that still holds, above all the user's constraints and the reasons \
-         for decisions, add what is new, and drop only what no longer matters.",
-    ),
-    format: Cow::Borrowed(
-        "\n\nUse exactly these headings, every one of them, writing \"(none)\" under a \
-         heading with nothing to say:\n\n\
-         ## Goal\n\
-         [What the user is trying to get done.]\n\n\
-         ## Constraints the user gave\n\
-         - [Each instruction, preference or prohibition, in the user's words where short.]\n\n\
-         ## Decisions and why\n\
-         - **[Decision]**: [Why it was made, and what was ruled out.]\n\n\
-         ## Files touched\n\
-         - `path`: [one line: what was read or changed there, and why]\n\n\
-         ## Current state\n\
-         [What works, what is half done, what was last run and how it ended.]\n\n\
-         ## Open questions / next steps\n\
-         1. [What is unanswered or comes next, in order.]\n\n\
-         Keep exact paths, names, commands and error messages.",
-    ),
-    ..CODING_PROMPTS
-};
+/// What the template's summarizer is told.
+const SYSTEM: &str = "You condense a conversation between a user and a coding agent into a \
+    summary the agent will continue the work from. Keep the user's instructions and the reasons \
+    behind what was done. Do not continue the conversation and do not answer questions in it. \
+    Output only the summary.";
+
+/// What the template's summarizer is asked without a previous summary.
+const INITIAL: &str = "Summarize the conversation.";
+
+/// What the template's summarizer is asked with a previous summary.
+const UPDATE: &str = "Summarize the conversation. An earlier part of it is summarized already, in \
+    <previous-summary>. Write one summary of both: keep everything in the previous summary that \
+    still holds, above all the user's constraints and the reasons for decisions, add what is new, \
+    and drop only what no longer matters.";
+
+/// The template's format.
+const FORMAT: &str = "\n\nUse exactly these headings, every one of them, writing \"(none)\" \
+    under a heading with nothing to say:\n\n\
+    ## Goal\n\
+    [What the user is trying to get done.]\n\n\
+    ## Constraints the user gave\n\
+    - [Each instruction, preference or prohibition, in the user's words where short.]\n\n\
+    ## Decisions and why\n\
+    - **[Decision]**: [Why it was made, and what was ruled out.]\n\n\
+    ## Files touched\n\
+    - `path`: [one line: what was read or changed there, and why]\n\n\
+    ## Current state\n\
+    [What works, what is half done, what was last run and how it ended.]\n\n\
+    ## Open questions / next steps\n\
+    1. [What is unanswered or comes next, in order.]\n\n\
+    Keep exact paths, names, commands and error messages.";
+
+/// The template's request to `spec` for `summarizing`: its messages as text, the previous summary
+/// and the focus.
+fn template_request(
+    summarizing: &Summarizing,
+    spec: &ModelSpec,
+) -> Result<CompletionRequest, UnsupportedOption> {
+    let mut ask = format!(
+        "<conversation>\n{}\n</conversation>",
+        serialize_conversation(&summarizing.messages)
+    );
+    if let Some(previous) = &summarizing.previous {
+        ask.push_str(&format!(
+            "\n\n<previous-summary>\n{previous}\n</previous-summary>"
+        ));
+    }
+    ask.push_str("\n\n");
+    ask.push_str(match summarizing.previous {
+        Some(_) => UPDATE,
+        None => INITIAL,
+    });
+    let focus = summarizing.reason.focus();
+    if !focus.is_empty() {
+        ask.push_str(&format!(
+            "\n\nThe user asked the summary to keep, above all: {focus}"
+        ));
+    }
+    ask.push_str(FORMAT);
+    summarization_request((SYSTEM, ask), spec, None, None)
+}
 
 /// Restructures `rig_basics::compaction`'s compactions; adds `rig_basics::compaction` unless
 /// it is there.
@@ -86,14 +110,6 @@ pub struct StructuredCompactionSystems;
 impl Plugin for StructuredCompactionPlugin {
     fn build(&self, app: &mut App) {
         rig_harness::load::<CompactionPlugin>(app, "rig-basics", "");
-        let world = app.world_mut();
-        if let Some(mut default) = world.get_resource_mut::<CompactionDefault>() {
-            let policy = &mut default.policy;
-            let fallback = Fallback {
-                prompts: std::mem::replace(&mut policy.summarizer.prompts, TEMPLATE),
-            };
-            world.insert_resource(fallback);
-        }
         app.add_setting::<StructuredCompaction>("compact")
             .configure_sets(
                 AgentPass,
@@ -136,22 +152,6 @@ impl Default for StructuredCompaction {
     }
 }
 
-/// The default policy's prompts as they were before this plugin: the
-/// fallback compacts with them, cut as `rig_basics::compaction` cuts.
-#[derive(Resource)]
-struct Fallback {
-    prompts: SummaryPrompts,
-}
-
-impl Fallback {
-    /// `default` with these prompts.
-    fn over(&self, default: &CompactionDefault) -> CompactionPolicy {
-        let mut policy = default.policy.clone();
-        policy.summarizer.prompts = self.prompts.clone();
-        policy
-    }
-}
-
 /// On a summary call in the template: how many summaries were asked for
 /// so far (more than [`TRIES`] means the fallback runs), and the user's
 /// messages to keep after it.
@@ -185,13 +185,11 @@ fn before_last_user(messages: &[std::sync::Arc<Message>]) -> Option<usize> {
     })
 }
 
-/// Plans a summary of `conversation` for `reason` by `policy`, written by
-/// `spec`, cut [`before_last_user`]: `None` when nothing new would be
-/// summarized.
+/// Plans a summary of `conversation` for `summarizing`'s reason, cut [`before_last_user`], in
+/// the template, written by `spec`: `None` when nothing new would be summarized.
 fn plan_structured(
     conversation: &Conversation,
-    policy: &CompactionPolicy,
-    reason: CompactReason,
+    summarizing: &Summarizing,
     spec: &ModelSpec,
 ) -> Result<Option<(Summarizing, CompletionRequest)>, String> {
     let messages = conversation.messages();
@@ -200,17 +198,15 @@ fn plan_structured(
     let Some(upto) = upto else {
         return Ok(None);
     };
-    let state = summary_state(conversation);
-    let planned = policy.plan(&state, messages, from, upto, spec, &reason);
-    let (state, request) = planned.map_err(|why| why.to_string())?;
-    let keep_from = conversation.id(upto);
-    let summarizing = Summarizing {
-        reason,
-        keep_from,
-        state,
-        summary: None,
+    let cut = CutPoint {
+        first_kept: upto,
+        turn_start: None,
     };
-    Ok(Some((summarizing, request)))
+    let Some(planned) = Summarizing::plan_at(conversation, cut, summarizing.reason.clone()) else {
+        return Ok(None);
+    };
+    let request = template_request(&planned, spec).map_err(|why| why.to_string())?;
+    Ok(Some((planned, request)))
 }
 
 /// What the user typed in the `count` messages before message `before`,
@@ -241,10 +237,9 @@ fn structure(
         (Added<Admitted>, ModelCalls),
     >,
     agents: Query<(&Conversation, Option<&Connection>)>,
-    (config, default, fallback, models): (
+    (config, default, models): (
         Res<StructuredCompaction>,
         Res<CompactionDefault>,
-        Res<Fallback>,
         Res<Models>,
     ),
     mut commands: Commands,
@@ -256,6 +251,8 @@ fn structure(
         };
         let reason = summarizing.reason.clone();
         match structured {
+            // The earlier part of a turn the default cut split: the fallback's.
+            None if summarizing.history.is_some() => {}
             None => {
                 let routed = config.model.as_deref().and_then(|name| {
                     let connected = models
@@ -271,8 +268,7 @@ fn structure(
                         .ok()
                 });
                 let spec = routed.as_ref().or(own).map(|connection| &connection.spec);
-                let planned =
-                    spec.map(|spec| plan_structured(conversation, &default.policy, reason, spec));
+                let planned = spec.map(|spec| plan_structured(conversation, &summarizing, spec));
                 match planned {
                     Some(Ok(Some((planned, request)))) => {
                         *summarizing = planned;
@@ -300,13 +296,15 @@ fn structure(
                 let Some(own) = own else {
                     continue;
                 };
-                match plan(conversation, &fallback.over(&default), reason, &own.spec) {
-                    Ok(Some((planned, request))) => {
+                let keep = default.0.keep_recent_tokens;
+                let planned = Summarizing::plan(conversation, keep, reason);
+                match planned.map(|planned| (planned.request(&own.spec, None), planned)) {
+                    Some((Ok(request), planned)) => {
                         *summarizing = planned;
                         *model = ModelRequest::new(request);
                     }
-                    Ok(None) => {}
-                    Err(why) => {
+                    None => {}
+                    Some((Err(why), _)) => {
                         notices.write(Notice::warn(agent, format!("Cannot compact: {why}.")));
                     }
                 }
@@ -332,7 +330,9 @@ fn check(
         if structured.tries > TRIES {
             continue;
         }
-        let summary = outcome.completion().map(Summarizer::summary_text);
+        let summary = outcome
+            .completion()
+            .map(|reply| summary_text(reply, "Summarization"));
         if summary.is_some_and(|summary| summary.is_ok_and(|text| has_headings(&text))) {
             continue;
         }

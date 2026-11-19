@@ -11,10 +11,13 @@
 //! takes longer than `[recap] timeout` shows nothing and leaves one line in the log.
 
 use bevy_log::warn;
-use rig_basics::compaction::CODING_PROMPTS;
 use rig_harness::prelude::*;
+use rig_harness::rig_core::catalog::ModelSpec;
+use rig_harness::rig_core::completion::{CompletionRequest, Message, UnsupportedOption};
 use rig_harness::rig_memory::recent::{TokenBudget, view};
-use rig_harness::rig_memory::{CompactReason, Summarizer, SummaryLimits, SummaryPrompts};
+use rig_harness::rig_memory::{
+    fit_to_model, serialize_conversation, summarization_request, summary_text,
+};
 use rig_tui::crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use rig_tui::ratatui::layout::Constraint;
 use rig_tui::ratatui::widgets::Paragraph;
@@ -23,7 +26,6 @@ use rig_tui::{
     Theme, TuiKeys, TuiPanel, TuiSystems,
 };
 use serde::Deserialize;
-use std::borrow::Cow;
 
 #[cfg(test)]
 mod tests;
@@ -41,25 +43,20 @@ const MIN_TURNS: usize = 3;
 const MAX_LINES: usize = 8;
 
 /// What the recap model is told.
-const PROMPTS: SummaryPrompts = SummaryPrompts {
-    system: Cow::Borrowed(
-        "You write a short welcome-back recap for a user coming back to a session with a \
-         coding agent after a break. Do not continue the conversation. Do not answer \
-         questions in it. Output only the recap.",
-    ),
-    initial: Cow::Borrowed(
-        "The user is coming back to the conversation and has forgotten where it was. \
-         Recap it for them.",
-    ),
-    update: Cow::Borrowed("Recap the conversation for the user coming back to it."),
-    format: Cow::Borrowed(
-        "\n\nAnswer in plain text, in this form and nothing else:\n\
-         Goal: <one line on what the user is trying to do>\n\
-         - <up to 5 bullets of what was done, naming the files changed>\n\
-         Pending: <what was left open, or what the user asked last>",
-    ),
-    ..CODING_PROMPTS
-};
+const SYSTEM: &str = "You write a short welcome-back recap for a user coming back to a session \
+    with a coding agent after a break. Do not continue the conversation. Do not answer \
+    questions in it. Output only the recap.";
+
+/// What the recap model is asked, after the conversation.
+const ASK: &str = "The user is coming back to the conversation and has forgotten where it was. \
+    Recap it for them.\n\n\
+    Answer in plain text, in this form and nothing else:\n\
+    Goal: <one line on what the user is trying to do>\n\
+    - <up to 5 bullets of what was done, naming the files changed>\n\
+    Pending: <what was left open, or what the user asked last>";
+
+/// The most tokens a recap is asked for.
+const RECAP_TOKENS: u64 = 400;
 
 /// Adds the recap, its `/recap` command and its card in the terminal view.
 #[derive(Default)]
@@ -289,7 +286,7 @@ fn want_recap(
         &TokenBudget::new(config.budget_tokens),
     );
     let request = connection.and_then(|connection| {
-        let request = summarizer().request(newest, "", &CompactReason::Threshold, &connection.spec);
+        let request = recap_request(newest, &connection.spec);
         Ok((request.map_err(|why| why.to_string())?, connection))
     });
     let (request, connection) = match request {
@@ -309,16 +306,16 @@ fn want_recap(
     ));
 }
 
-/// The recap's request: a few hundred tokens, short snippets of tool calls.
-fn summarizer() -> Summarizer {
-    Summarizer {
-        prompts: PROMPTS,
-        limits: SummaryLimits {
-            summary_tokens: 400,
-            snippet_chars: 300,
-            ..SummaryLimits::DEFAULT
-        },
-    }
+/// The recap's request to `spec` for `messages`: a few hundred tokens.
+fn recap_request(
+    messages: &[std::sync::Arc<Message>],
+    spec: &ModelSpec,
+) -> Result<CompletionRequest, UnsupportedOption> {
+    let conversation = serialize_conversation(messages);
+    // As before: fitted to the model, a few hundred tokens asked, none when its limits are unknown.
+    let (conversation, most) = fit_to_model(&conversation, spec, RECAP_TOKENS);
+    let ask = format!("<conversation>\n{conversation}\n</conversation>\n\n{ASK}");
+    summarization_request((SYSTEM, ask), spec, None, most)
 }
 
 /// Shows and keeps the recap a call answered; a failure is one line in
@@ -335,9 +332,11 @@ fn take_recap(
     let text = match (&outcome.0, outcome.completion()) {
         (Err(report), _) => Err(report.to_string()),
         (Ok(_), None) => Err("the model did not answer with a completion".to_owned()),
-        (Ok(_), Some(response)) => {
-            Summarizer::summary_text(response).map_err(|why| why.to_string())
-        }
+        (Ok(_), Some(response)) => match summary_text(response, "The recap") {
+            Ok(text) if text.trim().is_empty() => Err("the model wrote no recap".to_owned()),
+            Ok(text) => Ok(text.trim().to_owned()),
+            Err(why) => Err(why.to_string()),
+        },
     };
     match text {
         Ok(text) => {

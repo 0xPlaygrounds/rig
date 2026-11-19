@@ -1,5 +1,4 @@
 use super::*;
-use rig_memory::TrackedSet;
 use rig_tui::{EntryRender, RenderInput, RenderKey, RenderOutput, RenderRequest};
 
 fn app() -> App {
@@ -12,10 +11,8 @@ fn app() -> App {
 fn state(summary: &str, read: &str) -> SummaryState {
     SummaryState {
         summary: summary.to_owned(),
-        tracked: vec![TrackedSet {
-            name: "read-files".to_owned(),
-            values: [read.to_owned()].into(),
-        }],
+        read_files: vec![read.to_owned()],
+        modified_files: Vec::new(),
     }
 }
 

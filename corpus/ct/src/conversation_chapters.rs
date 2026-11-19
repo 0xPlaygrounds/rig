@@ -14,16 +14,18 @@
 //! title reaches a model. `/unfold <n>` brings the originals back. The stored conversation
 //! never changes.
 
+use std::collections::BTreeSet;
 use std::ops::Range;
+use std::sync::Arc;
 
-use rig_basics::compaction::CODING_PROMPTS;
 use rig_harness::prelude::*;
-use rig_harness::rig_core::completion::CompletionRequest;
+use rig_harness::rig_core::catalog::ModelSpec;
+use rig_harness::rig_core::completion::{CompletionRequest, UnsupportedOption};
 use rig_harness::rig_core::conversation::{Aside, AsideId, Entry};
-use rig_harness::rig_core::message::Message;
+use rig_harness::rig_core::message::{Message, UserContent};
 use rig_harness::rig_memory::{
-    CompactReason, HeuristicTokenCounter, Summarizer, SummaryLimits, SummaryPrompts, SummaryState,
-    TrackArgument,
+    HeuristicTokenCounter, fit_to_model, serialize_conversation, summarization_request,
+    summary_text,
 };
 use serde::{Deserialize, Serialize};
 
@@ -53,34 +55,54 @@ const BOUNDARY_PREAMBLE: &str = "You split a long coding session into chapters b
     a new topic, and title its topic in 2 to 5 words. Answer with JSON only: \
     {\"new_chapter\": true or false, \"title\": \"...\"}";
 
-/// The tool arguments that name a file a chapter changed.
-const CHANGED: &[TrackArgument] = &[
-    TrackArgument::new("edit", "path", "files-changed"),
-    TrackArgument::new("write", "path", "files-changed"),
-];
+/// The files the `edit` and `write` calls of `messages` that succeeded changed.
+fn changed_files(messages: &[Arc<Message>]) -> Vec<String> {
+    let mut waiting = Vec::new();
+    let mut changed = BTreeSet::new();
+    for message in messages {
+        match &**message {
+            Message::Assistant(reply) => waiting = reply.tool_calls().collect(),
+            Message::User { content } => {
+                for result in content.iter().filter_map(UserContent::as_tool_result) {
+                    let call = waiting.iter().find(|call| call.id == result.call);
+                    let path = call
+                        .filter(|call| matches!(call.function.name.as_str(), "edit" | "write"))
+                        .and_then(|call| call.function.arguments.get("path")?.as_str());
+                    if let (false, Some(path)) = (result.is_error, path) {
+                        changed.insert(path.to_owned());
+                    }
+                }
+            }
+            Message::System { .. } => {}
+        }
+    }
+    changed.into_iter().collect()
+}
 
-/// What the summary model is asked when a chapter is folded.
-const FOLD_SUMMARIZER: Summarizer = Summarizer {
-    prompts: SummaryPrompts {
-        system: std::borrow::Cow::Borrowed(
-            "You summarize one finished chapter of a session between a user and a coding \
-             agent, so the agent can go on without reading it. Output only the summary.",
-        ),
-        initial: std::borrow::Cow::Borrowed(
-            "The conversation is one finished chapter of the session. Summarize it.",
-        ),
-        update: std::borrow::Cow::Borrowed(
-            "The conversation is one finished chapter of the session. Summarize it.",
-        ),
-        format: std::borrow::Cow::Borrowed(
-            "\n\nUse exactly this format, short, keeping exact paths and names:\n\n\
-             ## What was done\n- ...\n\n## Files changed\n- [path, or \"(none)\"]\n\n\
-             ## Decisions\n- **[Decision]**: [Why]",
-        ),
-        ..CODING_PROMPTS
-    },
-    limits: SummaryLimits::DEFAULT,
-};
+/// What the summary model is told when a chapter is folded.
+const SYSTEM: &str = "You summarize one finished chapter of a session between a user and a \
+    coding agent, so the agent can go on without reading it. Do not continue the conversation. \
+    Output only the summary.";
+
+/// What the summary model is asked, after the chapter.
+const ASK: &str = "The conversation is one finished chapter of the session. Summarize it.\n\n\
+    Use exactly this format, short, keeping exact paths and names:\n\n\
+    ## What was done\n- ...\n\n## Files changed\n- [path, or \"(none)\"]\n\n\
+    ## Decisions\n- **[Decision]**: [Why]";
+
+/// The request to `spec` for the summary of a chapter's `messages`, cut to fit the model.
+fn fold_request(
+    messages: &[Arc<Message>],
+    spec: &ModelSpec,
+) -> Result<CompletionRequest, UnsupportedOption> {
+    let conversation = serialize_conversation(messages);
+    let (conversation, most) = fit_to_model(&conversation, spec, SUMMARY_TOKENS);
+    let ask = format!("<conversation>\n{conversation}\n</conversation>\n\n{ASK}");
+    summarization_request((SYSTEM, ask), spec, None, most)
+}
+
+/// The longest chapter summary asked for, in tokens, as before.
+const SUMMARY_TOKENS: u64 = 32_000;
 
 /// Divides each top-level agent's conversation into chapters, with
 /// `/chapters`, `/chapter`, `/fold` and `/unfold`.
@@ -764,20 +786,14 @@ fn fold_command(
         .messages()
         .get(line.messages.clone())
         .unwrap_or_default();
-    let request = match FOLD_SUMMARIZER.request(messages, "", &CompactReason::Threshold, &spec) {
+    let request = match fold_request(messages, &spec) {
         Ok(request) => request,
         Err(why) => {
             notices.write(Notice::error(agent, format!("Cannot fold: {why}.")));
             return;
         }
     };
-    let mut state = SummaryState::default();
-    state.track(messages, CHANGED);
-    let changed = state
-        .tracked
-        .into_iter()
-        .flat_map(|set| set.values)
-        .collect();
+    let changed = changed_files(messages);
     let mut call = ModelRequest::new(request);
     if let Some(connection) = connection {
         call = call.on(connection);
@@ -812,7 +828,11 @@ fn take_fold(
     let summary = match (&outcome.0, outcome.completion()) {
         (Err(report), _) => Err(report.to_string()),
         (Ok(_), None) => Err("the model did not answer with a completion".to_owned()),
-        (Ok(_), Some(reply)) => Summarizer::summary_text(reply).map_err(|why| why.to_string()),
+        (Ok(_), Some(reply)) => match summary_text(reply, "The chapter summary") {
+            Ok(text) if text.trim().is_empty() => Err("the model wrote no summary".to_owned()),
+            Ok(text) => Ok(text.trim().to_owned()),
+            Err(why) => Err(why.to_string()),
+        },
     };
     let lines = outline(&conversation);
     let line = lines.iter().find(|line| line.start == folding.start);

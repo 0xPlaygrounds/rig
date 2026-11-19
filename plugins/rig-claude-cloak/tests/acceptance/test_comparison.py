@@ -131,7 +131,7 @@ class ComparisonTests(unittest.TestCase):
             self.assertEqual(phases[0][1], SEED)
             self.assertEqual(phases[1][1], APPEND)
             self.assertEqual(phases[-1][1], SEED)
-            self.assertIn("reserve = 970000", settings[0])
+            self.assertIn("reserve_tokens = 970000", settings[0])
             self.assertEqual(settings[-1], "")
             self.assertEqual(launch.call_count, 3)
             self.assertEqual(launch.call_args.kwargs, {"tools": ""})

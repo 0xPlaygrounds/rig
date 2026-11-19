@@ -152,3 +152,5 @@ fn a_command_refused_while_a_turn_runs_comes_back_in_the_input() {
         );
     }
 }
+
+mod dispatch;

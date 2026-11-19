@@ -11,11 +11,10 @@
 //! handoff moves the agent shown ([`ShownAgent`], in any front) from the old agent to the new
 //! one, when it happens and again when the session is restored.
 
-use std::borrow::Cow;
-
-use rig_basics::compaction::CODING_PROMPTS;
 use rig_harness::prelude::*;
-use rig_memory::{CompactReason, Summarizer, SummaryLimits, SummaryPrompts};
+use rig_harness::rig_core::catalog::ModelSpec;
+use rig_harness::rig_core::completion::{CompletionRequest, Message, UnsupportedOption};
+use rig_memory::{fit_to_model, serialize_conversation, summarization_request, summary_text};
 use rig_tui::MainInput;
 use serde::Deserialize;
 
@@ -30,26 +29,24 @@ const SYSTEM: &str = "You write a handoff brief. A fresh coding agent that has n
     conversation will start from your brief alone and work on the next goal the user names. \
     Do not continue the conversation and do not answer questions in it. Output only the brief.";
 
-/// rig-memory's summarizer, asked for a brief for the goal it is given
-/// as its focus.
-const BRIEF_WRITER: Summarizer = Summarizer {
-    prompts: SummaryPrompts {
-        system: Cow::Borrowed(SYSTEM),
-        initial: Cow::Borrowed(ASK),
-        update: Cow::Borrowed(ASK),
-        format: Cow::Borrowed(FORMAT),
-        ..CODING_PROMPTS
-    },
-    limits: SummaryLimits {
-        summary_tokens: BRIEF_TOKENS,
-        ..SummaryLimits::DEFAULT
-    },
-};
+/// The request to `spec` for a brief of `messages` for `goal`: the conversation as text, cut to
+/// fit the model, then what is asked, within [`BRIEF_TOKENS`].
+fn brief_request(
+    messages: &[std::sync::Arc<Message>],
+    goal: &str,
+    spec: &ModelSpec,
+) -> Result<CompletionRequest, UnsupportedOption> {
+    let conversation = serialize_conversation(messages);
+    let (conversation, most) = fit_to_model(&conversation, spec, BRIEF_TOKENS);
+    let ask = format!(
+        "<conversation>\n{conversation}\n</conversation>\n\n{ASK}\n\nThe next goal: {goal}{FORMAT}"
+    );
+    summarization_request((SYSTEM, ask), spec, None, most)
+}
 
 /// What the brief's model is asked, before the goal.
 const ASK: &str = "The conversation is being handed off. Write the brief for the agent \
-    that takes over, for the next goal, given below as what the user asked the summary to \
-    keep.";
+    that takes over, for the next goal, given below.";
 
 /// The brief's format, after the request.
 const FORMAT: &str = "\n\nUse exactly this format:\n\n\
@@ -167,10 +164,7 @@ fn handoff(
         notices.write(Notice::info(agent, "Nothing to hand off yet."));
         return;
     }
-    let brief = CompactReason::Asked {
-        focus: goal.clone(),
-    };
-    let request = match BRIEF_WRITER.request(conversation.messages(), "", &brief, &spec) {
+    let request = match brief_request(conversation.messages(), goal.trim(), &spec) {
         Ok(request) => request,
         Err(why) => {
             notices.write(Notice::error(agent, format!("Cannot hand off: {why}.")));
@@ -212,9 +206,11 @@ fn take_brief(
     let brief = match (&outcome.0, outcome.completion()) {
         (Err(report), _) => Err(report.to_string()),
         (Ok(_), None) => Err("the model did not answer with a completion".to_owned()),
-        (Ok(_), Some(response)) => {
-            Summarizer::summary_text(response).map_err(|why| why.to_string())
-        }
+        (Ok(_), Some(response)) => match summary_text(response, "The brief") {
+            Ok(text) if text.trim().is_empty() => Err("the model wrote no brief".to_owned()),
+            Ok(text) => Ok(text.trim().to_owned()),
+            Err(why) => Err(why.to_string()),
+        },
     };
     let brief = match brief {
         Ok(brief) => brief,
