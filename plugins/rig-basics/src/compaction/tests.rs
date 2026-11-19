@@ -3030,6 +3030,96 @@ fn a_resumed_session_sends_the_bytes_it_sent_before() {
     }
 }
 
+/// Whether the summary request `asked` keeps what an earlier summary holds:
+/// it says to keep everything in it that still holds, and each rule that
+/// drops something drops only what is no longer true.
+fn keeps_the_earlier_summary(asked: &str) -> bool {
+    asked.contains("keep everything in the earlier summary that still holds")
+        && asked
+            .lines()
+            .filter(|line| line.contains("drop"))
+            .all(|line| line.contains("no longer true"))
+}
+
+/// A second compaction folds in the first summary: its request opens with
+/// that summary, the values it holds included, and asks to keep everything
+/// in it that still holds, so a value found by a request already answered
+/// still reaches the model.
+#[test]
+fn a_second_summary_keeps_what_the_first_one_holds() {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    let first = "## Goal\nAudit the lighthouse import.\n\n## Critical context\n\
+                 - lighthouse.json: code QUARTZ-791, decision amber over silver.";
+    let http = rig_core::test_utils::SequencedHttpClient::new([
+        streamed(reasoned(1, "One."), Some(900)),
+        streamed(reasoned(2, "Two."), Some(30_000)),
+        streamed(reasoned(3, first), Some(30_000)),
+        streamed(reasoned(4, "Three."), Some(9_000)),
+        streamed(
+            reasoned(5, "## Goal\nRead the jade fixtures."),
+            Some(30_000),
+        ),
+        streamed(reasoned(6, "Four."), Some(9_000)),
+    ]);
+    let model = (&rig_core::providers::chatgpt::DIALECT, "gpt-6.1-sol");
+    let agent = on_responses(&mut app, model, 40_000, &http);
+    assert!(agent.is_some(), "no agent on the catalog's model");
+    let Some(agent) = agent else {
+        return;
+    };
+    let code = r#"{"code":"QUARTZ-791","decision":"amber over silver"}"#;
+    let mut messages = vec![Message::user("Audit the lighthouse import.")];
+    messages.extend(read("1", "lighthouse.json", code));
+    for turn in 0..3 {
+        messages.push(Message::assistant(format!(
+            "{turn}: {}",
+            "cobalt ".repeat(3_000)
+        )));
+        messages.push(Message::user(format!("cobalt question {turn}")));
+    }
+    messages.push(Message::assistant("The last cobalt answer."));
+    for message in messages {
+        assert!(commit_message(app.world_mut(), agent, message).is_ok());
+    }
+    answered_turns(&mut app, &wakes, agent, 3);
+    for turn in 0..3 {
+        let question = Message::user(format!("jade question {turn}"));
+        let answer = Message::assistant(format!("{turn}: {}", "jade ".repeat(4_000)));
+        for message in [question, answer] {
+            assert!(commit_message(app.world_mut(), agent, message).is_ok());
+        }
+    }
+    answered_turns(&mut app, &wakes, agent, 1);
+    let ask = "Stop here: do not continue the work";
+    let bodies = bodies(&http);
+    let summaries: Vec<serde_json::Value> = bodies
+        .iter()
+        .filter(|body| body.contains(ask))
+        .filter_map(|body| serde_json::from_str(body).ok())
+        .collect();
+    let [_, second] = summaries.as_slice() else {
+        assert_eq!(summaries.len(), 2, "{bodies:#?}");
+        return;
+    };
+    let input = second
+        .get("input")
+        .and_then(serde_json::Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let text = |item: Option<&serde_json::Value>| {
+        let content = item?.get("content")?.get(0)?;
+        content.get("text")?.as_str().map(str::to_owned)
+    };
+    let opening = text(input.first()).unwrap_or_default();
+    assert!(
+        opening.contains("QUARTZ-791") && opening.contains("amber over silver"),
+        "{opening}"
+    );
+    let asked = text(input.last()).unwrap_or_default();
+    assert!(asked.contains(ask), "{asked}");
+    assert!(keeps_the_earlier_summary(&asked), "{asked}");
+}
+
 /// Whether `previous` is a byte prefix of `next` as [`extends`] says, or
 /// how many bytes of `next` follow the longest prefix they share.
 fn rewritten(previous: &str, next: &str) -> Option<usize> {

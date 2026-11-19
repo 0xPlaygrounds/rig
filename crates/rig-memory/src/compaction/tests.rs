@@ -198,6 +198,32 @@ fn a_summary_request_keeps_the_hosts_words_out_of_the_users_message() {
     assert!(!format.contains("earlier summary") && !in_place.contains("word for word"));
 }
 
+/// Folding in an earlier summary, a summary of its own and one asked in
+/// place are both told to keep everything in it that still holds, and to
+/// drop only what is no longer true, so values found by a request already
+/// answered stay.
+#[test]
+fn a_summary_keeps_what_the_earlier_one_holds() {
+    let keeps = |asked: &str| {
+        asked.contains("keep everything in the earlier summary that still holds")
+            && asked
+                .lines()
+                .filter(|line| line.contains("drop"))
+                .all(|line| line.contains("no longer true"))
+    };
+    let reason = CompactReason::Threshold;
+    let request = spec(200_000).and_then(|spec| {
+        Summarizer::DEFAULT
+            .request(&turns(2), "## Goal\nEarlier.", &reason, &spec)
+            .ok()
+    });
+    let texts = request.as_ref().map(texts).unwrap_or_default();
+    let system = texts.iter().find(|(role, _)| *role == "system");
+    assert!(system.is_some_and(|(_, system)| keeps(system)), "{texts:?}");
+    let in_place = Summarizer::DEFAULT.instruction("", 1_000);
+    assert!(keeps(&in_place), "{in_place}");
+}
+
 /// The default prompts serve any host: none names a coding agent or rig,
 /// so a host's own words come from its own prompts.
 #[test]
