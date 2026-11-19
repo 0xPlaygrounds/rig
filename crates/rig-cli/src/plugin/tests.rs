@@ -286,7 +286,7 @@ fn the_list_is_a_tree_of_crates_areas_and_plugins_rigs_before_the_users() {
     assert!(
         without.ends_with(&format!(
             "\nyour plugins (extras): none; `rig plugin new <name>` makes one, \
-             `rig plugin add` adds another crate's.\n\n{RUNNING}\n"
+             `rig plugin add` adds another crate's.\n\n{TURNS_ON}; {SHOWS_RUNNING}\n"
         )),
         "{without}"
     );
@@ -776,21 +776,34 @@ fn a_name_in_the_wrong_list_is_taken_out_by_the_fix_its_refusal_names() {
 }
 
 /// The list is of what the settings choose, and says where to see what
-/// actually runs.
+/// actually runs, naming `/plugins` only when it will run.
 #[test]
 fn the_list_says_plugins_can_turn_on_others_and_where_to_see_what_runs() {
     let home = old_home("list-runs");
-    let listed = fs::create_dir_all(home.root())
-        .map_err(Into::into)
-        .and_then(|()| listing(&home));
+    let cases = [
+        ("", true),
+        (
+            "disable = [\"rig_basics::reload::plugins::PluginsPlugin\"]\n",
+            false,
+        ),
+        ("off = [\"rig-basics/reload\"]\n", false),
+    ];
+    let listed = (|| -> Result<Vec<String>> {
+        fs::create_dir_all(home.root())?;
+        let mut listed = Vec::new();
+        for (settings, _) in cases {
+            fs::write(home.settings(), format!("[plugins]\n{settings}"))?;
+            listed.push(listing(&home)?);
+        }
+        Ok(listed)
+    })();
     fs::remove_dir_all(home.root()).ok();
     assert!(listed.is_ok(), "{listed:?}");
-    let listed = listed.unwrap_or_default();
-    let last = listed.lines().last().unwrap_or_default();
-    assert!(
-        last.contains("turn on others") && last.contains("/plugins"),
-        "{listed}"
-    );
+    for (listed, (_, named)) in listed.unwrap_or_default().iter().zip(cases) {
+        let last = listed.lines().last().unwrap_or_default();
+        assert!(last.contains("turn on others"), "{listed}");
+        assert_eq!(last.contains("/plugins"), named, "{listed}");
+    }
 }
 
 /// Every branch in `[plugins] off` shows in the list, also an area of one
