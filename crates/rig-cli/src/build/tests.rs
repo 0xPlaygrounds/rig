@@ -398,7 +398,7 @@ fn a_failure_rig_explains_does_not_repeat_cargos_error() {
         ])
         .stderr(Stdio::piped());
     assert!(log.run(cargo).is_ok());
-    let why = Explained::sure("a plugin asks for a Bevy that is not this agent's.".to_owned());
+    let why = Explained("a plugin asks for a Bevy that is not this agent's.".to_owned());
     let failure = log.fail(FailedAt::Build, &why);
     fs::remove_dir_all(&root).ok();
     for told in [failure.to_string(), failure.told(BuildOutput::LogOnly)] {
@@ -426,7 +426,7 @@ fn an_explained_failure_is_one_line_for_reload() {
     ];
     let reason = pinned_bevy(&"cargo failed", &pins);
     let explained = log()
-        .fail(FailedAt::Build, &Explained::sure(reason.clone()))
+        .fail(FailedAt::Build, &Explained(reason.clone()))
         .explanation();
     let plain = log().fail(
         FailedAt::Build,
@@ -1360,7 +1360,8 @@ fn a_foreign_bevy_is_refused_before_cargo_compiles_and_the_advice_leads() {
 
     // A private copy beside the agent's own builds, and a compiler error
     // with it is cargo's, as rig says nothing of it.
-    let second_reflect = format!("echo 'bevy_reflect v0.19.1'; echo 'bevy_reflect v{BEVY_VERSION}'\n");
+    let second_reflect =
+        format!("echo 'bevy_reflect v0.19.1'; echo 'bevy_reflect v{BEVY_VERSION}'\n");
     let (calls, _, failure) = build(&second_reflect);
     assert_eq!(calls, ["tree", "build"]);
     assert!(failure.is_none(), "{failure:?}");
