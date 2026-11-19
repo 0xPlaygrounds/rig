@@ -1,21 +1,17 @@
 //! The summary in the terminal view: a block that says it stands for the
-//! earlier messages, then the summary drawn from its saved state when
-//! available, below the messages it replaced ([`Replaced`]). A plugin that
+//! earlier messages, then the summary and its file lists as its entry holds
+//! them, below the messages it replaced ([`Replaced`]). A plugin that
 //! draws summaries its own way draws [`summary_author`]'s entries in a
 //! system after [`SummaryLooks`].
 
-use std::collections::BTreeMap;
-
-use rig_core::conversation::{Entry, MessageId, Spliced};
+use rig_core::conversation::{Entry, Spliced};
 use rig_ecs::fork::AgentForked;
 use rig_ecs::prelude::*;
 use rig_ecs::session_log::SessionStore;
-use rig_memory::{Compacted, Summarized, SummaryState, summarized_in_log};
+use rig_memory::{SummaryState, summarized_in_log, summarized_prefix};
 use rig_tui::ratatui::style::Style;
 use rig_tui::ratatui::text::Line;
-use rig_tui::{
-    EntryRender, LookLine, RenderBatch, RenderSystems, Replaced, Theme, TranscriptRender, text_rows,
-};
+use rig_tui::{LookLine, RenderBatch, RenderSystems, Replaced, Theme, TranscriptRender};
 
 use crate::compaction::summary_author;
 
@@ -36,51 +32,19 @@ pub(crate) fn add(app: &mut App) {
     .add_observer(replaced_in_fork);
 }
 
-/// The records of the summaries a later compaction took out of the
-/// agent's conversation, by summary id, so the summaries drawn above it
-/// ([`Replaced`]) are drawn from their state too. Display only.
-#[derive(Component, Clone, Debug, Default)]
-struct ReplacedRecords(BTreeMap<MessageId, Compacted>);
-
-/// The entries before a summary's place, and their compaction records,
-/// read just before the summary goes in.
-pub(crate) struct Before(Vec<Entry>, Vec<Compacted>);
-
-impl Before {
-    /// The first `end` entries of `conversation` and its records.
-    pub(crate) fn of(conversation: &rig_core::conversation::Conversation, end: usize) -> Self {
-        let entries = (0..end).filter_map(|at| conversation.entry(at)).collect();
-        let records = Compacted::of(conversation).map(|(_, record)| record);
-        Self(entries, records.collect())
-    }
-
-    /// Keeps the entries and records `spliced`, a summary just put in
-    /// `agent`'s conversation, took out of it.
-    pub(crate) fn keep(self, commands: &mut Commands, agent: Entity, spliced: &Spliced) {
-        let Some(&summary) = spliced.changed.first() else {
-            return;
-        };
-        // The entries before the summary are the ones it took out.
-        let Self(taken, records) = self;
-        let out = |id: &MessageId| spliced.removed.contains(id);
-        let records = records.into_iter().filter(|record| out(&record.summary));
-        let records: Vec<_> = records.map(|record| (record.summary, record)).collect();
-        let mut agent = commands.entity(agent);
-        agent
-            .entry::<Replaced>()
-            .or_default()
-            .and_modify(move |mut replaced| {
-                replaced.0.entry(summary).or_insert(taken);
-            });
-        agent
-            .entry::<ReplacedRecords>()
-            .or_default()
-            .and_modify(move |mut kept| {
-                for (summary, record) in records {
-                    kept.0.entry(summary).or_insert(record);
-                }
-            });
-    }
+/// Keeps `taken`, the entries `spliced`, a summary just put in `agent`'s
+/// conversation, took out of it, on screen.
+pub(crate) fn keep(commands: &mut Commands, agent: Entity, spliced: &Spliced, taken: Vec<Entry>) {
+    let Some(&summary) = spliced.changed.first() else {
+        return;
+    };
+    let mut agent = commands.entity(agent);
+    agent
+        .entry::<Replaced>()
+        .or_default()
+        .and_modify(move |mut replaced| {
+            replaced.0.entry(summary).or_insert(taken);
+        });
 }
 
 /// What each restored agent's summaries replaced, read from its log; an
@@ -94,7 +58,7 @@ fn replaced_from_logs(
         return;
     };
     for (agent, id, conversation) in &agents {
-        if Compacted::of(conversation).next().is_some() {
+        if summarized_prefix(conversation) > 0 {
             read_replaced(&store, (agent, id), &mut commands);
         }
     }
@@ -117,10 +81,9 @@ fn replaced_in_fork(
 /// Puts what the summaries in `agent`'s log, `id`, replaced on it.
 fn read_replaced(store: &SessionStore, (agent, id): (Entity, &AgentId), commands: &mut Commands) {
     match summarized_in_log(&*store.0, &id.0) {
-        Ok(Summarized { replaced, .. }) if replaced.is_empty() => {}
-        Ok(Summarized { replaced, records }) => {
-            let kept = (Replaced(replaced), ReplacedRecords(records));
-            commands.entity(agent).try_insert(kept);
+        Ok(replaced) if replaced.is_empty() => {}
+        Ok(replaced) => {
+            commands.entity(agent).try_insert(Replaced(replaced));
         }
         Err(error) => {
             bevy_log::warn!(
@@ -131,53 +94,25 @@ fn read_replaced(store: &SessionStore, (agent, id): (Entity, &AgentId), commands
     }
 }
 
-/// Draws the summaries, each from its record: the conversation's, or the
-/// one kept when a later compaction took it out.
-fn draw(
-    mut batch: ResMut<RenderBatch>,
-    agents: Query<(&Conversation, Option<&ReplacedRecords>)>,
-    theme: Res<Theme>,
-) {
+/// Draws the summaries, each from its own entry's text.
+fn draw(mut batch: ResMut<RenderBatch>, theme: Res<Theme>) {
     let AuthorKind::Plugin(plugin) = summary_author().kind else {
         return;
     };
-    let agent = batch.agent.and_then(|agent| agents.get(agent).ok());
-    let (conversation, kept) = agent.unzip();
-    let live = conversation.into_iter().flat_map(|it| Compacted::of(it));
-    let kept = kept.flatten().into_iter().flat_map(|kept| kept.0.values());
-    let states: Vec<Compacted> = live
-        .map(|(_, record)| record)
-        .chain(kept.cloned())
-        .collect();
     let width = usize::from(batch.width);
     for (summary, output) in batch.entries_mut(&plugin) {
-        let state = states
-            .iter()
-            .find(|state| Some(state.summary) == summary.id);
-        output.lines = summary_lines(summary, state.map(|it| &it.state), &theme, width);
+        let state = SummaryState::read(&summary.text);
+        output.lines = summary_lines(&state, &theme, width);
     }
 }
 
-/// A summary's banner, markdown and file lists, or its plain text without a record.
-fn summary_lines(
-    entry: &EntryRender,
-    state: Option<&SummaryState>,
-    theme: &Theme,
-    width: usize,
-) -> Vec<LookLine> {
+/// A summary's banner, markdown and file lists.
+fn summary_lines(state: &SummaryState, theme: &Theme, width: usize) -> Vec<LookLine> {
     let style = Style::new().magenta();
     let mut lines = vec![LookLine::from(Line::styled(
         "The earlier messages were compacted into this summary",
         style.bold(),
     ))];
-    let Some(state) = state else {
-        lines.extend(
-            text_rows(&entry.text, style.dim())
-                .into_iter()
-                .map(LookLine::from),
-        );
-        return lines;
-    };
     lines.extend(rig_tui::markdown::render(
         &state.summary,
         theme,

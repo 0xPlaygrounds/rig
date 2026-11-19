@@ -65,7 +65,7 @@ fn at(text: &str, part: &str) -> usize {
 }
 
 #[test]
-fn compact_writes_the_template_keeps_the_users_words_and_builds_on_the_last_summary() {
+fn compact_writes_the_template_keeps_the_last_exchanges_and_builds_on_the_last_summary() {
     let home = scratch_home("fh-structured-compaction");
     let (mut app, wakes) = app_in(&home, &SessionId::generate());
     let mut script = Vec::new();
@@ -125,12 +125,14 @@ fn compact_writes_the_template_keeps_the_users_words_and_builds_on_the_last_summ
     assert!(first.contains("## Decisions and why"), "{first}");
     let requests = sent(&model);
     let next = requests.last().map(String::as_str).unwrap_or_default();
-    // The summary, then the user's last three messages as they were typed,
-    // then the rest of the last exchange and the new message.
+    // The summary, then the user's last three messages, each where it was with its whole
+    // exchange, and the new message.
     let order = [
         at(next, "FIRST-SUMMARY"),
         at(next, &says(4)),
+        at(next, "contents of src/f4.rs"),
         at(next, &says(5)),
+        at(next, "contents of src/f5.rs"),
         at(next, &says(6)),
         at(next, "contents of src/f6.rs"),
         at(next, &says(7)),
@@ -141,8 +143,6 @@ fn compact_writes_the_template_keeps_the_users_words_and_builds_on_the_last_summ
     );
     for turn in 1..=3 {
         assert!(!next.contains(&says(turn)), "{next}");
-    }
-    for turn in 1..=5 {
         assert!(
             !next.contains(&format!("contents of src/f{turn}.rs")),
             "{next}"
@@ -169,40 +169,27 @@ fn compact_writes_the_template_keeps_the_users_words_and_builds_on_the_last_summ
     }
 }
 
-#[test]
-fn a_summary_without_its_headings_twice_falls_back_and_the_turn_goes_on() {
+/// A turn of an agent whose conversation is near a 40k-token window, answered by `model`, with
+/// `summarizer` writing the template's summaries and `keep` of the user's messages kept: the app
+/// once the turn ended.
+fn turn_near_the_window(
+    (model, summarizer): (&MockCompletionModel, &MockCompletionModel),
+    keep: usize,
+) -> Option<App> {
     let (mut app, wakes) = app_on(&MemoryStore::default());
-    let summarizer =
-        MockCompletionModel::from_stream_turns([reply("Just some prose."), reply("More prose.")]);
-    // The fallback is the default compaction, whose cut splits the last turn: a history summary,
-    // then one of the turn's earlier part.
-    let model = MockCompletionModel::from_stream_turns([
-        reply("## Goal\nThe default summary (DEFAULT-SUMMARY)."),
-        reply("## Original Request\nThe next question."),
-        reply("done"),
-    ]);
-    app.insert_resource(scripted_models([("test/summarizer", &summarizer)]))
+    app.insert_resource(scripted_models([("test/summarizer", summarizer)]))
         .add_plugins((AgentPlugin, SessionLogPlugin, StructuredCompactionPlugin))
         .insert_resource(StructuredCompaction {
             model: Some("test/summarizer".to_owned()),
-            keep_user_messages: 3,
+            keep_user_messages: keep,
         })
         .init_resource::<Ended>()
         .add_observer(log_ended);
     collect::<Notice>(&mut app);
     app.finish();
     app.update();
-    let agent = first_agent(app.world_mut());
-    assert!(agent.is_some(), "an agent");
-    let Some(agent) = agent else {
-        return;
-    };
-    // A conversation near a 40k-token window.
-    let connection = connect(&model);
-    assert!(connection.is_some(), "the catalog lists the model");
-    let Some(mut connection) = connection else {
-        return;
-    };
+    let agent = first_agent(app.world_mut())?;
+    let mut connection = connect(model)?;
     connection.spec = Arc::new(connection.spec.as_ref().clone().with_context_window(40_000));
     app.world_mut().entity_mut(agent).insert(connection);
     let long = "word ".repeat(4_000);
@@ -213,12 +200,30 @@ fn a_summary_without_its_headings_twice_falls_back_and_the_turn_goes_on() {
     }
     messages.push(Message::assistant("The last answer."));
     for message in messages {
-        assert!(commit_message(app.world_mut(), agent, message).is_ok());
+        commit_message(app.world_mut(), agent, message).ok()?;
     }
-
     let next = Deliver::new(agent, "And the next question?", DeliveryMode::Steer);
     app.world_mut().trigger(next);
     until_ended(&mut app, &wakes, 0);
+    Some(app)
+}
+
+#[test]
+fn a_summary_without_its_headings_twice_falls_back_and_the_turn_goes_on() {
+    let summarizer =
+        MockCompletionModel::from_stream_turns([reply("Just some prose."), reply("More prose.")]);
+    // The fallback is the default compaction, whose cut splits the last turn: a history summary,
+    // then one of the turn's earlier part.
+    let model = MockCompletionModel::from_stream_turns([
+        reply("## Goal\nThe default summary (DEFAULT-SUMMARY)."),
+        reply("## Original Request\nThe next question."),
+        reply("done"),
+    ]);
+    let app = turn_near_the_window((&model, &summarizer), 3);
+    assert!(app.is_some(), "an agent on a listed model");
+    let Some(app) = app else {
+        return;
+    };
 
     assert_eq!(sent(&summarizer).len(), 2, "the template, asked twice");
     let requests = sent(&model);
@@ -244,6 +249,157 @@ fn a_summary_without_its_headings_twice_falls_back_and_the_turn_goes_on() {
             .any(|notice| notice.text.contains("default way")),
         "{notices:?}"
     );
+}
+
+/// With fewer messages of the user's than are kept, nothing may be summarized: the compaction
+/// is refused before any summary is asked for, with a notice, and the request goes as it is.
+#[test]
+fn a_compaction_with_nothing_before_the_kept_messages_is_refused() {
+    let summarizer = MockCompletionModel::from_stream_turns([reply("unused")]);
+    let model = MockCompletionModel::from_stream_turns([reply("done")]);
+    let app = turn_near_the_window((&model, &summarizer), 20);
+    assert!(app.is_some(), "an agent on a listed model");
+    let Some(app) = app else {
+        return;
+    };
+    assert_eq!(sent(&summarizer).len(), 0);
+    let requests = sent(&model);
+    assert_eq!(requests.len(), 1, "{requests:?}");
+    let request = requests.first().map(String::as_str).unwrap_or_default();
+    assert!(
+        request.contains("What does the crate do?") && request.contains("question 5"),
+        "{request}"
+    );
+    let ended = &app.world().resource::<Ended>().0;
+    assert!(
+        matches!(ended.as_slice(), [TurnOutcome::Answered(_)]),
+        "{ended:?}"
+    );
+    let notices = &app.world().resource::<Collected<Notice>>().0;
+    let refused = "nothing comes before the user's last 20 messages";
+    assert!(
+        notices.iter().any(|notice| notice.text.contains(refused)),
+        "{notices:?}"
+    );
+}
+
+/// The agent's entries, oldest first.
+fn entries(world: &World, agent: Entity) -> Vec<Entry> {
+    let conversation = world.get::<Conversation>(agent);
+    let all = conversation.map(|it| (0..it.messages().len()).filter_map(|at| it.entry(at)));
+    all.into_iter().flatten().collect()
+}
+
+/// A compaction only ever replaces the messages before the ones kept by a summary: the kept
+/// messages stay the entries they were, an image among them, and a compaction that is refused,
+/// or whose summary comes back after the conversation changed, changes nothing.
+#[test]
+fn kept_messages_stay_the_entries_they_were_and_a_failed_compaction_changes_nothing() {
+    let (mut app, wakes) = app_on(&MemoryStore::default());
+    let answers = [1, 3, 4].map(|turn| reply(&format!("answer {turn}")));
+    let model = MockCompletionModel::from_stream_turns(answers);
+    let summarizer = MockCompletionModel::from_stream_turns([
+        reply(&template("FIRST-SUMMARY")),
+        reply(&template("SECOND-SUMMARY")),
+    ]);
+    /// Rewrites the first entry while a summary is reviewed, once switched on.
+    #[derive(Resource, Default)]
+    struct EditMeanwhile(bool);
+    let edit = |calls: Query<&ForAgent, (ReadyToSettle, With<Summarizing>)>,
+                mut agents: Query<&mut Conversation>,
+                mut on: ResMut<EditMeanwhile>| {
+        for &ForAgent(agent) in &calls {
+            if let (true, Ok(mut conversation)) = (on.0, agents.get_mut(agent)) {
+                on.0 = false;
+                conversation.edit_each(Author::plugin("test"), |entry| {
+                    (entry.index == 0).then(|| Message::user("edited meanwhile"))
+                });
+            }
+        }
+    };
+    app.insert_resource(scripted_models([
+        ("test/agent", &model),
+        ("test/summarizer", &summarizer),
+    ]))
+    .add_plugins((AgentPlugin, SessionLogPlugin, StructuredCompactionPlugin))
+    .insert_resource(StructuredCompaction {
+        model: Some("test/summarizer".to_owned()),
+        keep_user_messages: 2,
+    })
+    .init_resource::<EditMeanwhile>()
+    .add_systems(AgentPass, edit.in_set(ReviewSystems::Edit))
+    .init_resource::<Ended>()
+    .add_observer(log_ended);
+    collect::<Notice>(&mut app);
+    app.finish();
+    app.update();
+    let agent = first_agent(app.world_mut());
+    assert!(agent.is_some(), "an agent");
+    let Some(agent) = agent else {
+        return;
+    };
+    app.world_mut().trigger(SetModel {
+        entity: agent,
+        model: "test/agent".to_owned(),
+        kind: ChoiceKind::ForThisRun,
+    });
+    let compact = |app: &mut App| {
+        let before = app.world().resource::<Ended>().0.len();
+        app.world_mut().trigger(RunCommand::new(agent, "compact"));
+        until_ended(app, &wakes, before);
+    };
+    say(&mut app, &wakes, agent, &says(1));
+    let mut pictured = Message::user(says(2));
+    if let Message::User { content } = &mut pictured {
+        content.push(rig_core::message::UserContent::image_base64(
+            "aGk=",
+            Some(rig_core::message::ImageMediaType::PNG),
+            None,
+        ));
+    }
+    for message in [pictured, Message::assistant("answer 2")] {
+        assert!(commit_message(app.world_mut(), agent, message).is_ok());
+    }
+    say(&mut app, &wakes, agent, &says(3));
+
+    // The last two of the user's messages stay, the image with its message.
+    let before = entries(app.world(), agent);
+    compact(&mut app);
+    let after = entries(app.world(), agent);
+    let kept = before
+        .iter()
+        .position(|entry| serde_json::to_string(entry).is_ok_and(|json| json.contains(&says(2))));
+    assert_eq!(after.get(1..), kept.and_then(|kept| before.get(kept..)));
+    let json = serde_json::to_string(&after).unwrap_or_default();
+    assert!(
+        json.contains("FIRST-SUMMARY") && json.contains("aGk="),
+        "{json}"
+    );
+    assert!(!json.contains(&says(1)), "{json}");
+
+    // Nothing comes before the two kept messages now: refused, nothing changes.
+    compact(&mut app);
+    assert_eq!(entries(app.world(), agent), after);
+    assert_eq!(sent(&summarizer).len(), 1);
+
+    // A summary whose messages changed while it was written goes in nowhere.
+    say(&mut app, &wakes, agent, &says(4));
+    let before = entries(app.world(), agent);
+    app.world_mut().resource_mut::<EditMeanwhile>().0 = true;
+    compact(&mut app);
+    let after = entries(app.world(), agent);
+    assert_eq!(sent(&summarizer).len(), 2);
+    let ids = |entries: &[Entry]| -> Vec<_> { entries.iter().map(|entry| entry.id).collect() };
+    assert_eq!(ids(&after), ids(&before));
+    assert_eq!(after.get(1..), before.get(1..));
+    let json = serde_json::to_string(&after).unwrap_or_default();
+    assert!(
+        json.contains("edited meanwhile") && !json.contains("SECOND-SUMMARY"),
+        "{json}"
+    );
+    let notices = &app.world().resource::<Collected<Notice>>().0;
+    let said = |text: &str| notices.iter().any(|notice| notice.text.contains(text));
+    assert!(said("changed meanwhile"), "{notices:?}");
 }
 
 rig_defaults_test_support::stages_ordered_test!(StructuredCompactionPlugin);

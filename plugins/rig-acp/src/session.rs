@@ -783,7 +783,6 @@ fn open(mut opened: Opened) {
                     .store
                     .as_ref()
                     .and_then(|store| summarized_in_log(&*store.0, &id.0).ok())
-                    .map(|summarized| summarized.replaced)
                     .unwrap_or_default();
                 let cwd = translate::cwd_of(work, &opened.root);
                 translate::replay(&id.0, conversation, &replaced, &cwd, &*opened.workspace.0)

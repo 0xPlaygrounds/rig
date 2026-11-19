@@ -105,7 +105,7 @@ fn a_fork_made_after_a_compaction_holds_what_it_replaced() {
 
     let copy = writer.fork_log("main", "fork", None).expect("forked");
     assert_eq!(copy.conversation.messages(), main.messages());
-    let found = summarized_in_log(&*store, "fork").expect("read").replaced;
+    let found = summarized_in_log(&*store, "fork").expect("read");
     let replaced = copy
         .conversation
         .id(0)

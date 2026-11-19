@@ -6,7 +6,7 @@
 //! `$EDITOR` with the `tui` feature), Regenerate or Cancel. A run nobody
 //! answers, and an automatic compaction, are not held.
 
-use rig_basics::compaction::{CompactReason, CutPoint, Summarizing, summarized_prefix};
+use rig_basics::compaction::{CompactReason, Summarizing, summarized_prefix};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{Message, tokens_label};
 use rig_harness::rig_memory::{SummaryState, estimate_tokens};
@@ -118,11 +118,7 @@ fn keep_newest_turns(
             .filter(|&upto| upto > from && upto <= messages.len());
         let spec = model.connection.as_ref().or(own).map(|it| it.spec.clone());
         if let (Some(upto), Some(spec)) = (upto, spec) {
-            let cut = CutPoint {
-                first_kept: upto,
-                turn_start: None,
-            };
-            let planned = Summarizing::plan_at(conversation, cut, summarizing.reason.clone());
+            let planned = Summarizing::plan_at(conversation, upto, summarizing.reason.clone());
             if let Some((planned, Ok(request))) =
                 planned.map(|planned| (planned.clone(), planned.request(&spec, None)))
             {
