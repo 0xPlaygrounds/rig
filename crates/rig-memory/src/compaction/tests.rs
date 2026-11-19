@@ -194,23 +194,39 @@ fn a_summary_request_keeps_the_hosts_words_out_of_the_users_message() {
         in_place.contains(update.as_ref()) && in_place.contains("not from the user"),
         "{in_place}"
     );
+    // A value is copied from whatever gave it last, an earlier summary
+    // included, so a newer value replaces the one an earlier summary held.
     let format = &SummaryPrompts::DEFAULT.format;
-    assert!(!format.contains("earlier summary") && !in_place.contains("word for word"));
+    assert!(
+        format.contains("that gave it last")
+            && format.contains("in its newest form")
+            && !in_place.contains("word for word"),
+        "{format}"
+    );
+}
+
+/// Whether the summary request `asked` keeps what an earlier summary
+/// holds: a line tells it to keep what the earlier summary holds, and no
+/// line tells it to drop, remove, omit or leave out a finished task or an
+/// answered request unless that line says it stays.
+fn keeps_the_earlier_summary(asked: &str) -> bool {
+    let lines = || asked.lines().map(str::to_lowercase);
+    let keeps = lines().any(|line| line.contains("keep") && line.contains("earlier summary"));
+    let drops_finished = lines().any(|line| {
+        let finished = line.contains("finished") || line.contains("answered");
+        let drops = ["drop", "remove", "omit", "leave out"]
+            .iter()
+            .any(|word| line.contains(word));
+        finished && drops && !line.contains("stay")
+    });
+    keeps && !drops_finished
 }
 
 /// Folding in an earlier summary, a summary of its own and one asked in
-/// place are both told to keep everything in it that still holds, and to
-/// drop only what is no longer true, so values found by a request already
-/// answered stay.
+/// place are both told to keep what it holds, a finished task and the
+/// values a request already answered found included.
 #[test]
 fn a_summary_keeps_what_the_earlier_one_holds() {
-    let keeps = |asked: &str| {
-        asked.contains("keep everything in the earlier summary that still holds")
-            && asked
-                .lines()
-                .filter(|line| line.contains("drop"))
-                .all(|line| line.contains("no longer true"))
-    };
     let reason = CompactReason::Threshold;
     let request = spec(200_000).and_then(|spec| {
         Summarizer::DEFAULT
@@ -219,9 +235,12 @@ fn a_summary_keeps_what_the_earlier_one_holds() {
     });
     let texts = request.as_ref().map(texts).unwrap_or_default();
     let system = texts.iter().find(|(role, _)| *role == "system");
-    assert!(system.is_some_and(|(_, system)| keeps(system)), "{texts:?}");
+    assert!(
+        system.is_some_and(|(_, system)| keeps_the_earlier_summary(system)),
+        "{texts:?}"
+    );
     let in_place = Summarizer::DEFAULT.instruction("", 1_000);
-    assert!(keeps(&in_place), "{in_place}");
+    assert!(keeps_the_earlier_summary(&in_place), "{in_place}");
 }
 
 /// The default prompts serve any host: none names a coding agent or rig,

@@ -3030,35 +3030,24 @@ fn a_resumed_session_sends_the_bytes_it_sent_before() {
     }
 }
 
-/// Whether the summary request `asked` keeps what an earlier summary holds:
-/// it says to keep everything in it that still holds, and each rule that
-/// drops something drops only what is no longer true.
-fn keeps_the_earlier_summary(asked: &str) -> bool {
-    asked.contains("keep everything in the earlier summary that still holds")
-        && asked
-            .lines()
-            .filter(|line| line.contains("drop"))
-            .all(|line| line.contains("no longer true"))
-}
-
 /// A second compaction folds in the first summary: its request opens with
-/// that summary, the values it holds included, and asks to keep everything
-/// in it that still holds, so a value found by a request already answered
-/// still reaches the model.
+/// that summary, the values it holds included, and ends with the coding
+/// agent's fold-in rule; the values the second summary keeps then reach
+/// the model's next request.
 #[test]
 fn a_second_summary_keeps_what_the_first_one_holds() {
     let (mut app, wakes) = start(&MemoryStore::default());
     let first = "## Goal\nAudit the lighthouse import.\n\n## Critical context\n\
                  - lighthouse.json: code QUARTZ-791, decision amber over silver.";
+    let second = "## Goal\nAudit the lighthouse import, then read the jade fixtures.\n\n\
+                  ## Critical context\n\
+                  - lighthouse.json: code QUARTZ-791, decision amber over silver.";
     let http = rig_core::test_utils::SequencedHttpClient::new([
         streamed(reasoned(1, "One."), Some(900)),
         streamed(reasoned(2, "Two."), Some(30_000)),
         streamed(reasoned(3, first), Some(30_000)),
         streamed(reasoned(4, "Three."), Some(9_000)),
-        streamed(
-            reasoned(5, "## Goal\nRead the jade fixtures."),
-            Some(30_000),
-        ),
+        streamed(reasoned(5, second), Some(30_000)),
         streamed(reasoned(6, "Four."), Some(9_000)),
     ]);
     let model = (&rig_core::providers::chatgpt::DIALECT, "gpt-6.1-sol");
@@ -3092,16 +3081,18 @@ fn a_second_summary_keeps_what_the_first_one_holds() {
     answered_turns(&mut app, &wakes, agent, 1);
     let ask = "Stop here: do not continue the work";
     let bodies = bodies(&http);
-    let summaries: Vec<serde_json::Value> = bodies
-        .iter()
-        .filter(|body| body.contains(ask))
-        .filter_map(|body| serde_json::from_str(body).ok())
+    let asks: Vec<usize> = (0..bodies.len())
+        .filter(|&at| bodies.get(at).is_some_and(|body| body.contains(ask)))
         .collect();
-    let [_, second] = summaries.as_slice() else {
-        assert_eq!(summaries.len(), 2, "{bodies:#?}");
+    let [_, at] = asks.as_slice() else {
+        assert_eq!(asks.len(), 2, "{bodies:#?}");
         return;
     };
-    let input = second
+    let request: serde_json::Value = bodies
+        .get(*at)
+        .and_then(|body| serde_json::from_str(body).ok())
+        .unwrap_or_default();
+    let input = request
         .get("input")
         .and_then(serde_json::Value::as_array)
         .cloned()
@@ -3116,8 +3107,22 @@ fn a_second_summary_keeps_what_the_first_one_holds() {
         "{opening}"
     );
     let asked = text(input.last()).unwrap_or_default();
-    assert!(asked.contains(ask), "{asked}");
-    assert!(keeps_the_earlier_summary(&asked), "{asked}");
+    assert!(
+        asked.contains(ask) && asked.contains(CODING_PROMPTS.update.as_ref()),
+        "{asked}"
+    );
+    let next = bodies.get(at + 1).cloned().unwrap_or_default();
+    assert!(
+        next.contains("QUARTZ-791") && next.contains("amber over silver") && !next.contains(ask),
+        "{next}"
+    );
+}
+
+/// The coding agent folds an earlier summary in by rig-memory's default
+/// rule, whose tests check that it keeps what the earlier summary holds.
+#[test]
+fn the_coding_fold_in_rule_is_the_default_one() {
+    assert_eq!(CODING_PROMPTS.update, SummaryPrompts::DEFAULT.update);
 }
 
 /// Whether `previous` is a byte prefix of `next` as [`extends`] says, or

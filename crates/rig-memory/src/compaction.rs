@@ -885,8 +885,9 @@ impl SummaryPrompts {
              - move items from \"In progress\" to \"Done\" when they were completed, and update \
              \"Next steps\" to what is left;\n\
              - a finished task or a request already answered stays under \"Done\", and the \
-             values and decisions it found stay, as the user may still ask for them;\n\
-             - drop only what is no longer true.\n\
+             values and decisions it found stay, in their newest form, as the user may still \
+             ask for them;\n\
+             - drop only what is no longer true or what the user asked to drop.\n\
              Written so, the summary stays as long as what is still true, however long the \
              conversation ran.",
         ),
@@ -913,8 +914,8 @@ impl SummaryPrompts {
              ## Critical context\n\
              - [Every specific value the work or the user may still need, as it is now: names, \
              numbers, identifiers, paths, commands, errors, copied character for character from \
-             the message, tool output or note that gave it last. A value that changed appears \
-             once, in its newest form. Never guess a value. Or \"(none)\".]\n\n\
+             the message, tool output, note or earlier summary that gave it last. A value that \
+             changed appears once, in its newest form. Never guess a value. Or \"(none)\".]\n\n\
              Do not copy whole files or long outputs: give the path and the values in it that \
              matter, as the output showed them, as a file may have changed since it was read.\n\n\
              Keep each section short, except Critical context. Keep exact file paths, function \
