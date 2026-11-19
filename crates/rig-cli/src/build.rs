@@ -600,11 +600,11 @@ impl BuildLog {
     }
 
     /// Passes `child`'s stderr on when the output is live, and logs its
-    /// lines. cargo redraws its progress after `\r`, so `\r` ends a line
-    /// too; such a frame is not logged, but a line `\r\n` ends is. Through
-    /// a pipe cargo does not erase the bar's line before a shorter one,
-    /// which would keep the bar's tail on screen, so on a terminal each `\r`
-    /// but a `\r\n` erases it. With `hold` it takes whole lines, keeping
+    /// lines. `\r`, `\n` and `\r\n` each end a line. cargo redraws its
+    /// progress after `\r`, so a status line a lone `\r` ends is a frame,
+    /// which is not logged. Through a pipe cargo does not erase the bar's
+    /// line before a shorter one, which would keep the bar's tail on screen,
+    /// so on a terminal each `\r` but a `\r\n` erases it. With `hold` it takes whole lines, keeping
     /// back all but progress ([`Self::end_segment`]).
     fn pass_on(&mut self, child: &mut Child, hold: bool) {
         // A wait of an earlier command is over.
@@ -616,7 +616,8 @@ impl BuildLog {
         // passes its time even while cargo prints nothing.
         let chunks = chunks(stderr);
         let mut segment: Vec<u8> = Vec::new();
-        // The line the last `\r` ended, logged only if a `\n` comes next.
+        // The line the last `\r` ended, until the next byte says whether
+        // `\r\n` ended it.
         let mut redrawn: Option<Vec<u8>> = None;
         loop {
             let chunk = match self.blocked_since {
@@ -640,27 +641,27 @@ impl BuildLog {
                 self.show(&chunk);
             }
             for &byte in &chunk {
+                if let Some(redrawn) = redrawn.take() {
+                    self.end_redrawn(&redrawn, byte == b'\n', hold);
+                    if byte == b'\n' {
+                        continue;
+                    }
+                }
                 if byte != b'\r' && byte != b'\n' {
                     segment.push(byte);
                     continue;
                 }
-                let passed = self.end_segment(&segment, &[byte], hold);
                 let line = std::mem::take(&mut segment);
-                let ended = match (byte, line.is_empty()) {
-                    (b'\r', _) => {
-                        redrawn = passed.then_some(line);
-                        continue;
-                    }
-                    (_, true) => redrawn.take(),
-                    (_, false) => {
-                        redrawn = None;
-                        passed.then_some(line)
-                    }
-                };
-                if let Some(line) = ended {
+                let passed = self.end_segment(&line, &[byte], hold);
+                if byte == b'\r' {
+                    redrawn = Some(line);
+                } else if passed {
                     self.record_segment(&line);
                 }
             }
+        }
+        if let Some(redrawn) = redrawn {
+            self.end_redrawn(&redrawn, false, hold);
         }
         if self.end_segment(&segment, &[], hold) {
             self.record_segment(&segment);
@@ -669,23 +670,39 @@ impl BuildLog {
 
     /// Whether `line`, which `end` ended, is passed on to the log. With
     /// `hold`, only cargo's progress is shown and passed on, so a long first
-    /// resolve does not look stuck. The rest is held: a warning comes again
-    /// from `cargo build`, and rig may explain an error.
+    /// resolve does not look stuck. The rest is held, as `cargo build` may
+    /// say a warning again and rig may explain an error.
     fn end_segment(&mut self, line: &[u8], end: &[u8], hold: bool) -> bool {
-        if hold && !is_progress(line) {
-            self.held.extend_from_slice(line);
-            self.held.extend_from_slice(end);
-            return false;
-        }
-        if hold && self.output == BuildOutput::Live {
-            self.show(line);
-            self.show(end);
-        }
-        true
+        self.pass(line, line, hold);
+        self.pass(line, end, hold)
     }
 
-    /// Logs what [`Self::end_segment`] held, for a `cargo tree` that failed,
-    /// and returns it.
+    /// Ends `line`, which a `\r` ended, as `\r\n` when `crlf`, its `\n`
+    /// going where the line went, and logs it unless it is a progress frame.
+    fn end_redrawn(&mut self, line: &[u8], crlf: bool, hold: bool) {
+        let passed = !hold || is_progress(line);
+        if crlf {
+            self.pass(line, b"\n", hold);
+        }
+        if passed && (crlf || !is_progress(line)) {
+            self.record_segment(line);
+        }
+    }
+
+    /// Shows `bytes`, which are or end `line`, when it is passed on with
+    /// `hold` and the output is live, or holds them; without `hold` the
+    /// whole chunk was shown already. Returns whether it is passed on.
+    fn pass(&mut self, line: &[u8], bytes: &[u8], hold: bool) -> bool {
+        let passed = !hold || is_progress(line);
+        if !passed {
+            self.held.extend_from_slice(bytes);
+        } else if hold && self.output == BuildOutput::Live {
+            self.show(bytes);
+        }
+        passed
+    }
+
+    /// Logs what [`Self::end_segment`] held, and returns it.
     fn log_held(&mut self) -> Vec<u8> {
         let held = std::mem::take(&mut self.held);
         for line in held.split(|&byte| byte == b'\n') {
@@ -1373,7 +1390,8 @@ fn tree(launch: &Launch, args: &[&str], log: &mut BuildLog) -> Result<Vec<String
     if !status.success() {
         return Err("cargo could not resolve the agent project's dependencies".into());
     }
-    log.held.clear();
+    // `cargo build` may not repeat a warning, having nothing left to fetch.
+    log.log_held();
     Ok(String::from_utf8_lossy(&stdout)
         .lines()
         .map(str::to_owned)

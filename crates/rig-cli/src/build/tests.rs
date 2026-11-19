@@ -867,7 +867,7 @@ fn a_live_build_shows_cargo_as_it_writes_erasing_each_redrawn_line_on_a_terminal
     let (shown, _, _) = fake_build("redirected", (BuildOutput::Live, false), cargo);
     assert_eq!(shown, cargo);
     // A redrawn frame is shown, and only a line a `\n` ends is logged.
-    let cargo = "    Downloading 2 crates\r   Compiling a v1.0.0\r\n";
+    let cargo = " Downloading 2 crates\r   Compiling a v1.0.0\r\n";
     let (shown, logged, _) = fake_build("frames", (BuildOutput::Live, false), cargo);
     assert_eq!(shown, cargo);
     assert!(!logged.contains("Downloading"), "{logged:?}");
