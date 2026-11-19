@@ -246,8 +246,13 @@ impl Tree {
     }
 
     /// What the preview says of the branch `name` at node `node` while `on`
-    /// is ticked: the state its tick box shows, and what Enter does there.
+    /// is ticked: the state its tick box shows, a branch above that keeps it
+    /// off, and what Enter does there.
     fn branch_about(&self, name: &str, node: usize, on: &[bool]) -> String {
+        const KEPT: &str = "That keeps each of its plugins off whatever its own choice.";
+        const BACK: &str = "Enter turns it back on, and each plugin then follows its own choice.";
+        const KEEPS: &str = "Enter turns it off, into [plugins] off, and each plugin keeps its \
+                             own choice for when it is back on.";
         let held: Vec<&str> = (self.rows.iter())
             .filter(|row| config::holds(name, &row.krate, &row.plugin))
             .map(|row| row.name.as_str())
@@ -256,34 +261,47 @@ impl Tree {
         let ticked: Vec<usize> = (on.iter().enumerate())
             .filter_map(|(at, on)| on.then_some(at))
             .collect();
+        let parent = |at: usize| parents.get(at).copied().flatten();
+        let above = std::iter::successors(parent(node), |at| parent(*at))
+            .find(|at| !ticked.contains(at))
+            .and_then(|at| match self.nodes.get(at) {
+                Some((Node::Branch { name, .. }, _)) => Some(name.as_str()),
+                _ => None,
+            });
         let named = self.before.off.iter().any(|off| off == name);
-        const KEEPS: &str = "Enter turns it off, into [plugins] off, and each plugin keeps its \
-                             own choice for when it is back on.";
-        let state = match (ticked.contains(&node), TickBox::of(&parents, node, &ticked)) {
-            (false, _) if named => {
-                "Off: [plugins] off names it, which keeps each of its plugins off whatever its \
-                 own choice. Enter turns it back on, and each plugin comes back as its own \
-                 choice says."
-                    .to_owned()
-            }
-            (false, _) => {
-                "Off once you leave: it goes into [plugins] off, which keeps each of its plugins \
-                 off whatever its own choice. Enter turns it back on."
-                    .to_owned()
-            }
-            (true, TickBox::Off) => {
-                "On, with every plugin off. Enter turns each of them on.".to_owned()
-            }
-            (true, TickBox::Mixed) => format!("Partly on: some of its plugins are off. {KEEPS}"),
-            (true, TickBox::On) => format!("On. {KEEPS}"),
+        let own = ticked.contains(&node);
+        let (state, enter) = match (own, TickBox::of(&parents, node, &ticked)) {
+            (false, _) if named => (format!("Off: [plugins] off names it. {KEPT}"), BACK),
+            (false, _) => (
+                format!("Off if you write this on leaving: it goes into [plugins] off. {KEPT}"),
+                BACK,
+            ),
+            (true, TickBox::Off) => (
+                "On, with every choice under it off.".to_owned(),
+                "Enter turns each of them on.",
+            ),
+            (true, TickBox::Mixed) => (
+                "Partly on: some choices under it are off.".to_owned(),
+                KEEPS,
+            ),
+            (true, TickBox::On) => ("On.".to_owned(), KEEPS),
         };
-        let back = if named && ticked.contains(&node) {
-            "Comes out of [plugins] off once you leave. "
+        let state = match above {
+            Some(up) if own => {
+                format!("Off with its branch {up}, which keeps it off whatever is ticked here.")
+            }
+            _ => state,
+        };
+        let back = if named && own {
+            "Comes out of [plugins] off if you write this on leaving. "
         } else {
             ""
         };
+        let up = above.map_or_else(String::new, |up| {
+            format!(" Its branch {up} stays off until Enter on {up} turns it back on.")
+        });
         format!(
-            "{name}\nBranch of {} plugins: {}.\n\n{back}{state}\n",
+            "{name}\nBranch of {} plugins: {}.\n\n{back}{state} {enter}{up}\n",
             held.len(),
             held.join(", ")
         )

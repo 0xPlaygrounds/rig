@@ -10,6 +10,7 @@ use rig_harness_test_support::scratch_home;
 use super::*;
 
 const SESSIONS: &str = "rig_basics::sessions::SessionsPlugin";
+const FORKS: &str = "rig_basics::sessions::forks::ForksPlugin";
 
 /// Every notice written so far, and why each refused line was.
 #[derive(Resource, Default)]
@@ -1049,14 +1050,46 @@ fn a_branchs_preview_follows_its_tick_box() {
     highlight(&mut app, list, &shown, "sessions");
     says(&app, list, "Partly on", "Off");
     tick(&mut app, list, &[], &["sessions"]);
-    says(&app, list, "Off once you leave", "On. Enter");
+    says(&app, list, "Off if you write this on leaving", "On. Enter");
     tick(&mut app, list, &[], &[]);
-    says(&app, list, "Partly on", "Off once you leave");
+    says(&app, list, "Partly on", "Off if you write");
+    says(
+        &app,
+        list,
+        "some choices under it are off",
+        "plugins are off",
+    );
+
+    // A branch above keeps it off, whatever its own box shows.
+    tick(&mut app, list, &[], &["rig-basics"]);
+    says(&app, list, "Off with its branch rig-basics", "Partly on");
+    says(&app, list, "Enter on rig-basics turns it back on", "On.");
+    tick(&mut app, list, &[], &["rig-basics", "sessions"]);
+    says(&app, list, "Off if you write", "Off with its branch");
+    says(&app, list, "Enter on rig-basics turns it back on", "On.");
+    tick(&mut app, list, &[], &[]);
 
     highlight(&mut app, list, &shown, "telemetry");
     says(&app, list, "[plugins] off names it", "On. Enter");
     tick(&mut app, list, &["telemetry"], &[]);
-    says(&app, list, "Comes out of [plugins] off", "names it");
+    says(
+        &app,
+        list,
+        "Comes out of [plugins] off if you write",
+        "names it",
+    );
+
+    let (mut app, list, shown) = opened(
+        "plugins-preview-parent-off",
+        "[plugins]\noff = [\"rig-basics\"]\n",
+    );
+    highlight(&mut app, list, &shown, "sessions");
+    says(&app, list, "Off with its branch rig-basics", "Partly on");
+
+    let settings = format!("[plugins]\nenable = [\"{FORKS}\"]\n");
+    let (mut app, list, shown) = opened("plugins-preview-all-on", &settings);
+    highlight(&mut app, list, &shown, "sessions");
+    says(&app, list, "\n\nOn. Enter turns it off", "Partly on");
 
     let settings = format!("[plugins]\ndisable = [\"{SESSIONS}\"]\n");
     let (mut app, list, shown) = opened("plugins-preview-none-on", &settings);
@@ -1064,7 +1097,7 @@ fn a_branchs_preview_follows_its_tick_box() {
     says(
         &app,
         list,
-        "Enter turns each of them on",
+        "On, with every choice under it off. Enter turns each of them on.",
         "Enter turns it off",
     );
 }
