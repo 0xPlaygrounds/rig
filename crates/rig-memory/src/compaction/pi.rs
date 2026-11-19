@@ -49,7 +49,7 @@ pub struct CompactionSettings {
     /// Whether a conversation is compacted on its own: near the window, and after a request
     /// refused as too long or a reply the window cut short. `/compact` works either way.
     pub enabled: bool,
-    /// Tokens of the model's context window kept free for the reply.
+    /// Tokens of the model's input limit kept free for the reply.
     pub reserve_tokens: u64,
     /// About how many tokens of the newest messages stay as they are.
     pub keep_recent_tokens: u64,
@@ -307,8 +307,9 @@ pub fn find_cut_point(
 /// A compaction ready to summarize ([`prepare_compaction`]).
 #[derive(Clone, Debug, PartialEq)]
 pub struct CompactionPreparation {
-    /// The index of the first message kept.
-    pub first_kept: usize,
+    /// Every message the summary replaces, as the conversation holds them now: all before the
+    /// first one kept, earlier summaries included.
+    pub replaces: Vec<Arc<Message>>,
     /// The messages summarized into the history summary, after the earlier summaries.
     pub to_summarize: Vec<Arc<Message>>,
     /// When the cut splits a turn, that turn's messages before the cut, summarized apart.
@@ -331,14 +332,19 @@ pub struct FileLists {
 }
 
 /// What a compaction of `conversation`, keeping about `keep_recent_tokens`, summarizes, or `None`
-/// when nothing would be; `overflowed` after the provider refused a request as too long
-/// ([`find_cut_point`]). The earlier summaries ([`summarized_prefix`]) are never cut again: the
-/// new summary updates the newest one.
+/// when nothing would be, as when nothing was added since the last one
+/// ([`already_compacted`](super::already_compacted)); `overflowed` after the provider refused a
+/// request as too long ([`find_cut_point`]), which is compacted for even then, as the summary
+/// before it may have gone in after its prompt. The earlier summaries ([`summarized_prefix`])
+/// are never cut again: the new summary updates the newest one.
 pub fn prepare_compaction(
     conversation: &Conversation,
     keep_recent_tokens: u64,
     overflowed: bool,
 ) -> Option<CompactionPreparation> {
+    if !overflowed && super::already_compacted(conversation) {
+        return None;
+    }
     let messages = conversation.messages();
     let range = (summarized_prefix(conversation), messages.len());
     let cut = find_cut_point(messages, range, keep_recent_tokens, overflowed);
@@ -377,7 +383,7 @@ pub fn prepare_compaction_at(
         ops.extract(message);
     }
     Some(CompactionPreparation {
-        first_kept: cut.first_kept,
+        replaces: messages.get(..cut.first_kept).unwrap_or_default().to_vec(),
         to_summarize,
         turn_prefix,
         previous: super::Compacted::of(conversation)
@@ -802,11 +808,14 @@ pub enum SummaryFailure {
     /// The model called a tool.
     #[error("{0} attempted to call a tool")]
     CalledTool(&'static str),
+    /// The summary has no text.
+    #[error("{0} failed: the summary is empty")]
+    Empty(&'static str),
 }
 
 /// The summary in `response`, a reply to the request `label` names, its text parts joined by
 /// newlines, or why it cannot become a session's checkpoint: an errored reply, one cut at the
-/// output limit, or one that calls a tool.
+/// output limit, one that calls a tool, or one with no text.
 ///
 /// # Errors
 ///
@@ -832,7 +841,11 @@ pub fn summary_text(
                 .iter()
                 .filter_map(AssistantContent::as_text)
                 .collect();
-            Ok(texts.join("\n"))
+            let text = texts.join("\n");
+            match text.trim().is_empty() {
+                true => Err(SummaryFailure::Empty(label)),
+                false => Ok(text),
+            }
         }
     }
 }
