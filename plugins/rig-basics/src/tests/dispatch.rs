@@ -259,6 +259,74 @@ fn a_call_a_real_wire_cut_at_the_output_limit_is_answered_so() {
     );
 }
 
+/// A reply cut off by the output limit in the middle of a tool call: the call is not run, and the
+/// model reads that its reply reached the limit, with only the start of what it sent, so it sends
+/// less next time. Compaction leaves such a reply, which has a tool call, to the scheduler.
+#[test]
+fn a_call_cut_off_by_the_output_limit_is_answered_so() {
+    use rig_core::completion::{Message, Usage};
+    use rig_core::message::UserContent;
+    use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
+
+    let (mut app, wakes) = start_with_compaction(&MemoryStore::default());
+    let content = "line\n".repeat(10_000);
+    let cut_off = vec![
+        MockStreamEvent::tool_call_name_delta("call_1", "write"),
+        MockStreamEvent::tool_call_arguments_delta(
+            "call_1",
+            format!("{{\"path\": \"big.rs\", \"content\": \"{content}"),
+        ),
+        MockStreamEvent::FinalResponse(rig_core::operation::Finish {
+            reason: Some(rig_core::completion::FinishReason::Length),
+            ..rig_core::test_utils::mock_final(Usage::default())
+        }),
+    ];
+    let model =
+        MockCompletionModel::from_stream_turns([cut_off, rig_harness_test_support::reply("done")]);
+    let connection = rig_harness_test_support::connect(&model);
+    assert!(connection.is_some(), "the catalog lists the model");
+    let Some(connection) = connection else {
+        return;
+    };
+    let world = app.world_mut();
+    let agent = world
+        .query_filtered::<Entity, With<Agent>>()
+        .iter(world)
+        .next();
+    let Some(agent) = agent else {
+        return;
+    };
+    world.entity_mut(agent).insert(connection);
+    ask(&mut app, &wakes, agent);
+    assert_eq!(answer(&app).as_deref(), Some("done"));
+    let conversation = app.world().get::<Conversation>(agent);
+    let messages: Vec<Message> = conversation
+        .map(|it| {
+            it.messages()
+                .iter()
+                .map(|message| (**message).clone())
+                .collect()
+        })
+        .unwrap_or_default();
+    let result = messages.iter().rev().find_map(|message| match message {
+        Message::User { content } => content.iter().find_map(|part| match part {
+            UserContent::ToolResult(result) => Some(format!("{:?}", result.content)),
+            _ => None,
+        }),
+        _ => None,
+    });
+    assert!(result.is_some(), "the call has a result: {messages:?}");
+    let result = result.unwrap_or_default();
+    assert!(
+        result.contains("Not run: your reply reached the output limit before `write`"),
+        "{result}"
+    );
+    assert!(
+        result.contains("big.rs") && result.len() < 1_000,
+        "{result}"
+    );
+}
+
 /// A Responses reply streamed with `items` as its output, reporting
 /// `input` tokens read, or no usage with `None`, so the next request is
 /// measured by the estimate alone.

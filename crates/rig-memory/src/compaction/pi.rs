@@ -94,42 +94,55 @@ fn result_chars(content: &[ToolResultContent]) -> u64 {
         .fold(0, u64::saturating_add)
 }
 
-/// The estimated tokens of `message`, at four characters a token, rounded up: on the high side.
-/// Each tool result counts as a message of its own, rounded apart, beside the rest of a user
-/// message.
-pub fn estimate_message_tokens(message: &Message) -> u64 {
+/// The characters of each message pi would make of `message`: each tool result is a message of
+/// its own, beside the rest of a user message.
+fn message_chars(message: &Message) -> Vec<u64> {
     match message {
-        Message::System { content } => chars(content).div_ceil(4),
+        Message::System { content } => vec![chars(content)],
         Message::User { content } => {
-            let mut results = 0u64;
-            let mut rest = 0u64;
+            let mut parts = Vec::new();
+            let mut rest = None::<u64>;
             for item in content {
                 match item {
-                    UserContent::ToolResult(result) => {
-                        results = results.saturating_add(result_chars(&result.content).div_ceil(4));
+                    UserContent::ToolResult(result) => parts.push(result_chars(&result.content)),
+                    UserContent::Text(text) => {
+                        rest = Some(rest.unwrap_or(0).saturating_add(chars(&text.text)));
                     }
-                    UserContent::Text(text) => rest = rest.saturating_add(chars(&text.text)),
-                    UserContent::Image(_) => rest = rest.saturating_add(ESTIMATED_IMAGE_CHARS),
-                    _ => {}
+                    UserContent::Image(_) => {
+                        rest = Some(rest.unwrap_or(0).saturating_add(ESTIMATED_IMAGE_CHARS));
+                    }
+                    _ => rest = Some(rest.unwrap_or(0)),
                 }
             }
-            results.saturating_add(rest.div_ceil(4))
+            parts.extend(rest);
+            parts
         }
-        Message::Assistant(reply) => reply
-            .content
-            .iter()
-            .map(|item| match item {
-                AssistantContent::Text(text) => chars(&text.text),
-                AssistantContent::Reasoning(reasoning) => chars(&reasoning.text),
-                AssistantContent::ToolCall(call) => chars(call.function.name.as_str())
-                    .saturating_add(chars(
-                        &serde_json::to_string(&call.function.arguments).unwrap_or_default(),
-                    )),
-                _ => 0,
-            })
-            .fold(0, u64::saturating_add)
-            .div_ceil(4),
+        Message::Assistant(reply) => vec![
+            reply
+                .content
+                .iter()
+                .map(|item| match item {
+                    AssistantContent::Text(text) => chars(&text.text),
+                    AssistantContent::Reasoning(reasoning) => chars(&reasoning.text),
+                    AssistantContent::ToolCall(call) => chars(call.function.name.as_str())
+                        .saturating_add(chars(
+                            &serde_json::to_string(&call.function.arguments).unwrap_or_default(),
+                        )),
+                    _ => 0,
+                })
+                .fold(0, u64::saturating_add),
+        ],
     }
+}
+
+/// The estimated tokens of `message`, at four characters a token, rounded up: on the high side,
+/// as pi's compaction counts. Each tool result counts as a message of its own, rounded apart,
+/// beside the rest of a user message.
+pub fn estimate_message_tokens(message: &Message) -> u64 {
+    message_chars(message)
+        .into_iter()
+        .map(|chars| chars.div_ceil(4))
+        .fold(0, u64::saturating_add)
 }
 
 /// The estimated tokens of `messages` ([`estimate_message_tokens`]).
@@ -138,6 +151,38 @@ pub fn estimate_tokens(messages: &[impl Borrow<Message>]) -> u64 {
         .iter()
         .map(|message| estimate_message_tokens(message.borrow()))
         .fold(0, u64::saturating_add)
+}
+
+/// Tokens of `chars` characters at pi-ai's 3.5 characters a token, rounded up.
+fn provider_tokens(chars: u64) -> u64 {
+    chars.saturating_mul(2).div_ceil(7)
+}
+
+/// The tokens of a request as pi-ai's provider layer estimates them before it fits the output
+/// limit: the `system` prompt and the `tools` (their definitions as JSON) and each message at 3.5
+/// characters a token, or, with an `anchor` (the tokens reported for the reply at that index), that
+/// count plus an estimate of the messages after it.
+pub fn request_tokens(
+    (system, tools): (Option<&str>, Option<&str>),
+    messages: &[impl Borrow<Message>],
+    anchor: Option<(u64, usize)>,
+) -> u64 {
+    let estimate = |messages: &[_]| {
+        messages
+            .iter()
+            .flat_map(|message: &_| message_chars(Borrow::<Message>::borrow(message)))
+            .map(provider_tokens)
+            .fold(0, u64::saturating_add)
+    };
+    if let Some((tokens, at)) = anchor {
+        let after = messages.get(at.saturating_add(1)..).unwrap_or_default();
+        return tokens.saturating_add(estimate(after));
+    }
+    let system = system.map_or(0, |text| provider_tokens(chars(text)));
+    let tools = tools.map_or(0, |json| provider_tokens(chars(json)));
+    system
+        .saturating_add(tools)
+        .saturating_add(estimate(messages))
 }
 
 /// Whether `message` answers tool calls: a user message holding a tool result.
@@ -268,8 +313,8 @@ pub struct CompactionPreparation {
     pub to_summarize: Vec<Arc<Message>>,
     /// When the cut splits a turn, that turn's messages before the cut, summarized apart.
     pub turn_prefix: Vec<Arc<Message>>,
-    /// The newest compaction's summary and file lists, as the update prompt sends it verbatim;
-    /// `None` before the first compaction.
+    /// The newest compaction's summary and file lists, as the update prompt sends it verbatim, an
+    /// empty one included, as pi keeps it; `None` before the first compaction.
     pub previous: Option<String>,
     /// The files read and not changed, and the files changed, by every summarized message and
     /// earlier compaction.
@@ -335,7 +380,9 @@ pub fn prepare_compaction_at(
         first_kept: cut.first_kept,
         to_summarize,
         turn_prefix,
-        previous: state.previous_summary(),
+        previous: super::Compacted::of(conversation)
+            .last()
+            .map(|(_, compacted)| compacted.state.with_files()),
         files: ops.lists(),
     })
 }
@@ -625,8 +672,9 @@ pub fn clamp_max_tokens(spec: &ModelSpec, input_tokens: u64, max_tokens: u64) ->
 }
 
 /// A one-off summary request to `spec`: `system`, then `prompt` as the user's message, with the
-/// `reasoning` effort when the model takes it, no prompt-cache writes, and an output limit of
-/// `max_output` (the model's output limit when `None`) fitted to the room the input leaves.
+/// `reasoning` effort when the model takes it and no prompt-cache writes. Its output limit is
+/// `max_output` exactly when given, as a caller that fitted its own sets it, else the model's
+/// output limit fitted by pi's clamp to the room the input leaves ([`clamp_max_tokens`]).
 ///
 /// # Errors
 ///
@@ -643,15 +691,28 @@ pub fn summarization_request(
         options.reasoning = None;
     }
     spec.validate(&options)?;
-    // Explicitly none, which survives the defaults filled in when the call starts; a model that
-    // refuses it has the option taken out there, and no cache marker is sent either way.
-    options.cache = Some(rig_core::completion::CacheRetention::None);
-    let input = estimate_tokens(&[Message::system(system), Message::user(prompt.as_str())]);
+    // On a model that caches by default, explicitly none, which survives the defaults filled in
+    // when the call starts; a model with no prompt cache is sent no cache option at all, as pi
+    // passes its retention only to providers that take one.
+    if spec.default_options(None).cache.is_some() {
+        options.cache = Some(rig_core::completion::CacheRetention::None);
+    }
+    let input = request_tokens(
+        (Some(system), None),
+        &[Message::user(prompt.as_str())],
+        None,
+    );
     let request = CompletionRequest::new(Message::user(prompt))
         .preamble(system.to_owned())
         .options(options);
-    Ok(match max_output.or(spec.output_limit().map(u64::from)) {
-        Some(most) => request.max_tokens(clamp_max_tokens(spec, input, most)),
+    let most = match max_output {
+        Some(exact) => Some(exact),
+        None => spec
+            .output_limit()
+            .map(|most| clamp_max_tokens(spec, input, u64::from(most))),
+    };
+    Ok(match most {
+        Some(most) => request.max_tokens(most),
         None => request,
     })
 }
@@ -679,6 +740,8 @@ pub fn summary_request(
     spec: &ModelSpec,
     reasoning: Option<Reasoning>,
 ) -> Result<CompletionRequest, UnsupportedOption> {
+    // An empty previous summary reads as none, as pi's `if (previousSummary)` reads it.
+    let previous = previous.filter(|text| !text.is_empty());
     let base = match previous {
         Some(_) => UPDATE_SUMMARIZATION_PROMPT,
         None => SUMMARIZATION_PROMPT,

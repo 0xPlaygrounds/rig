@@ -270,15 +270,82 @@ fn a_summary_request_fits_its_output_and_writes_no_cache() {
     let effort = Reasoning::Effort(rig_core::completion::Effort::Low);
     let messages = [Message::user("x".repeat(80_000))];
     let request = summary_request(&messages, (None, ""), &spec, Some(effort)).expect("a request");
-    assert_eq!(
-        request.options.cache,
-        Some(rig_core::completion::CacheRetention::None)
-    );
+    // The test spec lists no prompt cache, so no cache option is sent at all.
+    assert_eq!(request.options.cache, None);
     assert_eq!(request.options.reasoning, Some(effort));
-    // About 20k tokens read leaves less than the output limit in the 40k window.
+    // About 23k tokens read, at pi-ai's 3.5 characters a token, leaves less than the output limit
+    // in the 40k window.
     let asked = request.max_tokens.unwrap_or(0);
-    assert!((14_000..16_000).contains(&asked), "{asked}");
+    assert!((12_000..13_500).contains(&asked), "{asked}");
     // 40000 - 30000 - 4500 leaves under 32768, so only the fixed 4096 margin is kept.
     assert_eq!(clamp_max_tokens(&spec, 30_000, 32_000), 5_904);
     assert_eq!(clamp_max_tokens(&spec, 1_000, 8_000), 8_000);
+}
+
+/// A saved checkpoint with no text is still the previous one, as pi keeps the empty string: with
+/// file lists it is sent in `<previous-summary>`; without, a split turn's history is that empty
+/// summary, not "No prior history.".
+#[test]
+fn a_blank_checkpoint_is_still_the_previous_one() {
+    let with_files = SummaryState {
+        summary: String::new(),
+        read_files: vec!["a.rs".to_owned()],
+        modified_files: Vec::new(),
+    };
+    for (state, previous) in [
+        (with_files, "\n\n<read-files>\na.rs\n</read-files>"),
+        (SummaryState::default(), ""),
+    ] {
+        let mut conversation = Conversation::from_messages([
+            Message::user("start"),
+            Message::assistant("done"),
+            Message::user("next"),
+            Message::assistant("x".repeat(400)),
+        ]);
+        let first = conversation.id(2);
+        crate::apply_summary(&mut conversation, first, &state).expect("applied");
+        let prepared =
+            prepare_compaction(&conversation, 10, false).expect("something to summarize");
+        assert_eq!(prepared.previous.as_deref(), Some(previous));
+        assert_eq!(no_history(prepared.previous.as_deref()), previous);
+    }
+    let spec = rig_core::providers::registry::ProviderId::catalog("ollama")
+        .map(|vendor| rig_core::catalog::ModelSpec::new(vendor, "test"))
+        .expect("a vendor");
+    let request = summary_request(
+        &[Message::user("more")],
+        (Some("\n\n<read-files>\na.rs\n</read-files>"), ""),
+        &spec,
+        None,
+    )
+    .expect("a request");
+    let text = serde_json::to_string(&request.chat_history).unwrap_or_default();
+    assert!(
+        text.contains("<previous-summary>") && text.contains("a.rs"),
+        "{text}"
+    );
+}
+
+/// The output limit is fitted by pi-ai's estimate of the request at 3.5 characters a token, each
+/// tool result apart, or the reported tokens plus an estimate of what follows them.
+#[test]
+fn the_output_clamp_counts_the_request_as_pi_ai_does() {
+    let messages = [
+        Message::user("x".repeat(3_500)),
+        result("1", &"y".repeat(7)),
+        Message::assistant("z".repeat(35)),
+    ];
+    assert_eq!(
+        request_tokens((None, None), &messages, None),
+        1_000 + 2 + 10
+    );
+    let system = "s".repeat(350);
+    assert_eq!(
+        request_tokens((Some(system.as_str()), Some("[{}]")), &messages, None),
+        1_012 + 100 + 2
+    );
+    assert_eq!(
+        request_tokens((None, None), &messages, Some((5_000, 1))),
+        5_010
+    );
 }

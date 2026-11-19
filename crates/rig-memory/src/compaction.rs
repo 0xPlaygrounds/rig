@@ -31,7 +31,7 @@ mod pi;
 pub use pi::{
     CompactionPreparation, CompactionSettings, CutPoint, FileLists, SUMMARIZATION_SYSTEM_PROMPT,
     SummaryFailure, clamp_max_tokens, estimate_message_tokens, estimate_tokens, find_cut_point,
-    merge_split_turn, no_history, prepare_compaction, prepare_compaction_at,
+    merge_split_turn, no_history, prepare_compaction, prepare_compaction_at, request_tokens,
     serialize_conversation, summarization_request, summary_request, summary_text,
     turn_prefix_request,
 };

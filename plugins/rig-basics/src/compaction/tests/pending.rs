@@ -197,3 +197,64 @@ fn a_summary_call_sends_no_cache_marker() {
     );
     assert!(!summary.contains("cache_control"), "{summary}");
 }
+
+/// A summary call goes out on a model with no prompt cache, such as one served by Ollama, and is
+/// sent no cache option.
+#[test]
+fn a_summary_call_goes_out_on_a_model_with_no_prompt_cache() {
+    let chunk = |delta: serde_json::Value, finish: Option<&str>| {
+        serde_json::json!({"id": "c", "object": "chat.completion.chunk", "model": "gpt-oss:20b",
+            "choices": [{"index": 0, "delta": delta, "finish_reason": finish}]})
+    };
+    let body = [
+        chunk(
+            serde_json::json!({"role": "assistant", "content": "## Goal\nAnswer."}),
+            None,
+        ),
+        chunk(serde_json::json!({}), Some("stop")),
+    ]
+    .iter()
+    .map(|chunk| format!("data: {chunk}\n\n"))
+    .collect::<String>()
+        + "data: [DONE]\n\n";
+    let http = rig_core::test_utils::SequencedHttpClient::new([
+        rig_core::test_utils::MockHttpResponse::success_typed(body, "text/event-stream"),
+    ]);
+    let served = rig_core::providers::ollama::OllamaConfig::new()
+        .connect(http.clone())
+        .completion("gpt-oss:20b");
+    let vendor = rig_core::providers::registry::ProviderId::catalog("ollama");
+    assert!(vendor.is_some(), "the catalog knows Ollama");
+    let Some(vendor) = vendor else {
+        return;
+    };
+    let spec = rig_core::catalog::Catalog::builtin()
+        .resolve("ollama/gpt-oss:20b")
+        .map(|spec| spec.shared().as_ref().clone())
+        .unwrap_or_else(|_| rig_core::catalog::ModelSpec::new(vendor, "gpt-oss:20b"));
+    let spec = Arc::new(spec.with_context_window(131_072));
+    let handler = rig_core::serve::adapters::ModelAdapter::<rig_core::operation::Completion>::new(
+        spec.reference(),
+        served,
+    );
+    let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |_| {});
+    let world = app.world_mut();
+    let agent = world
+        .query_filtered::<Entity, With<Agent>>()
+        .iter(world)
+        .next();
+    let Some(agent) = agent else {
+        return;
+    };
+    world.entity_mut(agent).insert(Connection {
+        spec,
+        handler: rig_ecs::effects::Handler(rig_core::serve::ErasedHandler::new(handler)),
+    });
+    for message in turns(0, 4) {
+        assert!(commit_message(app.world_mut(), agent, message).is_ok());
+    }
+    compact(&mut app, &wakes, agent, "", 1);
+    assert_eq!(http.requests().len(), 1, "{:?}", notices(&app));
+    let live = entries(app.world(), agent);
+    assert!(live.first().is_some_and(holds_summary), "{live:?}");
+}

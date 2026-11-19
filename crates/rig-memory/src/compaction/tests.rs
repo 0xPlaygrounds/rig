@@ -361,3 +361,28 @@ fn a_reset_keeps_what_a_summary_replaced_only_for_the_same_conversation() {
     undo_summary(&mut back, &*store, "agent", by).expect("undone");
     assert_eq!(back.messages(), original.messages());
 }
+
+/// Another plugin's request on a small model (a 4096-token window, a 1024-token output limit) keeps
+/// conversation text and the answer room it fitted, as before compaction followed pi.
+#[test]
+fn a_small_model_keeps_text_and_room_for_another_plugins_summary() {
+    let spec = rig_core::providers::registry::ProviderId::catalog("ollama")
+        .map(|vendor| {
+            ModelSpec::new(vendor, "small")
+                .with_context_window(4_096)
+                .with_max_output_tokens(1_024)
+        })
+        .expect("a vendor");
+    let text = format!("OLDEST {} NEWEST", "word ".repeat(2_000));
+    let (fitted, most) = fit_to_model(&text, &spec, 4_000);
+    assert_eq!(most, Some(1_024));
+    assert!(
+        fitted.ends_with("NEWEST") && !fitted.contains("OLDEST"),
+        "{fitted}"
+    );
+    assert!(fitted.chars().count() > 2_000, "{}", fitted.chars().count());
+    let request =
+        crate::summarization_request(("Write a brief.", fitted.into_owned()), &spec, None, most)
+            .expect("a request");
+    assert_eq!(request.max_tokens, Some(1_024));
+}
