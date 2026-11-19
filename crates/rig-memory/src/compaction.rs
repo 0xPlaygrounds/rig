@@ -874,7 +874,8 @@ impl SummaryPrompts {
             "An earlier part of the conversation may be summarized already, in \
              <previous-summary> or in a summary the conversation opens with. Then write one \
              summary of all of it, as it stands now, in place of that one:\n\
-             - keep what still holds;\n\
+             - keep everything in the earlier summary that still holds, and add the new \
+             progress, decisions and context;\n\
              - when a newer message changes a value (a name, a type or its fields, a setting, a \
              count, a result, the current commit, a decision), write only the new value, where \
              the old one was: never keep the old one beside it, mark it as earlier or \
@@ -883,8 +884,9 @@ impl SummaryPrompts {
              item;\n\
              - move items from \"In progress\" to \"Done\" when they were completed, and update \
              \"Next steps\" to what is left;\n\
-             - drop what is finished with and no longer matters, such as a request already \
-             answered.\n\
+             - a finished task or a request already answered stays under \"Done\", and the \
+             values and decisions it found stay, as the user may still ask for them;\n\
+             - drop only what is no longer true.\n\
              Written so, the summary stays as long as what is still true, however long the \
              conversation ran.",
         ),
