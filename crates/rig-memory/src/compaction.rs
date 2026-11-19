@@ -8,7 +8,8 @@
 //!
 //! let settings = CompactionSettings::default();
 //! assert!(settings.should_compact(120_000, 128_000));
-//! assert_eq!(prepare_compaction(&Conversation::default(), settings.keep_recent_tokens), None);
+//! let conversation = Conversation::default();
+//! assert_eq!(prepare_compaction(&conversation, settings.keep_recent_tokens, false), None);
 //! assert_eq!(SummaryState::default().message(), None);
 //! ```
 
