@@ -69,7 +69,7 @@ use super::session_log::{ConversationChanged, SessionLog, save_conversation};
 use super::stage::Stage;
 use super::stage::{
     Admitted, Decision, Effect, ForAgent, HoldOf, Holds, IfStopped, Outcome, Published, Settled,
-    Started, SupersededBy, Waiting, apply_decision, cancel, release,
+    Started, SupersededBy, Supersedes, Waiting, apply_decision, cancel, release,
 };
 use super::tasks::{Running, Wake};
 use super::tools::{Footprint, InReply, ResultFilter, ToolDef, ToolRequest, offered};
@@ -84,6 +84,9 @@ pub const PURPOSE: &str = "turn";
 pub(crate) const NO_MODEL: &str = "No model is connected; pick one first.";
 
 /// A turn's recovery so far: the failed calls retried since its last reply.
+/// On a plugin's own model call of a turn, such as a summary, it asks the
+/// kernel to retry that call as it retries a turn's, and counts that call's
+/// retries apart from the turn's: the call sent again carries the count on.
 #[derive(Component, Reflect, Clone, Copy, Debug, Default)]
 #[reflect(Component, Default)]
 pub struct Recovery {
@@ -91,7 +94,8 @@ pub struct Recovery {
     pub retries: u32,
 }
 
-/// The wait before a failed [`TurnCall`] is sent again, on the hold the
+/// The wait before a failed [`TurnCall`], or a call with a [`Recovery`] of
+/// its own, is sent again, on the hold the
 /// kernel puts on it ([`HoldOf`]). Once the wait passed on Bevy's clock, a
 /// delayed command despawns the hold and spawns a new call that
 /// supersedes the failed one ([`SupersededBy`]), unless the hold is gone by then, as
@@ -221,7 +225,8 @@ pub struct SentTo(pub Connection);
 /// request to it, then moves it into [`SentTo`]. A call admitted without a
 /// model gets none, and Start answers it with an error, even if its agent
 /// was connected meanwhile: a connection put on it later would skip the
-/// adapters and Fit. A successor is admitted, routed and adapted anew.
+/// adapters and Fit. A successor is admitted, routed (unless [`Rebuilt`])
+/// and adapted anew.
 #[derive(Component, Clone)]
 pub struct Adapted(pub Connection);
 
@@ -235,6 +240,15 @@ pub struct Adapted(pub Connection);
 #[require(Effect, Partial, Name = Name::new("model call"))]
 pub struct TurnCall;
 
+/// On a [`TurnCall`] or [`SideCall`] spawned to send again the one call it
+/// supersedes ([`SupersededBy`]), such as a retry: its request is built
+/// anew and goes to the connection that call's request named, so a call a
+/// plugin routed stays on its route. Without it, a successor goes to its
+/// agent's model and is routed like a new call.
+#[derive(Component, Reflect, Clone, Copy, Debug, Default)]
+#[reflect(Component, Default)]
+pub struct Rebuilt;
+
 /// A model call whose request the kernel builds from the agent this names
 /// when it is admitted, as a turn's request would be (system prompt,
 /// conversation, tools, options), and that is not part of any turn, such
@@ -246,11 +260,14 @@ pub struct TurnCall;
 pub struct SideCall(pub Entity);
 
 /// On a model call whose handler failed: what the [`RetryPolicy`] says,
-/// put by the kernel in Arrive with the turn's [`Recovery`]. Review may read
+/// put by the kernel in Arrive with the call's own [`Recovery`], else its
+/// turn's. Review may read
 /// it, edit it in place (`Query<&mut RetryVerdict>`), or take the failure over
 /// by superseding the call; for a [`TurnCall`], Commit carries out what is
 /// left: `Retry` waits a [`Backoff`] and sends a new call, `GaveUp`,
 /// `Overflow` and `Final` end the turn and give the user's message back.
+/// A call with a [`Recovery`] of its own is retried the same way, with its
+/// request as it is, and any other verdict is its owner's to read.
 /// A call refused before it was sent gets none.
 #[derive(Component, Clone, Debug)]
 pub struct RetryVerdict(pub Verdict);
@@ -535,9 +552,22 @@ fn is_output_notes(text: &str) -> bool {
 pub(crate) fn on_stop_turn(
     interrupt: On<StopTurn>,
     (spawned, requests): (Query<&Spawned>, Query<&Requests>),
+    (inboxes, connections): (Inboxes, Query<&Connection>),
     mut stopper: Stopper,
 ) {
     let root = interrupt.event_target();
+    // A plugin's own turn that is done goes on with what was sent meanwhile.
+    if interrupt.carries
+        && let Ok((_, mut conversation, active)) = stopper.agents.get_mut(root)
+        && let Some(next) = carry_on(inboxes.of(root))
+    {
+        let (turn, connection) = (active.turn(), connections.get(root).ok());
+        let into = (Some(turn), &mut stopper.commands);
+        let notices = &mut stopper.notices;
+        deliver(root, connection, next, &mut conversation, notices, into);
+        spawn_turn_call(&mut stopper.commands, turn, root);
+        return;
+    }
     let below = interrupt
         .below
         .then(|| spawned.iter_descendants::<Spawned>(root))
@@ -1072,6 +1102,8 @@ pub(crate) struct Unbuilt {
     restored: Has<Restored>,
     of: Option<&'static CallOf>,
     agent: Option<&'static ForAgent>,
+    supersedes: Option<&'static Supersedes>,
+    rebuilt: Has<Rebuilt>,
 }
 
 /// What a request is built from besides its agent: the tools and prompt
@@ -1086,7 +1118,9 @@ pub(crate) struct Parts<'w, 's> {
 /// admitted this pass without one, in [`Stage::Admit`]: the agent's system
 /// prompt with its prompt sections, its conversation, the tools,
 /// sorted by name so the prompt cache keeps them, and its model's options
-/// with its reasoning setting. A turn's call first delivers the steering
+/// with its reasoning setting. A [`Rebuilt`] call goes to the connection
+/// the request of the one call it supersedes named; any other goes to its
+/// agent's. A turn's call first delivers the steering
 /// and Inform messages its agent accepted meanwhile, unless it is
 /// [`Restored`]. A call the kernel cannot build is answered with why.
 pub(crate) fn build_requests(
@@ -1101,6 +1135,7 @@ pub(crate) fn build_requests(
         ),
     >,
     turns: Query<&TurnOf>,
+    sent: Query<&ModelRequest>,
     mut agents: Query<Builder>,
     inboxes: Inboxes,
     parts: Parts,
@@ -1129,7 +1164,14 @@ pub(crate) fn build_requests(
         if effect.parent.is_none() {
             effect.parent = builder.parent.map(|parent| parent.0);
         }
-        let spec = builder.connection.map(|connection| &*connection.spec);
+        let mut replaced = call.supersedes.into_iter().flat_map(Supersedes::iter);
+        let kept = match (replaced.next(), replaced.next()) {
+            (Some(one), None) if call.rebuilt => {
+                sent.get(one).ok().and_then(|it| it.connection.as_ref())
+            }
+            _ => None,
+        };
+        let connection = kept.or(builder.connection);
         // A restored call delivers none: a restart that stops its turn
         // hands them back, and one that carries it on sends them next.
         if call.turn_call {
@@ -1139,7 +1181,7 @@ pub(crate) fn build_requests(
             let waiting = inboxes.of(agent).into_iter();
             let waiting = waiting.filter(|(_, message)| message.mode != DeliveryMode::Queue);
             let conversation = &mut *builder.conversation;
-            let (connection, into) = (builder.connection, (turn, &mut commands));
+            let into = (turn, &mut commands);
             deliver(agent, connection, waiting, conversation, &mut notices, into);
         }
         if call.turn_call && builder.conversation.messages().is_empty() {
@@ -1150,16 +1192,16 @@ pub(crate) fn build_requests(
             continue;
         }
         let history = builder.conversation.request_view();
-        let model = build((agent, &builder), spec, &parts, history);
+        let model = build((agent, &builder), connection, &parts, history);
         commands.entity(call.entity).try_insert(model);
     }
 }
 
-/// The request `agent`, as `builder` reads it, sends with `history` to the
-/// model `spec`, if it has one.
+/// The request `agent`, as `builder` reads it, sends with `history` to
+/// `connection`, if it has one.
 fn build(
     (agent, builder): (Entity, &BuilderItem),
-    spec: Option<&rig_core::catalog::ModelSpec>,
+    connection: Option<&Connection>,
     parts: &Parts,
     history: rig_core::conversation::Conversation,
 ) -> ModelRequest {
@@ -1182,6 +1224,7 @@ fn build(
         sections: sections.collect(),
     };
     let effort = builder.effort.0;
+    let spec = connection.map(|connection| &*connection.spec);
     let options = spec.map_or_else(
         || {
             let options = GenerationOptions::default();
@@ -1197,7 +1240,7 @@ fn build(
         .options(options.cache_key(CacheKey::of(builder.cache, builder.id)));
     ModelRequest {
         request: request.into(),
-        connection: builder.connection.cloned(),
+        connection: connection.cloned(),
         prompt: Some(prompt),
         history: Some(history),
     }
@@ -1506,26 +1549,32 @@ fn text_events(reply: &CompletionResponse, after: u32) -> Vec<StreamEvent> {
 }
 
 /// Puts the [`RetryPolicy`]'s [`RetryVerdict`] on each model call whose
-/// handler just failed, in [`Stage::Arrive`], counting its turn's
-/// [`Recovery`].
+/// handler just failed, in [`Stage::Arrive`], counting its own
+/// [`Recovery`], else its turn's.
 pub(crate) fn judge_failures(
     failed: Query<
-        (Entity, &Effect, &Outcome, Option<&CallOf>),
+        (
+            Entity,
+            &Effect,
+            &Outcome,
+            Option<&CallOf>,
+            Option<&Recovery>,
+        ),
         (With<ModelRequest>, Added<Outcome>, Without<Settled>),
     >,
     turns: Query<&Recovery>,
     policy: Res<RetryPolicy>,
     mut commands: Commands,
 ) {
-    for (call, effect, Outcome(outcome), of) in &failed {
+    for (call, effect, Outcome(outcome), of, own) in &failed {
         let Err(report) = outcome else {
             continue;
         };
         if !effect.ran() {
             continue;
         }
-        let retries = of
-            .and_then(|of| turns.get(of.0).ok())
+        let retries = own
+            .or_else(|| of.and_then(|of| turns.get(of.0).ok()))
             .map_or(0, |recovery| recovery.retries);
         // std's clock, which a `Retry-After` date is read against, read
         // through `web_time` so it works on the web too.
@@ -1535,16 +1584,22 @@ pub(crate) fn judge_failures(
     }
 }
 
-/// Holds each failed [`TurnCall`] whose verdict, after Review, is still
+/// Holds each failed [`TurnCall`], and each failed model call with a
+/// [`Recovery`] of its own, whose verdict, after Review, is still
 /// `Retry` with a [`Backoff`], in [`Stage::Commit`] before the kernel
 /// settles, and sends a new call that supersedes it once the wait passed,
-/// if the hold is still there then. Not when a Review system failed, nor
-/// for a turn that is failed or stopped.
+/// if the hold is still there then: a turn's call built anew, another with
+/// its request as it is, its name and its purpose. Not when a Review system
+/// failed, nor for a turn that is failed or stopped.
 pub(crate) fn back_off(
     failed: Query<
-        (Entity, &Effect, &Outcome, &RetryVerdict, &CallOf),
         (
-            With<TurnCall>,
+            (Entity, &Effect, &Outcome, &RetryVerdict, &CallOf),
+            Option<&Recovery>,
+        ),
+        (
+            Or<(With<TurnCall>, With<Recovery>)>,
+            Without<TurnOf>,
             Without<Holds>,
             Without<Settled>,
             Without<SupersededBy>,
@@ -1555,7 +1610,7 @@ pub(crate) fn back_off(
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    for (call, effect, Outcome(outcome), RetryVerdict(verdict), &CallOf(turn)) in &failed {
+    for ((call, effect, Outcome(outcome), RetryVerdict(verdict), &CallOf(turn)), own) in &failed {
         let (Err(report), Verdict::Retry(delay)) = (outcome, verdict) else {
             continue;
         };
@@ -1565,8 +1620,17 @@ pub(crate) fn back_off(
         if ending.is_some_and(TurnOutcome::is_stopping) {
             continue;
         }
-        recovery.retries += 1;
-        let backoff = Backoff::after(recovery.retries, *delay);
+        let own = own.map(|own| Recovery {
+            retries: own.retries + 1,
+        });
+        let attempt = own.map_or_else(
+            || {
+                recovery.retries += 1;
+                recovery.retries
+            },
+            |own| own.retries,
+        );
+        let backoff = Backoff::after(attempt, *delay);
         notices.write(Notice::info(
             agent,
             format!(
@@ -1579,7 +1643,8 @@ pub(crate) fn back_off(
         let hold = commands
             .spawn((Name::new("retry wait"), backoff, HoldOf(call)))
             .id();
-        let parent = effect.parent;
+        let mut again = Effect::with_parent_id(effect.parent);
+        again.purpose.clone_from(&effect.purpose);
         commands
             .delayed()
             .duration(*delay)
@@ -1589,14 +1654,18 @@ pub(crate) fn back_off(
                     return;
                 }
                 world.despawn(hold);
-                world
-                    .spawn((
-                        TurnCall,
-                        CallOf(turn),
-                        ForAgent(agent),
-                        Effect::with_parent_id(parent),
-                    ))
-                    .add_related::<SupersededBy>(&[call]);
+                let of = (CallOf(turn), ForAgent(agent), again);
+                let Some(own) = own else {
+                    let mut retry = world.spawn((TurnCall, Rebuilt, of));
+                    retry.add_related::<SupersededBy>(&[call]);
+                    return;
+                };
+                let request = world.get::<ModelRequest>(call).cloned();
+                let name = world.get::<Name>(call).cloned();
+                if let (Some(request), Some(name)) = (request, name) {
+                    let mut retry = world.spawn((request, name, own, of));
+                    retry.add_related::<SupersededBy>(&[call]);
+                }
             });
     }
 }
