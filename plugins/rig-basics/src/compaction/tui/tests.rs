@@ -57,7 +57,8 @@ fn the_saved_summary_is_drawn_as_markdown_through_the_owned_render_path() {
     let mut conversation = rig_core::conversation::Conversation::default();
     conversation.push(rig_core::completion::Message::user("old question"));
     let state = state("## Goal\n**Explain** the crate.", "a.rs");
-    let change = rig_memory::apply_summary(&mut conversation, None, &state);
+    let read = conversation.messages().to_vec();
+    let change = rig_memory::apply_summary(&mut conversation, &read, &state);
     assert!(change.is_some());
     let id = conversation.id(0);
     let agent = app.world_mut().spawn(Conversation(conversation)).id();
@@ -78,12 +79,14 @@ fn a_summary_a_later_compaction_took_out_is_still_drawn_from_its_state() {
     let mut conversation = rig_core::conversation::Conversation::default();
     conversation.push(rig_core::completion::Message::user("old question"));
     let first = state("## Goal\nThe **first** goal.", "a.rs");
-    assert!(rig_memory::apply_summary(&mut conversation, None, &first).is_some());
+    let read = conversation.messages().to_vec();
+    assert!(rig_memory::apply_summary(&mut conversation, &read, &first).is_some());
     let summary = conversation.id(0);
     conversation.push(rig_core::completion::Message::user("next question"));
     let before = Before::of(&conversation, 2);
     let second = state("## Goal\nThe second goal.", "b.rs");
-    let spliced = rig_memory::apply_summary(&mut conversation, None, &second);
+    let read = conversation.messages().to_vec();
+    let spliced = rig_memory::apply_summary(&mut conversation, &read, &second);
     let agent = app.world_mut().spawn(Conversation(conversation)).id();
     assert!(spliced.is_some());
     let Some(spliced) = spliced else {

@@ -23,6 +23,14 @@ fn result(id: &str, output: &str) -> Message {
     )
 }
 
+/// What a compaction of `conversation` keeping `keep` tokens summarizes right after an earlier
+/// one, which [`prepare_compaction`] plans nothing for.
+fn cut_again(conversation: &Conversation, keep: u64) -> Option<CompactionPreparation> {
+    let messages = conversation.messages();
+    let range = (summarized_prefix(conversation), messages.len());
+    prepare_compaction_at(conversation, find_cut_point(messages, range, keep, false))
+}
+
 /// Whether keeping from `cut` keeps a result whose call it summarizes.
 fn orphans(messages: &[Arc<Message>], cut: usize) -> bool {
     let kept = messages.get(cut..).unwrap_or_default();
@@ -204,9 +212,8 @@ fn file_lists_carry_across_compactions() {
         read_files: vec!["b.rs".to_owned(), "old.rs".to_owned()],
         modified_files: Vec::new(),
     };
-    let first = conversation.id(0);
-    crate::apply_summary(&mut conversation, first, &previous).expect("applied");
-    let prepared = prepare_compaction(&conversation, 10, false).expect("something to summarize");
+    crate::apply_summary(&mut conversation, &[], &previous).expect("applied");
+    let prepared = cut_again(&conversation, 10).expect("something to summarize");
     assert_eq!(
         prepared.previous.as_deref(),
         Some("earlier\n\n<read-files>\nb.rs\nold.rs\n</read-files>")
@@ -302,10 +309,13 @@ fn a_blank_checkpoint_is_still_the_previous_one() {
             Message::user("next"),
             Message::assistant("x".repeat(400)),
         ]);
-        let first = conversation.id(2);
-        crate::apply_summary(&mut conversation, first, &state).expect("applied");
-        let prepared =
-            prepare_compaction(&conversation, 10, false).expect("something to summarize");
+        let read = conversation
+            .messages()
+            .get(..2)
+            .unwrap_or_default()
+            .to_vec();
+        crate::apply_summary(&mut conversation, &read, &state).expect("applied");
+        let prepared = cut_again(&conversation, 10).expect("something to summarize");
         assert_eq!(prepared.previous.as_deref(), Some(previous));
         assert_eq!(no_history(prepared.previous.as_deref()), previous);
     }

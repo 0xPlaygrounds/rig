@@ -283,11 +283,8 @@ fn structure(
                     model.connection = Some(connection);
                 }
                 let count = config.keep_user_messages.saturating_sub(1);
-                let cut = summarizing
-                    .keep_from
-                    .and_then(|kept| conversation.index_of(kept));
-                let verbatim = cut.map(|cut| last_typed(conversation, cut, count));
-                let verbatim = verbatim.unwrap_or_default();
+                let cut = summarizing.replaces.len();
+                let verbatim = last_typed(conversation, cut, count);
                 commands
                     .entity(call)
                     .insert(Structured { tries: 1, verbatim });

@@ -70,7 +70,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             conversation
                 .messages()
                 .len()
-                .saturating_sub(prepared.first_kept),
+                .saturating_sub(prepared.replaces.len()),
             prepared.files.read_files,
         );
         println!("its request sends {} message", request.chat_history.len());

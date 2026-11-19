@@ -267,23 +267,7 @@ impl LastUsage {
 /// this marker when a reply reports a new context figure. Saved with the session.
 #[derive(Component, Reflect, Clone, Copy, Debug, Default, Serialize, Deserialize)]
 #[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
-pub struct ContextStale {
-    /// What the next request is estimated to send, when what made the
-    /// figure stale estimated it, as a summary does.
-    #[serde(default)]
-    pub estimate: Option<ContextEstimate>,
-}
-
-/// An estimate of the tokens the next request sends, with the last entry
-/// of the conversation it counts, as an [`Anchor`] has for a measured
-/// figure.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ContextEstimate {
-    /// The tokens.
-    pub tokens: u64,
-    /// The last entry they count.
-    pub through: MessageId,
-}
+pub struct ContextStale {}
 
 /// The agent's own part of its system prompt: who it is and how it works.
 /// Each request's prompt adds the app's
@@ -717,7 +701,7 @@ impl From<ToolCall> for PartialCall {
 /// use rig_ecs::prelude::StopCause;
 ///
 /// let agent = World::new().spawn_empty().id();
-/// let stop = StopTurn { entity: agent, cause: StopCause::User, below: true };
+/// let stop = StopTurn { entity: agent, cause: StopCause::User, below: true, carries: false };
 /// ```
 #[derive(EntityEvent, Reflect, Clone, Debug)]
 #[reflect(opaque, Event, Clone, Debug)]
@@ -726,6 +710,9 @@ pub struct StopTurn {
     pub(crate) cause: StopCause,
     /// Whether the stop reaches the agents below the agent.
     pub(crate) below: bool,
+    /// Whether what the agent accepted meanwhile carries the turn on
+    /// instead ([`Self::plugin_done`]).
+    pub(crate) carries: bool,
 }
 
 impl StopTurn {
@@ -736,6 +723,7 @@ impl StopTurn {
             entity: agent,
             cause: StopCause::User,
             below: true,
+            carries: false,
         }
     }
 
@@ -751,6 +739,7 @@ impl StopTurn {
                 why: why.to_owned(),
             },
             below: true,
+            carries: false,
         }
     }
 
@@ -769,6 +758,20 @@ impl StopTurn {
         Self {
             below: false,
             ..Self::plugin(agent, by, why)
+        }
+    }
+
+    /// The plugin `by` ending a turn it ran on `agent` for work of its own,
+    /// such as a summary, now done, for `why`. When the agent accepted
+    /// messages meanwhile that carry a turn on (steering ones, else the
+    /// queued ones, with the Inform ones), they go into the conversation as
+    /// they are, in the order they were sent, and the turn goes on with a
+    /// model call, as after a reply. Otherwise, and for a turn already failed
+    /// or stopped, it ends as [`plugin_alone`](Self::plugin_alone).
+    pub fn plugin_done(agent: Entity, by: &str, why: &str) -> Self {
+        Self {
+            carries: true,
+            ..Self::plugin_alone(agent, by, why)
         }
     }
 }

@@ -748,43 +748,6 @@ fn stopping_between_the_two_summaries_of_a_split_turn_cancels_the_compaction() {
     assert!(sent(&model).len() <= 2, "{:?}", sent(&model));
 }
 
-/// Each summary call of a split turn gets its own retries: the history summary spends all three
-/// and goes in on the last, and the turn-prefix summary still fails once and is sent again, which
-/// a count the two shared would refuse.
-#[test]
-fn each_summary_call_is_retried_on_its_own() {
-    let model = MockCompletionModel::from_stream_turns([
-        unavailable(),
-        unavailable(),
-        unavailable(),
-        reply("## Goal\nAnswer the questions."),
-        unavailable(),
-        reply("## Original Request\nThe last question."),
-    ]);
-    let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |_| {});
-    let agent = agent(&mut app, &model, 1_000_000, split_turn());
-    assert!(agent.is_some(), "the catalog lists the model");
-    let Some(agent) = agent else {
-        return;
-    };
-    app.world_mut().trigger(Compact {
-        entity: agent,
-        focus: String::new(),
-    });
-    // The calls fail on their own frames, so the clock moves on until every wait passed.
-    until_ended_with_retries(&mut app, &wakes, 1);
-    assert_eq!(sent(&model).len(), 6, "{:?}", notices(&app));
-    let live = entries(app.world(), agent);
-    let summary = live.first().filter(|entry| holds_summary(entry));
-    let text = summary.map(|entry| entry.message.rag_text().unwrap_or_default());
-    assert!(
-        text.is_some_and(|text| text.contains("Answer the questions.")
-            && text.contains("Turn Context (split turn)")
-            && text.contains("The last question.")),
-        "{live:?}"
-    );
-}
-
 /// Esc during the wait before a summary call is sent again cancels the compaction: nothing more
 /// is sent and nothing is summarized.
 #[test]
@@ -847,11 +810,12 @@ fn resend_first_summary(
 }
 
 /// A summary call sent again before it settles is taken from its successor, split-turn fields
-/// and all.
+/// and all, and the call sent again is retried like the first: it fails once and still goes in.
 #[test]
 fn a_summary_sent_again_mid_flight_is_taken_from_its_successor() {
     let model = MockCompletionModel::from_stream_turns([
         reply("## Goal\nThe stale summary."),
+        unavailable(),
         reply("## Goal\nThe fresh summary."),
         reply("## Original Request\nThe last question."),
     ]);
@@ -864,7 +828,11 @@ fn a_summary_sent_again_mid_flight_is_taken_from_its_successor() {
     let Some(agent) = agent else {
         return;
     };
-    compact(&mut app, &wakes, agent, "", 1);
+    app.world_mut().trigger(Compact {
+        entity: agent,
+        focus: String::new(),
+    });
+    until_ended_with_retries(&mut app, &wakes, 1);
     assert_eq!(app.world().resource::<Resent>().0, [true], "the plugin's");
     let live = entries(app.world(), agent);
     let text = live
@@ -878,12 +846,13 @@ fn a_summary_sent_again_mid_flight_is_taken_from_its_successor() {
     );
 }
 
-/// A reviewer cancels one summary and edits the next, which goes in as edited; undoing it puts
-/// the messages back with their ids.
+/// A reviewer cancels one summary and edits the next, which goes in as edited; one a reviewer
+/// blanks replaces nothing and says why.
 #[test]
-fn a_held_summary_is_applied_as_reviewed_or_cancelled_and_undone_with_its_ids() {
+fn a_held_summary_is_applied_as_reviewed_or_cancelled_and_a_blank_one_fails() {
     let model = MockCompletionModel::from_stream_turns([
         reply("## Goal\nThe first draft."),
+        reply("## Goal\nThe blanked draft."),
         reply("## Goal\nThe second draft."),
     ]);
     let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |app| {
@@ -910,8 +879,18 @@ fn a_held_summary_is_applied_as_reviewed_or_cancelled_and_undone_with_its_ids() 
     assert_eq!(entries(app.world(), agent), original);
 
     start_compaction(&mut app);
-    decide(&mut app, &wakes, Some("## Goal\nThe reviewed summary."));
+    decide(&mut app, &wakes, Some(" \n"));
     run_until(&mut app, &wakes, ended(2));
+    assert_eq!(entries(app.world(), agent), original);
+    let said = notices(&app);
+    assert!(
+        said.iter().any(|it| it.contains("the summary is empty")),
+        "{said:?}"
+    );
+
+    start_compaction(&mut app);
+    decide(&mut app, &wakes, Some("## Goal\nThe reviewed summary."));
+    run_until(&mut app, &wakes, ended(3));
     let live = entries(app.world(), agent);
     let text = live
         .first()
@@ -920,11 +899,6 @@ fn a_held_summary_is_applied_as_reviewed_or_cancelled_and_undone_with_its_ids() 
         text.is_some_and(|it| it.contains("The reviewed summary.")),
         "{live:?}"
     );
-
-    app.update();
-    app.world_mut().trigger(Uncompact { entity: agent });
-    app.update();
-    assert_eq!(entries(app.world(), agent), original);
 }
 
 /// A request refused as too long whose recovery does not go in, because its summary fails or
@@ -1101,19 +1075,6 @@ fn a_turn_asks_for_the_output_room_its_input_leaves() {
     );
 }
 
-/// A summary call's passing failures are retried by pi's patterns, a bare `terminated` among them,
-/// and a spent quota never is, whatever its status.
-#[test]
-fn summary_retries_follow_pis_patterns() {
-    let report = |message: &str| ErrorReport::new(ErrorKind::Provider, message);
-    assert!(retryable(&report("terminated")));
-    assert!(retryable(&report("upstream connect error or disconnect")));
-    let mut quota = report("429 Too Many Requests: insufficient_quota");
-    quota.retryable = true;
-    assert!(!retryable(&quota));
-    assert!(!retryable(&report("invalid request: bad summary")));
-}
-
 /// What each compaction replaced, the messages themselves, stays drawn above its summary, a
 /// cancelled one drawing nothing and a second one nesting the first: after a restart, for the
 /// agent and a subagent, and in a fork; a fork made before a compaction draws nothing.
@@ -1215,8 +1176,12 @@ fn what_compactions_replaced_stays_drawn_live_after_a_restart_and_in_a_fork() {
         ..SummaryState::default()
     };
     if let Some(mut conversation) = world.get_mut::<Conversation>(child) {
-        let upto = conversation.id(2);
-        assert!(rig_memory::apply_summary(&mut conversation, upto, &state).is_some());
+        let read = conversation
+            .messages()
+            .get(..2)
+            .unwrap_or_default()
+            .to_vec();
+        assert!(rig_memory::apply_summary(&mut conversation, &read, &state).is_some());
     }
     app.update();
     let ids = |app: &App, entity| app.world().get::<AgentId>(entity).cloned();
@@ -1399,104 +1364,6 @@ fn without_usage_the_threshold_counts_the_messages_alone() {
     assert_eq!(sent(&model).len(), 1, "{:?}", notices(&app));
 }
 
-/// After a run whose last reply reported usage over the reserve, the answer is held and the
-/// conversation compacted before the turn ends, as pi checks at the end of each run, on that
-/// turn's model; a prompt sent while that summary is written is answered, not handed back.
-#[test]
-fn a_run_ending_over_the_reserve_compacts_and_a_prompt_sent_meanwhile_is_answered() {
-    let measured = vec![
-        MockStreamEvent::text("first answer"),
-        MockStreamEvent::final_response_with_total_tokens(30_000),
-    ];
-    let model = MockCompletionModel::from_stream_turns([
-        measured,
-        reply("## Goal\nAnswer the questions."),
-        reply("## Goal\nAnswer them all."),
-        reply("second answer"),
-    ]);
-    let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |_| {});
-    let agent = agent(&mut app, &model, 40_000, turns(0, 4));
-    assert!(agent.is_some(), "the catalog lists the model");
-    let Some(agent) = agent else {
-        return;
-    };
-    app.world_mut().trigger(Deliver::new(
-        agent,
-        "The first question?",
-        DeliveryMode::Steer,
-    ));
-    run_until(&mut app, &wakes, |world| {
-        world
-            .iter_entities()
-            .any(|entity| entity.contains::<AfterRun>())
-    });
-    let second = "The second question, sent while the summary is written?";
-    app.world_mut()
-        .trigger(Deliver::new(agent, second, DeliveryMode::Queue));
-    // The summary may go in before or after the prompt is taken; either way it is answered.
-    run_until(&mut app, &wakes, |world| {
-        let answered = sent(&model).iter().skip(2).any(|it| it.contains(second));
-        answered && world.get::<ActiveTurn>(agent).is_none()
-    });
-    let requests = sent(&model);
-    let summary = requests.get(1).cloned().unwrap_or_default();
-    assert!(
-        summary.contains("context summarization assistant"),
-        "{summary}"
-    );
-    assert!(
-        requests.iter().skip(2).any(|it| it.contains(second)),
-        "the prompt reached the model: {requests:?}"
-    );
-    let ended = &app.world().resource::<Ended>().0;
-    assert!(
-        matches!(ended.last(), Some(TurnOutcome::Answered(_))),
-        "{ended:?}"
-    );
-}
-
-/// A completed summary reply whose stop is a passing error is retried as pi retries its
-/// assistant's error, and the waits double from the first with no jitter, capped.
-#[test]
-fn a_summary_that_completes_with_a_passing_error_is_retried_with_pis_waits() {
-    let overloaded = vec![
-        MockStreamEvent::text("## Goal\nAnsw"),
-        MockStreamEvent::FinalResponse(rig_core::operation::Finish {
-            reason: Some(FinishReason::Other("overloaded".to_owned())),
-            ..rig_core::test_utils::mock_final(Usage::default())
-        }),
-    ];
-    let model = MockCompletionModel::from_stream_turns([overloaded, reply("## Goal\nAnswer.")]);
-    let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |_| {});
-    let agent = agent(&mut app, &model, 1_000_000, turns(0, 4));
-    assert!(agent.is_some(), "the catalog lists the model");
-    let Some(agent) = agent else {
-        return;
-    };
-    app.world_mut().trigger(Compact {
-        entity: agent,
-        focus: String::new(),
-    });
-    for _ in 0..200 {
-        if !app.world().resource::<Ended>().0.is_empty() {
-            break;
-        }
-        advance(&mut app, std::time::Duration::from_secs(3));
-        app.update();
-        wakes
-            .recv_timeout(std::time::Duration::from_millis(20))
-            .ok();
-    }
-    assert_eq!(sent(&model).len(), 2, "{:?}", notices(&app));
-    let live = entries(app.world(), agent);
-    assert!(live.first().is_some_and(holds_summary), "{live:?}");
-    // pi's retryDelayMs with pi's defaults: a 2 s first wait and a 60 s cap.
-    let waits: Vec<u64> = (0..7)
-        .map(|n| retry_delay(&SUMMARY_RETRY, n).as_secs())
-        .collect();
-    assert_eq!(waits, [2, 4, 8, 16, 32, 60, 60]);
-}
-
 /// Runs `app` until its turns ended `count` times, moving the clock on for each retry wait.
 fn until_ended_with_retries(app: &mut App, wakes: &Receiver<()>, count: usize) {
     let mut ended = false;
@@ -1524,115 +1391,6 @@ fn until_ended_with_retries(app: &mut App, wakes: &Receiver<()>, count: usize) {
     );
 }
 
-/// A summary after the run that fails once and is sent again keeps holding the turn's answer: the
-/// turn ends answered, the summary goes in, and a prompt sent meanwhile is answered; when every
-/// retry fails, the turn still ends answered and the failure is shown, as pi.
-#[test]
-fn a_retried_summary_after_the_run_keeps_the_turn_answered() {
-    let busy = || {
-        let busy = ProviderResponseError::without_status("overloaded").with_transient(Some(true));
-        vec![MockStreamEvent::Error(MockError::ProviderResponse(busy))]
-    };
-    for succeeds in [true, false] {
-        let mut script = vec![measured("first answer", 30_000), busy()];
-        match succeeds {
-            true => script.extend([
-                reply("## Goal\nAnswer the questions."),
-                reply("second answer"),
-            ]),
-            false => script.extend([busy(), busy(), busy(), busy()]),
-        }
-        let model = MockCompletionModel::from_stream_turns(script);
-        let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |_| {});
-        let agent = agent(&mut app, &model, 40_000, turns(0, 4));
-        assert!(agent.is_some(), "the catalog lists the model");
-        let Some(agent) = agent else {
-            return;
-        };
-        app.world_mut().trigger(Deliver::new(
-            agent,
-            "The first question?",
-            DeliveryMode::Steer,
-        ));
-        run_until(&mut app, &wakes, |world| {
-            world
-                .iter_entities()
-                .any(|entity| entity.contains::<Backoff>())
-        });
-        let second = "The second question, sent during the retry wait?";
-        if succeeds {
-            app.world_mut()
-                .trigger(Deliver::new(agent, second, DeliveryMode::Queue));
-        }
-        until_ended_with_retries(&mut app, &wakes, 1);
-        let ended = &app.world().resource::<Ended>().0;
-        assert!(
-            matches!(ended.last(), Some(TurnOutcome::Answered(_))),
-            "{succeeds}: {ended:?}"
-        );
-        let requests = sent(&model);
-        match succeeds {
-            true => {
-                let live = entries(app.world(), agent);
-                assert!(live.first().is_some_and(holds_summary), "{live:?}");
-                assert!(
-                    requests.iter().any(|it| it.contains(second)),
-                    "{requests:?}"
-                );
-            }
-            false => {
-                let said = notices(&app);
-                assert!(
-                    said.iter().any(|it| it.contains("Auto-compaction failed")),
-                    "{said:?}"
-                );
-            }
-        }
-    }
-}
-
-/// Esc while the summary after a run is written stops it and the turn; a prompt the turn accepted
-/// meanwhile is not lost: it stays in the conversation for the next request, as every message a
-/// stopped turn accepted does.
-#[test]
-fn stopping_during_the_summary_after_the_run_keeps_the_prompt_sent_meanwhile() {
-    let model = MockCompletionModel::from_stream_turns([
-        measured("first answer", 30_000),
-        reply("## Goal\nAnswer."),
-    ]);
-    let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |app| {
-        app.add_systems(AgentPass, hold_for_review.in_set(ReviewSystems::Act));
-    });
-    let agent = agent(&mut app, &model, 40_000, turns(0, 4));
-    assert!(agent.is_some(), "the catalog lists the model");
-    let Some(agent) = agent else {
-        return;
-    };
-    app.world_mut().trigger(Deliver::new(
-        agent,
-        "The first question?",
-        DeliveryMode::Steer,
-    ));
-    assert!(held(&mut app, &wakes).is_some(), "{:?}", notices(&app));
-    let second = "The second question, sent while the summary is written?";
-    app.world_mut()
-        .trigger(Deliver::new(agent, second, DeliveryMode::Queue));
-    for _ in 0..5 {
-        app.update();
-    }
-    app.world_mut().trigger(StopTurn::new(agent));
-    run_until(&mut app, &wakes, |world| {
-        world.get::<ActiveTurn>(agent).is_none()
-    });
-    let live = serde_json::to_string(&entries(app.world(), agent)).unwrap_or_default();
-    assert!(live.contains(second), "{live}");
-    assert!(
-        !entries(app.world(), agent)
-            .first()
-            .is_some_and(holds_summary)
-    );
-}
-
 /// Before a prompt, a tool result kept from an earlier turn counts and may be cut; only the prompt
 /// itself is neither: a large kept result and a short prompt in a 40k window compact first.
 #[test]
@@ -1656,99 +1414,7 @@ fn a_kept_tool_result_before_the_prompt_counts() {
     );
     assert!(!summary.contains("And now?"), "{summary}");
     // As in pi, the context is unknown after the compaction until a reply reports it.
-    let stale = app.world().get::<ContextStale>(agent);
-    assert!(
-        stale.is_some_and(|stale| stale.estimate.is_none()),
-        "{stale:?}"
-    );
-}
-
-/// The summary after a run measures against the window of the model the run's last request went
-/// to, a smaller one it was routed to, as pi measures against the model that wrote the reply.
-#[test]
-fn the_check_after_a_run_uses_the_window_of_the_model_it_ran_on() {
-    // Routed to a 40k model from a 1M agent: 30k reported compacts after the run.
-    let model = MockCompletionModel::from_stream_turns([
-        measured("first answer", 30_000),
-        reply("## Goal\nAnswer."),
-    ]);
-    let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |_| {});
-    let routed = agent(&mut app, &model, 1_000_000, turns(0, 4));
-    assert!(routed.is_some(), "the catalog lists the model");
-    let Some(routed) = routed else {
-        return;
-    };
-    let small = app.world().get::<Connection>(routed).map(|connection| {
-        let spec = connection.spec.as_ref().clone().with_context_window(40_000);
-        Connection {
-            spec: Arc::new(spec),
-            handler: connection.handler.clone(),
-        }
-    });
-    let Some(small) = small else {
-        return;
-    };
-    let route = move |mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<TurnCall>)>| {
-        for mut call in &mut calls {
-            call.connection = Some(small.clone());
-        }
-    };
-    app.add_systems(AgentPass, route.in_set(PrepareSystems::Edit));
-    ask(&mut app, &wakes, routed, "The first question?", 1);
-    run_until(&mut app, &wakes, |world| {
-        world.get::<ActiveTurn>(routed).is_none()
-    });
-    let requests = sent(&model);
-    assert_eq!(requests.len(), 2, "{:?}", notices(&app));
-}
-
-/// The output clamp trusts the reported usage only while no newer message was put before its
-/// reply, as pi-ai's estimate: a few-shot prefix added to the request makes it estimate instead.
-#[test]
-fn the_output_clamp_drops_the_usage_when_a_prefix_is_added() {
-    for prefix in [false, true] {
-        let model = MockCompletionModel::from_stream_turns([reply("done")]);
-        let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |app| {
-            if prefix {
-                let few_shot =
-                    |mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<TurnCall>)>| {
-                        for mut call in &mut calls {
-                            if let Some(history) = &mut call.history {
-                                let example = Entry::new(Message::user("An example."));
-                                history.splice(0..0, [example], Author::plugin("few-shot"));
-                            }
-                        }
-                    };
-                app.add_systems(AgentPass, few_shot.in_set(PrepareSystems::Edit));
-            }
-        });
-        app.world_mut()
-            .resource_mut::<CompactionDefault>()
-            .0
-            .enabled = false;
-        let agent = agent(&mut app, &model, 40_000, turns(0, 2));
-        let Some(agent) = agent else {
-            return;
-        };
-        let through = app
-            .world()
-            .get::<Conversation>(agent)
-            .and_then(|conversation| conversation.entries().last().map(|entry| entry.id));
-        let anchor = through.map(|through| rig_memory::Anchor {
-            usage: Usage::new().total_tokens(39_000),
-            through,
-        });
-        app.world_mut().entity_mut(agent).insert(LastUsage(anchor));
-        ask(&mut app, &wakes, agent, "And now?", 1);
-        let asked = model
-            .requests()
-            .first()
-            .and_then(|request| request.max_tokens);
-        match prefix {
-            false => assert!(asked.is_some_and(|it| it < 1_000), "{asked:?}"),
-            true => assert_eq!(asked, Some(8_000)),
-        }
-    }
+    assert!(app.world().get::<ContextStale>(agent).is_some());
 }
 
 /// The user's `text` for `agent`, with a small PNG attached.
@@ -1771,87 +1437,55 @@ fn with_image(agent: Entity, text: &str) -> Deliver {
     prompt
 }
 
-/// The summary after a run goes to the connection the run's last request was routed to, with that
-/// model's output limit, not the agent's own.
-#[test]
-fn the_summary_after_a_run_goes_to_the_model_the_run_was_routed_to() {
-    let own = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
-    let routed = MockCompletionModel::from_stream_turns([
-        measured("first answer", 30_000),
-        reply("## Goal\nAnswer."),
-    ]);
-    let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |_| {});
-    let agent = agent(&mut app, &own, 1_000_000, turns(0, 4));
-    let small = connect(&routed).map(|connection| Connection {
-        spec: Arc::new(
-            connection
-                .spec
-                .as_ref()
-                .clone()
-                .with_context_window(40_000)
-                .with_max_output_tokens(2_000),
-        ),
-        handler: connection.handler,
-    });
-    let (Some(agent), Some(small)) = (agent, small) else {
-        return;
-    };
-    let route = move |mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<TurnCall>)>| {
-        for mut call in &mut calls {
-            call.connection = Some(small.clone());
-        }
-    };
-    app.add_systems(AgentPass, route.in_set(PrepareSystems::Edit));
-    ask(&mut app, &wakes, agent, "The first question?", 1);
-    run_until(&mut app, &wakes, |world| {
-        world.get::<ActiveTurn>(agent).is_none()
-    });
-    assert!(own.requests().is_empty(), "{:?}", sent(&own));
-    let requests = routed.requests();
-    assert_eq!(requests.len(), 2, "{:?}", notices(&app));
-    let summary = requests.get(1);
-    assert!(
-        summary.is_some_and(|it| format!("{it:?}").contains("context summarization assistant")),
-        "{:?}",
-        sent(&routed)
-    );
-    let asked = summary.and_then(|it| it.max_tokens);
-    assert!(asked.is_some_and(|it| it <= 2_000), "{asked:?}");
-}
-
 /// Esc while the summary recovering from a reply cut short is written stops the turn without the
-/// partial reply: it was left out before the summary started, as pi omits it.
+/// partial reply, with or without a tool call in it: it was left out before the summary started,
+/// as pi omits it, its call never ran, and it is kept as an aside.
 #[test]
 fn stopping_a_cut_short_recovery_saves_none_of_the_reply() {
-    let cut = vec![
-        MockStreamEvent::text("A half"),
-        MockStreamEvent::FinalResponse(rig_core::operation::Finish {
-            reason: Some(FinishReason::Length),
-            ..rig_core::test_utils::mock_final(Usage::new().output_tokens(10))
-        }),
-    ];
-    let model = MockCompletionModel::from_stream_turns([
-        cut,
-        reply("## Goal\nAnswer."),
-        measured("done", 100),
-    ]);
-    let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |app| {
-        app.add_systems(AgentPass, hold_for_review.in_set(ReviewSystems::Act));
-    });
-    let agent = agent(&mut app, &model, 200_000, turns(0, 4));
-    let Some(agent) = agent else {
-        return;
-    };
-    app.world_mut()
-        .trigger(Deliver::new(agent, "Write it.", DeliveryMode::Steer));
-    assert!(held(&mut app, &wakes).is_some(), "{:?}", notices(&app));
-    app.world_mut().trigger(StopTurn::new(agent));
-    run_until(&mut app, &wakes, |world| {
-        world.get::<ActiveTurn>(agent).is_none()
-    });
-    let live = serde_json::to_string(&entries(app.world(), agent)).unwrap_or_default();
-    assert!(!live.contains("A half"), "the partial reply was saved");
-    assert!(live.contains("Write it."), "the prompt is kept");
+    for with_call in [false, true] {
+        let mut cut = vec![MockStreamEvent::text("A half")];
+        if with_call {
+            let arguments = serde_json::json!({ "path": "a.rs" });
+            cut.push(MockStreamEvent::tool_call("call-cut", "read", arguments));
+        }
+        cut.push(MockStreamEvent::FinalResponse(
+            rig_core::operation::Finish {
+                reason: Some(FinishReason::Length),
+                ..rig_core::test_utils::mock_final(Usage::new().output_tokens(10))
+            },
+        ));
+        let model = MockCompletionModel::from_stream_turns([
+            cut,
+            reply("## Goal\nAnswer."),
+            measured("done", 100),
+        ]);
+        let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |app| {
+            app.add_systems(AgentPass, hold_for_review.in_set(ReviewSystems::Act));
+        });
+        let agent = agent(&mut app, &model, 200_000, turns(0, 4));
+        let Some(agent) = agent else {
+            return;
+        };
+        app.world_mut()
+            .trigger(Deliver::new(agent, "Write it.", DeliveryMode::Steer));
+        assert!(held(&mut app, &wakes).is_some(), "{:?}", notices(&app));
+        app.world_mut().trigger(StopTurn::new(agent));
+        run_until(&mut app, &wakes, |world| {
+            world.get::<ActiveTurn>(agent).is_none()
+        });
+        let live = serde_json::to_string(&entries(app.world(), agent)).unwrap_or_default();
+        assert!(!live.contains("A half"), "the partial reply was saved");
+        assert!(!live.contains("call-cut"), "{with_call}: {live}");
+        assert!(live.contains("Write it."), "the prompt is kept");
+        assert_eq!(sent(&model).len(), 2, "nothing after the summary");
+        let conversation = app.world().get::<Conversation>(agent);
+        let asides = conversation.into_iter().flat_map(|it| it.asides());
+        let kept: Vec<_> = asides.filter(|(_, it)| it.kind == OMITTED).collect();
+        assert!(
+            matches!(kept.as_slice(), [(_, it)] if it.value.to_string().contains("A half")),
+            "{with_call}: {kept:?}"
+        );
+    }
 }
 
 /// Before a prompt, only the message it delivered is pending: a prompt an earlier stopped turn
@@ -1893,176 +1527,6 @@ fn messages_before_the_prompt_it_delivered_are_counted() {
             "{inform}: the prompt is pending"
         );
     }
-}
-
-/// After a run that ended in a final error, the context it left is checked, as pi checks after an
-/// error: a message another author sent stays in the conversation, and the usage reported before
-/// it plus that message leave less than the reserve, so it compacts in a turn of its own.
-#[test]
-fn a_run_ending_in_an_error_is_checked_with_what_it_left() {
-    let refused = ProviderResponseError::without_status("invalid request: refused");
-    let model = MockCompletionModel::from_stream_turns([
-        measured("first answer", 20_000),
-        vec![MockStreamEvent::Error(MockError::ProviderResponse(refused))],
-        reply("## Goal\nAnswer."),
-    ]);
-    let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |_| {});
-    let agent = agent(&mut app, &model, 40_000, turns(0, 4));
-    let Some(agent) = agent else {
-        return;
-    };
-    ask(&mut app, &wakes, agent, "The first question?", 1);
-    let note = format!("From the watcher: {}", "word ".repeat(4_000));
-    app.world_mut().trigger(
-        Deliver::new(agent, note, DeliveryMode::Steer).with_author(Author::plugin("watcher")),
-    );
-    run_until(&mut app, &wakes, |world| {
-        world.resource::<Ended>().0.len() >= 2
-    });
-    for _ in 0..20 {
-        app.update();
-        wakes
-            .recv_timeout(std::time::Duration::from_millis(20))
-            .ok();
-    }
-    let requests = sent(&model);
-    assert_eq!(requests.len(), 3, "{:?}", notices(&app));
-    let summary = requests.get(2).cloned().unwrap_or_default();
-    assert!(
-        summary.contains("context summarization assistant"),
-        "{summary}"
-    );
-    // The message the failed turn left is the newest, so it is kept.
-    let live = entries(app.world(), agent);
-    assert!(live.first().is_some_and(holds_summary), "{live:?}");
-    let kept = serde_json::to_string(&live).unwrap_or_default();
-    assert!(kept.contains("From the watcher"), "{kept}");
-}
-
-/// A turn whose resend was cut short again is not checked at its end, but a follow-up the turn
-/// then answers starts its recovery and check afresh, as pi resets them on each user message: its
-/// answer at 30k of a 40k window compacts after the run.
-#[test]
-fn a_follow_up_after_a_failed_recovery_is_checked_again() {
-    let cut = || {
-        vec![
-            MockStreamEvent::text("A half"),
-            MockStreamEvent::FinalResponse(rig_core::operation::Finish {
-                reason: Some(FinishReason::Length),
-                ..rig_core::test_utils::mock_final(Usage::new().output_tokens(10))
-            }),
-        ]
-    };
-    let model = MockCompletionModel::from_stream_turns([
-        cut(),
-        reply("## Goal\nAnswer."),
-        cut(),
-        measured("the follow-up's answer", 30_000),
-        reply("## Goal\nAnswer it all."),
-    ]);
-    let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |_| {});
-    let agent = agent(&mut app, &model, 40_000, turns(0, 4));
-    let Some(agent) = agent else {
-        return;
-    };
-    app.world_mut()
-        .trigger(Deliver::new(agent, "Write it.", DeliveryMode::Steer));
-    run_until(&mut app, &wakes, |_| !sent(&model).is_empty());
-    // Long enough that the turns before it lie outside the keep.
-    let follow_up = format!("And then? {}", "word ".repeat(1_000));
-    app.world_mut()
-        .trigger(Deliver::new(agent, follow_up, DeliveryMode::Queue));
-    run_until(&mut app, &wakes, |world| {
-        world.get::<ActiveTurn>(agent).is_none()
-    });
-    for _ in 0..20 {
-        app.update();
-        wakes
-            .recv_timeout(std::time::Duration::from_millis(20))
-            .ok();
-    }
-    let requests = sent(&model);
-    assert_eq!(requests.len(), 5, "{:?}", notices(&app));
-    let last = requests.get(4).cloned().unwrap_or_default();
-    assert!(last.contains("context summarization assistant"), "{last}");
-}
-
-/// The output clamp falls back to an earlier usage report still valid when the newest no longer
-/// describes the request, as pi-ai's estimate takes the newest valid one.
-#[test]
-fn the_output_clamp_falls_back_to_an_earlier_valid_usage() {
-    let model = MockCompletionModel::from_stream_turns([reply("done")]);
-    let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |app| {
-        // A note put before the last message: the newest report no longer describes the prefix.
-        let note = |mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<TurnCall>)>| {
-            for mut call in &mut calls {
-                if let Some(history) = &mut call.history {
-                    let at = history.messages().len().saturating_sub(2);
-                    let example = Entry::new(Message::user("A note."));
-                    history.splice(at..at, [example], Author::plugin("notes"));
-                }
-            }
-        };
-        app.add_systems(AgentPass, note.in_set(PrepareSystems::Edit));
-    });
-    app.world_mut()
-        .resource_mut::<CompactionDefault>()
-        .0
-        .enabled = false;
-    let agent = agent(&mut app, &model, 40_000, turns(0, 3));
-    let Some(agent) = agent else {
-        return;
-    };
-    let ids: Vec<_> = app
-        .world()
-        .get::<Conversation>(agent)
-        .map(|conversation| conversation.entries().map(|entry| entry.id).collect())
-        .unwrap_or_default();
-    // An earlier report through the third message, then the newest through the last.
-    let at = |index: usize| ids.get(index).copied();
-    for (through, tokens) in [(at(3), 39_000), (ids.last().copied(), 100)] {
-        let anchor = through.map(|through| rig_memory::Anchor {
-            usage: Usage::new().total_tokens(tokens),
-            through,
-        });
-        app.world_mut().entity_mut(agent).insert(LastUsage(anchor));
-        app.update();
-    }
-    ask(&mut app, &wakes, agent, "And now?", 1);
-    let asked = model
-        .requests()
-        .first()
-        .and_then(|request| request.max_tokens);
-    assert!(asked.is_some_and(|it| it < 1_000), "{asked:?}");
-}
-
-/// With the default settings, a summary that keeps failing is sent four times, pi's three retries,
-/// and not a fifth.
-#[test]
-fn a_failing_summary_is_retried_three_times() {
-    let model = MockCompletionModel::from_stream_turns([
-        unavailable(),
-        unavailable(),
-        unavailable(),
-        unavailable(),
-        reply("## Goal\nToo late."),
-    ]);
-    let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |_| {});
-    let agent = agent(&mut app, &model, 1_000_000, turns(0, 4));
-    let Some(agent) = agent else {
-        return;
-    };
-    app.world_mut().trigger(Compact {
-        entity: agent,
-        focus: String::new(),
-    });
-    until_ended_with_retries(&mut app, &wakes, 1);
-    assert_eq!(sent(&model).len(), 4, "{:?}", notices(&app));
-    let said = notices(&app);
-    assert!(
-        said.iter().any(|it| it.contains("Not retrying")),
-        "{said:?}"
-    );
 }
 
 /// `/compact` with nothing to summarize says pi's reason: "Already compacted" right after a
@@ -2126,27 +1590,22 @@ fn mark_wrapped(
 }
 
 /// A summary goes through the agent's adapters once, as the turn's request does: the summary
-/// after a run, the one recovering from an overflow and the one after a failed run are sent on the
+/// before a request near the window and the one recovering from an overflow are sent on the
 /// route the request named, not on the connection the adapters already wrapped.
 #[test]
 fn a_summary_is_wrapped_by_the_adapters_once() {
-    let refused = ProviderResponseError::without_status("invalid request: refused");
     let scripts = [
         (
-            "after the run",
-            vec![measured("first answer", 30_000), reply("## Goal\nAnswer.")],
+            "near the window",
+            vec![
+                measured("first answer", 30_000),
+                reply("## Goal\nAnswer."),
+                measured("done", 100),
+            ],
         ),
         (
             "recovery",
             vec![too_long(), reply("## Goal\nAnswer."), measured("done", 100)],
-        ),
-        (
-            "after an error",
-            vec![
-                measured("first answer", 20_000),
-                vec![MockStreamEvent::Error(MockError::ProviderResponse(refused))],
-                reply("## Goal\nAnswer."),
-            ],
         ),
     ];
     for (case, script) in scripts {
@@ -2163,12 +1622,8 @@ fn a_summary_is_wrapped_by_the_adapters_once() {
             return;
         };
         ask(&mut app, &wakes, agent, "The first question?", 1);
-        if case == "after an error" {
-            let note = format!("From the watcher: {}", "word ".repeat(4_000));
-            app.world_mut().trigger(
-                Deliver::new(agent, note, DeliveryMode::Steer)
-                    .with_author(Author::plugin("watcher")),
-            );
+        if case == "near the window" {
+            ask(&mut app, &wakes, agent, "The second question?", 2);
         }
         for _ in 0..40 {
             app.update();
@@ -2274,59 +1729,6 @@ fn a_reply_cut_short_and_left_out_stays_in_the_saved_session() {
     assert!(!messages.contains("A half"), "{messages}");
 }
 
-/// A follow-up with an image sent while the compaction turn after an error writes its summary is
-/// answered once that turn ends, image and all, as pi delivers what was queued during a
-/// compaction: nothing is handed back as text.
-#[test]
-fn a_follow_up_sent_during_the_compaction_after_an_error_keeps_its_image() {
-    let refused = ProviderResponseError::without_status("invalid request: refused");
-    let model = MockCompletionModel::from_stream_turns([
-        measured("first answer", 20_000),
-        vec![MockStreamEvent::Error(MockError::ProviderResponse(refused))],
-        reply("## Goal\nAnswer."),
-        measured("A greeting.", 100),
-    ]);
-    let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |app| {
-        collect::<rig_ecs::inbox::Recalled>(app);
-        app.add_systems(AgentPass, hold_for_review.in_set(ReviewSystems::Act));
-    });
-    let agent = agent(&mut app, &model, 40_000, turns(0, 4));
-    let Some(agent) = agent else {
-        return;
-    };
-    ask(&mut app, &wakes, agent, "The first question?", 1);
-    let note = format!("From the watcher: {}", "word ".repeat(4_000));
-    app.world_mut().trigger(
-        Deliver::new(agent, note, DeliveryMode::Steer).with_author(Author::plugin("watcher")),
-    );
-    assert!(held(&mut app, &wakes).is_some(), "{:?}", notices(&app));
-    let mut follow_up = with_image(agent, "What is in the picture?");
-    follow_up.message.mode = DeliveryMode::Queue;
-    app.world_mut().trigger(follow_up);
-    run_until(&mut app, &wakes, |world| {
-        world.iter_entities().any(|it| {
-            it.contains::<Incoming>() && it.contains::<Started>() && !it.contains::<Outcome>()
-        })
-    });
-    decide(&mut app, &wakes, Some("## Goal\nAnswer."));
-    run_until(&mut app, &wakes, |world| {
-        world.resource::<Ended>().0.len() >= 4
-    });
-    assert_eq!(answer(&app).as_deref(), Some("A greeting."));
-    let requests = sent(&model);
-    let last = requests.get(3).cloned().unwrap_or_default();
-    assert!(
-        last.contains("What is in the picture?") && last.contains("aGk="),
-        "{:?}: {last}",
-        notices(&app)
-    );
-    let recalled = &app
-        .world()
-        .resource::<Collected<rig_ecs::inbox::Recalled>>()
-        .0;
-    assert!(recalled.is_empty(), "{recalled:?}");
-}
-
 /// A follow-up naming a file, queued while `/compact` writes its summary, goes on as the inbox
 /// prepared it: the next request holds the file once.
 #[test]
@@ -2364,8 +1766,9 @@ fn a_follow_up_queued_during_compact_keeps_its_file_attached_once() {
         })
     });
     decide(&mut app, &wakes, Some("## Goal\nAnswer."));
+    // The turn started for the summary goes on with the follow-up.
     run_until(&mut app, &wakes, |world| {
-        world.resource::<Ended>().0.len() >= 2
+        !world.resource::<Ended>().0.is_empty()
     });
     assert_eq!(answer(&app).as_deref(), Some("It is a note."));
     let last = sent(&model).get(1).cloned().unwrap_or_default();
@@ -2441,4 +1844,427 @@ fn a_follow_up_queued_during_compact_goes_before_a_newer_prompt() {
         .resource::<Collected<rig_ecs::inbox::Recalled>>()
         .0;
     assert!(recalled.is_empty(), "{recalled:?}");
+}
+
+/// A model whose input limit is below its context window compacts against the input limit: 30k
+/// reported of a 40k input limit compacts before the next request, though the window is 200k.
+#[test]
+fn a_model_whose_input_limit_is_below_its_window_compacts_before_it_overflows() {
+    let model = MockCompletionModel::from_stream_turns([
+        measured("first answer", 30_000),
+        reply("## Goal\nAnswer the questions."),
+        measured("second answer", 100),
+    ]);
+    let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |_| {});
+    let agent = agent(&mut app, &model, 200_000, turns(0, 4));
+    let Some(agent) = agent else {
+        return;
+    };
+    if let Some(mut connection) = app.world_mut().get_mut::<Connection>(agent) {
+        let spec = connection.spec.as_ref().clone();
+        connection.spec = Arc::new(spec.with_max_input_tokens(40_000));
+    }
+    ask(&mut app, &wakes, agent, "The first question?", 1);
+    ask(&mut app, &wakes, agent, "The second question?", 2);
+    let requests = sent(&model);
+    assert_eq!(requests.len(), 3, "{:?}", notices(&app));
+    let summary = requests.get(1).cloned().unwrap_or_default();
+    assert!(
+        summary.contains("context summarization assistant"),
+        "{summary}"
+    );
+    assert_eq!(answer(&app).as_deref(), Some("second answer"));
+}
+
+/// A turn's call a plugin routed stays on its route when it is built again, after the summary
+/// that recovers it and after a retry, and the summary goes there too; the next turn's call is
+/// routed afresh. Nothing goes to the agent's own model.
+#[test]
+fn a_rebuilt_call_keeps_its_route_and_a_new_call_is_still_routed() {
+    let own = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let routed = MockCompletionModel::from_stream_turns([
+        too_long(),
+        reply("## Goal\nAnswer the questions."),
+        unavailable(),
+        measured("done", 100),
+        measured("again", 100),
+    ]);
+    let target = connect(&routed).map(|mut connection| {
+        let spec = connection
+            .spec
+            .as_ref()
+            .clone()
+            .with_context_window(200_000);
+        connection.spec = Arc::new(spec.with_max_output_tokens(8_000));
+        connection
+    });
+    let Some(target) = target else {
+        return;
+    };
+    let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |app| {
+        let route = move |mut calls: Query<
+            &mut ModelRequest,
+            (Added<Admitted>, With<TurnCall>, Without<Supersedes>),
+        >| {
+            for mut call in &mut calls {
+                call.connection = Some(target.clone());
+            }
+        };
+        app.add_systems(AgentPass, route.in_set(PrepareSystems::Edit));
+    });
+    let agent = agent(&mut app, &own, 200_000, turns(0, 4));
+    let Some(agent) = agent else {
+        return;
+    };
+    app.world_mut().trigger(Deliver::new(
+        agent,
+        "And the next question?",
+        DeliveryMode::Steer,
+    ));
+    until_ended_with_retries(&mut app, &wakes, 1);
+    assert_eq!(answer(&app).as_deref(), Some("done"), "{:?}", notices(&app));
+    app.world_mut()
+        .trigger(Deliver::new(agent, "And another?", DeliveryMode::Steer));
+    until_ended_with_retries(&mut app, &wakes, 2);
+    assert_eq!(
+        answer(&app).as_deref(),
+        Some("again"),
+        "{:?}",
+        notices(&app)
+    );
+    assert_eq!(sent(&routed).len(), 5, "{:?}", notices(&app));
+    assert!(sent(&own).is_empty(), "{:?}", sent(&own));
+}
+
+/// Messages sent while `/compact` writes its summary are delivered by the kernel as after any
+/// reply: the steering one first, then the queued ones together in the order they were sent,
+/// still queued, the image of one attached; nothing is handed back as text.
+#[test]
+fn messages_sent_during_compact_keep_their_priority_order_and_attachments() {
+    let model = MockCompletionModel::from_stream_turns([
+        reply("## Goal\nAnswer."),
+        measured("Steered.", 100),
+        measured("Queued.", 100),
+    ]);
+    let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |app| {
+        collect::<rig_ecs::inbox::Recalled>(app);
+        app.add_systems(AgentPass, hold_for_review.in_set(ReviewSystems::Act));
+    });
+    let agent = agent(&mut app, &model, 1_000_000, turns(0, 4));
+    let Some(agent) = agent else {
+        return;
+    };
+    app.world_mut().trigger(Compact {
+        entity: agent,
+        focus: String::new(),
+    });
+    assert!(held(&mut app, &wakes).is_some(), "{:?}", notices(&app));
+    let mut first = with_image(agent, "QUEUED_ONE");
+    first.message.mode = DeliveryMode::Queue;
+    app.world_mut().trigger(first);
+    app.update();
+    app.world_mut()
+        .trigger(Deliver::new(agent, "QUEUED_TWO", DeliveryMode::Queue));
+    app.update();
+    app.world_mut()
+        .trigger(Deliver::new(agent, "STEERED", DeliveryMode::Steer));
+    run_until(&mut app, &wakes, |world| {
+        let waiting = |it: &EntityRef| {
+            it.contains::<Incoming>() && it.contains::<Started>() && !it.contains::<Outcome>()
+        };
+        world.iter_entities().filter(waiting).count() == 3
+    });
+    let modes = |world: &mut World| -> Vec<DeliveryMode> {
+        let mut messages = world.query::<&Incoming>();
+        let mut modes: Vec<_> = messages.iter(world).map(|it| it.mode).collect();
+        modes.sort_by_key(|mode| format!("{mode:?}"));
+        modes
+    };
+    let before = modes(app.world_mut());
+    decide(&mut app, &wakes, Some("## Goal\nAnswer."));
+    app.update();
+    assert_eq!(
+        modes(app.world_mut()),
+        before,
+        "a queued message stays queued"
+    );
+    run_until(&mut app, &wakes, |world| {
+        !world.resource::<Ended>().0.is_empty() && world.get::<ActiveTurn>(agent).is_none()
+    });
+    assert_eq!(answer(&app).as_deref(), Some("Queued."));
+    let requests = sent(&model);
+    assert_eq!(requests.len(), 3, "{:?}", notices(&app));
+    let (steered, queued) = (
+        requests.get(1).cloned().unwrap_or_default(),
+        requests.get(2).cloned().unwrap_or_default(),
+    );
+    assert!(
+        steered.contains("STEERED") && !steered.contains("QUEUED"),
+        "{steered}"
+    );
+    let (one, two) = (queued.find("QUEUED_ONE"), queued.find("QUEUED_TWO"));
+    assert!(one.is_some() && one < two, "{queued}");
+    assert_eq!(queued.matches("aGk=").count(), 1, "{queued}");
+    let recalled = &app
+        .world()
+        .resource::<Collected<rig_ecs::inbox::Recalled>>()
+        .0;
+    assert!(recalled.is_empty(), "{recalled:?}");
+}
+
+/// A rate limit whose `Retry-After` header asks for seven seconds.
+fn rate_limited() -> Vec<MockStreamEvent> {
+    let mut headers = http::HeaderMap::new();
+    headers.insert("retry-after", http::HeaderValue::from_static("7"));
+    let limited = ProviderResponseError::new(http::StatusCode::TOO_MANY_REQUESTS, "rate limited")
+        .with_headers(Some(headers));
+    vec![MockStreamEvent::Error(MockError::ProviderResponse(limited))]
+}
+
+/// A summary call is retried by the kernel as `[retry]` says, after the wait the provider asked
+/// for, each summary call on a count of its own that leaves the turn's alone: with one retry
+/// allowed, a summary that failed once goes in and the turn's own call is still retried once;
+/// a summary that fails twice is given up, and the notice names the setting.
+#[test]
+fn summary_retries_follow_the_retry_settings_and_leave_the_turns_budget() {
+    let policy = rig_ecs::retry::RetryPolicy {
+        max_retries: 1,
+        ..rig_ecs::retry::RetryPolicy::DEFAULT
+    };
+    let model = MockCompletionModel::from_stream_turns([
+        rate_limited(),
+        reply("## Goal\nAnswer the questions."),
+        unavailable(),
+        measured("done", 100),
+    ]);
+    let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |app| {
+        app.insert_resource(policy);
+    });
+    // About 1k tokens of conversation in a window that leaves less than the reserve.
+    let agent = agent(&mut app, &model, 17_000, turns(0, 4));
+    let Some(agent) = agent else {
+        return;
+    };
+    app.world_mut().trigger(Deliver::new(
+        agent,
+        "And the next question?",
+        DeliveryMode::Steer,
+    ));
+    run_until(&mut app, &wakes, |world| {
+        world.iter_entities().any(|it| it.contains::<Backoff>())
+    });
+    let world = app.world_mut();
+    let wait = world.query::<&Backoff>().iter(world).next();
+    let wait = wait.map(Backoff::seconds_left);
+    assert!(wait.is_some_and(|left| (6..=7).contains(&left)), "{wait:?}");
+    until_ended_with_retries(&mut app, &wakes, 1);
+    assert_eq!(answer(&app).as_deref(), Some("done"), "{:?}", notices(&app));
+    assert_eq!(sent(&model).len(), 4, "{:?}", notices(&app));
+    let live = entries(app.world(), agent);
+    assert!(live.first().is_some_and(holds_summary), "{live:?}");
+
+    let model = MockCompletionModel::from_stream_turns([
+        unavailable(),
+        unavailable(),
+        reply("## Goal\nToo late."),
+    ]);
+    let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |app| {
+        app.insert_resource(policy);
+    });
+    let agent = self::agent(&mut app, &model, 1_000_000, turns(0, 4));
+    let Some(agent) = agent else {
+        return;
+    };
+    app.world_mut().trigger(Compact {
+        entity: agent,
+        focus: String::new(),
+    });
+    until_ended_with_retries(&mut app, &wakes, 1);
+    assert_eq!(sent(&model).len(), 2, "{:?}", notices(&app));
+    let said = notices(&app);
+    assert!(
+        said.iter()
+            .any(|it| it.contains("Not retrying") && it.contains("[retry] max_retries")),
+        "{said:?}"
+    );
+    assert!(!entries(app.world(), agent).iter().any(holds_summary));
+}
+
+/// A reply the window cut short that holds a tool call is recovered from like any other: the
+/// call never runs, the reply is kept as an aside the moment it is dropped, and the request is
+/// sent again.
+#[test]
+fn a_cut_short_reply_with_a_tool_call_runs_no_tool_and_is_kept() {
+    let files = Arc::new(Files::default());
+    files.put("a.rs", "FILE_BODY");
+    let cut = vec![
+        MockStreamEvent::text("Reading"),
+        MockStreamEvent::tool_call("call-cut", "read", serde_json::json!({ "path": "a.rs" })),
+        MockStreamEvent::FinalResponse(rig_core::operation::Finish {
+            reason: Some(FinishReason::Length),
+            ..rig_core::test_utils::mock_final(Usage::new().output_tokens(10))
+        }),
+    ];
+    let model = MockCompletionModel::from_stream_turns([
+        cut,
+        reply("## Goal\nAnswer the questions."),
+        measured("done", 100),
+    ]);
+    let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |app| {
+        app.insert_resource(ProjectWorkspace(files.clone()))
+            .insert_resource(ProjectRoot(PROJECT.into()))
+            .add_plugins(crate::coding_tools::ReadTool)
+            .add_systems(AgentPass, hold_for_review.in_set(ReviewSystems::Act));
+    });
+    let agent = agent(&mut app, &model, 200_000, turns(0, 4));
+    let Some(agent) = agent else {
+        return;
+    };
+    app.world_mut()
+        .trigger(Deliver::new(agent, "Read a.rs.", DeliveryMode::Steer));
+    assert!(held(&mut app, &wakes).is_some(), "{:?}", notices(&app));
+    let omitted = |world: &World| -> Vec<String> {
+        let conversation = world.get::<Conversation>(agent);
+        let asides = conversation.into_iter().flat_map(|it| it.asides());
+        asides
+            .filter(|(_, aside)| aside.kind == OMITTED)
+            .map(|(_, aside)| aside.value.to_string())
+            .collect()
+    };
+    let kept = omitted(app.world());
+    assert!(
+        matches!(kept.as_slice(), [it] if it.contains("call-cut")),
+        "kept before the summary is in: {kept:?}"
+    );
+    decide(&mut app, &wakes, Some("## Goal\nAnswer the questions."));
+    run_until(&mut app, &wakes, |world| {
+        !world.resource::<Ended>().0.is_empty()
+    });
+    assert_eq!(answer(&app).as_deref(), Some("done"), "{:?}", notices(&app));
+    let requests = sent(&model);
+    assert_eq!(requests.len(), 3, "{:?}", notices(&app));
+    let all = requests.join("\n");
+    assert!(!all.contains("FILE_BODY"), "the call ran: {all}");
+    let live = serde_json::to_string(&entries(app.world(), agent)).unwrap_or_default();
+    assert!(!live.contains("call-cut"), "{live}");
+    assert_eq!(omitted(app.world()).len(), 1);
+}
+
+/// One recovery for each request, as pi's flag: the summary going in does not allow a second,
+/// so a resend refused again fails the turn; a message of the user's delivered into the resend
+/// does, so that request is recovered once more.
+#[test]
+fn new_user_input_allows_another_recovery_and_a_summary_does_not() {
+    for steered in [false, true] {
+        let model = MockCompletionModel::from_stream_turns([
+            too_long(),
+            reply("## Goal\nAnswer the questions."),
+            too_long(),
+            // The second recovery splits the turn: its history, then its earlier part.
+            reply("## Goal\nAnswer them all."),
+            reply("## Original Request\nThe next question."),
+            measured("done", 100),
+        ]);
+        let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |app| {
+            app.add_systems(AgentPass, hold_for_review.in_set(ReviewSystems::Act));
+        });
+        let agent = agent(&mut app, &model, 200_000, turns(0, 4));
+        let Some(agent) = agent else {
+            return;
+        };
+        app.world_mut().trigger(Deliver::new(
+            agent,
+            "And the next question?",
+            DeliveryMode::Steer,
+        ));
+        assert!(held(&mut app, &wakes).is_some(), "{:?}", notices(&app));
+        if steered {
+            let more = format!("One more thing: {}", "word ".repeat(300));
+            app.world_mut()
+                .trigger(Deliver::new(agent, more, DeliveryMode::Steer));
+            run_until(&mut app, &wakes, |world| {
+                world.iter_entities().any(|it| {
+                    it.contains::<Incoming>()
+                        && it.contains::<Started>()
+                        && !it.contains::<Outcome>()
+                })
+            });
+        }
+        decide(&mut app, &wakes, Some("## Goal\nAnswer the questions."));
+        if steered {
+            decide(&mut app, &wakes, Some("## Goal\nAnswer them all."));
+            decide(
+                &mut app,
+                &wakes,
+                Some("## Original Request\nThe next question."),
+            );
+        }
+        run_until(&mut app, &wakes, |world| {
+            !world.resource::<Ended>().0.is_empty()
+        });
+        let ended = &app.world().resource::<Ended>().0;
+        match steered {
+            true => {
+                assert_eq!(answer(&app).as_deref(), Some("done"), "{:?}", notices(&app));
+                assert_eq!(sent(&model).len(), 6, "{:?}", notices(&app));
+            }
+            false => {
+                assert!(
+                    matches!(ended.as_slice(), [TurnOutcome::Failed(_)]),
+                    "{ended:?}"
+                );
+                assert_eq!(sent(&model).len(), 3, "{:?}", notices(&app));
+            }
+        }
+    }
+}
+
+/// The output clamp trusts the reported usage only while no newer message was put before its
+/// reply, as pi-ai's estimate: a few-shot prefix added to the request makes it estimate instead.
+#[test]
+fn the_output_clamp_drops_the_usage_when_a_prefix_is_added() {
+    for prefix in [false, true] {
+        let model = MockCompletionModel::from_stream_turns([reply("done")]);
+        let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |app| {
+            if prefix {
+                let few_shot =
+                    |mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<TurnCall>)>| {
+                        for mut call in &mut calls {
+                            if let Some(history) = &mut call.history {
+                                let text = format!("An example. {}", "word ".repeat(2_000));
+                                let example = Entry::new(Message::user(text));
+                                history.splice(0..0, [example], Author::plugin("few-shot"));
+                            }
+                        }
+                    };
+                app.add_systems(AgentPass, few_shot.in_set(PrepareSystems::Edit));
+            }
+        });
+        app.world_mut()
+            .resource_mut::<CompactionDefault>()
+            .0
+            .enabled = false;
+        let agent = agent(&mut app, &model, 40_000, turns(0, 2));
+        let Some(agent) = agent else {
+            return;
+        };
+        let through = app
+            .world()
+            .get::<Conversation>(agent)
+            .and_then(|conversation| conversation.entries().last().map(|entry| entry.id));
+        let anchor = through.map(|through| rig_memory::Anchor {
+            usage: Usage::new().total_tokens(39_000),
+            through,
+        });
+        app.world_mut().entity_mut(agent).insert(LastUsage(anchor));
+        ask(&mut app, &wakes, agent, "And now?", 1);
+        let asked = model
+            .requests()
+            .first()
+            .and_then(|request| request.max_tokens);
+        match prefix {
+            false => assert!(asked.is_some_and(|it| it < 1_000), "{asked:?}"),
+            true => assert_eq!(asked, Some(8_000)),
+        }
+    }
 }

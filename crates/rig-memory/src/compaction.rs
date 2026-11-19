@@ -1,6 +1,6 @@
 //! Compacting a long conversation: [`prepare_compaction`] says what a compaction summarizes and
-//! builds its summary requests, and [`apply_summary`] puts the summary in place of the older
-//! messages, keeping what it replaced so [`undo_summary`] can put that back.
+//! builds its summary requests, and [`apply_summary`] puts the summary in place of the messages
+//! it read, when they are still as it read them.
 //!
 //! ```
 //! use rig_core::conversation::Conversation;
@@ -14,6 +14,7 @@
 //! ```
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use rig_core::catalog::ModelSpec;
 use rig_core::completion::Message;
@@ -155,21 +156,39 @@ pub fn summarized_prefix(conversation: &Conversation) -> usize {
         .count()
 }
 
-/// Puts the summary of `state` in place of the messages of
-/// `conversation` before `keep_from` (every message with `None`), earlier
-/// summaries included: one user entry by [`summary_author`], a splice it
-/// makes, followed by an aside of kind [`COMPACTED`] that says what it
-/// replaced ([`Compacted`]), so [`undo_summary`] can put that back.
-/// `None`, changing nothing, when `keep_from` was taken out meanwhile.
+/// Whether `conversation` ends in its last compaction, as pi's session does when nothing was
+/// added after it: a summary is in, and every other message is older than it.
+pub fn already_compacted(conversation: &Conversation) -> bool {
+    let author = summary_author();
+    let mut summaries = conversation.entries();
+    let summary = summaries
+        .find(|entry| entry.author == Some(&author))
+        .map(|entry| entry.id);
+    summary.is_some_and(|summary| conversation.entries().all(|entry| entry.id <= summary))
+}
+
+/// Puts the summary of `state` in place of `replaces`, the first
+/// messages of `conversation` as a compaction read them
+/// ([`CompactionPreparation::replaces`]), earlier summaries included: one
+/// user entry by [`summary_author`], a splice it makes, followed by an
+/// aside of kind [`COMPACTED`] that says what it replaced ([`Compacted`]).
+/// Messages added after them stay. `None`, changing nothing, when the
+/// conversation no longer starts with those very messages, such as after
+/// an edit of one, so a summary never replaces what it did not read.
 pub fn apply_summary(
     conversation: &mut Conversation,
-    keep_from: Option<MessageId>,
+    replaces: &[Arc<Message>],
     state: &SummaryState,
 ) -> Option<Spliced> {
-    let end = match keep_from {
-        None => conversation.messages().len(),
-        Some(kept) => conversation.index_of(kept)?,
-    };
+    let end = replaces.len();
+    let now = conversation.messages().get(..end)?;
+    if !now
+        .iter()
+        .zip(replaces)
+        .all(|(now, read)| Arc::ptr_eq(now, read))
+    {
+        return None;
+    }
     let summary = Entry::new(Message::user(state.wrapped())).by(summary_author());
     let entries: Vec<Entry> = (0..end).filter_map(|at| conversation.entry(at)).collect();
     let replaced_hash = serde_json::to_vec(&entries).ok();
@@ -197,7 +216,7 @@ pub const COMPACTED: &str = "rig.compaction";
 const HASH_LEN: usize = 32;
 
 /// The summary state the next compaction of `conversation` builds on: the
-/// newest compaction's not undone ([`Compacted`]), or the state before any.
+/// newest compaction's ([`Compacted`]), or the state before any.
 pub fn summary_state(conversation: &Conversation) -> SummaryState {
     Compacted::of(conversation)
         .last()
@@ -206,8 +225,7 @@ pub fn summary_state(conversation: &Conversation) -> SummaryState {
 }
 
 /// What a compaction replaced, kept with the conversation in an aside of
-/// kind [`COMPACTED`] by [`summary_author`] after its summary: the newest
-/// one is what [`undo_summary`] puts back.
+/// kind [`COMPACTED`] by [`summary_author`] after its summary.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Compacted {
     /// The summary's entry.
@@ -225,8 +243,8 @@ pub struct Compacted {
 }
 
 impl Compacted {
-    /// The record of every compaction of `conversation` not undone, oldest
-    /// first, each with its aside.
+    /// The record of every compaction of `conversation`, oldest first, each
+    /// with its aside.
     pub fn of(conversation: &Conversation) -> impl Iterator<Item = (AsideId, Self)> + '_ {
         let records = conversation.asides();
         records.filter_map(|(id, aside)| Some((id, Self::read(aside)?)))
@@ -237,75 +255,6 @@ impl Compacted {
         let ours = aside.kind == COMPACTED && aside.author == summary_author();
         ours.then(|| rig_core::json_utils::from_value(&aside.value).ok())?
     }
-}
-
-/// What [`undo_summary`] did.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Uncompacted {
-    /// The entries put back in place of the summary, with their ids.
-    pub restored: Vec<MessageId>,
-    /// The summary state now: the compaction's before it, or the state
-    /// before any.
-    pub state: SummaryState,
-}
-
-/// Why [`undo_summary`] put nothing back.
-#[derive(Debug, thiserror::Error)]
-pub enum UndoError {
-    /// The conversation has no compaction left to undo.
-    #[error("there is no compaction to undo")]
-    Nothing,
-    /// The newest compaction's summary is no longer in the conversation.
-    #[error("its summary is no longer in the conversation")]
-    SummaryGone,
-    /// The session's log does not hold what it replaced: the compaction
-    /// was not saved there, or a reset brought its summary in, or brought
-    /// it back with a record that cannot prove it is the same compaction.
-    #[error("the session's log does not hold what it replaced")]
-    NotInLog,
-    /// The session's log could not be read.
-    #[error(transparent)]
-    Load(#[from] SessionError),
-}
-
-/// Undoes the newest compaction of `conversation`, the conversation saved
-/// in the log `log` of `store`: the entries its summary replaced, read
-/// from that log as they were just before it, are put back in the
-/// summary's place with their ids ([`Conversation::restore`] by `by`), and
-/// its [`Compacted`] aside goes. Entries added after the summary stay
-/// after them. Undone one after another, compactions come back newest
-/// first, each with the summary it built on.
-///
-/// # Errors
-///
-/// [`UndoError`], changing nothing.
-pub fn undo_summary(
-    conversation: &mut Conversation,
-    store: &dyn Store,
-    log: &str,
-    by: Author,
-) -> Result<Uncompacted, UndoError> {
-    let (aside, compacted) = Compacted::of(conversation)
-        .last()
-        .ok_or(UndoError::Nothing)?;
-    let at = conversation
-        .index_of(compacted.summary)
-        .ok_or(UndoError::SummaryGone)?;
-    let mut known = provenance(store, log)?;
-    if known.proofs.get(&compacted.summary) != Some(&compacted) {
-        return Err(UndoError::NotInLog);
-    }
-    let originals = known
-        .first
-        .remove(&compacted.summary)
-        .flatten()
-        .ok_or(UndoError::NotInLog)?;
-    let restored = conversation.restore(at..=at, originals, by).restored;
-    conversation.remove_aside(aside);
-    Ok(Uncompacted {
-        restored,
-        state: summary_state(conversation),
-    })
 }
 
 /// What the compactions in a session's log replaced ([`summarized_in_log`]).
@@ -346,8 +295,8 @@ impl Provenance {
 }
 
 /// What the compactions in the log `log` of `store` replaced, read in one
-/// pass over the log. A summary named again, as by an undo that put it
-/// back, keeps what it first replaced. A reset carries each summary over
+/// pass over the log. A summary named again keeps what it first replaced.
+/// A reset carries each summary over
 /// on its own, only when the new value holds a record equal to the one its
 /// compaction saved here, [`Compacted::replaced_hash`] included, so a
 /// summary of another conversation that reuses an id takes nothing from
@@ -403,13 +352,6 @@ fn provenance(store: &dyn Store, log: &str) -> Result<Provenance, SessionError> 
             if taken.contains(&&record.summary) {
                 known.records.entry(record.summary).or_insert(record);
             }
-        }
-        // An entry put back carries its made-time: an undo, which replaced nothing.
-        if with
-            .iter()
-            .any(|entry| entry.id == Some(summary) && entry.made.is_some())
-        {
-            return;
         }
         known.first.entry(summary).or_insert_with(|| {
             taken

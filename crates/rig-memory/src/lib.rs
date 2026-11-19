@@ -11,7 +11,7 @@
 )]
 //! Conversations over time, over rig-core's [`Conversation`]:
 //! - [`recent`]: which newest messages a request sends.
-//! - [`prepare_compaction`], [`apply_summary`], [`undo_summary`]: compacting a long conversation.
+//! - [`prepare_compaction`], [`apply_summary`]: compacting a long conversation.
 //! - [`load`], [`save`], [`Session`], [`Writer`]: saving and resuming, in the one format
 //!   [`FORMAT`]. Reading is strict: a session of another format, or that does not read whole,
 //!   is refused and nothing is written.
@@ -68,12 +68,12 @@ mod writer;
 pub use blobs::BLOBS;
 pub use compaction::{
     COMPACTED, Compacted, CompactionPreparation, CompactionSettings, CutPoint, FileLists,
-    SUMMARIZATION_SYSTEM_PROMPT, Summarized, SummaryFailure, SummaryState, Uncompacted, UndoError,
+    SUMMARIZATION_SYSTEM_PROMPT, Summarized, SummaryFailure, SummaryState, already_compacted,
     apply_summary, clamp_max_tokens, estimate_message_tokens, estimate_tokens, find_cut_point,
     fit_to_model, merge_split_turn, no_history, prepare_compaction, prepare_compaction_at,
     request_tokens, serialize_conversation, summarization_request, summarized_in_log,
     summarized_prefix, summary_author, summary_in, summary_request, summary_state, summary_text,
-    turn_prefix_request, undo_summary,
+    turn_prefix_request,
 };
 #[cfg(feature = "fs")]
 pub use dir::{DirFiles, DirStore};

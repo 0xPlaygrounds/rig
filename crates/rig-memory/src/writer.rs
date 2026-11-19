@@ -532,7 +532,7 @@ impl Writer {
     /// result, the model owes no answer and nothing after `through` is in the
     /// conversation. What is queued is written first. The copy keeps the
     /// records' stamps, so [`as_of`](crate::as_of) and
-    /// [`undo_summary`](crate::undo_summary) read it as they read `from`,
+    /// [`summarized_in_log`](crate::summarized_in_log) read it as they read `from`,
     /// and has its own header and lineage. Returns the agent of the copy:
     /// its conversation continues the new log, and its saved values are
     /// those `from` had at the cut.

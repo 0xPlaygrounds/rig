@@ -499,16 +499,6 @@ fn the_meter_shows_unknown_until_the_stale_marker_is_removed() {
         .insert(ContextStale::default());
     app.update();
     assert_eq!(context(app.world()).as_deref(), Some("ctx ?/2.0k"));
-    // With an estimate, as after a summary, the estimate marked as one.
-    let estimate = Some(rig_ecs::prelude::ContextEstimate {
-        tokens: 300,
-        through: MessageId::default(),
-    });
-    app.world_mut()
-        .entity_mut(agent)
-        .insert(ContextStale { estimate });
-    app.update();
-    assert_eq!(context(app.world()).as_deref(), Some("ctx ~300/2.0k (15%)"));
     app.world_mut().entity_mut(agent).remove::<ContextStale>();
     app.update();
     assert_eq!(context(app.world()).as_deref(), Some("ctx 500/2.0k (25%)"));
@@ -782,46 +772,4 @@ fn a_stopped_call_uses_the_latest_cumulative_report() {
     assert_eq!(spent.total.calls, 1, "{shown}");
     assert_eq!(spent.total.tokens.input_tokens, Some(1000), "{shown}");
     assert_eq!(spent.total.tokens.output_tokens, Some(7), "{shown}");
-}
-
-/// `/usage` shows the estimate a stale context carries, as the status line does.
-#[test]
-fn usage_shows_the_estimate_of_a_stale_context() {
-    let store = MemoryStore::default();
-    let (mut app, _wakes) = start(&store);
-    let model = MockCompletionModel::from_stream_turns([reply("unused")]);
-    let Some(mut connection) = connect(&model) else {
-        return;
-    };
-    connection.spec = Arc::new((*connection.spec).clone().with_context_window(2_000));
-    let usage = rig_core::completion::Usage::new()
-        .input_tokens(400)
-        .output_tokens(100);
-    let mut spent = AgentUsage::default();
-    spent.total.calls = 1;
-    let estimate = Some(rig_ecs::prelude::ContextEstimate {
-        tokens: 300,
-        through: MessageId::default(),
-    });
-    let agent = spawn_root(
-        app.world_mut(),
-        (
-            connection,
-            spent,
-            LastUsage(Some(rig_memory::Anchor {
-                usage,
-                through: MessageId::default(),
-            })),
-            ContextStale { estimate },
-        ),
-    )
-    .id();
-    app.update();
-    let world = app.world_mut();
-    notices(world);
-    world.trigger(RunCommand::new(agent, "usage".to_owned()));
-    world.flush();
-    let shown = notices(world).join("\n");
-    assert!(!shown.contains("unknown until the next reply"), "{shown}");
-    assert!(shown.contains("300"), "{shown}");
 }

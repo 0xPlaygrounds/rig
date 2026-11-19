@@ -53,9 +53,9 @@ pub mod prelude {
 
     pub use crate::AgentPlugin;
     pub use crate::agent::{
-        ActiveTurn, Agent, AgentId, CacheKey, CallOf, Calls, ContextEstimate, ContextStale,
-        Conversation, EffectParent, LastUsage, Notice, NoticeLevel, Partial, PartialCall, RunTools,
-        Spawned, SpawnedBy, Stop, StopReached, StopTurn, SystemPrompt, ToolAccess, Turn, TurnOf,
+        ActiveTurn, Agent, AgentId, CacheKey, CallOf, Calls, ContextStale, Conversation,
+        EffectParent, LastUsage, Notice, NoticeLevel, Partial, PartialCall, RunTools, Spawned,
+        SpawnedBy, Stop, StopReached, StopTurn, SystemPrompt, ToolAccess, Turn, TurnOf,
         TurnOutcome,
     };
     pub use crate::fork::{AgentForked, ForkAgent, ForkError, ForkResult};
@@ -88,7 +88,7 @@ pub mod prelude {
         ToolOptions, ToolRequest, WorldToolsExt,
     };
     pub use crate::turn::{
-        Adapted, Backoff, Exiting, FirstStreamed, ModelRequest, Recovery, ReportedUsage,
+        Adapted, Backoff, Exiting, FirstStreamed, ModelRequest, Rebuilt, Recovery, ReportedUsage,
         RetryVerdict, SentTo, SideCall, StreamDelta, StreamTiming, TurnCall,
     };
     pub use rig_core::conversation::{

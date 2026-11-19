@@ -33,8 +33,7 @@ const CONTEXT: StatusItem = StatusItem::new("context", Side::Right, 40, 5);
 /// Each agent's meter, once a model call of it finished: its uncached
 /// input and output tokens, cache reads, cost, then the context against
 /// the input limit of the model its last reply came from ([`InputLimit`]),
-/// or while that figure is stale ([`ContextStale`]) its estimate marked
-/// `~`, else `?`, yellow
+/// or `?` while that figure is stale ([`ContextStale`]), yellow
 /// past 70% and red past 90%. `/usage` details the cache writes and
 /// reasoning.
 fn show_meter(
@@ -64,12 +63,10 @@ fn show_meter(
         };
         let shown = spent.calls > 0;
         let limit = InputLimit::of(limit, connection);
-        let estimated = stale.and_then(|stale| stale.estimate.map(|estimate| estimate.tokens));
-        let context = match stale {
-            Some(_) => estimated,
-            None => last.context(),
-        }
-        .map(|tokens| ContextUse { tokens, limit });
+        let context = last
+            .context()
+            .filter(|_| stale.is_none())
+            .map(|tokens| ContextUse { tokens, limit });
         let tokens = format!(
             "↑{} ↓{}",
             tokens_label(spent.uncached_input()),
@@ -83,15 +80,14 @@ fn show_meter(
             Some(70..) => Tone::Yellow,
             _ => Tone::Dim,
         };
-        let context = match (stale, context) {
-            (Some(_), Some(context)) => Some(format!("ctx ~{context}")),
-            (Some(_), None) => Some(format!(
+        let context = match stale {
+            Some(_) => Some(format!(
                 "ctx ?{}",
                 limit
                     .map(|limit| format!("/{}", tokens_label(u64::from(limit))))
                     .unwrap_or_default()
             )),
-            (None, context) => context.map(|context| format!("ctx {context}")),
+            None => context.map(|context| format!("ctx {context}")),
         };
         let text = |text: Option<String>| text.filter(|_| shown).unwrap_or_default();
         items.show(TOKENS.says(text(Some(tokens)), Tone::Dim));
