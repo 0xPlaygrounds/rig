@@ -249,7 +249,8 @@ impl Tree {
     /// is ticked: the state its tick box shows, what Enter does there, and
     /// an unticked branch above it.
     fn branch_about(&self, name: &str, node: usize, on: &[bool]) -> String {
-        // Enter comes first: the pane does not scroll.
+        // The state and Enter come before the list of plugins: the pane does
+        // not scroll.
         const COUNTS: &str = "Enter turns it back on, and what is under it follows its own \
                               ticks. While it is off, the choices under it count as off, though \
                               another plugin can still turn one on.";
@@ -297,7 +298,7 @@ impl Tree {
             )
         });
         format!(
-            "{name}\nBranch of {} plugins: {}.\n\n{back}{state}{up}\n",
+            "{name}\n{back}{state}{up}\n\nBranch of {} plugins: {}.\n",
             held.len(),
             held.join(", ")
         )

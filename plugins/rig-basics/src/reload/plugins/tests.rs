@@ -1047,11 +1047,16 @@ fn a_branchs_preview_follows_its_tick_box() {
         app.world_mut().entity_mut(list).insert(Highlighted(row));
         app.update();
     };
-    // The paragraph about the branch's state, after its name and plugins.
+    // The paragraph about the branch's state, after its name and before the
+    // one list of its plugins, which ends the preview.
     let state = |app: &App, list: Entity| {
         let text = preview(app, list);
-        let state = text.split("\n\n").nth(1).unwrap_or_default();
-        state.trim_end().to_owned()
+        let parts: Vec<&str> = text.split("\n\n").collect();
+        let state = parts.first().and_then(|part| part.split_once('\n'));
+        match (state, parts.get(1..)) {
+            (Some((_, state)), Some([held])) if held.starts_with("Branch of ") => state.to_owned(),
+            _ => format!("not a branch preview: {text}"),
+        }
     };
 
     let telemetry_off = "[plugins]\noff = [\"rig-basics/telemetry\"]\n";

@@ -817,9 +817,9 @@ running plugin added shows "on, added by" that one, such as "on, added by
 Subagents". The pane beside the list shows the highlighted
 plugin's area, crate, type path (what `settings.toml` and `rig plugin
 enable` take), default, state in `settings.toml`, whether it runs now, what
-an essential one takes away when off, and what it adds; for a branch, which
-plugins it holds, the state its tick box shows, what Enter does there, and an
-unticked branch above it. Typing finds plugins in folded branches too and
+an essential one takes away when off, and what it adds; for a branch, the
+state its tick box shows, what Enter does there, an unticked branch above it,
+and then which plugins it holds. Typing finds plugins in folded branches too and
 shows them under their branch, by name or type path.
 
 Enter on a plugin ticks and unticks its own choice, so on a plugin of an
@@ -828,10 +828,9 @@ off branch it changes only that plugin. Enter on a branch that is `[x]` or
 branch it ticks the branch again, which takes it out of `off`, and on a
 ticked `[ ]` branch, whose plugins are all unticked or held off by a branch,
 it ticks everything under it. A row that differs from `settings.toml` shows
-`+ on` or `- off`, also a plugin
-that goes or comes with its branch, and the list counts the changes. Esc
-leaves. With changes it first names what
-turns on and off (a plugin turned on under an off branch "stays off with its
+`+ on` or `- off`, also a plugin that goes or comes with its branch, and the
+list counts the changes. Esc leaves. With changes it first names what turns on
+and off (a plugin turned on under an off branch "stays off with its
 branch"), the plugins that go with a branch, what an essential plugin such as `/plugins` itself takes away with every
 `rig plugin enable` command that brings it back, and the plugins ticked on
 that this machine cannot build, which stay off. Then it asks:
