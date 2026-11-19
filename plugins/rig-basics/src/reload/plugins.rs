@@ -246,11 +246,12 @@ impl Tree {
     }
 
     /// What the preview says of the branch `name` at node `node` while `on`
-    /// is ticked: the state its tick box shows, a branch above that keeps it
-    /// off, and what Enter does there.
+    /// is ticked: the state its tick box shows, what Enter does there, and
+    /// an unticked branch above it.
     fn branch_about(&self, name: &str, node: usize, on: &[bool]) -> String {
-        const KEPT: &str = "That keeps each of its plugins off whatever its own choice.";
-        const BACK: &str = "Enter turns it back on, and each plugin then follows its own choice.";
+        const COUNTS: &str = "so the choices under it count as off, though another plugin can \
+                              still turn one on. Enter turns it back on, and what is under it \
+                              follows its own ticks.";
         const KEEPS: &str = "Enter turns it off, into [plugins] off, and each plugin keeps its \
                              own choice for when it is back on.";
         let held: Vec<&str> = (self.rows.iter())
@@ -270,27 +271,18 @@ impl Tree {
             });
         let named = self.before.off.iter().any(|off| off == name);
         let own = ticked.contains(&node);
-        let (state, enter) = match (own, TickBox::of(&parents, node, &ticked)) {
-            (false, _) if named => (format!("Off: [plugins] off names it. {KEPT}"), BACK),
-            (false, _) => (
-                format!("Off if you write this on leaving: it goes into [plugins] off. {KEPT}"),
-                BACK,
-            ),
-            (true, TickBox::Off) => (
-                "On, with every choice under it off.".to_owned(),
-                "Enter turns each of them on.",
-            ),
-            (true, TickBox::Mixed) => (
-                "Partly on: some choices under it are off.".to_owned(),
-                KEEPS,
-            ),
-            (true, TickBox::On) => ("On.".to_owned(), KEEPS),
-        };
-        let state = match above {
-            Some(up) if own => {
-                format!("Off with its branch {up}, which keeps it off whatever is ticked here.")
+        let state = match (own, TickBox::of(&parents, node, &ticked)) {
+            (false, _) if named => format!("Off: [plugins] off names it, {COUNTS}"),
+            (false, _) => {
+                format!("Off if you write this on leaving: it goes into [plugins] off, {COUNTS}")
             }
-            _ => state,
+            (true, TickBox::Off) => "On, but every plugin under it is unticked or held off by a \
+                                     branch. Enter ticks everything under it."
+                .to_owned(),
+            (true, TickBox::Mixed) => format!(
+                "Partly on: some plugins under it are unticked or held off by a branch. {KEEPS}"
+            ),
+            (true, TickBox::On) => format!("On. {KEEPS}"),
         };
         let back = if named && own {
             "Comes out of [plugins] off if you write this on leaving. "
@@ -298,10 +290,13 @@ impl Tree {
             ""
         };
         let up = above.map_or_else(String::new, |up| {
-            format!(" Its branch {up} stays off until Enter on {up} turns it back on.")
+            format!(
+                " {up} above it is off, so this branch's choices count as off until {up} is \
+                 back on."
+            )
         });
         format!(
-            "{name}\nBranch of {} plugins: {}.\n\n{back}{state} {enter}{up}\n",
+            "{name}\nBranch of {} plugins: {}.\n\n{back}{state}{up}\n",
             held.len(),
             held.join(", ")
         )
