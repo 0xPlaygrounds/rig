@@ -1408,6 +1408,10 @@ pub fn is_name(name: &str) -> bool {
 /// command it runs; `/update` shows each.
 pub const UPDATE_SAYS: &str = "rig update: ";
 
+/// How `rig build` starts its closing error, after `error: `, when it knows
+/// the cause; `/reload` and `/update` show that line over cargo's errors.
+pub const BUILD_SAYS: &str = "rig build: ";
+
 /// The launcher's own first words, which no plugin's command may take.
 pub const RESERVED_COMMANDS: &[&str] = &["build", "update", "plugin", "help", "help-agents"];
 

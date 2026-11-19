@@ -8,7 +8,7 @@ use std::thread::Builder;
 
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 use rig_harness::harness_protocol;
-use rig_harness::harness_protocol::{UPDATE_SAYS, first_errors, without_secrets};
+use rig_harness::harness_protocol::{BUILD_SAYS, UPDATE_SAYS, first_errors, without_secrets};
 use rig_harness::host::launcher::Invoked;
 use rig_harness::prelude::*;
 use rig_tools::process::{Process, STOP_GRACE};
@@ -118,11 +118,29 @@ impl ReloadBuild {
         }
     }
 
-    /// At most `count` lines of the output from the first error on, or its
-    /// end when no line starts with `error`.
+    /// Why `rig build` says the build failed, when it knows the cause: its
+    /// last line, before anything `rig update` said after it. An earlier
+    /// line like it is some other program's, as is any line of an update
+    /// that installed nothing, which ran no `rig build`.
+    fn explained(&self) -> Option<&str> {
+        if self.rebuild == Rebuild::Update && !self.installed() {
+            return None;
+        }
+        let mut lines = self.output.iter().rev();
+        explanation(lines.find(|line| !line.starts_with(UPDATE_SAYS))?)
+    }
+
+    /// At most `count` lines: what `rig build` explained, then the output
+    /// from the first error on, or its end when there is neither.
     fn errors(&self, count: usize) -> String {
-        let lines = self.output.iter().map(String::as_str);
-        let mut shown = first_errors(lines.clone(), count);
+        let explained = self.explained();
+        let lines = (self.output.iter().map(String::as_str))
+            .filter(|line| explained.is_none() || explanation(line) != explained);
+        let mut shown: Vec<&str> = explained.into_iter().collect();
+        shown.extend(first_errors(
+            lines.clone(),
+            count.saturating_sub(shown.len()),
+        ));
         if shown.is_empty() {
             shown = lines
                 .skip(self.output.len().saturating_sub(count))
@@ -143,6 +161,11 @@ impl Drop for ReloadBuild {
             .unwrap_or_else(PoisonError::into_inner);
         process.stop(STOP_GRACE).ok();
     }
+}
+
+/// The explanation on `line`, when it is as `rig build` closes with one.
+fn explanation(line: &str) -> Option<&str> {
+    line.strip_prefix("error: ")?.strip_prefix(BUILD_SAYS)
 }
 
 /// Sends each line of the build's stderr, and wakes the loop for each and
@@ -276,8 +299,12 @@ fn drain_reload(
         return;
     }
     *status = ReloadStatus::Failed;
-    let first = first_errors(build.output.iter().map(String::as_str), 1)
-        .first()
+    let first = build
+        .explained()
+        .or_else(|| {
+            let lines = build.output.iter().map(String::as_str);
+            first_errors(lines, 1).first().copied()
+        })
         .map(|line| format!(": {}", line.trim()))
         .unwrap_or_default();
     if build.rebuild == Rebuild::Update && !build.installed() {

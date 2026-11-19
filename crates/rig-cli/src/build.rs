@@ -22,7 +22,7 @@ use std::time::{Duration, Instant, UNIX_EPOCH};
 use rig_harness_protocol::config::toml_edit::Item;
 use rig_harness_protocol::fs;
 use rig_harness_protocol::launch::{Launch, Purpose};
-use rig_harness_protocol::{AgentDescription, Home, RunDir, config, first_errors};
+use rig_harness_protocol::{AgentDescription, BUILD_SAYS, Home, RunDir, config, first_errors};
 
 use super::project::{self, Manifest, PACKAGE, RigSource, workspace_dependency};
 use super::{BEVY_VERSION, COMMIT, LONG_VERSION, Result, locks};
@@ -87,6 +87,8 @@ pub struct BuildFailure {
     pub errors: Vec<String>,
     /// The build's whole output: [`Home::build_log`], or [`safe_log`].
     pub log: PathBuf,
+    /// Whether the reason is rig's own account of the cause ([`Explained`]).
+    explained: bool,
 }
 
 impl BuildFailure {
@@ -97,6 +99,21 @@ impl BuildFailure {
             .map(String::as_str)
             .collect::<Vec<_>>()
             .join("\n")
+    }
+
+    /// The [`BUILD_SAYS`] line for a failure rig explained: its reason on
+    /// one line, without the closing period, as a notice goes on after it.
+    fn explanation(&self) -> Option<String> {
+        self.explained.then(|| {
+            let mut line = BUILD_SAYS.to_owned();
+            for (index, part) in self.reason.lines().map(str::trim).enumerate() {
+                if index > 0 {
+                    line.push_str(if line.ends_with(':') { " " } else { "; " });
+                }
+                line.push_str(part);
+            }
+            line.trim_end_matches('.').to_owned()
+        })
     }
 
     /// What to tell about it after a build whose output went as `output`
@@ -417,7 +434,8 @@ fn local_crates(home: &Home, plugins: &config::Plugins) -> Result<()> {
 
 /// `rig build`, holding the root's build lock. It always stages, so it also
 /// retries a build that was rolled back. Run by an agent's `/reload`
-/// (`RIG_SESSION` set), it stages for that agent's launcher alone.
+/// (`RIG_SESSION` set), it stages for that agent's launcher alone. The error
+/// of a failure rig explained is its [`BUILD_SAYS`] line, after the log's path.
 pub fn build(launch: &Launch) -> Result<()> {
     let home = &launch.home();
     let _lock = locks::hold_build_lock(home, BuildOutput::Live)?;
@@ -425,12 +443,15 @@ pub fn build(launch: &Launch) -> Result<()> {
         Some(session) => home.staged_for(session),
         None => home.staged(),
     };
-    Ok(compile(
-        launch,
-        &staged,
-        Staging::Always,
-        BuildOutput::Live,
-    )?)
+    compile(launch, &staged, Staging::Always, BuildOutput::Live).map_err(|failure| {
+        match failure.explanation() {
+            Some(line) => {
+                eprintln!("whole output: {}", failure.log.display());
+                line.into()
+            }
+            None => failure.into(),
+        }
+    })
 }
 
 /// `rig plugin check --build`, holding the root's build lock: builds the
@@ -690,7 +711,8 @@ impl BuildLog {
     /// with cargo's first errors unless rig [`Explained`] it.
     fn fail(mut self, at: FailedAt, failure: &(dyn std::error::Error + 'static)) -> BuildFailure {
         let reason = failure.to_string();
-        let errors = match failure.is::<Explained>() {
+        let explained = failure.is::<Explained>();
+        let errors = match explained {
             true => Vec::new(),
             false => first_errors(self.lines.iter().map(String::as_str), ERROR_LINES)
                 .into_iter()
@@ -703,6 +725,7 @@ impl BuildLog {
             reason,
             errors,
             log: self.path,
+            explained,
         }
     }
 }
@@ -1001,11 +1024,7 @@ fn check_bevy(
             _ => None,
         });
         let lock = fs::read_to_string(launch.home().project().join("Cargo.lock"));
-        let pins = bevy_pins(local, &bevy_crates(&lock.unwrap_or_default()));
-        if pins.is_empty() {
-            return failure;
-        }
-        Explained(pinned_bevy(&failure, &pins)).into()
+        unresolved(failure, &log.lines, local, &lock.unwrap_or_default())
     })?;
     check_rig(&packages, rig_crates, rig_version)?;
     let Some((bevy, version)) = packages.iter().find_map(|line| {
@@ -1029,6 +1048,32 @@ fn check_bevy(
         ),
     })
     .into())
+}
+
+/// The error for cargo's `failure` to resolve the agent project, after the
+/// output `lines`, with the plugins in `local` and the Cargo.lock `lock`:
+/// [`pinned_bevy`] when cargo's first error is a version conflict over a
+/// Bevy crate and a plugin has a [`bevy_pins`] requirement, else `failure`.
+fn unresolved<'a>(
+    failure: Box<dyn std::error::Error>,
+    lines: &[String],
+    local: impl IntoIterator<Item = &'a Path>,
+    lock: &str,
+) -> Box<dyn std::error::Error> {
+    let bevy = bevy_crates(lock);
+    let first = first_errors(lines.iter().map(String::as_str), 1);
+    // Cargo quotes the crate as `name` or as `name = "requirement"`.
+    let conflict = first
+        .first()
+        .and_then(|line| line.strip_prefix("error: failed to select a version for"))
+        .and_then(|rest| rest.split('`').nth(1))
+        .and_then(|quote| quote.split_whitespace().next())
+        .is_some_and(|name| bevy.contains(name));
+    let pins = bevy_pins(local, &bevy);
+    if !conflict || pins.is_empty() {
+        return failure;
+    }
+    Explained(pinned_bevy(&failure, &pins)).into()
 }
 
 /// The error for cargo's `failure` to resolve a graph in which plugins ask
