@@ -1390,8 +1390,7 @@ fn tree(launch: &Launch, args: &[&str], log: &mut BuildLog) -> Result<Vec<String
     if !status.success() {
         return Err("cargo could not resolve the agent project's dependencies".into());
     }
-    // `cargo build` may not repeat a warning, having nothing left to fetch.
-    log.log_held();
+    log.held.clear();
     Ok(String::from_utf8_lossy(&stdout)
         .lines()
         .map(str::to_owned)

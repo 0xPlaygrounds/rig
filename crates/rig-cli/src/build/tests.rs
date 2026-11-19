@@ -1333,11 +1333,10 @@ fn a_foreign_bevy_is_refused_before_cargo_compiles_and_the_advice_leads() {
             assert!(shown.lines().any(|shown| shown == line), "{shown:?}");
         }
         assert!(shown.contains(frame), "{shown}");
-        // `cargo build` may say it again on screen, in its own turn, and it
-        // may have nothing left to fetch, so the log keeps it.
+        // `cargo build` says it again, in its own turn.
         assert!(!shown.contains(warning), "{shown}");
         let logged = fs::read_to_string(home.build_log()).unwrap_or_default();
-        assert!(logged.contains(warning), "{logged}");
+        assert!(!logged.contains(warning), "{logged}");
         assert!(logged.contains("Updating crates.io index"), "{logged}");
         assert!(!logged.contains("Fetch"), "{logged}");
     }
@@ -1420,4 +1419,5 @@ fn a_foreign_bevy_is_refused_before_cargo_compiles_and_the_advice_leads() {
         .map(|failure| failure.to_string())
         .unwrap_or_default();
     assert!(told.contains("no matching package named `serde`"), "{told}");
+
 }
