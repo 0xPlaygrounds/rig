@@ -484,27 +484,18 @@ fn usage(
         lines.push(format!("This turn: {turn}."));
     }
     let limit = InputLimit::of(limit, connection);
-    let context = match stale {
-        Some(stale) => stale.estimate.map(|estimate| estimate.tokens),
-        None => last.context(),
-    };
+    let context = last.context().filter(|_| stale.is_none());
     match context.map(|tokens| ContextUse { tokens, limit }) {
         None if stale.is_some() => {
             lines.push("Context: unknown until the next reply.".to_owned());
         }
         Some(context) => {
-            let (about, until) = match stale {
-                Some(_) => ("~", ", estimated until the next reply"),
-                None => ("", ""),
-            };
             let unlisted = if context.limit.is_none() {
                 ", the model's input limit is not in the catalog"
             } else {
                 ""
             };
-            lines.push(format!(
-                "Context: {about}{context} tokens{unlisted}{until}."
-            ));
+            lines.push(format!("Context: {context} tokens{unlisted}."));
         }
         None if spent.calls > 0 => {
             lines.push("Context: not reported by the provider.".to_owned());

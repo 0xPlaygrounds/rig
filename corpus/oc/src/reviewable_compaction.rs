@@ -1,31 +1,22 @@
-//! Reviewable, reversible compaction. `rig_basics::compaction`'s `/compact [focus]`
+//! Reviewable compaction. `rig_basics::compaction`'s `/compact [focus]`
 //! summarizes everything before the newest turns (two by default,
 //! `[reviewable-compaction] keep_turns`), steered by the focus, and this
 //! plugin holds the summary for review before it replaces anything:
 //! Accept, Edit (the summary as an editable answer, or in `$VISUAL` or
 //! `$EDITOR` with the `tui` feature), Regenerate or Cancel. A run nobody
 //! answers, and an automatic compaction, are not held.
-//!
-//! Every compaction keeps what it replaced in the session (rig-memory's
-//! [`Compacted`]), so `/uncompact` lists them and `/uncompact N` puts back
-//! what compaction N summarized, with the message ids it had, undoing the
-//! later ones that folded it in, after checking the result fits the
-//! model's input limit. Messages added after the summary stay after them.
 
-use rig_basics::compaction::{
-    CompactReason, CutPoint, Summarizing, Uncompact, summarized_prefix, summary_author, summary_in,
-};
+use rig_basics::compaction::{CompactReason, CutPoint, Summarizing, summarized_prefix};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{Message, tokens_label};
-use rig_harness::rig_ecs::session_log::SessionStore;
-use rig_harness::rig_memory::{Compacted, LogRecord, SummaryState, estimate_tokens, undo_summary};
+use rig_harness::rig_memory::{SummaryState, estimate_tokens};
 use serde::Deserialize;
 
 /// The plugin's settings table.
 /// user asked for makes: before the newest turns.
 pub const NAME: &str = "reviewable-compaction";
 
-/// The review of `/compact`'s summary, its cut, and `/uncompact`.
+/// The review of `/compact`'s summary, and its cut.
 #[derive(Default)]
 pub struct ReviewableCompactionPlugin;
 
@@ -41,12 +32,7 @@ impl Plugin for ReviewableCompactionPlugin {
                 ),
             )
             .add_observer(reviewed)
-            .add_observer(edited)
-            .add_command(
-                "uncompact",
-                "List this session's compactions, or put back what compaction N summarized",
-                uncompact,
-            );
+            .add_observer(edited);
         #[cfg(feature = "tui")]
         app.add_systems(Update, editor::take_edit);
     }
@@ -147,11 +133,7 @@ fn keep_newest_turns(
                 };
             }
         }
-        let end = summarizing
-            .keep_from
-            .and_then(|upto| conversation.index_of(upto))
-            .unwrap_or(messages.len());
-        let older = messages.get(..end).unwrap_or_default();
+        let older = &summarizing.replaces;
         let replaces = Replaces(older.len(), estimate_tokens(older));
         commands.entity(call).try_insert(replaces);
     }
@@ -273,131 +255,6 @@ fn edit(summarizing: &mut Summarizing, text: Option<String>) {
     if let Some(text) = text.filter(|text| !text.trim().is_empty()) {
         summarizing.summary = Some(text.trim().to_owned());
     }
-}
-
-/// `HH:MM` UTC of `ms` since the Unix epoch.
-fn clock(ms: u64) -> String {
-    let minutes = ms / 60_000;
-    format!("{:02}:{:02} UTC", (minutes / 60) % 24, minutes % 60)
-}
-
-/// `/uncompact`: lists the compactions to choose from (a picker, or
-/// notices for a run nobody answers); `/uncompact N` puts back what the
-/// `N`th summarized, undoing the later ones first.
-fn uncompact(
-    In(args): In<CommandArgs>,
-    agents: Query<(
-        &AgentId,
-        &Conversation,
-        Option<&Connection>,
-        Has<ActiveTurn>,
-    )>,
-    store: Option<Res<SessionStore>>,
-    answerers: Answerers,
-    mut commands: Commands,
-    mut notices: MessageWriter<Notice>,
-) {
-    let agent = args.agent;
-    let Ok((id, conversation, connection, busy)) = agents.get(agent) else {
-        return;
-    };
-    let store = store.as_deref().map(|store| &*store.0);
-    let compactions: Vec<Compacted> = Compacted::of(conversation).map(|(_, it)| it).collect();
-    if args.args.is_empty() {
-        let lines = list(store, &id.0, &compactions);
-        if lines.is_empty() {
-            let text = "No compaction of this conversation to undo.";
-            notices.write(Notice::info(agent, text));
-        } else if answerers.can_answer(Some(agent)) {
-            let picker = Picker::new("Undo a compaction").for_agent(agent);
-            let picker = lines
-                .into_iter()
-                .enumerate()
-                .fold(picker, |picker, (at, line)| {
-                    picker.item(line, format!("uncompact {}", at + 1))
-                });
-            commands.spawn(picker);
-        } else {
-            for line in lines {
-                notices.write(Notice::info(agent, line));
-            }
-            let text = "/uncompact N puts back what compaction N summarized.";
-            notices.write(Notice::info(agent, text));
-        }
-        return;
-    }
-    if busy {
-        notices.write(Notice::turn_running(agent));
-        return;
-    }
-    let chosen = args.args.trim().parse::<usize>().ok();
-    let Some(undo) = chosen
-        .filter(|&n| n >= 1)
-        .and_then(|n| compactions.len().checked_sub(n - 1))
-        .filter(|&undo| undo > 0)
-    else {
-        let text = format!(
-            "/uncompact takes a compaction from 1 to {}",
-            compactions.len()
-        );
-        notices.write(Notice::error(agent, text));
-        return;
-    };
-    let Some(store) = store else {
-        let text = "Cannot uncompact: the session is not saved.";
-        notices.write(Notice::error(agent, text));
-        return;
-    };
-    // What the conversation would be, measured before anything changes.
-    let mut probe = conversation.0.clone();
-    for _ in 0..undo {
-        if let Err(why) = undo_summary(&mut probe, store, &id.0, summary_author()) {
-            notices.write(Notice::error(agent, format!("Cannot uncompact: {why}.")));
-            return;
-        }
-    }
-    let tokens = estimate_tokens(probe.messages());
-    let spec = connection.map(|connection| &*connection.spec);
-    if let Some((spec, limit)) = spec.and_then(|spec| Some((spec, spec.input_limit()?)))
-        && tokens > u64::from(limit)
-    {
-        let text = format!(
-            "Cannot uncompact: the conversation would be about {} tokens, more than {}'s \
-             input limit of {}.",
-            tokens_label(tokens),
-            spec.reference(),
-            tokens_label(u64::from(limit))
-        );
-        notices.write(Notice::error(agent, text));
-        return;
-    }
-    for _ in 0..undo {
-        commands.trigger(Uncompact { entity: agent });
-    }
-}
-
-/// A line for each of `compactions`, oldest first: when the session's log
-/// says it was made, how many messages it replaced and its summary's first
-/// line.
-fn list(store: Option<&dyn Store>, log: &str, compactions: &[Compacted]) -> Vec<String> {
-    let records = store
-        .and_then(|store| history(store, log).ok())
-        .unwrap_or_default();
-    let made = |summary| {
-        records.iter().find_map(|(stamp, record)| match record {
-            LogRecord::Change(recorded) if summary_in(&recorded.change) == Some(summary) => {
-                Some(clock(stamp.t))
-            }
-            _ => None,
-        })
-    };
-    let line = |(at, compacted): (usize, &Compacted)| {
-        let first = compacted.state.summary.lines().next().unwrap_or_default();
-        let when = made(compacted.summary).unwrap_or_else(|| "unsaved".to_owned());
-        let replaced = compacted.replaced.len();
-        format!("{}. {when}, {replaced} messages replaced: {first}", at + 1)
-    };
-    compactions.iter().enumerate().map(line).collect()
 }
 
 #[cfg(feature = "tui")]

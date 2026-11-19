@@ -245,9 +245,8 @@ model, the reasoning setting, what the agent is doing (and for how long, see
 [If rig seems stuck](#if-rig-seems-stuck)), the session's tokens (uncached input,
 output, cache reads and writes), its cost (the provider's figure, else the
 catalog's list price; `+` when some calls had no price) and the context in
-use against the model's window: after `/compact`, until the next reply
-measures it, an estimate marked `~` (`ctx ~12k/1.0M`), and `?` where
-nothing estimated it. `/usage` breaks them down. Key hints
+use against the model's window, or `?` after a compaction, until the next
+reply measures it (`ctx ?/1.0M`). `/usage` breaks them down. Key hints
 (`rig_tui::hints::KeyHintsPlugin`) lists those keys; disabled, that row is
 empty, but a question's keys and a panel's "Esc gives them back" still show.
 While the agent works, a
@@ -458,14 +457,14 @@ Compaction works as in the [pi coding agent](https://github.com/badlogic/pi-mono
 It counts the context as the tokens the provider reported for the last reply,
 plus an estimate of the messages after it (four characters a token; the messages
 alone when no usage was reported), and compacts when that leaves less than
-`reserve_tokens` (16384) of the model's context window free. It checks at the
-end of each run that answered, against the window of the model that wrote the
-last reply, holding the answer until the summary is in, which goes to that
-model (a message sent meanwhile goes on after it); after a run that ended in
-an error, against what that run left in the conversation, in a compaction of
-its own; before a prompt is sent (everything before the message the prompt
-delivered, which is neither counted nor cut); and before each request after
-tool results. The older messages are then summarized by the model, in a
+`reserve_tokens` (16384) of the model's input limit free (its context window,
+or the smaller input limit some models have). It checks before each request of
+a turn, against the model that request goes to: before a prompt is sent
+(everything before the message the prompt delivered, which is neither counted
+nor cut), and after tool results. It does not compact right after an answer,
+where pi does: the next prompt compacts first, and waits for the summary. The
+request waits while the summary is written, and is built again once it is in.
+The older messages are then summarized by the model, in a
 separate call, into a structured checkpoint (goal, constraints, progress,
 decisions, next steps, critical context) that requests send in their place,
 followed by the files read and changed. About `keep_recent_tokens` (20000) of
@@ -473,22 +472,22 @@ the newest messages stay as they are, never cut between a tool call and its
 result; when the cut falls inside a turn, that turn's earlier part gets a
 summary of its own. A later compaction updates the previous summary with the
 new messages. When the provider refuses a request as too long, or the window
-cuts a reply with no tool calls short, rig drops that attempt, compacts and
+cuts a reply short (it stopped at a limit having written less than the request
+asked for), rig drops that attempt, runs none of its tool calls, compacts and
 sends the request once more; when there is nothing to compact, or that summary
 fails or is cancelled, the turn stops there with a notice, and the user's
 prompt and its attachments stay in the conversation; a reply cut short that is
-left out this way stays in the saved session, where no request sends it. A
-summary that fails or is cut short replaces nothing, and a notice says why. A
-summary call that fails with a retryable error is retried as pi retries it,
-with pi's defaults rather than `[retry]`, which covers a turn's own model
-calls only: by its error message, up to three times, waiting 2, 4 then 8
-seconds (doubling, at most 60), not as long as `Retry-After` asks; any other
-error is not retried. A message sent while `/compact`, or the compaction after
-a turn that ended in an error, writes its summary is sent, attachments and
-all, once that compaction ends. Stopping the turn (Esc) cancels a summary
-being written, and with it the turn; a message the turn had taken into the
-conversation while a summary after its run was written stays there for the
-next request, where pi answers it at once, and one still waiting behind it
+left out stays in the saved session, where no request sends it. One request is
+recovered once: a second refusal fails the turn, until a message of yours goes
+into the turn or a whole reply comes. A summary that fails, is cut short or is
+blank replaces nothing, and so does one whose messages changed while it was
+written; a notice says why. A summary call that fails is retried as a turn's
+own model calls are, by `[retry]` and after the wait the provider asks for,
+each summary call on a count of its own. A message sent while `/compact`
+writes its summary goes on once it ends, as after any reply: a steering one
+first, queued ones after, in the order they were sent, attachments and all.
+Stopping the turn (Esc) cancels a summary
+being written, and with it the turn; a message waiting behind it
 comes back to the input as its text only, without its attachments. As in pi,
 compaction summarizes only what lies before the newest `keep_recent_tokens`: a
 small window near its limit compacts again whenever something lies before

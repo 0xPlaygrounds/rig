@@ -74,15 +74,8 @@ fn messages(app: &App, agent: Entity) -> Vec<Message> {
         .unwrap_or_default()
 }
 
-/// The ids of the entries of `agent`.
-fn ids(app: &App, agent: Entity) -> Vec<MessageId> {
-    let conversation = app.world().get::<Conversation>(agent);
-    let ids = conversation.map(|it| it.entries().map(|entry| entry.id).collect());
-    ids.unwrap_or_default()
-}
-
 #[test]
-fn a_reviewed_compaction_is_edited_saved_and_undone() {
+fn a_reviewed_compaction_is_edited_and_saved() {
     let store = MemoryStore::default();
     let model = MockCompletionModel::from_stream_turns([
         reply("SUMMARY v1"),
@@ -107,7 +100,6 @@ fn a_reviewed_compaction_is_edited_saved_and_undone() {
         .ok();
     }
     app.update();
-    let original = ids(&app, agent);
 
     // Regenerate, then Edit, then Accept.
     app.world_mut()
@@ -137,7 +129,6 @@ fn a_reviewed_compaction_is_edited_saved_and_undone() {
     // Reloaded: the same request, and the log keeps the first message.
     let model = MockCompletionModel::from_stream_turns([
         reply("Answer after reload."),
-        reply("Answer after uncompact."),
         reply("SUMMARY v3"),
     ]);
     let (mut app, wakes, agent) = start(&store, &model, vec![Answer::choice("cancel")]);
@@ -157,36 +148,12 @@ fn a_reviewed_compaction_is_edited_saved_and_undone() {
     });
     assert!(kept_first, "the log keeps the original first message");
 
-    // `/uncompact`, choosing the compaction: the 12 turns with their ids,
-    // then those after.
-    app.world_mut().trigger(RunCommand::new(agent, "uncompact"));
-    app.update();
-    let world = app.world_mut();
-    let picker = world
-        .query_filtered::<Entity, With<Picker>>()
-        .iter(world)
-        .next();
-    assert!(picker.is_some(), "the compactions to choose from");
-    if let Some(picker) = picker {
-        world.trigger(Pick::person(picker, Some(Chosen::item(0))));
-    }
-    app.update();
-    let restored = ids(&app, agent);
-    assert_eq!(restored.get(..original.len()), Some(original.as_slice()));
-    say(&mut app, &wakes, agent, "Q15: after uncompact");
-    let (all, _) = shape(model.requests().get(1));
-    assert!(!all.contains("SUMMARY"), "{all}");
-    let at = |text: &str| all.find(text).unwrap_or(usize::MAX);
-    assert!(at("Q01:") < at("A01:") && at("A01:") < at("Q12:"), "{all}");
-    assert!(at("Q12:") < at("Q13:") && at("Q13:") < at("Q14:"), "{all}");
-    assert!(at("Q14:") < usize::MAX, "{all}");
-
     // `/compact`, then Cancel: nothing changes.
     let before = messages(&app, agent);
     let ended = app.world().resource::<Ended>().0.len();
     app.world_mut().trigger(RunCommand::new(agent, "compact"));
     until_ended(&mut app, &wakes, ended + 1);
-    assert_eq!(model.requests().len(), 3, "the summary was asked for");
+    assert_eq!(model.requests().len(), 2, "the summary was asked for");
     assert_eq!(messages(&app, agent), before);
 }
 

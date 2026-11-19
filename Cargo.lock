@@ -13979,7 +13979,6 @@ dependencies = [
  "crossterm",
  "libc",
  "ratatui-core",
- "regex",
  "rig-cassette",
  "rig-core",
  "rig-ecs",

@@ -79,7 +79,7 @@ before anything is admitted, as it keeps each within its parents.
 
 A turn's request asks for its own output limit, else the model's, fitted to
 the room its input leaves in the window, as pi asks; compaction keeps
-`[compaction] reserve_tokens` of the window free for the reply.
+`[compaction] reserve_tokens` of the model's input limit free for the reply.
 
 `/usage` reports what the agent, the agents below it (despawned ones
 included) and the session spent: provider-supplied cost when available, otherwise API list-price
