@@ -31,7 +31,7 @@ use super::panel::{
     self, PanelCanvas, PanelSpawns, Placement, RedrawArea, RequestRedraw, TerminalSize, TuiPanel,
 };
 use super::pick::{
-    ChoiceAction, Choices, InlineStrip, Item, Listing, PickerInput, Row, TickBox, detail_column,
+    ChoiceAction, Choices, InlineStrip, Item, Listing, PickerInput, Row, detail_column,
 };
 use super::renderers::{
     CallState, LookLine, Place, Renderers, ToolRender, UNNAMED_HOLD, reasoning_lines, reply_lines,
@@ -58,7 +58,7 @@ use rig_ecs::tasks::Wake;
 use rig_ecs::tools::{InReply, ToolRequest};
 use rig_ecs::turn::{ModelRequest, SentTo};
 use rig_harness::main_agent::ShownAgent;
-use rig_harness::pick::{PickPreview, Picker};
+use rig_harness::pick::{PickPreview, Picker, TickBox};
 use rig_harness::prelude::{CallOutput, ToolProgress};
 
 /// Most items the completion list shows at once.

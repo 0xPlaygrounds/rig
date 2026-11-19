@@ -9,6 +9,8 @@ use rig_harness_test_support::scratch_home;
 
 use super::*;
 
+const SESSIONS: &str = "rig_basics::sessions::SessionsPlugin";
+
 /// Every notice written so far, and why each refused line was.
 #[derive(Resource, Default)]
 struct Told(Vec<String>);
@@ -1016,6 +1018,55 @@ fn a_branch_unticked_goes_into_off_and_one_ticked_comes_out() {
     assert_eq!(chosen.off, ["rig-basics/sessions"], "{}", settings(&home));
     assert!((chosen.own.iter()).any(|plugin| plugin == "rig_basics::sessions::SessionsPlugin"));
     assert!((chosen.on.iter()).any(|plugin| plugin == "rig_basics::telemetry::usage::UsagePlugin"));
+}
+
+/// The preview of a branch says what its tick box shows and what Enter
+/// does from there, and follows the box without the highlight moving.
+#[test]
+fn a_branchs_preview_follows_its_tick_box() {
+    let opened = |name: &str, settings: &str| {
+        let home = scratch_home(name);
+        fs::create_dir_all(home.root()).ok();
+        fs::write(home.settings(), settings).ok();
+        let (mut app, agent) = app(&home, true);
+        open(&mut app, agent);
+        let (list, shown) = picker(&mut app).unwrap_or((agent, Picker::default()));
+        (app, list, shown)
+    };
+    let highlight = |app: &mut App, list: Entity, shown: &Picker, label: &str| {
+        let row = at(shown, label).unwrap_or(usize::MAX);
+        app.world_mut().entity_mut(list).insert(Highlighted(row));
+        app.update();
+    };
+    let says = |app: &App, list: Entity, what: &str, not: &str| {
+        let text = preview(app, list);
+        assert!(text.contains(what) && !text.contains(not), "{text}");
+    };
+
+    let settings = "[plugins]\noff = [\"rig-basics/telemetry\"]\n";
+    let (mut app, list, shown) = opened("plugins-preview-box", settings);
+    // Sessions on and Forks off by default: `[~]`.
+    highlight(&mut app, list, &shown, "sessions");
+    says(&app, list, "Partly on", "Off");
+    tick(&mut app, list, &[], &["sessions"]);
+    says(&app, list, "Off once you leave", "On. Enter");
+    tick(&mut app, list, &[], &[]);
+    says(&app, list, "Partly on", "Off once you leave");
+
+    highlight(&mut app, list, &shown, "telemetry");
+    says(&app, list, "[plugins] off names it", "On. Enter");
+    tick(&mut app, list, &["telemetry"], &[]);
+    says(&app, list, "Comes out of [plugins] off", "names it");
+
+    let settings = format!("[plugins]\ndisable = [\"{SESSIONS}\"]\n");
+    let (mut app, list, shown) = opened("plugins-preview-none-on", &settings);
+    highlight(&mut app, list, &shown, "sessions");
+    says(
+        &app,
+        list,
+        "Enter turns each of them on",
+        "Enter turns it off",
+    );
 }
 
 #[test]

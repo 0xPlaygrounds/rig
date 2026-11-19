@@ -28,7 +28,7 @@ use rig_harness::harness_protocol::config::{
     self, BUILT_IN, BuiltIn, Extra, Plugins, SettingsFile,
 };
 use rig_harness::harness_protocol::{self, Home};
-use rig_harness::pick::{Highlighted, PickPreview, Picked, Picker, Ticked};
+use rig_harness::pick::{Highlighted, PickPreview, Picked, Picker, TickBox, Ticked};
 use rig_harness::prelude::*;
 use rig_harness::services::RigHome;
 
@@ -233,10 +233,10 @@ impl Tree {
         }
     }
 
-    /// What the preview says of node `node`.
-    fn about(&self, node: usize) -> String {
+    /// What the preview says of node `node` while `on` is ticked.
+    fn about(&self, node: usize, on: &[bool]) -> String {
         match self.nodes.get(node) {
-            Some((Node::Branch { name, .. }, _)) => Some(self.branch_about(name)),
+            Some((Node::Branch { name, .. }, _)) => Some(self.branch_about(name, node, on)),
             Some((Node::Parts, _)) => Some(PARTS_ABOUT.to_owned()),
             Some((node @ Node::Part(_), _)) => self.part(node).map(Part::about),
             Some((node, _)) => self.row(node).map(|row| row.about.clone()),
@@ -245,21 +245,45 @@ impl Tree {
         .unwrap_or_default()
     }
 
-    /// What the preview says of the branch `name`.
-    fn branch_about(&self, name: &str) -> String {
+    /// What the preview says of the branch `name` at node `node` while `on`
+    /// is ticked: the state its tick box shows, and what Enter does there.
+    fn branch_about(&self, name: &str, node: usize, on: &[bool]) -> String {
         let held: Vec<&str> = (self.rows.iter())
             .filter(|row| config::holds(name, &row.krate, &row.plugin))
             .map(|row| row.name.as_str())
             .collect();
-        let state = if self.before.off.iter().any(|off| off == name) {
-            "Off: [plugins] off names it, which keeps each of its plugins off whatever its own \
-             choice. Enter turns it back on, and each plugin comes back as its own choice says."
+        let parents: Vec<_> = self.nodes.iter().map(|(_, parent)| *parent).collect();
+        let ticked: Vec<usize> = (on.iter().enumerate())
+            .filter_map(|(at, on)| on.then_some(at))
+            .collect();
+        let named = self.before.off.iter().any(|off| off == name);
+        const KEEPS: &str = "Enter turns it off, into [plugins] off, and each plugin keeps its \
+                             own choice for when it is back on.";
+        let state = match (ticked.contains(&node), TickBox::of(&parents, node, &ticked)) {
+            (false, _) if named => {
+                "Off: [plugins] off names it, which keeps each of its plugins off whatever its \
+                 own choice. Enter turns it back on, and each plugin comes back as its own \
+                 choice says."
+                    .to_owned()
+            }
+            (false, _) => {
+                "Off once you leave: it goes into [plugins] off, which keeps each of its plugins \
+                 off whatever its own choice. Enter turns it back on."
+                    .to_owned()
+            }
+            (true, TickBox::Off) => {
+                "On, with every plugin off. Enter turns each of them on.".to_owned()
+            }
+            (true, TickBox::Mixed) => format!("Partly on: some of its plugins are off. {KEEPS}"),
+            (true, TickBox::On) => format!("On. {KEEPS}"),
+        };
+        let back = if named && ticked.contains(&node) {
+            "Comes out of [plugins] off once you leave. "
         } else {
-            "On. Enter turns it off, into [plugins] off, and each plugin keeps its own choice for \
-             when it is back on; on with every plugin off, Enter turns each of them on."
+            ""
         };
         format!(
-            "{name}\nBranch of {} plugins: {}.\n\n{state}\n",
+            "{name}\nBranch of {} plugins: {}.\n\n{back}{state}\n",
             held.len(),
             held.join(", ")
         )
@@ -508,7 +532,7 @@ fn list(commands: &mut Commands, tree: Tree, on: &[bool], agent: Entity, at: usi
         .collect();
     // The terminal view gives the preview its half of the screen from the
     // first frame only when the picker comes with one.
-    let shown = tree.about(at);
+    let shown = tree.about(at, on);
     let mut list = commands.spawn((
         picker,
         PickPreview::Text(shown),
@@ -1045,19 +1069,31 @@ fn states(
     parts.join(" · ")
 }
 
-/// Shows the highlighted row's detail beside each `/plugins` picker.
+/// Shows the highlighted row's detail beside each `/plugins` picker, as
+/// its rows are ticked now.
 fn preview(
     pickers: Query<
-        (Entity, &PluginsPicker, &Highlighted, Option<&PickPreview>),
-        Changed<Highlighted>,
+        (
+            Entity,
+            &PluginsPicker,
+            &Picker,
+            &Highlighted,
+            Option<&Ticked>,
+            Option<&PickPreview>,
+        ),
+        Or<(Changed<Highlighted>, Changed<Ticked>)>,
     >,
     mut commands: Commands,
 ) {
-    for (entity, picker, highlighted, shown) in &pickers {
-        if highlighted.0 >= picker.tree.nodes.len() {
+    for (entity, list, picker, highlighted, ticked, shown) in &pickers {
+        if highlighted.0 >= list.tree.nodes.len() {
             continue;
         }
-        let preview = PickPreview::Text(picker.tree.about(highlighted.0));
+        let on: Vec<bool> = match ticked {
+            Some(ticked) => ticks(list.tree.nodes.len(), &ticked.0),
+            None => picker.items.iter().map(|item| item.checked).collect(),
+        };
+        let preview = PickPreview::Text(list.tree.about(highlighted.0, &on));
         if shown != Some(&preview) {
             commands.entity(entity).insert(preview);
         }
