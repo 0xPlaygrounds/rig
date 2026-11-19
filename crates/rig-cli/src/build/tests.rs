@@ -444,24 +444,103 @@ fn an_explained_failure_is_one_line_for_reload() {
     assert_eq!(plain.explanation(), None);
 }
 
-/// cargo's error for a plugin that requires `bevy_app` as `wanted`, when
-/// the agent's Bevy is already selected.
-fn bevy_conflict_error(wanted: &str, after: &str) -> String {
-    format!(
-        "error: failed to select a version for `bevy_app`.\n    \
-         ... required by package `plugin v0.1.0 (https://example.com/plugin#abc)`\n    \
-         ... which satisfies git dependency `plugin` of package `rig-agent v0.1.0`\n\
-         versions that meet the requirements `{wanted}` are: 0.20.0\n\n{after}\
-         all possible versions conflict with previously selected packages\n\n  \
-         previously selected package `bevy_app v{BEVY_VERSION}`\n    \
-         ... which satisfies dependency `bevy_app = \"={BEVY_VERSION}\"` of package `rig-ecs`\n\n\
-         failed to select a version for `bevy_app` which could resolve this conflict\n"
-    )
+/// Real cargo 1.97 output, with its paths shortened and the agent's Bevy
+/// written `AGENT`: a plugin's `bevy_app = "=0.20.0"`, where cargo names the
+/// agent's requirement.
+const PIN_CONFLICT: &str = r#"error: failed to select a version for `bevy_app`.
+    ... required by package `rig-basics v0.46.0 (/h/core)`
+    ... which satisfies path dependency `rig-basics` of package `agent v0.0.0 (/h/agent)`
+versions that meet the requirements `=AGENT` are: AGENT
+
+all possible versions conflict with previously selected packages
+
+  previously selected package `bevy_app v0.20.0`
+    ... which satisfies dependency `bevy_app = "=0.20.0"` of package `pin_plugin v0.1.0 (/h/plug)`
+    ... which satisfies path dependency `pin_plugin` of package `agent v0.0.0 (/h/agent)`
+
+failed to select a version for `bevy_app` which could resolve this conflict
+"#;
+
+/// The same for `bevy_app = ">=0.20.0, <0.20.1"`.
+const RANGE_CONFLICT: &str = r#"error: failed to select a version for `bevy_app`.
+    ... required by package `rig-basics v0.46.0 (/h/core)`
+    ... which satisfies path dependency `rig-basics` of package `agent v0.0.0 (/h/agent)`
+versions that meet the requirements `=AGENT` are: AGENT
+
+all possible versions conflict with previously selected packages
+
+  previously selected package `bevy_app v0.20.0`
+    ... which satisfies dependency `bevy_app = ">=0.20.0, <0.20.1"` of package `pin_plugin v0.1.0 (/h/plug)`
+    ... which satisfies path dependency `pin_plugin` of package `agent v0.0.0 (/h/agent)`
+
+failed to select a version for `bevy_app` which could resolve this conflict
+"#;
+
+/// A range with several versions, none the agent's: cargo names the
+/// plugin's requirement and the agent's Bevy as selected.
+const PLUGIN_SIDE_CONFLICT: &str = r#"error: failed to select a version for `bevy_app`.
+    ... required by package `pin_plugin v0.1.0 (/h/plug)`
+    ... which satisfies path dependency `pin_plugin` of package `agent v0.0.0 (/h/agent)`
+versions that meet the requirements `>=0.20.0-rc.1, <0.20.1` are: 0.20.0, 0.20.0-rc.2, 0.20.0-rc.1
+
+all possible versions conflict with previously selected packages
+
+  previously selected package `bevy_app vAGENT`
+    ... which satisfies dependency `bevy_app = "=AGENT"` of package `rig-basics v0.46.0 (/h/core)`
+    ... which satisfies path dependency `rig-basics` of package `agent v0.0.0 (/h/agent)`
+
+failed to select a version for `bevy_app` which could resolve this conflict
+"#;
+
+/// `bevy_reflect = { version = "0.19", features = ["nope"] }`, a private
+/// copy that needs no other Bevy.
+const PRIVATE_COPY_FEATURE: &str = r#"error: failed to select a version for `bevy_reflect`.
+    ... required by package `pin_plugin v0.1.0 (/h/plug)`
+    ... which satisfies path dependency `pin_plugin` of package `agent v0.0.0 (/h/agent)`
+versions that meet the requirements `^0.19` are: 0.19.1, 0.19.0
+
+package `pin_plugin` depends on `bevy_reflect` with feature `nope` but `bevy_reflect` does not have that feature.
+help: available features: auto_register, debug, default, std
+
+
+failed to select a version for `bevy_reflect` which could resolve this conflict
+"#;
+
+/// A missing feature on the agent's own minor, with `[patch]` giving the
+/// agent's version from a path: cargo adds the conflict of the older version.
+const PATCHED_FEATURE: &str = r#"error: failed to select a version for `bevy_app`.
+    ... required by package `pin_plugin v0.1.0 (/h/plug)`
+    ... which satisfies path dependency `pin_plugin` of package `agent v0.0.0 (/h/agent)`
+versions that meet the requirements `^0.20` are: AGENT, 0.20.0
+
+package `pin_plugin` depends on `bevy_app` with feature `nope` but `bevy_app` does not have that feature.
+help: available features: bevy_reflect, default, std
+
+
+all possible versions conflict with previously selected packages
+
+  previously selected package `bevy_app vAGENT (/h/patched/bevy_app)`
+    ... which satisfies dependency `bevy_app = "^0.20"` of package `pin_plugin v0.1.0 (/h/plug)`
+    ... which satisfies path dependency `pin_plugin` of package `agent v0.0.0 (/h/agent)`
+
+failed to select a version for `bevy_app` which could resolve this conflict
+"#;
+
+/// `bevy_ecs = "=9.9"`, which no Bevy meets: cargo's words say so.
+const NO_SUCH_VERSION: &str = r#"error: failed to select a version for the requirement `bevy_ecs = "=9.9"`
+candidate versions found which didn't match: AGENT, 0.20.0, 0.20.0-rc.2, ...
+location searched: crates.io index
+required by package `pin_plugin v0.1.0 (/h/plug)`
+"#;
+
+/// `cargo`, one of the above, for the agent's Bevy.
+fn real(cargo: &str) -> String {
+    cargo.replace("AGENT", BEVY_VERSION)
 }
 
 /// A resolve failure is put down to Bevy only when cargo's error is a
 /// version conflict over a Bevy crate, whichever side cargo names and
-/// wherever the plugin comes from; any other keeps cargo's words, also
+/// however the requirement is written; any other keeps cargo's words, also
 /// beside a plugin's unrelated Bevy pin.
 #[test]
 fn only_a_bevy_version_conflict_is_explained_by_a_bevy_requirement() {
@@ -476,44 +555,25 @@ fn only_a_bevy_version_conflict_is_explained_by_a_bevy_requirement() {
         let failure = unresolved("cargo failed".into(), &lines, local.iter().copied(), "");
         failure.is::<Explained>().then(|| failure.to_string())
     };
-    // The agent's requirement named, the plugin's as the one selected first.
-    let other_side = format!(
-        "error: failed to select a version for `bevy_app`.\n    \
-         ... required by package `rig-ecs v0.46.0`\n\
-         versions that meet the requirements `={BEVY_VERSION}` are: {BEVY_VERSION}\n\n\
-         all possible versions conflict with previously selected packages\n\n  \
-         previously selected package `bevy_app v0.20.0`\n    \
-         ... which satisfies dependency `bevy_app = \"=0.20.0\"` of package `plugin v0.1.0`\n"
-    );
-    let no_such_version = "error: failed to select a version for the requirement \
-                           `bevy_app = \"=0.20.99\"`\ncandidate versions found which didn't \
-                           match: 0.20.1, 0.20.0\nrequired by package `plugin v0.1.0`\n";
     // Nothing in the agent reads a git plugin's manifest: cargo's words name it.
-    for cargo in [
-        bevy_conflict_error("=0.20.0", ""),
-        other_side,
-        no_such_version.to_owned(),
-    ] {
+    for cargo in [PIN_CONFLICT, RANGE_CONFLICT, PLUGIN_SIDE_CONFLICT].map(real) {
         let told = reason(&cargo, &[]).unwrap_or_default();
         assert!(told.starts_with("a plugin must write"), "{cargo}\n{told}");
-        assert!(told.contains("plugin v0.1.0"), "{cargo}\n{told}");
+        assert!(told.contains("bevy_app"), "{cargo}\n{told}");
     }
-    let missing_feature = bevy_conflict_error(
-        "^0.20",
-        "package `plugin` depends on `bevy_app` with feature `nope` but `bevy_app` does not \
-         have that feature.\n\n",
-    );
+    let named = reason(&real(PLUGIN_SIDE_CONFLICT), &[]).unwrap_or_default();
+    assert!(named.contains("pin_plugin v0.1.0"), "{named}");
     let other = [
-        missing_feature.as_str(),
-        "error: failed to select a version for the requirement `serde = \"^99\"`",
-        "error: no matching package named `serde` found",
-        "error: no matching package named `bevy_reflect` found",
-        "error: failed to get `bevy_reflect` as a dependency of package `plugin v0.1.0`",
-        "error: failed to get `serde` as a dependency of package `bevy_reflect v0.18.0`",
-        "error: failed to parse manifest at `/home/me/bevy/Cargo.toml`",
-        "    Updating crates.io index",
+        real(PRIVATE_COPY_FEATURE),
+        real(PATCHED_FEATURE),
+        real(NO_SUCH_VERSION),
+        "error: failed to select a version for the requirement `serde = \"^99\"`".to_owned(),
+        "error: no matching package named `bevy_reflect` found".to_owned(),
+        "error: failed to get `bevy_reflect` as a dependency of package `plugin v0.1.0`".to_owned(),
+        "error: failed to parse manifest at `/home/me/bevy/Cargo.toml`".to_owned(),
+        "    Updating crates.io index".to_owned(),
     ];
-    let other = other.map(|cargo| reason(cargo, &[root.as_path()]));
+    let other = other.map(|cargo| reason(&cargo, &[root.as_path()]));
     fs::remove_dir_all(&root).ok();
     assert_eq!(other, [const { None }; 8]);
 }
@@ -1178,10 +1238,10 @@ fn pinned_plugin(root: &Path) -> config::Plugins {
 /// change, and shows only cargo's progress. A foreign `bevy_app` or
 /// `bevy_ecs` stops the build with rig's advice ahead of cargo's error, even
 /// when cargo cannot say who pulled it in. Another foreign Bevy crate may be
-/// private to its plugin, so it is named only when the build then fails,
-/// beside the compiler's errors. A resolve failure that is not about Bevy
-/// still shows cargo's error whole. Run with that cargo first on `PATH`, in
-/// a run of its own.
+/// private to its plugin, so it is named only when the compiler then rejects
+/// a crate that depends on it, beside the compiler's first error. A resolve
+/// failure that is not about Bevy still shows cargo's error whole. Run with
+/// that cargo first on `PATH`, in a run of its own.
 #[test]
 fn a_foreign_bevy_is_refused_before_cargo_compiles_and_the_advice_leads() {
     const PROBE: &str = "RIG_BEVY_FIRST_PROBE";
@@ -1193,7 +1253,8 @@ fn a_foreign_bevy_is_refused_before_cargo_compiles_and_the_advice_leads() {
         fs::create_dir_all(&bin).ok();
         fs::write(
             &cargo,
-            "#!/bin/sh\necho \"$1\" >> \"$0.calls\"\n. \"$0.$1\"\n",
+            "#!/bin/sh\necho \"$1\" >> \"$0.calls\"\n\
+             echo \"$1 [$CARGO_TERM_PROGRESS_WHEN]\" >> \"$0.progress\"\n. \"$0.$1\"\n",
         )
         .ok();
         fs::write(bin.join("cargo.build"), ":\n").ok();
@@ -1258,6 +1319,9 @@ fn a_foreign_bevy_is_refused_before_cargo_compiles_and_the_advice_leads() {
         let logged = fs::read_to_string(home.build_log()).unwrap_or_default();
         assert!(!logged.contains(warning), "{logged}");
     }
+    // cargo's progress is left as it is for `cargo build`.
+    let progress = fs::read_to_string(bin.join("cargo.progress")).unwrap_or_default();
+    assert!(!progress.contains("never"), "{progress}");
 
     // Resolved, after good builds that left the same lock.
     let resolved = "case \"$*\" in *--invert*) echo 'pinned v0.1.0' ;; \
@@ -1280,22 +1344,26 @@ fn a_foreign_bevy_is_refused_before_cargo_compiles_and_the_advice_leads() {
         .unwrap_or_default();
     assert!(told.starts_with("the agent project pulls in"), "{told}");
 
-    // Beside the agent's own: fine until the build fails.
+    // Beside the agent's own: fine until the compiler rejects a crate that
+    // depends on it.
     let second_reflect = format!(
-        "case \"$*\" in *--invert*) echo 'pinned v0.1.0' ;; *) echo 'bevy_reflect v0.19.1'; \
-         echo 'bevy_reflect v{BEVY_VERSION}' ;; esac\n"
+        "case \"$*\" in *--invert*) printf 'bevy_reflect v0.19.1\npinned v0.1.0\nagent v0.0.0\n' \
+         ;; *) echo 'bevy_reflect v0.19.1'; echo 'bevy_reflect v{BEVY_VERSION}' ;; esac\n"
     );
     let (calls, shown, failure) = build(&second_reflect);
     assert_eq!(calls, ["tree", "build"]);
     assert!(failure.is_none(), "{failure:?}");
     assert!(!shown.contains("must write"), "{shown}");
-    fs::write(
-        bin.join("cargo.build"),
-        "echo 'error[E0277]: `Uses` is not a `Component`' >&2; exit 101\n",
-    )
-    .ok();
+    let compiler = "error[E0277]: `Uses` is not a `Component`";
+    let fails = |lines: &[&str]| {
+        let echoes: String = lines.iter().map(|l| format!("echo '{l}' >&2; ")).collect();
+        fs::write(bin.join("cargo.build"), format!("{echoes}exit 101\n")).ok();
+    };
+    fails(&[
+        compiler,
+        "error: could not compile `pinned` (lib) due to 1 previous error",
+    ]);
     let (calls, _, failure) = build(&second_reflect);
-    fs::write(bin.join("cargo.build"), ":\n").ok();
     assert_eq!(calls, ["tree", "build", "tree"]);
     let failure = failure.map(|failure| {
         let line = failure.explanation().unwrap_or_default();
@@ -1311,9 +1379,54 @@ fn a_foreign_bevy_is_refused_before_cargo_compiles_and_the_advice_leads() {
         "{reason}"
     );
     assert!(line.starts_with("rig build: Likely cause: "), "{line}");
-    assert_eq!(errors, ["error[E0277]: `Uses` is not a `Component`"]);
+    // The one line `/reload` shows carries the compiler's error too.
+    assert!(line.ends_with(compiler), "{line}");
+    assert_eq!(errors.first().map(String::as_str), Some(compiler));
 
-    let conflict = bevy_conflict_error("=0.20.0", "");
+    // A failure in a crate that does not use that copy, one the compiler did
+    // not reject, or a lookup that fails: nothing about Bevy, and cargo's
+    // warning from the lookup is not logged again.
+    let typo = "error[E0425]: cannot find value `x` in this scope";
+    let elsewhere = [
+        typo,
+        "error: could not compile `other` (lib) due to 1 previous error",
+    ];
+    let linker = [
+        "error: linking with `cc` failed: exit status: 1",
+        "error: could not compile `pinned` (lib) due to 1 previous error",
+    ];
+    let lookup_fails = format!(
+        "case \"$*\" in *--invert*) echo '{warning}' >&2; exit 101 ;; *) echo 'bevy_reflect \
+         v0.19.1'; echo 'bevy_reflect v{BEVY_VERSION}' ;; esac\n"
+    );
+    let warned = [warning, compiler, "error: could not compile `pinned` (lib)"];
+    for (output, tree) in [
+        (&elsewhere[..], &second_reflect),
+        (&linker[..], &second_reflect),
+        (&warned[..], &lookup_fails),
+    ] {
+        fails(output);
+        let (_, _, failure) = build(tree);
+        let told = failure
+            .as_ref()
+            .map(ToString::to_string)
+            .unwrap_or_default();
+        assert!(!told.contains("must write"), "{told}");
+        assert_eq!(failure.as_ref().and_then(BuildFailure::explanation), None);
+        assert!(told.contains(output[0]) || output[0] == warning, "{told}");
+    }
+    let logged = fs::read_to_string(home.build_log()).unwrap_or_default();
+    assert_eq!(logged.matches(warning).count(), 1, "{logged}");
+
+    // A third-party crate named like Bevy, with no copy of the agent's beside
+    // it, is no second Bevy.
+    fails(&[compiler, "error: could not compile `pinned` (lib)"]);
+    let (calls, _, failure) = build("echo 'bevy_mod_outline v0.9.0'\n");
+    fs::write(bin.join("cargo.build"), ":\n").ok();
+    assert_eq!(calls, ["tree", "build"]);
+    assert_eq!(failure.as_ref().and_then(BuildFailure::explanation), None);
+
+    let conflict = real(PIN_CONFLICT);
     let unresolvable =
         format!("echo '    Updating crates.io index' >&2; echo '{conflict}' >&2; exit 101\n");
     let (calls, shown, failure) = build(&unresolvable);
