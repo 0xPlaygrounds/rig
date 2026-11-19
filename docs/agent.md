@@ -774,9 +774,10 @@ and anything else a session starts run the same home's build.
 one plugin or in `off`, and each plugin, `on` or `off`, with what it adds; a
 branch in `off` says so, and a plugin it keeps off says "off with its
 branch". It shows what the settings choose: plugins can turn on others while
-rig runs, and `/plugins` shows what runs. `rig plugin enable <type>` and `disable <type>` change `[plugins]`,
-keeping every comment; given a branch, such as `rig-basics/sessions`, they
-take it out of or put it in `off`. Turning off a branch that holds an
+rig runs, and `/plugins`, while it is on, shows what runs. `rig plugin enable
+<type>` and `disable <type>` change `[plugins]`, keeping every comment; given
+a branch, such as `rig-basics/sessions`, they take it out of or put it in
+`off`. Turning off a branch that holds an
 essential plugin warns, and turning on a plugin a branch keeps off names
 that branch. `rig plugin new hello` makes that crate in
 `$RIG_HOME/plugins/hello`, outside any workspace, and adds its
@@ -817,8 +818,9 @@ running plugin added shows "on, added by" that one, such as "on, added by
 Subagents". The pane beside the list shows the highlighted
 plugin's area, crate, type path (what `settings.toml` and `rig plugin
 enable` take), default, state in `settings.toml`, whether it runs now, what
-an essential one takes away when off, and what it adds, or which plugins a
-branch holds. Typing finds plugins in folded branches too and shows them
+an essential one takes away when off, and what it adds; for a branch, which
+plugins it holds, the state its tick box shows, a branch above that keeps it
+off, and what Enter does there. Typing finds plugins in folded branches too and shows them
 under their branch, by name or type path.
 
 Enter on a plugin ticks and unticks its own choice, so on a plugin of an
