@@ -496,6 +496,27 @@ fn an_unknown_enabled_plugin_names_its_fixes() {
     );
 }
 
+/// A branch in `enable` or `disable` is told where branches go, with the
+/// fix that takes it out, and not to add it as a plugin's crate.
+#[test]
+fn a_branch_in_a_plugin_list_is_told_it_goes_in_off() {
+    for list in ["enable", "disable"] {
+        for name in ["rig-basics/sessions", "rig-tui"] {
+            let text = format!("[plugins]\n{list} = [\"{name}\"]\n");
+            let refused = (plugins(&file("/h/settings.toml", &text)).err())
+                .map(|why| why.to_string())
+                .unwrap_or_default();
+            assert!(
+                refused.contains(&format!("`{name}` in `{list}` is a branch"))
+                    && refused.contains("[plugins] off")
+                    && refused.contains(&format!("`rig plugin disable {name}` takes it out"))
+                    && !refused.contains("rig plugin add"),
+                "{refused}"
+            );
+        }
+    }
+}
+
 const SESSIONS: &str = "rig_basics::sessions::SessionsPlugin";
 const FORKS: &str = "rig_basics::sessions::forks::ForksPlugin";
 const TUI: &str = "rig_tui::TuiPlugin";

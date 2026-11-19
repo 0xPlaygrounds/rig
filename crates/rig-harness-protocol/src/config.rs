@@ -584,18 +584,23 @@ pub fn plugins(home: &SettingsFile) -> Result<Plugins, Error> {
         if let Some(plugin) = (plugins.iter())
             .find(|plugin| built_in(plugin).is_none() && !extras.contains(&plugin.as_str()))
         {
+            let fix = format!("`rig plugin disable {plugin}` takes it out");
+            let problem = if !held(plugin, &changes.extra).is_empty() {
+                format!(
+                    "`{plugin}` in `{list}` is a branch, and branches go in [plugins] off: {fix}"
+                )
+            } else if list == "enable" {
+                format!(
+                    "unknown plugin `{plugin}` in `{list}`: {fix}, or `rig plugin add {plugin}` \
+                     with its crate's source adds it"
+                )
+            } else {
+                format!("unknown plugin `{plugin}` in `{list}`: {fix}")
+            };
             return Err(Error::Table {
                 path: home.path.clone(),
                 table: "plugins".to_owned(),
-                problem: format!(
-                    "unknown plugin `{plugin}` in `{list}`: `rig plugin disable {plugin}` \
-                     takes it out{}",
-                    if list == "enable" {
-                        format!(", or `rig plugin add {plugin}` with its crate's source adds it")
-                    } else {
-                        String::new()
-                    }
-                ),
+                problem,
             });
         }
     }
