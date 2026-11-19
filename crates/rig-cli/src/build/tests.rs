@@ -1122,3 +1122,131 @@ fn a_plugin_pinning_another_bevy_is_told_first_which_version_to_write() {
         "{message}"
     );
 }
+
+/// The plugins of an agent with one extra crate, `pinned`, that asks for
+/// another Bevy.
+fn pinned_plugin(root: &Path) -> config::Plugins {
+    let directory = root.join("pinned");
+    manifest_at(
+        &directory,
+        "[package]\nname = \"pinned\"\n\n[dependencies]\nbevy_ecs = \"=0.18.0\"\n",
+    );
+    let plugin = "pinned::Pinned".to_owned();
+    config::Plugins {
+        on: vec![plugin.clone()],
+        extra: vec![config::Extra {
+            plugin,
+            krate: "pinned".to_owned(),
+            source: config::Source::Path(directory),
+        }],
+        ..config::Plugins::default()
+    }
+}
+
+/// With a cargo that records its commands: the Bevy check reads the graph
+/// before anything compiles, on every build, also one whose lock did not
+/// change. A mismatch stops the build with rig's advice ahead of cargo's
+/// error, keeping cargo's progress; a resolve failure that is not about
+/// Bevy still shows cargo's error whole. Run with that cargo first on
+/// `PATH`, in a run of its own.
+#[test]
+fn a_foreign_bevy_is_refused_before_cargo_compiles_and_the_advice_leads() {
+    const PROBE: &str = "RIG_BEVY_FIRST_PROBE";
+    let Some(root) = std::env::var_os(PROBE).map(PathBuf::from) else {
+        let root = std::env::temp_dir().join(format!("rig-bevy-first-{}", std::process::id()));
+        fs::remove_dir_all(&root).ok();
+        let bin = root.join("bin");
+        let cargo = bin.join("cargo");
+        fs::create_dir_all(&bin).ok();
+        fs::write(
+            &cargo,
+            "#!/bin/sh\necho \"$1\" >> \"$0.calls\"\n. \"$0.$1\"\n",
+        )
+        .ok();
+        fs::write(bin.join("cargo.build"), ":\n").ok();
+        fs::set_permissions(&cargo, std::fs::Permissions::from_mode(0o755)).ok();
+        let path = format!(
+            "{}:{}",
+            bin.display(),
+            std::env::var("PATH").unwrap_or_default()
+        );
+        let name =
+            "build::tests::a_foreign_bevy_is_refused_before_cargo_compiles_and_the_advice_leads";
+        let output = std::env::current_exe().and_then(|test| {
+            Command::new(test)
+                .args(["--exact", name, "--test-threads", "1"])
+                .env(PROBE, &root)
+                .env("PATH", path)
+                .output()
+        });
+        fs::remove_dir_all(&root).ok();
+        let output = output.map(|output| {
+            let said = String::from_utf8_lossy(&output.stdout).into_owned();
+            (output.status.success() && said.contains("1 passed"), said)
+        });
+        return assert!(matches!(output, Ok((true, _))), "{output:?}");
+    };
+    let bin = root.join("bin");
+    let home = Home::at(root.join("home"));
+    let plugins = pinned_plugin(&root);
+    let checkout = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let source = RigSource::Local(fs::canonicalize(checkout).unwrap_or_default());
+    let launch = crate::test_launch(&home, Path::new("/opt/rig/bin/rig"));
+    let Ok(launch) = launch else {
+        return assert!(launch.is_ok());
+    };
+    // One build whose `cargo tree` runs `tree`: cargo's commands, what was
+    // shown, and the failure.
+    let build = |tree: &str| {
+        fs::write(bin.join("cargo.tree"), tree).ok();
+        fs::remove_file(bin.join("cargo.calls")).ok();
+        let shown = Shown::default();
+        let mut log =
+            BuildLog::create(home.build_log(), BuildOutput::Live, Box::new(shown.clone()));
+        let built = compile_logged(&launch, &plugins, &source, &mut log);
+        let failure = built.err().map(|why| log.fail(FailedAt::Build, &*why));
+        let calls = fs::read_to_string(bin.join("cargo.calls")).unwrap_or_default();
+        let calls: Vec<String> = calls.lines().map(str::to_owned).collect();
+        (calls, shown.text(), failure)
+    };
+
+    let agents_bevy = format!("echo 'bevy_ecs v{BEVY_VERSION}'\n");
+    for _ in 0..2 {
+        let (calls, _, failure) = build(&agents_bevy);
+        assert_eq!(calls, ["tree", "build"]);
+        assert!(failure.is_none(), "{failure:?}");
+    }
+
+    // Resolved, after good builds that left the same lock.
+    let resolved = "case \"$*\" in *--invert*) echo 'pinned v0.1.0' ;; \
+                    *) echo 'bevy_ecs v0.18.0' ;; esac\n";
+    let (calls, _, failure) = build(resolved);
+    assert_eq!(calls, ["tree", "tree"]);
+    let told = failure
+        .map(|failure| failure.to_string())
+        .unwrap_or_default();
+    assert!(told.starts_with("plugin `pinned` must write"), "{told}");
+
+    let conflict = "error: failed to select a version for `bevy_ecs`.";
+    let unresolvable =
+        format!("echo '    Updating crates.io index' >&2; echo '{conflict}' >&2; exit 101\n");
+    let (calls, shown, failure) = build(&unresolvable);
+    assert_eq!(calls, ["tree"]);
+    assert!(shown.contains("Updating crates.io index"), "{shown}");
+    assert!(!shown.contains(conflict), "{shown}");
+    let told = failure
+        .map(|failure| failure.to_string())
+        .unwrap_or_default();
+    assert!(told.starts_with("a plugin must write"), "{told}");
+
+    let unrelated = "error: no matching package named `serde` found\n\nCaused by:\n  offline\n";
+    let (calls, shown, failure) = build(&format!("printf '{unrelated}' >&2; exit 101\n"));
+    assert_eq!(calls, ["tree"]);
+    assert!(shown.contains(unrelated), "{shown}");
+    let explanation = failure.as_ref().and_then(BuildFailure::explanation);
+    assert_eq!(explanation, None);
+    let told = failure
+        .map(|failure| failure.to_string())
+        .unwrap_or_default();
+    assert!(told.contains("no matching package named `serde`"), "{told}");
+}
