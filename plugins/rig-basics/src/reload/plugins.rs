@@ -249,9 +249,10 @@ impl Tree {
     /// is ticked: the state its tick box shows, what Enter does there, and
     /// an unticked branch above it.
     fn branch_about(&self, name: &str, node: usize, on: &[bool]) -> String {
-        const COUNTS: &str = "so the choices under it count as off, though another plugin can \
-                              still turn one on. Enter turns it back on, and what is under it \
-                              follows its own ticks.";
+        // Enter comes first: the pane does not scroll.
+        const COUNTS: &str = "Enter turns it back on, and what is under it follows its own \
+                              ticks. While it is off, the choices under it count as off, though \
+                              another plugin can still turn one on.";
         const KEEPS: &str = "Enter turns it off, into [plugins] off, and each plugin keeps its \
                              own choice for when it is back on.";
         let held: Vec<&str> = (self.rows.iter())
@@ -272,9 +273,9 @@ impl Tree {
         let named = self.before.off.iter().any(|off| off == name);
         let own = ticked.contains(&node);
         let state = match (own, TickBox::of(&parents, node, &ticked)) {
-            (false, _) if named => format!("Off: [plugins] off names it, {COUNTS}"),
+            (false, _) if named => format!("Off: [plugins] off names it. {COUNTS}"),
             (false, _) => {
-                format!("Off if you write this on leaving: it goes into [plugins] off, {COUNTS}")
+                format!("Off if you write this on leaving: it goes into [plugins] off. {COUNTS}")
             }
             (true, TickBox::Off) => "On, but every plugin under it is unticked or held off by a \
                                      branch. Enter ticks everything under it."

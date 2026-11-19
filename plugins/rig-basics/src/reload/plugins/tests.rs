@@ -1026,9 +1026,9 @@ fn a_branch_unticked_goes_into_off_and_one_ticked_comes_out() {
 /// ticks without the highlight moving.
 #[test]
 fn a_branchs_preview_follows_its_tick_box() {
-    const COUNTS: &str = "so the choices under it count as off, though another plugin can \
-                          still turn one on. Enter turns it back on, and what is under it \
-                          follows its own ticks.";
+    const COUNTS: &str = "Enter turns it back on, and what is under it follows its own ticks. \
+                          While it is off, the choices under it count as off, though another \
+                          plugin can still turn one on.";
     const KEEPS: &str = "Enter turns it off, into [plugins] off, and each plugin keeps its own \
                          choice for when it is back on.";
     const NONE_ON: &str = "On, but every plugin under it is unticked or held off by a branch. \
@@ -1057,8 +1057,8 @@ fn a_branchs_preview_follows_its_tick_box() {
     let telemetry_off = "[plugins]\noff = [\"rig-basics/telemetry\"]\n";
     let forks_on = format!("[plugins]\nenable = [\"{FORKS}\"]\n");
     let sessions_off = format!("[plugins]\ndisable = [\"{SESSIONS}\"]\n");
-    let named = format!("Off: [plugins] off names it, {COUNTS}");
-    let leaving = format!("Off if you write this on leaving: it goes into [plugins] off, {COUNTS}");
+    let named = format!("Off: [plugins] off names it. {COUNTS}");
+    let leaving = format!("Off if you write this on leaving: it goes into [plugins] off. {COUNTS}");
     let partly =
         format!("Partly on: some plugins under it are unticked or held off by a branch. {KEEPS}");
     let all_on = format!("On. {KEEPS}");
@@ -1102,10 +1102,9 @@ fn a_branchs_preview_follows_its_tick_box() {
     assert_eq!(state(&app, list), partly);
     highlight(&mut app, list, &shown, "telemetry");
     tick(&mut app, list, &["telemetry"], &[]);
-    let back = state(&app, list);
-    assert!(
-        back.starts_with("Comes out of [plugins] off if you write this on leaving. "),
-        "{back}"
+    assert_eq!(
+        state(&app, list),
+        format!("Comes out of [plugins] off if you write this on leaving. {partly}")
     );
 
     // A crate whose only ticked plugin sits under an unticked area shows `[ ]`.

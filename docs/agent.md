@@ -824,11 +824,11 @@ shows them under their branch, by name or type path.
 
 Enter on a plugin ticks and unticks its own choice, so on a plugin of an
 off branch it changes only that plugin. Enter on a branch that is `[x]` or
-`[~]` puts it into `off`, each plugin keeping its own choice; on a `[ ]`
-branch that `off` names it takes it back out, and on a `[ ]` branch that
-is on, whose plugins are all unticked or held off by a branch, it ticks
-everything under it. A row
-that differs from `settings.toml` shows `+ on` or `- off`, also a plugin
+`[~]` puts it into `off`, each plugin keeping its own choice. On an unticked
+branch it ticks the branch again, which takes it out of `off`, and on a
+ticked `[ ]` branch, whose plugins are all unticked or held off by a branch,
+it ticks everything under it. A row that differs from `settings.toml` shows
+`+ on` or `- off`, also a plugin
 that goes or comes with its branch, and the list counts the changes. Esc
 leaves. With changes it first names what
 turns on and off (a plugin turned on under an off branch "stays off with its
