@@ -18,7 +18,7 @@ use rig_core::catalog::ModelSpec;
 use rig_core::completion::{CompletionRequest, Message, UnsupportedOption};
 use rig_core::message::UserContent;
 use rig_harness::prelude::*;
-use rig_memory::{Compacted, serialize_conversation, summary_text};
+use rig_memory::{Compacted, serialize_conversation, summarization_request, summary_text};
 use serde::Deserialize;
 
 /// The headings every structured summary has, in order.
@@ -77,14 +77,16 @@ fn template_request(
         "<conversation>\n{}\n</conversation>",
         serialize_conversation(&summarizing.messages)
     );
-    let previous = summarizing.state.previous_summary();
-    if let Some(previous) = &previous {
+    if let Some(previous) = &summarizing.previous {
         ask.push_str(&format!(
             "\n\n<previous-summary>\n{previous}\n</previous-summary>"
         ));
     }
     ask.push_str("\n\n");
-    ask.push_str(if previous.is_some() { UPDATE } else { INITIAL });
+    ask.push_str(match summarizing.previous {
+        Some(_) => UPDATE,
+        None => INITIAL,
+    });
     let focus = summarizing.reason.focus();
     if !focus.is_empty() {
         ask.push_str(&format!(
@@ -92,15 +94,7 @@ fn template_request(
         ));
     }
     ask.push_str(FORMAT);
-    let options = spec.default_options(None);
-    spec.validate(&options)?;
-    let request = CompletionRequest::new(Message::user(ask))
-        .preamble(SYSTEM.to_owned())
-        .options(options);
-    Ok(match spec.output_limit() {
-        Some(most) => request.max_tokens(u64::from(most)),
-        None => request,
-    })
+    summarization_request((SYSTEM, ask), spec, None, None)
 }
 
 /// Restructures `rig_basics::compaction`'s compactions; adds `rig_basics::compaction` unless
@@ -304,7 +298,7 @@ fn structure(
                 };
                 let keep = default.0.keep_recent_tokens;
                 let planned = Summarizing::plan(conversation, keep, reason);
-                match planned.map(|planned| (planned.request(&own.spec), planned)) {
+                match planned.map(|planned| (planned.request(&own.spec, None), planned)) {
                     Some((Ok(request), planned)) => {
                         *summarizing = planned;
                         *model = ModelRequest::new(request);

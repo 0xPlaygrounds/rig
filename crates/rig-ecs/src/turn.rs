@@ -424,8 +424,8 @@ fn way_on(taken: bool) -> &'static str {
 /// that has one, in the order they were sent; `None` when no message was
 /// taken. They follow the last reply that counts, or the note that the
 /// user stopped a request; failed replies among them go too, and the
-/// results that reply asked for stay, wherever they are, with any notes
-/// on cleared outputs beside them. A titled user's message, such as a chat bridge's or a skill's,
+/// results that reply asked for stay, wherever they are, with any notes an
+/// earlier version wrote on cleared outputs beside them. A titled user's message, such as a chat bridge's or a skill's,
 /// goes without coming back; an agent's or a plugin's keeps its place. A
 /// text is what the conversation holds, after Prepare, its text blocks
 /// joined; what is not text, such as an image or a file attached, does
@@ -465,12 +465,17 @@ fn take_unanswered(conversation: &mut Conversation) -> Option<Vec<String>> {
             continue;
         };
         let is_owed = |item: &UserContent| matches!(item, UserContent::ToolResult(result) if owed.contains(&&result.call));
-        let (results, asked): (Vec<&UserContent>, Vec<&UserContent>) = content
-            .iter()
-            .partition(|item| matches!(item, UserContent::ToolResult(_)));
+        // A text is notes only beside a result that stays; any other is asked.
+        let holds_owed = content.iter().any(is_owed);
+        let (results, asked): (Vec<&UserContent>, Vec<&UserContent>) =
+            content.iter().partition(|item| match item {
+                UserContent::ToolResult(_) => true,
+                UserContent::Text(text) => holds_owed && is_output_notes(&text.text),
+                _ => false,
+            });
         let results: Vec<UserContent> = results
             .into_iter()
-            .filter(|item| is_owed(item))
+            .filter(|item| is_owed(item) || matches!(item, UserContent::Text(_)))
             .cloned()
             .collect();
         changed |= results.len() < content.len();
@@ -502,6 +507,12 @@ fn take_unanswered(conversation: &mut Conversation) -> Option<Vec<String>> {
         conversation.restore(from.., kept, Author::rig());
     }
     taken.then_some(texts)
+}
+
+/// Whether `text` holds the notes an earlier version wrote beside tool outputs it cleared, which
+/// a session saved then may still have: they stay with their results.
+fn is_output_notes(text: &str) -> bool {
+    text.starts_with("<cleared-output-notes>")
 }
 
 /// Stops the agent's running turn at once, and, unless the stop is
@@ -1770,7 +1781,12 @@ fn commit_reply(
     }
     let reply = response.message().map(|message| {
         let through = answered.conversation.push(message);
-        if response.usage.context_tokens().is_some() {
+        // A reply that reports no context, or none at all, keeps the last measure.
+        if response
+            .usage
+            .context_tokens()
+            .is_some_and(|tokens| tokens > 0)
+        {
             let usage = response.usage;
             *answered.last = LastUsage(Some(Anchor { usage, through }));
             commands.entity(agent).remove::<ContextStale>();

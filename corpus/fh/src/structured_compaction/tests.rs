@@ -96,11 +96,6 @@ fn compact_writes_the_template_keeps_the_users_words_and_builds_on_the_last_summ
     .add_observer(log_ended);
     app.finish();
     app.update();
-    // This plugin cuts `/compact` itself, so the default cut must find something to summarize.
-    app.world_mut()
-        .resource_mut::<CompactionDefault>()
-        .0
-        .keep_recent_tokens = 1;
     let agent = first_agent(app.world_mut());
     assert!(agent.is_some(), "an agent");
     let Some(agent) = agent else {

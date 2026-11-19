@@ -13,19 +13,24 @@ fn tools() -> Vec<Arc<ToolDefinition>> {
     vec![Arc::new(ToolDefinition::new(name, "Reads a file.", schema))]
 }
 
-/// A request built to send counts its tools and its messages.
+/// A request built to send counts its tools and each of its messages: a system prompt, the
+/// user's message and a reply.
 #[test]
 fn a_request_built_to_send_counts_its_tools_and_messages() {
-    let mut request = CompletionRequest::new(Message::user("read the file"));
+    let messages = [
+        Message::system("You are a coding agent."),
+        Message::user("read the file"),
+        Message::assistant("x".repeat(400)),
+    ];
+    let mut request = CompletionRequest::new(Message::user("unused"));
+    request.chat_history = messages.iter().cloned().map(Arc::new).collect();
     request.tools.clone_from(&tools());
     let offered = request_estimate(&request);
     request.tools.clear();
     assert!(request_estimate(&request) < offered, "the tools count");
     let counter = HeuristicTokenCounter::default();
-    assert_eq!(
-        request_estimate(&request),
-        counter.count(&Message::user("read the file")) as u64
-    );
+    let each: usize = messages.iter().map(|message| counter.count(message)).sum();
+    assert_eq!(request_estimate(&request), each as u64);
 }
 
 #[test]

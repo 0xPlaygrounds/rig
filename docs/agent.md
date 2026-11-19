@@ -455,25 +455,30 @@ out of the list and only sent by hand. Both are read once, so an edit takes
 effect on `/reload` or `/new`.
 
 Compaction works as in the [pi coding agent](https://github.com/badlogic/pi-mono).
-Before each request of a turn, the first and each one after tool results, rig
-counts the context: the tokens the provider reported for the last reply, plus
-an estimate of the messages after it (four characters a token). When that
-leaves less than `reserve_tokens` (16384) of the model's input limit free, the
-older messages are summarized by the model, in a separate call, into a
-structured checkpoint (goal, constraints, progress, decisions, next steps,
-critical context) that requests send in their place, followed by the files
-read and changed. About `keep_recent_tokens` (20000) of the newest messages
-stay as they are, never cut between a tool call and its result; when the cut
-falls inside a turn, that turn's earlier part gets a summary of its own. A
-later compaction updates the previous summary with the new messages. When
-the provider refuses a request as too long, rig compacts and sends it once
-more. A summary that fails or is cut short replaces nothing, and a notice says
-why; Esc cancels a summary being written. `/compact` compacts now, and
-`/compact <instructions>` says what the summary should focus on.
-`[compaction]` in `RIG_HOME/settings.toml` takes `enabled` (automatic
-compaction, on by default), `reserve_tokens` and `keep_recent_tokens`. The
-summarized messages stay in the transcript, under a line that shows the
-summary; a resumed session starts from the messages the summary kept.
+It counts the context as the tokens the provider reported for the last reply,
+plus an estimate of the messages after it (four characters a token), and
+compacts when that leaves less than `reserve_tokens` (16384) of the model's
+input limit free. It checks before a prompt is sent (the context before the
+prompt), before each request after tool results, and after each turn, when it
+compacts while the agent is idle. The older messages are then summarized by the
+model, in a separate call, into a structured checkpoint (goal, constraints,
+progress, decisions, next steps, critical context) that requests send in their
+place, followed by the files read and changed. About `keep_recent_tokens`
+(20000) of the newest messages stay as they are, never cut between a tool call
+and its result; when the cut falls inside a turn, that turn's earlier part gets
+a summary of its own. A later compaction updates the previous summary with the
+new messages. When the provider refuses a request as too long, or the window
+cuts a reply short, rig compacts and sends the request once more. A summary
+that fails or is cut short replaces nothing, and a notice says why; stopping
+the turn (Esc) cancels a summary being written. With the defaults, a model
+whose window is under about 36k tokens is still near its limit right after a
+compaction, so it compacts before every request, as pi does. `/compact`
+compacts now, and `/compact <instructions>` says what the summary should focus
+on. `[compaction]` in `RIG_HOME/settings.toml` takes `enabled` (every automatic
+compaction, on by default; `/compact` works either way), `reserve_tokens` and
+`keep_recent_tokens`. The summarized messages stay in the transcript, under a
+line that shows the summary; a resumed session starts from the messages the
+summary kept.
 
 A model call that fails on a rate limit, an overloaded provider or a dropped
 connection is retried up to four times. It waits as long as the provider's

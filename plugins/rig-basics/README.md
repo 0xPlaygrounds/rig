@@ -77,10 +77,9 @@ in that run.
 The kernel keeps every agent within the run's tools (`rig_ecs::agent::RunTools`)
 before anything is admitted, as it keeps each within its parents.
 
-A turn's request carries no output limit unless a plugin sets one: the
-provider's default holds (rig-core's own for an Anthropic-format gateway), and
-compaction keeps `[compaction] reserve_tokens` of the window free for the
-reply.
+A turn's request asks for its own output limit, else the model's, fitted to
+the room its input leaves in the window, as pi asks; compaction keeps
+`[compaction] reserve_tokens` of the window free for the reply.
 
 `/usage` reports what the agent, the agents below it (despawned ones
 included) and the session spent: provider-supplied cost when available, otherwise API list-price

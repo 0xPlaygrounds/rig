@@ -69,10 +69,11 @@ pub use blobs::BLOBS;
 pub use compaction::{
     COMPACTED, Compacted, CompactionPreparation, CompactionSettings, CutPoint, FileLists,
     SUMMARIZATION_SYSTEM_PROMPT, Summarized, SummaryFailure, SummaryState, Uncompacted, UndoError,
-    apply_summary, estimate_message_tokens, estimate_tokens, find_cut_point, merge_split_turn,
-    no_history, prepare_compaction, prepare_compaction_at, serialize_conversation,
-    summarization_request, summarized_in_log, summarized_prefix, summary_author, summary_in,
-    summary_request, summary_state, summary_text, turn_prefix_request, undo_summary,
+    apply_summary, clamp_max_tokens, estimate_message_tokens, estimate_tokens, find_cut_point,
+    keep_end_to_fit, merge_split_turn, no_history, prepare_compaction, prepare_compaction_at,
+    serialize_conversation, summarization_request, summarized_in_log, summarized_prefix,
+    summary_author, summary_in, summary_request, summary_state, summary_text, turn_prefix_request,
+    undo_summary,
 };
 #[cfg(feature = "fs")]
 pub use dir::{DirFiles, DirStore};

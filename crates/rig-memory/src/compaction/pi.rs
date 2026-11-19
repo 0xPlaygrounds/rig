@@ -28,19 +28,19 @@
 //! messages. The caller sends the requests, reads the replies with [`summary_text`] and puts the
 //! summary in with [`apply_summary`](crate::apply_summary).
 
-use std::borrow::Borrow;
+use std::borrow::{Borrow, Cow};
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use rig_core::catalog::ModelSpec;
 use rig_core::completion::{
-    AssistantContent, CompletionRequest, CompletionResponse, Message, UnsupportedOption,
+    AssistantContent, CompletionRequest, CompletionResponse, Message, Reasoning, UnsupportedOption,
 };
 use rig_core::conversation::Conversation;
 use rig_core::message::{StopReason, ToolResultContent, UserContent};
 use serde::{Deserialize, Serialize};
 
-use super::{SummaryState, summarized_prefix};
+use super::summarized_prefix;
 
 /// When compaction runs and how much it keeps: `[compaction]` in settings.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -77,36 +77,44 @@ impl CompactionSettings {
 /// Characters an image counts for.
 const ESTIMATED_IMAGE_CHARS: u64 = 4_800;
 
-/// Characters of user or tool-result content, an image as [`ESTIMATED_IMAGE_CHARS`].
-fn user_chars(content: &[UserContent]) -> u64 {
+/// The length of `text` in UTF-16 code units, as JavaScript counts it.
+fn chars(text: &str) -> u64 {
+    text.encode_utf16().count() as u64
+}
+
+/// Characters of tool-result content, an image as [`ESTIMATED_IMAGE_CHARS`].
+fn result_chars(content: &[ToolResultContent]) -> u64 {
     content
         .iter()
-        .map(|item| match item {
-            UserContent::Text(text) => chars(&text.text),
-            UserContent::ToolResult(result) => result
-                .content
-                .iter()
-                .map(|part| match part {
-                    ToolResultContent::Text(text) => chars(&text.text),
-                    ToolResultContent::Image(_) => ESTIMATED_IMAGE_CHARS,
-                    ToolResultContent::Json { value } => chars(&value.to_string()),
-                })
-                .fold(0, u64::saturating_add),
-            UserContent::Image(_) => ESTIMATED_IMAGE_CHARS,
-            _ => 0,
+        .map(|part| match part {
+            ToolResultContent::Text(text) => chars(&text.text),
+            ToolResultContent::Image(_) => ESTIMATED_IMAGE_CHARS,
+            ToolResultContent::Json { value } => chars(&value.to_string()),
         })
         .fold(0, u64::saturating_add)
 }
 
-fn chars(text: &str) -> u64 {
-    text.chars().count() as u64
-}
-
 /// The estimated tokens of `message`, at four characters a token, rounded up: on the high side.
+/// Each tool result counts as a message of its own, rounded apart, beside the rest of a user
+/// message.
 pub fn estimate_message_tokens(message: &Message) -> u64 {
-    let chars = match message {
-        Message::System { content } => chars(content),
-        Message::User { content } => user_chars(content),
+    match message {
+        Message::System { content } => chars(content).div_ceil(4),
+        Message::User { content } => {
+            let mut results = 0u64;
+            let mut rest = 0u64;
+            for item in content {
+                match item {
+                    UserContent::ToolResult(result) => {
+                        results = results.saturating_add(result_chars(&result.content).div_ceil(4));
+                    }
+                    UserContent::Text(text) => rest = rest.saturating_add(chars(&text.text)),
+                    UserContent::Image(_) => rest = rest.saturating_add(ESTIMATED_IMAGE_CHARS),
+                    _ => {}
+                }
+            }
+            results.saturating_add(rest.div_ceil(4))
+        }
         Message::Assistant(reply) => reply
             .content
             .iter()
@@ -119,9 +127,9 @@ pub fn estimate_message_tokens(message: &Message) -> u64 {
                     )),
                 _ => 0,
             })
-            .fold(0, u64::saturating_add),
-    };
-    chars.div_ceil(4)
+            .fold(0, u64::saturating_add)
+            .div_ceil(4),
+    }
 }
 
 /// The estimated tokens of `messages` ([`estimate_message_tokens`]).
@@ -137,15 +145,39 @@ fn is_tool_result(message: &Message) -> bool {
     matches!(message, Message::User { content } if content.iter().any(|item| matches!(item, UserContent::ToolResult(_))))
 }
 
-/// Whether a compaction may keep from `message`: anything but a tool result, which must follow
-/// its call.
-fn is_cut_point(message: &Message) -> bool {
-    !is_tool_result(message)
-}
-
 /// Whether `message` starts a turn: a user or system message that is no tool result.
 fn is_turn_start(message: &Message) -> bool {
     !matches!(message, Message::Assistant(_)) && !is_tool_result(message)
+}
+
+/// For each of `messages`, whether a compaction may keep from it: no tool result, and nothing
+/// between a call and its result, so a result is never kept without its call. Keeping from the
+/// reply that made a call keeps its results too.
+fn cut_points(messages: &[Arc<Message>]) -> Vec<bool> {
+    let mut allowed: Vec<bool> = messages
+        .iter()
+        .map(|message| !is_tool_result(message))
+        .collect();
+    let mut calls: Vec<(usize, &rig_core::message::CallId)> = Vec::new();
+    for (at, message) in messages.iter().enumerate() {
+        match &**message {
+            Message::Assistant(reply) => {
+                calls.extend(reply.tool_calls().map(|call| (at, &call.id)))
+            }
+            Message::User { content } => {
+                for result in content.iter().filter_map(UserContent::as_tool_result) {
+                    let made = calls.iter().rev().find(|(_, id)| **id == result.call);
+                    if let Some(&(made, _)) = made {
+                        for inside in allowed.iter_mut().take(at.saturating_add(1)).skip(made + 1) {
+                            *inside = false;
+                        }
+                    }
+                }
+            }
+            Message::System { .. } => {}
+        }
+    }
+    allowed
 }
 
 /// Where a compaction cuts ([`find_cut_point`]).
@@ -160,21 +192,20 @@ pub struct CutPoint {
 
 /// The cut of `messages[start..end]` that keeps about `keep_recent_tokens`: walking back from the
 /// newest message until that many are counted, it cuts at the nearest message at or after that
-/// point that is no tool result. Cut at a reply, its results stay after it, and the turn it is
-/// part of is split. With nothing to cut at, it keeps from `start`.
+/// point that is no tool result and lies outside every tool exchange. Cut at a reply, its results
+/// stay after it, and the turn it is part of is split. With nothing to cut at, it keeps from
+/// `start`. After an overflow (`overflowed`), a last message over the budget alone is summarized
+/// too, as the turn's earlier part, since sending it again would overflow again.
 pub fn find_cut_point(
     messages: &[Arc<Message>],
-    start: usize,
-    end: usize,
+    (start, end): (usize, usize),
     keep_recent_tokens: u64,
+    overflowed: bool,
 ) -> CutPoint {
     let end = end.min(messages.len());
+    let allowed = cut_points(messages);
     let cut_points: Vec<usize> = (start..end)
-        .filter(|&at| {
-            messages
-                .get(at)
-                .is_some_and(|message| is_cut_point(message))
-        })
+        .filter(|&at| allowed.get(at).copied().unwrap_or(false))
         .collect();
     let Some(&first) = cut_points.first() else {
         return CutPoint {
@@ -183,6 +214,7 @@ pub fn find_cut_point(
         };
     };
     let mut cut = first;
+    let mut exceeded = false;
     let mut accumulated = 0u64;
     for at in (start..end).rev() {
         let tokens = messages
@@ -193,6 +225,7 @@ pub fn find_cut_point(
         }
         accumulated = accumulated.saturating_add(tokens);
         if accumulated >= keep_recent_tokens {
+            exceeded = true;
             // Trailing tool results over the budget keep the reply that called them.
             cut = cut_points
                 .iter()
@@ -203,17 +236,22 @@ pub fn find_cut_point(
             break;
         }
     }
+    if overflowed && exceeded && cut.saturating_add(1) == end {
+        cut = end;
+    }
     let starts_turn = messages
         .get(cut)
         .is_some_and(|message| is_turn_start(message));
     let turn_start = if starts_turn {
         None
     } else {
-        (start..=cut).rev().find(|&at| {
-            messages
-                .get(at)
-                .is_some_and(|message| is_turn_start(message))
-        })
+        (start..cut.min(end.saturating_sub(1)).saturating_add(1))
+            .rev()
+            .find(|&at| {
+                messages
+                    .get(at)
+                    .is_some_and(|message| is_turn_start(message))
+            })
     };
     CutPoint {
         first_kept: cut,
@@ -230,8 +268,9 @@ pub struct CompactionPreparation {
     pub to_summarize: Vec<Arc<Message>>,
     /// When the cut splits a turn, that turn's messages before the cut, summarized apart.
     pub turn_prefix: Vec<Arc<Message>>,
-    /// The newest compaction's summary state, which the summary updates.
-    pub previous: SummaryState,
+    /// The newest compaction's summary and file lists, as the update prompt sends it verbatim;
+    /// `None` before the first compaction.
+    pub previous: Option<String>,
     /// The files read and not changed, and the files changed, by every summarized message and
     /// earlier compaction.
     pub files: FileLists,
@@ -247,15 +286,17 @@ pub struct FileLists {
 }
 
 /// What a compaction of `conversation`, keeping about `keep_recent_tokens`, summarizes, or `None`
-/// when nothing would be. The earlier summaries ([`summarized_prefix`]) are never cut again: the
+/// when nothing would be; `overflowed` after the provider refused a request as too long
+/// ([`find_cut_point`]). The earlier summaries ([`summarized_prefix`]) are never cut again: the
 /// new summary updates the newest one.
 pub fn prepare_compaction(
     conversation: &Conversation,
     keep_recent_tokens: u64,
+    overflowed: bool,
 ) -> Option<CompactionPreparation> {
     let messages = conversation.messages();
-    let start = summarized_prefix(conversation);
-    let cut = find_cut_point(messages, start, messages.len(), keep_recent_tokens);
+    let range = (summarized_prefix(conversation), messages.len());
+    let cut = find_cut_point(messages, range, keep_recent_tokens, overflowed);
     prepare_compaction_at(conversation, cut)
 }
 
@@ -283,10 +324,10 @@ pub fn prepare_compaction_at(
     if to_summarize.is_empty() && turn_prefix.is_empty() {
         return None;
     }
-    let previous = super::summary_state(conversation);
+    let state = super::summary_state(conversation);
     let mut ops = FileOperations::default();
-    ops.read.extend(previous.read_files.iter().cloned());
-    ops.edited.extend(previous.modified_files.iter().cloned());
+    ops.read.extend(state.read_files.iter().cloned());
+    ops.edited.extend(state.modified_files.iter().cloned());
     for message in to_summarize.iter().chain(&turn_prefix) {
         ops.extract(message);
     }
@@ -294,7 +335,7 @@ pub fn prepare_compaction_at(
         first_kept: cut.first_kept,
         to_summarize,
         turn_prefix,
-        previous,
+        previous: state.previous_summary(),
         files: ops.lists(),
     })
 }
@@ -319,6 +360,7 @@ impl FileOperations {
                 .arguments
                 .get("path")
                 .and_then(|path| path.as_str())
+                .filter(|path| !path.is_empty())
             else {
                 continue;
             };
@@ -371,16 +413,27 @@ pub(crate) fn format_file_operations(read_files: &[String], modified_files: &[St
 /// The most characters of a tool result a summary request shows.
 const TOOL_RESULT_MAX_CHARS: usize = 2_000;
 
-/// `text` cut to `max_chars` characters, saying how many more there were.
+/// `text` cut to `max_chars` UTF-16 code units, saying how many more there were. A character
+/// that would straddle the cut is left out whole.
 fn truncate_for_summary(text: &str, max_chars: usize) -> String {
-    match text.char_indices().nth(max_chars) {
-        Some((end, _)) => format!(
-            "{}\n\n[... {} more characters truncated]",
-            text.get(..end).unwrap_or_default(),
-            text.get(end..).unwrap_or_default().chars().count()
-        ),
-        None => text.to_owned(),
+    let total = text.encode_utf16().count();
+    if total <= max_chars {
+        return text.to_owned();
     }
+    let mut units = 0;
+    let mut end = 0;
+    for (at, character) in text.char_indices() {
+        units += character.len_utf16();
+        if units > max_chars {
+            break;
+        }
+        end = at + character.len_utf8();
+    }
+    format!(
+        "{}\n\n[... {} more characters truncated]",
+        text.get(..end).unwrap_or_default(),
+        total - max_chars
+    )
 }
 
 /// `messages` as labeled text, so the model reads them rather than continues them. Thinking is
@@ -394,31 +447,24 @@ pub fn serialize_conversation(messages: &[impl Borrow<Message>]) -> String {
             }
             Message::System { .. } => {}
             Message::User { content } => {
-                let text: Vec<&str> = content
-                    .iter()
-                    .filter_map(|item| match item {
-                        UserContent::Text(text) => Some(text.text.as_str()),
-                        _ => None,
-                    })
-                    .collect();
-                let text = text.join("\n");
-                if !text.is_empty() {
-                    parts.push(format!("[User]: {text}"));
-                }
                 for result in content.iter().filter_map(UserContent::as_tool_result) {
-                    let text: Vec<String> = result
-                        .content
-                        .iter()
-                        .map(|part| part.to_text(""))
-                        .filter(|text| !text.is_empty())
-                        .collect();
-                    let text = text.join("\n");
+                    let text: String = result.content.iter().map(|part| part.to_text("")).collect();
                     if !text.is_empty() {
                         parts.push(format!(
                             "[Tool result]: {}",
                             truncate_for_summary(&text, TOOL_RESULT_MAX_CHARS)
                         ));
                     }
+                }
+                let text: String = content
+                    .iter()
+                    .filter_map(|item| match item {
+                        UserContent::Text(text) => Some(text.text.as_str()),
+                        _ => None,
+                    })
+                    .collect();
+                if !text.is_empty() {
+                    parts.push(format!("[User]: {text}"));
                 }
             }
             Message::Assistant(reply) => {
@@ -543,25 +589,91 @@ Create a concise checkpoint of the user's request and the progress shown above. 
 
 Only summarize information explicitly present above. Do not infer or recreate later messages.";
 
-/// A summary request to `spec` asking `prompt` alone, under [`SUMMARIZATION_SYSTEM_PROMPT`], with
-/// the model's output limit when known.
+/// Tokens a request leaves free below the window besides its output, for an input counted higher
+/// than estimated.
+const CONTEXT_SAFETY_TOKENS: u64 = 4_096;
+
+/// The share of the input also left free while that leaves [`MIN_OUTPUT_WITH_RATIO_MARGIN`].
+const CONTEXT_SAFETY_PERCENT: u64 = 15;
+
+/// The least output the ratio margin is kept for; below it only the fixed margin is.
+const MIN_OUTPUT_WITH_RATIO_MARGIN: u64 = 32_768;
+
+/// `max_tokens` fitted into `spec`'s context window after an input of `input_tokens`, leaving a
+/// margin for an input counted higher than estimated: unchanged when the window is not known, and
+/// never below 1.
+pub fn clamp_max_tokens(spec: &ModelSpec, input_tokens: u64, max_tokens: u64) -> u64 {
+    let Some(window) = spec
+        .context_window
+        .map(u64::from)
+        .filter(|&window| window > 0)
+    else {
+        return max_tokens.max(1);
+    };
+    let ratio = input_tokens
+        .saturating_mul(CONTEXT_SAFETY_PERCENT)
+        .div_ceil(100);
+    let margin = CONTEXT_SAFETY_TOKENS.max(ratio);
+    let mut room = window.saturating_sub(input_tokens).saturating_sub(margin);
+    if room < MIN_OUTPUT_WITH_RATIO_MARGIN {
+        let fixed = window
+            .saturating_sub(input_tokens)
+            .saturating_sub(CONTEXT_SAFETY_TOKENS);
+        room = MIN_OUTPUT_WITH_RATIO_MARGIN.min(fixed);
+    }
+    max_tokens.min(room.max(1))
+}
+
+/// A one-off summary request to `spec`: `system`, then `prompt` as the user's message, with the
+/// `reasoning` effort when the model takes it, no prompt-cache writes, and an output limit of
+/// `max_output` (the model's output limit when `None`) fitted to the room the input leaves.
 ///
 /// # Errors
 ///
 /// When `spec` does not take its default options.
 pub fn summarization_request(
-    prompt: String,
+    (system, prompt): (&str, String),
     spec: &ModelSpec,
+    reasoning: Option<Reasoning>,
+    max_output: Option<u64>,
 ) -> Result<CompletionRequest, UnsupportedOption> {
-    let options = spec.default_options(None);
+    let mut options = spec.default_options(reasoning);
+    options.cache = None;
+    if reasoning.is_some() && spec.validate(&options).is_err() {
+        options.reasoning = None;
+    }
     spec.validate(&options)?;
+    let input = estimate_tokens(&[Message::system(system), Message::user(prompt.as_str())]);
     let request = CompletionRequest::new(Message::user(prompt))
-        .preamble(SUMMARIZATION_SYSTEM_PROMPT.to_owned())
+        .preamble(system.to_owned())
         .options(options);
-    Ok(match spec.output_limit() {
-        Some(most) => request.max_tokens(u64::from(most)),
+    Ok(match max_output.or(spec.output_limit().map(u64::from)) {
+        Some(most) => request.max_tokens(clamp_max_tokens(spec, input, most)),
         None => request,
     })
+}
+
+/// The end of `text`, cut to fit `spec`'s input limit less `reserved` tokens at three characters a
+/// token, for a request of another plugin that reads a whole conversation; the cut start says how
+/// many characters were left out. Unchanged when the limit is not known or it fits.
+pub fn keep_end_to_fit<'t>(text: &'t str, spec: &ModelSpec, reserved: u64) -> Cow<'t, str> {
+    let Some(limit) = spec.input_limit().map(u64::from) else {
+        return Cow::Borrowed(text);
+    };
+    let budget =
+        usize::try_from(limit.saturating_sub(reserved).saturating_mul(3)).unwrap_or(usize::MAX);
+    let left_out = text.chars().count().saturating_sub(budget);
+    if left_out == 0 {
+        return Cow::Borrowed(text);
+    }
+    let start = text
+        .char_indices()
+        .nth(left_out)
+        .map_or(text.len(), |(start, _)| start);
+    let rest = text.get(start..).unwrap_or_default();
+    Cow::Owned(format!(
+        "[... {left_out} earlier characters left out]\n{rest}"
+    ))
 }
 
 /// `prompt` followed by the user's `instructions`, when there are any.
@@ -574,17 +686,18 @@ fn with_focus(prompt: &str, instructions: &str) -> String {
     }
 }
 
-/// The request for the history summary of `messages` to `spec`, updating `previous` (the newest
-/// summary, with its file lists) when there is one, focused on `instructions`.
+/// The request for the history summary of `messages` to `spec` with the `reasoning` effort,
+/// updating `previous` (the newest summary, with its file lists) when there is one, focused on
+/// `instructions`.
 ///
 /// # Errors
 ///
 /// As [`summarization_request`].
 pub fn summary_request(
     messages: &[impl Borrow<Message>],
-    previous: Option<&str>,
-    instructions: &str,
+    (previous, instructions): (Option<&str>, &str),
     spec: &ModelSpec,
+    reasoning: Option<Reasoning>,
 ) -> Result<CompletionRequest, UnsupportedOption> {
     let base = match previous {
         Some(_) => UPDATE_SUMMARIZATION_PROMPT,
@@ -600,11 +713,11 @@ pub fn summary_request(
         ));
     }
     prompt.push_str(&with_focus(base, instructions));
-    summarization_request(prompt, spec)
+    summarization_request((SUMMARIZATION_SYSTEM_PROMPT, prompt), spec, reasoning, None)
 }
 
-/// The request for the summary of a split turn's earlier part, `messages`, to `spec`, focused on
-/// `instructions`.
+/// The request for the summary of a split turn's earlier part, `messages`, to `spec` with the
+/// `reasoning` effort, focused on `instructions`.
 ///
 /// # Errors
 ///
@@ -613,12 +726,14 @@ pub fn turn_prefix_request(
     messages: &[impl Borrow<Message>],
     instructions: &str,
     spec: &ModelSpec,
+    reasoning: Option<Reasoning>,
 ) -> Result<CompletionRequest, UnsupportedOption> {
     let prompt = format!(
         "# Conversation\n{}\n\n# Instructions\n{TURN_PREFIX_SUMMARIZATION_PROMPT}",
         serialize_conversation(messages)
     );
-    summarization_request(with_focus(&prompt, instructions), spec)
+    let prompt = with_focus(&prompt, instructions);
+    summarization_request((SUMMARIZATION_SYSTEM_PROMPT, prompt), spec, reasoning, None)
 }
 
 /// The history summary when a split turn's earlier part has no messages of its own to summarize:
@@ -646,8 +761,9 @@ pub enum SummaryFailure {
     CalledTool(&'static str),
 }
 
-/// The summary in `response`, a reply to the request `label` names, or why it cannot become a
-/// session's checkpoint: an errored reply, one cut at the output limit, or one that calls a tool.
+/// The summary in `response`, a reply to the request `label` names, its text parts joined by
+/// newlines, or why it cannot become a session's checkpoint: an errored reply, one cut at the
+/// output limit, or one that calls a tool.
 ///
 /// # Errors
 ///
@@ -658,11 +774,23 @@ pub fn summary_text(
 ) -> Result<String, SummaryFailure> {
     match response.stop() {
         StopReason::Error(why) | StopReason::Aborted(why) => {
+            let why = if why.is_empty() {
+                "Unknown error".to_owned()
+            } else {
+                why
+            };
             Err(SummaryFailure::Failed(label, why))
         }
         StopReason::Length => Err(SummaryFailure::Truncated(label)),
         _ if response.tool_calls().next().is_some() => Err(SummaryFailure::CalledTool(label)),
-        _ => Ok(response.text()),
+        _ => {
+            let texts: Vec<&str> = response
+                .choice
+                .iter()
+                .filter_map(AssistantContent::as_text)
+                .collect();
+            Ok(texts.join("\n"))
+        }
     }
 }
 

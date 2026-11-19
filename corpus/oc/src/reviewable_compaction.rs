@@ -138,7 +138,7 @@ fn keep_newest_turns(
             };
             let planned = Summarizing::plan_at(conversation, cut, summarizing.reason.clone());
             if let Some((planned, Ok(request))) =
-                planned.map(|planned| (planned.clone(), planned.request(&spec)))
+                planned.map(|planned| (planned.clone(), planned.request(&spec, None)))
             {
                 *summarizing = planned;
                 *model = ModelRequest {

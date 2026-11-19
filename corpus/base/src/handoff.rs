@@ -14,7 +14,7 @@
 use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::ModelSpec;
 use rig_harness::rig_core::completion::{CompletionRequest, Message, UnsupportedOption};
-use rig_memory::{serialize_conversation, summary_text};
+use rig_memory::{keep_end_to_fit, serialize_conversation, summarization_request, summary_text};
 use rig_tui::MainInput;
 use serde::Deserialize;
 
@@ -29,27 +29,23 @@ const SYSTEM: &str = "You write a handoff brief. A fresh coding agent that has n
     conversation will start from your brief alone and work on the next goal the user names. \
     Do not continue the conversation and do not answer questions in it. Output only the brief.";
 
-/// The request to `spec` for a brief of `messages` for `goal`: the conversation as text, then
-/// what is asked, within [`BRIEF_TOKENS`].
+/// The request to `spec` for a brief of `messages` for `goal`: the conversation as text, cut to
+/// fit the model, then what is asked, within [`BRIEF_TOKENS`].
 fn brief_request(
     messages: &[std::sync::Arc<Message>],
     goal: &str,
     spec: &ModelSpec,
 ) -> Result<CompletionRequest, UnsupportedOption> {
     let conversation = serialize_conversation(messages);
+    let conversation = keep_end_to_fit(&conversation, spec, RESERVED + BRIEF_TOKENS);
     let ask = format!(
         "<conversation>\n{conversation}\n</conversation>\n\n{ASK}\n\nThe next goal: {goal}{FORMAT}"
     );
-    let options = spec.default_options(None);
-    spec.validate(&options)?;
-    let most = spec
-        .output_limit()
-        .map_or(BRIEF_TOKENS, |most| BRIEF_TOKENS.min(u64::from(most)));
-    Ok(CompletionRequest::new(Message::user(ask))
-        .preamble(SYSTEM.to_owned())
-        .options(options)
-        .max_tokens(most))
+    summarization_request((SYSTEM, ask), spec, None, Some(BRIEF_TOKENS))
 }
+
+/// Tokens of the input limit kept for the request around the conversation.
+const RESERVED: u64 = 16_384;
 
 /// What the brief's model is asked, before the goal.
 const ASK: &str = "The conversation is being handed off. Write the brief for the agent \

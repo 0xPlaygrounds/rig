@@ -23,7 +23,10 @@ use rig_harness::rig_core::catalog::ModelSpec;
 use rig_harness::rig_core::completion::{CompletionRequest, UnsupportedOption};
 use rig_harness::rig_core::conversation::{Aside, AsideId, Entry};
 use rig_harness::rig_core::message::{Message, UserContent};
-use rig_harness::rig_memory::{HeuristicTokenCounter, serialize_conversation, summary_text};
+use rig_harness::rig_memory::{
+    HeuristicTokenCounter, keep_end_to_fit, serialize_conversation, summarization_request,
+    summary_text,
+};
 use serde::{Deserialize, Serialize};
 
 #[cfg(test)]
@@ -87,23 +90,22 @@ const ASK: &str = "The conversation is one finished chapter of the session. Summ
     ## What was done\n- ...\n\n## Files changed\n- [path, or \"(none)\"]\n\n\
     ## Decisions\n- **[Decision]**: [Why]";
 
-/// The request to `spec` for the summary of a chapter's `messages`.
+/// The request to `spec` for the summary of a chapter's `messages`, cut to fit the model.
 fn fold_request(
     messages: &[Arc<Message>],
     spec: &ModelSpec,
 ) -> Result<CompletionRequest, UnsupportedOption> {
     let conversation = serialize_conversation(messages);
+    let conversation = keep_end_to_fit(&conversation, spec, RESERVED);
     let ask = format!("<conversation>\n{conversation}\n</conversation>\n\n{ASK}");
-    let options = spec.default_options(None);
-    spec.validate(&options)?;
-    let request = CompletionRequest::new(Message::user(ask))
-        .preamble(SYSTEM.to_owned())
-        .options(options);
-    Ok(match spec.output_limit() {
-        Some(most) => request.max_tokens(u64::from(most)),
-        None => request,
-    })
+    summarization_request((SYSTEM, ask), spec, None, Some(SUMMARY_TOKENS))
 }
+
+/// The longest chapter summary asked for, in tokens.
+const SUMMARY_TOKENS: u64 = 32_000;
+
+/// Tokens of the input limit kept for the summary and the request around the chapter.
+const RESERVED: u64 = 16_384 + SUMMARY_TOKENS;
 
 /// Divides each top-level agent's conversation into chapters, with
 /// `/chapters`, `/chapter`, `/fold` and `/unfold`.

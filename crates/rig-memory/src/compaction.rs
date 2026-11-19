@@ -28,9 +28,10 @@ mod pi;
 
 pub use pi::{
     CompactionPreparation, CompactionSettings, CutPoint, FileLists, SUMMARIZATION_SYSTEM_PROMPT,
-    SummaryFailure, estimate_message_tokens, estimate_tokens, find_cut_point, merge_split_turn,
-    no_history, prepare_compaction, prepare_compaction_at, serialize_conversation,
-    summarization_request, summary_request, summary_text, turn_prefix_request,
+    SummaryFailure, clamp_max_tokens, estimate_message_tokens, estimate_tokens, find_cut_point,
+    keep_end_to_fit, merge_split_turn, no_history, prepare_compaction, prepare_compaction_at,
+    serialize_conversation, summarization_request, summary_request, summary_text,
+    turn_prefix_request,
 };
 
 /// A compaction's summary and the files listed after it, which the next compaction carries on.
@@ -52,20 +53,27 @@ impl SummaryState {
     /// The summary followed by its file lists, as the next compaction's update prompt reads it.
     /// `None` before the first compaction.
     pub fn previous_summary(&self) -> Option<String> {
-        if self.summary.is_empty() {
-            return None;
-        }
-        let files = pi::format_file_operations(&self.read_files, &self.modified_files);
-        Some(format!("{}{files}", self.summary))
+        (!self.summary.is_empty()).then(|| self.with_files())
     }
 
     /// The text that stands for the summarized messages in requests, `None` before the first
     /// compaction.
     pub fn message(&self) -> Option<String> {
-        let summary = self.previous_summary()?;
-        Some(format!(
-            "The conversation history before this point was compacted into the following summary:\n\n<summary>\n{summary}\n</summary>"
-        ))
+        (!self.summary.is_empty()).then(|| self.wrapped())
+    }
+
+    /// The summary followed by its file lists.
+    fn with_files(&self) -> String {
+        let files = pi::format_file_operations(&self.read_files, &self.modified_files);
+        format!("{}{files}", self.summary)
+    }
+
+    /// [`with_files`](Self::with_files) in the frame requests send it in.
+    fn wrapped(&self) -> String {
+        format!(
+            "The conversation history before this point was compacted into the following summary:\n\n<summary>\n{}\n</summary>",
+            self.with_files()
+        )
     }
 }
 
@@ -109,8 +117,7 @@ pub fn summarized_prefix(conversation: &Conversation) -> usize {
 /// summaries included: one user entry by [`summary_author`], a splice it
 /// makes, followed by an aside of kind [`COMPACTED`] that says what it
 /// replaced ([`Compacted`]), so [`undo_summary`] can put that back.
-/// `None`, changing nothing, when `keep_from` was taken out meanwhile or
-/// `state` has no summary.
+/// `None`, changing nothing, when `keep_from` was taken out meanwhile.
 pub fn apply_summary(
     conversation: &mut Conversation,
     keep_from: Option<MessageId>,
@@ -120,7 +127,7 @@ pub fn apply_summary(
         None => conversation.messages().len(),
         Some(kept) => conversation.index_of(kept)?,
     };
-    let summary = Entry::new(Message::user(state.message()?)).by(summary_author());
+    let summary = Entry::new(Message::user(state.wrapped())).by(summary_author());
     let entries: Vec<Entry> = (0..end).filter_map(|at| conversation.entry(at)).collect();
     let replaced_hash = serde_json::to_vec(&entries).ok();
     let spliced = conversation.splice(..end, [summary], summary_author());

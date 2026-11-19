@@ -54,15 +54,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("the last 5 messages keep {}", last.len());
     println!("a 2,000-token budget keeps {}", budget.len());
 
-    // A compaction keeping about 1,000 tokens summarizes the older turns.
+    // A compaction keeping about 1,000 tokens summarizes the older turns; a turn the cut splits
+    // has its earlier part summarized apart.
     let vendor = rig_core::providers::registry::ProviderId::catalog("ollama");
-    if let (Some(prepared), Some(vendor)) = (prepare_compaction(&conversation, 1_000), vendor) {
-        let previous = prepared.previous.previous_summary();
+    let prepared = prepare_compaction(&conversation, 1_000, false);
+    if let (Some(prepared), Some(vendor)) = (prepared, vendor) {
         let spec = ModelSpec::new(vendor, "example");
-        let request = summary_request(&prepared.to_summarize, previous.as_deref(), "", &spec)?;
+        let previous = (prepared.previous.as_deref(), "");
+        let request = summary_request(&prepared.to_summarize, previous, &spec, None)?;
         println!(
-            "a compaction would summarize {} messages, keep {} and list {:?} as read",
+            "a compaction would summarize {} messages, and {} of the turn it splits apart, keep {} \
+             and list {:?} as read",
             prepared.to_summarize.len(),
+            prepared.turn_prefix.len(),
             conversation
                 .messages()
                 .len()

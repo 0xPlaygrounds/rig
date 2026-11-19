@@ -4,19 +4,12 @@
 
 use std::time::{Duration, SystemTime};
 
-use super::{ErrorKind, ErrorReport};
+use super::ErrorReport;
 
 /// The code of a report that the request outgrew the context window.
 const CONTEXT_OVERFLOW: &str = "context_length_exceeded";
 
 impl ErrorReport {
-    /// A request error saying the request does not fit the model's context
-    /// window, which [`is_context_overflow`](Self::is_context_overflow)
-    /// recognizes.
-    pub fn context_overflow(message: impl Into<String>) -> Self {
-        Self::new(ErrorKind::Request, message).with_code(CONTEXT_OVERFLOW)
-    }
-
     /// The wait the provider asked for, as of `now`: the `retry-after-ms`
     /// header (OpenAI), else `retry-after` in seconds or as an HTTP date,
     /// else a hint in the body: Gemini's `"retryDelay": "2s"` or OpenAI's
