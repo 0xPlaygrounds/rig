@@ -13,15 +13,12 @@
 //! model's input limit. Messages added after the summary stay after them.
 
 use rig_basics::compaction::{
-    CompactionDefault, Summarizing, Uncompact, summarized_prefix, summary_author, summary_in,
-    summary_state,
+    CompactReason, CutPoint, Summarizing, Uncompact, summarized_prefix, summary_author, summary_in,
 };
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{Message, tokens_label};
 use rig_harness::rig_ecs::session_log::SessionStore;
-use rig_harness::rig_memory::{
-    CompactReason, Compacted, LogRecord, SummaryState, estimate_tokens, undo_summary,
-};
+use rig_harness::rig_memory::{Compacted, LogRecord, SummaryState, estimate_tokens, undo_summary};
 use serde::Deserialize;
 
 /// The plugin's settings table.
@@ -113,36 +110,43 @@ fn newest_turns(messages: &[std::sync::Arc<Message>], from: usize, keep: usize) 
 /// measures what it replaces. One with no turn before them keeps
 /// `rig_basics::compaction`'s cut.
 fn keep_newest_turns(
-    mut calls: Query<(Entity, &mut Summarizing, &ForAgent), (Added<Admitted>, ModelCalls)>,
-    agents: Query<&Conversation>,
-    (default, settings): (Res<CompactionDefault>, Res<ReviewSettings>),
+    mut calls: Query<
+        (Entity, &mut Summarizing, &mut ModelRequest, &ForAgent),
+        (Added<Admitted>, ModelCalls),
+    >,
+    agents: Query<(&Conversation, Option<&Connection>)>,
+    settings: Res<ReviewSettings>,
     mut commands: Commands,
 ) {
-    for (call, mut summarizing, &ForAgent(agent)) in &mut calls {
-        if !matches!(summarizing.reason, CompactReason::Asked { .. }) {
+    for (call, mut summarizing, mut model, &ForAgent(agent)) in &mut calls {
+        let asked = matches!(summarizing.reason, CompactReason::Asked { .. });
+        if !asked || summarizing.history.is_some() {
             continue;
         }
-        let Ok(conversation) = agents.get(agent) else {
+        let Ok((conversation, own)) = agents.get(agent) else {
             continue;
         };
         let messages = conversation.messages();
         let from = summarized_prefix(conversation);
         let upto = newest_turns(messages, from, settings.keep_turns)
             .filter(|&upto| upto > from && upto <= messages.len());
-        if let Some(upto) = upto {
-            let mut state = summary_state(conversation);
-            state.track(
-                messages.get(from..upto).unwrap_or_default(),
-                &default.policy.tracked,
-            );
-            *summarizing = Summarizing {
-                reason: summarizing.reason.clone(),
-                keep_from: conversation.id(upto),
-                state,
-                summary: None,
+        let spec = model.connection.as_ref().or(own).map(|it| it.spec.clone());
+        if let (Some(upto), Some(spec)) = (upto, spec) {
+            let cut = CutPoint {
+                first_kept: upto,
+                turn_start: None,
             };
+            let planned = Summarizing::plan_at(conversation, cut, summarizing.reason.clone());
+            if let Some((planned, Ok(request))) =
+                planned.map(|planned| (planned.clone(), planned.request(&spec)))
+            {
+                *summarizing = planned;
+                *model = ModelRequest {
+                    connection: model.connection.clone(),
+                    ..ModelRequest::new(request)
+                };
+            }
         }
-        let messages = conversation.messages();
         let end = summarizing
             .keep_from
             .and_then(|upto| conversation.index_of(upto))

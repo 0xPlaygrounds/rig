@@ -11,7 +11,7 @@
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::Conversation as Chat;
-use rig_harness::rig_memory::{CompactionPolicy, request_estimate};
+use rig_harness::rig_memory::{CompactionSettings, request_estimate};
 use serde::{Deserialize, Deserializer};
 
 /// Who this plugin is, in the conversation's changes.
@@ -40,11 +40,11 @@ impl Plugin for KeepLastCompactionPlugin {
 /// `[compaction]` of `settings.toml`, read as the default compaction reads
 /// it, so its reserve keeps meaning the same.
 #[derive(Resource, Default)]
-struct Policy(CompactionPolicy);
+struct Policy(CompactionSettings);
 
 impl<'de> Deserialize<'de> for Policy {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        CompactionPolicy::deserialize(deserializer).map(Policy)
+        CompactionSettings::deserialize(deserializer).map(Policy)
     }
 }
 
@@ -61,7 +61,8 @@ fn near_the_window(
         };
         let (connection, request) = (&adapted.0, adapted.sent(&model));
         let used = last.context().unwrap_or(0).max(request_estimate(&request));
-        if !policy.0.over_threshold(used, &connection.spec) {
+        let window = connection.spec.input_limit().map_or(u64::MAX, u64::from);
+        if !policy.0.should_compact(used, window) {
             continue;
         }
         let Some(kept) = drop_oldest(&mut conversation) else {

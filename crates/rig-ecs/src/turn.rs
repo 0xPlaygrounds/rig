@@ -50,7 +50,7 @@ use rig_core::now_ms;
 use rig_core::serve::{Reply, stream_truncated};
 use rig_core::streaming::{Item, Part, Relayed, StreamEvent};
 use rig_core::tool::{ToolErrorKind, ToolExecutionError, ToolResult, Touches, feedback};
-use rig_memory::{Anchor, is_output_notes};
+use rig_memory::Anchor;
 use web_time::Instant;
 
 use super::agent::{
@@ -465,17 +465,12 @@ fn take_unanswered(conversation: &mut Conversation) -> Option<Vec<String>> {
             continue;
         };
         let is_owed = |item: &UserContent| matches!(item, UserContent::ToolResult(result) if owed.contains(&&result.call));
-        // A text is notes only beside a result that stays; any other is asked.
-        let holds_owed = content.iter().any(is_owed);
-        let (results, asked): (Vec<&UserContent>, Vec<&UserContent>) =
-            content.iter().partition(|item| match item {
-                UserContent::ToolResult(_) => true,
-                UserContent::Text(text) => holds_owed && is_output_notes(&text.text),
-                _ => false,
-            });
+        let (results, asked): (Vec<&UserContent>, Vec<&UserContent>) = content
+            .iter()
+            .partition(|item| matches!(item, UserContent::ToolResult(_)));
         let results: Vec<UserContent> = results
             .into_iter()
-            .filter(|item| is_owed(item) || matches!(item, UserContent::Text(_)))
+            .filter(|item| is_owed(item))
             .cloned()
             .collect();
         changed |= results.len() < content.len();

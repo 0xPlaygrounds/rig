@@ -1,5 +1,7 @@
 use std::sync::mpsc::Receiver;
 
+use rig_basics::compaction::CompactionDefault;
+
 use rig_core::completion::{CompletionRequest, Message};
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::pick::PickPlugin;
@@ -32,6 +34,11 @@ fn start(
     .add_observer(log_ended);
     app.finish();
     app.update();
+    // This plugin cuts `/compact` itself, so the default cut must find something to summarize.
+    app.world_mut()
+        .resource_mut::<CompactionDefault>()
+        .0
+        .keep_recent_tokens = 1;
     let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
     if let Some(connection) = connect(model) {
         app.world_mut().entity_mut(agent).insert(connection);

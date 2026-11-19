@@ -106,11 +106,11 @@ fn rewrites_are_logged_restored_and_undone() {
 
     // A command drops turn 2, then a compaction condenses turns 1 and 3.
     run(&mut app, agent, "drop-turn 2");
-    // It keeps the newest 20 estimated tokens: the last two turns.
+    // It keeps the newest 4 estimated tokens (four characters a token): the last two turns.
     app.world_mut()
         .resource_mut::<CompactionDefault>()
-        .policy
-        .keep_asked = 20;
+        .0
+        .keep_recent_tokens = 4;
     app.world_mut().trigger(RunCommand::new(agent, "compact"));
     run_until(&mut app, &wakes, |world| {
         let compacted = world

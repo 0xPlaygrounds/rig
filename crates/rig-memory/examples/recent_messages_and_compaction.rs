@@ -1,17 +1,19 @@
 //! A conversation kept over time with rig-core and rig-memory alone, no
 //! model needed: it is saved and resumed, a rule of recent messages
-//! chooses what a request sends, and old tool outputs are cleared to free context.
+//! chooses what a request sends, and a compaction is planned: what it would summarize
+//! and the summary request it would send.
 //!
 //! ```sh
 //! cargo run -p rig-memory --example recent_messages_and_compaction
 //! ```
 
+use rig_core::catalog::ModelSpec;
 use rig_core::completion::Message;
 use rig_core::message::{
     AssistantContent, AssistantMessage, CallId, ToolCall, ToolFunction, ToolName, UserContent,
 };
 use rig_memory::recent::{LastMessages, TokenBudget, view};
-use rig_memory::{ClearToolOutputs, MemoryStore, load, save, summary_author};
+use rig_memory::{MemoryStore, load, prepare_compaction, save, summary_request};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let store = MemoryStore::default();
@@ -40,7 +42,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         save(&store, "user-123", &mut conversation)?;
     }
 
-    let mut conversation = load(&store, "user-123")?;
+    let conversation = load(&store, "user-123")?;
     println!(
         "saved and resumed {} messages",
         conversation.messages().len()
@@ -52,13 +54,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("the last 5 messages keep {}", last.len());
     println!("a 2,000-token budget keeps {}", budget.len());
 
-    // Clearing old tool outputs is a recorded splice that keeps every id.
-    let cleared =
-        ClearToolOutputs::new(1_000).clear_conversation(&mut conversation, summary_author());
-    save(&store, "user-123", &mut conversation)?;
-    println!(
-        "cleared {} tool outputs (about {} tokens)",
-        cleared.results, cleared.tokens
-    );
+    // A compaction keeping about 1,000 tokens summarizes the older turns.
+    let vendor = rig_core::providers::registry::ProviderId::catalog("ollama");
+    if let (Some(prepared), Some(vendor)) = (prepare_compaction(&conversation, 1_000), vendor) {
+        let previous = prepared.previous.previous_summary();
+        let spec = ModelSpec::new(vendor, "example");
+        let request = summary_request(&prepared.to_summarize, previous.as_deref(), "", &spec)?;
+        println!(
+            "a compaction would summarize {} messages, keep {} and list {:?} as read",
+            prepared.to_summarize.len(),
+            conversation
+                .messages()
+                .len()
+                .saturating_sub(prepared.first_kept),
+            prepared.files.read_files,
+        );
+        println!("its request sends {} message", request.chat_history.len());
+    }
     Ok(())
 }
