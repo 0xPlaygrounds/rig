@@ -496,6 +496,23 @@ fn an_unknown_enabled_plugin_names_its_fixes() {
     );
 }
 
+/// `rig plugin add` is offered only for a name it can take: a type path
+/// with its crate.
+#[test]
+fn an_unknown_name_that_is_no_type_path_is_not_offered_to_add() {
+    for name in ["rig-basics/gone", "gone"] {
+        let text = format!("[plugins]\nenable = [\"{name}\"]\n");
+        let refused = (plugins(&file("/h/settings.toml", &text)).err())
+            .map(|why| why.to_string())
+            .unwrap_or_default();
+        assert!(
+            refused.contains(&format!("`rig plugin disable {name}` takes it out"))
+                && !refused.contains("rig plugin add"),
+            "{refused}"
+        );
+    }
+}
+
 /// A branch in `enable` or `disable` is told where branches go, with the
 /// fix that takes it out, and not to add it as a plugin's crate.
 #[test]

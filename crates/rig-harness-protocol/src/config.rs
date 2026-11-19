@@ -601,7 +601,7 @@ pub fn plugins(home: &SettingsFile) -> Result<Plugins, Error> {
                     "unknown plugin `{plugin}` in `{list}`, now `{now}`: {fix}, then \
                      `rig plugin {list} {now}` sets the new one"
                 )
-            } else if list == "enable" {
+            } else if list == "enable" && extra_path(plugin).is_ok() {
                 format!(
                     "unknown plugin `{plugin}` in `{list}`: {fix}, or `rig plugin add {plugin}` \
                      with its crate's source adds it"
@@ -755,15 +755,7 @@ fn extra(table: &dyn TableLike, base: &Path) -> Result<Extra, String> {
             .transpose()
     };
     let plugin = text("plugin")?.ok_or("`plugin` (the type path) is missing")?;
-    if !is_type_path(&plugin) {
-        return Err(format!("`{plugin}` is not a Rust type path"));
-    }
-    if !plugin.contains("::") {
-        return Err(format!(
-            "`{plugin}` names no crate: write the crate-qualified type path, such as \
-             `{plugin}::MyPlugin`"
-        ));
-    }
+    extra_path(&plugin)?;
     if built_in(&plugin).is_some() {
         return Err(format!(
             "`{plugin}` is one of rig's own plugins; name it in `enable` instead"
@@ -799,6 +791,20 @@ fn extra(table: &dyn TableLike, base: &Path) -> Result<Extra, String> {
         krate,
         source,
     })
+}
+
+/// Checks that `plugin` can name an extra: a type path with its crate.
+fn extra_path(plugin: &str) -> Result<(), String> {
+    if !is_type_path(plugin) {
+        return Err(format!("`{plugin}` is not a Rust type path"));
+    }
+    if !plugin.contains("::") {
+        return Err(format!(
+            "`{plugin}` names no crate: write the crate-qualified type path, such as \
+             `{plugin}::MyPlugin`"
+        ));
+    }
+    Ok(())
 }
 
 /// Whether `text` is a Rust type path, such as `my_plugin::MyPlugin`.
