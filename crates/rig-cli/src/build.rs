@@ -1207,8 +1207,9 @@ fn bevy_conflict(lines: &[String], bevy: &BTreeSet<String>) -> Option<String> {
         let why = lines.next()?.trim().trim_start_matches("... ");
         return Some(format!("{selected}, {why}"));
     }
-    let (_, versions) = allowed.rsplit_once(" are: ")?;
-    if versions.split(", ").any(|version| version == BEVY_VERSION) {
+    // A lock narrows the list to its version, which then proves nothing.
+    let (wanted_part, versions) = allowed.rsplit_once(" are: ")?;
+    if wanted_part.ends_with(')') || versions.split(", ").any(|version| version == BEVY_VERSION) {
         return None;
     }
     let wanted = quoted(allowed, "requirements `")?;
