@@ -553,6 +553,13 @@ fn held<'a>(branch: &str, extras: &'a [Extra]) -> Vec<&'a str> {
         .collect()
 }
 
+/// Plugins of rig's that have a new type path, as (old, new): a settings
+/// file naming the old one is refused naming the new one.
+const RENAMED: &[(&str, &str)] = &[(
+    "rig_basics::sessions::agents::AgentsPlugin",
+    "rig_basics::sessions::forks::ForksPlugin",
+)];
+
 /// The `[plugins]` table of one file, checked.
 #[derive(Default)]
 struct Changes {
@@ -588,6 +595,11 @@ pub fn plugins(home: &SettingsFile) -> Result<Plugins, Error> {
             let problem = if !held(plugin, &changes.extra).is_empty() {
                 format!(
                     "`{plugin}` in `{list}` is a branch, and branches go in [plugins] off: {fix}"
+                )
+            } else if let Some((_, now)) = RENAMED.iter().find(|(old, _)| old == plugin) {
+                format!(
+                    "unknown plugin `{plugin}` in `{list}`, now `{now}`: {fix}, then \
+                     `rig plugin {list} {now}` sets the new one"
                 )
             } else if list == "enable" {
                 format!(
