@@ -1052,8 +1052,8 @@ fn check_bevy(
 
 /// The error for cargo's `failure` to resolve the agent project, after the
 /// output `lines`, with the plugins in `local` and the Cargo.lock `lock`:
-/// [`pinned_bevy`] when cargo's first error names a Bevy crate and a plugin
-/// has a [`bevy_pins`] requirement, else `failure`.
+/// [`pinned_bevy`] when cargo's first error is a version conflict over a
+/// Bevy crate and a plugin has a [`bevy_pins`] requirement, else `failure`.
 fn unresolved<'a>(
     failure: Box<dyn std::error::Error>,
     lines: &[String],
@@ -1062,15 +1062,15 @@ fn unresolved<'a>(
 ) -> Box<dyn std::error::Error> {
     let bevy = bevy_crates(lock);
     let first = first_errors(lines.iter().map(String::as_str), 1);
-    // Cargo quotes a crate as `name` or as `name = "requirement"`.
-    let names_bevy = first.iter().any(|line| {
-        let quoted = line.split('`').skip(1).step_by(2);
-        quoted
-            .filter_map(|quote| quote.split_whitespace().next())
-            .any(|name| bevy.contains(name))
-    });
+    // Cargo quotes the crate as `name` or as `name = "requirement"`.
+    let conflict = first
+        .first()
+        .and_then(|line| line.strip_prefix("error: failed to select a version for"))
+        .and_then(|rest| rest.split('`').nth(1))
+        .and_then(|quote| quote.split_whitespace().next())
+        .is_some_and(|name| bevy.contains(name));
     let pins = bevy_pins(local, &bevy);
-    if !names_bevy || pins.is_empty() {
+    if !conflict || pins.is_empty() {
         return failure;
     }
     Explained(pinned_bevy(&failure, &pins)).into()

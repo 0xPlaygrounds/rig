@@ -120,8 +120,12 @@ impl ReloadBuild {
 
     /// Why `rig build` says the build failed, when it knows the cause: its
     /// last line, before anything `rig update` said after it. An earlier
-    /// line like it is some other program's.
+    /// line like it is some other program's, as is any line of an update
+    /// that installed nothing, which ran no `rig build`.
     fn explained(&self) -> Option<&str> {
+        if self.rebuild == Rebuild::Update && !self.installed() {
+            return None;
+        }
         let mut lines = self.output.iter().rev();
         explanation(lines.find(|line| !line.starts_with(UPDATE_SAYS))?)
     }
