@@ -87,8 +87,7 @@ pub struct BuildFailure {
     pub errors: Vec<String>,
     /// The build's whole output: [`Home::build_log`], or [`safe_log`].
     pub log: PathBuf,
-    /// Whether the reason says the cause, certain ([`Explained`]) or likely
-    /// ([`LikelyCause`]).
+    /// Whether the reason says the cause ([`Explained`]).
     explained: bool,
 }
 
@@ -103,7 +102,8 @@ impl BuildFailure {
     }
 
     /// The [`BUILD_SAYS`] line for a failure whose cause rig says: its reason on
-    /// one line, without the closing period, as a notice goes on after it.
+    /// one line, without the closing period, as a notice goes on after it,
+    /// then the first error it kept.
     fn explanation(&self) -> Option<String> {
         self.explained.then(|| {
             let mut line = BUILD_SAYS.to_owned();
@@ -113,7 +113,12 @@ impl BuildFailure {
                 }
                 line.push_str(part);
             }
-            line.trim_end_matches('.').to_owned()
+            line.truncate(line.trim_end_matches('.').len());
+            if let Some(first) = self.errors.first() {
+                line.push_str(": ");
+                line.push_str(first.trim());
+            }
+            line
         })
     }
 
@@ -145,31 +150,29 @@ impl fmt::Display for BuildFailure {
 
 impl std::error::Error for BuildFailure {}
 
-/// A failed build rig says the cause of in its own words, so cargo's
-/// errors, in the build log, are not repeated after it.
+/// A failed build rig says the cause of in its own words. When sure, cargo's
+/// errors, in the build log, are not repeated after it; a likely cause keeps
+/// them.
 #[derive(Debug)]
-struct Explained(String);
+struct Explained {
+    cause: String,
+    sure: bool,
+}
+
+impl Explained {
+    fn sure(cause: String) -> Self {
+        let sure = true;
+        Self { cause, sure }
+    }
+}
 
 impl fmt::Display for Explained {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
+        f.write_str(&self.cause)
     }
 }
 
 impl std::error::Error for Explained {}
-
-/// A failed build whose likely cause rig says first. The build may have
-/// failed for another reason, so cargo's errors stay.
-#[derive(Debug)]
-struct LikelyCause(String);
-
-impl fmt::Display for LikelyCause {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-impl std::error::Error for LikelyCause {}
 
 /// Writes the agent project with the plugins `settings.toml` turns on,
 /// checks its Bevy version, builds it, and copies the binary to `staged` as
@@ -223,29 +226,23 @@ fn compile_logged(
     }
     let rig_crates = project::rig_crates(plugins, source)?;
     let rig_version = project::rig_version(source);
-    let checked = check_bevy(launch, plugins, &rig_crates, &rig_version, log);
-    if checked.as_ref().is_err_and(|why| !why.is::<Explained>()) {
-        log.show_held();
-    }
-    let second_bevy = checked?;
+    let copies = check_bevy(launch, plugins, &rig_crates, &rig_version, log)?;
     // `/reload` shows the latest of these lines and of cargo's.
     log.say("Compiling the agent…");
     let mut command = cargo(launch);
     command.args(["build", "--package", PACKAGE]);
-    // A Windows console may not take the erase sequence, which cargo
-    // itself writes on Unix only.
-    log.erase =
-        cfg!(unix) && log.output == BuildOutput::Live && show_progress(launch, &mut command);
+    log.show_progress(launch, &mut command);
     let status = log.run(command)?;
     if status.success() {
         return Ok(());
     }
     let failed = format!("cargo could not build the agent ({status})");
-    Err(match second_bevy {
-        Some((name, version)) => {
-            let advice = foreign_bevy_advice(launch, plugins, &name, &version, log);
-            LikelyCause(format!("Likely cause: {advice} {failed}")).into()
+    Err(match likely_bevy_cause(launch, plugins, &copies, log) {
+        Some(advice) => Explained {
+            cause: format!("Likely cause: {advice} {failed}"),
+            sure: false,
         }
+        .into(),
         None => failed.into(),
     })
 }
@@ -556,8 +553,8 @@ struct BuildLog {
     erase: bool,
     /// Whether the last byte passed on was a `\r`, which a `\n` may end.
     after_cr: bool,
-    /// What the running `cargo tree` said besides its progress, which
-    /// [`Self::show_or_hold`] keeps back.
+    /// What the last `cargo tree` said besides its progress, which
+    /// [`Self::end_segment`] keeps back.
     held: Vec<u8>,
 }
 
@@ -605,6 +602,14 @@ impl BuildLog {
         self.lines.push(line.to_owned());
     }
 
+    /// Has `command`, cargo, draw its progress bar when the output is live
+    /// on a terminal. A Windows console may not take the erase sequence,
+    /// which cargo itself writes on Unix only.
+    fn show_progress(&mut self, launch: &Launch, command: &mut Command) {
+        self.erase =
+            cfg!(unix) && self.output == BuildOutput::Live && show_progress(launch, command);
+    }
+
     /// Runs `command`, cargo, whose stderr is piped, in a process group of
     /// its own ([`Build`]): passes its stderr on as it comes and logs each
     /// of its lines.
@@ -620,7 +625,7 @@ impl BuildLog {
     /// erase the bar's line before a shorter one, which would keep the
     /// bar's tail on screen, so on a terminal each `\r` but a `\r\n` erases
     /// it. With `hold` it takes whole lines, keeping back all but progress
-    /// ([`Self::show_or_hold`]).
+    /// ([`Self::end_segment`]).
     fn pass_on(&mut self, child: &mut Child, hold: bool) {
         // A wait of an earlier command is over.
         self.blocked_since = None;
@@ -654,54 +659,41 @@ impl BuildLog {
             }
             for &byte in &chunk {
                 if byte == b'\r' || byte == b'\n' {
-                    if hold {
-                        self.show_or_hold(&segment, &[byte]);
-                    } else {
-                        self.record_segment(&segment);
-                    }
+                    self.end_segment(&segment, &[byte], hold);
                     segment.clear();
                 } else {
                     segment.push(byte);
                 }
             }
         }
-        if hold {
-            self.show_or_hold(&segment, &[]);
-        } else {
-            self.record_segment(&segment);
-        }
+        self.end_segment(&segment, &[], hold);
     }
 
-    /// Shows and logs `line` and its `end` when it is cargo's progress, so
-    /// a long first resolve does not look stuck. Anything else is held: a
-    /// warning comes again from `cargo build`, and rig may explain an error.
-    fn show_or_hold(&mut self, line: &[u8], end: &[u8]) {
-        if !is_progress(line) {
+    /// Logs `line`, which `end` ended. With `hold`, only cargo's progress is
+    /// shown and logged, so a long first resolve does not look stuck. The
+    /// rest is held: a warning comes again from `cargo build`, and rig may
+    /// explain an error.
+    fn end_segment(&mut self, line: &[u8], end: &[u8], hold: bool) {
+        if hold && !is_progress(line) {
             self.held.extend_from_slice(line);
             self.held.extend_from_slice(end);
             return;
         }
-        if self.output == BuildOutput::Live {
+        if hold && self.output == BuildOutput::Live {
             self.show(line);
             self.show(end);
         }
         self.record_segment(line);
     }
 
-    /// Logs what [`Self::show_or_hold`] held, for a `cargo tree` that failed.
-    fn record_held(&mut self) {
-        for line in self.held.clone().split(|&byte| byte == b'\n') {
+    /// Logs what [`Self::end_segment`] held, for a `cargo tree` that failed,
+    /// and returns it.
+    fn log_held(&mut self) -> Vec<u8> {
+        let held = std::mem::take(&mut self.held);
+        for line in held.split(|&byte| byte == b'\n') {
             self.record_segment(line);
         }
-    }
-
-    /// Shows what [`Self::show_or_hold`] held, when the output is live.
-    fn show_held(&mut self) {
-        if self.output != BuildOutput::Live {
-            return;
-        }
-        let held = std::mem::take(&mut self.held);
-        self.show(&held);
+        held
     }
 
     /// Shows `chunk`, erasing after each `\r` that no `\n` follows when
@@ -764,9 +756,8 @@ impl BuildLog {
     /// with cargo's first errors unless rig [`Explained`] it.
     fn fail(mut self, at: FailedAt, failure: &(dyn std::error::Error + 'static)) -> BuildFailure {
         let reason = failure.to_string();
-        let certain = failure.is::<Explained>();
-        let explained = certain || failure.is::<LikelyCause>();
-        let errors = match certain {
+        let explained = failure.downcast_ref::<Explained>();
+        let errors = match explained.is_some_and(|explained| explained.sure) {
             true => Vec::new(),
             false => first_errors(self.lines.iter().map(String::as_str), ERROR_LINES)
                 .into_iter()
@@ -779,7 +770,7 @@ impl BuildLog {
             reason,
             errors,
             log: self.path,
-            explained,
+            explained: explained.is_some(),
         }
     }
 }
@@ -1066,23 +1057,28 @@ pub fn stamp(binary: &Path) -> std::io::Result<String> {
 /// pulls in a `bevy_app` or `bevy_ecs` other than [`BEVY_VERSION`] or rig
 /// crates other than the agent's. It runs before anything compiles, as
 /// rustc's errors for a foreign Bevy would say nothing of the cause. Returns
-/// the name and version of another Bevy crate the graph holds beside the
-/// agent's: a plugin may keep that one private, so it is only a likely cause
-/// should the build fail.
+/// the other versions of Bevy crates the graph holds beside the agent's, as
+/// `name@version`: a plugin may keep those private, so they matter only to
+/// [`likely_bevy_cause`].
 fn check_bevy(
     launch: &Launch,
     plugins: &config::Plugins,
     rig_crates: &BTreeSet<String>,
     rig_version: &str,
     log: &mut BuildLog,
-) -> Result<Option<(String, String)>> {
+) -> Result<BTreeSet<String>> {
     let lines = tree(launch, &[], log).map_err(|failure| {
+        let held = log.log_held();
         let local = plugins.extras_on().filter_map(|extra| match &extra.source {
             config::Source::Path(path) => Some(path.as_path()),
             _ => None,
         });
         let lock = fs::read_to_string(launch.home().project().join("Cargo.lock"));
-        unresolved(failure, &log.lines, local, &lock.unwrap_or_default())
+        let why = unresolved(failure, &log.lines, local, &lock.unwrap_or_default());
+        if log.output == BuildOutput::Live && !why.is::<Explained>() {
+            log.show(&held);
+        }
+        why
     })?;
     check_rig(&lines, rig_crates, rig_version)?;
     let packages: Vec<(&str, &str)> = lines.iter().filter_map(|line| package(line)).collect();
@@ -1094,29 +1090,26 @@ fn check_bevy(
     if let Some((name, version)) =
         foreign().find(|(name, _)| ["bevy_app", "bevy_ecs"].contains(name))
     {
-        return Err(Explained(foreign_bevy_advice(launch, plugins, name, version, log)).into());
+        // Every package that depends on it, directly or not. cargo cannot
+        // say when two sources have that version.
+        let inverted = ["--invert", &format!("{name}@{version}")];
+        let dependents = tree(launch, &inverted, log).unwrap_or_default();
+        let culprit = plugins.extras_on().find(|extra| {
+            (dependents.iter())
+                .any(|line| package(line).is_some_and(|(name, _)| name == extra.krate))
+        });
+        return Err(Explained::sure(foreign_bevy_advice(culprit, version)).into());
     }
     Ok(foreign()
-        .find(|(name, _)| name.starts_with("bevy") && packages.contains(&(*name, BEVY_VERSION)))
-        .map(|(name, version)| ((*name).to_owned(), (*version).to_owned())))
+        .filter(|(name, _)| name.starts_with("bevy") && packages.contains(&(*name, BEVY_VERSION)))
+        .map(|(name, version)| format!("{name}@{version}"))
+        .collect())
 }
 
-/// What to do about Bevy crate `name` at the foreign `version`: addressed to
-/// the plugin that depends on it, directly or not, and in general terms when
-/// none does or cargo cannot say, as when two sources have that version.
-fn foreign_bevy_advice(
-    launch: &Launch,
-    plugins: &config::Plugins,
-    name: &str,
-    version: &str,
-    log: &mut BuildLog,
-) -> String {
-    let inverted = ["--invert", &format!("{name}@{version}")];
-    let dependents = tree(launch, &inverted, log).unwrap_or_default();
-    let culprit = plugins.extras_on().find(|extra| {
-        (dependents.iter()).any(|line| package(line).is_some_and(|(name, _)| name == extra.krate))
-    });
-    match culprit {
+/// What to do about a Bevy crate at the foreign `version`: addressed to
+/// `plugin`, which depends on it, and in general terms without one.
+fn foreign_bevy_advice(plugin: Option<&config::Extra>, version: &str) -> String {
+    match plugin {
         Some(plugin) => foreign_bevy(&plugin.krate, &plugin.plugin, version),
         None => format!(
             "the agent project pulls in Bevy {version}, but this rig agent is built on Bevy \
@@ -1124,6 +1117,46 @@ fn foreign_bevy_advice(
             super::bevy_range()
         ),
     }
+}
+
+/// The advice for a failed build whose log shows the compiler rejecting code
+/// (`error[E...]`) of a crate that depends on one of `copies`, the
+/// [`check_bevy`] result, addressed to that crate's plugin. `None` for any
+/// other failure, such as one in another crate or of the linker, and when
+/// cargo cannot say who depends on them.
+fn likely_bevy_cause(
+    launch: &Launch,
+    plugins: &config::Plugins,
+    copies: &BTreeSet<String>,
+    log: &mut BuildLog,
+) -> Option<String> {
+    let failed: Vec<String> = (log.lines.iter())
+        .filter_map(|line| quoted(line, "error: could not compile `"))
+        .filter(|name| *name != PACKAGE)
+        .map(str::to_owned)
+        .collect();
+    let rejected = log.lines.iter().any(|line| line.starts_with("error[E"));
+    if copies.is_empty() || failed.is_empty() || !rejected {
+        return None;
+    }
+    // Without `--no-dedupe` a later copy's list leaves out what an earlier
+    // one showed.
+    let mut args = vec!["--no-dedupe"];
+    for copy in copies {
+        args.extend(["--invert", copy]);
+    }
+    let inverted = tree(launch, &args, log).ok()?;
+    inverted.split(|line| line.is_empty()).find_map(|listed| {
+        let (copy, dependents) = listed.split_first()?;
+        let names: Vec<&str> = (dependents.iter())
+            .filter_map(|line| Some(package(line)?.0))
+            .collect();
+        let culprit = failed.iter().find(|name| names.contains(&name.as_str()))?;
+        let plugin = (plugins.extras_on())
+            .filter(|extra| names.contains(&extra.krate.as_str()))
+            .min_by_key(|extra| extra.krate != *culprit);
+        Some(foreign_bevy_advice(plugin, package(copy)?.1))
+    })
 }
 
 /// The error for cargo's `failure` to resolve the agent project, after the
@@ -1142,49 +1175,44 @@ fn unresolved<'a>(
     };
     let mut pins = vec![conflict];
     pins.extend(bevy_pins(local, &bevy));
-    Explained(pinned_bevy(&failure, &pins)).into()
+    Explained::sure(pinned_bevy(&failure, &pins)).into()
 }
 
-/// What in cargo's first error among `lines` asks for a version of one of
-/// `bevy` that is not [`BEVY_VERSION`], and who asks; `None` when that error
-/// is about something else, such as a missing feature. cargo names either
-/// side of a conflict: the requirement it could not meet, or the package it
-/// selected before.
+/// What cargo's first error among `lines` shows asking for a version of one
+/// of `bevy` that is not [`BEVY_VERSION`], and who asks. That takes a version
+/// conflict and nothing else: cargo writes any other reason, such as a
+/// missing feature, ahead of its conflict line. The side at fault is the
+/// selected package when that is a foreign version, else the requirement
+/// cargo could not meet, unless it allows the agent's version. `None` for
+/// any other error.
 fn bevy_conflict(lines: &[String], bevy: &BTreeSet<String>) -> Option<String> {
     let mut lines = (lines.iter())
         .map(String::as_str)
+        .filter(|line| !line.trim().is_empty())
         .skip_while(|line| !line.starts_with("error"));
-    let quote = quoted(
-        lines
-            .next()?
-            .strip_prefix("error: failed to select a version for")?,
-        "`",
-    )?;
-    let (name, mut wanted) = match quote.split_once(" = ") {
-        Some((name, wanted)) => (name, Some(wanted.trim_matches('"'))),
-        None => (quote, None),
-    };
+    let name = quoted(lines.next()?, "error: failed to select a version for `")?;
     if !bevy.contains(name) {
         return None;
     }
-    let mut by = None;
-    while let Some(line) = lines.next() {
-        if let Some(selected) = quoted(line, "previously selected package `") {
-            if selected.rsplit(" v").next() != Some(BEVY_VERSION) {
-                let why = lines.next()?.trim().trim_start_matches("... ");
-                return Some(format!("{selected}, {why}"));
-            }
-            continue;
-        }
-        by = by.or(quoted(line, "required by package `"));
-        wanted = quoted(line, "versions that meet the requirements `").or(wanted);
-        if let (Some(wanted), Some(by)) = (wanted, by)
-            && takes_bevy(wanted) == Some(false)
-        {
-            return Some(format!("{name} {wanted}, required by {by}"));
-        }
+    let by = quoted(lines.next()?, "required by package `")?;
+    let allowed = lines.find(|line| line.starts_with("versions that meet the requirements `"))?;
+    if lines.next()? != "all possible versions conflict with previously selected packages" {
+        return None;
     }
-    None
+    let selected = lines.find_map(|line| {
+        let selected = quoted(line, "previously selected package `")?;
+        (package(selected)?.0 == name).then_some(selected)
+    })?;
+    if package(selected)?.1 != BEVY_VERSION {
+        let why = lines.next()?.trim().trim_start_matches("... ");
+        return Some(format!("{selected}, {why}"));
+    }
+    let (_, versions) = allowed.rsplit_once(" are: ")?;
+    if versions.split(", ").any(|version| version == BEVY_VERSION) {
+        return None;
+    }
+    let wanted = quoted(allowed, "requirements `")?;
+    Some(format!("{name} {wanted}, required by {by}"))
 }
 
 /// What `line` has between `start`, which ends with a backtick, and the
@@ -1226,7 +1254,7 @@ fn foreign_bevy(krate: &str, plugin: &str, version: &str) -> String {
 /// for every target, a renamed one by its `package`, and an inherited one
 /// (`workspace = true`) where its workspace writes it. Requirements are read
 /// in the forms `=V`, `^V`, `~V` and `V`; another form, or a manifest that
-/// does not read, is left to cargo's own message.
+/// does not read, is not listed.
 fn bevy_pins<'a>(
     crates: impl IntoIterator<Item = &'a Path>,
     bevy: &BTreeSet<String>,
@@ -1375,24 +1403,26 @@ fn check_rig(packages: &[String], rig_crates: &BTreeSet<String>, rig_version: &s
 
 /// The lines of `cargo tree` over the agent project with `args`, one
 /// package per line, as `name vVERSION (source)`. `log` passes on cargo's
-/// progress and holds the rest, which it logs only when cargo fails.
+/// progress and holds the rest ([`BuildLog::end_segment`]).
 fn tree(launch: &Launch, args: &[&str], log: &mut BuildLog) -> Result<Vec<String>> {
     let mut command = cargo(launch);
     command
         .args(["tree", "--prefix", "none", "--format", "{p}"])
         .args(args)
-        // Its lines are passed on whole, which a progress bar's are not.
-        .env("CARGO_TERM_PROGRESS_WHEN", "never")
         .stdout(Stdio::piped());
+    log.show_progress(launch, &mut command);
     let mut build = Build::spawn(command)?;
     let child = &mut build.child;
     // Read on its own thread, so neither pipe fills while the other is read.
     let out = child.stdout.take().map(chunks);
     log.pass_on(child, true);
+    // What is written next would not cover a bar left on the line.
+    if log.erase {
+        log.show(b"\x1b[K");
+    }
     let stdout: Vec<u8> = out.into_iter().flatten().flatten().collect();
     let status = child.wait()?;
     if !status.success() {
-        log.record_held();
         return Err("cargo could not resolve the agent project's dependencies".into());
     }
     log.held.clear();
