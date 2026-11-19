@@ -46,8 +46,8 @@ use super::summarized_prefix;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct CompactionSettings {
-    /// Whether a conversation is compacted on its own near the window. `/compact` works either
-    /// way.
+    /// Whether a conversation is compacted on its own: near the window, and after a request
+    /// refused as too long or a reply the window cut short. `/compact` works either way.
     pub enabled: bool,
     /// Tokens of the model's input limit kept free for the reply.
     pub reserve_tokens: u64,

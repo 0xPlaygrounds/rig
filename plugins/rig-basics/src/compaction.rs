@@ -77,6 +77,7 @@ impl Plugin for CompactionPlugin {
             .add_systems(Update, (stale_after_edits, compact_when_idle))
             .add_observer(take_summary)
             .add_observer(follow_successor::<Summarizing>)
+            .add_observer(follow_successor::<SummaryRetries>)
             .add_observer(carry_recovery)
             .add_observer(provided_by_compaction);
         #[cfg(feature = "tui")]
@@ -182,9 +183,12 @@ pub struct Summarizing {
     /// and when the reply cannot be used. A reviewer in [`ReviewSystems::Act`] may replace it, or
     /// set it to `None` to cancel the compaction.
     pub summary: Option<String>,
-    /// How many times this call was sent again after a passing failure.
-    retries: u32,
 }
+
+/// How many times a summary call was sent again after a passing failure; each summary call
+/// counts its own. A call sent again takes it.
+#[derive(Component, Clone, Copy, Debug, Default)]
+struct SummaryRetries(u32);
 
 impl Summarizing {
     /// The first summary call of a compaction of `conversation` for `reason`, keeping about
@@ -243,7 +247,6 @@ impl Summarizing {
             turn_prefix,
             history,
             summary: None,
-            retries: 0,
         }
     }
 
@@ -259,7 +262,6 @@ impl Summarizing {
             turn_prefix: None,
             history: None,
             summary: None,
-            retries: 0,
         }
     }
 
@@ -300,7 +302,6 @@ impl Summarizing {
             turn_prefix: None,
             history: Some(summary),
             summary: None,
-            retries: 0,
             ..self.clone()
         })
     }
@@ -676,6 +677,7 @@ fn recover_from_overflow(
         ),
         (
             ReadyToSettle,
+            ModelCalls,
             With<TurnCall>,
             Without<SupersededBy>,
             Without<OverflowTried>,
@@ -790,18 +792,19 @@ fn retryable(report: &ErrorReport) -> bool {
 /// with the [`Backoff`] keeps it from settling until then, and the call sent again ([`resend`])
 /// takes its marker and its hold on the call it is for.
 fn retry_compaction_calls(
-    mut failed: Query<
+    failed: Query<
         (
             Entity,
             &Outcome,
             Option<&RetryVerdict>,
             &CallOf,
             &ForAgent,
-            &mut Summarizing,
+            Option<&SummaryRetries>,
         ),
         (
             ReadyToSettle,
             ModelCalls,
+            With<Summarizing>,
             Without<TurnCall>,
             Without<SupersededBy>,
         ),
@@ -810,21 +813,21 @@ fn retry_compaction_calls(
     policy: Res<RetryPolicy>,
     mut commands: Commands,
 ) {
-    for (call, Outcome(outcome), verdict, &CallOf(turn), &ForAgent(agent), mut summarizing) in
-        &mut failed
-    {
+    for (call, Outcome(outcome), verdict, &CallOf(turn), &ForAgent(agent), retries) in &failed {
         let Err(report) = outcome else {
             continue;
         };
-        if ended.contains(turn) || !retryable(report) || summarizing.retries >= policy.max_retries {
+        let retries = retries.map_or(0, |it| it.0);
+        if ended.contains(turn) || !retryable(report) || retries >= policy.max_retries {
             continue;
         }
         let delay = match verdict.map(|verdict| &verdict.0) {
             Some(Verdict::Retry(delay)) => *delay,
-            _ => policy.backoff(summarizing.retries),
+            _ => policy.backoff(retries),
         };
-        summarizing.retries = summarizing.retries.saturating_add(1);
-        let backoff = Backoff::after(summarizing.retries, delay);
+        let retries = retries.saturating_add(1);
+        commands.entity(call).try_insert(SummaryRetries(retries));
+        let backoff = Backoff::after(retries, delay);
         let tries = format!("{}/{}", backoff.attempt, policy.max_retries);
         let report = report.clone();
         commands.queue(move |world: &mut World| {
@@ -926,7 +929,7 @@ enum NotTaken {
 /// The text a summary call settled with, read from its reply or left by a reviewer, or why there
 /// is none; a passing failure that used up its retries under `policy` says so.
 fn taken(
-    outcome: &Outcome,
+    (outcome, retries): (&Outcome, u32),
     summarizing: &Summarizing,
     policy: &RetryPolicy,
 ) -> Result<String, NotTaken> {
@@ -934,11 +937,11 @@ fn taken(
     let response = match (&outcome.0, outcome.completion()) {
         (Err(report), _) => {
             let most = policy.max_retries;
-            let why = match retryable(report) && summarizing.retries >= most {
+            let why = match retryable(report) && retries >= most {
                 true => format!(
                     "{report}. Not retrying: it failed {} times in a row (`[retry] max_retries` is \
                      {most})",
-                    summarizing.retries.saturating_add(1)
+                    retries.saturating_add(1)
                 ),
                 false => report.to_string(),
             };
@@ -970,7 +973,12 @@ fn take_summary(
     settled: On<Add<Settled>>,
     calls: Query<(
         (&CallOf, &ForAgent),
-        (&Summarizing, &ModelRequest, &Outcome),
+        (
+            &Summarizing,
+            &ModelRequest,
+            &Outcome,
+            Option<&SummaryRetries>,
+        ),
         Option<&HoldOf>,
     )>,
     held: Query<&Effect>,
@@ -984,7 +992,7 @@ fn take_summary(
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Ok(((&CallOf(turn), &ForAgent(agent)), (summarizing, model, outcome), hold)) =
+    let Ok(((&CallOf(turn), &ForAgent(agent)), (summarizing, model, outcome, retries), hold)) =
         calls.get(settled.entity)
     else {
         return;
@@ -1006,7 +1014,11 @@ fn take_summary(
     }
     let text = match ended {
         true => Err(NotTaken::Cancelled),
-        false => taken(outcome, summarizing, &policy),
+        false => taken(
+            (outcome, retries.map_or(0, |it| it.0)),
+            summarizing,
+            &policy,
+        ),
     };
     let hold = hold.map(|&HoldOf(call)| call);
     let text = match text.map(|text| (summarizing.next(text.clone()), text)) {
