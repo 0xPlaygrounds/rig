@@ -264,8 +264,8 @@ pub struct Rebuilt;
 pub struct SideCall(pub Entity);
 
 /// On a model call whose handler failed: what the [`RetryPolicy`] says,
-/// put by the kernel in Arrive with the call's own [`Recovery`], else its
-/// turn's. Review may read
+/// put by the kernel in Arrive with its turn's [`Recovery`], or, for a call
+/// that is not a [`TurnCall`] and has one, its own. Review may read
 /// it, edit it in place (`Query<&mut RetryVerdict>`), or take the failure over
 /// by superseding the call; for a [`TurnCall`], Commit carries out what is
 /// left: `Retry` waits a [`Backoff`] and sends a new call, `GaveUp`,
@@ -1558,8 +1558,9 @@ fn text_events(reply: &CompletionResponse, after: u32) -> Vec<StreamEvent> {
 }
 
 /// Puts the [`RetryPolicy`]'s [`RetryVerdict`] on each model call whose
-/// handler just failed, in [`Stage::Arrive`], counting its own
-/// [`Recovery`], else its turn's.
+/// handler just failed, in [`Stage::Arrive`], counting its turn's
+/// [`Recovery`], or, for a call that is not a [`TurnCall`] and has one, its
+/// own.
 pub(crate) fn judge_failures(
     failed: Query<
         (
