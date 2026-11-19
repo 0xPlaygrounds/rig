@@ -549,9 +549,9 @@ fn the_code_table_decides_known_codes_in_any_case() {
     }
 }
 
-/// Precedence: refusal > non-success status > known code > `transient`.
+/// Precedence: refusal > final code > non-success status > known code > `transient`.
 #[test]
-fn a_known_code_outranks_the_hint_and_a_status_outranks_the_code() {
+fn a_final_code_outranks_the_status_which_outranks_any_other_code() {
     let overloaded = r#"{"error":{"type":"overloaded_error"}}"#;
     let quota = r#"{"error":{"type":"insufficient_quota"}}"#;
     let unknown = r#"{"error":{"type":"mystery"}}"#;
@@ -579,9 +579,19 @@ fn a_known_code_outranks_the_hint_and_a_status_outranks_the_code() {
             .with_code(Some("mystery".to_owned()))
             .is_retryable()
     );
-    // A non-success status decides before any code.
+    // A non-success status decides before a transient code.
     assert!(!ProviderResponseError::new(StatusCode::BAD_REQUEST, overloaded).is_retryable());
-    assert!(ProviderResponseError::new(StatusCode::SERVICE_UNAVAILABLE, quota).is_retryable());
+    // A final code decides before the status: a spent quota answers 429, and waiting refills none.
+    for status in [
+        StatusCode::TOO_MANY_REQUESTS,
+        StatusCode::SERVICE_UNAVAILABLE,
+    ] {
+        assert!(!ProviderResponseError::new(status, quota).is_retryable());
+        let coded = ProviderResponseError::new(status, "opaque")
+            .with_code(Some("insufficient_quota".to_owned()));
+        assert!(!coded.is_retryable());
+    }
+    assert!(ProviderResponseError::new(StatusCode::TOO_MANY_REQUESTS, unknown).is_retryable());
     // A 2xx envelope is classified by its code, as in band.
     assert!(ProviderResponseError::new(StatusCode::OK, overloaded).is_retryable());
     // A refusal beats everything.

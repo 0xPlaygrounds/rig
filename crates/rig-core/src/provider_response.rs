@@ -99,18 +99,20 @@ impl ProviderResponseError {
         self
     }
 
-    /// Replaces the transport retry hint. A refusal, a non-success HTTP
-    /// status, and a provider code the table knows each outrank it.
+    /// Replaces the transport retry hint. A refusal, a provider code the
+    /// table knows and a non-success HTTP status each outrank it.
     pub fn with_transient(mut self, transient: Option<bool>) -> Self {
         self.transient = transient;
         self
     }
 
     /// Whether the same request may reasonably be sent again, decided in
-    /// this order: a refusal never is; a non-success HTTP status decides
-    /// through [`crate::error::retryable_status`]; then a provider code the
-    /// one table knows (the explicit [`Self::code`], else the code the body's
-    /// error envelope names); then the `transient` hint; otherwise not.
+    /// this order: a refusal never is; nor is a provider code the one table
+    /// lists as final (the explicit [`Self::code`], else the code the body's
+    /// error envelope names), whatever the status, as a spent quota answers
+    /// 429; a non-success HTTP status decides through
+    /// [`crate::error::retryable_status`]; then any other code the table
+    /// knows; then the `transient` hint; otherwise not.
     ///
     /// The body is read on every call, so the same envelope gets the same
     /// verdict from every decoder and transport, streamed or unary.
@@ -118,13 +120,18 @@ impl ProviderResponseError {
         if self.refusal {
             return false;
         }
+        let read = |envelope: Envelope<'_>| Some((envelope.is_final(), envelope.verdict()));
+        let (is_final, known) = match &self.code {
+            Some(code) => read(Envelope::default().named(code)),
+            None => self.located(read),
+        }
+        .unwrap_or_default();
+        if is_final {
+            return false;
+        }
         if let Some(status) = self.status.filter(|status| !status.is_success()) {
             return crate::error::retryable_status(Some(status.as_u16()));
         }
-        let known = match &self.code {
-            Some(code) => Envelope::default().named(code).verdict(),
-            None => self.located(|envelope| envelope.verdict()),
-        };
         known.or(self.transient).unwrap_or(false)
     }
 
@@ -353,17 +360,23 @@ impl<'a> Envelope<'a> {
     /// the number says read as an HTTP status, else nothing. gRPC
     /// `INTERNAL` stays out, as its transports have always left it.
     fn verdict(&self) -> Option<bool> {
-        let named = |codes: &[&str]| {
-            let name = self.name.unwrap_or_default();
-            codes.iter().any(|code| code.eq_ignore_ascii_case(name))
-        };
         let status = || {
             self.http_status()
                 .map(|s| crate::error::retryable_status(Some(s)))
         };
-        (named(TRANSIENT).then_some(true))
-            .or_else(|| named(FINAL).then_some(false))
+        (self.named_in(TRANSIENT).then_some(true))
+            .or_else(|| self.is_final().then_some(false))
             .or_else(status)
+    }
+
+    /// Whether the name is one of [`FINAL`].
+    fn is_final(&self) -> bool {
+        self.named_in(FINAL)
+    }
+
+    fn named_in(&self, codes: &[&str]) -> bool {
+        let name = self.name.unwrap_or_default();
+        codes.iter().any(|code| code.eq_ignore_ascii_case(name))
     }
 
     fn http_status(&self) -> Option<u16> {
