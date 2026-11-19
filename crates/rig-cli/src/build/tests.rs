@@ -560,9 +560,8 @@ fn only_a_bevy_version_conflict_is_explained_by_a_bevy_requirement() {
         let told = reason(&cargo, &[]).unwrap_or_default();
         assert!(told.starts_with("a plugin must write"), "{cargo}\n{told}");
         assert!(told.contains("bevy_app"), "{cargo}\n{told}");
+        assert!(told.contains("pin_plugin v0.1.0"), "{cargo}\n{told}");
     }
-    let named = reason(&real(PLUGIN_SIDE_CONFLICT), &[]).unwrap_or_default();
-    assert!(named.contains("pin_plugin v0.1.0"), "{named}");
     let other = [
         real(PRIVATE_COPY_FEATURE),
         real(PATCHED_FEATURE),
@@ -570,12 +569,13 @@ fn only_a_bevy_version_conflict_is_explained_by_a_bevy_requirement() {
         "error: failed to select a version for the requirement `serde = \"^99\"`".to_owned(),
         "error: no matching package named `bevy_reflect` found".to_owned(),
         "error: failed to get `bevy_reflect` as a dependency of package `plugin v0.1.0`".to_owned(),
+        "error: failed to get `serde` as a dependency of package `bevy_reflect v0.18.0`".to_owned(),
         "error: failed to parse manifest at `/home/me/bevy/Cargo.toml`".to_owned(),
         "    Updating crates.io index".to_owned(),
     ];
     let other = other.map(|cargo| reason(&cargo, &[root.as_path()]));
     fs::remove_dir_all(&root).ok();
-    assert_eq!(other, [const { None }; 8]);
+    assert_eq!(other, [const { None }; 9]);
 }
 
 /// A short wait for cargo's lock in one command says nothing when a later
@@ -866,6 +866,12 @@ fn a_live_build_shows_cargo_as_it_writes_erasing_each_redrawn_line_on_a_terminal
     // Redirected, it is passed on as it came.
     let (shown, _, _) = fake_build("redirected", (BuildOutput::Live, false), cargo);
     assert_eq!(shown, cargo);
+    // A redrawn frame is shown, and only a line a `\n` ends is logged.
+    let cargo = "    Downloading 2 crates\r   Compiling a v1.0.0\r\n";
+    let (shown, logged, _) = fake_build("frames", (BuildOutput::Live, false), cargo);
+    assert_eq!(shown, cargo);
+    assert!(!logged.contains("Downloading"), "{logged:?}");
+    assert!(logged.contains("   Compiling a v1.0.0\n"), "{logged:?}");
 }
 
 #[test]
@@ -1235,13 +1241,13 @@ fn pinned_plugin(root: &Path) -> config::Plugins {
 
 /// With a cargo that records its commands: the Bevy check reads the graph
 /// before anything compiles, on every build, also one whose lock did not
-/// change, and shows only cargo's progress. A foreign `bevy_app` or
-/// `bevy_ecs` stops the build with rig's advice ahead of cargo's error, even
-/// when cargo cannot say who pulled it in. Another foreign Bevy crate may be
-/// private to its plugin, so it is named only when the compiler then rejects
-/// a crate that depends on it, beside the compiler's first error. A resolve
-/// failure that is not about Bevy still shows cargo's error whole. Run with
-/// that cargo first on `PATH`, in a run of its own.
+/// change, and shows only cargo's progress, whose redrawn frames are not
+/// logged. A foreign `bevy_app` or `bevy_ecs` stops the build with rig's
+/// advice ahead of cargo's error, even when cargo cannot say who pulled it
+/// in. Another foreign Bevy crate may be private to its plugin and is left
+/// to cargo and the compiler. A resolve failure that is not about Bevy still
+/// shows cargo's error whole, on a line of its own. Run with that cargo first
+/// on `PATH` and the caller's progress setting known, in a run of its own.
 #[test]
 fn a_foreign_bevy_is_refused_before_cargo_compiles_and_the_advice_leads() {
     const PROBE: &str = "RIG_BEVY_FIRST_PROBE";
@@ -1270,6 +1276,7 @@ fn a_foreign_bevy_is_refused_before_cargo_compiles_and_the_advice_leads() {
             Command::new(test)
                 .args(["--exact", name, "--test-threads", "1"])
                 .env(PROBE, &root)
+                .env("CARGO_TERM_PROGRESS_WHEN", "auto")
                 .env("PATH", path)
                 .output()
         });
@@ -1305,23 +1312,28 @@ fn a_foreign_bevy_is_refused_before_cargo_compiles_and_the_advice_leads() {
     };
 
     let warning = "warning: patch `x v1.0.0` was not used in the crate graph";
+    let frame = "       Fetch [==>    ] 3 complete; 1 pending";
     let agents_bevy = format!(
         "echo '{warning}' >&2; echo '    Updating crates.io index' >&2; \
-         echo 'bevy_ecs v{BEVY_VERSION}'\n"
+         printf '{frame}\\r' >&2; echo 'bevy_ecs v{BEVY_VERSION}'\n"
     );
     for _ in 0..2 {
         let (calls, shown, failure) = build(&agents_bevy);
         assert_eq!(calls, ["tree", "build"]);
         assert!(failure.is_none(), "{failure:?}");
         assert!(shown.contains("Updating crates.io index"), "{shown}");
+        assert!(shown.contains(frame), "{shown}");
         // `cargo build` says it again, in its own turn.
         assert!(!shown.contains(warning), "{shown}");
         let logged = fs::read_to_string(home.build_log()).unwrap_or_default();
         assert!(!logged.contains(warning), "{logged}");
+        assert!(logged.contains("Updating crates.io index"), "{logged}");
+        assert!(!logged.contains("Fetch"), "{logged}");
     }
-    // cargo's progress is left as it is for `cargo build`.
+    // Both commands take the caller's progress setting, off a terminal.
     let progress = fs::read_to_string(bin.join("cargo.progress")).unwrap_or_default();
-    assert!(!progress.contains("never"), "{progress}");
+    let progress: Vec<&str> = progress.lines().collect();
+    assert_eq!(progress, ["tree [auto]", "build [auto]"].repeat(2));
 
     // Resolved, after good builds that left the same lock.
     let resolved = "case \"$*\" in *--invert*) echo 'pinned v0.1.0' ;; \
@@ -1339,92 +1351,30 @@ fn a_foreign_bevy_is_refused_before_cargo_compiles_and_the_advice_leads() {
     let (calls, shown, failure) = build(ambiguous);
     assert_eq!(calls, ["tree", "tree"]);
     assert!(!shown.contains("ambiguous"), "{shown}");
+    let logged = fs::read_to_string(home.build_log()).unwrap_or_default();
+    assert_eq!(logged.matches("ambiguous").count(), 1, "{logged}");
     let told = failure
         .map(|failure| failure.to_string())
         .unwrap_or_default();
     assert!(told.starts_with("the agent project pulls in"), "{told}");
 
-    // Beside the agent's own: fine until the compiler rejects a crate that
-    // depends on it.
-    let second_reflect = format!(
-        "case \"$*\" in *--invert*) printf 'bevy_reflect v0.19.1\npinned v0.1.0\nagent v0.0.0\n' \
-         ;; *) echo 'bevy_reflect v0.19.1'; echo 'bevy_reflect v{BEVY_VERSION}' ;; esac\n"
-    );
-    let (calls, shown, failure) = build(&second_reflect);
+    // A private copy beside the agent's own builds, and a compiler error
+    // with it is cargo's, as rig says nothing of it.
+    let second_reflect = format!("echo 'bevy_reflect v0.19.1'; echo 'bevy_reflect v{BEVY_VERSION}'\n");
+    let (calls, _, failure) = build(&second_reflect);
     assert_eq!(calls, ["tree", "build"]);
     assert!(failure.is_none(), "{failure:?}");
-    assert!(!shown.contains("must write"), "{shown}");
     let compiler = "error[E0277]: `Uses` is not a `Component`";
-    let fails = |lines: &[&str]| {
-        let echoes: String = lines.iter().map(|l| format!("echo '{l}' >&2; ")).collect();
-        fs::write(bin.join("cargo.build"), format!("{echoes}exit 101\n")).ok();
-    };
-    fails(&[
-        compiler,
-        "error: could not compile `pinned` (lib) due to 1 previous error",
-    ]);
+    fs::write(
+        bin.join("cargo.build"),
+        format!("echo '{compiler}' >&2; exit 101\n"),
+    )
+    .ok();
     let (calls, _, failure) = build(&second_reflect);
-    assert_eq!(calls, ["tree", "build", "tree"]);
-    let failure = failure.map(|failure| {
-        let line = failure.explanation().unwrap_or_default();
-        (failure.reason, failure.errors, line)
-    });
-    let (reason, errors, line) = failure.unwrap_or_default();
-    assert!(
-        reason.starts_with("Likely cause: plugin `pinned`"),
-        "{reason}"
-    );
-    assert!(
-        reason.contains("cargo could not build the agent"),
-        "{reason}"
-    );
-    assert!(line.starts_with("rig build: Likely cause: "), "{line}");
-    // The one line `/reload` shows carries the compiler's error too.
-    assert!(line.ends_with(compiler), "{line}");
-    assert_eq!(errors.first().map(String::as_str), Some(compiler));
-
-    // A failure in a crate that does not use that copy, one the compiler did
-    // not reject, or a lookup that fails: nothing about Bevy, and cargo's
-    // warning from the lookup is not logged again.
-    let typo = "error[E0425]: cannot find value `x` in this scope";
-    let elsewhere = [
-        typo,
-        "error: could not compile `other` (lib) due to 1 previous error",
-    ];
-    let linker = [
-        "error: linking with `cc` failed: exit status: 1",
-        "error: could not compile `pinned` (lib) due to 1 previous error",
-    ];
-    let lookup_fails = format!(
-        "case \"$*\" in *--invert*) echo '{warning}' >&2; exit 101 ;; *) echo 'bevy_reflect \
-         v0.19.1'; echo 'bevy_reflect v{BEVY_VERSION}' ;; esac\n"
-    );
-    let warned = [warning, compiler, "error: could not compile `pinned` (lib)"];
-    for (output, tree) in [
-        (&elsewhere[..], &second_reflect),
-        (&linker[..], &second_reflect),
-        (&warned[..], &lookup_fails),
-    ] {
-        fails(output);
-        let (_, _, failure) = build(tree);
-        let told = failure
-            .as_ref()
-            .map(ToString::to_string)
-            .unwrap_or_default();
-        assert!(!told.contains("must write"), "{told}");
-        assert_eq!(failure.as_ref().and_then(BuildFailure::explanation), None);
-        assert!(output.iter().any(|line| told.contains(line)), "{told}");
-    }
-    let logged = fs::read_to_string(home.build_log()).unwrap_or_default();
-    assert_eq!(logged.matches(warning).count(), 1, "{logged}");
-
-    // A third-party crate named like Bevy, with no copy of the agent's beside
-    // it, is no second Bevy.
-    fails(&[compiler, "error: could not compile `pinned` (lib)"]);
-    let (calls, _, failure) = build("echo 'bevy_mod_outline v0.9.0'\n");
     fs::write(bin.join("cargo.build"), ":\n").ok();
     assert_eq!(calls, ["tree", "build"]);
-    assert_eq!(failure.as_ref().and_then(BuildFailure::explanation), None);
+    let errors = failure.map(|failure| failure.errors).unwrap_or_default();
+    assert_eq!(errors.first().map(String::as_str), Some(compiler));
 
     let conflict = real(PIN_CONFLICT);
     let unresolvable =
@@ -1442,13 +1392,15 @@ fn a_foreign_bevy_is_refused_before_cargo_compiles_and_the_advice_leads() {
 
     let unrelated = "error: no matching package named `serde` found\n\nCaused by:\n  offline\n";
     let (calls, shown, failure) = build(&format!(
-        "echo '{warning}' >&2; printf '{unrelated}' >&2; exit 101\n"
+        "echo '{warning}' >&2; printf '{frame}\\r' >&2; printf '{unrelated}' >&2; exit 101\n"
     ));
     assert_eq!(calls, ["tree"]);
     assert!(
         shown.contains(unrelated) && shown.contains(warning),
         "{shown}"
     );
+    // A frame cargo drew on its own does not share the held text's line.
+    assert!(shown.lines().any(|line| line == warning), "{shown:?}");
     let explanation = failure.as_ref().and_then(BuildFailure::explanation);
     assert_eq!(explanation, None);
     let told = failure
