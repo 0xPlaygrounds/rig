@@ -533,9 +533,9 @@ struct BuildLog {
     erase: bool,
     /// Whether the last byte shown was a `\r`, which a `\n` may end.
     after_cr: bool,
-    /// What the last `cargo tree` said besides its progress, which
+    /// The lines the last `cargo tree` said besides its progress, which
     /// [`Self::end_segment`] keeps back.
-    held: Vec<u8>,
+    held: Vec<Vec<u8>>,
 }
 
 impl BuildLog {
@@ -663,49 +663,45 @@ impl BuildLog {
         if let Some(redrawn) = redrawn {
             self.end_redrawn(&redrawn, false, hold);
         }
-        if self.end_segment(&segment, &[], hold) {
+        if !segment.is_empty() && self.end_segment(&segment, &[], hold) {
             self.record_segment(&segment);
         }
     }
 
     /// Whether `line`, which `end` ended, is passed on to the log. With
     /// `hold`, only cargo's progress is shown and passed on, so a long first
-    /// resolve does not look stuck. The rest is held, as `cargo build` may
-    /// say a warning again and rig may explain an error.
+    /// resolve does not look stuck. The rest is held line by line, as
+    /// `cargo build` may say a warning again and rig may explain an error.
     fn end_segment(&mut self, line: &[u8], end: &[u8], hold: bool) -> bool {
-        self.pass(line, line, hold);
-        self.pass(line, end, hold)
+        if hold && !is_progress(line) {
+            self.held.push(line.to_vec());
+            return false;
+        }
+        if hold && self.output == BuildOutput::Live {
+            self.show(line);
+            self.show(end);
+        }
+        true
     }
 
     /// Ends `line`, which a `\r` ended, as `\r\n` when `crlf`, its `\n`
     /// going where the line went, and logs it unless it is a progress frame.
     fn end_redrawn(&mut self, line: &[u8], crlf: bool, hold: bool) {
-        let passed = !hold || is_progress(line);
-        if crlf {
-            self.pass(line, b"\n", hold);
+        if hold && !is_progress(line) {
+            return;
         }
-        if passed && (crlf || !is_progress(line)) {
+        if crlf && hold && self.output == BuildOutput::Live {
+            self.show(b"\n");
+        }
+        if crlf || !is_progress(line) {
             self.record_segment(line);
         }
     }
 
-    /// Shows `bytes`, which are or end `line`, when it is passed on with
-    /// `hold` and the output is live, or holds them; without `hold` the
-    /// whole chunk was shown already. Returns whether it is passed on.
-    fn pass(&mut self, line: &[u8], bytes: &[u8], hold: bool) -> bool {
-        let passed = !hold || is_progress(line);
-        if !passed {
-            self.held.extend_from_slice(bytes);
-        } else if hold && self.output == BuildOutput::Live {
-            self.show(bytes);
-        }
-        passed
-    }
-
-    /// Logs what [`Self::end_segment`] held, and returns it.
-    fn log_held(&mut self) -> Vec<u8> {
+    /// Logs the lines [`Self::end_segment`] held, and returns them.
+    fn log_held(&mut self) -> Vec<Vec<u8>> {
         let held = std::mem::take(&mut self.held);
-        for line in held.split(|&byte| byte == b'\n') {
+        for line in &held {
             self.record_segment(line);
         }
         held
@@ -1087,7 +1083,10 @@ fn check_bevy(
         let lock = fs::read_to_string(launch.home().project().join("Cargo.lock"));
         let why = unresolved(failure, &log.lines, local, &lock.unwrap_or_default());
         if log.output == BuildOutput::Live && !why.is::<Explained>() {
-            log.show(&held);
+            for line in &held {
+                log.show(line);
+                log.show(b"\n");
+            }
         }
         why
     })?;

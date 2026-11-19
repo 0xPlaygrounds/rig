@@ -1426,7 +1426,9 @@ fn a_foreign_bevy_is_refused_before_cargo_compiles_and_the_advice_leads() {
     assert_eq!(calls, ["tree"]);
     assert!(!shown.contains('\r'), "{shown:?}");
     assert!(
-        shown.lines().any(|line| line == "error: registry unavailable"),
+        shown
+            .lines()
+            .any(|line| line == "error: registry unavailable"),
         "{shown:?}"
     );
     let errors = failure.map(|failure| failure.errors).unwrap_or_default();
