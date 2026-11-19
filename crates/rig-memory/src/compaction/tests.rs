@@ -206,12 +206,18 @@ fn a_summary_request_keeps_the_hosts_words_out_of_the_users_message() {
 }
 
 /// Whether the summary request `asked` keeps what an earlier summary
-/// holds: a line tells it to keep what the earlier summary holds, and no
-/// line tells it to drop, remove, omit or leave out a finished task or an
-/// answered request unless that line says it stays.
+/// holds: a line tells it to keep what the earlier summary holds, a line
+/// says finished or answered work stays with its values, and no line tells
+/// it to drop, remove, omit or leave out a finished task or an answered
+/// request unless that line says it stays.
 fn keeps_the_earlier_summary(asked: &str) -> bool {
     let lines = || asked.lines().map(str::to_lowercase);
     let keeps = lines().any(|line| line.contains("keep") && line.contains("earlier summary"));
+    let finished_stays = lines().any(|line| {
+        (line.contains("finished") || line.contains("answered"))
+            && line.contains("stay")
+            && line.contains("values")
+    });
     let drops_finished = lines().any(|line| {
         let finished = line.contains("finished") || line.contains("answered");
         let drops = ["drop", "remove", "omit", "leave out"]
@@ -219,7 +225,7 @@ fn keeps_the_earlier_summary(asked: &str) -> bool {
             .any(|word| line.contains(word));
         finished && drops && !line.contains("stay")
     });
-    keeps && !drops_finished
+    keeps && finished_stays && !drops_finished
 }
 
 /// Folding in an earlier summary, a summary of its own and one asked in

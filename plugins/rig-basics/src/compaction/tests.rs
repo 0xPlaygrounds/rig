@@ -3037,7 +3037,7 @@ fn a_resumed_session_sends_the_bytes_it_sent_before() {
 #[test]
 fn a_second_summary_keeps_what_the_first_one_holds() {
     let (mut app, wakes) = start(&MemoryStore::default());
-    let first = "## Goal\nAudit the lighthouse import.\n\n## Critical context\n\
+    let first = "## Goal\nStart the lighthouse audit.\n\n## Critical context\n\
                  - lighthouse.json: code QUARTZ-791, decision amber over silver.";
     let second = "## Goal\nAudit the lighthouse import, then read the jade fixtures.\n\n\
                   ## Critical context\n\
@@ -3111,10 +3111,31 @@ fn a_second_summary_keeps_what_the_first_one_holds() {
         asked.contains(ask) && asked.contains(CODING_PROMPTS.update.as_ref()),
         "{asked}"
     );
-    let next = bodies.get(at + 1).cloned().unwrap_or_default();
+    // The next request opens with the second summary alone, the values in it.
+    let next: serde_json::Value = bodies
+        .get(at + 1)
+        .and_then(|body| serde_json::from_str(body).ok())
+        .unwrap_or_default();
+    let items = next
+        .get("input")
+        .and_then(serde_json::Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let texts: Vec<String> = items.iter().filter_map(|item| text(Some(item))).collect();
+    let summary = texts
+        .iter()
+        .find(|text| text.contains("then read the jade fixtures"));
     assert!(
-        next.contains("QUARTZ-791") && next.contains("amber over silver") && !next.contains(ask),
-        "{next}"
+        summary.is_some_and(|summary| {
+            summary.contains("QUARTZ-791") && summary.contains("amber over silver")
+        }),
+        "{texts:#?}"
+    );
+    assert!(
+        !texts
+            .iter()
+            .any(|text| text.contains("Start the lighthouse audit") || text.contains(ask)),
+        "{texts:#?}"
     );
 }
 
