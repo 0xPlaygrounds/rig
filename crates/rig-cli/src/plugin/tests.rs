@@ -284,10 +284,10 @@ fn the_list_is_a_tree_of_crates_areas_and_plugins_rigs_before_the_users() {
     assert!(result.is_ok(), "{result:?}");
     let (without, with) = result.unwrap_or_default();
     assert!(
-        without.ends_with(
+        without.ends_with(&format!(
             "\nyour plugins (extras): none; `rig plugin new <name>` makes one, \
-             `rig plugin add` adds another crate's.\n"
-        ),
+             `rig plugin add` adds another crate's.\n\n{RUNNING}\n"
+        )),
         "{without}"
     );
     let lines: Vec<&str> = with.lines().collect();
@@ -773,6 +773,24 @@ fn a_name_in_the_wrong_list_is_taken_out_by_the_fix_its_refusal_names() {
     })();
     fs::remove_dir_all(home.root()).ok();
     assert_eq!(result.ok(), Some(vec![(true, true, true, false); 3]));
+}
+
+/// The list is of what the settings choose, and says where to see what
+/// actually runs.
+#[test]
+fn the_list_says_plugins_can_turn_on_others_and_where_to_see_what_runs() {
+    let home = old_home("list-runs");
+    let listed = fs::create_dir_all(home.root())
+        .map_err(Into::into)
+        .and_then(|()| listing(&home));
+    fs::remove_dir_all(home.root()).ok();
+    assert!(listed.is_ok(), "{listed:?}");
+    let listed = listed.unwrap_or_default();
+    let last = listed.lines().last().unwrap_or_default();
+    assert!(
+        last.contains("turn on others") && last.contains("/plugins"),
+        "{listed}"
+    );
 }
 
 /// Every branch in `[plugins] off` shows in the list, also an area of one

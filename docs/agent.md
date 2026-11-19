@@ -773,7 +773,8 @@ and anything else a session starts run the same home's build.
 `rig plugin list` shows the tree: each crate, in it each area of more than
 one plugin or in `off`, and each plugin, `on` or `off`, with what it adds; a
 branch in `off` says so, and a plugin it keeps off says "off with its
-branch". `rig plugin enable <type>` and `disable <type>` change `[plugins]`,
+branch". It shows what the settings choose: plugins can turn on others while
+rig runs, and `/plugins` shows what runs. `rig plugin enable <type>` and `disable <type>` change `[plugins]`,
 keeping every comment; given a branch, such as `rig-basics/sessions`, they
 take it out of or put it in `off`. Turning off a branch that holds an
 essential plugin warns, and turning on a plugin a branch keeps off names

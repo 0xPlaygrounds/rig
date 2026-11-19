@@ -542,6 +542,9 @@ fn uninline(file: &mut config::SettingsFile, key: &str) -> Result<()> {
     Ok(())
 }
 
+/// The last line of [`listing`], which shows what the settings choose.
+const RUNNING: &str = "Plugins can turn on others while rig runs; /plugins shows what runs.";
+
 /// `rig plugin list`: prints [`listing`].
 fn list(home: &Home) -> Result<()> {
     print!("{}", listing(home)?);
@@ -554,7 +557,7 @@ fn list(home: &Home) -> Result<()> {
 /// `on` or `off`, the type and what it adds. A branch `[plugins] off` turns
 /// off says so. A plugin of rig's ends with its default and whether the
 /// settings changed it, with a warning on an essential plugin turned off;
-/// an extra ends with where its crate comes from.
+/// an extra ends with where its crate comes from. [`RUNNING`] ends it.
 fn listing(home: &Home) -> Result<String> {
     let chosen = config::chosen(home)?;
     let mut rigs = Vec::new();
@@ -599,6 +602,8 @@ fn listing(home: &Home) -> Result<String> {
         lines.push(("your plugins (extras):".to_owned(), None));
         lines.extend(tree(&chosen, yours));
     }
+    lines.push((String::new(), None));
+    lines.push((RUNNING.to_owned(), None));
     let width = (lines.iter())
         .filter(|(_, about)| about.is_some())
         .map(|(head, _)| head.len())
