@@ -63,7 +63,11 @@ impl HttpClientExt for PendingHttp {
 
 /// The app's agent on the catalog's Claude model with a `window`-token context window, through
 /// the real Anthropic wire over `http`.
-fn connect_anthropic(app: &mut App, http: &PendingHttp, window: u32) -> Option<Entity> {
+fn connect_anthropic(
+    app: &mut App,
+    http: &(impl HttpClientExt + Clone + 'static),
+    window: u32,
+) -> Option<Entity> {
     let served = rig_core::providers::anthropic::AnthropicConfig::new("synthetic-key")
         .connect(http.clone())
         .completion("claude-opus-4-6");
@@ -146,4 +150,50 @@ fn stopping_a_pending_network_summary_drops_the_future_and_releases_its_hold() {
         return;
     };
     assert_eq!(entries(resumed.world(), agent), stopped);
+}
+
+/// A summary call on the Anthropic wire writes no prompt cache: its request carries no cache
+/// marker, though the model takes one by default.
+#[test]
+fn a_summary_call_sends_no_cache_marker() {
+    let event = |kind: &str, data: serde_json::Value| format!("event: {kind}\ndata: {data}\n\n");
+    let body = [
+        event("message_start", serde_json::json!({"type": "message_start", "message": {
+            "id": "msg_1", "type": "message", "role": "assistant", "model": "claude-opus-4-6",
+            "content": [], "stop_reason": null, "usage": {"input_tokens": 100, "output_tokens": 0}}})),
+        event("content_block_start", serde_json::json!({"type": "content_block_start", "index": 0,
+            "content_block": {"type": "text", "text": ""}})),
+        event("content_block_delta", serde_json::json!({"type": "content_block_delta", "index": 0,
+            "delta": {"type": "text_delta", "text": "## Goal\nAnswer."}})),
+        event("content_block_stop", serde_json::json!({"type": "content_block_stop", "index": 0})),
+        event("message_delta", serde_json::json!({"type": "message_delta",
+            "delta": {"stop_reason": "end_turn"}, "usage": {"output_tokens": 20}})),
+        event("message_stop", serde_json::json!({"type": "message_stop"})),
+    ]
+    .concat();
+    let http = rig_core::test_utils::SequencedHttpClient::new([
+        rig_core::test_utils::MockHttpResponse::success_typed(body, "text/event-stream"),
+    ]);
+    let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |_| {});
+    let agent = connect_anthropic(&mut app, &http, 1_000_000);
+    assert!(agent.is_some(), "the catalog lists the model");
+    let Some(agent) = agent else {
+        return;
+    };
+    for message in turns(0, 4) {
+        assert!(commit_message(app.world_mut(), agent, message).is_ok());
+    }
+    compact(&mut app, &wakes, agent, "", 1);
+    let bodies: Vec<String> = http
+        .requests()
+        .iter()
+        .map(|request| String::from_utf8_lossy(&request.body).into_owned())
+        .collect();
+    assert_eq!(bodies.len(), 1, "{:?}", notices(&app));
+    let summary = bodies.first().cloned().unwrap_or_default();
+    assert!(
+        summary.contains("context summarization assistant"),
+        "{summary}"
+    );
+    assert!(!summary.contains("cache_control"), "{summary}");
 }

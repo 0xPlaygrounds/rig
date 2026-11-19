@@ -28,7 +28,7 @@
 //! messages. The caller sends the requests, reads the replies with [`summary_text`] and puts the
 //! summary in with [`apply_summary`](crate::apply_summary).
 
-use std::borrow::{Borrow, Cow};
+use std::borrow::Borrow;
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
@@ -49,7 +49,7 @@ pub struct CompactionSettings {
     /// Whether a conversation is compacted on its own: near the window, and after a request
     /// refused as too long or a reply the window cut short. `/compact` works either way.
     pub enabled: bool,
-    /// Tokens of the model's input limit kept free for the reply.
+    /// Tokens of the model's context window kept free for the reply.
     pub reserve_tokens: u64,
     /// About how many tokens of the newest messages stay as they are.
     pub keep_recent_tokens: u64,
@@ -643,6 +643,9 @@ pub fn summarization_request(
         options.reasoning = None;
     }
     spec.validate(&options)?;
+    // Explicitly none, which survives the defaults filled in when the call starts; a model that
+    // refuses it has the option taken out there, and no cache marker is sent either way.
+    options.cache = Some(rig_core::completion::CacheRetention::None);
     let input = estimate_tokens(&[Message::system(system), Message::user(prompt.as_str())]);
     let request = CompletionRequest::new(Message::user(prompt))
         .preamble(system.to_owned())
@@ -651,51 +654,6 @@ pub fn summarization_request(
         Some(most) => request.max_tokens(clamp_max_tokens(spec, input, most)),
         None => request,
     })
-}
-
-/// The end of `text`, cut to fit `spec`'s input limit less `reserved` tokens at three characters a
-/// token, for a request of another plugin that reads a whole conversation; the cut start says how
-/// many characters were left out. Unchanged when the limit is not known or it fits.
-pub fn keep_end_to_fit<'t>(text: &'t str, spec: &ModelSpec, reserved: u64) -> Cow<'t, str> {
-    let Some(limit) = spec.input_limit().map(u64::from) else {
-        return Cow::Borrowed(text);
-    };
-    let budget =
-        usize::try_from(limit.saturating_sub(reserved).saturating_mul(3)).unwrap_or(usize::MAX);
-    let left_out = text.chars().count().saturating_sub(budget);
-    if left_out == 0 {
-        return Cow::Borrowed(text);
-    }
-    let start = text
-        .char_indices()
-        .nth(left_out)
-        .map_or(text.len(), |(start, _)| start);
-    let rest = text.get(start..).unwrap_or_default();
-    Cow::Owned(format!(
-        "[... {left_out} earlier characters left out]\n{rest}"
-    ))
-}
-
-/// Tokens of the input limit a summary request keeps for its answer when it cuts what it reads.
-const SUMMARY_OUTPUT_ROOM: u64 = 16_384;
-
-/// `messages` as text ([`serialize_conversation`]), its oldest part left out, as the cut start
-/// says, when the request around it (`around`) and room for the answer would not fit `spec`'s
-/// input limit otherwise: so a summary still fits a smaller model the agent switched to. Beyond
-/// pi, which sends it whole.
-fn fitted_conversation(
-    messages: &[impl Borrow<Message>],
-    spec: &ModelSpec,
-    around: &str,
-) -> String {
-    let text = serialize_conversation(messages);
-    let reserved = estimate_tokens(&[
-        Message::system(SUMMARIZATION_SYSTEM_PROMPT),
-        Message::user(around),
-    ])
-    .saturating_add(SUMMARY_OUTPUT_ROOM)
-    .saturating_add(CONTEXT_SAFETY_TOKENS);
-    keep_end_to_fit(&text, spec, reserved).into_owned()
 }
 
 /// `prompt` followed by the user's `instructions`, when there are any.
@@ -725,10 +683,9 @@ pub fn summary_request(
         Some(_) => UPDATE_SUMMARIZATION_PROMPT,
         None => SUMMARIZATION_PROMPT,
     };
-    let around = format!("{}{base}{instructions}", previous.unwrap_or_default());
     let mut prompt = format!(
         "<conversation>\n{}\n</conversation>\n\n",
-        fitted_conversation(messages, spec, &around)
+        serialize_conversation(messages)
     );
     if let Some(previous) = previous {
         prompt.push_str(&format!(
@@ -751,10 +708,9 @@ pub fn turn_prefix_request(
     spec: &ModelSpec,
     reasoning: Option<Reasoning>,
 ) -> Result<CompletionRequest, UnsupportedOption> {
-    let around = format!("{TURN_PREFIX_SUMMARIZATION_PROMPT}{instructions}");
     let prompt = format!(
         "# Conversation\n{}\n\n# Instructions\n{TURN_PREFIX_SUMMARIZATION_PROMPT}",
-        fitted_conversation(messages, spec, &around)
+        serialize_conversation(messages)
     );
     let prompt = with_focus(&prompt, instructions);
     summarization_request((SUMMARIZATION_SYSTEM_PROMPT, prompt), spec, reasoning, None)

@@ -15,6 +15,7 @@
 
 use std::collections::BTreeMap;
 
+use rig_core::catalog::ModelSpec;
 use rig_core::completion::Message;
 use rig_core::conversation::{
     Aside, AsideId, Author, Change, Conversation, Entry, MessageId, Spliced,
@@ -30,7 +31,7 @@ mod pi;
 pub use pi::{
     CompactionPreparation, CompactionSettings, CutPoint, FileLists, SUMMARIZATION_SYSTEM_PROMPT,
     SummaryFailure, clamp_max_tokens, estimate_message_tokens, estimate_tokens, find_cut_point,
-    keep_end_to_fit, merge_split_turn, no_history, prepare_compaction, prepare_compaction_at,
+    merge_split_turn, no_history, prepare_compaction, prepare_compaction_at,
     serialize_conversation, summarization_request, summary_request, summary_text,
     turn_prefix_request,
 };
@@ -51,16 +52,17 @@ pub struct SummaryState {
 }
 
 impl SummaryState {
-    /// The summary followed by its file lists, as the next compaction's update prompt reads it.
-    /// `None` before the first compaction.
+    /// The summary followed by its file lists, as the next compaction's update prompt reads it,
+    /// as pi stores it: a summary with no text still carries its lists. `None` when both are
+    /// empty, as before the first compaction.
     pub fn previous_summary(&self) -> Option<String> {
-        (!self.summary.is_empty()).then(|| self.with_files())
+        Some(self.with_files()).filter(|text| !text.is_empty())
     }
 
     /// The text that stands for the summarized messages in requests, `None` before the first
     /// compaction.
     pub fn message(&self) -> Option<String> {
-        (!self.summary.is_empty()).then(|| self.wrapped())
+        self.previous_summary().map(|_| self.wrapped())
     }
 
     /// The summary followed by its file lists.
@@ -76,6 +78,46 @@ impl SummaryState {
             self.with_files()
         )
     }
+}
+
+/// The end of `text`, a conversation another plugin summarizes for a model `spec` in at most
+/// `summary_tokens`, cut to fit that model as rig's summaries were fitted before compaction
+/// followed pi; the cut start says how many characters were left out. Returns the text and the
+/// output limit to ask for, `None` when the model's limits are unknown. The room below a reserve
+/// of 16384 tokens, or half the input limit when that is more, is split: the answer gets at most
+/// half, and the text the rest at three characters a token, but never less than 16384 tokens or an
+/// eighth of the input limit, whichever is smaller; with no limit known, 400000 characters.
+pub fn fit_to_model<'t>(
+    text: &'t str,
+    spec: &ModelSpec,
+    summary_tokens: u64,
+) -> (std::borrow::Cow<'t, str>, Option<u64>) {
+    let chars = |tokens: u64| usize::try_from(tokens.saturating_mul(3)).unwrap_or(usize::MAX);
+    let most = spec
+        .output_limit()
+        .map_or(summary_tokens, |limit| summary_tokens.min(u64::from(limit)));
+    let (most, budget) = match spec.input_limit().map(u64::from) {
+        None => (most, 400_000),
+        Some(limit) => {
+            let room = limit.saturating_sub(16_384).max(limit / 2);
+            let most = most.min(room / 2);
+            let least = chars(16_384u64.min(limit / 8));
+            (most, chars(room.saturating_sub(most)).max(least))
+        }
+    };
+    let known = spec.max_output_tokens.is_some() || spec.context_window.is_some();
+    let most = known.then_some(most);
+    let left_out = text.chars().count().saturating_sub(budget);
+    if left_out == 0 {
+        return (std::borrow::Cow::Borrowed(text), most);
+    }
+    let start = text
+        .char_indices()
+        .nth(left_out)
+        .map_or(text.len(), |(start, _)| start);
+    let rest = text.get(start..).unwrap_or_default();
+    let cut = format!("[\u{2026} {left_out} earlier characters left out]\n{rest}");
+    (std::borrow::Cow::Owned(cut), most)
 }
 
 /// Who writes a compaction's summary: the author of its entry.

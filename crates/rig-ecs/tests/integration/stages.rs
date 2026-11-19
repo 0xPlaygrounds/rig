@@ -2382,6 +2382,57 @@ fn a_failed_turn_gives_back_a_users_text_beside_a_result() {
     assert_eq!(conversation(&app, agent), held);
 }
 
+/// Notes an earlier version wrote beside cleared outputs, in their whole shape, stay with the
+/// owed result they sit beside when a turn fails; a user's text that only starts like them comes
+/// back as the user's.
+#[test]
+fn a_failed_turn_keeps_legacy_notes_with_their_result_and_gives_back_a_lookalike() {
+    use rig_core::message::{AssistantContent, AssistantMessage, ToolCall};
+    const NOTES: &str = "<cleared-output-notes>\nNotes on the tool outputs above, written \
+         before they were cleared:\nx\n</cleared-output-notes>";
+    const LOOKALIKE: &str = "<cleared-output-notes> explain this tag";
+    let mut app = app();
+    app.init_resource::<Ended>().add_observer(log_ended);
+    collect_recalled(&mut app);
+    let Ok(name) = ToolName::new("look") else {
+        return;
+    };
+    let call = ToolCall::from_wire("c1", ToolFunction::new(name.clone(), serde_json::json!({})));
+    let asked = Message::Assistant(AssistantMessage::new(vec![AssistantContent::ToolCall(
+        call.clone(),
+    )]));
+    let result = Message::tool_result(call.id, name, "the file");
+    let Message::User { content } = result.clone() else {
+        return;
+    };
+    let mut kept = content.clone();
+    kept.push(UserContent::text(NOTES));
+    let mut beside = kept.clone();
+    beside.push(UserContent::text(LOOKALIKE));
+    let held = [
+        Message::user("read it"),
+        asked,
+        Message::User { content: kept },
+    ];
+    let world = app.world_mut();
+    let agent = world.query_filtered::<Entity, With<Agent>>().single(world);
+    let agent = agent.unwrap_or(Entity::PLACEHOLDER);
+    if let Some(mut conversation) = world.get_mut::<Conversation>(agent) {
+        for message in held.iter().take(2).cloned() {
+            conversation.push(message);
+        }
+        conversation.push(Message::User { content: beside });
+    }
+    let model = MockCompletionModel::from_stream_turns([no_credit()]);
+    agent_on(&mut app, &model);
+    let ended = |world: &mut World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, ended), "{:?}", notices(&app));
+    app.update();
+    let recalled = &app.world().resource::<RecalledTexts>().0;
+    assert_eq!(recalled, &[format!("{LOOKALIKE}\n\ngo")]);
+    assert_eq!(conversation(&app, agent), held);
+}
+
 /// A failed reply stored after the results of the last reply that counts
 /// goes when a call that carries on from those results fails, though no
 /// message of the user's comes back.

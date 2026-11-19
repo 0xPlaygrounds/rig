@@ -509,10 +509,14 @@ fn take_unanswered(conversation: &mut Conversation) -> Option<Vec<String>> {
     taken.then_some(texts)
 }
 
-/// Whether `text` holds the notes an earlier version wrote beside tool outputs it cleared, which
-/// a session saved then may still have: they stay with their results.
+/// Whether `text` holds the notes an earlier version wrote beside tool outputs it cleared, in
+/// the shape it wrote them, which a session saved then may still have: they stay with their
+/// results.
 fn is_output_notes(text: &str) -> bool {
-    text.starts_with("<cleared-output-notes>")
+    text.starts_with(
+        "<cleared-output-notes>\nNotes on the tool outputs above, written before they were \
+         cleared:\n",
+    ) && text.ends_with("\n</cleared-output-notes>")
 }
 
 /// Stops the agent's running turn at once, and, unless the stop is

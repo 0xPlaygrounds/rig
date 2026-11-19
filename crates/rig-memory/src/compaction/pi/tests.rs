@@ -258,46 +258,27 @@ fn a_failed_or_cut_summary_is_refused() {
     );
 }
 
-/// A summary request writes no prompt cache and asks for no more output than the window leaves.
+/// A summary request writes no prompt cache, carries the reasoning effort when the model takes
+/// one, and asks for no more output than pi's clamp leaves.
 #[test]
 fn a_summary_request_fits_its_output_and_writes_no_cache() {
-    let spec = rig_core::providers::registry::ProviderId::catalog("anthropic")
-        .map(|vendor| {
-            rig_core::catalog::ModelSpec::new(vendor, "test")
-                .with_context_window(40_000)
-                .with_max_output_tokens(32_000)
-        })
-        .expect("a vendor");
+    let vendor = rig_core::providers::registry::ProviderId::catalog("anthropic").expect("a vendor");
+    let spec = rig_core::catalog::ModelSpec::new(vendor, "test")
+        .with_context_window(40_000)
+        .with_max_output_tokens(32_000)
+        .with_reasoning(rig_core::catalog::ReasoningSupport::Unknown { default: None });
+    let effort = Reasoning::Effort(rig_core::completion::Effort::Low);
     let messages = [Message::user("x".repeat(80_000))];
-    let request = summary_request(&messages, (None, ""), &spec, None).expect("a request");
-    assert_eq!(request.options.cache, None);
-    let most = request.max_tokens.expect("an output limit");
-    assert!((1..32_000).contains(&most), "{most}");
+    let request = summary_request(&messages, (None, ""), &spec, Some(effort)).expect("a request");
+    assert_eq!(
+        request.options.cache,
+        Some(rig_core::completion::CacheRetention::None)
+    );
+    assert_eq!(request.options.reasoning, Some(effort));
+    // About 20k tokens read leaves less than the output limit in the 40k window.
+    let asked = request.max_tokens.unwrap_or(0);
+    assert!((14_000..16_000).contains(&asked), "{asked}");
+    // 40000 - 30000 - 4500 leaves under 32768, so only the fixed 4096 margin is kept.
+    assert_eq!(clamp_max_tokens(&spec, 30_000, 32_000), 5_904);
     assert_eq!(clamp_max_tokens(&spec, 1_000, 8_000), 8_000);
-}
-
-/// A summary request reads no more than fits the summarizer's input limit, its oldest text left
-/// out as it says, so a smaller model the agent switched to can still write it.
-#[test]
-fn a_summary_request_fits_a_smaller_model() {
-    let spec = rig_core::providers::registry::ProviderId::catalog("ollama")
-        .map(|vendor| {
-            rig_core::catalog::ModelSpec::new(vendor, "small").with_context_window(40_000)
-        })
-        .expect("a vendor");
-    let messages: Vec<Message> = (0..10)
-        .map(|n| Message::user(format!("TURN-{n} {}", "x".repeat(40_000))))
-        .collect();
-    let request = summary_request(&messages, (None, ""), &spec, None).expect("a request");
-    let text = serde_json::to_string(&request.chat_history).unwrap_or_default();
-    assert!(
-        text.contains("earlier characters left out"),
-        "the cut says so"
-    );
-    assert!(
-        text.contains("TURN-9") && !text.contains("TURN-0"),
-        "the newest stay"
-    );
-    let input = estimate_tokens(&request.chat_history);
-    assert!(input < 40_000, "{input}");
 }

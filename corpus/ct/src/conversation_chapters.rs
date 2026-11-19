@@ -24,7 +24,7 @@ use rig_harness::rig_core::completion::{CompletionRequest, UnsupportedOption};
 use rig_harness::rig_core::conversation::{Aside, AsideId, Entry};
 use rig_harness::rig_core::message::{Message, UserContent};
 use rig_harness::rig_memory::{
-    HeuristicTokenCounter, keep_end_to_fit, serialize_conversation, summarization_request,
+    HeuristicTokenCounter, fit_to_model, serialize_conversation, summarization_request,
     summary_text,
 };
 use serde::{Deserialize, Serialize};
@@ -96,16 +96,13 @@ fn fold_request(
     spec: &ModelSpec,
 ) -> Result<CompletionRequest, UnsupportedOption> {
     let conversation = serialize_conversation(messages);
-    let conversation = keep_end_to_fit(&conversation, spec, RESERVED);
+    let (conversation, most) = fit_to_model(&conversation, spec, SUMMARY_TOKENS);
     let ask = format!("<conversation>\n{conversation}\n</conversation>\n\n{ASK}");
-    summarization_request((SYSTEM, ask), spec, None, Some(SUMMARY_TOKENS))
+    summarization_request((SYSTEM, ask), spec, None, most)
 }
 
-/// The longest chapter summary asked for, in tokens.
+/// The longest chapter summary asked for, in tokens, as before.
 const SUMMARY_TOKENS: u64 = 32_000;
-
-/// Tokens of the input limit kept for the summary and the request around the chapter.
-const RESERVED: u64 = 16_384 + SUMMARY_TOKENS;
 
 /// Divides each top-level agent's conversation into chapters, with
 /// `/chapters`, `/chapter`, `/fold` and `/unfold`.

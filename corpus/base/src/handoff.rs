@@ -14,7 +14,7 @@
 use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::ModelSpec;
 use rig_harness::rig_core::completion::{CompletionRequest, Message, UnsupportedOption};
-use rig_memory::{keep_end_to_fit, serialize_conversation, summarization_request, summary_text};
+use rig_memory::{fit_to_model, serialize_conversation, summarization_request, summary_text};
 use rig_tui::MainInput;
 use serde::Deserialize;
 
@@ -37,15 +37,12 @@ fn brief_request(
     spec: &ModelSpec,
 ) -> Result<CompletionRequest, UnsupportedOption> {
     let conversation = serialize_conversation(messages);
-    let conversation = keep_end_to_fit(&conversation, spec, RESERVED + BRIEF_TOKENS);
+    let (conversation, most) = fit_to_model(&conversation, spec, BRIEF_TOKENS);
     let ask = format!(
         "<conversation>\n{conversation}\n</conversation>\n\n{ASK}\n\nThe next goal: {goal}{FORMAT}"
     );
-    summarization_request((SYSTEM, ask), spec, None, Some(BRIEF_TOKENS))
+    summarization_request((SYSTEM, ask), spec, None, most)
 }
-
-/// Tokens of the input limit kept for the request around the conversation.
-const RESERVED: u64 = 16_384;
 
 /// What the brief's model is asked, before the goal.
 const ASK: &str = "The conversation is being handed off. Write the brief for the agent \
