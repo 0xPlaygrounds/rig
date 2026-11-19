@@ -2326,3 +2326,119 @@ fn a_follow_up_sent_during_the_compaction_after_an_error_keeps_its_image() {
         .0;
     assert!(recalled.is_empty(), "{recalled:?}");
 }
+
+/// A follow-up naming a file, queued while `/compact` writes its summary, goes on as the inbox
+/// prepared it: the next request holds the file once.
+#[test]
+fn a_follow_up_queued_during_compact_keeps_its_file_attached_once() {
+    let files = Arc::new(Files::default());
+    files.put("note.txt", "NOTE_BODY");
+    let model = MockCompletionModel::from_stream_turns([
+        reply("## Goal\nAnswer."),
+        measured("It is a note.", 100),
+    ]);
+    let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |app| {
+        collect::<rig_ecs::inbox::Recalled>(app);
+        app.insert_resource(ProjectWorkspace(files.clone()))
+            .insert_resource(ProjectRoot(PROJECT.into()))
+            .add_plugins(crate::coding_tools::AttachPlugin)
+            .add_systems(AgentPass, hold_for_review.in_set(ReviewSystems::Act));
+    });
+    let agent = agent(&mut app, &model, 1_000_000, turns(0, 4));
+    let Some(agent) = agent else {
+        return;
+    };
+    app.world_mut().trigger(Compact {
+        entity: agent,
+        focus: String::new(),
+    });
+    assert!(held(&mut app, &wakes).is_some(), "{:?}", notices(&app));
+    app.world_mut().trigger(Deliver::new(
+        agent,
+        "Explain @note.txt",
+        DeliveryMode::Queue,
+    ));
+    run_until(&mut app, &wakes, |world| {
+        world.iter_entities().any(|it| {
+            it.contains::<Incoming>() && it.contains::<Started>() && !it.contains::<Outcome>()
+        })
+    });
+    decide(&mut app, &wakes, Some("## Goal\nAnswer."));
+    run_until(&mut app, &wakes, |world| {
+        world.resource::<Ended>().0.len() >= 2
+    });
+    assert_eq!(answer(&app).as_deref(), Some("It is a note."));
+    let last = sent(&model).get(1).cloned().unwrap_or_default();
+    assert_eq!(last.matches("NOTE_BODY").count(), 1, "{last}");
+    assert!(last.contains("Explain @note.txt"), "{last}");
+    let recalled = &app
+        .world()
+        .resource::<Collected<rig_ecs::inbox::Recalled>>()
+        .0;
+    assert!(recalled.is_empty(), "{recalled:?}");
+}
+
+/// Whether [`send_as_compaction_ends`] sent its prompt.
+#[derive(Resource, Default)]
+struct SentAtEnd(bool);
+
+/// Sends the agent a newer prompt the moment its first turn ends.
+fn send_as_compaction_ends(
+    end: On<Remove<TurnOf>>,
+    turns: Query<&TurnOf>,
+    mut sent: ResMut<SentAtEnd>,
+    mut commands: Commands,
+) {
+    if let Ok(&TurnOf(agent)) = turns.get(end.entity)
+        && !std::mem::replace(&mut sent.0, true)
+    {
+        commands.trigger(Deliver::new(agent, "NEWER_PROMPT", DeliveryMode::Steer));
+    }
+}
+
+/// A prompt queued during `/compact` is answered before a newer one that arrives as the
+/// compaction ends: the next request holds both, the queued one first.
+#[test]
+fn a_follow_up_queued_during_compact_goes_before_a_newer_prompt() {
+    let model = MockCompletionModel::from_stream_turns([
+        reply("## Goal\nAnswer."),
+        measured("Both answered.", 100),
+        measured("Again.", 100),
+    ]);
+    let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |app| {
+        collect::<rig_ecs::inbox::Recalled>(app);
+        app.init_resource::<SentAtEnd>()
+            .add_observer(send_as_compaction_ends)
+            .add_systems(AgentPass, hold_for_review.in_set(ReviewSystems::Act));
+    });
+    let agent = agent(&mut app, &model, 1_000_000, turns(0, 4));
+    let Some(agent) = agent else {
+        return;
+    };
+    app.world_mut().trigger(Compact {
+        entity: agent,
+        focus: String::new(),
+    });
+    assert!(held(&mut app, &wakes).is_some(), "{:?}", notices(&app));
+    app.world_mut()
+        .trigger(Deliver::new(agent, "QUEUED_PROMPT", DeliveryMode::Queue));
+    run_until(&mut app, &wakes, |world| {
+        world.iter_entities().any(|it| {
+            it.contains::<Incoming>() && it.contains::<Started>() && !it.contains::<Outcome>()
+        })
+    });
+    decide(&mut app, &wakes, Some("## Goal\nAnswer."));
+    run_until(&mut app, &wakes, |world| {
+        world.resource::<Ended>().0.len() >= 2 && world.get::<ActiveTurn>(agent).is_none()
+    });
+    let requests = sent(&model);
+    let next = requests.get(1).cloned().unwrap_or_default();
+    let (queued, newer) = (next.find("QUEUED_PROMPT"), next.find("NEWER_PROMPT"));
+    assert!(queued.is_some(), "{:?}: {next}", notices(&app));
+    assert!(newer.is_none_or(|newer| queued < Some(newer)), "{next}");
+    let recalled = &app
+        .world()
+        .resource::<Collected<rig_ecs::inbox::Recalled>>()
+        .0;
+    assert!(recalled.is_empty(), "{recalled:?}");
+}

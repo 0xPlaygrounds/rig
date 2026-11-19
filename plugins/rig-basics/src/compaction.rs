@@ -1510,20 +1510,29 @@ fn take_summary(
 /// Why compaction's own turn stops once its summary settled.
 const COMPACTED: &str = "compacted";
 
-/// Sends again, whole, each message of the user's its agent accepted while compaction's own turn
-/// ran, once that turn ended with its summary, as pi delivers what was queued during a compaction:
-/// the message starts a turn with its attachments, where the kernel would hand back its text
-/// alone.
+/// Starts a turn with the messages an agent accepted while compaction's own turn ran, once that
+/// turn ended with its summary, as pi delivers what was queued during a compaction. The messages
+/// stay in the inbox as they are, attachments included, and the turn's first request takes them in
+/// the order they were sent, a queued one as a steering one, where the kernel would hand the
+/// user's back as text alone. Not a message a plugin decided or holds, and no turn for messages of
+/// other authors alone, which the kernel keeps for the next turn.
 fn send_after_own_turn(
     mut unsent: Query<
-        (&Unsent, &Effect, &Incoming, &ForAgent, &mut Decision),
-        (Added<Unsent>, With<Started>),
+        (
+            Entity,
+            &Unsent,
+            &Effect,
+            &mut Incoming,
+            &ForAgent,
+            &Decision,
+        ),
+        (Added<Unsent>, With<Started>, Without<Holds>),
     >,
     mut commands: Commands,
 ) {
     let mut waiting: Vec<_> = unsent
         .iter_mut()
-        .filter(|(unsent, _, message, _, decision)| {
+        .filter(|(_, unsent, _, _, _, decision)| {
             let compacted = matches!(
                 &unsent.ended,
                 Some(TurnOutcome::Stopped(stop)) if matches!(
@@ -1531,16 +1540,40 @@ fn send_after_own_turn(
                     StopCause::Plugin { by, why } if by == "compaction" && why == COMPACTED
                 )
             );
-            compacted && message.author == Author::user() && !decision.is_decided()
+            compacted && !decision.is_decided()
         })
         .collect();
-    waiting.sort_unstable_by_key(|(_, effect, ..)| effect.id());
-    for (_, _, message, &ForAgent(agent), mut decision) in waiting {
-        decision.decide(Decider::plugin("compaction"), Outcome::custom("sent again"));
-        commands.trigger(Deliver {
-            entity: agent,
-            message: message.clone(),
-        });
+    waiting.sort_unstable_by_key(|(_, _, effect, ..)| effect.id());
+    let asks = |message: &Incoming| {
+        message.author == Author::user() && message.mode != DeliveryMode::Inform
+    };
+    let mut turns: Vec<Entity> = Vec::new();
+    for at in 0..waiting.len() {
+        let Some(&(_, _, _, _, &ForAgent(agent), _)) = waiting.get(at) else {
+            continue;
+        };
+        let mut of_agent = waiting.iter().filter(|it| it.4.0 == agent);
+        if !of_agent.any(|(_, _, _, message, ..)| asks(message)) {
+            continue;
+        }
+        let Some((message, _, effect, incoming, ..)) = waiting.get_mut(at) else {
+            continue;
+        };
+        if !turns.contains(&agent) {
+            turns.push(agent);
+            let turn = commands.spawn(TurnOf(agent)).id();
+            commands.spawn((
+                TurnCall,
+                CallOf(turn),
+                ForAgent(agent),
+                Effect::with_parent_id(Some(effect.id())),
+            ));
+        }
+        commands.entity(*message).try_remove::<Unsent>();
+        // The turn's first request takes what steers, and this turn is the message's own.
+        if incoming.mode == DeliveryMode::Queue {
+            incoming.mode = DeliveryMode::Steer;
+        }
     }
 }
 
