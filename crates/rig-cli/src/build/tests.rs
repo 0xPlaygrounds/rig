@@ -1005,7 +1005,6 @@ fn a_stopped_safe_build_leaves_the_projects_lock_files_for_the_next_build() {
             [
                 Some("user's lock".to_owned()),
                 Some("commit A's lock".to_owned()),
-                None
             ],
             false
         ))

@@ -207,6 +207,13 @@ fn compile_logged(
     if let Some(warning) = super::plugin::skill::set_up(home, generate)? {
         log.say(&warning);
     }
+    let rig_crates = project::rig_crates(plugins, source)?;
+    let rig_version = project::rig_version(source);
+    let checked = check_bevy(launch, plugins, &rig_crates, &rig_version, log);
+    if !checked.as_ref().is_err_and(|why| why.is::<Explained>()) {
+        log.show_held();
+    }
+    checked?;
     // `/reload` shows the latest of these lines and of cargo's.
     log.say("Compiling the agent…");
     let mut command = cargo(launch);
@@ -216,25 +223,6 @@ fn compile_logged(
     log.erase =
         cfg!(unix) && log.output == BuildOutput::Live && show_progress(launch, &mut command);
     let status = log.run(command)?;
-    // The check reads the graph the build resolved into `Cargo.lock`, so a
-    // lock it passed passes again; after a failed build it runs anyway, to
-    // say in plain words when a foreign Bevy or rig crate is why.
-    let lock = fs::read(home.project().join("Cargo.lock")).ok();
-    let checked = home.project().join("Cargo.lock.checked");
-    if !status.success() || lock.is_none() || lock != fs::read(&checked).ok() {
-        log.say("Resolving dependencies…");
-        let rig_crates = project::rig_crates(plugins, source)?;
-        check_bevy(
-            launch,
-            plugins,
-            &rig_crates,
-            &project::rig_version(source),
-            log,
-        )?;
-        if let Some(lock) = lock {
-            fs::write(&checked, lock).ok();
-        }
-    }
     if !status.success() {
         return Err(format!("cargo could not build the agent ({status})").into());
     }
@@ -331,10 +319,9 @@ pub fn compile_safe(launch: &Launch, output: BuildOutput) -> std::result::Result
     }
 }
 
-/// The agent project's lock files a safe build changes: its `Cargo.lock`,
-/// the checkout lock that one was seeded from, and the lock whose Bevy
-/// version was checked.
-const LOCKS: [&str; 3] = ["Cargo.lock", "Cargo.lock.seed", "Cargo.lock.checked"];
+/// The agent project's lock files a safe build changes: its `Cargo.lock`
+/// and the checkout lock that one was seeded from.
+const LOCKS: [&str; 2] = ["Cargo.lock", "Cargo.lock.seed"];
 
 /// Where [`keep_locks`] keeps the project's lock files while a safe build
 /// runs. It is there only while one runs, or after one was stopped. It
@@ -548,6 +535,9 @@ struct BuildLog {
     erase: bool,
     /// Whether the last byte passed on was a `\r`, which a `\n` may end.
     after_cr: bool,
+    /// What a live resolve printed from its first error on, which waits
+    /// for [`Self::show_held`].
+    held: Vec<u8>,
 }
 
 impl BuildLog {
@@ -572,6 +562,7 @@ impl BuildLog {
             blocked_since: None,
             erase: false,
             after_cr: false,
+            held: Vec::new(),
         }
     }
 
@@ -598,7 +589,7 @@ impl BuildLog {
     /// of its lines.
     fn run(&mut self, command: Command) -> Result<ExitStatus> {
         let mut build = Build::spawn(command)?;
-        self.pass_on(&mut build.child);
+        self.pass_on(&mut build.child, false);
         Ok(build.child.wait()?)
     }
 
@@ -607,8 +598,9 @@ impl BuildLog {
     /// line too; the bar is not logged. Through a pipe cargo does not
     /// erase the bar's line before a shorter one, which would keep the
     /// bar's tail on screen, so on a terminal each `\r` but a `\r\n` erases
-    /// it.
-    fn pass_on(&mut self, child: &mut Child) {
+    /// it. With `hold_errors` it passes on whole lines, up to cargo's first
+    /// error ([`Self::show_or_hold`]).
+    fn pass_on(&mut self, child: &mut Child, hold_errors: bool) {
         // A wait of an earlier command is over.
         self.blocked_since = None;
         let Some(stderr) = child.stderr.take() else {
@@ -636,11 +628,14 @@ impl BuildLog {
                     Err(_) => break,
                 },
             };
-            if self.output == BuildOutput::Live {
+            if self.output == BuildOutput::Live && !hold_errors {
                 self.show(&chunk);
             }
             for &byte in &chunk {
                 if byte == b'\r' || byte == b'\n' {
+                    if hold_errors {
+                        self.show_or_hold(&segment, &[byte]);
+                    }
                     self.record_segment(&segment);
                     segment.clear();
                 } else {
@@ -648,7 +643,32 @@ impl BuildLog {
                 }
             }
         }
+        if hold_errors {
+            self.show_or_hold(&segment, &[]);
+        }
         self.record_segment(&segment);
+    }
+
+    /// Shows `line` and its `end` when the output is live, unless it is
+    /// cargo's first error or comes after it: rig may explain that error,
+    /// so it is held, and what comes first stays visible as progress.
+    fn show_or_hold(&mut self, line: &[u8], end: &[u8]) {
+        if self.output != BuildOutput::Live {
+            return;
+        }
+        if self.held.is_empty() && !line.starts_with(b"error") {
+            self.show(line);
+            self.show(end);
+        } else {
+            self.held.extend_from_slice(line);
+            self.held.extend_from_slice(end);
+        }
+    }
+
+    /// Shows what [`Self::show_or_hold`] held.
+    fn show_held(&mut self) {
+        let held = std::mem::take(&mut self.held);
+        self.show(&held);
     }
 
     /// Shows `chunk`, erasing after each `\r` that no `\n` follows when
@@ -1008,9 +1028,10 @@ pub fn stamp(binary: &Path) -> std::io::Result<String> {
     Ok(format!("{modified} {}\n", metadata.len()))
 }
 
-/// Reads the project's resolved graph and fails, in plain words,
-/// when a plugin pulls in a Bevy other than [`BEVY_VERSION`] or rig crates
-/// other than the agent's.
+/// Resolves the project's graph and fails, in plain words, when a plugin
+/// pulls in a Bevy other than [`BEVY_VERSION`] or rig crates other than the
+/// agent's. It runs before anything compiles, as rustc's errors for a
+/// foreign Bevy would say nothing of the cause.
 fn check_bevy(
     launch: &Launch,
     plugins: &config::Plugins,
@@ -1258,18 +1279,20 @@ fn check_rig(packages: &[String], rig_crates: &BTreeSet<String>, rig_version: &s
 
 /// The lines of `cargo tree` over the agent project with `args`, one
 /// package per line, as `name vVERSION (source)`. Its stderr goes through
-/// `log`.
+/// `log`, which holds its errors.
 fn tree(launch: &Launch, args: &[&str], log: &mut BuildLog) -> Result<Vec<String>> {
     let mut command = cargo(launch);
     command
         .args(["tree", "--prefix", "none", "--format", "{p}"])
         .args(args)
+        // Its lines are passed on whole, which a progress bar's are not.
+        .env("CARGO_TERM_PROGRESS_WHEN", "never")
         .stdout(Stdio::piped());
     let mut build = Build::spawn(command)?;
     let child = &mut build.child;
     // Read on its own thread, so neither pipe fills while the other is read.
     let out = child.stdout.take().map(chunks);
-    log.pass_on(child);
+    log.pass_on(child, true);
     let stdout: Vec<u8> = out.into_iter().flatten().flatten().collect();
     let status = child.wait()?;
     if !status.success() {
