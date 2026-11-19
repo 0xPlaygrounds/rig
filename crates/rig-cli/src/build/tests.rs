@@ -444,39 +444,138 @@ fn an_explained_failure_is_one_line_for_reload() {
     assert_eq!(plain.explanation(), None);
 }
 
-/// A resolve failure is put down to a plugin's Bevy requirement only when
-/// cargo's first error is a version conflict over a Bevy crate; any other
-/// keeps cargo's words.
+/// Real cargo 1.97 output, with its paths shortened and the agent's Bevy
+/// written `AGENT`: a plugin's `bevy_app = "=0.20.0"`, where cargo names the
+/// agent's requirement.
+const PIN_CONFLICT: &str = r#"error: failed to select a version for `bevy_app`.
+    ... required by package `rig-basics v0.46.0 (/h/core)`
+    ... which satisfies path dependency `rig-basics` of package `agent v0.0.0 (/h/agent)`
+versions that meet the requirements `=AGENT` are: AGENT
+
+all possible versions conflict with previously selected packages
+
+  previously selected package `bevy_app v0.20.0`
+    ... which satisfies dependency `bevy_app = "=0.20.0"` of package `pin_plugin v0.1.0 (/h/plug)`
+    ... which satisfies path dependency `pin_plugin` of package `agent v0.0.0 (/h/agent)`
+
+failed to select a version for `bevy_app` which could resolve this conflict
+"#;
+
+/// The same for `bevy_app = ">=0.20.0, <0.20.1"`.
+const RANGE_CONFLICT: &str = r#"error: failed to select a version for `bevy_app`.
+    ... required by package `rig-basics v0.46.0 (/h/core)`
+    ... which satisfies path dependency `rig-basics` of package `agent v0.0.0 (/h/agent)`
+versions that meet the requirements `=AGENT` are: AGENT
+
+all possible versions conflict with previously selected packages
+
+  previously selected package `bevy_app v0.20.0`
+    ... which satisfies dependency `bevy_app = ">=0.20.0, <0.20.1"` of package `pin_plugin v0.1.0 (/h/plug)`
+    ... which satisfies path dependency `pin_plugin` of package `agent v0.0.0 (/h/agent)`
+
+failed to select a version for `bevy_app` which could resolve this conflict
+"#;
+
+/// A range with several versions, none the agent's: cargo names the
+/// plugin's requirement and the agent's Bevy as selected.
+const PLUGIN_SIDE_CONFLICT: &str = r#"error: failed to select a version for `bevy_app`.
+    ... required by package `pin_plugin v0.1.0 (/h/plug)`
+    ... which satisfies path dependency `pin_plugin` of package `agent v0.0.0 (/h/agent)`
+versions that meet the requirements `>=0.20.0-rc.1, <0.20.1` are: 0.20.0, 0.20.0-rc.2, 0.20.0-rc.1
+
+all possible versions conflict with previously selected packages
+
+  previously selected package `bevy_app vAGENT`
+    ... which satisfies dependency `bevy_app = "=AGENT"` of package `rig-basics v0.46.0 (/h/core)`
+    ... which satisfies path dependency `rig-basics` of package `agent v0.0.0 (/h/agent)`
+
+failed to select a version for `bevy_app` which could resolve this conflict
+"#;
+
+/// `bevy_reflect = { version = "0.19", features = ["nope"] }`, a private
+/// copy that needs no other Bevy.
+const PRIVATE_COPY_FEATURE: &str = r#"error: failed to select a version for `bevy_reflect`.
+    ... required by package `pin_plugin v0.1.0 (/h/plug)`
+    ... which satisfies path dependency `pin_plugin` of package `agent v0.0.0 (/h/agent)`
+versions that meet the requirements `^0.19` are: 0.19.1, 0.19.0
+
+package `pin_plugin` depends on `bevy_reflect` with feature `nope` but `bevy_reflect` does not have that feature.
+help: available features: auto_register, debug, default, std
+
+
+failed to select a version for `bevy_reflect` which could resolve this conflict
+"#;
+
+/// A missing feature on the agent's own minor, with `[patch]` giving the
+/// agent's version from a path: cargo adds the conflict of the older version.
+const PATCHED_FEATURE: &str = r#"error: failed to select a version for `bevy_app`.
+    ... required by package `pin_plugin v0.1.0 (/h/plug)`
+    ... which satisfies path dependency `pin_plugin` of package `agent v0.0.0 (/h/agent)`
+versions that meet the requirements `^0.20` are: AGENT, 0.20.0
+
+package `pin_plugin` depends on `bevy_app` with feature `nope` but `bevy_app` does not have that feature.
+help: available features: bevy_reflect, default, std
+
+
+all possible versions conflict with previously selected packages
+
+  previously selected package `bevy_app vAGENT (/h/patched/bevy_app)`
+    ... which satisfies dependency `bevy_app = "^0.20"` of package `pin_plugin v0.1.0 (/h/plug)`
+    ... which satisfies path dependency `pin_plugin` of package `agent v0.0.0 (/h/agent)`
+
+failed to select a version for `bevy_app` which could resolve this conflict
+"#;
+
+/// `bevy_ecs = "=9.9"`, which no Bevy meets: cargo's words say so.
+const NO_SUCH_VERSION: &str = r#"error: failed to select a version for the requirement `bevy_ecs = "=9.9"`
+candidate versions found which didn't match: AGENT, 0.20.0, 0.20.0-rc.2, ...
+location searched: crates.io index
+required by package `pin_plugin v0.1.0 (/h/plug)`
+"#;
+
+/// `cargo`, one of the above, for the agent's Bevy.
+fn real(cargo: &str) -> String {
+    cargo.replace("AGENT", BEVY_VERSION)
+}
+
+/// A resolve failure is put down to Bevy only when cargo's error is a
+/// version conflict over a Bevy crate, whichever side cargo names and
+/// however the requirement is written; any other keeps cargo's words, also
+/// beside a plugin's unrelated Bevy pin.
 #[test]
-fn only_a_resolve_failure_naming_bevy_is_explained_by_a_bevy_requirement() {
+fn only_a_bevy_version_conflict_is_explained_by_a_bevy_requirement() {
     let root = std::env::temp_dir().join(format!("rig-unresolved-{}", std::process::id()));
     fs::remove_dir_all(&root).ok();
     manifest_at(
         &root,
         "[package]\nname = \"plugin\"\n\n[dependencies]\nbevy_reflect = \"0.18\"\n",
     );
-    let explained = |first_error: &str| {
-        let lines = ["Compiling the agent…".to_owned(), first_error.to_owned()];
-        let failure = unresolved("cargo failed".into(), &lines, [root.as_path()], "");
-        failure.is::<Explained>()
+    let reason = |cargo: &str, local: &[&Path]| {
+        let lines: Vec<String> = cargo.lines().map(str::to_owned).collect();
+        let failure = unresolved("cargo failed".into(), &lines, local.iter().copied(), "");
+        failure.is::<Explained>().then(|| failure.to_string())
     };
-    let bevy = [
-        "error: failed to select a version for `bevy_app`.",
-        "error: failed to select a version for the requirement `bevy_app = \"=0.99\"`",
-    ];
+    // Nothing in the agent reads a git plugin's manifest: cargo's words name it.
+    for cargo in [PIN_CONFLICT, RANGE_CONFLICT, PLUGIN_SIDE_CONFLICT].map(real) {
+        let told = reason(&cargo, &[]).unwrap_or_default();
+        assert!(told.starts_with("a plugin must write"), "{cargo}\n{told}");
+        assert!(told.contains("bevy_app"), "{cargo}\n{told}");
+        assert!(told.contains("pin_plugin v0.1.0"), "{cargo}\n{told}");
+    }
     let other = [
-        "error: failed to select a version for the requirement `serde = \"^99\"`",
-        "error: no matching package named `serde` found",
-        "error: no matching package named `bevy_reflect` found",
-        "error: failed to get `bevy_reflect` as a dependency of package `plugin v0.1.0`",
-        "error: failed to get `serde` as a dependency of package `bevy_reflect v0.18.0`",
-        "error: failed to parse manifest at `/home/me/bevy/Cargo.toml`",
-        "    Updating crates.io index",
+        real(PRIVATE_COPY_FEATURE),
+        real(PATCHED_FEATURE),
+        real(NO_SUCH_VERSION),
+        "error: failed to select a version for the requirement `serde = \"^99\"`".to_owned(),
+        "error: no matching package named `bevy_reflect` found".to_owned(),
+        "error: failed to get `bevy_reflect` as a dependency of package `plugin v0.1.0`".to_owned(),
+        "error: failed to get `serde` as a dependency of package `bevy_reflect v0.18.0`".to_owned(),
+        "error: failed to parse manifest at `/home/me/bevy/Cargo.toml`".to_owned(),
+        "    Updating crates.io index".to_owned(),
     ];
-    let (bevy, other) = (bevy.map(explained), other.map(explained));
+    let other = other.map(|cargo| reason(&cargo, &[root.as_path()]));
     fs::remove_dir_all(&root).ok();
-    assert_eq!(bevy, [true; 2]);
-    assert_eq!(other, [false; 7]);
+    assert_eq!(other, [const { None }; 9]);
 }
 
 /// A short wait for cargo's lock in one command says nothing when a later
@@ -767,6 +866,19 @@ fn a_live_build_shows_cargo_as_it_writes_erasing_each_redrawn_line_on_a_terminal
     // Redirected, it is passed on as it came.
     let (shown, _, _) = fake_build("redirected", (BuildOutput::Live, false), cargo);
     assert_eq!(shown, cargo);
+    // A redrawn frame is shown, and only a line a `\n` ends is logged.
+    let cargo = " Downloading 2 crates\r   Compiling a v1.0.0\r\n";
+    let (shown, logged, _) = fake_build("frames", (BuildOutput::Live, false), cargo);
+    assert_eq!(shown, cargo);
+    assert!(!logged.contains("Downloading"), "{logged:?}");
+    assert!(logged.contains("   Compiling a v1.0.0\n"), "{logged:?}");
+    // Any other line a `\r` ends is logged, and a failure tells it.
+    let cargo = "error: SDK missing\rset SDK_ROOT\nerror: linker helper was not found\r";
+    let (_, logged, told) = fake_build("cr", (BuildOutput::LogOnly, false), cargo);
+    for line in ["error: SDK missing", "set SDK_ROOT", "error: linker helper"] {
+        assert!(logged.contains(line), "{logged:?}");
+    }
+    assert!(told.contains("error: linker helper"), "{told}");
 }
 
 #[test]
@@ -977,7 +1089,6 @@ fn a_stopped_safe_build_leaves_the_projects_lock_files_for_the_next_build() {
     let after = (|| -> Result<_> {
         fs::create_dir_all(home.project())?;
         fs::write(home.project().join("Cargo.lock"), "user's lock")?;
-        fs::write(home.project().join("Cargo.lock.seed"), "commit A's lock")?;
         keep_locks(&home)?;
         for name in LOCKS {
             fs::write(home.project().join(name), "the safe build's")?;
@@ -1000,15 +1111,7 @@ fn a_stopped_safe_build_leaves_the_projects_lock_files_for_the_next_build() {
     let after = after.map_err(|why| why.to_string());
     assert_eq!(
         after,
-        Ok((
-            true,
-            [
-                Some("user's lock".to_owned()),
-                Some("commit A's lock".to_owned()),
-                None
-            ],
-            false
-        ))
+        Ok((true, [Some("user's lock".to_owned()), None], false))
     );
 }
 
@@ -1120,5 +1223,217 @@ fn a_plugin_pinning_another_bevy_is_told_first_which_version_to_write() {
             && message.contains(BEVY_VERSION)
             && message.contains("rig plugin remove <type>"),
         "{message}"
+    );
+}
+
+/// The plugins of an agent with one extra crate, `pinned`, that asks for
+/// another Bevy.
+fn pinned_plugin(root: &Path) -> config::Plugins {
+    let directory = root.join("pinned");
+    manifest_at(
+        &directory,
+        "[package]\nname = \"pinned\"\n\n[dependencies]\nbevy_ecs = \"=0.18.0\"\n",
+    );
+    let plugin = "pinned::Pinned".to_owned();
+    config::Plugins {
+        on: vec![plugin.clone()],
+        extra: vec![config::Extra {
+            plugin,
+            krate: "pinned".to_owned(),
+            source: config::Source::Path(directory),
+        }],
+        ..config::Plugins::default()
+    }
+}
+
+/// With a cargo that records its commands: the Bevy check reads the graph
+/// before anything compiles, on every build, also one whose lock did not
+/// change, and shows only cargo's progress, whose redrawn frames are not
+/// logged. A foreign `bevy_app` or `bevy_ecs` stops the build with rig's
+/// advice ahead of cargo's error, even when cargo cannot say who pulled it
+/// in. Another foreign Bevy crate may be private to its plugin and is left
+/// to cargo and the compiler. A resolve failure that is not about Bevy still
+/// shows cargo's error whole, on a line of its own. Run with that cargo first
+/// on `PATH` and the caller's progress setting known, in a run of its own.
+#[test]
+fn a_foreign_bevy_is_refused_before_cargo_compiles_and_the_advice_leads() {
+    const PROBE: &str = "RIG_BEVY_FIRST_PROBE";
+    let Some(root) = std::env::var_os(PROBE).map(PathBuf::from) else {
+        let root = std::env::temp_dir().join(format!("rig-bevy-first-{}", std::process::id()));
+        fs::remove_dir_all(&root).ok();
+        let bin = root.join("bin");
+        let cargo = bin.join("cargo");
+        fs::create_dir_all(&bin).ok();
+        fs::write(
+            &cargo,
+            "#!/bin/sh\necho \"$1\" >> \"$0.calls\"\n\
+             echo \"$1 [$CARGO_TERM_PROGRESS_WHEN]\" >> \"$0.progress\"\n. \"$0.$1\"\n",
+        )
+        .ok();
+        fs::write(bin.join("cargo.build"), ":\n").ok();
+        fs::set_permissions(&cargo, std::fs::Permissions::from_mode(0o755)).ok();
+        let path = format!(
+            "{}:{}",
+            bin.display(),
+            std::env::var("PATH").unwrap_or_default()
+        );
+        let name =
+            "build::tests::a_foreign_bevy_is_refused_before_cargo_compiles_and_the_advice_leads";
+        let output = std::env::current_exe().and_then(|test| {
+            Command::new(test)
+                .args(["--exact", name, "--test-threads", "1"])
+                .env(PROBE, &root)
+                .env("CARGO_TERM_PROGRESS_WHEN", "auto")
+                .env("PATH", path)
+                .output()
+        });
+        fs::remove_dir_all(&root).ok();
+        let output = output.map(|output| {
+            let said = String::from_utf8_lossy(&output.stdout).into_owned();
+            (output.status.success() && said.contains("1 passed"), said)
+        });
+        return assert!(matches!(output, Ok((true, _))), "{output:?}");
+    };
+    let bin = root.join("bin");
+    let home = Home::at(root.join("home"));
+    let plugins = pinned_plugin(&root);
+    let checkout = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let source = RigSource::Local(fs::canonicalize(checkout).unwrap_or_default());
+    let launch = crate::test_launch(&home, Path::new("/opt/rig/bin/rig"));
+    let Ok(launch) = launch else {
+        return assert!(launch.is_ok());
+    };
+    // One build whose `cargo tree` runs `tree`: cargo's commands, what was
+    // shown, and the failure.
+    let build = |tree: &str| {
+        fs::write(bin.join("cargo.tree"), tree).ok();
+        fs::remove_file(bin.join("cargo.calls")).ok();
+        let shown = Shown::default();
+        let mut log =
+            BuildLog::create(home.build_log(), BuildOutput::Live, Box::new(shown.clone()));
+        let built = compile_logged(&launch, &plugins, &source, &mut log);
+        let failure = built.err().map(|why| log.fail(FailedAt::Build, &*why));
+        let calls = fs::read_to_string(bin.join("cargo.calls")).unwrap_or_default();
+        let calls: Vec<String> = calls.lines().map(str::to_owned).collect();
+        (calls, shown.text(), failure)
+    };
+
+    let warning = "warning: patch `x v1.0.0` was not used in the crate graph";
+    let frame = "       Fetch [==>    ] 3 complete; 1 pending";
+    let agents_bevy = format!(
+        "echo '{warning}' >&2; printf '    Updating crates.io index\\r\\n' >&2; \
+         printf '  Downloaded a v1.0.0\\r\\n{frame}\\r' >&2; echo 'bevy_ecs v{BEVY_VERSION}'\n"
+    );
+    for _ in 0..2 {
+        let (calls, shown, failure) = build(&agents_bevy);
+        assert_eq!(calls, ["tree", "build"]);
+        assert!(failure.is_none(), "{failure:?}");
+        // `\r\n` ends one line.
+        for line in ["    Updating crates.io index", "  Downloaded a v1.0.0"] {
+            assert!(shown.lines().any(|shown| shown == line), "{shown:?}");
+        }
+        assert!(shown.contains(frame), "{shown}");
+        // `cargo build` says it again, in its own turn.
+        assert!(!shown.contains(warning), "{shown}");
+        let logged = fs::read_to_string(home.build_log()).unwrap_or_default();
+        assert!(!logged.contains(warning), "{logged}");
+        assert!(logged.contains("Updating crates.io index"), "{logged}");
+        assert!(!logged.contains("Fetch"), "{logged}");
+    }
+    // Both commands take the caller's progress setting, off a terminal.
+    let progress = fs::read_to_string(bin.join("cargo.progress")).unwrap_or_default();
+    let progress: Vec<&str> = progress.lines().collect();
+    assert_eq!(progress, ["tree [auto]", "build [auto]"].repeat(2));
+
+    // Resolved, after good builds that left the same lock.
+    let resolved = "case \"$*\" in *--invert*) echo 'pinned v0.1.0' ;; \
+                    *) echo 'bevy_ecs v0.18.0' ;; esac\n";
+    let (calls, _, failure) = build(resolved);
+    assert_eq!(calls, ["tree", "tree"]);
+    let told = failure
+        .map(|failure| failure.to_string())
+        .unwrap_or_default();
+    assert!(told.starts_with("plugin `pinned` must write"), "{told}");
+
+    // cargo cannot say who depends on it, as with one version from two sources.
+    let ambiguous = "case \"$*\" in *--invert*) echo 'error: specification is ambiguous' >&2; \
+                     exit 101 ;; *) echo 'bevy_ecs v0.18.0' ;; esac\n";
+    let (calls, shown, failure) = build(ambiguous);
+    assert_eq!(calls, ["tree", "tree"]);
+    assert!(!shown.contains("ambiguous"), "{shown}");
+    let logged = fs::read_to_string(home.build_log()).unwrap_or_default();
+    assert_eq!(logged.matches("ambiguous").count(), 1, "{logged}");
+    let told = failure
+        .map(|failure| failure.to_string())
+        .unwrap_or_default();
+    assert!(told.starts_with("the agent project pulls in"), "{told}");
+
+    // A private copy beside the agent's own builds, and a compiler error
+    // with it is cargo's, as rig says nothing of it.
+    let second_reflect =
+        format!("echo 'bevy_reflect v0.19.1'; echo 'bevy_reflect v{BEVY_VERSION}'\n");
+    let (calls, shown, failure) = build(&second_reflect);
+    assert_eq!(calls, ["tree", "build"]);
+    assert!(failure.is_none(), "{failure:?}");
+    assert!(!shown.contains("must write"), "{shown}");
+    let compiler = "error[E0277]: `Uses` is not a `Component`";
+    fs::write(
+        bin.join("cargo.build"),
+        format!("echo '{compiler}' >&2; exit 101\n"),
+    )
+    .ok();
+    let (calls, _, failure) = build(&second_reflect);
+    fs::write(bin.join("cargo.build"), ":\n").ok();
+    assert_eq!(calls, ["tree", "build"]);
+    let errors = failure.map(|failure| failure.errors).unwrap_or_default();
+    assert_eq!(errors.first().map(String::as_str), Some(compiler));
+
+    let conflict = real(PIN_CONFLICT);
+    let unresolvable =
+        format!("echo '    Updating crates.io index' >&2; echo '{conflict}' >&2; exit 101\n");
+    let (calls, shown, failure) = build(&unresolvable);
+    assert_eq!(calls, ["tree"]);
+    assert!(shown.contains("Updating crates.io index"), "{shown}");
+    assert!(!shown.contains("failed to select"), "{shown}");
+    let logged = fs::read_to_string(home.build_log()).unwrap_or_default();
+    assert!(logged.contains("failed to select"), "{logged}");
+    let told = failure
+        .map(|failure| failure.to_string())
+        .unwrap_or_default();
+    assert!(told.starts_with("a plugin must write"), "{told}");
+
+    let unrelated = "error: no matching package named `serde` found\n\nCaused by:\n  offline\n";
+    let (calls, shown, failure) = build(&format!(
+        "echo '{warning}' >&2; printf '{frame}\\r' >&2; printf '{unrelated}' >&2; exit 101\n"
+    ));
+    assert_eq!(calls, ["tree"]);
+    assert!(
+        shown.contains(unrelated) && shown.contains(warning),
+        "{shown}"
+    );
+    // A frame cargo drew on its own does not share the held text's line.
+    assert!(shown.lines().any(|line| line == warning), "{shown:?}");
+    let explanation = failure.as_ref().and_then(BuildFailure::explanation);
+    assert_eq!(explanation, None);
+    let told = failure
+        .map(|failure| failure.to_string())
+        .unwrap_or_default();
+    assert!(told.contains("no matching package named `serde`"), "{told}");
+
+    // A lone `\r` ends a held line, as it ends a live one.
+    let (calls, shown, failure) =
+        build("printf 'warning: retrying\\rerror: registry unavailable\\r' >&2; exit 101\n");
+    assert_eq!(calls, ["tree"]);
+    assert!(!shown.contains('\r'), "{shown:?}");
+    assert!(
+        shown
+            .lines()
+            .any(|line| line == "error: registry unavailable"),
+        "{shown:?}"
+    );
+    let errors = failure.map(|failure| failure.errors).unwrap_or_default();
+    assert_eq!(
+        errors.first().map(String::as_str),
+        Some("error: registry unavailable")
     );
 }

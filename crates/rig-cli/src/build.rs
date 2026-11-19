@@ -207,34 +207,20 @@ fn compile_logged(
     if let Some(warning) = super::plugin::skill::set_up(home, generate)? {
         log.say(&warning);
     }
+    let rig_crates = project::rig_crates(plugins, source)?;
+    check_bevy(
+        launch,
+        plugins,
+        &rig_crates,
+        &project::rig_version(source),
+        log,
+    )?;
     // `/reload` shows the latest of these lines and of cargo's.
     log.say("Compiling the agent…");
     let mut command = cargo(launch);
     command.args(["build", "--package", PACKAGE]);
-    // A Windows console may not take the erase sequence, which cargo
-    // itself writes on Unix only.
-    log.erase =
-        cfg!(unix) && log.output == BuildOutput::Live && show_progress(launch, &mut command);
+    log.show_progress(launch, &mut command);
     let status = log.run(command)?;
-    // The check reads the graph the build resolved into `Cargo.lock`, so a
-    // lock it passed passes again; after a failed build it runs anyway, to
-    // say in plain words when a foreign Bevy or rig crate is why.
-    let lock = fs::read(home.project().join("Cargo.lock")).ok();
-    let checked = home.project().join("Cargo.lock.checked");
-    if !status.success() || lock.is_none() || lock != fs::read(&checked).ok() {
-        log.say("Resolving dependencies…");
-        let rig_crates = project::rig_crates(plugins, source)?;
-        check_bevy(
-            launch,
-            plugins,
-            &rig_crates,
-            &project::rig_version(source),
-            log,
-        )?;
-        if let Some(lock) = lock {
-            fs::write(&checked, lock).ok();
-        }
-    }
     if !status.success() {
         return Err(format!("cargo could not build the agent ({status})").into());
     }
@@ -331,10 +317,9 @@ pub fn compile_safe(launch: &Launch, output: BuildOutput) -> std::result::Result
     }
 }
 
-/// The agent project's lock files a safe build changes: its `Cargo.lock`,
-/// the checkout lock that one was seeded from, and the lock whose Bevy
-/// version was checked.
-const LOCKS: [&str; 3] = ["Cargo.lock", "Cargo.lock.seed", "Cargo.lock.checked"];
+/// The agent project's lock files a safe build changes: its `Cargo.lock`
+/// and the checkout lock that one was seeded from.
+const LOCKS: [&str; 2] = ["Cargo.lock", "Cargo.lock.seed"];
 
 /// Where [`keep_locks`] keeps the project's lock files while a safe build
 /// runs. It is there only while one runs, or after one was stopped. It
@@ -546,8 +531,11 @@ struct BuildLog {
     /// Whether what it shows is a terminal that draws cargo's progress
     /// bar, whose redrawn lines it erases.
     erase: bool,
-    /// Whether the last byte passed on was a `\r`, which a `\n` may end.
+    /// Whether the last byte shown was a `\r`, which a `\n` may end.
     after_cr: bool,
+    /// The lines the last `cargo tree` said besides its progress, which
+    /// [`Self::end_segment`] keeps back.
+    held: Vec<Vec<u8>>,
 }
 
 impl BuildLog {
@@ -572,6 +560,7 @@ impl BuildLog {
             blocked_since: None,
             erase: false,
             after_cr: false,
+            held: Vec::new(),
         }
     }
 
@@ -593,22 +582,31 @@ impl BuildLog {
         self.lines.push(line.to_owned());
     }
 
+    /// Has `command`, cargo, draw its progress bar when the output is live
+    /// on a terminal. A Windows console may not take the erase sequence,
+    /// which cargo itself writes on Unix only.
+    fn show_progress(&mut self, launch: &Launch, command: &mut Command) {
+        self.erase =
+            cfg!(unix) && self.output == BuildOutput::Live && show_progress(launch, command);
+    }
+
     /// Runs `command`, cargo, whose stderr is piped, in a process group of
     /// its own ([`Build`]): passes its stderr on as it comes and logs each
     /// of its lines.
     fn run(&mut self, command: Command) -> Result<ExitStatus> {
         let mut build = Build::spawn(command)?;
-        self.pass_on(&mut build.child);
+        self.pass_on(&mut build.child, false);
         Ok(build.child.wait()?)
     }
 
     /// Passes `child`'s stderr on when the output is live, and logs its
-    /// lines. cargo redraws its progress bar after `\r`, so `\r` ends a
-    /// line too; the bar is not logged. Through a pipe cargo does not
-    /// erase the bar's line before a shorter one, which would keep the
-    /// bar's tail on screen, so on a terminal each `\r` but a `\r\n` erases
-    /// it.
-    fn pass_on(&mut self, child: &mut Child) {
+    /// lines. `\r`, `\n` and `\r\n` each end a line. cargo redraws its
+    /// progress after `\r`, so a status line a lone `\r` ends is a frame,
+    /// which is not logged. Through a pipe cargo does not erase the bar's
+    /// line before a shorter one, which would keep the bar's tail on screen,
+    /// so on a terminal each `\r` but a `\r\n` erases it. With `hold` it takes whole lines, keeping
+    /// back all but progress ([`Self::end_segment`]).
+    fn pass_on(&mut self, child: &mut Child, hold: bool) {
         // A wait of an earlier command is over.
         self.blocked_since = None;
         let Some(stderr) = child.stderr.take() else {
@@ -618,6 +616,9 @@ impl BuildLog {
         // passes its time even while cargo prints nothing.
         let chunks = chunks(stderr);
         let mut segment: Vec<u8> = Vec::new();
+        // The line the last `\r` ended, until the next byte says whether
+        // `\r\n` ended it.
+        let mut redrawn: Option<Vec<u8>> = None;
         loop {
             let chunk = match self.blocked_since {
                 Some(since) => {
@@ -636,19 +637,74 @@ impl BuildLog {
                     Err(_) => break,
                 },
             };
-            if self.output == BuildOutput::Live {
+            if self.output == BuildOutput::Live && !hold {
                 self.show(&chunk);
             }
             for &byte in &chunk {
-                if byte == b'\r' || byte == b'\n' {
-                    self.record_segment(&segment);
-                    segment.clear();
-                } else {
+                if let Some(redrawn) = redrawn.take() {
+                    self.end_redrawn(&redrawn, byte == b'\n', hold);
+                    if byte == b'\n' {
+                        continue;
+                    }
+                }
+                if byte != b'\r' && byte != b'\n' {
                     segment.push(byte);
+                    continue;
+                }
+                let line = std::mem::take(&mut segment);
+                let passed = self.end_segment(&line, &[byte], hold);
+                if byte == b'\r' {
+                    redrawn = Some(line);
+                } else if passed {
+                    self.record_segment(&line);
                 }
             }
         }
-        self.record_segment(&segment);
+        if let Some(redrawn) = redrawn {
+            self.end_redrawn(&redrawn, false, hold);
+        }
+        if !segment.is_empty() && self.end_segment(&segment, &[], hold) {
+            self.record_segment(&segment);
+        }
+    }
+
+    /// Whether `line`, which `end` ended, is passed on to the log. With
+    /// `hold`, only cargo's progress is shown and passed on, so a long first
+    /// resolve does not look stuck. The rest is held line by line, as
+    /// `cargo build` may say a warning again and rig may explain an error.
+    fn end_segment(&mut self, line: &[u8], end: &[u8], hold: bool) -> bool {
+        if hold && !is_progress(line) {
+            self.held.push(line.to_vec());
+            return false;
+        }
+        if hold && self.output == BuildOutput::Live {
+            self.show(line);
+            self.show(end);
+        }
+        true
+    }
+
+    /// Ends `line`, which a `\r` ended, as `\r\n` when `crlf`, its `\n`
+    /// going where the line went, and logs it unless it is a progress frame.
+    fn end_redrawn(&mut self, line: &[u8], crlf: bool, hold: bool) {
+        if hold && !is_progress(line) {
+            return;
+        }
+        if crlf && hold && self.output == BuildOutput::Live {
+            self.show(b"\n");
+        }
+        if crlf || !is_progress(line) {
+            self.record_segment(line);
+        }
+    }
+
+    /// Logs the lines [`Self::end_segment`] held, and returns them.
+    fn log_held(&mut self) -> Vec<Vec<u8>> {
+        let held = std::mem::take(&mut self.held);
+        for line in &held {
+            self.record_segment(line);
+        }
+        held
     }
 
     /// Shows `chunk`, erasing after each `\r` that no `\n` follows when
@@ -656,13 +712,12 @@ impl BuildLog {
     fn show(&mut self, chunk: &[u8]) {
         let mut start = 0;
         for (at, &byte) in chunk.iter().enumerate() {
-            if std::mem::take(&mut self.after_cr) && byte != b'\n' {
+            if std::mem::replace(&mut self.after_cr, byte == b'\r') && self.erase && byte != b'\n' {
                 let before = chunk.get(start..at).unwrap_or_default();
                 self.shown.write_all(before).ok();
                 self.shown.write_all(b"\x1b[K").ok();
                 start = at;
             }
-            self.after_cr = self.erase && byte == b'\r';
         }
         self.shown
             .write_all(chunk.get(start..).unwrap_or_default())
@@ -673,7 +728,7 @@ impl BuildLog {
     fn record_segment(&mut self, segment: &[u8]) {
         let line = String::from_utf8_lossy(segment);
         let line = line.trim_end();
-        if line.trim().is_empty() || line.trim_start().starts_with("Building [") {
+        if line.trim().is_empty() {
             return;
         }
         self.announce(line);
@@ -1008,9 +1063,10 @@ pub fn stamp(binary: &Path) -> std::io::Result<String> {
     Ok(format!("{modified} {}\n", metadata.len()))
 }
 
-/// Reads the project's resolved graph and fails, in plain words,
-/// when a plugin pulls in a Bevy other than [`BEVY_VERSION`] or rig crates
-/// other than the agent's.
+/// Resolves the project's graph and fails, in plain words, when a plugin
+/// pulls in a `bevy_app` or `bevy_ecs` other than [`BEVY_VERSION`] or rig
+/// crates other than the agent's. It runs before anything compiles, as
+/// rustc's errors for a foreign Bevy would say nothing of the cause.
 fn check_bevy(
     launch: &Launch,
     plugins: &config::Plugins,
@@ -1019,12 +1075,20 @@ fn check_bevy(
     log: &mut BuildLog,
 ) -> Result<()> {
     let packages = tree(launch, &[], log).map_err(|failure| {
+        let held = log.log_held();
         let local = plugins.extras_on().filter_map(|extra| match &extra.source {
             config::Source::Path(path) => Some(path.as_path()),
             _ => None,
         });
         let lock = fs::read_to_string(launch.home().project().join("Cargo.lock"));
-        unresolved(failure, &log.lines, local, &lock.unwrap_or_default())
+        let why = unresolved(failure, &log.lines, local, &lock.unwrap_or_default());
+        if log.output == BuildOutput::Live && !why.is::<Explained>() {
+            for line in &held {
+                log.show(line);
+                log.show(b"\n");
+            }
+        }
+        why
     })?;
     check_rig(&packages, rig_crates, rig_version)?;
     let Some((bevy, version)) = packages.iter().find_map(|line| {
@@ -1034,8 +1098,13 @@ fn check_bevy(
     }) else {
         return Ok(());
     };
-    // Every package that depends on the foreign Bevy, directly or not.
-    let dependents = tree(launch, &["--invert", &format!("{bevy}@{version}")], log)?;
+    // Every package that depends on it, directly or not. cargo cannot say
+    // when two sources have that version.
+    let dependents =
+        tree(launch, &["--invert", &format!("{bevy}@{version}")], log).unwrap_or_else(|_| {
+            log.log_held();
+            Vec::new()
+        });
     let culprit = plugins.extras_on().find(|extra| {
         (dependents.iter()).any(|line| package(line).is_some_and(|(name, _)| name == extra.krate))
     });
@@ -1052,8 +1121,8 @@ fn check_bevy(
 
 /// The error for cargo's `failure` to resolve the agent project, after the
 /// output `lines`, with the plugins in `local` and the Cargo.lock `lock`:
-/// [`pinned_bevy`] when cargo's first error is a version conflict over a
-/// Bevy crate and a plugin has a [`bevy_pins`] requirement, else `failure`.
+/// [`pinned_bevy`] when cargo's first error is a [`bevy_conflict`], listing
+/// it and the [`bevy_pins`], else `failure`.
 fn unresolved<'a>(
     failure: Box<dyn std::error::Error>,
     lines: &[String],
@@ -1061,23 +1130,60 @@ fn unresolved<'a>(
     lock: &str,
 ) -> Box<dyn std::error::Error> {
     let bevy = bevy_crates(lock);
-    let first = first_errors(lines.iter().map(String::as_str), 1);
-    // Cargo quotes the crate as `name` or as `name = "requirement"`.
-    let conflict = first
-        .first()
-        .and_then(|line| line.strip_prefix("error: failed to select a version for"))
-        .and_then(|rest| rest.split('`').nth(1))
-        .and_then(|quote| quote.split_whitespace().next())
-        .is_some_and(|name| bevy.contains(name));
-    let pins = bevy_pins(local, &bevy);
-    if !conflict || pins.is_empty() {
+    let Some(conflict) = bevy_conflict(lines, &bevy) else {
         return failure;
-    }
+    };
+    let mut pins = vec![conflict];
+    pins.extend(bevy_pins(local, &bevy));
     Explained(pinned_bevy(&failure, &pins)).into()
 }
 
+/// What cargo's first error among `lines` shows asking for a version of one
+/// of `bevy` that is not [`BEVY_VERSION`], and who asks. That takes a version
+/// conflict and nothing else: cargo writes any other reason, such as a
+/// missing feature, ahead of its conflict line. The side at fault is the
+/// selected package when that is a foreign version, else the requirement
+/// cargo could not meet, unless it allows the agent's version. `None` for
+/// any other error.
+fn bevy_conflict(lines: &[String], bevy: &BTreeSet<String>) -> Option<String> {
+    let mut lines = (lines.iter())
+        .map(String::as_str)
+        .filter(|line| !line.trim().is_empty())
+        .skip_while(|line| !line.starts_with("error"));
+    let name = quoted(lines.next()?, "error: failed to select a version for `")?;
+    if !bevy.contains(name) {
+        return None;
+    }
+    let by = quoted(lines.next()?, "required by package `")?;
+    let allowed = lines.find(|line| line.starts_with("versions that meet the requirements `"))?;
+    if lines.next()? != "all possible versions conflict with previously selected packages" {
+        return None;
+    }
+    let selected = lines.find_map(|line| {
+        let selected = quoted(line, "previously selected package `")?;
+        (package(selected)?.0 == name).then_some(selected)
+    })?;
+    if package(selected)?.1 != BEVY_VERSION {
+        let why = lines.next()?.trim().trim_start_matches("... ");
+        return Some(format!("{selected}, {why}"));
+    }
+    // A lock narrows the list to its version, which then proves nothing.
+    let (wanted_part, versions) = allowed.rsplit_once(" are: ")?;
+    if wanted_part.ends_with(')') || versions.split(", ").any(|version| version == BEVY_VERSION) {
+        return None;
+    }
+    let wanted = quoted(allowed, "requirements `")?;
+    Some(format!("{name} {wanted}, required by {by}"))
+}
+
+/// What `line` has between `start`, which ends with a backtick, and the
+/// next backtick.
+fn quoted<'a>(line: &'a str, start: &str) -> Option<&'a str> {
+    line.split_once(start)?.1.split('`').next()
+}
+
 /// The error for cargo's `failure` to resolve a graph in which plugins ask
-/// for a Bevy other than [`BEVY_VERSION`], as the [`bevy_pins`] `pins`.
+/// for a Bevy other than [`BEVY_VERSION`], as `pins` lists.
 /// It opens with the requirement to write.
 fn pinned_bevy(failure: &dyn fmt::Display, pins: &[String]) -> String {
     format!(
@@ -1109,7 +1215,7 @@ fn foreign_bevy(krate: &str, plugin: &str, version: &str) -> String {
 /// for every target, a renamed one by its `package`, and an inherited one
 /// (`workspace = true`) where its workspace writes it. Requirements are read
 /// in the forms `=V`, `^V`, `~V` and `V`; another form, or a manifest that
-/// does not read, is left to cargo's own message.
+/// does not read, is not listed.
 fn bevy_pins<'a>(
     crates: impl IntoIterator<Item = &'a Path>,
     bevy: &BTreeSet<String>,
@@ -1257,28 +1363,48 @@ fn check_rig(packages: &[String], rig_crates: &BTreeSet<String>, rig_version: &s
 }
 
 /// The lines of `cargo tree` over the agent project with `args`, one
-/// package per line, as `name vVERSION (source)`. Its stderr goes through
-/// `log`.
+/// package per line, as `name vVERSION (source)`. `log` passes on cargo's
+/// progress and holds the rest ([`BuildLog::end_segment`]).
 fn tree(launch: &Launch, args: &[&str], log: &mut BuildLog) -> Result<Vec<String>> {
     let mut command = cargo(launch);
     command
         .args(["tree", "--prefix", "none", "--format", "{p}"])
         .args(args)
         .stdout(Stdio::piped());
+    log.show_progress(launch, &mut command);
     let mut build = Build::spawn(command)?;
     let child = &mut build.child;
     // Read on its own thread, so neither pipe fills while the other is read.
     let out = child.stdout.take().map(chunks);
-    log.pass_on(child);
+    log.pass_on(child, true);
+    // What is written next would not cover a frame left on the line, nor,
+    // through a pipe, start a line of its own.
+    if log.erase {
+        log.show(b"\x1b[K");
+    } else if log.after_cr {
+        log.show(b"\n");
+    }
     let stdout: Vec<u8> = out.into_iter().flatten().flatten().collect();
     let status = child.wait()?;
     if !status.success() {
         return Err("cargo could not resolve the agent project's dependencies".into());
     }
+    log.held.clear();
     Ok(String::from_utf8_lossy(&stdout)
         .lines()
         .map(str::to_owned)
         .collect())
+}
+
+/// Whether `line` is one of cargo's status lines, a capitalized word ending
+/// at column 12, such as `    Updating crates.io index`.
+fn is_progress(line: &[u8]) -> bool {
+    line.get(12) == Some(&b' ')
+        && line.get(..12).is_some_and(|status| {
+            let word = status.trim_ascii_start();
+            word.first().is_some_and(u8::is_ascii_uppercase)
+                && word.iter().all(u8::is_ascii_alphabetic)
+        })
 }
 
 /// The name and version of a `cargo tree` line.

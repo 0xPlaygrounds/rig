@@ -94,9 +94,8 @@ pub enum ReloadStatus {
     },
     /// The build runs.
     Building {
-        /// The build's latest line: the launcher's `Resolving
-        /// dependencies…`, or cargo's own, such as `Compiling serde
-        /// v1.0.228`.
+        /// The build's latest line: the launcher's `Compiling the
+        /// agent…`, or cargo's own, such as `Compiling serde v1.0.228`.
         latest: Option<String>,
     },
     /// The build succeeded; the restart waits for every agent to be idle.
