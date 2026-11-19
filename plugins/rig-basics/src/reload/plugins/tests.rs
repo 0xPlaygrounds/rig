@@ -1047,14 +1047,26 @@ fn a_branchs_preview_follows_its_tick_box() {
         app.world_mut().entity_mut(list).insert(Highlighted(row));
         app.update();
     };
-    // The paragraph about the branch's state, after its name and before the
-    // one list of its plugins, which ends the preview.
+    // The paragraph about the branch's state. The preview must be only the
+    // branch's name, that paragraph, and one line listing its plugins, so no
+    // other text can contradict the state.
     let state = |app: &App, list: Entity| {
         let text = preview(app, list);
         let parts: Vec<&str> = text.split("\n\n").collect();
-        let state = parts.first().and_then(|part| part.split_once('\n'));
-        match (state, parts.get(1..)) {
-            (Some((_, state)), Some([held])) if held.starts_with("Branch of ") => state.to_owned(),
+        let head = parts.first().and_then(|part| part.split_once('\n'));
+        let held = parts.get(1..).and_then(|rest| match rest {
+            [held] => held.strip_prefix("Branch of ")?.strip_suffix(".\n"),
+            _ => None,
+        });
+        let listed = held
+            .and_then(|held| held.split_once(" plugins: "))
+            .filter(|(n, names)| {
+                !names.contains('\n') && n.parse() == Ok(names.split(", ").count())
+            });
+        match (head, listed) {
+            (Some((name, state)), Some(_)) if !name.contains(char::is_whitespace) => {
+                state.to_owned()
+            }
             _ => format!("not a branch preview: {text}"),
         }
     };

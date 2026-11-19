@@ -246,8 +246,8 @@ impl Tree {
     }
 
     /// What the preview says of the branch `name` at node `node` while `on`
-    /// is ticked: the state its tick box shows, what Enter does there, and
-    /// an unticked branch above it.
+    /// is ticked: the state its tick box shows, what Enter does there and an
+    /// unticked branch above it, then the plugins it holds.
     fn branch_about(&self, name: &str, node: usize, on: &[bool]) -> String {
         // The state and Enter come before the list of plugins: the pane does
         // not scroll.
