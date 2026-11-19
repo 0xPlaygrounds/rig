@@ -468,7 +468,7 @@ pub(super) fn refuse_unoffered(
         let Some(why) = session.offered.known_refusal(&spec.id) else {
             continue;
         };
-        let why = format!("Cannot use {}: {}.", spec.reference(), why.reason());
+        let why = Models::cannot_use(&spec.reference(), why.reason());
         commands
             .entity(agent)
             .remove::<Connection>()

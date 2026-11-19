@@ -45,7 +45,7 @@ pub struct ModelsPlugin;
 
 impl Plugin for ModelsPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(ConnectWording(connect_wording));
+        word_refusals(app);
         app.add_command(
             "model",
             "Pick the model, or set it with /model vendor/model",
@@ -307,9 +307,15 @@ fn no_key(login: bool, models: &Connector, vendor: &str, tried: &[Cow<'static, s
     format!("no key for `{vendor}`: {how}")
 }
 
+/// Has refused models worded by [`connect_wording`], unless the app chose
+/// its own [`ConnectWording`].
+pub(crate) fn word_refusals(app: &mut App) {
+    (app.world_mut()).get_resource_or_insert_with(|| ConnectWording(connect_wording));
+}
+
 /// Words a missing key as `--model` does, for every model refused; other
 /// errors keep their own text.
-pub(crate) fn connect_wording(world: &World, why: &ConnectError) -> Option<String> {
+fn connect_wording(world: &World, why: &ConnectError) -> Option<String> {
     let ConnectError::MissingKey { vendor, tried } = why else {
         return None;
     };

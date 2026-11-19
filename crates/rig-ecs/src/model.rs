@@ -277,11 +277,11 @@ pub(crate) fn on_set_model(
                 }
                 Err(why) if current == Some(&model) => {
                     let why = refusal(world, &model.0, &why);
-                    let mut agent = commands.entity(set.entity);
-                    agent
+                    commands.write_message(Notice::error(set.entity, why.clone()));
+                    commands
+                        .entity(set.entity)
                         .remove::<Connection>()
-                        .insert(ModelRefused(why.clone()));
-                    commands.write_message(Notice::error(set.entity, why));
+                        .insert(ModelRefused(why));
                     return;
                 }
                 Err(why) => refusal(world, &model.0, &why),
@@ -331,11 +331,11 @@ pub(crate) fn connect(
         }
         Err(why) => {
             let why = refusal(world, &choice.0, &why);
+            commands.write_message(Notice::error(agent, why.clone()));
             commands
                 .entity(agent)
                 .remove::<Connection>()
-                .insert(ModelRefused(why.clone()));
-            commands.write_message(Notice::error(agent, why));
+                .insert(ModelRefused(why));
         }
     }
 }
