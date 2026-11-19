@@ -316,6 +316,40 @@ type Compacting = (
     Option<&'static ReasoningSetting>,
 );
 
+/// `[compaction] keep_recent_tokens` as the estimate counts the conversation, for a model `spec`:
+/// at most half the room below the reserve, so a compaction always frees room, and, when the
+/// provider's last measure of the conversation (`last`, while it still describes it) is denser
+/// than the estimate, scaled down by as much, so dense content still has something to cut. Both
+/// go beyond pi, whose cut counts characters alone and can find nothing to summarize then.
+fn keep_for(
+    settings: &CompactionSettings,
+    spec: &ModelSpec,
+    conversation: &rig_core::conversation::Conversation,
+    (last, stale): (&LastUsage, Option<&ContextStale>),
+) -> u64 {
+    let mut keep = settings.keep_recent_tokens;
+    if let Some(window) = spec.input_limit().map(u64::from) {
+        keep = keep.min(window.saturating_sub(settings.reserve_tokens) / 2);
+    }
+    let measured = last
+        .0
+        .as_ref()
+        .filter(|_| stale.is_none())
+        .and_then(|anchor| {
+            let reported = anchor.usage.context_tokens()?;
+            let at = conversation.index_of(anchor.through)?;
+            let estimated = estimate_tokens(conversation.messages().get(..=at).unwrap_or_default());
+            Some((reported, estimated))
+        });
+    match measured {
+        Some((reported, estimated)) if reported > estimated && estimated > 0 => {
+            let scaled = u128::from(keep) * u128::from(estimated) / u128::from(reported);
+            u64::try_from(scaled).unwrap_or(keep)
+        }
+        _ => keep,
+    }
+}
+
 /// Spawns the summary call `summarizing` of `agent` on `turn` to `spec`, by `route` when that is
 /// not the agent's own model, holding `hold` when it is a turn's call; says whether it started.
 fn start(
@@ -478,7 +512,10 @@ fn compact_near_the_window(
             let reason = CompactReason::Threshold;
             let planned = settings
                 .should_compact(tokens, window)
-                .then(|| Summarizing::plan(conversation, settings.keep_recent_tokens, reason))
+                .then(|| {
+                    let keep = keep_for(&settings, spec, conversation, (last, stale));
+                    Summarizing::plan(conversation, keep, reason)
+                })
                 .flatten();
             if let Some(summarizing) = planned {
                 let route = (
@@ -535,7 +572,7 @@ fn on_compact(
     mut notices: MessageWriter<Notice>,
 ) {
     let agent = compact.entity;
-    let Ok(((conversation, connection, _, _, reasoning), busy)) = agents.get(agent) else {
+    let Ok(((conversation, connection, last, stale, reasoning), busy)) = agents.get(agent) else {
         return;
     };
     if busy {
@@ -549,7 +586,7 @@ fn on_compact(
     let reason = CompactReason::Asked {
         focus: compact.focus.clone(),
     };
-    let keep = default.0.keep_recent_tokens;
+    let keep = keep_for(&default.0, &connection.spec, conversation, (last, stale));
     let summarizing = Summarizing::plan(conversation, keep, reason.clone());
     let summarizing = summarizing.unwrap_or_else(|| Summarizing::nothing(reason));
     let reasoning = reasoning.and_then(|it| it.0);
@@ -630,14 +667,17 @@ fn compact_when_idle(
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    for (agent, (conversation, connection, _, _, reasoning), busy) in &agents {
+    for (agent, (conversation, connection, last, stale, reasoning), busy) in &agents {
         if busy {
             continue;
         }
         commands.entity(agent).try_remove::<CompactWhenIdle>();
-        let keep = default.0.keep_recent_tokens;
+        let Some(connection) = connection else {
+            continue;
+        };
+        let keep = keep_for(&default.0, &connection.spec, conversation, (last, stale));
         let planned = Summarizing::plan(conversation, keep, CompactReason::Threshold);
-        if let (Some(summarizing), Some(connection)) = (planned, connection) {
+        if let Some(summarizing) = planned {
             let reasoning = reasoning.and_then(|it| it.0);
             compaction_turn(
                 &mut commands,
@@ -706,13 +746,17 @@ fn recover_from_overflow(
         {
             continue;
         }
-        let Ok((conversation, _, _, _, reasoning)) = agents.get(agent) else {
+        let Ok((conversation, _, last, stale, reasoning)) = agents.get(agent) else {
             continue;
         };
         commands.entity(call).try_insert(OverflowTried);
-        let keep = default.0.keep_recent_tokens;
-        let Some(summarizing) = Summarizing::plan(conversation, keep, CompactReason::Overflow)
-        else {
+        let keep = keep_for(&default.0, &connection.spec, conversation, (last, stale));
+        // A request refused with everything fitting the keep goes on only if all of it is
+        // summarized: never left stuck, beyond what pi does.
+        let reason = CompactReason::Overflow;
+        let planned = Summarizing::plan(conversation, keep, reason.clone())
+            .or_else(|| Summarizing::plan(conversation, 0, reason));
+        let Some(summarizing) = planned else {
             continue;
         };
         let route = (
@@ -1082,6 +1126,7 @@ fn take_summary(
         }
     });
     let mut estimate = None;
+    let mut failure = None;
     let step = match summary {
         Ok((older, kept)) => {
             let left = estimate_tokens(conversation.messages());
@@ -1102,6 +1147,7 @@ fn take_summary(
                 agent,
                 format!("{why}; the conversation was not compacted."),
             ));
+            failure = Some(why);
             Recovering::NotSummarized
         }
     };
@@ -1110,8 +1156,20 @@ fn take_summary(
     }
     let overflowed = summarizing.reason == CompactReason::Overflow;
     match hold {
-        // Built again unchanged, the refused call would be refused again: it settles as it is.
-        Some(_) if step == Recovering::NotSummarized && overflowed => {}
+        // Built again unchanged, the refused call would be refused again: it settles as it is,
+        // its failure naming why the summary that was to make room failed.
+        Some(call) if step == Recovering::NotSummarized && overflowed => {
+            if let Some(why) = failure {
+                commands.queue(move |world: &mut World| {
+                    if let Some(mut outcome) = world.get_mut::<Outcome>(call)
+                        && let Err(report) = &mut outcome.0
+                    {
+                        report.message =
+                            format!("{}; the summary to make room failed: {why}", report.message);
+                    }
+                });
+            }
+        }
         Some(call) => {
             let parent = held.get(call).ok().and_then(|effect| effect.parent);
             supersede(

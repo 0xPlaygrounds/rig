@@ -275,3 +275,29 @@ fn a_summary_request_fits_its_output_and_writes_no_cache() {
     assert!((1..32_000).contains(&most), "{most}");
     assert_eq!(clamp_max_tokens(&spec, 1_000, 8_000), 8_000);
 }
+
+/// A summary request reads no more than fits the summarizer's input limit, its oldest text left
+/// out as it says, so a smaller model the agent switched to can still write it.
+#[test]
+fn a_summary_request_fits_a_smaller_model() {
+    let spec = rig_core::providers::registry::ProviderId::catalog("ollama")
+        .map(|vendor| {
+            rig_core::catalog::ModelSpec::new(vendor, "small").with_context_window(40_000)
+        })
+        .expect("a vendor");
+    let messages: Vec<Message> = (0..10)
+        .map(|n| Message::user(format!("TURN-{n} {}", "x".repeat(40_000))))
+        .collect();
+    let request = summary_request(&messages, (None, ""), &spec, None).expect("a request");
+    let text = serde_json::to_string(&request.chat_history).unwrap_or_default();
+    assert!(
+        text.contains("earlier characters left out"),
+        "the cut says so"
+    );
+    assert!(
+        text.contains("TURN-9") && !text.contains("TURN-0"),
+        "the newest stay"
+    );
+    let input = estimate_tokens(&request.chat_history);
+    assert!(input < 40_000, "{input}");
+}

@@ -676,6 +676,28 @@ pub fn keep_end_to_fit<'t>(text: &'t str, spec: &ModelSpec, reserved: u64) -> Co
     ))
 }
 
+/// Tokens of the input limit a summary request keeps for its answer when it cuts what it reads.
+const SUMMARY_OUTPUT_ROOM: u64 = 16_384;
+
+/// `messages` as text ([`serialize_conversation`]), its oldest part left out, as the cut start
+/// says, when the request around it (`around`) and room for the answer would not fit `spec`'s
+/// input limit otherwise: so a summary still fits a smaller model the agent switched to. Beyond
+/// pi, which sends it whole.
+fn fitted_conversation(
+    messages: &[impl Borrow<Message>],
+    spec: &ModelSpec,
+    around: &str,
+) -> String {
+    let text = serialize_conversation(messages);
+    let reserved = estimate_tokens(&[
+        Message::system(SUMMARIZATION_SYSTEM_PROMPT),
+        Message::user(around),
+    ])
+    .saturating_add(SUMMARY_OUTPUT_ROOM)
+    .saturating_add(CONTEXT_SAFETY_TOKENS);
+    keep_end_to_fit(&text, spec, reserved).into_owned()
+}
+
 /// `prompt` followed by the user's `instructions`, when there are any.
 fn with_focus(prompt: &str, instructions: &str) -> String {
     let instructions = instructions.trim();
@@ -703,9 +725,10 @@ pub fn summary_request(
         Some(_) => UPDATE_SUMMARIZATION_PROMPT,
         None => SUMMARIZATION_PROMPT,
     };
+    let around = format!("{}{base}{instructions}", previous.unwrap_or_default());
     let mut prompt = format!(
         "<conversation>\n{}\n</conversation>\n\n",
-        serialize_conversation(messages)
+        fitted_conversation(messages, spec, &around)
     );
     if let Some(previous) = previous {
         prompt.push_str(&format!(
@@ -728,9 +751,10 @@ pub fn turn_prefix_request(
     spec: &ModelSpec,
     reasoning: Option<Reasoning>,
 ) -> Result<CompletionRequest, UnsupportedOption> {
+    let around = format!("{TURN_PREFIX_SUMMARIZATION_PROMPT}{instructions}");
     let prompt = format!(
         "# Conversation\n{}\n\n# Instructions\n{TURN_PREFIX_SUMMARIZATION_PROMPT}",
-        serialize_conversation(messages)
+        fitted_conversation(messages, spec, &around)
     );
     let prompt = with_focus(&prompt, instructions);
     summarization_request((SUMMARIZATION_SYSTEM_PROMPT, prompt), spec, reasoning, None)

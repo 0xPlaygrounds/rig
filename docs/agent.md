@@ -472,9 +472,16 @@ cuts a reply short, rig compacts and sends the request once more. A summary
 that fails or is cut short replaces nothing, and a notice says why; stopping
 the turn (Esc) cancels a summary being written. With the defaults, a model
 whose window is under about 36k tokens is still near its limit right after a
-compaction, so it compacts before every request, as pi does. `/compact`
-compacts now, and `/compact <instructions>` says what the summary should focus
-on. `[compaction]` in `RIG_HOME/settings.toml` takes `enabled` (every automatic
+compaction, so it compacts before every request, as pi does. Beyond pi, the
+keep is at most half the room below the reserve, and is scaled down when the
+provider counts the conversation denser than the estimate, so dense content
+still has something to summarize; a request refused as too long with
+everything inside the keep has all of it summarized; and a summary request
+that would not fit the model, such as after a switch to a smaller one, leaves
+out the oldest text and says so. `/compact` compacts now, and
+`/compact <instructions>` says what the summary should focus on; with no more
+than the keep in the conversation it says "Nothing to compact yet.", as pi
+does. `[compaction]` in `RIG_HOME/settings.toml` takes `enabled` (every automatic
 compaction, on by default; `/compact` works either way), `reserve_tokens` and
 `keep_recent_tokens`. The summarized messages stay in the transcript, under a
 line that shows the summary; a resumed session starts from the messages the

@@ -449,9 +449,11 @@ fn reported_usage_triggers_a_compaction_before_the_next_request() {
         let model = MockCompletionModel::from_stream_turns([
             measured.clone(),
             reply("## Goal\nAnswer the questions."),
+            reply("## Original Request\nThe first question."),
             reply("second answer"),
         ]);
-        // Keeping 8 tokens keeps the last question and its answer: no turn is split.
+        // The keep, scaled down by the provider's denser measure, splits the last turn: a history
+        // summary, then one of its earlier part.
         let (mut app, wakes) = start_with(&MemoryStore::default(), 8, |_| {});
         app.world_mut()
             .resource_mut::<CompactionDefault>()
@@ -484,13 +486,13 @@ fn reported_usage_triggers_a_compaction_before_the_next_request() {
         let requests = sent(&model);
         match enabled {
             true => {
-                assert_eq!(requests.len(), 3, "{:?}", notices(&app));
+                assert_eq!(requests.len(), 4, "{:?}", notices(&app));
                 let summary = requests.get(1).cloned().unwrap_or_default();
                 assert!(
                     summary.contains("context summarization assistant"),
                     "{summary}"
                 );
-                let next = requests.get(2).cloned().unwrap_or_default();
+                let next = requests.get(3).cloned().unwrap_or_default();
                 assert!(next.contains("Answer the questions."), "{next}");
             }
             false => assert_eq!(requests.len(), 2, "{:?}", notices(&app)),
@@ -911,4 +913,85 @@ fn a_held_summary_is_applied_as_reviewed_or_cancelled_and_undone_with_its_ids() 
     app.world_mut().trigger(Uncompact { entity: agent });
     app.update();
     assert_eq!(entries(app.world(), agent), original);
+}
+
+/// Content the provider counts far denser than the estimate still compacts at the default keep:
+/// the keep is scaled by the provider's measure, so a conversation the estimate puts well under
+/// 20k tokens, reported at 24k in a 40k window, is summarized before the next request.
+#[test]
+fn dense_content_still_compacts_at_the_default_keep() {
+    let measured = vec![
+        MockStreamEvent::text("first answer"),
+        MockStreamEvent::final_response_with_total_tokens(24_000),
+    ];
+    let model = MockCompletionModel::from_stream_turns([
+        measured,
+        reply("## Goal\nAnswer the questions."),
+        reply("## Original Request\nThe first question."),
+        reply("second answer"),
+    ]);
+    let (mut app, wakes) = start_with(&MemoryStore::default(), 20_000, |_| {});
+    let agent = agent(&mut app, &model, 40_000, turns(0, 2));
+    assert!(agent.is_some(), "the catalog lists the model");
+    let Some(agent) = agent else {
+        return;
+    };
+    ask(&mut app, &wakes, agent, "The first question?", 1);
+    run_until(&mut app, &wakes, |world| {
+        let compacted = world
+            .get::<Conversation>(agent)
+            .is_some_and(|it| summarized_prefix(it) > 0);
+        compacted && world.get::<ActiveTurn>(agent).is_none()
+    });
+    let summary = sent(&model).get(1).cloned().unwrap_or_default();
+    assert!(
+        summary.contains("context summarization assistant"),
+        "{summary}"
+    );
+}
+
+/// A request refused as too long when the whole conversation fits the keep is not left stuck:
+/// everything is summarized, the question as the turn's earlier part, and the request goes again.
+#[test]
+fn an_overflow_with_everything_inside_the_keep_still_recovers() {
+    let model = MockCompletionModel::from_stream_turns([
+        too_long(),
+        reply("## Goal\nAnswer the questions."),
+        reply("## Original Request\nThe next question."),
+        reply("done"),
+    ]);
+    let (mut app, wakes) = start_with(&MemoryStore::default(), 20_000, |_| {});
+    let agent = agent(&mut app, &model, 200_000, turns(0, 2));
+    assert!(agent.is_some(), "the catalog lists the model");
+    let Some(agent) = agent else {
+        return;
+    };
+    ask(&mut app, &wakes, agent, "And the next question?", 1);
+    assert_eq!(answer(&app).as_deref(), Some("done"), "{:?}", notices(&app));
+    assert_eq!(sent(&model).len(), 4, "{:?}", notices(&app));
+}
+
+/// When the summary that was to make room after an overflow fails, the turn's failure names why.
+#[test]
+fn a_failed_recovery_summary_is_named_in_the_turns_failure() {
+    let refused = ProviderResponseError::without_status("invalid request: bad summary");
+    let model = MockCompletionModel::from_stream_turns([
+        too_long(),
+        vec![MockStreamEvent::Error(MockError::ProviderResponse(refused))],
+    ]);
+    let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |_| {});
+    let agent = agent(&mut app, &model, 200_000, turns(0, 4));
+    assert!(agent.is_some(), "the catalog lists the model");
+    let Some(agent) = agent else {
+        return;
+    };
+    ask(&mut app, &wakes, agent, "And the next question?", 1);
+    let ended = &app.world().resource::<Ended>().0;
+    assert!(
+        matches!(ended.as_slice(), [TurnOutcome::Failed(why)]
+            if why.contains("context window")
+                && why.contains("the summary to make room failed")
+                && why.contains("bad summary")),
+        "{ended:?}"
+    );
 }
