@@ -79,6 +79,8 @@ impl Plugin for CompactionPlugin {
             .add_observer(take_summary)
             .add_observer(follow_successor::<Summarizing>)
             .add_observer(follow_successor::<SummaryRetries>)
+            .add_observer(follow_successor::<AfterRun>)
+            .add_observer(repoint_waiters)
             .add_observer(carry_recovery)
             .add_observer(provided_by_compaction);
         #[cfg(feature = "tui")]
@@ -449,9 +451,13 @@ fn compact_near_the_window(
         let Ok((conversation, _, last, stale, reasoning)) = agents.get(agent) else {
             continue;
         };
+        commands
+            .entity(turn)
+            .try_insert(RanOn(connection.spec.clone()));
         let spec = &*connection.spec;
         let messages = conversation.messages();
-        // Before the turn's first reply, its own message is the pending prompt.
+        // Before the turn's first reply, its prompt is pending: the first message from the turn's
+        // start that answers no tool call, kept tool results before it counted as context.
         let end = turns
             .get(turn)
             .ok()
@@ -462,6 +468,13 @@ fn compact_near_the_window(
                     .unwrap_or_default()
                     .iter()
                     .any(|message| matches!(&**message, completion::Message::Assistant(_)))
+            })
+            .and_then(|start| {
+                (start..messages.len()).find(|&at| {
+                    messages
+                        .get(at)
+                        .is_some_and(|message| message.results().next().is_none())
+                })
             })
             .unwrap_or(messages.len());
         let measure = (last, stale);
@@ -497,7 +510,11 @@ fn compact_near_the_window(
                 .flatten()
                 .filter(|_| !model.request.tools.is_empty());
             let history = model.history.as_ref().unwrap_or(conversation);
-            let anchor = anchor(history, measure);
+            // pi-ai trusts the usage only while no newer message was put before its reply.
+            let anchor = anchor(history, measure).filter(|&(_, at)| {
+                let through = history.id(at);
+                (0..at).all(|before| history.id(before) <= through)
+            });
             let input = request_tokens(
                 (prompt.as_deref(), tools.as_deref()),
                 history.messages(),
@@ -520,29 +537,65 @@ struct AfterRun;
 #[derive(Component)]
 struct WaitsFor(Entity);
 
+/// When a summary call made after a run is sent again, such as by a retry, what waited for it
+/// waits for its successor.
+fn repoint_waiters(
+    superseded: On<Add<SupersededBy>>,
+    calls: Query<&SupersededBy, With<AfterRun>>,
+    waiters: Query<(Entity, &WaitsFor)>,
+    mut commands: Commands,
+) {
+    let Ok(by) = calls.get(superseded.entity) else {
+        return;
+    };
+    let next = by.successor();
+    for (waiter, &WaitsFor(summary)) in &waiters {
+        if summary == superseded.entity {
+            commands.entity(waiter).try_insert(WaitsFor(next));
+        }
+    }
+}
+
+/// The model a turn's last request went to, which the check at the end of its run measures
+/// against, as pi measures against the model that wrote the reply.
+#[derive(Component)]
+struct RanOn(Arc<ModelSpec>);
+
+/// On a turn whose request was recovered from an overflow or a reply cut short, or tried to be:
+/// its run's end is not checked again, as pi's check returns after that recovery.
+#[derive(Component)]
+struct Recovered;
+
 /// The name of the hold on a turn while its summary after the run is written.
 const AFTER_RUN: &str = "compacting after the run";
 
-/// After a turn's answer is proposed, compacts when the usage its reply reported leaves less than
-/// the reserve of the window of that turn's model free, as pi checks at the end of each run: the
-/// answer is held until the summary is in. A message accepted meanwhile carries the turn on, as
+/// After a turn's answer is proposed, compacts when the context (the usage its last reply
+/// reported, plus an estimate of what follows) leaves less than the reserve of the window of the
+/// model its last request went to free, as pi checks at the end of each run: the answer is held
+/// until the summary is in. Not after a recovery from an overflow or a reply cut
+/// short ([`Recovered`]). A message accepted meanwhile carries the turn on, as
 /// pi's queue drains after its compaction: the request it makes waits for the summary and is built
 /// again then ([`WaitsFor`]).
 fn check_after_run(
-    turns: Query<(Entity, &TurnOf, &TurnOutcome), Added<TurnOutcome>>,
+    turns: Query<
+        (Entity, &TurnOf, &TurnOutcome, Option<&RanOn>),
+        (Added<TurnOutcome>, Without<Recovered>),
+    >,
     agents: Query<Compacting>,
     default: Res<CompactionDefault>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    for (turn, &TurnOf(agent), outcome) in &turns {
+    for (turn, &TurnOf(agent), outcome, ran_on) in &turns {
+        // A failed turn gives its prompt back, so its context is the one checked before its
+        // request, and pi's check after an error has nothing new to count.
         let TurnOutcome::Answered(_) = outcome else {
             continue;
         };
         let Ok((conversation, Some(connection), last, stale, reasoning)) = agents.get(agent) else {
             continue;
         };
-        let spec = &*connection.spec;
+        let spec = ran_on.map_or(&*connection.spec, |ran| &*ran.0);
         let end = conversation.messages().len();
         let Some(summarizing) =
             over_threshold(conversation, (last, stale), (&default.0, spec), end)
@@ -708,6 +761,7 @@ fn recover_from_overflow(
             continue;
         }
         if tried {
+            commands.entity(turn).try_insert(Recovered);
             if cut_short {
                 let why = "Truncated response recovery failed after one compact-and-retry attempt.";
                 notices.write(Notice::error(agent, why));
@@ -728,10 +782,9 @@ fn recover_from_overflow(
         else {
             // pi omits the reply cut short before it compacts, so with nothing to summarize it
             // is gone all the same.
+            commands.entity(turn).try_insert(Recovered);
             if cut_short {
-                commands.queue(move |world: &mut World| {
-                    fail_recovered(world, call, "there is nothing to compact");
-                });
+                commands.queue(move |world: &mut World| fail_recovered(world, (call, agent), None));
             }
             continue;
         };
@@ -1141,17 +1194,10 @@ fn take_summary(
             None => Err(gone()),
         }
     });
-    let mut estimate = None;
     let mut failure = None;
     let step = match summary {
         Ok((older, kept)) => {
-            let left = estimate_tokens(conversation.messages());
-            notices.write(Notice::info(agent, compacted_text(older, kept, left)));
-            let through = conversation.entries().last().map(|entry| entry.id);
-            estimate = through.map(|through| ContextEstimate {
-                tokens: left,
-                through,
-            });
+            notices.write(Notice::info(agent, compacted_text(older, kept)));
             Recovering::Compacted
         }
         Err(NotTaken::Cancelled) => {
@@ -1172,8 +1218,9 @@ fn take_summary(
             Recovering::NotSummarized
         }
     };
+    // As in pi, the context is unknown until a reply reports it.
     if conversation.revision() != revision {
-        commands.entity(agent).try_insert(ContextStale { estimate });
+        commands.entity(agent).try_insert(ContextStale::default());
     }
     let overflowed = summarizing.reason == CompactReason::Overflow;
     if after_run {
@@ -1197,13 +1244,14 @@ fn take_summary(
     }
     match hold {
         // Built again unchanged, the refused call would be refused again: it settles as it is,
-        // its failure naming why the summary that was to make room failed.
-        // Built again unchanged, the refused call would be refused again: it settles as it is,
         // its failure naming why the summary that was to make room failed; a reply cut short is
-        // dropped, as pi omits it before it compacts, and the turn fails.
+        // dropped, as pi omits it before it compacts, and the turn stops.
         Some(call) if step == Recovering::NotSummarized && overflowed => {
-            let why = failure.unwrap_or_else(|| "the compaction was cancelled".to_owned());
-            commands.queue(move |world: &mut World| fail_recovered(world, call, &why));
+            commands.entity(turn).try_insert(Recovered);
+            let why = failure.or_else(|| Some("the compaction was cancelled".to_owned()));
+            commands.queue(move |world: &mut World| {
+                fail_recovered(world, (call, agent), why.as_deref());
+            });
         }
         Some(call) => {
             let parent = held.get(call).ok().and_then(|effect| effect.parent);
@@ -1222,45 +1270,47 @@ fn take_summary(
     }
 }
 
-/// Ends the recovery of `call`, a turn's call refused as too long or whose reply the window cut
-/// short, whose compaction did not go in for `why`: a refusal names it, as pi's "Context overflow
-/// recovery failed", and a reply cut short is dropped, as pi omits it, so the turn fails.
-fn fail_recovered(world: &mut World, call: Entity, why: &str) {
+/// Ends the recovery of `call`, `agent`'s turn's call refused as too long or whose reply the window
+/// cut short, whose compaction did not go in, for `why` when it failed or was cancelled. A refusal
+/// names it, as pi's "Context overflow recovery failed", and fails the turn. A reply cut short was
+/// already left out by pi before it compacted: it is dropped and the turn stops there, the user's
+/// prompt kept, as pi's run ends.
+fn fail_recovered(world: &mut World, (call, agent): (Entity, Entity), why: Option<&str>) {
     let Some(mut outcome) = world.get_mut::<Outcome>(call) else {
         return;
     };
     match &mut outcome.0 {
         Err(report) => {
-            report.message = format!(
-                "{}; Context overflow recovery failed: {why}",
-                report.message
-            );
+            if let Some(why) = why {
+                report.message = format!(
+                    "{}; Context overflow recovery failed: {why}",
+                    report.message
+                );
+            }
         }
         Ok(_) => {
-            let why = format!(
-                "The context window cut the reply short. Context overflow recovery failed: {why}"
-            );
-            outcome.0 = Err(ErrorReport::new(ErrorKind::Request, why));
+            let cut = "the context window cut the reply short";
+            outcome.0 = Err(ErrorReport::new(ErrorKind::Cancelled, cut));
+            // What it streamed is not kept by the stop either.
+            world.entity_mut(call).remove::<Partial>();
+            world.trigger(StopTurn::plugin_alone(agent, "compaction", cut));
         }
     }
 }
 
-/// Says that `older` messages of so many tokens were summarized, `kept` were kept, and the
-/// conversation now holds about `left` tokens.
+/// Says that `older` messages of so many tokens were summarized and `kept` were kept.
 fn compacted_text(
     (older, older_tokens): (usize, u64),
     (kept, kept_tokens): (usize, u64),
-    left: u64,
 ) -> String {
     let plural = |count: usize| if count == 1 { "message" } else { "messages" };
     format!(
         "Compacted {older} {} (about {} tokens) into a summary and kept the newest {kept} {} \
-         (about {} tokens); the conversation now holds about {} tokens.",
+         (about {} tokens).",
         plural(older),
         tokens_label(older_tokens),
         plural(kept),
         tokens_label(kept_tokens),
-        tokens_label(left)
     )
 }
 

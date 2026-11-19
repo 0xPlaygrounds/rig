@@ -311,7 +311,11 @@ fn recap_request(
 ) -> Result<CompletionRequest, UnsupportedOption> {
     let conversation = serialize_conversation(messages);
     let ask = format!("<conversation>\n{conversation}\n</conversation>\n\n{ASK}");
-    summarization_request((SYSTEM, ask), spec, None, Some(RECAP_TOKENS))
+    // As before: a few hundred tokens, within the model's output limit.
+    let most = spec
+        .output_limit()
+        .map_or(RECAP_TOKENS, |limit| RECAP_TOKENS.min(u64::from(limit)));
+    summarization_request((SYSTEM, ask), spec, None, Some(most))
 }
 
 /// Shows and keeps the recap a call answered; a failure is one line in

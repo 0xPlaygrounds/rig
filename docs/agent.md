@@ -459,9 +459,10 @@ It counts the context as the tokens the provider reported for the last reply,
 plus an estimate of the messages after it (four characters a token; the messages
 alone when no usage was reported), and compacts when that leaves less than
 `reserve_tokens` (16384) of the model's context window free. It checks at the
-end of each run, holding the answer until the summary is in (a message sent
-meanwhile goes on after it), before a prompt is sent (the context before the
-prompt, which is neither counted nor cut), and before each request after tool
+end of each run that answered, against the window of the model that wrote the
+last reply, holding the answer until the summary is in (a message sent
+meanwhile goes on after it); before a prompt is sent (the context before the
+prompt, which is neither counted nor cut); and before each request after tool
 results. The older messages are then summarized by the model, in a separate
 call, into a structured checkpoint (goal, constraints, progress, decisions, next
 steps, critical context) that requests send in their place, followed by the
@@ -470,7 +471,9 @@ messages stay as they are, never cut between a tool call and its result; when
 the cut falls inside a turn, that turn's earlier part gets a summary of its own.
 A later compaction updates the previous summary with the new messages. When the
 provider refuses a request as too long, or the window cuts a reply with no tool
-calls short, rig drops that reply, compacts and sends the request once more. A
+calls short, rig drops that reply, compacts and sends the request once more;
+when there is nothing to compact, or that summary does not go in, the turn
+stops there with the prompt kept and the cut-short reply dropped. A
 summary that fails or is cut short replaces nothing, and a notice says why;
 stopping the turn (Esc) cancels a summary being written. A failed summary call
 is retried as pi retries it: by its error message, waiting 2, 4, 8 then 16
@@ -489,7 +492,8 @@ does. `[compaction]` in `RIG_HOME/settings.toml` takes `enabled` (every
 automatic compaction, on by default; `/compact` works either way),
 `reserve_tokens` and `keep_recent_tokens`. The summarized messages stay in the
 transcript, under a line that shows the summary; a resumed session starts from
-the messages the summary kept.
+the messages the summary kept. After a compaction the status line shows the
+context as unknown (`ctx ?`) until the next reply reports it, as pi does.
 
 A model call that fails on a rate limit, an overloaded provider or a dropped
 connection is retried up to four times. It waits as long as the provider's

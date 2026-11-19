@@ -249,3 +249,20 @@ fn a_resumed_session_is_recapped_beside_the_work() {
     assert_eq!(pending.iter(again.world()).count(), 0, "timed out");
     assert!(card(again.world()).is_none());
 }
+
+/// The recap asks for a few hundred tokens within the model's output limit, as before: 256 on a
+/// model that writes at most 256.
+#[test]
+fn the_recap_fits_a_small_output_limit() {
+    let Some(vendor) = ProviderId::catalog("ollama") else {
+        return;
+    };
+    let spec = ModelSpec::new(vendor, "small")
+        .with_context_window(8_192)
+        .with_max_output_tokens(256);
+    let messages = [std::sync::Arc::new(rig_core::completion::Message::user(
+        "What happened?",
+    ))];
+    let request = super::recap_request(&messages, &spec);
+    assert_eq!(request.ok().and_then(|it| it.max_tokens), Some(256));
+}

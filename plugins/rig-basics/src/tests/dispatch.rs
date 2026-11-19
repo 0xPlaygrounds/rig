@@ -325,6 +325,15 @@ fn a_call_cut_off_by_the_output_limit_is_answered_so() {
         result.contains("big.rs") && result.len() < 1_000,
         "{result}"
     );
+    let sent: Vec<String> = model
+        .requests()
+        .iter()
+        .map(|request| format!("{request:?}"))
+        .collect();
+    assert!(
+        matches!(sent.as_slice(), [_, next] if next.contains("reached the output limit")),
+        "{sent:?}"
+    );
 }
 
 /// A Responses reply streamed with `items` as its output, reporting
