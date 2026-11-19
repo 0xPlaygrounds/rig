@@ -1420,4 +1420,18 @@ fn a_foreign_bevy_is_refused_before_cargo_compiles_and_the_advice_leads() {
         .unwrap_or_default();
     assert!(told.contains("no matching package named `serde`"), "{told}");
 
+    // A lone `\r` ends a held line, as it ends a live one.
+    let (calls, shown, failure) =
+        build("printf 'warning: retrying\\rerror: registry unavailable\\r' >&2; exit 101\n");
+    assert_eq!(calls, ["tree"]);
+    assert!(!shown.contains('\r'), "{shown:?}");
+    assert!(
+        shown.lines().any(|line| line == "error: registry unavailable"),
+        "{shown:?}"
+    );
+    let errors = failure.map(|failure| failure.errors).unwrap_or_default();
+    assert_eq!(
+        errors.first().map(String::as_str),
+        Some("error: registry unavailable")
+    );
 }
