@@ -15,7 +15,9 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::ModelSpec;
 use rig_harness::rig_core::completion::{CompletionRequest, Message, UnsupportedOption};
 use rig_harness::rig_memory::recent::{TokenBudget, view};
-use rig_harness::rig_memory::{serialize_conversation, summarization_request, summary_text};
+use rig_harness::rig_memory::{
+    fit_to_model, serialize_conversation, summarization_request, summary_text,
+};
 use rig_tui::crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use rig_tui::ratatui::layout::Constraint;
 use rig_tui::ratatui::widgets::Paragraph;
@@ -310,12 +312,10 @@ fn recap_request(
     spec: &ModelSpec,
 ) -> Result<CompletionRequest, UnsupportedOption> {
     let conversation = serialize_conversation(messages);
+    // As before: fitted to the model, a few hundred tokens asked, none when its limits are unknown.
+    let (conversation, most) = fit_to_model(&conversation, spec, RECAP_TOKENS);
     let ask = format!("<conversation>\n{conversation}\n</conversation>\n\n{ASK}");
-    // As before: a few hundred tokens, within the model's output limit.
-    let most = spec
-        .output_limit()
-        .map_or(RECAP_TOKENS, |limit| RECAP_TOKENS.min(u64::from(limit)));
-    summarization_request((SYSTEM, ask), spec, None, Some(most))
+    summarization_request((SYSTEM, ask), spec, None, most)
 }
 
 /// Shows and keeps the recap a call answered; a failure is one line in

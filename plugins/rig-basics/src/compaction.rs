@@ -33,10 +33,10 @@ use rig_harness::successor::resend;
 use rig_harness::{PluginEntity, ProvidedBy};
 pub use rig_memory::CutPoint;
 use rig_memory::{
-    CompactionPreparation, CompactionSettings, SummaryState, apply_summary, clamp_max_tokens,
-    estimate_tokens, find_cut_point, merge_split_turn, no_history, prepare_compaction,
-    prepare_compaction_at, request_tokens, summary_request, summary_text, turn_prefix_request,
-    undo_summary,
+    Anchor, CompactionPreparation, CompactionSettings, SummaryState, apply_summary,
+    clamp_max_tokens, estimate_tokens, find_cut_point, merge_split_turn, no_history,
+    prepare_compaction, prepare_compaction_at, request_tokens, summary_request, summary_text,
+    turn_prefix_request, undo_summary,
 };
 pub use rig_memory::{summarized_prefix, summary_author, summary_in, summary_state};
 use serde::Deserialize;
@@ -55,7 +55,6 @@ impl Plugin for CompactionPlugin {
     fn build(&self, app: &mut App) {
         app.keeps_saved::<ContextStale>()
             .add_setting::<CompactionDefault>("compaction")
-            .init_resource::<RetryPolicy>()
             .add_command(
                 "compact",
                 "Summarize the older messages to free context; /compact <instructions> says what to focus on",
@@ -75,7 +74,16 @@ impl Plugin for CompactionPlugin {
                     (retry_compaction_calls, recover_from_overflow).in_set(ReviewSystems::Act),
                 ),
             )
-            .add_systems(Update, stale_after_edits)
+            .add_systems(
+                Update,
+                (
+                    stale_after_edits,
+                    record_usage,
+                    compact_after_error,
+                ),
+            )
+            .add_observer(on_delivered)
+            .add_observer(check_after_error)
             .add_observer(take_summary)
             .add_observer(follow_successor::<Summarizing>)
             .add_observer(follow_successor::<SummaryRetries>)
@@ -433,7 +441,8 @@ fn compact_near_the_window(
             Without<SupersededBy>,
         ),
     >,
-    turns: Query<&Turn>,
+    prompts: Query<&Prompt>,
+    usages: Query<&Usages>,
     after_runs: Query<(Entity, &CallOf), (With<AfterRun>, Without<Settled>)>,
     agents: Query<Compacting>,
     default: Res<CompactionDefault>,
@@ -451,30 +460,27 @@ fn compact_near_the_window(
         let Ok((conversation, _, last, stale, reasoning)) = agents.get(agent) else {
             continue;
         };
-        commands
-            .entity(turn)
-            .try_insert(RanOn(connection.spec.clone()));
+        // The route as the request names it, before adapters wrapped it, and the spec it went to.
+        commands.entity(turn).try_insert(RanOn {
+            route: model.connection.clone(),
+            spec: connection.spec.clone(),
+        });
+        // A request of a new turn is checked here, so a check left from a failed one is moot.
+        commands.entity(agent).try_remove::<CheckAfterError>();
         let spec = &*connection.spec;
         let messages = conversation.messages();
-        // Before the turn's first reply, its prompt is pending: the first message from the turn's
-        // start that answers no tool call, kept tool results before it counted as context.
-        let end = turns
+        // Before the turn's first reply, the message its prompt delivered is pending; whatever
+        // came before it is context.
+        let end = prompts
             .get(turn)
             .ok()
-            .map(|turn| conversation.start_of(turn.start))
-            .filter(|&start| {
+            .and_then(|&Prompt(id)| conversation.index_of(id))
+            .filter(|&at| {
                 !messages
-                    .get(start..)
+                    .get(at..)
                     .unwrap_or_default()
                     .iter()
                     .any(|message| matches!(&**message, completion::Message::Assistant(_)))
-            })
-            .and_then(|start| {
-                (start..messages.len()).find(|&at| {
-                    messages
-                        .get(at)
-                        .is_some_and(|message| message.results().next().is_none())
-                })
             })
             .unwrap_or(messages.len());
         let measure = (last, stale);
@@ -510,11 +516,13 @@ fn compact_near_the_window(
                 .flatten()
                 .filter(|_| !model.request.tools.is_empty());
             let history = model.history.as_ref().unwrap_or(conversation);
-            // pi-ai trusts the usage only while no newer message was put before its reply.
-            let anchor = anchor(history, measure).filter(|&(_, at)| {
-                let through = history.id(at);
-                (0..at).all(|before| history.id(before) <= through)
-            });
+            let reported = usages.get(agent).ok().map(|it| it.0.as_slice());
+            let anchor = newest_valid(
+                history,
+                last.0
+                    .iter()
+                    .chain(reported.unwrap_or_default().iter().rev()),
+            );
             let input = request_tokens(
                 (prompt.as_deref(), tools.as_deref()),
                 history.messages(),
@@ -523,6 +531,83 @@ fn compact_near_the_window(
             let fitted = clamp_max_tokens(spec, input, asked);
             if model.request.max_tokens != Some(fitted) {
                 model.request_mut().max_tokens = Some(fitted);
+            }
+        }
+    }
+}
+
+/// On a turn: the id of the message its prompt delivered, the first message delivered into it.
+#[derive(Component)]
+struct Prompt(rig_core::conversation::MessageId);
+
+/// Marks each turn with its [`Prompt`], and, as pi resets its recovery on each user message, with
+/// the newest message of the user's delivered into it ([`LastPrompt`]), which lets it be recovered
+/// and checked again ([`Recovered`]).
+fn on_delivered(
+    delivered: On<Add<DeliveredIn>>,
+    messages: Query<(&DeliveredIn, &DeliveredAs, &Incoming)>,
+    mut commands: Commands,
+) {
+    let Ok((&DeliveredIn(turn), &DeliveredAs(id), message)) = messages.get(delivered.entity) else {
+        return;
+    };
+    let mut turn = commands.entity(turn);
+    turn.try_insert_if_new(Prompt(id));
+    if message.author == Author::user() {
+        turn.try_insert(LastPrompt(id));
+    }
+}
+
+/// The usage each reply of an agent reported, newest last, as pi-ai reads every reply's usage.
+#[derive(Component, Default)]
+struct Usages(Vec<Anchor>);
+
+impl Usages {
+    /// How many reports are kept.
+    const KEPT: usize = 64;
+}
+
+/// The first of `anchors`, newest first, still describing the start of `history`, as pi-ai's
+/// estimate takes the newest valid usage: its reply is there, no newer message precedes it and it
+/// counted tokens. Its tokens and the reply's index.
+fn newest_valid<'a>(
+    history: &rig_core::conversation::Conversation,
+    mut anchors: impl Iterator<Item = &'a Anchor>,
+) -> Option<(u64, usize)> {
+    anchors.find_map(|anchor| {
+        let tokens = anchor.usage.context_tokens().filter(|&tokens| tokens > 0)?;
+        let at = history.index_of(anchor.through)?;
+        let through = history.id(at);
+        (0..at)
+            .all(|before| history.id(before) <= through)
+            .then_some((tokens, at))
+    })
+}
+
+/// Keeps each agent's [`Usages`] as its replies report them.
+fn record_usage(
+    agents: Query<(Entity, &LastUsage, Option<&mut Usages>), Changed<LastUsage>>,
+    mut commands: Commands,
+) {
+    for (agent, last, usages) in agents {
+        let Some(anchor) = last.0 else {
+            continue;
+        };
+        match usages {
+            Some(mut usages) => {
+                if usages
+                    .0
+                    .last()
+                    .is_some_and(|it| it.through == anchor.through)
+                {
+                    usages.0.pop();
+                }
+                usages.0.push(anchor);
+                let over = usages.0.len().saturating_sub(Usages::KEPT);
+                usages.0.drain(..over);
+            }
+            None => {
+                commands.entity(agent).try_insert(Usages(vec![anchor]));
             }
         }
     }
@@ -556,15 +641,34 @@ fn repoint_waiters(
     }
 }
 
-/// The model a turn's last request went to, which the check at the end of its run measures
-/// against, as pi measures against the model that wrote the reply.
-#[derive(Component)]
-struct RanOn(Arc<ModelSpec>);
+/// Where a turn's last request went, which the check at the end of its run measures against and
+/// sends its summary to, as pi uses the model that wrote the reply: the route the request named
+/// (`None` for the agent's own connection), before adapters wrapped it, and the model's spec.
+#[derive(Component, Clone)]
+struct RanOn {
+    route: Option<Connection>,
+    spec: Arc<ModelSpec>,
+}
 
-/// On a turn whose request was recovered from an overflow or a reply cut short, or tried to be:
-/// its run's end is not checked again, as pi's check returns after that recovery.
+/// On a turn whose request was recovered from an overflow or a reply cut short, or tried to be,
+/// with the turn's [`LastPrompt`] then: its run's end is not checked until another message is
+/// delivered into it, as pi's check returns after that recovery and resets on each user message.
 #[derive(Component)]
-struct Recovered;
+struct Recovered(Option<rig_core::conversation::MessageId>);
+
+/// On a turn: the id of the newest message of the user's delivered into it.
+#[derive(Component)]
+struct LastPrompt(rig_core::conversation::MessageId);
+
+/// Marks `turn` [`Recovered`] as of its newest prompt.
+fn mark_recovered(commands: &mut Commands, turn: Entity) {
+    commands.queue(move |world: &mut World| {
+        let last = world.get::<LastPrompt>(turn).map(|it| it.0);
+        if let Ok(mut turn) = world.get_entity_mut(turn) {
+            turn.insert(Recovered(last));
+        }
+    });
+}
 
 /// The name of the hold on a turn while its summary after the run is written.
 const AFTER_RUN: &str = "compacting after the run";
@@ -578,15 +682,25 @@ const AFTER_RUN: &str = "compacting after the run";
 /// again then ([`WaitsFor`]).
 fn check_after_run(
     turns: Query<
-        (Entity, &TurnOf, &TurnOutcome, Option<&RanOn>),
-        (Added<TurnOutcome>, Without<Recovered>),
+        (
+            (Entity, &TurnOf, &TurnOutcome, Option<&RanOn>),
+            (Option<&Recovered>, Option<&LastPrompt>),
+        ),
+        Changed<TurnOutcome>,
     >,
+    running: Query<&CallOf, (With<Summarizing>, Without<Settled>)>,
     agents: Query<Compacting>,
     default: Res<CompactionDefault>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    for (turn, &TurnOf(agent), outcome, ran_on) in &turns {
+    for ((turn, &TurnOf(agent), outcome, ran_on), (recovered, last)) in &turns {
+        // Once per answer: not while a summary of the turn is being written.
+        if recovered.is_some_and(|recovered| recovered.0 == last.map(|it| it.0))
+            || running.iter().any(|&CallOf(of)| of == turn)
+        {
+            continue;
+        }
         // A failed turn gives its prompt back, so its context is the one checked before its
         // request, and pi's check after an error has nothing new to count.
         let TurnOutcome::Answered(_) = outcome else {
@@ -595,7 +709,8 @@ fn check_after_run(
         let Ok((conversation, Some(connection), last, stale, reasoning)) = agents.get(agent) else {
             continue;
         };
-        let spec = ran_on.map_or(&*connection.spec, |ran| &*ran.0);
+        let route = ran_on.and_then(|ran| ran.route.clone());
+        let spec = ran_on.map_or(&*connection.spec, |ran| &*ran.spec);
         let end = conversation.messages().len();
         let Some(summarizing) =
             over_threshold(conversation, (last, stale), (&default.0, spec), end)
@@ -609,11 +724,15 @@ fn check_after_run(
                 continue;
             }
         };
+        let model = ModelRequest {
+            connection: route,
+            ..ModelRequest::new(request)
+        };
         let summary = commands
             .spawn((
                 Name::new(SUMMARIZING),
                 summarizing,
-                ModelRequest::new(request),
+                model,
                 Effect::default().with_purpose(PURPOSE),
                 ForAgent(agent),
                 CallOf(turn),
@@ -624,24 +743,152 @@ fn check_after_run(
     }
 }
 
-/// Refuses each `/compact` summary call that nothing was planned for, nor a plugin planned anew:
-/// "Nothing to compact yet."
+/// On an agent whose turn ended in a final error: where its last request went, which
+/// [`compact_after_error`] checks against once the turn is gone, unless a new turn's request is
+/// checked first.
+#[derive(Component)]
+struct CheckAfterError(Option<RanOn>);
+
+/// Marks the agent of each turn that ended in a final error for [`compact_after_error`]. Not a
+/// turn that compaction itself ran, nor one whose overflow recovery was tried for its newest
+/// prompt, as pi's check returns after that recovery.
+fn check_after_error(
+    settled: On<Add<Settled>>,
+    turns: Query<
+        (
+            (&ForAgent, &TurnOutcome, Option<&RanOn>),
+            (Option<&Recovered>, Option<&LastPrompt>),
+        ),
+        Without<OwnTurn>,
+    >,
+    mut commands: Commands,
+) {
+    let Ok(((&ForAgent(agent), TurnOutcome::Failed(_), ran_on), (recovered, last))) =
+        turns.get(settled.entity)
+    else {
+        return;
+    };
+    if recovered.is_some_and(|recovered| recovered.0 == last.map(|it| it.0)) {
+        return;
+    }
+    commands
+        .entity(agent)
+        .try_insert(CheckAfterError(ran_on.cloned()));
+}
+
+/// Once the turn that ended in a final error is gone, compacts in a turn of its own when the
+/// context it left (the last reported usage plus what follows, such as a message another author
+/// sent that the turn left) leaves less than the reserve free, as pi checks after a run that ended
+/// in an error.
+fn compact_after_error(
+    agents: Query<(Entity, Compacting, &CheckAfterError), Without<ActiveTurn>>,
+    default: Res<CompactionDefault>,
+    mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
+) {
+    for (agent, (conversation, connection, last, stale, reasoning), CheckAfterError(ran)) in &agents
+    {
+        commands.entity(agent).try_remove::<CheckAfterError>();
+        let Some(spec) = ran
+            .as_ref()
+            .map(|ran| ran.spec.clone())
+            .or(connection.map(|it| it.spec.clone()))
+        else {
+            continue;
+        };
+        let end = conversation.messages().len();
+        if !default.0.enabled {
+            continue;
+        }
+        let measure = (last, stale);
+        let Some(summarizing) = over_threshold(conversation, measure, (&default.0, &spec), end)
+        else {
+            continue;
+        };
+        let route = ran.as_ref().and_then(|ran| ran.route.clone());
+        let route = (route, &*spec, reasoning.and_then(|it| it.0));
+        compact_in_own_turn(&mut commands, &mut notices, agent, route, summarizing);
+    }
+}
+
+/// On a turn compaction started for itself, which ends with its summary.
+#[derive(Component)]
+struct OwnTurn;
+
+/// Starts `summarizing` for `agent` on `route` (the agent's own connection when `None`), sized for
+/// `spec`, in a turn of its own that ends with the summary.
+fn compact_in_own_turn(
+    commands: &mut Commands,
+    notices: &mut MessageWriter<Notice>,
+    agent: Entity,
+    (route, spec, reasoning): (Option<Connection>, &ModelSpec, Option<Reasoning>),
+    summarizing: Summarizing,
+) {
+    let request = if summarizing.messages.is_empty() {
+        Ok(CompletionRequest::new(completion::Message::user(NOTHING)))
+    } else {
+        summarizing.request(spec, reasoning)
+    };
+    let turn = commands
+        .spawn((Name::new("compaction"), TurnOf(agent), OwnTurn))
+        .id();
+    match request {
+        Ok(request) => {
+            let model = ModelRequest {
+                connection: route,
+                ..ModelRequest::new(request)
+            };
+            commands.spawn((
+                Name::new(SUMMARIZING),
+                summarizing,
+                model,
+                Effect::default().with_purpose(PURPOSE),
+                ForAgent(agent),
+                CallOf(turn),
+            ));
+        }
+        Err(why) => {
+            notices.write(Notice::error(agent, format!("Cannot compact: {why}.")));
+            commands.trigger(StopTurn::plugin_alone(agent, "compaction", "not compacted"));
+        }
+    }
+}
+
+/// Refuses each `/compact` summary call that nothing was planned for, nor a plugin planned anew,
+/// with pi's reason: "Already compacted" when nothing was added since the last summary, else
+/// "Nothing to compact (session too small)".
 fn nothing_to_compact(
     calls: Query<(Entity, &Summarizing, &ForAgent), (Added<Admitted>, ModelCalls)>,
+    conversations: Query<&Conversation>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
     for (call, summarizing, &ForAgent(agent)) in &calls {
         if summarizing.messages.is_empty() {
-            notices.write(Notice::info(agent, NOTHING));
-            let why = ErrorReport::new(ErrorKind::Cancelled, NOTHING);
+            let already = conversations.get(agent).is_ok_and(already_compacted);
+            let why = match already {
+                true => "Already compacted",
+                false => "Nothing to compact (session too small)",
+            };
+            notices.write(Notice::error(agent, format!("Compaction failed: {why}")));
+            let why = ErrorReport::new(ErrorKind::Cancelled, why);
             commands.entity(call).try_insert_if_new(Outcome(Err(why)));
         }
     }
 }
 
-/// What `/compact` says when there is nothing to summarize.
-const NOTHING: &str = "Nothing to compact yet.";
+/// Whether `conversation` ends in its last compaction, as pi's session does when nothing was
+/// added after it: a summary is in, and every other message is older than it.
+fn already_compacted(conversation: &Conversation) -> bool {
+    let summary = conversation
+        .entries()
+        .find(|entry| entry.author == Some(&summary_author()))
+        .map(|entry| entry.id);
+    summary.is_some_and(|summary| conversation.entries().all(|entry| entry.id <= summary))
+}
+
+/// What a `/compact` with nothing to summarize sends, refused before it goes.
+const NOTHING: &str = "Nothing to compact.";
 
 /// Compacts an idle agent's conversation on the user's request, in a turn of its own that ends
 /// with the summary. With nothing to summarize, the call still goes to Prepare, where a plugin
@@ -671,30 +918,8 @@ fn on_compact(
     let keep = default.0.keep_recent_tokens;
     let summarizing = Summarizing::plan(conversation, keep, reason.clone());
     let summarizing = summarizing.unwrap_or_else(|| Summarizing::nothing(reason));
-    let turn = commands
-        .spawn((Name::new("compaction"), TurnOf(agent)))
-        .id();
-    let request = if summarizing.messages.is_empty() {
-        Ok(CompletionRequest::new(completion::Message::user(NOTHING)))
-    } else {
-        summarizing.request(&connection.spec, reasoning.and_then(|it| it.0))
-    };
-    match request {
-        Ok(request) => {
-            commands.spawn((
-                Name::new(SUMMARIZING),
-                summarizing,
-                ModelRequest::new(request),
-                Effect::default().with_purpose(PURPOSE),
-                ForAgent(agent),
-                CallOf(turn),
-            ));
-        }
-        Err(why) => {
-            notices.write(Notice::error(agent, format!("Cannot compact: {why}.")));
-            commands.trigger(StopTurn::plugin_alone(agent, "compaction", "not compacted"));
-        }
-    }
+    let route = (None, &*connection.spec, reasoning.and_then(|it| it.0));
+    compact_in_own_turn(&mut commands, &mut notices, agent, route, summarizing);
 }
 
 /// Marks an agent's context measure stale ([`ContextStale`]) once its conversation is edited
@@ -734,6 +959,7 @@ fn recover_from_overflow(
     >,
     started: Query<&HoldOf, With<Summarizing>>,
     ended: Query<&TurnOutcome>,
+    ran: Query<&RanOn>,
     agents: Query<Compacting>,
     default: Res<CompactionDefault>,
     mut commands: Commands,
@@ -761,7 +987,7 @@ fn recover_from_overflow(
             continue;
         }
         if tried {
-            commands.entity(turn).try_insert(Recovered);
+            mark_recovered(&mut commands, turn);
             if cut_short {
                 let why = "Truncated response recovery failed after one compact-and-retry attempt.";
                 notices.write(Notice::error(agent, why));
@@ -780,15 +1006,17 @@ fn recover_from_overflow(
         let keep = default.0.keep_recent_tokens;
         let Some(summarizing) = Summarizing::plan(conversation, keep, CompactReason::Overflow)
         else {
-            // pi omits the reply cut short before it compacts, so with nothing to summarize it
-            // is gone all the same.
-            commands.entity(turn).try_insert(Recovered);
-            if cut_short {
-                commands.queue(move |world: &mut World| fail_recovered(world, (call, agent), None));
-            }
+            // pi omits the attempt before it compacts, so with nothing to summarize it is gone
+            // all the same, and the run ends there.
+            mark_recovered(&mut commands, turn);
+            commands.queue(move |world: &mut World| fail_recovered(world, (call, agent), None));
             continue;
         };
-        let route = (Some(connection.clone()), &*connection.spec, reasoning);
+        // As pi omits the attempt before it compacts: what streamed is not saved by a stop now.
+        commands.entity(call).try_remove::<Partial>();
+        // The turn's own route, before adapters wrapped it, sized for the model it went to.
+        let route = ran.get(turn).ok().and_then(|ran| ran.route.clone());
+        let route = (route, &*connection.spec, reasoning);
         if start(
             &mut commands,
             &mut notices,
@@ -815,6 +1043,15 @@ fn recover_from_overflow(
 fn stops(outcome: &TurnOutcome) -> bool {
     matches!(outcome, TurnOutcome::Failed(_) | TurnOutcome::Stopped(_))
 }
+
+/// How summary calls are retried: pi's coding-agent defaults (`settings.retry`: 3 retries, waits
+/// from 2 s, at most 60 s).
+pub const SUMMARY_RETRY: RetryPolicy = RetryPolicy {
+    max_retries: 3,
+    first_backoff: std::time::Duration::from_secs(2),
+    max_backoff: std::time::Duration::from_secs(60),
+    ..RetryPolicy::DEFAULT
+};
 
 /// What the agent is told a compaction after an overflow is for.
 const OUTGREW: &str = "The conversation outgrew the model's context window";
@@ -890,7 +1127,7 @@ fn retry_delay(policy: &RetryPolicy, retries: u32) -> std::time::Duration {
 }
 
 /// Sends a failed summary call again once the wait passed, when its failure passes and its turn
-/// goes on, up to `[retry] max_retries` times for each summary call, as pi retries each: a hold
+/// goes on, up to [`SUMMARY_RETRY`]'s three times for each summary call, as pi retries each: a hold
 /// with the [`Backoff`] keeps it from settling until then, and the call sent again ([`resend`])
 /// takes its marker and its hold on the call it is for.
 fn retry_compaction_calls(
@@ -911,9 +1148,9 @@ fn retry_compaction_calls(
         ),
     >,
     ended: Query<&TurnOutcome>,
-    policy: Res<RetryPolicy>,
     mut commands: Commands,
 ) {
+    let policy = SUMMARY_RETRY;
     for (call, outcome, &CallOf(turn), &ForAgent(agent), retries) in &failed {
         let Some(report) = passing_failure(outcome) else {
             continue;
@@ -1025,20 +1262,18 @@ enum NotTaken {
 }
 
 /// The text a summary call settled with, read from its reply or left by a reviewer, or why there
-/// is none; a passing failure that used up its retries under `policy` says so.
+/// is none; a passing failure that used up its retries ([`SUMMARY_RETRY`]) says so.
 fn taken(
     (outcome, retries): (&Outcome, u32),
     summarizing: &Summarizing,
-    policy: &RetryPolicy,
 ) -> Result<String, NotTaken> {
     let label = summarizing.label();
     let response = match (&outcome.0, outcome.completion()) {
         (Err(report), _) => {
-            let most = policy.max_retries;
+            let most = SUMMARY_RETRY.max_retries;
             let why = match retryable(report) && retries >= most {
                 true => format!(
-                    "{report}. Not retrying: it failed {} times in a row (`[retry] max_retries` is \
-                     {most})",
+                    "{report}. Not retrying: it failed {} times in a row",
                     retries.saturating_add(1)
                 ),
                 false => report.to_string(),
@@ -1088,7 +1323,6 @@ fn take_summary(
         Option<&Connection>,
         Option<&ReasoningSetting>,
     )>,
-    policy: Res<RetryPolicy>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -1117,11 +1351,7 @@ fn take_summary(
     }
     let text = match ended {
         true => Err(NotTaken::Cancelled),
-        false => taken(
-            (outcome, retries.map_or(0, |it| it.0)),
-            summarizing,
-            &policy,
-        ),
+        false => taken((outcome, retries.map_or(0, |it| it.0)), summarizing),
     };
     let hold = hold.map(|&HoldOf(call)| call);
     let text = match text.map(|text| (summarizing.next(text.clone()), text)) {
@@ -1247,7 +1477,7 @@ fn take_summary(
         // its failure naming why the summary that was to make room failed; a reply cut short is
         // dropped, as pi omits it before it compacts, and the turn stops.
         Some(call) if step == Recovering::NotSummarized && overflowed => {
-            commands.entity(turn).try_insert(Recovered);
+            mark_recovered(&mut commands, turn);
             let why = failure.or_else(|| Some("the compaction was cancelled".to_owned()));
             commands.queue(move |world: &mut World| {
                 fail_recovered(world, (call, agent), why.as_deref());
@@ -1271,31 +1501,35 @@ fn take_summary(
 }
 
 /// Ends the recovery of `call`, `agent`'s turn's call refused as too long or whose reply the window
-/// cut short, whose compaction did not go in, for `why` when it failed or was cancelled. A refusal
-/// names it, as pi's "Context overflow recovery failed", and fails the turn. A reply cut short was
-/// already left out by pi before it compacted: it is dropped and the turn stops there, the user's
-/// prompt kept, as pi's run ends.
+/// cut short, whose compaction did not go in (`why`, when it failed or was cancelled, a notice
+/// already said). As pi omits the attempt and ends the run, the reply is dropped and the turn
+/// stops there, the user's prompt and its attachments kept; a refusal nothing could be compacted
+/// for is shown.
 fn fail_recovered(world: &mut World, (call, agent): (Entity, Entity), why: Option<&str>) {
     let Some(mut outcome) = world.get_mut::<Outcome>(call) else {
         return;
     };
-    match &mut outcome.0 {
-        Err(report) => {
-            if let Some(why) = why {
-                report.message = format!(
-                    "{}; Context overflow recovery failed: {why}",
-                    report.message
-                );
+    let (refused, cut) = match &outcome.0 {
+        Err(report) => (
+            Some(report.to_string()),
+            "the model refused the request as too long",
+        ),
+        Ok(_) => (None, "the context window cut the reply short"),
+    };
+    outcome.0 = Err(ErrorReport::new(ErrorKind::Cancelled, cut));
+    world.entity_mut(call).remove::<Partial>();
+    if why.is_none() {
+        let text = match refused {
+            Some(refused) => {
+                format!("The model call failed: {refused}. There is nothing to compact.")
             }
-        }
-        Ok(_) => {
-            let cut = "the context window cut the reply short";
-            outcome.0 = Err(ErrorReport::new(ErrorKind::Cancelled, cut));
-            // What it streamed is not kept by the stop either.
-            world.entity_mut(call).remove::<Partial>();
-            world.trigger(StopTurn::plugin_alone(agent, "compaction", cut));
-        }
+            None => {
+                "The context window cut the reply short. There is nothing to compact.".to_owned()
+            }
+        };
+        world.write_message(Notice::error(agent, text));
     }
+    world.trigger(StopTurn::plugin_alone(agent, "compaction", cut));
 }
 
 /// Says that `older` messages of so many tokens were summarized and `kept` were kept.

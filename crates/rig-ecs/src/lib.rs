@@ -60,8 +60,8 @@ pub mod prelude {
     };
     pub use crate::fork::{AgentForked, ForkAgent, ForkError, ForkResult};
     pub use crate::inbox::{
-        Attachment, Deliver, DeliveredIn, DeliveryMode, Incoming, MessagePart, MessageRecord,
-        Recalled, Unsent,
+        Attachment, Deliver, DeliveredAs, DeliveredIn, DeliveryMode, Incoming, MessagePart,
+        MessageRecord, Recalled, Unsent,
     };
     pub use crate::model::{
         ChoiceKind, ChoiceTaken, ConnectWording, Connection, ModelChoice, ModelRefused, Models,

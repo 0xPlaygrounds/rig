@@ -284,6 +284,12 @@ pub struct Recalled {
 #[reflect(Component, Clone, Debug)]
 pub struct DeliveredIn(pub Entity);
 
+/// On a delivered message ([`Incoming`]): the id of the entry it became in its agent's
+/// conversation. Inserted with [`DeliveredIn`], or alone for a message that went with no turn.
+/// Not reflected: rig-core's types are not `Reflect`.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct DeliveredAs(pub rig_core::conversation::MessageId);
+
 /// On an agent whose failed turn took the user's unanswered messages out
 /// of its conversation: their texts, in order, which go back to the views
 /// before the messages the turn ended without sending ([`settle_unsent`]).
@@ -779,12 +785,13 @@ pub(crate) fn deliver<'a>(
             true => entry,
             false => entry.by(message.author.clone()),
         };
-        conversation.push(entry);
+        let id = conversation.push(entry);
         let mut delivered = commands.entity(entity);
         delivered.try_insert_if_new(Outcome::custom("delivered"));
-        if let Some(turn) = into {
-            delivered.try_insert(DeliveredIn(turn));
-        }
+        match into {
+            Some(turn) => delivered.try_insert((DeliveredAs(id), DeliveredIn(turn))),
+            None => delivered.try_insert(DeliveredAs(id)),
+        };
     }
 }
 

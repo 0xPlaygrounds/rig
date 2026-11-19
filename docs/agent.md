@@ -460,36 +460,42 @@ plus an estimate of the messages after it (four characters a token; the messages
 alone when no usage was reported), and compacts when that leaves less than
 `reserve_tokens` (16384) of the model's context window free. It checks at the
 end of each run that answered, against the window of the model that wrote the
-last reply, holding the answer until the summary is in (a message sent
-meanwhile goes on after it); before a prompt is sent (the context before the
-prompt, which is neither counted nor cut); and before each request after tool
-results. The older messages are then summarized by the model, in a separate
-call, into a structured checkpoint (goal, constraints, progress, decisions, next
-steps, critical context) that requests send in their place, followed by the
-files read and changed. About `keep_recent_tokens` (20000) of the newest
-messages stay as they are, never cut between a tool call and its result; when
-the cut falls inside a turn, that turn's earlier part gets a summary of its own.
-A later compaction updates the previous summary with the new messages. When the
-provider refuses a request as too long, or the window cuts a reply with no tool
-calls short, rig drops that reply, compacts and sends the request once more;
-when there is nothing to compact, or that summary does not go in, the turn
-stops there with the prompt kept and the cut-short reply dropped. A
-summary that fails or is cut short replaces nothing, and a notice says why;
-stopping the turn (Esc) cancels a summary being written. A failed summary call
-is retried as pi retries it: by its error message, waiting 2, 4, 8 then 16
-seconds and 30 after that (`[retry]`'s first and longest wait), not as long as
-`Retry-After` asks. As in pi, compaction summarizes only what lies before the
-newest `keep_recent_tokens`: a small window near its limit compacts again
-whenever something lies before them, and a conversation that fits inside them
-(very dense content, or a keep larger than the window leaves) has nothing to
-summarize; a single tool result bigger than the window stays with its call, so
-recovery can summarize only what came before it and the request is refused
-again; and a summary request bigger than the model, such as after a switch to a
-smaller one, fails with the provider's reason. `/compact` compacts now, and
-`/compact <instructions>` says what the summary should focus on; with no more
-than the keep in the conversation it says "Nothing to compact yet.", as pi
-does. `[compaction]` in `RIG_HOME/settings.toml` takes `enabled` (every
-automatic compaction, on by default; `/compact` works either way),
+last reply, holding the answer until the summary is in, which goes to that
+model (a message sent meanwhile goes on after it); after a run that ended in
+an error, against what that run left in the conversation, in a compaction of
+its own; before a prompt is sent (everything before the message the prompt
+delivered, which is neither counted nor cut); and before each request after
+tool results. The older messages are then summarized by the model, in a
+separate call, into a structured checkpoint (goal, constraints, progress,
+decisions, next steps, critical context) that requests send in their place,
+followed by the files read and changed. About `keep_recent_tokens` (20000) of
+the newest messages stay as they are, never cut between a tool call and its
+result; when the cut falls inside a turn, that turn's earlier part gets a
+summary of its own. A later compaction updates the previous summary with the
+new messages. When the provider refuses a request as too long, or the window
+cuts a reply with no tool calls short, rig drops that attempt, compacts and
+sends the request once more; when there is nothing to compact, or that summary
+fails or is cancelled, the turn stops there with a notice, and the user's
+prompt and its attachments stay in the conversation. A summary that fails or
+is cut short replaces nothing, and a notice says why. A failed summary call is
+retried as pi retries it, with pi's defaults rather than `[retry]`: by its
+error message, three times, waiting 2, 4 then 8 seconds (doubling, at most 60),
+not as long as `Retry-After` asks. Stopping the turn (Esc) cancels a summary
+being written, and with it the turn; a message the turn accepted while a
+summary after its run was written stays in the conversation for the next
+request, where pi answers it at once. As in pi, compaction summarizes only what
+lies before the newest `keep_recent_tokens`: a small window near its limit
+compacts again whenever something lies before them, and a conversation that
+fits inside them (very dense content, or a keep larger than the window leaves)
+has nothing to summarize; a single tool result bigger than the window stays
+with its call, so recovery can summarize only what came before it and the
+request is refused again; and a summary request bigger than the model, such as
+after a switch to a smaller one, fails with the provider's reason. `/compact`
+compacts now, and `/compact <instructions>` says what the summary should focus
+on; with nothing to summarize it says, as pi does, "Compaction failed: Already
+compacted" right after a compaction, else "Compaction failed: Nothing to compact
+(session too small)". `[compaction]` in `RIG_HOME/settings.toml` takes `enabled`
+(every automatic compaction, on by default; `/compact` works either way),
 `reserve_tokens` and `keep_recent_tokens`. The summarized messages stay in the
 transcript, under a line that shows the summary; a resumed session starts from
 the messages the summary kept. After a compaction the status line shows the

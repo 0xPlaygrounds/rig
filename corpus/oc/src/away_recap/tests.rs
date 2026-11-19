@@ -250,19 +250,60 @@ fn a_resumed_session_is_recapped_beside_the_work() {
     assert!(card(again.world()).is_none());
 }
 
-/// The recap asks for a few hundred tokens within the model's output limit, as before: 256 on a
-/// model that writes at most 256.
+/// The recap asks for the output its pre-PR formula gave: a few hundred tokens within the model's
+/// output limit and half the room its input limit leaves, 256 on an 8192-token window that writes
+/// 256, and a quarter of the input limit on a 1024-token window that writes 512.
 #[test]
 fn the_recap_fits_a_small_output_limit() {
     let Some(vendor) = ProviderId::catalog("ollama") else {
         return;
     };
-    let spec = ModelSpec::new(vendor, "small")
-        .with_context_window(8_192)
-        .with_max_output_tokens(256);
     let messages = [std::sync::Arc::new(rig_core::completion::Message::user(
         "What happened?",
     ))];
-    let request = super::recap_request(&messages, &spec);
+    let small = ModelSpec::new(vendor, "small")
+        .with_context_window(8_192)
+        .with_max_output_tokens(256);
+    let request = super::recap_request(&messages, &small);
     assert_eq!(request.ok().and_then(|it| it.max_tokens), Some(256));
+    let tiny = ModelSpec::new(vendor, "tiny")
+        .with_context_window(1_024)
+        .with_max_output_tokens(512);
+    let quarter = tiny.input_limit().map(|limit| u64::from(limit) / 4);
+    let request = super::recap_request(&messages, &tiny);
+    assert_eq!(request.ok().and_then(|it| it.max_tokens), quarter);
+}
+
+/// The recap is fitted to a model as before this PR: a small window cuts the start of a long
+/// history and asks for the fitted output; a model with unknown limits gets no output limit.
+#[test]
+fn the_recap_is_fitted_to_the_model() {
+    let Some(vendor) = ProviderId::catalog("ollama") else {
+        return;
+    };
+    let long: Vec<_> = (0..200)
+        .map(|n| {
+            std::sync::Arc::new(rig_core::completion::Message::user(format!(
+                "question {n}: {}",
+                "word ".repeat(100)
+            )))
+        })
+        .collect();
+    let small = ModelSpec::new(vendor, "small")
+        .with_context_window(4_096)
+        .with_max_output_tokens(1_024);
+    let request = super::recap_request(&long, &small).ok();
+    let text = request
+        .as_ref()
+        .map(|it| format!("{:?}", it.chat_history))
+        .unwrap_or_default();
+    assert!(
+        text.contains("earlier characters left out"),
+        "the long history is cut"
+    );
+    let fitted = rig_harness::rig_memory::fit_to_model("", &small, 400).1;
+    assert_eq!(request.and_then(|it| it.max_tokens), fitted);
+    let unknown = ModelSpec::new(vendor, "unknown");
+    let request = super::recap_request(&long, &unknown).ok();
+    assert_eq!(request.and_then(|it| it.max_tokens), None);
 }
