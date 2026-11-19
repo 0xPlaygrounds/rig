@@ -872,6 +872,13 @@ fn a_live_build_shows_cargo_as_it_writes_erasing_each_redrawn_line_on_a_terminal
     assert_eq!(shown, cargo);
     assert!(!logged.contains("Downloading"), "{logged:?}");
     assert!(logged.contains("   Compiling a v1.0.0\n"), "{logged:?}");
+    // Any other line a `\r` ends is logged, and a failure tells it.
+    let cargo = "error: SDK missing\rset SDK_ROOT\nerror: linker helper was not found\r";
+    let (_, logged, told) = fake_build("cr", (BuildOutput::LogOnly, false), cargo);
+    for line in ["error: SDK missing", "set SDK_ROOT", "error: linker helper"] {
+        assert!(logged.contains(line), "{logged:?}");
+    }
+    assert!(told.contains("error: linker helper"), "{told}");
 }
 
 #[test]
@@ -1314,19 +1321,23 @@ fn a_foreign_bevy_is_refused_before_cargo_compiles_and_the_advice_leads() {
     let warning = "warning: patch `x v1.0.0` was not used in the crate graph";
     let frame = "       Fetch [==>    ] 3 complete; 1 pending";
     let agents_bevy = format!(
-        "echo '{warning}' >&2; echo '    Updating crates.io index' >&2; \
-         printf '{frame}\\r' >&2; echo 'bevy_ecs v{BEVY_VERSION}'\n"
+        "echo '{warning}' >&2; printf '    Updating crates.io index\\r\\n' >&2; \
+         printf '  Downloaded a v1.0.0\\r\\n{frame}\\r' >&2; echo 'bevy_ecs v{BEVY_VERSION}'\n"
     );
     for _ in 0..2 {
         let (calls, shown, failure) = build(&agents_bevy);
         assert_eq!(calls, ["tree", "build"]);
         assert!(failure.is_none(), "{failure:?}");
-        assert!(shown.contains("Updating crates.io index"), "{shown}");
+        // `\r\n` ends one line.
+        for line in ["    Updating crates.io index", "  Downloaded a v1.0.0"] {
+            assert!(shown.lines().any(|shown| shown == line), "{shown:?}");
+        }
         assert!(shown.contains(frame), "{shown}");
-        // `cargo build` says it again, in its own turn.
+        // `cargo build` may say it again on screen, in its own turn, and it
+        // may have nothing left to fetch, so the log keeps it.
         assert!(!shown.contains(warning), "{shown}");
         let logged = fs::read_to_string(home.build_log()).unwrap_or_default();
-        assert!(!logged.contains(warning), "{logged}");
+        assert!(logged.contains(warning), "{logged}");
         assert!(logged.contains("Updating crates.io index"), "{logged}");
         assert!(!logged.contains("Fetch"), "{logged}");
     }
@@ -1362,9 +1373,10 @@ fn a_foreign_bevy_is_refused_before_cargo_compiles_and_the_advice_leads() {
     // with it is cargo's, as rig says nothing of it.
     let second_reflect =
         format!("echo 'bevy_reflect v0.19.1'; echo 'bevy_reflect v{BEVY_VERSION}'\n");
-    let (calls, _, failure) = build(&second_reflect);
+    let (calls, shown, failure) = build(&second_reflect);
     assert_eq!(calls, ["tree", "build"]);
     assert!(failure.is_none(), "{failure:?}");
+    assert!(!shown.contains("must write"), "{shown}");
     let compiler = "error[E0277]: `Uses` is not a `Component`";
     fs::write(
         bin.join("cargo.build"),
