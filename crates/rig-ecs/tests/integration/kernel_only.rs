@@ -929,7 +929,7 @@ fn a_budget_the_models_route_refuses_is_reset_with_a_warning() {
         models.0.provide(vendor, http);
     }
     let connection = models.connect("ollama/qwen3");
-    assert_eq!(connection.as_ref().err(), None);
+    assert!(connection.is_ok(), "{:?}", connection.as_ref().err());
     let Ok(connection) = connection else { return };
     let budget = ReasoningSetting(Some(Reasoning::Budget { tokens: 1024 }));
     let agent = spawn_root(app.world_mut(), (connection, budget)).id();

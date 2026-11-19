@@ -267,7 +267,10 @@ fn draft(
     if changed.is_empty() {
         return;
     }
-    let connection = match models.connect(&settings.model) {
+    let connection = match models
+        .connect(&settings.model)
+        .map_err(|why| Models::cannot_use(&settings.model, why))
+    {
         Ok(connection) => connection,
         Err(why) => {
             let text = format!("changelog: cannot draft with {}: {why}", settings.model);

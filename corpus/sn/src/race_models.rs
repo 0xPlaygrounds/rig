@@ -356,10 +356,13 @@ fn route(
         };
         // A member that cannot be reached fails at once, saying why, and
         // drops out like any member that fails.
-        let connection = models.connect(reference).unwrap_or_else(|why| Connection {
-            spec: race,
-            handler: Handler(unavailable(reference, why)),
-        });
+        let connection = models
+            .connect(reference)
+            .map_err(|why| Models::cannot_use(reference, why))
+            .unwrap_or_else(|why| Connection {
+                spec: race,
+                handler: Handler(unavailable(reference, why)),
+            });
         request.connection = Some(connection);
     }
 }

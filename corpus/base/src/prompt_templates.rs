@@ -222,7 +222,11 @@ impl Template {
             None => None,
             Some(model) => {
                 let models = models.ok_or_else(|| format!("No models to run {model} on."))?;
-                Some(TemplateModel(models.connect(model)?))
+                Some(TemplateModel(
+                    models
+                        .connect(model)
+                        .map_err(|why| Models::cannot_use(model, why))?,
+                ))
             }
         };
         Ok((incoming, model))

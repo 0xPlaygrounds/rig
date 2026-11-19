@@ -604,8 +604,8 @@ fn a_model_without_its_key_keeps_the_current_one_connected() {
     assert_eq!(
         recalled(&app),
         ["Cannot use rig-models-keyless-locked/big: no key for \
-              `rig-models-keyless-locked`: set `CORP_KEY` or pass one with \
-              `ConnectOptions::api_key`. Still on rig-models-keyless/small."]
+              `rig-models-keyless-locked`: set `CORP_KEY`. Still on \
+              rig-models-keyless/small."]
     );
     app.update();
     let world = app.world();
@@ -614,6 +614,37 @@ fn a_model_without_its_key_keeps_the_current_one_connected() {
     let connected = connected.map(|connection| connection.spec.reference());
     assert_eq!(connected.as_deref(), Some("rig-models-keyless/small"));
     assert!(world.get::<ModelRefused>(agent).is_none());
+}
+
+/// `/model` and a model restored or set by a plugin say what `--model`
+/// says of a missing key, with or without `/login`.
+#[test]
+fn a_model_without_its_key_is_refused_in_the_words_of_model_everywhere() {
+    for (login, how) in [
+        (
+            true,
+            "no key for `openai`: save one with /login openai or set `OPENAI_API_KEY`.",
+        ),
+        (false, "no key for `openai`: set `OPENAI_API_KEY`."),
+    ] {
+        let Some((reference, models)) = builtin_without_a_key("openai", "OPENAI_API_KEY") else {
+            return;
+        };
+        let (mut app, agent) = routed();
+        app.insert_resource(models);
+        if login {
+            let login = |_: In<rig_harness::commands::NoArgs>| {};
+            app.add_command("login", "Sign in", login);
+        }
+        run(&mut app, agent, &format!("model {reference}"));
+        let said = format!("Cannot use {reference}: {how}");
+        assert_eq!(recalled(&app), std::slice::from_ref(&said));
+
+        let world = app.world_mut();
+        world.entity_mut(agent).insert(ModelChoice(reference));
+        world.flush();
+        assert_eq!(world.get::<ModelRefused>(agent), Some(&ModelRefused(said)));
+    }
 }
 
 #[test]

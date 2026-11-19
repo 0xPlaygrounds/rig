@@ -300,7 +300,10 @@ fn start_draft(
             &mut commands,
         );
     };
-    let connection = match models.connect(&reference) {
+    let connection = match models
+        .connect(&reference)
+        .map_err(|why| Models::cannot_use(&reference, why))
+    {
         Ok(connection) => connection,
         Err(why) => return give_up(&format!("cannot use {reference}: {why}"), &mut commands),
     };

@@ -277,7 +277,9 @@ fn want_recap(
         return;
     }
     let connection = match config.model.as_deref() {
-        Some(reference) => models.connect(reference),
+        Some(reference) => models
+            .connect(reference)
+            .map_err(|why| Models::cannot_use(reference, why)),
         None => own
             .cloned()
             .ok_or_else(|| "the agent has no model".to_owned()),

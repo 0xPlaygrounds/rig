@@ -64,8 +64,8 @@ pub mod prelude {
         Recalled, Unsent,
     };
     pub use crate::model::{
-        ChoiceKind, ChoiceTaken, Connection, ModelChoice, ModelRefused, Models, ReasoningSetting,
-        SetModel, SetReasoning,
+        ChoiceKind, ChoiceTaken, ConnectWording, Connection, ModelChoice, ModelRefused, Models,
+        ReasoningSetting, SetModel, SetReasoning,
     };
     pub use crate::prompt::{AgentSections, PromptSection, SectionOf};
     pub use crate::requests::{RequestOf, Requests};

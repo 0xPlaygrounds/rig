@@ -48,7 +48,7 @@ use rig_harness::settings::AppSettingsExt;
 use serde::Deserialize;
 
 use rig_ecs::agent::{ActiveTurn, Agent, Notice};
-use rig_ecs::model::{ChoiceKind, Connection, ModelChoice, Models, SetModel};
+use rig_ecs::model::{ChoiceKind, ConnectWording, Connection, ModelChoice, Models, SetModel};
 use rig_ecs::requests::RequestOf;
 use rig_ecs::tasks::{Done, PollTasks, Running, Wake};
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
@@ -111,6 +111,7 @@ impl Plugin for LoginPlugin {
             .0
             .add_sign_in(ChatGptSignIn(session.clone()));
         app.insert_resource(session);
+        app.insert_resource(ConnectWording(crate::models::connect_wording));
         keys::add(app);
         app.add_command(
             "login",

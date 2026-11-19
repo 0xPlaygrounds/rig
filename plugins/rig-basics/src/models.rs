@@ -21,8 +21,13 @@
 //!
 //! [`Connector`]: rig_harness::rig_core::catalog::Connector
 
+use std::borrow::Cow;
+
+use bevy_ecs::name::Name;
+use rig_harness::commands::SlashCommand;
 use rig_harness::prelude::*;
-use rig_harness::rig_core::catalog::ReasoningSupport;
+use rig_harness::rig_core::catalog::{Connector, ReasoningSupport};
+use rig_harness::rig_core::providers::{chatgpt::PROVIDER_NAME, registry::ConnectError};
 use rig_harness::run::{RunStart, RunStartSystems};
 
 pub mod defaults;
@@ -40,6 +45,7 @@ pub struct ModelsPlugin;
 
 impl Plugin for ModelsPlugin {
     fn build(&self, app: &mut App) {
+        app.insert_resource(ConnectWording(connect_wording));
         app.add_command(
             "model",
             "Pick the model, or set it with /model vendor/model",
@@ -280,6 +286,39 @@ fn start_on_first_pick(
 #[reflect(Component, Clone, Debug)]
 pub struct ModelLabel(pub String);
 
+/// The name of the command that saves a key or signs in.
+const LOGIN: &str = "/login";
+
+/// Why a model of `vendor` has no key, none of the variables `tried` holding
+/// one, and how to give it one: the `/login` that does, when `login` says
+/// the command exists and it takes `vendor`, or the variables.
+fn no_key(login: bool, models: &Connector, vendor: &str, tried: &[Cow<'static, str>]) -> String {
+    let envs = tried.iter().map(|name| format!("`{name}`"));
+    let envs = envs.collect::<Vec<_>>().join(" or ");
+    let how = if !login {
+        format!("set {envs}")
+    } else if vendor == PROVIDER_NAME {
+        format!("sign in with /login {vendor} or set {envs}")
+    } else if crate::login::keys::key_vendors(models).contains(&vendor) {
+        format!("save one with /login {vendor} or set {envs}")
+    } else {
+        format!("set {envs}")
+    };
+    format!("no key for `{vendor}`: {how}")
+}
+
+/// Words a missing key as `--model` does, for every model refused; other
+/// errors keep their own text.
+pub(crate) fn connect_wording(world: &World, why: &ConnectError) -> Option<String> {
+    let ConnectError::MissingKey { vendor, tried } = why else {
+        return None;
+    };
+    let models = world.get_resource::<Models>()?;
+    let mut slash = world.try_query_filtered::<&Name, With<SlashCommand>>()?;
+    let login = slash.iter(world).any(|name| name.as_str() == LOGIN);
+    Some(no_key(login, &models.0, vendor, tried))
+}
+
 /// Gives the agent the user talks to the model `--model` names, once the
 /// session is restored and a remembered model given, so `--model` wins;
 /// a turn the restored session continues ends first, as a model is not
@@ -296,10 +335,8 @@ fn choose_invoked_model(
     (mut done, mut told): (Local<bool>, Local<bool>),
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
-    slash: Query<&bevy_ecs::name::Name, With<rig_harness::commands::SlashCommand>>,
+    slash: Query<&Name, With<SlashCommand>>,
 ) {
-    use rig_harness::rig_core::providers::{chatgpt::PROVIDER_NAME, registry::ConnectError};
-
     if *done {
         return;
     }
@@ -314,21 +351,9 @@ fn choose_invoked_model(
             let why = match models.0.connect(&reference) {
                 Ok(_) => None,
                 Err(ConnectError::MissingKey { vendor, tried }) => {
-                    let envs = tried.iter().map(|name| format!("`{name}`"));
-                    let envs = envs.collect::<Vec<_>>().join(" or ");
                     // `/login` is named only when a plugin added it.
-                    let login = slash.iter().any(|name| name.as_str() == "/login");
-                    let keyed = crate::login::keys::key_vendors(&models.0);
-                    let how = if !login {
-                        format!("set {envs}")
-                    } else if vendor == PROVIDER_NAME {
-                        format!("sign in with /login {vendor} or set {envs}")
-                    } else if keyed.contains(&vendor.as_str()) {
-                        format!("save one with /login {vendor} or set {envs}")
-                    } else {
-                        format!("set {envs}")
-                    };
-                    Some(format!("no key for `{vendor}`: {how}"))
+                    let login = slash.iter().any(|name| name.as_str() == LOGIN);
+                    Some(no_key(login, &models.0, &vendor, &tried))
                 }
                 Err(why) => Some(why.to_string()),
             };

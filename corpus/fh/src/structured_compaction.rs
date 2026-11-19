@@ -258,7 +258,9 @@ fn structure(
         match structured {
             None => {
                 let routed = config.model.as_deref().and_then(|name| {
-                    let connected = models.connect(name);
+                    let connected = models
+                        .connect(name)
+                        .map_err(|why| Models::cannot_use(name, why));
                     connected
                         .map_err(|why| {
                             let text = format!(

@@ -295,7 +295,10 @@ fn send_to_judge(
             request.call.function.name.as_str(),
             request.call.function.raw_arguments()
         );
-        let connection = match models.connect(model) {
+        let connection = match models
+            .connect(model)
+            .map_err(|why| Models::cannot_use(model, why))
+        {
             Ok(connection) => connection,
             Err(why) => {
                 let reason = format!("the judge cannot be reached ({why})");

@@ -581,7 +581,10 @@ fn prepared(
         .output_schema(schemars::schema_for!(Written));
     let mut request = ModelRequest::new(request);
     if let Some(reference) = config.model.as_deref() {
-        match models.connect(reference) {
+        match models
+            .connect(reference)
+            .map_err(|why| Models::cannot_use(reference, why))
+        {
             Ok(connection) => request = request.on(connection),
             Err(why) => {
                 notices.write(Notice::error(agent, format!("[open-pr] model: {why}")));

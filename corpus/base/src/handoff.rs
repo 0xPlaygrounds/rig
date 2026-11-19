@@ -147,7 +147,11 @@ fn handoff(
         notices.write(Notice::turn_running(agent));
         return;
     }
-    let summarizer = match settings.model.as_deref().map(|model| models.connect(model)) {
+    let summarizer = match settings.model.as_deref().map(|model| {
+        models
+            .connect(model)
+            .map_err(|why| Models::cannot_use(model, why))
+    }) {
         Some(Ok(connection)) => Some(connection),
         Some(Err(why)) => {
             notices.write(Notice::error(agent, why));

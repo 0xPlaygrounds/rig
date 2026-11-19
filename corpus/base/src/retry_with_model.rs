@@ -284,7 +284,10 @@ fn retry_with(
         notices.write(Notice::error(agent, format!("Cannot retry: {missed}")));
         return;
     }
-    let connection = match models.connect(model) {
+    let connection = match models
+        .connect(model)
+        .map_err(|why| Models::cannot_use(model, why))
+    {
         Ok(connection) => connection,
         Err(why) => {
             notices.write(Notice::error(agent, why));

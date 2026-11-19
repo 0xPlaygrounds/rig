@@ -192,7 +192,10 @@ fn ask_for_notes(
         let Some(model) = &settings.model else {
             continue;
         };
-        match models.connect(model) {
+        match models
+            .connect(model)
+            .map_err(|why| Models::cannot_use(model, why))
+        {
             Ok(connection) => call.connection = Some(connection),
             Err(why) => {
                 let why = format!("Session notes on the agent's model: {model}: {why}");

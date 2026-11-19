@@ -578,11 +578,11 @@ impl Adding<'_, '_> {
         label: &str,
         image: UserContent,
     ) -> UserContent {
-        let vision = self
-            .config
-            .vision_model
-            .as_deref()
-            .map(|model| self.models.connect(model));
+        let vision = self.config.vision_model.as_deref().map(|model| {
+            self.models
+                .connect(model)
+                .map_err(|why| Models::cannot_use(model, why))
+        });
         let why = match vision {
             Some(Ok(vision)) => {
                 let model = vision.spec.reference();
