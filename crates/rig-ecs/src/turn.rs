@@ -84,9 +84,13 @@ pub const PURPOSE: &str = "turn";
 pub(crate) const NO_MODEL: &str = "No model is connected; pick one first.";
 
 /// A turn's recovery so far: the failed calls retried since its last reply.
-/// On a plugin's own model call of a turn, such as a summary, it asks the
-/// kernel to retry that call as it retries a turn's, and counts that call's
-/// retries apart from the turn's: the call sent again carries the count on.
+/// On a plugin's own model call of a turn ([`CallOf`]), such as a summary,
+/// it asks the kernel to retry that call as it retries a turn's, and counts
+/// that call's retries apart from the turn's: the call sent again carries
+/// the count on, with the request, name and purpose and nothing else, so
+/// the plugin moves its own markers with
+/// [`follow_successor`](super::stage::follow_successor). On a [`TurnCall`]
+/// it does nothing.
 #[derive(Component, Reflect, Clone, Copy, Debug, Default)]
 #[reflect(Component, Default)]
 pub struct Recovery {
@@ -225,8 +229,8 @@ pub struct SentTo(pub Connection);
 /// request to it, then moves it into [`SentTo`]. A call admitted without a
 /// model gets none, and Start answers it with an error, even if its agent
 /// was connected meanwhile: a connection put on it later would skip the
-/// adapters and Fit. A successor is admitted, routed (unless [`Rebuilt`])
-/// and adapted anew.
+/// adapters and Fit. A successor is admitted and adapted anew; one that is
+/// [`Rebuilt`] starts from the connection its predecessor's request named.
 #[derive(Component, Clone)]
 pub struct Adapted(pub Connection);
 
@@ -243,8 +247,8 @@ pub struct TurnCall;
 /// On a [`TurnCall`] or [`SideCall`] spawned to send again the one call it
 /// supersedes ([`SupersededBy`]), such as a retry: its request is built
 /// anew and goes to the connection that call's request named, so a call a
-/// plugin routed stays on its route. Without it, a successor goes to its
-/// agent's model and is routed like a new call.
+/// plugin routed stays on its route, provided the router leaves successors
+/// alone. Without it, a successor's request names its agent's model.
 #[derive(Component, Reflect, Clone, Copy, Debug, Default)]
 #[reflect(Component, Default)]
 pub struct Rebuilt;
@@ -553,12 +557,17 @@ pub(crate) fn on_stop_turn(
     interrupt: On<StopTurn>,
     (spawned, requests): (Query<&Spawned>, Query<&Requests>),
     (inboxes, connections): (Inboxes, Query<&Connection>),
+    ending: Query<&TurnOutcome>,
     mut stopper: Stopper,
 ) {
     let root = interrupt.event_target();
-    // A plugin's own turn that is done goes on with what was sent meanwhile.
+    // A plugin's own turn that is done goes on with what was sent meanwhile,
+    // unless it is failed or stopped already.
     if interrupt.carries
         && let Ok((_, mut conversation, active)) = stopper.agents.get_mut(root)
+        && !ending
+            .get(active.turn())
+            .is_ok_and(TurnOutcome::is_stopping)
         && let Some(next) = carry_on(inboxes.of(root))
     {
         let (turn, connection) = (active.turn(), connections.get(root).ok());
@@ -1589,13 +1598,13 @@ pub(crate) fn judge_failures(
 /// `Retry` with a [`Backoff`], in [`Stage::Commit`] before the kernel
 /// settles, and sends a new call that supersedes it once the wait passed,
 /// if the hold is still there then: a turn's call built anew, another with
-/// its request as it is, its name and its purpose. Not when a Review system
+/// its request as it is, its name if it has one, and its purpose. Not when a Review system
 /// failed, nor for a turn that is failed or stopped.
 pub(crate) fn back_off(
     failed: Query<
         (
             (Entity, &Effect, &Outcome, &RetryVerdict, &CallOf),
-            Option<&Recovery>,
+            (Option<&Recovery>, Has<TurnCall>),
         ),
         (
             Or<(With<TurnCall>, With<Recovery>)>,
@@ -1610,7 +1619,8 @@ pub(crate) fn back_off(
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    for ((call, effect, Outcome(outcome), RetryVerdict(verdict), &CallOf(turn)), own) in &failed {
+    for (call, (own, turn_call)) in &failed {
+        let (call, effect, Outcome(outcome), RetryVerdict(verdict), &CallOf(turn)) = call;
         let (Err(report), Verdict::Retry(delay)) = (outcome, verdict) else {
             continue;
         };
@@ -1620,7 +1630,8 @@ pub(crate) fn back_off(
         if ending.is_some_and(TurnOutcome::is_stopping) {
             continue;
         }
-        let own = own.map(|own| Recovery {
+        // A turn's own call counts on its turn, whatever it carries.
+        let own = own.filter(|_| !turn_call).map(|own| Recovery {
             retries: own.retries + 1,
         });
         let attempt = own.map_or_else(
@@ -1660,12 +1671,15 @@ pub(crate) fn back_off(
                     retry.add_related::<SupersededBy>(&[call]);
                     return;
                 };
-                let request = world.get::<ModelRequest>(call).cloned();
+                let Some(request) = world.get::<ModelRequest>(call).cloned() else {
+                    return;
+                };
                 let name = world.get::<Name>(call).cloned();
-                if let (Some(request), Some(name)) = (request, name) {
-                    let mut retry = world.spawn((request, name, own, of));
-                    retry.add_related::<SupersededBy>(&[call]);
+                let mut retry = world.spawn((request, own, of));
+                if let Some(name) = name {
+                    retry.insert(name);
                 }
+                retry.add_related::<SupersededBy>(&[call]);
             });
     }
 }

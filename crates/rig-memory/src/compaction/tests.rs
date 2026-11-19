@@ -54,6 +54,14 @@ fn a_summary_replaces_exactly_what_it_read_and_only_if_unchanged() {
     let summary = changes.find_map(|recorded| summary_in(&recorded.change));
     assert_eq!(summary, conversation.id(0));
 
+    // A summary of every message leaves one added while it was written.
+    let mut whole = fresh();
+    let read = captured(&whole, 5);
+    whole.push(Message::assistant("added"));
+    apply_summary(&mut whole, &read, &state("all")).expect("applied");
+    let after: Vec<_> = whole.messages().iter().skip(1).cloned().collect();
+    assert_eq!(after, [Arc::new(Message::assistant("added"))]);
+
     // The next one read the first summary: once another summary took its place, it is refused.
     let read = captured(&conversation, 2);
     let other = captured(&conversation, 1);

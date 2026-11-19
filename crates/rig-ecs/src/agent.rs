@@ -766,8 +766,8 @@ impl StopTurn {
     /// messages meanwhile that carry a turn on (steering ones, else the
     /// queued ones, with the Inform ones), they go into the conversation as
     /// they are, in the order they were sent, and the turn goes on with a
-    /// model call, as after a reply. Otherwise it ends as
-    /// [`plugin_alone`](Self::plugin_alone).
+    /// model call, as after a reply. Otherwise, and for a turn already failed
+    /// or stopped, it ends as [`plugin_alone`](Self::plugin_alone).
     pub fn plugin_done(agent: Entity, by: &str, why: &str) -> Self {
         Self {
             carries: true,

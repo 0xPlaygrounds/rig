@@ -320,7 +320,6 @@ fn start(
         Effect::default().with_purpose(PURPOSE),
         ForAgent(agent),
         CallOf(turn),
-        Recovery::default(),
     ));
     if let Some(hold) = hold {
         call.insert(HoldOf(hold));
@@ -335,14 +334,20 @@ const SUMMARIZING: &str = "summarizing older messages";
 const CANCEL: &str = "stopping the turn (Esc) cancels it";
 
 /// The anchor of `history`'s context: the tokens the provider reported for its last valid reply and
-/// that reply's index, while it still describes it (no compaction or edit since, [`ContextStale`]).
+/// that reply's index, while it still describes it: no compaction or edit since
+/// ([`ContextStale`]), and no message before the reply newer than it, such as one a plugin put in
+/// front of a request, which the figure never counted.
 fn anchor(
     history: &rig_core::conversation::Conversation,
     (last, stale): (&LastUsage, Option<&ContextStale>),
 ) -> Option<(u64, usize)> {
     let anchor = last.0.as_ref().filter(|_| stale.is_none())?;
     let tokens = anchor.usage.context_tokens().filter(|&tokens| tokens > 0)?;
-    Some((tokens, history.index_of(anchor.through)?))
+    let at = history.index_of(anchor.through)?;
+    let through = history.id(at);
+    (0..at)
+        .all(|before| history.id(before) <= through)
+        .then_some((tokens, at))
 }
 
 /// The context tokens of `history`'s first `end` messages as pi's compaction counts them: the
@@ -563,7 +568,6 @@ fn on_compact(
                 Effect::default().with_purpose(PURPOSE),
                 ForAgent(agent),
                 CallOf(turn),
-                Recovery::default(),
             ));
         }
         Err(why) => {
@@ -673,7 +677,15 @@ fn recover_from_overflow(
             reasoning.and_then(|it| it.0),
         );
         let of = (agent, turn, Some(call));
-        if start(&mut commands, &mut notices, of, route, summarizing).is_some() {
+        if start(&mut commands, &mut notices, of, route, summarizing).is_none() {
+            // A reply cut short is dropped all the same, so its tool calls never run.
+            if cut_short {
+                commands.queue(move |world: &mut World| {
+                    omit(world, agent, omitted);
+                    fail_recovered(world, (call, agent), Some("no summary request"));
+                });
+            }
+        } else {
             // As pi omits the attempt before it compacts: what streamed is not saved by a stop.
             commands.entity(call).try_remove::<Partial>();
             commands.queue(move |world: &mut World| omit(world, agent, omitted));
@@ -729,12 +741,16 @@ fn supersede(
         .add_related::<SupersededBy>(&[call]);
 }
 
-/// Marks each summary call as this plugin's.
+/// Marks each summary call as this plugin's, and as one the kernel retries on a count of its own
+/// ([`Recovery`]): a retry carries its count, and a call sent again any other way starts afresh.
 fn provided_by_compaction(
     added: On<Add<Summarizing>>,
     me: Option<Res<PluginEntity<CompactionPlugin>>>,
     mut commands: Commands,
 ) {
+    commands
+        .entity(added.entity)
+        .try_insert_if_new(Recovery::default());
     if let Some(me) = me {
         commands
             .entity(added.entity)

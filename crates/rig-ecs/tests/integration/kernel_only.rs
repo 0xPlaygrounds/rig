@@ -372,6 +372,57 @@ fn a_failed_call_is_sent_again_once_its_backoff_passed_on_the_clock() {
     assert_eq!(model.request_count(), 2);
 }
 
+/// A plugin's own model call of a turn that carries a [`Recovery`], with no
+/// name, is sent again after a failure worth retrying.
+#[test]
+fn a_plugins_unnamed_call_with_its_own_recovery_is_retried() {
+    let (mut app, _wakes) = kernel(&MemoryStore::default());
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO));
+    let overloaded = ProviderResponseError::without_status("overloaded").with_transient(Some(true));
+    let model = MockCompletionModel::from_stream_turns([
+        vec![MockStreamEvent::Error(MockError::ProviderResponse(
+            overloaded,
+        ))],
+        vec![
+            MockStreamEvent::text("5"),
+            MockStreamEvent::final_response_with_default_usage(),
+        ],
+    ]);
+    let agent = connected(&mut app, &model);
+    assert!(agent.is_some(), "the built-in catalog lists the model");
+    let Some(agent) = agent else {
+        return;
+    };
+    app.update();
+    let world = app.world_mut();
+    let turn = world.spawn(TurnOf(agent)).id();
+    let request = rig_core::completion::CompletionRequest::new(Message::user("2 + 3?"));
+    world.spawn((
+        ModelRequest::new(request),
+        CallOf(turn),
+        ForAgent(agent),
+        Recovery::default(),
+    ));
+    for _ in 0..200 {
+        app.update();
+        let world = app.world_mut();
+        if world.query::<&Backoff>().iter(world).next().is_some() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(model.request_count(), 1);
+    advance(&mut app, Duration::from_secs(3));
+    for _ in 0..200 {
+        if model.request_count() == 2 {
+            break;
+        }
+        app.update();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(model.request_count(), 2, "sent again");
+}
+
 #[test]
 fn an_interrupt_during_a_backoff_cancels_the_retry() {
     let started = backing_off();

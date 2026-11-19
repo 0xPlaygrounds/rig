@@ -60,6 +60,8 @@ unicode-width = { workspace = true }
 # The app on a session store and the scripted model the tests run on.
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
 rig-core = { workspace = true, features = ["test-utils"] }
+# The `Retry-After` header of a scripted failure.
+http = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 # The width of the terminal each of `-p`'s streams is, and the

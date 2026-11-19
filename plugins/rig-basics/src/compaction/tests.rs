@@ -810,11 +810,12 @@ fn resend_first_summary(
 }
 
 /// A summary call sent again before it settles is taken from its successor, split-turn fields
-/// and all.
+/// and all, and the call sent again is retried like the first: it fails once and still goes in.
 #[test]
 fn a_summary_sent_again_mid_flight_is_taken_from_its_successor() {
     let model = MockCompletionModel::from_stream_turns([
         reply("## Goal\nThe stale summary."),
+        unavailable(),
         reply("## Goal\nThe fresh summary."),
         reply("## Original Request\nThe last question."),
     ]);
@@ -827,7 +828,11 @@ fn a_summary_sent_again_mid_flight_is_taken_from_its_successor() {
     let Some(agent) = agent else {
         return;
     };
-    compact(&mut app, &wakes, agent, "", 1);
+    app.world_mut().trigger(Compact {
+        entity: agent,
+        focus: String::new(),
+    });
+    until_ended_with_retries(&mut app, &wakes, 1);
     assert_eq!(app.world().resource::<Resent>().0, [true], "the plugin's");
     let live = entries(app.world(), agent);
     let text = live
@@ -1433,38 +1438,54 @@ fn with_image(agent: Entity, text: &str) -> Deliver {
 }
 
 /// Esc while the summary recovering from a reply cut short is written stops the turn without the
-/// partial reply: it was left out before the summary started, as pi omits it.
+/// partial reply, with or without a tool call in it: it was left out before the summary started,
+/// as pi omits it, its call never ran, and it is kept as an aside.
 #[test]
 fn stopping_a_cut_short_recovery_saves_none_of_the_reply() {
-    let cut = vec![
-        MockStreamEvent::text("A half"),
-        MockStreamEvent::FinalResponse(rig_core::operation::Finish {
-            reason: Some(FinishReason::Length),
-            ..rig_core::test_utils::mock_final(Usage::new().output_tokens(10))
-        }),
-    ];
-    let model = MockCompletionModel::from_stream_turns([
-        cut,
-        reply("## Goal\nAnswer."),
-        measured("done", 100),
-    ]);
-    let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |app| {
-        app.add_systems(AgentPass, hold_for_review.in_set(ReviewSystems::Act));
-    });
-    let agent = agent(&mut app, &model, 200_000, turns(0, 4));
-    let Some(agent) = agent else {
-        return;
-    };
-    app.world_mut()
-        .trigger(Deliver::new(agent, "Write it.", DeliveryMode::Steer));
-    assert!(held(&mut app, &wakes).is_some(), "{:?}", notices(&app));
-    app.world_mut().trigger(StopTurn::new(agent));
-    run_until(&mut app, &wakes, |world| {
-        world.get::<ActiveTurn>(agent).is_none()
-    });
-    let live = serde_json::to_string(&entries(app.world(), agent)).unwrap_or_default();
-    assert!(!live.contains("A half"), "the partial reply was saved");
-    assert!(live.contains("Write it."), "the prompt is kept");
+    for with_call in [false, true] {
+        let mut cut = vec![MockStreamEvent::text("A half")];
+        if with_call {
+            let arguments = serde_json::json!({ "path": "a.rs" });
+            cut.push(MockStreamEvent::tool_call("call-cut", "read", arguments));
+        }
+        cut.push(MockStreamEvent::FinalResponse(
+            rig_core::operation::Finish {
+                reason: Some(FinishReason::Length),
+                ..rig_core::test_utils::mock_final(Usage::new().output_tokens(10))
+            },
+        ));
+        let model = MockCompletionModel::from_stream_turns([
+            cut,
+            reply("## Goal\nAnswer."),
+            measured("done", 100),
+        ]);
+        let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |app| {
+            app.add_systems(AgentPass, hold_for_review.in_set(ReviewSystems::Act));
+        });
+        let agent = agent(&mut app, &model, 200_000, turns(0, 4));
+        let Some(agent) = agent else {
+            return;
+        };
+        app.world_mut()
+            .trigger(Deliver::new(agent, "Write it.", DeliveryMode::Steer));
+        assert!(held(&mut app, &wakes).is_some(), "{:?}", notices(&app));
+        app.world_mut().trigger(StopTurn::new(agent));
+        run_until(&mut app, &wakes, |world| {
+            world.get::<ActiveTurn>(agent).is_none()
+        });
+        let live = serde_json::to_string(&entries(app.world(), agent)).unwrap_or_default();
+        assert!(!live.contains("A half"), "the partial reply was saved");
+        assert!(!live.contains("call-cut"), "{with_call}: {live}");
+        assert!(live.contains("Write it."), "the prompt is kept");
+        assert_eq!(sent(&model).len(), 2, "nothing after the summary");
+        let conversation = app.world().get::<Conversation>(agent);
+        let asides = conversation.into_iter().flat_map(|it| it.asides());
+        let kept: Vec<_> = asides.filter(|(_, it)| it.kind == OMITTED).collect();
+        assert!(
+            matches!(kept.as_slice(), [(_, it)] if it.value.to_string().contains("A half")),
+            "{with_call}: {kept:?}"
+        );
+    }
 }
 
 /// Before a prompt, only the message it delivered is pending: a prompt an earlier stopped turn
@@ -1991,10 +2012,12 @@ fn messages_sent_during_compact_keep_their_priority_order_and_attachments() {
     assert!(recalled.is_empty(), "{recalled:?}");
 }
 
-/// A failure the provider says passes and names a wait for.
+/// A rate limit whose `Retry-After` header asks for seven seconds.
 fn rate_limited() -> Vec<MockStreamEvent> {
-    let limited = ProviderResponseError::without_status("rate limit: try again in 7s")
-        .with_transient(Some(true));
+    let mut headers = http::HeaderMap::new();
+    headers.insert("retry-after", http::HeaderValue::from_static("7"));
+    let limited = ProviderResponseError::new(http::StatusCode::TOO_MANY_REQUESTS, "rate limited")
+        .with_headers(Some(headers));
     vec![MockStreamEvent::Error(MockError::ProviderResponse(limited))]
 }
 
@@ -2192,6 +2215,56 @@ fn new_user_input_allows_another_recovery_and_a_summary_does_not() {
                 );
                 assert_eq!(sent(&model).len(), 3, "{:?}", notices(&app));
             }
+        }
+    }
+}
+
+/// The output clamp trusts the reported usage only while no newer message was put before its
+/// reply, as pi-ai's estimate: a few-shot prefix added to the request makes it estimate instead.
+#[test]
+fn the_output_clamp_drops_the_usage_when_a_prefix_is_added() {
+    for prefix in [false, true] {
+        let model = MockCompletionModel::from_stream_turns([reply("done")]);
+        let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |app| {
+            if prefix {
+                let few_shot =
+                    |mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<TurnCall>)>| {
+                        for mut call in &mut calls {
+                            if let Some(history) = &mut call.history {
+                                let text = format!("An example. {}", "word ".repeat(2_000));
+                                let example = Entry::new(Message::user(text));
+                                history.splice(0..0, [example], Author::plugin("few-shot"));
+                            }
+                        }
+                    };
+                app.add_systems(AgentPass, few_shot.in_set(PrepareSystems::Edit));
+            }
+        });
+        app.world_mut()
+            .resource_mut::<CompactionDefault>()
+            .0
+            .enabled = false;
+        let agent = agent(&mut app, &model, 40_000, turns(0, 2));
+        let Some(agent) = agent else {
+            return;
+        };
+        let through = app
+            .world()
+            .get::<Conversation>(agent)
+            .and_then(|conversation| conversation.entries().last().map(|entry| entry.id));
+        let anchor = through.map(|through| rig_memory::Anchor {
+            usage: Usage::new().total_tokens(39_000),
+            through,
+        });
+        app.world_mut().entity_mut(agent).insert(LastUsage(anchor));
+        ask(&mut app, &wakes, agent, "And now?", 1);
+        let asked = model
+            .requests()
+            .first()
+            .and_then(|request| request.max_tokens);
+        match prefix {
+            false => assert!(asked.is_some_and(|it| it < 1_000), "{asked:?}"),
+            true => assert_eq!(asked, Some(8_000)),
         }
     }
 }
