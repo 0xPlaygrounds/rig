@@ -34,6 +34,11 @@ fn start(store: &MemoryStore, project: &Path) -> (App, Receiver<()>) {
         .add_observer(log_ended);
     app.finish();
     app.update();
+    // `/compact` summarizes all but the newest message of a short conversation.
+    app.world_mut()
+        .resource_mut::<rig_basics::compaction::CompactionDefault>()
+        .0
+        .keep_recent_tokens = 1;
     (app, wakes)
 }
 

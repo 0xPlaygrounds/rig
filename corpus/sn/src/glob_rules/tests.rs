@@ -128,6 +128,11 @@ fn rules_reach_the_agent_by_prompt_by_touch_and_on_request() {
     collect::<Notice>(&mut app);
     app.finish();
     app.update();
+    // `/compact` summarizes all but the newest message of a short conversation.
+    app.world_mut()
+        .resource_mut::<rig_basics::compaction::CompactionDefault>()
+        .0
+        .keep_recent_tokens = 1;
     let agent = first_agent(app.world_mut());
     assert!(agent.is_some(), "an agent");
     let Some(agent) = agent else {

@@ -52,6 +52,11 @@ fn start(
         .add_observer(log_tool_outputs);
     app.finish();
     app.update();
+    // `/compact` summarizes all but the newest message of a short conversation.
+    app.world_mut()
+        .resource_mut::<rig_basics::compaction::CompactionDefault>()
+        .0
+        .keep_recent_tokens = 1;
     let agent = first_agent(app.world_mut())?;
     Some((app, wakes, agent))
 }
@@ -127,6 +132,8 @@ fn dead_ends_are_recorded_warned_kept_through_compaction_and_resumed() {
         calls("6", DEAD_END, pin),
         reply("Recorded."),
         reply("## Goal\nMake the tests pass."),
+        // The compaction's cut splits the last turn: its earlier part is summarized apart.
+        reply("## Original Request\nTry pinning libfoo."),
         reply("I will try another route."),
     ]);
     let id: SessionId = match "1000-4".parse() {
@@ -211,7 +218,7 @@ fn dead_ends_are_recorded_warned_kept_through_compaction_and_resumed() {
     });
     say(&mut app, &wakes, agent, "What next?");
     let requests = model.requests();
-    assert_eq!(requests.len(), 13, "every scripted request was made");
+    assert_eq!(requests.len(), 14, "every scripted request was made");
     let (system, messages) = parts(requests.last());
     for text in [
         "make test",

@@ -67,7 +67,10 @@ impl Plugin for ToolArgRepairPlugin {
     fn build(&self, app: &mut App) {
         app.add_setting::<ArgRepairSettings>("tool_arg_repair")
             .init_resource::<Repairs>()
-            .configure_sets(AgentPass, ArgRepairSystems::Reply.in_set(Stage::Review))
+            .configure_sets(
+                AgentPass,
+                ArgRepairSystems::Reply.in_set(ReviewSystems::Edit),
+            )
             .configure_sets(
                 AgentPass,
                 ArgRepairSystems::Call.in_set(PrepareSystems::Input),
