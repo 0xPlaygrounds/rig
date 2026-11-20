@@ -287,33 +287,38 @@ fn a_summary_without_its_headings_twice_falls_back_to_the_default_summary_of_the
     );
 }
 
-/// With fewer messages of the user's than are kept, all but the oldest stay: its exchange is
-/// summarized, and the request is sent after it.
+/// Near the window with fewer messages of the user's than are kept, nothing may be summarized:
+/// the compaction is refused before any summary is asked for, with a notice, and the request
+/// goes as it is.
 #[test]
-fn with_fewer_of_the_users_messages_than_kept_all_but_the_oldest_stay() {
-    let summarizer = MockCompletionModel::from_stream_turns([reply(&template("FEW"))]);
+fn near_the_window_with_nothing_before_the_kept_messages_no_summary_is_asked_for() {
+    let summarizer = MockCompletionModel::from_stream_turns([reply("unused")]);
     let model = MockCompletionModel::from_stream_turns([reply("done")]);
     let app = turn_near_the_window((&model, &summarizer), 20);
     assert!(app.is_some(), "an agent on a listed model");
     let Some((app, agent, before)) = app else {
         return;
     };
-    assert_eq!(sent(&summarizer).len(), 1);
+    assert_eq!(sent(&summarizer).len(), 0);
     let requests = sent(&model);
-    let request = requests.last().map(String::as_str).unwrap_or_default();
+    assert_eq!(requests.len(), 1, "{requests:?}");
+    let request = requests.first().map(String::as_str).unwrap_or_default();
     assert!(
-        request.contains("FEW") && !request.contains("What does the crate do?"),
+        request.contains("What does the crate do?") && request.contains("question 5"),
         "{request}"
     );
-    assert!(kept_from(
-        &entries(app.world(), agent),
-        &before,
-        "question 0"
-    ));
+    let after = entries(app.world(), agent);
+    assert_eq!(after.get(..before.len()), Some(before.as_slice()));
     let ended = &app.world().resource::<Ended>().0;
     assert!(
         matches!(ended.as_slice(), [TurnOutcome::Answered(_)]),
         "{ended:?}"
+    );
+    let notices = &app.world().resource::<Collected<Notice>>().0;
+    let refused = "nothing comes before the user's last 20 messages";
+    assert!(
+        notices.iter().any(|notice| notice.text.contains(refused)),
+        "{notices:?}"
     );
 }
 
@@ -475,6 +480,41 @@ fn a_compact_with_only_the_users_first_message_to_keep_is_refused() {
     );
 }
 
+/// A `/compact` of a conversation of exactly as many messages of the user's as are kept, an
+/// image with the oldest, is refused: none of them is summarized, and nothing changes.
+#[test]
+fn a_compact_with_exactly_the_kept_messages_is_refused_and_changes_nothing() {
+    let (mut app, wakes) = app_on(&MemoryStore::default());
+    let model = MockCompletionModel::from_stream_turns([reply("## Goal\nDEFAULT-SUMMARY.")]);
+    let summarizer = MockCompletionModel::from_stream_turns([reply(&template("UNUSED"))]);
+    let agent = agent_with_defaults(&mut app, (&model, &summarizer));
+    assert!(agent.is_some(), "an agent");
+    let Some(agent) = agent else {
+        return;
+    };
+    let long = || Message::assistant("word ".repeat(16_001));
+    let asked = [
+        pictured(says(1)),
+        Message::user(says(2)),
+        Message::user(says(3)),
+    ];
+    for message in asked.into_iter().flat_map(|asked| [asked, long()]) {
+        assert!(commit_message(app.world_mut(), agent, message).is_ok());
+    }
+    let before = entries(app.world(), agent);
+    app.world_mut().trigger(RunCommand::new(agent, "compact"));
+    until_ended(&mut app, &wakes, 0);
+
+    assert_eq!(entries(app.world(), agent), before);
+    assert_eq!(sent(&summarizer).len() + sent(&model).len(), 0);
+    let notices = &app.world().resource::<Collected<Notice>>().0;
+    let refused = "nothing comes before the user's last 3 messages";
+    assert!(
+        notices.iter().any(|notice| notice.text.contains(refused)),
+        "{notices:?}"
+    );
+}
+
 /// The agent's entries, oldest first.
 fn entries(world: &World, agent: Entity) -> Vec<Entry> {
     let conversation = world.get::<Conversation>(agent);
@@ -483,9 +523,8 @@ fn entries(world: &World, agent: Entity) -> Vec<Entry> {
 }
 
 /// A compaction only ever replaces the messages before the ones kept by a summary: the kept
-/// messages stay the entries they were, an image among them, fewer of them stay only where
-/// nothing comes before them, and a compaction that is refused, or whose summary comes back after
-/// the conversation changed, changes nothing.
+/// messages stay the entries they were, an image among them, and a compaction that is refused,
+/// or whose summary comes back after the conversation changed, changes nothing.
 #[test]
 fn kept_messages_stay_the_entries_they_were_and_a_failed_compaction_changes_nothing() {
     let (mut app, wakes) = app_on(&MemoryStore::default());
@@ -494,7 +533,6 @@ fn kept_messages_stay_the_entries_they_were_and_a_failed_compaction_changes_noth
     let summarizer = MockCompletionModel::from_stream_turns([
         reply(&template("FIRST-SUMMARY")),
         reply(&template("SECOND-SUMMARY")),
-        reply(&template("THIRD-SUMMARY")),
     ]);
     /// Rewrites the first entry while a summary is reviewed, once switched on.
     #[derive(Resource, Default)]
@@ -563,20 +601,10 @@ fn kept_messages_stay_the_entries_they_were_and_a_failed_compaction_changes_noth
     );
     assert!(!json.contains(&says(1)), "{json}");
 
-    // Nothing comes before the two kept messages now: the newest one stays.
-    compact(&mut app);
-    let after = entries(app.world(), agent);
-    let json = serde_json::to_string(&after).unwrap_or_default();
-    assert!(
-        json.contains("SECOND-SUMMARY") && !json.contains(&says(2)),
-        "{json}"
-    );
-    assert!(json.contains(&says(3)), "{json}");
-
-    // Nothing comes before the newest one: refused, nothing changes.
+    // Nothing comes before the two kept messages now: refused, nothing changes.
     compact(&mut app);
     assert_eq!(entries(app.world(), agent), after);
-    assert_eq!(sent(&summarizer).len(), 2);
+    assert_eq!(sent(&summarizer).len(), 1);
 
     // A summary whose messages changed while it was written goes in nowhere.
     say(&mut app, &wakes, agent, &says(4));
@@ -584,13 +612,13 @@ fn kept_messages_stay_the_entries_they_were_and_a_failed_compaction_changes_noth
     app.world_mut().resource_mut::<EditMeanwhile>().0 = true;
     compact(&mut app);
     let after = entries(app.world(), agent);
-    assert_eq!(sent(&summarizer).len(), 3);
+    assert_eq!(sent(&summarizer).len(), 2);
     let ids = |entries: &[Entry]| -> Vec<_> { entries.iter().map(|entry| entry.id).collect() };
     assert_eq!(ids(&after), ids(&before));
     assert_eq!(after.get(1..), before.get(1..));
     let json = serde_json::to_string(&after).unwrap_or_default();
     assert!(
-        json.contains("edited meanwhile") && !json.contains("THIRD-SUMMARY"),
+        json.contains("edited meanwhile") && !json.contains("SECOND-SUMMARY"),
         "{json}"
     );
     let notices = &app.world().resource::<Collected<Notice>>().0;
