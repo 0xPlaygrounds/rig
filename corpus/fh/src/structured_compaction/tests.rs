@@ -400,6 +400,50 @@ fn an_overflow_with_few_prompts_and_long_tool_output_is_answered() {
     );
 }
 
+/// A session of one prompt and many long tool results whose next request is refused as too long
+/// fails the turn with a notice saying why: nothing comes before the user's only message, which
+/// is never summarized, so no summary is asked for and the conversation stays as it was.
+#[test]
+fn an_overflow_with_one_prompt_fails_the_turn_and_changes_nothing() {
+    let (mut app, wakes) = app_on(&MemoryStore::default());
+    let mut script = Vec::new();
+    for call in 1..=4 {
+        let path = serde_json::json!({ "path": format!("big/f{call}.rs") });
+        script.push(calls(&format!("c{call}"), "read", path));
+    }
+    script.push(too_long());
+    let model = MockCompletionModel::from_stream_turns(script);
+    let summarizer = MockCompletionModel::from_stream_turns([reply(&template("UNUSED"))]);
+    let agent = agent_with_defaults(&mut app, (&model, &summarizer));
+    assert!(agent.is_some(), "an agent");
+    let Some(agent) = agent else {
+        return;
+    };
+    say(&mut app, &wakes, agent, "Fix the build.");
+
+    let notices = &app.world().resource::<Collected<Notice>>().0;
+    let ended = &app.world().resource::<Ended>().0;
+    assert!(
+        matches!(ended.as_slice(), [outcome] if !matches!(outcome, TurnOutcome::Answered(_))),
+        "{ended:?} {notices:?}"
+    );
+    let failed = |text: &str| {
+        text.starts_with("Context overflow recovery failed")
+            && text.contains("nothing comes before")
+    };
+    assert!(
+        notices.iter().any(|notice| failed(&notice.text)),
+        "{notices:?}"
+    );
+    assert!(sent(&summarizer).is_empty() && sent(&model).len() == 5);
+    let entries = entries(app.world(), agent);
+    let first = entries.first().and_then(|entry| entry.message.rag_text());
+    assert_eq!(first.as_deref(), Some("Fix the build."));
+    assert_eq!(entries.len(), 9, "the prompt, four calls and their results");
+    let summary = Some(rig_memory::summary_author());
+    assert!(entries.iter().all(|entry| entry.author != summary));
+}
+
 /// A `/compact` of a conversation of one message of the user's, with an image, and a long reply
 /// is refused: the user's only message is never summarized, and nothing changes.
 #[test]
