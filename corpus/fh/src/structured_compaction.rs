@@ -4,10 +4,10 @@
 //! `[compact]` table of `RIG_HOME/settings.toml` names (else the agent's own). Everything before
 //! the oldest of the user's last [`StructuredCompaction::keep_user_messages`] messages is
 //! summarized; those messages and all that follows them stay in the conversation as they are,
-//! attachments, tool calls and results included. With nothing before them, fewer are kept, the
-//! newest at least; with nothing before that one either, the compaction is refused with a
-//! notice. A summary that fails or lacks a heading is asked for once more, then the agent's model
-//! writes the default summary of the same messages, with a notice.
+//! attachments, tool calls and results included. With nothing before them, the compaction is
+//! refused with a notice; after an overflow, fewer are kept first, the newest at least. A summary
+//! that fails or lacks a heading is asked for once more, then the agent's model writes the
+//! default summary of the same messages, with a notice.
 //!
 //! It replaces the requests of `rig_basics::compaction`'s summary calls ([`Summarizing`]) with its
 //! own. In the terminal view the summary is a "Summary" entry.
@@ -174,8 +174,9 @@ pub fn has_headings(text: &str) -> bool {
 
 /// The first summary call of a compaction of `conversation` for `reason` that keeps the user's
 /// last `keep` messages, each with all that follows it; where a tool exchange spans the oldest,
-/// from the nearest of the user's messages before it; where nothing comes before them, as many as
-/// can be kept, the newest one at least. `None` when even that one has nothing before it.
+/// from the nearest of the user's messages before it. Where nothing comes before them, after an
+/// overflow as many as can be kept, the newest one at least. `None` when nothing may be
+/// summarized.
 fn plan_kept(
     conversation: &Conversation,
     reason: &CompactReason,
@@ -187,6 +188,7 @@ fn plan_kept(
     let typed: Vec<usize> = typed.map(|entry| entry.index).collect();
     let (before, kept) = typed.split_at_checked(typed.len().saturating_sub(keep.max(1)))?;
     let (oldest, later) = kept.split_first()?;
+    let later = later.iter().filter(|_| *reason == CompactReason::Overflow);
     let mut cuts = std::iter::once(oldest)
         .chain(before.iter().rev())
         .chain(later);
@@ -195,9 +197,9 @@ fn plan_kept(
 
 /// Plans each summary call `rig_basics::compaction` admits again, cut before the user's last
 /// messages ([`plan_kept`]), in the template, for the configured model's window, and sends it
-/// there; one it cannot plan, of a compaction that had something to summarize, is refused, so the
-/// user's newest message is never summarized. The fallback asks the agent's model for the
-/// default summary of the same messages.
+/// there; one it cannot plan, of a compaction that had something to summarize, is refused, so
+/// none of the kept messages is summarized. The fallback asks the agent's model for the default
+/// summary of the same messages.
 fn structure(
     mut calls: Query<
         (
@@ -238,8 +240,14 @@ fn structure(
                 };
                 let keep = config.keep_user_messages;
                 let planned = plan_kept(conversation, &summarizing.reason, keep);
-                let planned = planned.ok_or_else(|| {
-                    "nothing comes before the user's last message to summarize".to_owned()
+                let planned = planned.ok_or_else(|| match summarizing.reason {
+                    CompactReason::Overflow => {
+                        "nothing comes before the user's last message to summarize".to_owned()
+                    }
+                    _ => format!(
+                        "nothing comes before the user's last {} messages",
+                        keep.max(1)
+                    ),
                 });
                 let request = planned.and_then(|planned| {
                     let request = template_request(&planned, spec);
