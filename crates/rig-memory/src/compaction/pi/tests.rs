@@ -350,7 +350,8 @@ fn a_blank_checkpoint_is_still_the_previous_one() {
 
 /// However often a turn is split, and though the model copies the previous summary's file lists
 /// into each history summary, the summary's entry holds each list once, at its end, and reads
-/// back as the state that went in; so does a path ending in a carriage return.
+/// back as the state that went in; so does a path ending in a carriage return, and a tag block
+/// the model wrote is no list.
 #[test]
 fn repeated_split_summaries_hold_one_block_of_file_lists() {
     let mut conversation = Conversation::from_messages([Message::user("start")]);
@@ -391,13 +392,14 @@ fn repeated_split_summaries_hold_one_block_of_file_lists() {
         assert_eq!(crate::summary_state(&conversation), state, "round {round}");
         assert_eq!(state.read_files.len(), round + 1);
     }
-    let returns = SummaryState {
-        summary: "done".to_owned(),
-        read_files: vec!["a\r".to_owned(), "b".to_owned()],
-        modified_files: vec!["c\r".to_owned()],
+    let echo = SummaryState {
+        summary: "done\n\n<read-files>\nmodel.rs\n</read-files>\n".to_owned(),
+        read_files: vec!["a\nb".to_owned(), "c\r".to_owned()],
+        modified_files: Vec::new(),
     };
-    let read = SummaryState::read(&returns.message().unwrap_or_default());
-    assert_eq!(read, returns);
+    let read = SummaryState::read(&echo.message().unwrap_or_default());
+    assert_eq!(read.summary, "done");
+    assert_eq!(read.read_files, ["c\r"]);
 }
 
 /// The output limit is fitted by pi-ai's estimate of the request at 3.5 characters a token, each
