@@ -64,17 +64,19 @@ fn at(text: &str, part: &str) -> usize {
     text.find(part).unwrap_or(usize::MAX)
 }
 
-/// The agent's entries, each with its id, as text.
-fn entries(app: &App, agent: Entity) -> String {
-    let entries = app
-        .world()
-        .get::<Conversation>(agent)
-        .map(|it| it.entries());
-    let entries = entries.into_iter().flatten();
-    format!(
-        "{:?}",
-        entries.map(|it| (it.id, it.message)).collect::<Vec<_>>()
-    )
+/// The agent's entries, oldest first.
+fn entries(app: &App, agent: Entity) -> Vec<Entry> {
+    let conversation = app.world().get::<Conversation>(agent);
+    let all = conversation.map(|it| (0..it.messages().len()).filter_map(|at| it.entry(at)));
+    all.into_iter().flatten().collect()
+}
+
+/// `entries` from the one whose message holds `text` on.
+fn kept_from<'e>(entries: &'e [Entry], text: &str) -> &'e [Entry] {
+    let holds = |entry: &Entry| format!("{:?}", entry.message).contains(text);
+    let from = entries.iter().position(holds);
+    from.and_then(|from| entries.get(from..))
+        .unwrap_or_default()
 }
 
 #[test]
@@ -187,19 +189,24 @@ fn compact_writes_the_template_keeps_the_last_exchanges_and_builds_on_the_last_s
         }
     };
     app.add_observer(edit);
-    let before = seen(&app).replace(&says(4), "edited meanwhile");
+    let before = seen(&app);
     compact(&mut app, "compact");
-    assert!(before.contains("edited meanwhile") && before.contains("aGk="));
-    assert_eq!((seen(&app), sent(&summarizer).len()), (before.clone(), 2));
+    let after = seen(&app);
+    let same = |at: usize| at == 1 || after.get(at) == before.get(at);
+    assert!(after.len() == before.len() && (0..after.len()).all(same));
+    assert_eq!(after.get(1).map(|it| it.id), before.get(1).map(|it| it.id));
+    let text = format!("{after:?}");
+    assert!(text.contains("edited meanwhile") && text.contains("aGk="));
+    assert_eq!(sent(&summarizer).len(), 2);
 
     compact(&mut app, "compact");
     let asked = sent(&summarizer);
     let second = asked.get(2).map(String::as_str).unwrap_or_default();
     assert!(second.contains("<previous-summary>"), "{second}");
     assert!(second.contains("FIRST-SUMMARY"), "{second}");
-    let kept = before.split_once(&says(6)).map(|(_, kept)| kept);
+    let kept = kept_from(&after, &says(6));
     let before = seen(&app);
-    assert!(kept.is_some_and(|kept| kept.contains("aGk=") && before.ends_with(kept)));
+    assert!(format!("{kept:?}").contains("aGk=") && before.ends_with(kept));
     compact(&mut app, "compact");
     assert_eq!((seen(&app), sent(&summarizer).len()), (before, 3));
 
@@ -294,14 +301,10 @@ fn a_summary_without_its_headings_twice_falls_back_and_the_turn_goes_on() {
     let last = requests.last().map(String::as_str).unwrap_or_default();
     assert!(last.contains("DEFAULT-SUMMARY"), "{last}");
     // The kept messages stay the entries they were, their images included.
-    let kept = before
-        .split_once("question 4")
-        .map(|(_, kept)| kept.trim_end_matches(']'));
+    let kept = kept_from(&before, "question 4");
     let after = entries(&app, agent);
-    assert!(
-        kept.is_some_and(|kept| kept.contains("aGk=") && after.contains(kept)),
-        "{after}"
-    );
+    assert!(format!("{kept:?}").contains("aGk="), "{kept:?}");
+    assert_eq!(after.get(1..=kept.len()), Some(kept), "{after:?}");
     let notices = &app.world().resource::<Collected<Notice>>().0;
     assert!(
         notices
