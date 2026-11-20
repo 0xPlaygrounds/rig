@@ -472,8 +472,8 @@ The older messages are then summarized by the model, in a
 separate call, into a structured checkpoint (goal, constraints, progress,
 decisions, next steps, critical context) that requests send in their place,
 followed by the files read and changed. About `keep_recent_tokens` (20000) of
-the newest messages stay as they are, never cut between a tool call and its
-result; when the cut falls inside a turn, that turn's earlier part gets a
+the newest messages stay as they are, a prompt about to be sent counted among
+them, never cut between a tool call and its result; when the cut falls inside a turn, that turn's earlier part gets a
 summary of its own. A later compaction updates the previous summary with the
 new messages. When the provider refuses a request as too long, or the window
 cuts a reply short (it stopped at a limit having written less than the request

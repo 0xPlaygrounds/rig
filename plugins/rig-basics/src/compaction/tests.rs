@@ -446,7 +446,7 @@ fn a_reply_cut_short_by_the_window_compacts_and_is_asked_again() {
 
 /// The usage the provider reported for the last reply decides before the next prompt, however
 /// small the local estimate: 24k reported in a 40k window compacts before the next request goes,
-/// the pending prompt neither counted nor cut; with compaction disabled it does not.
+/// the pending prompt never cut; with compaction disabled it does not.
 #[test]
 fn reported_usage_triggers_a_compaction_before_the_next_request() {
     let measured = vec![
@@ -459,8 +459,12 @@ fn reported_usage_triggers_a_compaction_before_the_next_request() {
             reply("## Goal\nAnswer the questions."),
             reply("second answer"),
         ]);
-        // Keeping 8 tokens keeps the first question and its answer: no turn is split.
-        let (mut app, wakes) = start_with(&MemoryStore::default(), 8, |_| {});
+        // Keeping the tokens of the second question, the first and its answer keeps those: no
+        // turn is split.
+        let second = format!("The second question?{}", " word".repeat(100));
+        let kept = [&*second, "The first question?", "first answer"].map(Message::user);
+        let keep = rig_memory::estimate_tokens(&kept);
+        let (mut app, wakes) = start_with(&MemoryStore::default(), keep, |_| {});
         app.world_mut()
             .resource_mut::<CompactionDefault>()
             .0
@@ -471,7 +475,6 @@ fn reported_usage_triggers_a_compaction_before_the_next_request() {
             return;
         };
         ask(&mut app, &wakes, agent, "The first question?", 1);
-        let second = format!("The second question? {}", "word ".repeat(100));
         ask(&mut app, &wakes, agent, &second, 2);
         let requests = sent(&model);
         match enabled {
@@ -1005,12 +1008,11 @@ fn a_cancelled_or_failed_threshold_summary_sends_the_request_as_it_was() {
 #[test]
 fn overflow_recovery_follows_a_threshold_compaction_and_stops_when_disabled() {
     for enabled in [true, false] {
-        // The question over the keep alone is summarized as the turn's earlier part after the
-        // overflow, as pi does.
+        // The question over the keep alone is all the threshold compaction keeps, and is
+        // summarized as the turn's earlier part after the overflow, as pi does.
         let mut script = vec![
             reply("## Goal\nAnswer the questions."),
             too_long(),
-            reply("## Goal\nAnswer them all."),
             reply("## Original Request\nThe next question."),
             measured("done", 100),
         ];
@@ -1033,7 +1035,7 @@ fn overflow_recovery_follows_a_threshold_compaction_and_stops_when_disabled() {
         match enabled {
             true => {
                 assert_eq!(answer(&app).as_deref(), Some("done"), "{:?}", notices(&app));
-                assert_eq!(sent(&model).len(), 5, "{:?}", notices(&app));
+                assert_eq!(sent(&model).len(), 4, "{:?}", notices(&app));
             }
             false => {
                 assert_eq!(sent(&model).len(), 1, "{:?}", notices(&app));

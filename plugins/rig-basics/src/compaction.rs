@@ -354,7 +354,8 @@ fn anchor(
 
 /// The threshold compaction of `conversation` for a request of `tokens` input tokens, when that
 /// leaves less than the reserve of `spec`'s input limit free; `None` otherwise or with nothing to
-/// summarize. Its messages from `end` on are a pending prompt, which is never cut.
+/// summarize. Its messages from `end` on are a pending prompt, which counts toward the recent
+/// messages kept and is never cut, so a large one leaves less of what came before it.
 fn over_threshold(
     conversation: &Conversation,
     tokens: u64,
@@ -365,10 +366,10 @@ fn over_threshold(
     if !settings.should_compact(tokens, window) {
         return None;
     }
-    let range = (summarized_prefix(conversation), end);
-    let keep = settings.keep_recent_tokens;
-    let first_kept = find_cut_point(conversation.messages(), range, keep, false);
-    Summarizing::plan_at(conversation, first_kept, CompactReason::Threshold)
+    let messages = conversation.messages();
+    let range = (summarized_prefix(conversation), messages.len());
+    let first_kept = find_cut_point(messages, range, settings.keep_recent_tokens, false);
+    Summarizing::plan_at(conversation, first_kept.min(end), CompactReason::Threshold)
 }
 
 /// Before each turn's request, compacts when the request leaves less than the reserve of the
