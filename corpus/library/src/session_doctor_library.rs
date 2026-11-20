@@ -22,12 +22,12 @@ use std::sync::Arc;
 
 use rig_core::conversation::{Aside, AsideId, Conversation, TURN};
 use rig_core::message::Message;
-use rig_memory::{COMPACTED, DirStore, Repair, Session, SessionError, Store, Writer};
+use rig_memory::{DirStore, Repair, Session, SessionError, Store, Writer};
 use serde::Serialize;
 
 /// The aside kinds rig's library crates define; any other is unknown to
 /// them.
-const KNOWN: [&str; 2] = [TURN, COMPACTED];
+const KNOWN: [&str; 1] = [TURN];
 
 /// What a saved session is to this build of the library.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]

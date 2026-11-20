@@ -40,7 +40,7 @@ use rig_core::conversation::Conversation;
 use rig_core::message::{StopReason, ToolResultContent, UserContent};
 use serde::{Deserialize, Serialize};
 
-use super::summarized_prefix;
+use super::{SummaryState, summarized_prefix};
 
 /// When compaction runs and how much it keeps: `[compaction]` in settings.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -225,41 +225,34 @@ fn cut_points(messages: &[Arc<Message>]) -> Vec<bool> {
     allowed
 }
 
-/// Where a compaction cuts ([`find_cut_point`]).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct CutPoint {
-    /// The index of the first message kept.
-    pub first_kept: usize,
-    /// When the cut splits a turn (it keeps from a reply), the index of the message that started
-    /// that turn.
-    pub turn_start: Option<usize>,
+/// Whether a compaction of `messages` may keep from index `at`: from a message outside every
+/// tool exchange that is no tool result, or from the end, keeping none.
+pub(crate) fn may_keep_from(messages: &[Arc<Message>], at: usize) -> bool {
+    at == messages.len() || cut_points(messages).get(at) == Some(&true)
 }
 
-/// The cut of `messages[start..end]` that keeps about `keep_recent_tokens`: walking back from the
-/// newest message until that many are counted, it cuts at the nearest message at or after that
-/// point that is no tool result and lies outside every tool exchange. Cut at a reply, its results
-/// stay after it, and the turn it is part of is split. With nothing to cut at, it keeps from
-/// `start`. After an overflow (`overflowed`), a last message over the budget alone is summarized
-/// too, as the turn's earlier part, since sending it again would overflow again.
+/// The index of the first message kept by the cut of `messages[start..end]` that keeps about
+/// `keep_recent_tokens`: walking back from the newest message until that many are counted, it
+/// cuts at the nearest message at or after that point that is no tool result and lies outside
+/// every tool exchange. Cut at a reply, its results stay after it, and the turn it is part of is
+/// split. With nothing to cut at, it keeps from `start`. After an overflow (`overflowed`), a last
+/// message over the budget alone is summarized too, as the turn's earlier part, since sending it
+/// again would overflow again.
 pub fn find_cut_point(
     messages: &[Arc<Message>],
     (start, end): (usize, usize),
     keep_recent_tokens: u64,
     overflowed: bool,
-) -> CutPoint {
+) -> usize {
     let end = end.min(messages.len());
     let allowed = cut_points(messages);
     let cut_points: Vec<usize> = (start..end)
         .filter(|&at| allowed.get(at).copied().unwrap_or(false))
         .collect();
     let Some(&first) = cut_points.first() else {
-        return CutPoint {
-            first_kept: start,
-            turn_start: None,
-        };
+        return start;
     };
     let mut cut = first;
-    let mut exceeded = false;
     let mut accumulated = 0u64;
     for at in (start..end).rev() {
         let tokens = messages
@@ -270,7 +263,6 @@ pub fn find_cut_point(
         }
         accumulated = accumulated.saturating_add(tokens);
         if accumulated >= keep_recent_tokens {
-            exceeded = true;
             // Trailing tool results over the budget keep the reply that called them.
             cut = cut_points
                 .iter()
@@ -278,30 +270,21 @@ pub fn find_cut_point(
                 .find(|&candidate| candidate >= at)
                 .or(cut_points.last().copied())
                 .unwrap_or(first);
+            if overflowed && cut.saturating_add(1) == end {
+                cut = end;
+            }
             break;
         }
     }
-    if overflowed && exceeded && cut.saturating_add(1) == end {
-        cut = end;
-    }
-    let starts_turn = messages
-        .get(cut)
-        .is_some_and(|message| is_turn_start(message));
-    let turn_start = if starts_turn {
-        None
-    } else {
-        (start..cut.min(end.saturating_sub(1)).saturating_add(1))
-            .rev()
-            .find(|&at| {
-                messages
-                    .get(at)
-                    .is_some_and(|message| is_turn_start(message))
-            })
-    };
-    CutPoint {
-        first_kept: cut,
-        turn_start,
-    }
+    cut
+}
+
+/// When keeping from `first_kept` splits a turn (it keeps from a reply, or nothing of the last
+/// turn), the index of the message that started that turn, at or after `start`.
+fn split_turn_start(messages: &[Arc<Message>], start: usize, first_kept: usize) -> Option<usize> {
+    let starts = |at: usize| messages.get(at).is_some_and(|it| is_turn_start(it));
+    let last = messages.len().checked_sub(1)?;
+    (!starts(first_kept)).then(|| (start..=first_kept.min(last)).rev().find(|&at| starts(at)))?
 }
 
 /// A compaction ready to summarize ([`prepare_compaction`]).
@@ -314,9 +297,9 @@ pub struct CompactionPreparation {
     pub to_summarize: Vec<Arc<Message>>,
     /// When the cut splits a turn, that turn's messages before the cut, summarized apart.
     pub turn_prefix: Vec<Arc<Message>>,
-    /// The newest compaction's summary and file lists, as the update prompt sends it verbatim, an
-    /// empty one included, as pi keeps it; `None` before the first compaction.
-    pub previous: Option<String>,
+    /// The newest compaction's state, an empty one included, as pi keeps it; `None` before the
+    /// first compaction.
+    pub previous: Option<SummaryState>,
     /// The files read and not changed, and the files changed, by every summarized message and
     /// earlier compaction.
     pub files: FileLists,
@@ -347,48 +330,41 @@ pub fn prepare_compaction(
     }
     let messages = conversation.messages();
     let range = (summarized_prefix(conversation), messages.len());
-    let cut = find_cut_point(messages, range, keep_recent_tokens, overflowed);
-    prepare_compaction_at(conversation, cut)
+    let first_kept = find_cut_point(messages, range, keep_recent_tokens, overflowed);
+    prepare_compaction_at(conversation, first_kept)
 }
 
-/// What a compaction of `conversation` cut at `cut` summarizes, or `None` when nothing would be:
-/// the messages after the earlier summaries and before the cut (or before the split turn's start),
-/// and a split turn's earlier part.
+/// What a compaction of `conversation` that keeps from message `first_kept` summarizes: the
+/// messages after the earlier summaries and before it (or before the start of the turn it
+/// splits), and a split turn's earlier part. `None` when `first_kept` replaces no message after
+/// the earlier summaries, lies past the end, or would keep a tool result without its call.
 pub fn prepare_compaction_at(
     conversation: &Conversation,
-    cut: CutPoint,
+    first_kept: usize,
 ) -> Option<CompactionPreparation> {
     let messages = conversation.messages();
     let start = summarized_prefix(conversation);
-    let history_end = cut.turn_start.unwrap_or(cut.first_kept);
-    let to_summarize = messages
-        .get(start..history_end)
-        .unwrap_or_default()
-        .to_vec();
-    let turn_prefix = match cut.turn_start {
-        Some(turn_start) => messages
-            .get(turn_start..cut.first_kept)
-            .unwrap_or_default()
-            .to_vec(),
-        None => Vec::new(),
-    };
-    if to_summarize.is_empty() && turn_prefix.is_empty() {
+    if first_kept <= start || !may_keep_from(messages, first_kept) {
         return None;
     }
-    let state = super::summary_state(conversation);
+    let turn_start = split_turn_start(messages, start, first_kept);
+    let to_summarize = messages.get(start..turn_start.unwrap_or(first_kept))?;
+    let turn_prefix = turn_start.and_then(|turn_start| messages.get(turn_start..first_kept));
+    let turn_prefix = turn_prefix.unwrap_or_default();
+    let previous = (start > 0).then(|| super::summary_state(conversation));
     let mut ops = FileOperations::default();
-    ops.read.extend(state.read_files.iter().cloned());
-    ops.edited.extend(state.modified_files.iter().cloned());
-    for message in to_summarize.iter().chain(&turn_prefix) {
+    if let Some(state) = &previous {
+        ops.read.extend(state.read_files.iter().cloned());
+        ops.edited.extend(state.modified_files.iter().cloned());
+    }
+    for message in to_summarize.iter().chain(turn_prefix) {
         ops.extract(message);
     }
     Some(CompactionPreparation {
-        replaces: messages.get(..cut.first_kept).unwrap_or_default().to_vec(),
-        to_summarize,
-        turn_prefix,
-        previous: super::Compacted::of(conversation)
-            .last()
-            .map(|(_, compacted)| compacted.state.with_files()),
+        replaces: messages.get(..first_kept)?.to_vec(),
+        to_summarize: to_summarize.to_vec(),
+        turn_prefix: turn_prefix.to_vec(),
+        previous,
         files: ops.lists(),
     })
 }
@@ -413,7 +389,7 @@ impl FileOperations {
                 .arguments
                 .get("path")
                 .and_then(|path| path.as_str())
-                .filter(|path| !path.is_empty())
+                .filter(|path| is_listed(path))
             else {
                 continue;
             };
@@ -442,25 +418,57 @@ impl FileOperations {
     }
 }
 
+/// Whether a file list holds `path`: not an empty one, and not one over several lines, which
+/// would read back as several.
+fn is_listed(path: &str) -> bool {
+    !path.is_empty() && !path.contains('\n')
+}
+
 /// The file lists as tags after a summary, or nothing when both are empty.
 pub(crate) fn format_file_operations(read_files: &[String], modified_files: &[String]) -> String {
-    let mut sections = Vec::new();
-    if !read_files.is_empty() {
-        sections.push(format!(
-            "<read-files>\n{}\n</read-files>",
-            read_files.join("\n")
-        ));
+    let lists = [
+        ("read-files", read_files),
+        ("modified-files", modified_files),
+    ];
+    let mut text = String::new();
+    for (tag, files) in lists {
+        let files: Vec<&str> = files.iter().map(String::as_str).collect();
+        let files: Vec<&str> = files.into_iter().filter(|path| is_listed(path)).collect();
+        if !files.is_empty() {
+            text.push_str(&format!("\n\n<{tag}>\n{}\n</{tag}>", files.join("\n")));
+        }
     }
-    if !modified_files.is_empty() {
-        sections.push(format!(
-            "<modified-files>\n{}\n</modified-files>",
-            modified_files.join("\n")
-        ));
+    text
+}
+
+/// `body` without the file list tagged `tag` that [`format_file_operations`] put at its end, and
+/// that list; all of `body` and no files when it ends in none.
+pub(crate) fn take_file_list<'t>(body: &'t str, tag: &str) -> (&'t str, Vec<String>) {
+    let (open, close) = (format!("\n\n<{tag}>\n"), format!("\n</{tag}>"));
+    let listed = body.strip_suffix(close.as_str());
+    match listed.and_then(|listed| listed.rsplit_once(open.as_str())) {
+        Some((rest, files)) => (rest, files.split('\n').map(str::to_owned).collect()),
+        None => (body, Vec::new()),
     }
-    if sections.is_empty() {
-        return String::new();
+}
+
+/// `summary` without the file lists a model wrote at its end, as one that copies the previous
+/// summary's does: rig lists the files itself, from the tool calls.
+pub(crate) fn without_file_lists(summary: &str) -> &str {
+    let mut text = summary;
+    loop {
+        let end = text.trim_end();
+        let tagged = ["read-files", "modified-files"]
+            .into_iter()
+            .find_map(|tag| {
+                let listed = end.strip_suffix(&format!("</{tag}>"))?;
+                listed.rfind(&format!("<{tag}>"))
+            });
+        match tagged.and_then(|at| end.get(..at)) {
+            Some(before) => text = before.trim_end(),
+            None => return text,
+        }
     }
-    format!("\n\n{}", sections.join("\n\n"))
 }
 
 /// The most characters of a tool result a summary request shows.
@@ -734,20 +742,20 @@ fn with_focus(prompt: &str, instructions: &str) -> String {
 }
 
 /// The request for the history summary of `messages` to `spec` with the `reasoning` effort,
-/// updating `previous` (the newest summary, with its file lists) when there is one, focused on
-/// `instructions`.
+/// updating `previous` (the newest summary, sent with its file lists) when it holds anything,
+/// focused on `instructions`.
 ///
 /// # Errors
 ///
 /// As [`summarization_request`].
 pub fn summary_request(
     messages: &[impl Borrow<Message>],
-    (previous, instructions): (Option<&str>, &str),
+    (previous, instructions): (Option<&SummaryState>, &str),
     spec: &ModelSpec,
     reasoning: Option<Reasoning>,
 ) -> Result<CompletionRequest, UnsupportedOption> {
     // An empty previous summary reads as none, as pi's `if (previousSummary)` reads it.
-    let previous = previous.filter(|text| !text.is_empty());
+    let previous = previous.and_then(SummaryState::previous_summary);
     let base = match previous {
         Some(_) => UPDATE_SUMMARIZATION_PROMPT,
         None => SUMMARIZATION_PROMPT,
@@ -786,13 +794,17 @@ pub fn turn_prefix_request(
 }
 
 /// The history summary when a split turn's earlier part has no messages of its own to summarize:
-/// the previous summary, or a note that there is none.
-pub fn no_history(previous: Option<&str>) -> String {
-    previous.unwrap_or("No prior history.").to_owned()
+/// the previous summary without its file lists, or a note that there is none.
+pub fn no_history(previous: Option<&SummaryState>) -> String {
+    previous
+        .map_or("No prior history.", |state| &state.summary)
+        .to_owned()
 }
 
-/// One summary of a split turn: the `history` summary, then its earlier part's `prefix`.
+/// One summary of a split turn: the `history` summary, without file lists a model wrote at its
+/// end, then its earlier part's `prefix`.
 pub fn merge_split_turn(history: &str, prefix: &str) -> String {
+    let history = without_file_lists(history);
     format!("{history}\n\n---\n\n**Turn Context (split turn):**\n\n{prefix}")
 }
 

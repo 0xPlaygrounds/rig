@@ -1,8 +1,9 @@
 //! Compaction: keeps each agent's conversation inside its model's input limit by summarizing its
 //! older messages, as the pi coding agent does. When enabled, it checks the context against
-//! `[compaction] reserve_tokens` of the model's input limit before each request of a turn: before
-//! a prompt is sent (the context before it) and after tool results. After a request refused as
-//! too long, or a reply the window cut short, it compacts and sends the request again, once.
+//! `[compaction] reserve_tokens` of the model's input limit before each request of a turn, the
+//! request as it goes: before a prompt is sent (the prompt counted, never summarized) and after
+//! tool results. After a request refused as too long, or a reply the window cut short, it
+//! compacts and sends the request again, once.
 //! `/compact [instructions]` compacts at once.
 //!
 //! A compaction keeps about `keep_recent_tokens` of the newest messages, never cutting between a
@@ -28,7 +29,6 @@ use rig_harness::AppKeepsExt;
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::settings::AppSettingsExt;
 use rig_harness::{PluginEntity, ProvidedBy};
-pub use rig_memory::CutPoint;
 use rig_memory::{
     CompactionPreparation, CompactionSettings, SummaryFailure, SummaryState, already_compacted,
     apply_summary, clamp_max_tokens, estimate_tokens, find_cut_point, merge_split_turn, no_history,
@@ -156,9 +156,9 @@ pub struct Summarizing {
     pub replaces: Arc<[Arc<completion::Message>]>,
     /// The state the summary goes into: its files; the summary is written in once it is taken.
     pub state: SummaryState,
-    /// The newest compaction's summary and file lists, which the update prompt sends verbatim;
-    /// `None` before the first compaction.
-    pub previous: Option<String>,
+    /// The newest compaction's state, which the update prompt sends with its file lists; `None`
+    /// before the first compaction.
+    pub previous: Option<SummaryState>,
     /// The messages this call summarizes.
     pub messages: Arc<[Arc<completion::Message>]>,
     /// The earlier part of a turn the cut splits, summarized by the next call.
@@ -184,14 +184,16 @@ impl Summarizing {
         Some(Self::of(prepared, reason))
     }
 
-    /// The first summary call of a compaction of `conversation` for `reason` cut at `cut`, as a
-    /// plugin that cuts its own way plans it; `None` when nothing would be summarized.
+    /// The first summary call of a compaction of `conversation` for `reason` that keeps from
+    /// message `first_kept`, as a plugin that cuts its own way plans it; `None` when nothing
+    /// would be summarized or a tool result would be kept without its call
+    /// ([`prepare_compaction_at`]).
     pub fn plan_at(
         conversation: &rig_core::conversation::Conversation,
-        cut: CutPoint,
+        first_kept: usize,
         reason: CompactReason,
     ) -> Option<Self> {
-        let prepared = prepare_compaction_at(conversation, cut)?;
+        let prepared = prepare_compaction_at(conversation, first_kept)?;
         Some(Self::of(prepared, reason))
     }
 
@@ -207,7 +209,7 @@ impl Summarizing {
             true => (
                 prepared.turn_prefix,
                 None,
-                Some(no_history(previous.as_deref())),
+                Some(no_history(previous.as_ref())),
             ),
             false => {
                 let prefix =
@@ -264,7 +266,7 @@ impl Summarizing {
         match self.history {
             Some(_) => turn_prefix_request(&self.messages, focus, spec, reasoning),
             None => {
-                let previous = (self.previous.as_deref(), focus);
+                let previous = (self.previous.as_ref(), focus);
                 summary_request(&self.messages, previous, spec, reasoning)
             }
         }
@@ -350,49 +352,35 @@ fn anchor(
         .then_some((tokens, at))
 }
 
-/// The context tokens of `history`'s first `end` messages as pi's compaction counts them: the
-/// [`anchor`] plus an estimate of the messages after it, else an estimate of the messages alone.
-fn context_tokens(
-    history: &rig_core::conversation::Conversation,
-    measure: (&LastUsage, Option<&ContextStale>),
-    end: usize,
-) -> u64 {
-    let messages = history.messages().get(..end).unwrap_or_default();
-    match anchor(history, measure).filter(|&(_, at)| at < end) {
-        Some((tokens, at)) => {
-            let after = messages.get(at.saturating_add(1)..).unwrap_or_default();
-            tokens.saturating_add(estimate_tokens(after))
-        }
-        None => estimate_tokens(messages),
-    }
-}
-
-/// The threshold compaction of `conversation`, whose messages from `end` on are a pending prompt
-/// that is neither counted nor cut, when its context leaves less than the reserve of `spec`'s
-/// input limit free; `None` otherwise or with nothing to summarize.
+/// The threshold compaction of `conversation` for a request of `tokens` input tokens, when that
+/// leaves less than the reserve of `spec`'s input limit free; `None` otherwise or with nothing to
+/// summarize. Its messages from `end` on are a pending prompt, which counts toward the recent
+/// messages kept and is never cut, so a large one leaves less of what came before it.
 fn over_threshold(
     conversation: &Conversation,
-    measure: (&LastUsage, Option<&ContextStale>),
+    tokens: u64,
     (settings, spec): (&CompactionSettings, &ModelSpec),
     end: usize,
 ) -> Option<Summarizing> {
     let window = u64::from(spec.input_limit()?);
-    let tokens = context_tokens(conversation, measure, end);
     if !settings.should_compact(tokens, window) {
         return None;
     }
     let messages = conversation.messages();
-    let start = summarized_prefix(conversation);
-    let cut = find_cut_point(messages, (start, end), settings.keep_recent_tokens, false);
-    Summarizing::plan_at(conversation, cut, CompactReason::Threshold)
+    let range = (summarized_prefix(conversation), messages.len());
+    let first_kept = find_cut_point(messages, range, settings.keep_recent_tokens, false);
+    Summarizing::plan_at(conversation, first_kept.min(end), CompactReason::Threshold)
 }
 
-/// Before each turn's request, compacts when the context leaves less than the reserve of the
-/// input limit of the model it goes to free, as pi checks before a prompt (the context before it,
-/// the prompt neither counted nor cut) and before each request after tool results: the request is
-/// held, and built again once the summary is in. A request compacted for already, or whose
-/// compaction failed, goes as it is ([`Tried`]). A request that goes asks for at most the room its
-/// input leaves in the window, by pi-ai's estimate and clamp.
+/// Before each turn's request, compacts when the request leaves less than the reserve of the
+/// input limit of the model it goes to free, before a prompt (which is counted and never cut) and
+/// before each request after tool results: the request is held, and built again once the summary
+/// is in. A request compacted for already, or whose compaction failed, goes as it is ([`Tried`]).
+/// A request that goes asks for at most the room its input leaves in the window, by pi-ai's
+/// clamp. Both go by one count of the request as it is sent, by pi-ai's estimate: its system
+/// prompt, tools and the history it sends, or the tokens last reported for that history plus an
+/// estimate of the messages since ([`anchor`]). pi's own threshold leaves a pending prompt out. A
+/// request a plugin brought whole, which sends no history of the agent's, is only clamped.
 fn compact_near_the_window(
     mut calls: Query<
         (Entity, &mut ModelRequest, &Adapted, &CallOf, &ForAgent),
@@ -431,9 +419,25 @@ fn compact_near_the_window(
                     .any(|message| matches!(&**message, completion::Message::Assistant(_)))
             })
             .unwrap_or(messages.len());
-        let measure = (last, stale);
+        let prompt = model.prompt.as_ref().map(|prompt| prompt.text());
+        let tools = spec
+            .tools
+            .then(|| serde_json::to_string(&model.request.tools).ok())
+            .flatten()
+            .filter(|_| !model.request.tools.is_empty());
+        let parts = (prompt.as_deref(), tools.as_deref());
+        // What Start sends: the call's own history, else the request's, which has no ids to
+        // anchor a reported count to.
+        let input = match &model.history {
+            Some(history) => {
+                request_tokens(parts, history.messages(), anchor(history, (last, stale)))
+            }
+            None => request_tokens(parts, &model.request.chat_history, None),
+        };
+        // A summary of the conversation shortens only a request that sends it.
         if !tried.threshold
-            && let Some(summarizing) = over_threshold(conversation, measure, (&settings, spec), end)
+            && model.history.is_some()
+            && let Some(summarizing) = over_threshold(conversation, input, (&settings, spec), end)
         {
             let route = (
                 model.connection.clone(),
@@ -454,18 +458,6 @@ fn compact_near_the_window(
             .max_tokens
             .or(spec.output_limit().map(u64::from));
         if let Some(asked) = asked {
-            let prompt = model.prompt.as_ref().map(|prompt| prompt.text());
-            let tools = spec
-                .tools
-                .then(|| serde_json::to_string(&model.request.tools).ok())
-                .flatten()
-                .filter(|_| !model.request.tools.is_empty());
-            let history = model.history.as_ref().unwrap_or(conversation);
-            let input = request_tokens(
-                (prompt.as_deref(), tools.as_deref()),
-                history.messages(),
-                anchor(history, measure),
-            );
             let fitted = clamp_max_tokens(spec, input, asked);
             commands.entity(call).try_insert(Asked(asked));
             if model.request.max_tokens != Some(fitted) {
@@ -911,13 +903,13 @@ fn take_summary(
             ..summarizing.state.clone()
         };
         #[cfg(feature = "tui")]
-        let before = tui::Before::of(&conversation, end);
+        let taken = (0..end).filter_map(|at| conversation.entry(at)).collect();
         let spliced = apply_summary(&mut conversation, &summarizing.replaces, &state);
         let spliced = spliced.ok_or_else(|| {
             NotTaken::Failed("the messages it summarized changed meanwhile".to_owned())
         })?;
         #[cfg(feature = "tui")]
-        before.keep(&mut commands, agent, &spliced);
+        tui::keep(&mut commands, agent, &spliced, taken);
         let _ = spliced;
         Ok((older, kept))
     });

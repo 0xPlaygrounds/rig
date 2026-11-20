@@ -446,7 +446,7 @@ fn a_reply_cut_short_by_the_window_compacts_and_is_asked_again() {
 
 /// The usage the provider reported for the last reply decides before the next prompt, however
 /// small the local estimate: 24k reported in a 40k window compacts before the next request goes,
-/// the pending prompt neither counted nor cut; with compaction disabled it does not.
+/// the pending prompt never cut; with compaction disabled it does not.
 #[test]
 fn reported_usage_triggers_a_compaction_before_the_next_request() {
     let measured = vec![
@@ -459,8 +459,11 @@ fn reported_usage_triggers_a_compaction_before_the_next_request() {
             reply("## Goal\nAnswer the questions."),
             reply("second answer"),
         ]);
-        // Keeping 8 tokens keeps the first question and its answer: no turn is split.
-        let (mut app, wakes) = start_with(&MemoryStore::default(), 8, |_| {});
+        // Keeping the second question, the first and its answer: no turn is split.
+        let second = format!("The second question?{}", " word".repeat(100));
+        let kept = [&*second, "The first question?", "first answer"].map(Message::user);
+        let keep = rig_memory::estimate_tokens(&kept);
+        let (mut app, wakes) = start_with(&MemoryStore::default(), keep, |_| {});
         app.world_mut()
             .resource_mut::<CompactionDefault>()
             .0
@@ -471,7 +474,6 @@ fn reported_usage_triggers_a_compaction_before_the_next_request() {
             return;
         };
         ask(&mut app, &wakes, agent, "The first question?", 1);
-        let second = format!("The second question? {}", "word ".repeat(100));
         ask(&mut app, &wakes, agent, &second, 2);
         let requests = sent(&model);
         match enabled {
@@ -1005,12 +1007,11 @@ fn a_cancelled_or_failed_threshold_summary_sends_the_request_as_it_was() {
 #[test]
 fn overflow_recovery_follows_a_threshold_compaction_and_stops_when_disabled() {
     for enabled in [true, false] {
-        // The question over the keep alone is summarized as the turn's earlier part after the
-        // overflow, as pi does.
+        // The question over the keep alone is all the threshold compaction keeps, and is
+        // summarized as the turn's earlier part after the overflow, as pi does.
         let mut script = vec![
             reply("## Goal\nAnswer the questions."),
             too_long(),
-            reply("## Goal\nAnswer them all."),
             reply("## Original Request\nThe next question."),
             measured("done", 100),
         ];
@@ -1033,7 +1034,7 @@ fn overflow_recovery_follows_a_threshold_compaction_and_stops_when_disabled() {
         match enabled {
             true => {
                 assert_eq!(answer(&app).as_deref(), Some("done"), "{:?}", notices(&app));
-                assert_eq!(sent(&model).len(), 5, "{:?}", notices(&app));
+                assert_eq!(sent(&model).len(), 4, "{:?}", notices(&app));
             }
             false => {
                 assert_eq!(sent(&model).len(), 1, "{:?}", notices(&app));
@@ -1282,23 +1283,48 @@ fn a_reply_cut_short_is_dropped_when_recovery_does_not_go_through() {
     }
 }
 
-/// Before a prompt, the prompt itself is neither counted nor cut, also when the conversation ends
-/// in a tool result kept from a turn that stopped: a 30k prompt after a short history in a 40k
-/// window goes without a summary.
+/// A prompt that takes the request over the window compacts before it is sent, though the
+/// history before it fits the default budget of recent messages: the prompt counts toward what is
+/// kept, a paste larger than the budget and a message of the size of the earlier ones alike.
 #[test]
-fn the_pending_prompt_is_not_counted_after_a_kept_tool_result() {
-    let model = MockCompletionModel::from_stream_turns([measured("done", 100)]);
-    let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |_| {});
-    let mut messages = turns(0, 2);
-    messages.extend(read("1", "src/lib.rs", "pub fn answer() -> u32 { 42 }"));
-    let agent = agent(&mut app, &model, 40_000, messages);
-    assert!(agent.is_some(), "the catalog lists the model");
-    let Some(agent) = agent else {
-        return;
-    };
-    let prompt = format!("Read this: {}", "word ".repeat(24_000));
-    ask(&mut app, &wakes, agent, &prompt, 1);
-    assert_eq!(sent(&model).len(), 1, "{:?}", notices(&app));
+fn a_prompt_counts_toward_the_recent_messages_kept() {
+    let keep = CompactionSettings::default().keep_recent_tokens;
+    for (words, kept) in [(18_000, None), (8_000, Some("question 1"))] {
+        let script = [
+            reply("## Goal\nAnswer the questions."),
+            measured("done", 100),
+        ];
+        let model = MockCompletionModel::from_stream_turns(script);
+        let (mut app, wakes) = start_with(&MemoryStore::default(), keep, |_| {});
+        let long = "word ".repeat(8_000);
+        let asks = [format!("question 0: {long}"), format!("question 1: {long}")];
+        let asks = asks.into_iter().chain(["small one".to_owned()]);
+        let messages = asks.flat_map(|ask| [Message::user(ask), Message::assistant("answered")]);
+        let agent = agent(&mut app, &model, 40_000, messages.collect());
+        assert!(agent.is_some(), "the catalog lists the model");
+        let Some(agent) = agent else {
+            return;
+        };
+        let prompt = format!("Read this: {}", "word ".repeat(words));
+        ask(&mut app, &wakes, agent, &prompt, 1);
+        assert_eq!(answer(&app).as_deref(), Some("done"), "{:?}", notices(&app));
+        let requests = sent(&model);
+        assert_eq!(requests.len(), 2, "{words}: {:?}", notices(&app));
+        let summary = requests.first().cloned().unwrap_or_default();
+        assert!(
+            summary.contains("context summarization assistant")
+                && summary.contains("question 0")
+                && !summary.contains("Read this:"),
+            "{words}"
+        );
+        let asked = requests.last().cloned().unwrap_or_default();
+        assert!(
+            asked.contains("Read this:") && asked.contains("Answer the questions."),
+            "{words}"
+        );
+        assert!(!asked.contains("question 0"), "{words}");
+        assert_eq!(asked.contains("question 1"), kept.is_some(), "{words}");
+    }
 }
 
 /// The before-prompt check alone, as on a resumed session whose last reply was measured near the
@@ -1337,11 +1363,13 @@ fn a_measured_conversation_compacts_before_the_next_prompt() {
     );
 }
 
-/// With no usage reported, the threshold counts the messages alone, as pi: a long system prompt
-/// does not push a short conversation over.
+/// The threshold counts the request as it goes, the same count the output limit is fitted by:
+/// with no usage reported, a long system prompt takes a short conversation over, and its older
+/// messages are summarized before the request is sent.
 #[test]
-fn without_usage_the_threshold_counts_the_messages_alone() {
-    let model = MockCompletionModel::from_stream_turns([reply("done")]);
+fn the_threshold_counts_the_request_as_it_is_sent() {
+    let script = [reply("## Goal\nAnswer the questions."), reply("done")];
+    let model = MockCompletionModel::from_stream_turns(script);
     let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |app| {
         let long = |mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<TurnCall>)>| {
             for mut call in &mut calls {
@@ -1361,7 +1389,14 @@ fn without_usage_the_threshold_counts_the_messages_alone() {
         return;
     };
     ask(&mut app, &wakes, agent, "And the next question?", 1);
-    assert_eq!(sent(&model).len(), 1, "{:?}", notices(&app));
+    assert_eq!(answer(&app).as_deref(), Some("done"), "{:?}", notices(&app));
+    let requests = sent(&model);
+    assert_eq!(requests.len(), 2, "{:?}", notices(&app));
+    let summary = requests.first().cloned().unwrap_or_default();
+    assert!(
+        summary.contains("context summarization assistant"),
+        "{summary}"
+    );
 }
 
 /// Runs `app` until its turns ended `count` times, moving the clock on for each retry wait.

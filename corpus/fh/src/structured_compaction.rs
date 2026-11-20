@@ -2,23 +2,21 @@
 //! an overflow or on `/compact <focus>`, summarizes in a fixed template ([`HEADINGS`]), from the
 //! previous summary plus the messages since, focused on what `/compact` was given, on the model the
 //! `[compact]` table of `RIG_HOME/settings.toml` names (else the agent's own). Everything before
-//! the user's last message is summarized, so tool calls and results before it are dropped and the
-//! most recent exchange stays whole. The user's last [`StructuredCompaction::keep_user_messages`]
-//! messages stay word for word after the summary. A summary that fails or lacks a heading is asked
-//! for once more, then the compaction runs the way it would have without this plugin, with a
-//! notice.
+//! the oldest of the user's last [`StructuredCompaction::keep_user_messages`] messages is
+//! summarized; those messages and all that follows them stay in the conversation as they are,
+//! attachments, tool calls and results included. With nothing before them, the compaction is
+//! refused with a notice. A summary that fails or lacks a heading is asked for once more, then
+//! the agent's model writes the default summary of the same messages, with a notice.
 //!
 //! It replaces the requests of `rig_basics::compaction`'s summary calls ([`Summarizing`]) with its
 //! own. In the terminal view the summary is a "Summary" entry.
 
-use rig_basics::compaction::{
-    CompactionDefault, CompactionPlugin, CutPoint, Summarizing, summarized_prefix,
-};
+use rig_basics::compaction::{CompactReason, CompactionPlugin, Summarizing};
 use rig_core::catalog::ModelSpec;
 use rig_core::completion::{CompletionRequest, Message, UnsupportedOption};
-use rig_core::message::UserContent;
+use rig_core::error::{ErrorKind, ErrorReport};
 use rig_harness::prelude::*;
-use rig_memory::{Compacted, serialize_conversation, summarization_request, summary_text};
+use rig_memory::{SummaryState, serialize_conversation, summarization_request, summary_text};
 use serde::Deserialize;
 
 /// The headings every structured summary has, in order.
@@ -77,13 +75,15 @@ fn template_request(
         "<conversation>\n{}\n</conversation>",
         serialize_conversation(&summarizing.messages)
     );
-    if let Some(previous) = &summarizing.previous {
+    let previous = summarizing.previous.as_ref();
+    let previous = previous.and_then(SummaryState::previous_summary);
+    if let Some(previous) = &previous {
         ask.push_str(&format!(
             "\n\n<previous-summary>\n{previous}\n</previous-summary>"
         ));
     }
     ask.push_str("\n\n");
-    ask.push_str(match summarizing.previous {
+    ask.push_str(match previous {
         Some(_) => UPDATE,
         None => INITIAL,
     });
@@ -122,8 +122,7 @@ impl Plugin for StructuredCompactionPlugin {
                     check.in_set(ReviewSystems::Act),
                 ),
             )
-            .add_observer(follow_successor::<Structured>)
-            .add_observer(keep_verbatim);
+            .add_observer(follow_successor::<Structured>);
         #[cfg(feature = "tui")]
         tui::add(app);
     }
@@ -131,15 +130,15 @@ impl Plugin for StructuredCompactionPlugin {
 
 /// The `[compact]` table of `RIG_HOME/settings.toml`: `model =
 /// "vendor/name"` writes the summaries (the agent's own model when left
-/// out), and `keep_user_messages` of the user's last messages stay word
-/// for word (3 when left out).
+/// out), and `keep_user_messages` of the user's last messages stay as they
+/// are, with all that follows them (3 when left out).
 #[derive(Resource, Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct StructuredCompaction {
     /// The model that writes the summaries, as `vendor/name`.
     pub model: Option<String>,
-    /// How many of the user's last messages stay word for word, the last
-    /// one with its whole exchange.
+    /// How many of the user's last messages stay, each with its whole
+    /// exchange; the last one always does, so 0 keeps as 1 does.
     pub keep_user_messages: usize,
 }
 
@@ -153,12 +152,10 @@ impl Default for StructuredCompaction {
 }
 
 /// On a summary call in the template: how many summaries were asked for
-/// so far (more than [`TRIES`] means the fallback runs), and the user's
-/// messages to keep after it.
+/// so far (more than [`TRIES`] means the fallback runs).
 #[derive(Component, Clone)]
 struct Structured {
     tries: u8,
-    verbatim: Vec<String>,
 }
 
 /// Whether `text` has every heading of [`HEADINGS`] as a heading line.
@@ -174,57 +171,28 @@ pub fn has_headings(text: &str) -> bool {
     })
 }
 
-/// The cut: before the last user message that answers no tool call, so
-/// the most recent exchange stays whole.
-fn before_last_user(messages: &[std::sync::Arc<Message>]) -> Option<usize> {
-    messages.iter().rposition(|message| match &**message {
-        Message::User { content } => !content
-            .iter()
-            .any(|item| matches!(item, UserContent::ToolResult(_))),
-        Message::Assistant { .. } | Message::System { .. } => false,
-    })
-}
-
-/// Plans a summary of `conversation` for `summarizing`'s reason, cut [`before_last_user`], in
-/// the template, written by `spec`: `None` when nothing new would be summarized.
-fn plan_structured(
+/// The first summary call of a compaction of `conversation` for `reason` that keeps the user's
+/// last `keep` messages, each with all that follows it; where a tool exchange spans the oldest,
+/// from the nearest of the user's messages before it. `None` when nothing comes before them.
+fn plan_kept(
     conversation: &Conversation,
-    summarizing: &Summarizing,
-    spec: &ModelSpec,
-) -> Result<Option<(Summarizing, CompletionRequest)>, String> {
-    let messages = conversation.messages();
-    let from = summarized_prefix(conversation);
-    let upto = before_last_user(messages).filter(|&upto| upto > from && upto <= messages.len());
-    let Some(upto) = upto else {
-        return Ok(None);
-    };
-    let cut = CutPoint {
-        first_kept: upto,
-        turn_start: None,
-    };
-    let Some(planned) = Summarizing::plan_at(conversation, cut, summarizing.reason.clone()) else {
-        return Ok(None);
-    };
-    let request = template_request(&planned, spec).map_err(|why| why.to_string())?;
-    Ok(Some((planned, request)))
+    reason: &CompactReason,
+    keep: usize,
+) -> Option<Summarizing> {
+    let typed = conversation
+        .entries()
+        .filter(|entry| entry.is_users_own() && matches!(entry.message, Message::User { .. }));
+    let typed: Vec<usize> = typed.map(|entry| entry.index).collect();
+    let oldest = typed.len().saturating_sub(keep.max(1));
+    let mut cuts = typed.get(..=oldest)?.iter().rev();
+    cuts.find_map(|&at| Summarizing::plan_at(conversation, at, reason.clone()))
 }
 
-/// What the user typed in the `count` messages before message `before`,
-/// one text a message, oldest first.
-fn last_typed(conversation: &Conversation, before: usize, count: usize) -> Vec<String> {
-    let mut texts: Vec<String> = (0..before)
-        .rev()
-        .filter_map(|at| typed(conversation, at))
-        .take(count)
-        .collect();
-    texts.reverse();
-    texts
-}
-
-/// Plans each summary call `rig_basics::compaction` admits again, cut before the
-/// user's last message, for the configured model's window, and sends it
-/// there; the fallback gets back the agent's model, the default prompts
-/// and `rig_basics::compaction`'s cut.
+/// Plans each summary call `rig_basics::compaction` admits again, cut before the user's last
+/// messages ([`plan_kept`]), in the template, for the configured model's window, and sends it
+/// there; one it cannot plan, of a compaction that had something to summarize, is refused, so
+/// none of the kept messages is summarized. The fallback asks the agent's model for the default
+/// summary of the same messages.
 fn structure(
     mut calls: Query<
         (
@@ -237,11 +205,7 @@ fn structure(
         (Added<Admitted>, ModelCalls),
     >,
     agents: Query<(&Conversation, Option<&Connection>)>,
-    (config, default, models): (
-        Res<StructuredCompaction>,
-        Res<CompactionDefault>,
-        Res<Models>,
-    ),
+    (config, models): (Res<StructuredCompaction>, Res<Models>),
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -249,10 +213,7 @@ fn structure(
         let Ok((conversation, own)) = agents.get(agent) else {
             continue;
         };
-        let reason = summarizing.reason.clone();
         match structured {
-            // The earlier part of a turn the default cut split: the fallback's.
-            None if summarizing.history.is_some() => {}
             None => {
                 let routed = config.model.as_deref().and_then(|name| {
                     let connected = models
@@ -267,41 +228,43 @@ fn structure(
                         })
                         .ok()
                 });
-                let spec = routed.as_ref().or(own).map(|connection| &connection.spec);
-                let planned = spec.map(|spec| plan_structured(conversation, &summarizing, spec));
-                match planned {
-                    Some(Ok(Some((planned, request)))) => {
+                let Some(spec) = routed.as_ref().or(own).map(|it| &it.spec) else {
+                    continue;
+                };
+                let keep = config.keep_user_messages;
+                let planned = plan_kept(conversation, &summarizing.reason, keep);
+                let planned = planned.ok_or_else(|| {
+                    let keep = keep.max(1);
+                    format!("nothing comes before the user's last {keep} messages")
+                });
+                let request = planned.and_then(|planned| {
+                    let request = template_request(&planned, spec);
+                    request
+                        .map(|request| (planned, request))
+                        .map_err(|why| why.to_string())
+                });
+                match request {
+                    Ok((planned, request)) => {
                         *summarizing = planned;
                         *model = ModelRequest::new(request);
+                        model.connection = routed;
+                        commands.entity(call).insert(Structured { tries: 1 });
                     }
-                    Some(Err(why)) => {
-                        notices.write(Notice::warn(agent, format!("Cannot compact: {why}.")));
+                    // A `/compact` `rig_basics::compaction` found nothing in, which it refuses.
+                    Err(_) if summarizing.messages.is_empty() => {}
+                    Err(why) => {
+                        let why = ErrorReport::new(ErrorKind::Cancelled, why);
+                        commands.entity(call).try_insert_if_new(Outcome(Err(why)));
                     }
-                    Some(Ok(None)) | None => {}
                 }
-                if let Some(connection) = routed {
-                    model.connection = Some(connection);
-                }
-                let count = config.keep_user_messages.saturating_sub(1);
-                let cut = summarizing.replaces.len();
-                let verbatim = last_typed(conversation, cut, count);
-                commands
-                    .entity(call)
-                    .insert(Structured { tries: 1, verbatim });
             }
             Some(structured) if structured.tries > TRIES => {
                 let Some(own) = own else {
                     continue;
                 };
-                let keep = default.0.keep_recent_tokens;
-                let planned = Summarizing::plan(conversation, keep, reason);
-                match planned.map(|planned| (planned.request(&own.spec, None), planned)) {
-                    Some((Ok(request), planned)) => {
-                        *summarizing = planned;
-                        *model = ModelRequest::new(request);
-                    }
-                    None => {}
-                    Some((Err(why), _)) => {
+                match summarizing.request(&own.spec, None) {
+                    Ok(request) => *model = ModelRequest::new(request),
+                    Err(why) => {
                         notices.write(Notice::warn(agent, format!("Cannot compact: {why}.")));
                     }
                 }
@@ -342,50 +305,6 @@ fn check(
         }
         commands.queue(resend(call));
     }
-}
-
-/// As `rig_basics::compaction` puts an accepted structured summary in the
-/// conversation, which it does as the summary call settles, puts the
-/// user's kept messages right after it, each its own message, as they
-/// were typed.
-fn keep_verbatim(
-    settled: On<Add<Settled>>,
-    calls: Query<(&ForAgent, &Summarizing, &Structured)>,
-    mut commands: Commands,
-) {
-    let Ok((&ForAgent(agent), summarizing, structured)) = calls.get(settled.entity) else {
-        return;
-    };
-    let Some(summary) = summarizing.summary.clone() else {
-        return;
-    };
-    if structured.tries > TRIES {
-        return;
-    }
-    let texts = structured.verbatim.clone();
-    // Queued, so it runs once every observer of the settled call did.
-    commands.queue(move |world: &mut World| put_verbatim(world, agent, &summary, texts));
-}
-
-/// Puts `texts` after the agent's summaries, when its newest compaction
-/// took `summary`.
-fn put_verbatim(world: &mut World, agent: Entity, summary: &str, texts: Vec<String>) {
-    let Some(mut conversation) = world.get_mut::<Conversation>(agent) else {
-        return;
-    };
-    let newest = Compacted::of(&conversation).last();
-    if newest.is_none_or(|(_, compacted)| compacted.state.summary != summary) {
-        return;
-    }
-    let after = summarized_prefix(&conversation);
-    if after == 0 {
-        return;
-    }
-    let kept = texts
-        .into_iter()
-        .map(|text| Entry::new(Message::user(text)));
-    let by = Author::plugin("fh-structured-compaction");
-    conversation.splice(after..after, kept, by);
 }
 
 #[cfg(feature = "tui")]

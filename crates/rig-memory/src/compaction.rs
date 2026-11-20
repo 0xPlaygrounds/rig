@@ -18,11 +18,7 @@ use std::sync::Arc;
 
 use rig_core::catalog::ModelSpec;
 use rig_core::completion::Message;
-use rig_core::conversation::{
-    Aside, AsideId, Author, Change, Conversation, Entry, MessageId, Spliced,
-};
-use rig_core::tool::content_hash;
-use serde::{Deserialize, Serialize};
+use rig_core::conversation::{Author, Change, Conversation, Entry, MessageId, Spliced};
 
 use crate::session::replay;
 use crate::{SessionError, Store};
@@ -30,25 +26,31 @@ use crate::{SessionError, Store};
 mod pi;
 
 pub use pi::{
-    CompactionPreparation, CompactionSettings, CutPoint, FileLists, SUMMARIZATION_SYSTEM_PROMPT,
+    CompactionPreparation, CompactionSettings, FileLists, SUMMARIZATION_SYSTEM_PROMPT,
     SummaryFailure, clamp_max_tokens, estimate_message_tokens, estimate_tokens, find_cut_point,
     merge_split_turn, no_history, prepare_compaction, prepare_compaction_at, request_tokens,
     serialize_conversation, summarization_request, summary_request, summary_text,
     turn_prefix_request,
 };
 
+/// What the summary's text opens with in the conversation.
+const OPENS: &str = "The conversation history before this point was compacted into the following summary:\n\n<summary>\n";
+
+/// What the summary's text closes with in the conversation.
+const CLOSES: &str = "\n</summary>";
+
 /// A compaction's summary and the files listed after it, which the next compaction carries on.
-/// The default is the state before the first compaction. A state saved by an earlier version
-/// reads as its summary alone.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+/// The default is the state before the first compaction. The summary's entry in the
+/// conversation is its only record: [`apply_summary`] writes it and [`read`](Self::read) reads
+/// it back.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct SummaryState {
-    /// The summary; empty before the first compaction.
+    /// The summary; empty before the first compaction. File lists a model wrote at its end are
+    /// not kept: the lists below are the only ones.
     pub summary: String,
     /// The files read and not changed by the summarized messages, sorted.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub read_files: Vec<String>,
     /// The files changed by the summarized messages, sorted.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub modified_files: Vec<String>,
 }
 
@@ -66,18 +68,34 @@ impl SummaryState {
         self.previous_summary().map(|_| self.wrapped())
     }
 
-    /// The summary followed by its file lists.
+    /// The state a summary entry's `text` holds: the summary, and the file lists rig put after
+    /// it. Text that is no summary of rig's reads as a summary with no lists.
+    pub fn read(text: &str) -> Self {
+        let framed = text.strip_prefix(OPENS);
+        let Some(body) = framed.and_then(|text| text.strip_suffix(CLOSES)) else {
+            return Self {
+                summary: text.to_owned(),
+                ..Self::default()
+            };
+        };
+        let (body, modified_files) = pi::take_file_list(body, "modified-files");
+        let (summary, read_files) = pi::take_file_list(body, "read-files");
+        Self {
+            summary: summary.to_owned(),
+            read_files,
+            modified_files,
+        }
+    }
+
+    /// The summary, without file lists a model wrote at its end, followed by its file lists.
     fn with_files(&self) -> String {
         let files = pi::format_file_operations(&self.read_files, &self.modified_files);
-        format!("{}{files}", self.summary)
+        format!("{}{files}", pi::without_file_lists(&self.summary))
     }
 
     /// [`with_files`](Self::with_files) in the frame requests send it in.
     fn wrapped(&self) -> String {
-        format!(
-            "The conversation history before this point was compacted into the following summary:\n\n<summary>\n{}\n</summary>",
-            self.with_files()
-        )
+        format!("{OPENS}{}{CLOSES}", self.with_files())
     }
 }
 
@@ -170,197 +188,72 @@ pub fn already_compacted(conversation: &Conversation) -> bool {
 /// Puts the summary of `state` in place of `replaces`, the first
 /// messages of `conversation` as a compaction read them
 /// ([`CompactionPreparation::replaces`]), earlier summaries included: one
-/// user entry by [`summary_author`], a splice it makes, followed by an
-/// aside of kind [`COMPACTED`] that says what it replaced ([`Compacted`]).
-/// Messages added after them stay. `None`, changing nothing, when the
-/// conversation no longer starts with those very messages, such as after
-/// an edit of one, so a summary never replaces what it did not read.
+/// user entry by [`summary_author`], in one splice, which is the
+/// compaction's whole record. Messages added after them stay. `None`,
+/// changing nothing, when `replaces` is empty, when the conversation no
+/// longer starts with those very messages, such as after an edit of one, so
+/// a summary never replaces what it did not read, or when what stays would
+/// start with a tool result whose call the summary replaced.
 pub fn apply_summary(
     conversation: &mut Conversation,
     replaces: &[Arc<Message>],
     state: &SummaryState,
 ) -> Option<Spliced> {
     let end = replaces.len();
-    let now = conversation.messages().get(..end)?;
-    if !now
+    let now = conversation.messages();
+    let read = now.get(..end).filter(|now| !now.is_empty())?;
+    let same = read
         .iter()
         .zip(replaces)
-        .all(|(now, read)| Arc::ptr_eq(now, read))
-    {
+        .all(|(now, read)| Arc::ptr_eq(now, read));
+    if !same || !pi::may_keep_from(now, end) {
         return None;
     }
     let summary = Entry::new(Message::user(state.wrapped())).by(summary_author());
-    let entries: Vec<Entry> = (0..end).filter_map(|at| conversation.entry(at)).collect();
-    let replaced_hash = serde_json::to_vec(&entries).ok();
-    let spliced = conversation.splice(..end, [summary], summary_author());
-    if let Some(&summary) = spliced.changed.first() {
-        let compacted = Compacted {
-            summary,
-            replaced: spliced.removed.clone(),
-            replaced_hash: replaced_hash
-                .and_then(|bytes| content_hash(&bytes).0.get(..HASH_LEN).map(str::to_owned)),
-            state: state.clone(),
-        };
-        let value = serde_json::to_value(compacted).unwrap_or_default();
-        let aside = Aside::new(COMPACTED, summary_author(), value).after(Some(summary));
-        conversation.add_aside(aside);
-    }
-    Some(spliced)
+    Some(conversation.splice(..end, [summary], summary_author()))
 }
 
-/// The kind of the aside [`apply_summary`] puts after each summary.
-pub const COMPACTED: &str = "rig.compaction";
-
-/// The hex digits of [`Compacted::replaced_hash`]: 128 bits, as every
-/// reset writes it again for each record.
-const HASH_LEN: usize = 32;
-
 /// The summary state the next compaction of `conversation` builds on: the
-/// newest compaction's ([`Compacted`]), or the state before any.
+/// one its newest leading summary entry holds ([`summarized_prefix`],
+/// [`SummaryState::read`]), or the state before any.
 pub fn summary_state(conversation: &Conversation) -> SummaryState {
-    Compacted::of(conversation)
-        .last()
-        .map(|(_, compacted)| compacted.state)
+    let newest = summarized_prefix(conversation).checked_sub(1);
+    let newest = newest.and_then(|at| conversation.messages().get(at)?.rag_text());
+    newest
+        .map(|text| SummaryState::read(&text))
         .unwrap_or_default()
 }
 
-/// What a compaction replaced, kept with the conversation in an aside of
-/// kind [`COMPACTED`] by [`summary_author`] after its summary.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Compacted {
-    /// The summary's entry.
-    pub summary: MessageId,
-    /// The entries it replaced, earlier summaries included, in order.
-    pub replaced: Vec<MessageId>,
-    /// The start of the SHA-256 of those entries, ids and made-times
-    /// included, taken when it was made: what tells the same compaction
-    /// from another conversation's with equal ids. `None` in a record saved
-    /// before it was kept, which proves nothing across a reset.
-    #[serde(default, rename = "hash", skip_serializing_if = "Option::is_none")]
-    pub replaced_hash: Option<String>,
-    /// The state it put in, which the next compaction builds on.
-    pub state: SummaryState,
-}
-
-impl Compacted {
-    /// The record of every compaction of `conversation`, oldest first, each
-    /// with its aside.
-    pub fn of(conversation: &Conversation) -> impl Iterator<Item = (AsideId, Self)> + '_ {
-        let records = conversation.asides();
-        records.filter_map(|(id, aside)| Some((id, Self::read(aside)?)))
-    }
-
-    /// The record `aside` holds, if it is one.
-    fn read(aside: &Aside) -> Option<Self> {
-        let ours = aside.kind == COMPACTED && aside.author == summary_author();
-        ours.then(|| rig_core::json_utils::from_value(&aside.value).ok())?
-    }
-}
-
-/// What the compactions in a session's log replaced ([`summarized_in_log`]).
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct Summarized {
-    /// The entries each summary's splice ([`summary_in`]) took out, by the
-    /// summary's id, as they were just before it.
-    pub replaced: BTreeMap<MessageId, Vec<Entry>>,
-    /// The record of each summary a later compaction took out, by the
-    /// summary's id: the conversation lost it with its summary.
-    pub records: BTreeMap<MessageId, Compacted>,
-}
-
-/// What a log's compactions replaced, between two resets of it.
-#[derive(Default)]
-struct Provenance {
-    /// What each summary first replaced, `None` for entries the log lacks.
-    first: BTreeMap<MessageId, Option<Vec<Entry>>>,
-    records: BTreeMap<MessageId, Compacted>,
-    /// The record each compaction saved here.
-    proofs: BTreeMap<MessageId, Compacted>,
-}
-
-impl Provenance {
-    /// Copies to `into` what this knows of `summary`, and nothing of the
-    /// summaries it replaced, each of which proves itself.
-    fn carry(&self, summary: MessageId, into: &mut Self) {
-        if let Some(taken) = self.first.get(&summary) {
-            into.first.insert(summary, taken.clone());
-        }
-        if let Some(record) = self.records.get(&summary) {
-            into.records.insert(summary, record.clone());
-        }
-        if let Some(proof) = self.proofs.get(&summary) {
-            into.proofs.insert(summary, proof.clone());
-        }
-    }
-}
-
-/// What the compactions in the log `log` of `store` replaced, read in one
-/// pass over the log. A summary named again keeps what it first replaced.
-/// A reset carries each summary over
-/// on its own, only when the new value holds a record equal to the one its
-/// compaction saved here, [`Compacted::replaced_hash`] included, so a
-/// summary of another conversation that reuses an id takes nothing from
-/// this one. A summary whose entries the log does not hold is left out.
+/// The entries each compaction in the log `log` of `store` replaced
+/// ([`summary_in`]), by the summary's id, as they were just before it, read
+/// in one pass over the log. A summary named again keeps what it first
+/// replaced. A reset, the log's value replaced by a whole other one, drops
+/// them all: nothing says the new value is the same conversation, so its
+/// summaries show nothing of the old one's messages.
 ///
 /// # Errors
 ///
 /// As [`load`](crate::load).
-pub fn summarized_in_log(store: &dyn Store, log: &str) -> Result<Summarized, SessionError> {
-    let known = provenance(store, log)?;
-    let found = known.first.into_iter();
-    let replaced = found
-        .filter_map(|(summary, taken)| Some((summary, taken?)))
-        .collect();
-    let records = known.records;
-    Ok(Summarized { replaced, records })
-}
-
-/// The [`Provenance`] of the log `log` of `store` as it ends.
-fn provenance(store: &dyn Store, log: &str) -> Result<Provenance, SessionError> {
-    let mut known = Provenance::default();
-    let mut stretches: Vec<Provenance> = Vec::new();
+pub fn summarized_in_log(
+    store: &dyn Store,
+    log: &str,
+) -> Result<BTreeMap<MessageId, Vec<Entry>>, SessionError> {
+    let mut replaced = BTreeMap::new();
     replay(store, log, |before, recorded| {
         let change = &recorded.change;
-        if let Change::Reset { state } = change {
-            stretches.push(std::mem::take(&mut known));
-            for (_, record) in Compacted::of(state) {
-                let proved = |then: &&Provenance| {
-                    record.replaced_hash.is_some()
-                        && then.proofs.get(&record.summary) == Some(&record)
-                };
-                if let Some(then) = stretches.iter().rev().find(proved) {
-                    then.carry(record.summary, &mut known);
-                }
-            }
-            return;
-        }
-        if let Change::Aside {
-            aside: Some(aside), ..
-        } = change
-            && let Some(record) = Compacted::read(aside)
-        {
-            known.proofs.entry(record.summary).or_insert(record);
-            return;
-        }
         let (Some(summary), Change::Splice { removed, with, .. }) = (summary_in(change), change)
         else {
+            if matches!(change, Change::Reset { .. }) {
+                replaced.clear();
+            }
             return;
         };
         let kept = |id: &&MessageId| with.iter().any(|entry| entry.id == Some(**id));
-        let taken: Vec<&MessageId> = removed.iter().filter(|id| !kept(id)).collect();
-        for (_, record) in Compacted::of(before) {
-            if taken.contains(&&record.summary) {
-                known.records.entry(record.summary).or_insert(record);
-            }
-        }
-        known.first.entry(summary).or_insert_with(|| {
-            taken
-                .iter()
-                .map(|id| before.entry(before.index_of(**id)?))
-                .collect()
-        });
+        let taken = removed.iter().filter(|id| !kept(id));
+        let taken = taken.filter_map(|id| before.entry(before.index_of(*id)?));
+        replaced.entry(summary).or_insert_with(|| taken.collect());
     })?;
-    Ok(known)
+    Ok(replaced)
 }
 
 #[cfg(test)]

@@ -60,7 +60,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let prepared = prepare_compaction(&conversation, 1_000, false);
     if let (Some(prepared), Some(vendor)) = (prepared, vendor) {
         let spec = ModelSpec::new(vendor, "example");
-        let previous = (prepared.previous.as_deref(), "");
+        let previous = (prepared.previous.as_ref(), "");
         let request = summary_request(&prepared.to_summarize, previous, &spec, None)?;
         println!(
             "a compaction would summarize {} messages, and {} of the turn it splits apart, keep {} \

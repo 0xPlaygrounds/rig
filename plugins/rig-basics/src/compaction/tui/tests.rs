@@ -74,7 +74,7 @@ fn the_saved_summary_is_drawn_as_markdown_through_the_owned_render_path() {
 }
 
 #[test]
-fn a_summary_a_later_compaction_took_out_is_still_drawn_from_its_state() {
+fn a_summary_a_later_compaction_took_out_is_still_drawn_from_its_entry() {
     let mut app = app();
     let mut conversation = rig_core::conversation::Conversation::default();
     conversation.push(rig_core::completion::Message::user("old question"));
@@ -83,7 +83,7 @@ fn a_summary_a_later_compaction_took_out_is_still_drawn_from_its_state() {
     assert!(rig_memory::apply_summary(&mut conversation, &read, &first).is_some());
     let summary = conversation.id(0);
     conversation.push(rig_core::completion::Message::user("next question"));
-    let before = Before::of(&conversation, 2);
+    let taken = (0..2).filter_map(|at| conversation.entry(at)).collect();
     let second = state("## Goal\nThe second goal.", "b.rs");
     let read = conversation.messages().to_vec();
     let spliced = rig_memory::apply_summary(&mut conversation, &read, &second);
@@ -92,7 +92,7 @@ fn a_summary_a_later_compaction_took_out_is_still_drawn_from_its_state() {
     let Some(spliced) = spliced else {
         return;
     };
-    before.keep(&mut app.world_mut().commands(), agent, &spliced);
+    keep(&mut app.world_mut().commands(), agent, &spliced, taken);
     app.world_mut().flush();
     let replaced = app.world().get::<Replaced>(agent);
     let second_id = spliced.changed.first();
@@ -111,18 +111,11 @@ fn a_summary_a_later_compaction_took_out_is_still_drawn_from_its_state() {
     assert!(!text.contains("<summary>"), "{text}");
 }
 
+/// An entry by the summary's author that is no summary of rig's is drawn whole.
 #[test]
-fn a_summary_without_a_record_keeps_its_plain_text() {
-    let entry = EntryRender {
-        id: None,
-        plugin: "compaction".to_owned(),
-        title: "compaction".to_owned(),
-        text: "<summary>old</summary>".to_owned(),
-    };
-    let lines = summary_lines(&entry, None, &Theme::default(), 80);
-    assert!(
-        lines
-            .iter()
-            .any(|line| line.to_string().contains(&entry.text))
-    );
+fn a_summary_of_another_shape_is_drawn_whole() {
+    let state = SummaryState::read("a plugin's own summary");
+    let lines = summary_lines(&state, &Theme::default(), 80);
+    let drawn = |text: &str| lines.iter().any(|line| line.to_string().contains(text));
+    assert!(drawn("a plugin's own summary"));
 }

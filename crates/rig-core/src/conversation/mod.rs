@@ -461,14 +461,15 @@ pub enum Halt {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Change {
-    /// Entries added at the end, each with its id.
+    /// Entries added at the end, each with its id. It clears the halt.
     Push {
         /// The entries.
         entries: Vec<Entry>,
     },
     /// Entries `from..to`, whose ids were `removed`, replaced by `with`
     /// (each with its id). `removed` doubles as a check: applying it where
-    /// the range holds other ids fails.
+    /// the range holds other ids fails. One that reaches the end clears the
+    /// halt.
     Splice {
         /// The first entry replaced.
         from: usize,
@@ -771,7 +772,6 @@ impl Conversation {
         });
         let entries = stop.into_iter().chain(entries).collect();
         self.record(Change::Push { entries }, by);
-        self.clear_halt();
         ids
     }
 
@@ -927,9 +927,6 @@ impl Conversation {
             with,
         };
         self.record(change, Some(by));
-        if to == len {
-            self.clear_halt();
-        }
         spliced
     }
 
@@ -1058,12 +1055,6 @@ impl Conversation {
             self.record(Change::Halt { halt: Some(halt) }, None);
         }
         halts
-    }
-
-    fn clear_halt(&mut self) {
-        if self.halted.is_some() {
-            self.record(Change::Halt { halt: None }, None);
-        }
     }
 
     /// Puts `aside` after the asides already put and returns its id. An
@@ -1291,6 +1282,7 @@ impl Conversation {
                     self.meta.push(meta(entry, entry.made.unwrap_or(at)));
                 }
                 self.next_id = next;
+                self.halted = None;
             }
             Change::Splice {
                 from,
@@ -1299,6 +1291,7 @@ impl Conversation {
                 with,
             } => {
                 let (from, to) = (*from, *to);
+                let reaches_end = to == self.meta.len();
                 let replaced = self.meta.get(from..to).ok_or_else(|| {
                     mismatch(format!(
                         "splice of {from}..{to} in {} entries",
@@ -1322,6 +1315,9 @@ impl Conversation {
                     .splice(from..to, with.iter().map(|entry| entry.message.clone()));
                 self.meta.splice(from..to, metas);
                 self.next_id = next;
+                if reaches_end {
+                    self.halted = None;
+                }
             }
             Change::Halt { halt } => self.halted = *halt,
             Change::Aside {

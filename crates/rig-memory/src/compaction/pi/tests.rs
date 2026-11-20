@@ -86,9 +86,9 @@ fn the_cut_never_separates_a_call_from_its_result() {
             for overflowed in [false, true] {
                 let cut = find_cut_point(&messages, (0, messages.len()), keep, overflowed);
                 let at = format!("seed {seed}, keep {keep}, overflowed {overflowed}: {cut:?}");
-                assert!(!orphans(&messages, cut.first_kept), "{at}");
-                if let Some(start) = cut.turn_start {
-                    assert!(start < cut.first_kept, "{at}");
+                assert!(!orphans(&messages, cut), "{at}");
+                if let Some(start) = split_turn_start(&messages, 0, cut) {
+                    assert!(start < cut, "{at}");
                     let starts = messages
                         .get(start)
                         .is_some_and(|message| is_turn_start(message));
@@ -96,31 +96,6 @@ fn the_cut_never_separates_a_call_from_its_result() {
                 }
             }
         }
-    }
-}
-
-/// A system message between a reply's calls and their results is no place to cut, nor is a
-/// trailing result over the budget alone: the cut keeps the reply that made the calls.
-#[test]
-fn a_cut_never_lands_inside_a_tool_exchange() {
-    let mut batch = AssistantMessage::new(Vec::new());
-    for id in ["1", "2"] {
-        if let Message::Assistant(reply) = call(id, "read", "a.rs") {
-            batch.content.extend(reply.content);
-        }
-    }
-    let messages = [
-        Message::user("start"),
-        Message::Assistant(batch),
-        Message::system("keep going"),
-        result("1", "x"),
-        Message::system("keep going"),
-        result("2", &"x".repeat(2_000)),
-    ]
-    .map(Arc::new);
-    for keep in [1, 100, 400] {
-        let cut = find_cut_point(&messages, (0, messages.len()), keep, false);
-        assert_eq!(cut.first_kept, 1, "keep {keep}");
     }
 }
 
@@ -135,20 +110,47 @@ fn an_oversized_last_message_is_summarized_after_an_overflow() {
     ]
     .map(Arc::new);
     let range = (0, messages.len());
-    assert_eq!(
-        find_cut_point(&messages, range, 100, false),
-        CutPoint {
-            first_kept: 2,
-            turn_start: None
+    assert_eq!(find_cut_point(&messages, range, 100, false), 2);
+    assert_eq!(split_turn_start(&messages, 0, 2), None);
+    assert_eq!(find_cut_point(&messages, range, 100, true), 3);
+    assert_eq!(split_turn_start(&messages, 0, 3), Some(2));
+}
+
+/// Every index a plugin may cut at, over generated histories with and without an earlier
+/// summary, is refused or summarizes exactly the messages before it, each once, and keeps no
+/// tool result without its call; the summary then goes in only at such an index.
+#[test]
+fn every_custom_cut_is_refused_or_keeps_calls_with_their_results() {
+    for seed in 0..60 {
+        let messages = history(seed, 1 + usize::try_from(seed % 5).unwrap_or(0));
+        let mut conversation = Conversation::from_messages(messages.iter().cloned());
+        let state = SummaryState::default();
+        if seed % 2 == 0 {
+            let read = conversation.messages()[..1].to_vec();
+            crate::apply_summary(&mut conversation, &read, &state).expect("applied");
         }
-    );
-    assert_eq!(
-        find_cut_point(&messages, range, 100, true),
-        CutPoint {
-            first_kept: 3,
-            turn_start: Some(2)
+        let start = summarized_prefix(&conversation);
+        let messages = conversation.messages().to_vec();
+        let empty = crate::apply_summary(&mut conversation.clone(), &[], &state);
+        assert_eq!(empty, None);
+        for cut in 0..messages.len() + 3 {
+            let at = format!("seed {seed}, cut {cut}");
+            let read = messages.get(..cut.min(messages.len())).unwrap_or_default();
+            let applied = crate::apply_summary(&mut conversation.clone(), read, &state);
+            let Some(prepared) = prepare_compaction_at(&conversation, cut) else {
+                let fine = cut > start && cut <= messages.len() && !orphans(&messages, cut);
+                assert!(!fine, "{at}: refused");
+                assert!(applied.is_none() || !orphans(&messages, cut), "{at}");
+                continue;
+            };
+            assert!(!orphans(&messages, cut), "{at}");
+            assert!(applied.is_some(), "{at}");
+            assert_eq!(Some(&*prepared.replaces), messages.get(..cut), "{at}");
+            let summarized = prepared.to_summarize.iter().chain(&prepared.turn_prefix);
+            let summarized: Vec<_> = summarized.cloned().collect();
+            assert_eq!(Some(&*summarized), messages.get(start..cut), "{at}");
         }
-    );
+    }
 }
 
 /// Tokens are counted in UTF-16 code units, each tool result rounded apart, and a long result is
@@ -196,6 +198,7 @@ fn serialized_text_parts_are_joined_as_pi_joins_them() {
 #[test]
 fn file_lists_carry_across_compactions() {
     let mut conversation = Conversation::from_messages([
+        Message::user("before"),
         Message::user("start"),
         call("1", "read", "a.rs"),
         result("1", "a"),
@@ -212,31 +215,14 @@ fn file_lists_carry_across_compactions() {
         read_files: vec!["b.rs".to_owned(), "old.rs".to_owned()],
         modified_files: Vec::new(),
     };
-    crate::apply_summary(&mut conversation, &[], &previous).expect("applied");
+    let read = conversation.messages()[..1].to_vec();
+    crate::apply_summary(&mut conversation, &read, &previous).expect("applied");
     let prepared = cut_again(&conversation, 10).expect("something to summarize");
-    assert_eq!(
-        prepared.previous.as_deref(),
-        Some("earlier\n\n<read-files>\nb.rs\nold.rs\n</read-files>")
-    );
+    let sent = prepared.previous.and_then(|it| it.previous_summary());
+    let lists = "earlier\n\n<read-files>\nb.rs\nold.rs\n</read-files>";
+    assert_eq!(sent.as_deref(), Some(lists));
     assert_eq!(prepared.files.read_files, ["a.rs", "old.rs"]);
     assert_eq!(prepared.files.modified_files, ["b.rs"]);
-}
-
-/// A summary state saved by an earlier version, with its tracked sets, reads as its summary.
-#[test]
-fn an_old_summary_state_reads_as_its_summary() {
-    let old = serde_json::json!({
-        "summary": "the old checkpoint",
-        "tracked": [{"name": "read-files", "values": ["a.rs"]}],
-    });
-    let state: SummaryState = serde_json::from_value(old).expect("read");
-    assert_eq!(state.summary, "the old checkpoint");
-    assert!(state.read_files.is_empty());
-    assert!(
-        state
-            .message()
-            .is_some_and(|text| text.contains("the old checkpoint"))
-    );
 }
 
 /// A reply that failed, was cut at the output limit or called a tool is no summary; a whole one
@@ -290,8 +276,8 @@ fn a_summary_request_fits_its_output_and_writes_no_cache() {
 }
 
 /// A saved checkpoint with no text is still the previous one, as pi keeps the empty string: with
-/// file lists it is sent in `<previous-summary>`; without, a split turn's history is that empty
-/// summary, not "No prior history.".
+/// file lists it is sent in `<previous-summary>`; a split turn's history is that empty summary,
+/// without the lists, not "No prior history.".
 #[test]
 fn a_blank_checkpoint_is_still_the_previous_one() {
     let with_files = SummaryState {
@@ -299,10 +285,7 @@ fn a_blank_checkpoint_is_still_the_previous_one() {
         read_files: vec!["a.rs".to_owned()],
         modified_files: Vec::new(),
     };
-    for (state, previous) in [
-        (with_files, "\n\n<read-files>\na.rs\n</read-files>"),
-        (SummaryState::default(), ""),
-    ] {
+    for state in [with_files.clone(), SummaryState::default()] {
         let mut conversation = Conversation::from_messages([
             Message::user("start"),
             Message::assistant("done"),
@@ -316,15 +299,16 @@ fn a_blank_checkpoint_is_still_the_previous_one() {
             .to_vec();
         crate::apply_summary(&mut conversation, &read, &state).expect("applied");
         let prepared = cut_again(&conversation, 10).expect("something to summarize");
-        assert_eq!(prepared.previous.as_deref(), Some(previous));
-        assert_eq!(no_history(prepared.previous.as_deref()), previous);
+        assert_eq!(prepared.previous.as_ref(), Some(&state));
+        assert_eq!(no_history(prepared.previous.as_ref()), "");
     }
+    assert_eq!(no_history(None), "No prior history.");
     let spec = rig_core::providers::registry::ProviderId::catalog("ollama")
         .map(|vendor| rig_core::catalog::ModelSpec::new(vendor, "test"))
         .expect("a vendor");
     let request = summary_request(
         &[Message::user("more")],
-        (Some("\n\n<read-files>\na.rs\n</read-files>"), ""),
+        (Some(&with_files), ""),
         &spec,
         None,
     )
@@ -334,6 +318,45 @@ fn a_blank_checkpoint_is_still_the_previous_one() {
         text.contains("<previous-summary>") && text.contains("a.rs"),
         "{text}"
     );
+}
+
+/// However often a turn is split, and though the model copies the previous summary's file lists
+/// into each history summary, the summary's entry holds each list once, at its end, and reads
+/// back as the state that went in.
+#[test]
+fn repeated_split_summaries_hold_one_block_of_file_lists() {
+    let mut conversation = Conversation::from_messages([Message::user("start")]);
+    for round in 0..4 {
+        let id = format!("{round}");
+        conversation.extend([
+            Message::user("a question"),
+            Message::user("a task"),
+            call(&id, "read", &format!("{round}.rs")),
+            result(&id, "text"),
+            Message::assistant("x".repeat(400)),
+        ]);
+        let cut = conversation.messages().len() - 1;
+        let prepared = prepare_compaction_at(&conversation, cut).expect("a split turn");
+        assert!(!prepared.turn_prefix.is_empty(), "round {round}");
+        let previous = prepared.previous.as_ref();
+        let echoed = previous.and_then(SummaryState::previous_summary);
+        let echoed = format!("see <read-files> below\n\n{}", echoed.unwrap_or_default());
+        let first = prepared.to_summarize.is_empty();
+        let history = if first { no_history(previous) } else { echoed };
+        let state = SummaryState {
+            summary: merge_split_turn(&history, "the turn so far"),
+            read_files: prepared.files.read_files,
+            modified_files: Vec::new(),
+        };
+        crate::apply_summary(&mut conversation, &prepared.replaces, &state).expect("applied");
+        let text = conversation.messages().first().and_then(|it| it.rag_text());
+        assert_eq!(
+            text.unwrap_or_default().matches("\n<read-files>\n").count(),
+            1
+        );
+        assert_eq!(crate::summary_state(&conversation), state, "round {round}");
+        assert_eq!(state.read_files.len(), round + 1);
+    }
 }
 
 /// The output limit is fitted by pi-ai's estimate of the request at 3.5 characters a token, each

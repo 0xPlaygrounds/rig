@@ -185,8 +185,9 @@ fn a_view_has_an_empty_outbox() {
 }
 
 /// After a stopped request the next push puts the stopped note, by rig,
-/// first, in the same change; a kept halt adds none; a splice reaching the
-/// end clears the halt and one short of it does not.
+/// first, in the same change, which clears the halt with no record of its
+/// own; a kept halt adds none; a splice reaching the end clears the halt and
+/// one short of it does not.
 #[test]
 fn a_stopped_request_gets_its_note_and_halts_clear() {
     let mut conversation = Conversation::from_messages([Message::user("delete it all")]);
@@ -204,11 +205,7 @@ fn a_stopped_request_gets_its_note_and_halts_clear() {
         .iter()
         .filter(|recorded| matches!(recorded.change, Change::Push { .. }));
     assert_eq!(pushed.count(), 1, "the note and the message are one push");
-    assert!(
-        changes
-            .iter()
-            .any(|recorded| recorded.change == Change::Halt { halt: None })
-    );
+    assert_eq!(changes.len(), 1, "the push clears the halt itself");
     assert_eq!(
         conversation.turn_start(),
         conversation.id(0).expect("first")
