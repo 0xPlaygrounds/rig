@@ -34,9 +34,11 @@ struct ReadArgs {
     path: String,
 }
 
-/// `read` answers with the path it was given.
+/// `read` answers with the path it was given, and 8,000 words more for a path in `big/`.
 fn read_file(called: On<ToolCalled<ReadArgs>>, mut calls: Query<&mut Decision, ToolCalls>) {
-    let text = format!("contents of {}", called.args.path);
+    let path = &called.args.path;
+    let more = if path.starts_with("big/") { 8_000 } else { 0 };
+    let text = format!("contents of {path}{}", " word".repeat(more));
     if let Ok(mut call) = calls.get_mut(called.call) {
         call.decide(
             Decider::plugin("fh-structured-compaction"),
@@ -169,13 +171,14 @@ fn compact_writes_the_template_keeps_the_last_exchanges_and_builds_on_the_last_s
     }
 }
 
-/// A turn of an agent whose conversation is near a 40k-token window, answered by `model`, with
-/// `summarizer` writing the template's summaries and `keep` of the user's messages kept: the app
-/// once the turn ended.
+/// A turn of an agent whose conversation is near a 40k-token window, an image with the user's
+/// last message before the turn, answered by `model`, with `summarizer` writing the template's
+/// summaries and `keep` of the user's messages kept: the app once the turn ended, the agent and
+/// its entries before the turn.
 fn turn_near_the_window(
     (model, summarizer): (&MockCompletionModel, &MockCompletionModel),
     keep: usize,
-) -> Option<App> {
+) -> Option<(App, Entity, Vec<Entry>)> {
     let (mut app, wakes) = app_on(&MemoryStore::default());
     app.insert_resource(scripted_models([("test/summarizer", summarizer)]))
         .add_plugins((AgentPlugin, SessionLogPlugin, StructuredCompactionPlugin))
@@ -196,40 +199,71 @@ fn turn_near_the_window(
     let mut messages = vec![Message::user("What does the crate do?")];
     for turn in 0..6 {
         messages.push(Message::assistant(format!("{turn}: {long}")));
-        messages.push(Message::user(format!("question {turn}")));
+        messages.push(pictured(format!("question {turn}")));
     }
     messages.push(Message::assistant("The last answer."));
     for message in messages {
         commit_message(app.world_mut(), agent, message).ok()?;
     }
+    let before = entries(app.world(), agent);
     let next = Deliver::new(agent, "And the next question?", DeliveryMode::Steer);
     app.world_mut().trigger(next);
     until_ended(&mut app, &wakes, 0);
-    Some(app)
+    Some((app, agent, before))
 }
 
+/// A message of the user's of `text` with an image.
+fn pictured(text: String) -> Message {
+    let mut message = Message::user(text);
+    if let Message::User { content } = &mut message {
+        content.push(rig_core::message::UserContent::image_base64(
+            "aGk=",
+            Some(rig_core::message::ImageMediaType::PNG),
+            None,
+        ));
+    }
+    message
+}
+
+/// Whether `entries`, after a summary, end with `before` from the one holding `text` on: the
+/// kept messages stay the entries they were, attachments included.
+fn kept_from(entries: &[Entry], before: &[Entry], text: &str) -> bool {
+    let holds = |entry: &Entry| serde_json::to_string(entry).is_ok_and(|json| json.contains(text));
+    let kept = before
+        .iter()
+        .position(holds)
+        .and_then(|at| before.get(at..));
+    let summarized = entries.first().is_some_and(|entry| entry.author.is_some());
+    summarized && kept.is_some_and(|kept| entries.get(1..=kept.len()) == Some(kept))
+}
+
+/// A summary that twice lacks its headings falls back to the default summary, by the agent's
+/// model, of the same messages: the user's last messages stay the entries they were, their
+/// images included, and the turn goes on.
 #[test]
-fn a_summary_without_its_headings_twice_falls_back_and_the_turn_goes_on() {
+fn a_summary_without_its_headings_twice_falls_back_to_the_default_summary_of_the_same_messages() {
     let summarizer =
         MockCompletionModel::from_stream_turns([reply("Just some prose."), reply("More prose.")]);
-    // The fallback is the default compaction, whose cut splits the last turn: a history summary,
-    // then one of the turn's earlier part.
     let model = MockCompletionModel::from_stream_turns([
         reply("## Goal\nThe default summary (DEFAULT-SUMMARY)."),
-        reply("## Original Request\nThe next question."),
         reply("done"),
     ]);
     let app = turn_near_the_window((&model, &summarizer), 3);
     assert!(app.is_some(), "an agent on a listed model");
-    let Some(app) = app else {
+    let Some((app, agent, before)) = app else {
         return;
     };
 
     assert_eq!(sent(&summarizer).len(), 2, "the template, asked twice");
     let requests = sent(&model);
+    assert_eq!(requests.len(), 2, "one default summary, then the turn");
     let default = requests.first().map(String::as_str).unwrap_or_default();
     assert!(
         default.contains("You are a context summarization assistant"),
+        "{default}"
+    );
+    assert!(
+        default.contains("question 3") && !default.contains("question 4"),
         "{default}"
     );
     assert!(
@@ -242,6 +276,8 @@ fn a_summary_without_its_headings_twice_falls_back_and_the_turn_goes_on() {
     );
     let last = requests.last().map(String::as_str).unwrap_or_default();
     assert!(last.contains("DEFAULT-SUMMARY"), "{last}");
+    let after = entries(app.world(), agent);
+    assert!(kept_from(&after, &before, "question 4"), "{after:?}");
     let notices = &app.world().resource::<Collected<Notice>>().0;
     assert!(
         notices
@@ -251,34 +287,146 @@ fn a_summary_without_its_headings_twice_falls_back_and_the_turn_goes_on() {
     );
 }
 
-/// With fewer messages of the user's than are kept, nothing may be summarized: the compaction
-/// is refused before any summary is asked for, with a notice, and the request goes as it is.
+/// With fewer messages of the user's than are kept, all but the oldest stay: its exchange is
+/// summarized, and the request is sent after it.
 #[test]
-fn a_compaction_with_nothing_before_the_kept_messages_is_refused() {
-    let summarizer = MockCompletionModel::from_stream_turns([reply("unused")]);
+fn with_fewer_of_the_users_messages_than_kept_all_but_the_oldest_stay() {
+    let summarizer = MockCompletionModel::from_stream_turns([reply(&template("FEW"))]);
     let model = MockCompletionModel::from_stream_turns([reply("done")]);
     let app = turn_near_the_window((&model, &summarizer), 20);
     assert!(app.is_some(), "an agent on a listed model");
-    let Some(app) = app else {
+    let Some((app, agent, before)) = app else {
         return;
     };
-    assert_eq!(sent(&summarizer).len(), 0);
+    assert_eq!(sent(&summarizer).len(), 1);
     let requests = sent(&model);
-    assert_eq!(requests.len(), 1, "{requests:?}");
-    let request = requests.first().map(String::as_str).unwrap_or_default();
+    let request = requests.last().map(String::as_str).unwrap_or_default();
     assert!(
-        request.contains("What does the crate do?") && request.contains("question 5"),
+        request.contains("FEW") && !request.contains("What does the crate do?"),
         "{request}"
     );
+    assert!(kept_from(
+        &entries(app.world(), agent),
+        &before,
+        "question 0"
+    ));
     let ended = &app.world().resource::<Ended>().0;
     assert!(
         matches!(ended.as_slice(), [TurnOutcome::Answered(_)]),
         "{ended:?}"
     );
-    let notices = &app.world().resource::<Collected<Notice>>().0;
-    let refused = "nothing comes before the user's last 20 messages";
+}
+
+/// A refusal of the request as longer than the model's window.
+fn too_long() -> Vec<rig_core::test_utils::MockStreamEvent> {
+    let refusal =
+        rig_core::ProviderResponseError::without_status("prompt is too long: 210000 tokens");
+    let refused = rig_core::test_utils::MockError::ProviderResponse(refusal);
+    vec![rig_core::test_utils::MockStreamEvent::Error(refused)]
+}
+
+/// An agent of `app` on `model`, with `summarizer` writing the template's summaries, the
+/// defaults otherwise.
+fn agent_with_defaults(
+    app: &mut App,
+    (model, summarizer): (&MockCompletionModel, &MockCompletionModel),
+) -> Option<Entity> {
+    app.insert_resource(scripted_models([
+        ("test/agent", model),
+        ("test/summarizer", summarizer),
+    ]))
+    .add_plugins((AgentPlugin, SessionLogPlugin, StructuredCompactionPlugin))
+    .insert_resource(StructuredCompaction {
+        model: Some("test/summarizer".to_owned()),
+        ..StructuredCompaction::default()
+    })
+    .add_open_tool("read", "Read a file.", ToolOptions::default(), read_file)
+    .init_resource::<Ended>()
+    .add_observer(log_ended);
+    collect::<Notice>(app);
+    app.finish();
+    app.update();
+    let agent = first_agent(app.world_mut())?;
+    app.world_mut().trigger(SetModel {
+        entity: agent,
+        model: "test/agent".to_owned(),
+        kind: ChoiceKind::ForThisRun,
+    });
+    Some(agent)
+}
+
+/// A session of two prompts and many long tool results whose next request is refused as too long
+/// recovers: the first prompt's exchange is summarized though fewer than the three kept by
+/// default came before, and the request is answered.
+#[test]
+fn an_overflow_with_few_prompts_and_long_tool_output_is_answered() {
+    let (mut app, wakes) = app_on(&MemoryStore::default());
+    let mut script = Vec::new();
+    for call in 1..=4 {
+        let path = serde_json::json!({ "path": format!("big/f{call}.rs") });
+        script.push(calls(&format!("c{call}"), "read", path));
+    }
+    script.extend([reply("built"), too_long(), reply("done")]);
+    let model = MockCompletionModel::from_stream_turns(script);
+    let summarizer = MockCompletionModel::from_stream_turns([reply(&template("RECOVERED"))]);
+    let agent = agent_with_defaults(&mut app, (&model, &summarizer));
+    assert!(agent.is_some(), "an agent");
+    let Some(agent) = agent else {
+        return;
+    };
+    say(&mut app, &wakes, agent, "Fix the build.");
+    say(&mut app, &wakes, agent, "Now the tests.");
+
+    assert_eq!(
+        sent(&summarizer).len(),
+        1,
+        "{:?} {:?}",
+        app.world().resource::<Collected<Notice>>().0,
+        sent(&model)
+    );
+    let ended = &app.world().resource::<Ended>().0;
     assert!(
-        notices.iter().any(|notice| notice.text.contains(refused)),
+        matches!(ended.as_slice(), [_, TurnOutcome::Answered(_)]),
+        "{ended:?} {:?}",
+        app.world().resource::<Collected<Notice>>().0
+    );
+    let requests = sent(&model);
+    let resent = requests.last().map(String::as_str).unwrap_or_default();
+    assert!(
+        resent.contains("RECOVERED")
+            && resent.contains("Now the tests.")
+            && !resent.contains("Fix the build."),
+        "{resent}"
+    );
+}
+
+/// A `/compact` of a conversation of one message of the user's, with an image, and a long reply
+/// is refused: the user's only message is never summarized, and nothing changes.
+#[test]
+fn a_compact_with_only_the_users_first_message_to_keep_is_refused() {
+    let (mut app, wakes) = app_on(&MemoryStore::default());
+    let model = MockCompletionModel::from_stream_turns([reply("## Goal\nDEFAULT-SUMMARY.")]);
+    let summarizer = MockCompletionModel::from_stream_turns([reply(&template("UNUSED"))]);
+    let agent = agent_with_defaults(&mut app, (&model, &summarizer));
+    assert!(agent.is_some(), "an agent");
+    let Some(agent) = agent else {
+        return;
+    };
+    let long = Message::assistant("word ".repeat(16_001));
+    for message in [pictured("Read this.".to_owned()), long] {
+        assert!(commit_message(app.world_mut(), agent, message).is_ok());
+    }
+    let before = entries(app.world(), agent);
+    app.world_mut().trigger(RunCommand::new(agent, "compact"));
+    until_ended(&mut app, &wakes, 0);
+
+    assert_eq!(entries(app.world(), agent), before);
+    assert_eq!(sent(&summarizer).len() + sent(&model).len(), 0);
+    let notices = &app.world().resource::<Collected<Notice>>().0;
+    assert!(
+        notices
+            .iter()
+            .any(|notice| notice.text.contains("nothing comes before")),
         "{notices:?}"
     );
 }
@@ -291,8 +439,9 @@ fn entries(world: &World, agent: Entity) -> Vec<Entry> {
 }
 
 /// A compaction only ever replaces the messages before the ones kept by a summary: the kept
-/// messages stay the entries they were, an image among them, and a compaction that is refused,
-/// or whose summary comes back after the conversation changed, changes nothing.
+/// messages stay the entries they were, an image among them, fewer of them stay only where
+/// nothing comes before them, and a compaction that is refused, or whose summary comes back after
+/// the conversation changed, changes nothing.
 #[test]
 fn kept_messages_stay_the_entries_they_were_and_a_failed_compaction_changes_nothing() {
     let (mut app, wakes) = app_on(&MemoryStore::default());
@@ -301,6 +450,7 @@ fn kept_messages_stay_the_entries_they_were_and_a_failed_compaction_changes_noth
     let summarizer = MockCompletionModel::from_stream_turns([
         reply(&template("FIRST-SUMMARY")),
         reply(&template("SECOND-SUMMARY")),
+        reply(&template("THIRD-SUMMARY")),
     ]);
     /// Rewrites the first entry while a summary is reviewed, once switched on.
     #[derive(Resource, Default)]
@@ -349,15 +499,7 @@ fn kept_messages_stay_the_entries_they_were_and_a_failed_compaction_changes_noth
         until_ended(app, &wakes, before);
     };
     say(&mut app, &wakes, agent, &says(1));
-    let mut pictured = Message::user(says(2));
-    if let Message::User { content } = &mut pictured {
-        content.push(rig_core::message::UserContent::image_base64(
-            "aGk=",
-            Some(rig_core::message::ImageMediaType::PNG),
-            None,
-        ));
-    }
-    for message in [pictured, Message::assistant("answer 2")] {
+    for message in [pictured(says(2)), Message::assistant("answer 2")] {
         assert!(commit_message(app.world_mut(), agent, message).is_ok());
     }
     say(&mut app, &wakes, agent, &says(3));
@@ -377,10 +519,20 @@ fn kept_messages_stay_the_entries_they_were_and_a_failed_compaction_changes_noth
     );
     assert!(!json.contains(&says(1)), "{json}");
 
-    // Nothing comes before the two kept messages now: refused, nothing changes.
+    // Nothing comes before the two kept messages now: the newest one stays.
+    compact(&mut app);
+    let after = entries(app.world(), agent);
+    let json = serde_json::to_string(&after).unwrap_or_default();
+    assert!(
+        json.contains("SECOND-SUMMARY") && !json.contains(&says(2)),
+        "{json}"
+    );
+    assert!(json.contains(&says(3)), "{json}");
+
+    // Nothing comes before the newest one: refused, nothing changes.
     compact(&mut app);
     assert_eq!(entries(app.world(), agent), after);
-    assert_eq!(sent(&summarizer).len(), 1);
+    assert_eq!(sent(&summarizer).len(), 2);
 
     // A summary whose messages changed while it was written goes in nowhere.
     say(&mut app, &wakes, agent, &says(4));
@@ -388,13 +540,13 @@ fn kept_messages_stay_the_entries_they_were_and_a_failed_compaction_changes_noth
     app.world_mut().resource_mut::<EditMeanwhile>().0 = true;
     compact(&mut app);
     let after = entries(app.world(), agent);
-    assert_eq!(sent(&summarizer).len(), 2);
+    assert_eq!(sent(&summarizer).len(), 3);
     let ids = |entries: &[Entry]| -> Vec<_> { entries.iter().map(|entry| entry.id).collect() };
     assert_eq!(ids(&after), ids(&before));
     assert_eq!(after.get(1..), before.get(1..));
     let json = serde_json::to_string(&after).unwrap_or_default();
     assert!(
-        json.contains("edited meanwhile") && !json.contains("SECOND-SUMMARY"),
+        json.contains("edited meanwhile") && !json.contains("THIRD-SUMMARY"),
         "{json}"
     );
     let notices = &app.world().resource::<Collected<Notice>>().0;
