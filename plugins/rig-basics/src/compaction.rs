@@ -378,7 +378,8 @@ fn over_threshold(
 /// A request that goes asks for at most the room its input leaves in the window, by pi-ai's
 /// clamp. Both go by one count of the request as it is sent, by pi-ai's estimate: its system
 /// prompt, tools and the history it sends, or the tokens last reported for that history plus an
-/// estimate of the messages since ([`anchor`]). pi's own threshold leaves a pending prompt out.
+/// estimate of the messages since ([`anchor`]). pi's own threshold leaves a pending prompt out. A
+/// request a plugin brought whole, which sends no history of the agent's, is only clamped.
 fn compact_near_the_window(
     mut calls: Query<
         (Entity, &mut ModelRequest, &Adapted, &CallOf, &ForAgent),
@@ -432,7 +433,9 @@ fn compact_near_the_window(
             }
             None => request_tokens(parts, &model.request.chat_history, None),
         };
+        // A summary of the conversation shortens only a request that sends it.
         if !tried.threshold
+            && model.history.is_some()
             && let Some(summarizing) = over_threshold(conversation, input, (&settings, spec), end)
         {
             let route = (
