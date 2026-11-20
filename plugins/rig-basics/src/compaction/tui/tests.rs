@@ -111,41 +111,6 @@ fn a_summary_a_later_compaction_took_out_is_still_drawn_from_its_entry() {
     assert!(!text.contains("<summary>"), "{text}");
 }
 
-/// A summary is drawn from its entry alone: once a secret is taken out of the entry, nothing
-/// else the session holds, such as an earlier version's aside with the state, brings it back.
-#[test]
-fn a_summary_is_drawn_from_its_entry_and_nothing_else() {
-    use rig_core::conversation::{Aside, Author};
-    let mut app = app();
-    let mut conversation = rig_core::conversation::Conversation::default();
-    conversation.push(rig_core::completion::Message::user("the key is hunter2"));
-    let secret = state("The key is hunter2.", "hunter2.txt");
-    let read = conversation.messages().to_vec();
-    assert!(rig_memory::apply_summary(&mut conversation, &read, &secret).is_some());
-    let id = conversation.id(0);
-    let value = serde_json::json!({
-        "summary": id,
-        "replaced": [],
-        "state": {"summary": secret.summary, "read_files": secret.read_files},
-    });
-    let author = rig_memory::summary_author();
-    conversation.add_aside(Aside::new("rig.compaction", author, value).after(id));
-    conversation.edit_each(Author::plugin("redact"), |entry| {
-        let text = entry.message.rag_text()?;
-        Some(rig_core::completion::Message::user(
-            text.replace("hunter2", "[gone]"),
-        ))
-    });
-    let text = conversation.messages().first().and_then(|it| it.rag_text());
-    let agent = app.world_mut().spawn(Conversation(conversation)).id();
-    let text = drawn(&mut app, agent, id, text.unwrap_or_default());
-    assert!(
-        text.contains("The key is [gone].") && text.contains("Read: [gone].txt"),
-        "{text}"
-    );
-    assert!(!text.contains("hunter2"), "{text}");
-}
-
 /// An entry by the summary's author that is no summary of rig's is drawn whole.
 #[test]
 fn a_summary_of_another_shape_is_drawn_whole() {

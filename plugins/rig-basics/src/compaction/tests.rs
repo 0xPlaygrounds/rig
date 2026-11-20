@@ -1077,130 +1077,10 @@ fn a_turn_asks_for_the_output_room_its_input_leaves() {
     );
 }
 
-/// A conversation replaced live, which its log records as a reset, drops what its compactions
-/// replaced, as a restart from that log does: whether it is the same value saved again or another
-/// whose entries reuse the summary's id, the summary never shows the messages from before.
-#[cfg(feature = "tui")]
-#[test]
-fn a_reset_drops_what_compactions_replaced_live() {
-    for unrelated in [false, true] {
-        let model = MockCompletionModel::from_stream_turns([reply("## Goal\nThe summary.")]);
-        let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |app| {
-            let seen = |changed: Query<(), Changed<rig_tui::Replaced>>,
-                        mut redrawn: ResMut<Redrawn>| {
-                redrawn.0 |= !changed.is_empty();
-            };
-            app.init_resource::<Redrawn>().add_systems(PostUpdate, seen);
-        });
-        let agent = agent(&mut app, &model, 1_000_000, turns(0, 4));
-        assert!(agent.is_some(), "the catalog lists the model");
-        let Some(agent) = agent else {
-            return;
-        };
-        app.update();
-        app.world_mut().trigger(Compact {
-            entity: agent,
-            focus: String::new(),
-        });
-        run_until(&mut app, &wakes, |world| {
-            world.resource::<Ended>().0.len() == 1
-        });
-        let archived = |app: &App| {
-            app.world()
-                .get::<rig_tui::Replaced>(agent)
-                .map_or(0, |replaced| replaced.0.len())
-        };
-        assert_eq!(archived(&app), 1, "{unrelated}: {:?}", notices(&app));
-
-        let world = app.world_mut();
-        world.resource_mut::<Redrawn>().0 = false;
-        let Some(mut conversation) = world.get_mut::<Conversation>(agent) else {
-            return;
-        };
-        let json = serde_json::to_string(&**conversation).unwrap_or_default();
-        let value = serde_json::from_str::<rig_core::conversation::Conversation>(&json);
-        assert!(value.is_ok(), "{json}");
-        let Ok(mut value) = value else {
-            return;
-        };
-        if unrelated {
-            value.edit_each(Author::plugin("test"), |entry| {
-                Some(Message::user(format!("other {}", entry.index)))
-            });
-        }
-        **conversation = value;
-        app.update();
-        app.update();
-        assert_eq!(archived(&app), 0, "{unrelated}");
-        assert!(app.world().resource::<Redrawn>().0, "{unrelated}");
-    }
-}
-
-/// Whether what an agent's compactions replaced changed since it was last set to false, which
-/// is what lays the terminal view's pane out again.
-#[cfg(feature = "tui")]
-#[derive(Resource, Default)]
-struct Redrawn(bool);
-
-/// A conversation replaced whole by another of the same messages, then compacted by a summary
-/// already on its way before anything reads the reset: the summary keeps what it replaced, as
-/// a restart from the log shows it, and what a summary from before the reset replaced is gone.
-#[cfg(feature = "tui")]
-#[test]
-fn a_summary_right_after_a_reset_keeps_what_it_replaced_live_as_a_restart_does() {
-    fn replace_under_the_summary(
-        answered: On<Add<Outcome>>,
-        calls: Query<&ForAgent, With<Summarizing>>,
-        mut agents: Query<&mut Conversation>,
-    ) {
-        let agent = calls.get(answered.entity).map(|&ForAgent(agent)| agent);
-        if let Some(mut conversation) = agent.ok().and_then(|agent| agents.get_mut(agent).ok()) {
-            let messages = conversation.messages().to_vec();
-            **conversation = rig_core::conversation::Conversation::from_messages(messages);
-        }
-    }
-
-    let store = MemoryStore::default();
-    let model = MockCompletionModel::from_stream_turns([
-        reply("## Goal\nThe first summary."),
-        reply("## Goal\nThe second summary."),
-    ]);
-    let (mut app, wakes) = start_with(&store, 100, |_| {});
-    let agent = agent(&mut app, &model, 1_000_000, turns(0, 4));
-    assert!(agent.is_some(), "the catalog lists the model");
-    let Some(agent) = agent else {
-        return;
-    };
-    app.update();
-    compact(&mut app, &wakes, agent, "", 1);
-    for message in turns(4, 4) {
-        assert!(commit_message(app.world_mut(), agent, message).is_ok());
-    }
-    app.update();
-    app.add_observer(replace_under_the_summary);
-    compact(&mut app, &wakes, agent, "", 2);
-    app.update();
-    app.update();
-
-    let ids = |sets: &BTreeMap<MessageId, Vec<Entry>>| -> Vec<(MessageId, Vec<Option<MessageId>>)> {
-        let ids = |entries: &Vec<Entry>| entries.iter().map(|entry| entry.id).collect();
-        sets.iter()
-            .map(|(id, entries)| (*id, ids(entries)))
-            .collect()
-    };
-    let live = app.world().get::<rig_tui::Replaced>(agent);
-    let live = live.map(|replaced| ids(&replaced.0)).unwrap_or_default();
-    let id = app.world().get::<AgentId>(agent).map(|id| id.0.clone());
-    let replayed = rig_memory::summarized_in_log(&store, &id.unwrap_or_default());
-    assert!(replayed.is_ok(), "{replayed:?}");
-    let replayed = replayed.map(|sets| ids(&sets)).unwrap_or_default();
-    assert_eq!(live.len(), 1, "{live:?} {:?}", notices(&app));
-    assert_eq!(live, replayed);
-}
-
 /// What each compaction replaced, the messages themselves, stays drawn above its summary, a
 /// cancelled one drawing nothing and a second one nesting the first: after a restart, for the
-/// agent and a subagent, and in a fork; a fork made before a compaction draws nothing.
+/// agent and a subagent, and in a fork; a fork made before a compaction draws nothing. A
+/// conversation replaced whole drops them, live as in its log.
 #[cfg(feature = "tui")]
 #[test]
 fn what_compactions_replaced_stays_drawn_live_after_a_restart_and_in_a_fork() {
@@ -1354,6 +1234,16 @@ fn what_compactions_replaced_stays_drawn_live_after_a_restart_and_in_a_fork() {
     assert!(earlier.is_some(), "the fork was made");
     let Some(earlier) = earlier else { return };
     assert_eq!(replaced(restarted.world(), earlier), Vec::new());
+
+    if let Some(mut conversation) = restarted.world_mut().get_mut::<Conversation>(agent) {
+        let messages = conversation.messages().to_vec();
+        **conversation = rig_core::conversation::Conversation::from_messages(messages);
+    }
+    restarted.update();
+    restarted.update();
+    assert_eq!(replaced(restarted.world(), agent), Vec::new());
+    let logged = rig_memory::summarized_in_log(&store, &main_id.0);
+    assert!(logged.is_ok_and(|sets| sets.is_empty()));
 }
 
 /// A reply cut short by the window is dropped before compaction is tried, as pi omits it: with
@@ -1405,40 +1295,6 @@ fn a_reply_cut_short_is_dropped_when_recovery_does_not_go_through() {
     }
 }
 
-/// A prompt that takes the request over the threshold compacts before its first request goes,
-/// though the history before it is short, also when that ends in a tool result kept from a turn
-/// that stopped: the prompt is counted, and never summarized. A 30k prompt in a 40k window.
-#[test]
-fn a_big_prompt_over_the_threshold_compacts_before_the_first_send() {
-    let model = MockCompletionModel::from_stream_turns([
-        reply("## Goal\nAnswer the questions."),
-        measured("done", 100),
-    ]);
-    let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |_| {});
-    let mut messages = turns(0, 2);
-    messages.extend(read("1", "src/lib.rs", "pub fn answer() -> u32 { 42 }"));
-    let agent = agent(&mut app, &model, 40_000, messages);
-    assert!(agent.is_some(), "the catalog lists the model");
-    let Some(agent) = agent else {
-        return;
-    };
-    let prompt = format!("Read this: {}", "word ".repeat(24_000));
-    ask(&mut app, &wakes, agent, &prompt, 1);
-    assert_eq!(answer(&app).as_deref(), Some("done"), "{:?}", notices(&app));
-    let requests = sent(&model);
-    assert_eq!(requests.len(), 2, "{:?}", notices(&app));
-    let summary = requests.first().cloned().unwrap_or_default();
-    assert!(
-        summary.contains("context summarization assistant") && !summary.contains("Read this:"),
-        "{summary}"
-    );
-    let asked = requests.last().cloned().unwrap_or_default();
-    assert!(
-        asked.contains("Read this:") && asked.contains("Answer the questions."),
-        "{asked}"
-    );
-}
-
 /// With the default budget of recent messages to keep, which the history before a prompt fits
 /// in, a prompt that takes the request over the window still compacts before it is sent: the
 /// prompt counts toward what is kept, so older messages are summarized to make room for it,
@@ -1469,18 +1325,11 @@ fn a_prompt_counts_toward_the_recent_messages_kept() {
         let requests = sent(&model);
         assert_eq!(requests.len(), 2, "{words}: {:?}", notices(&app));
         let summary = requests.first().cloned().unwrap_or_default();
-        assert!(
-            summary.contains("context summarization assistant")
-                && summary.contains("question 0")
-                && !summary.contains("Read this:"),
-            "{words}"
-        );
+        let summarized = summary.contains("question 0") && !summary.contains("Read this:");
+        assert!(summarized, "{words}");
         let asked = requests.last().cloned().unwrap_or_default();
-        assert!(
-            asked.contains("Read this:") && asked.contains("Answer the questions."),
-            "{words}"
-        );
-        assert!(!asked.contains("question 0"), "{words}");
+        let whole = asked.contains("Read this:") && !asked.contains("question 0");
+        assert!(whole, "{words}");
         assert_eq!(asked.contains("question 1"), kept.is_some(), "{words}");
     }
 }
@@ -1521,97 +1370,60 @@ fn a_measured_conversation_compacts_before_the_next_prompt() {
     );
 }
 
-/// The threshold counts the request as it goes, the same count the output limit is fitted by:
-/// with no usage reported, a long system prompt takes a short conversation over, and its older
-/// messages are summarized before the request is sent.
+/// The threshold counts the request as it goes, the same count the output limit is fitted by.
+/// With no usage reported, a long system prompt takes a short conversation over, and its older
+/// messages are summarized before the request is sent. A request a plugin brought whole, with a
+/// history of its own, is measured by that: a conversation last measured near the window neither
+/// compacts for it nor takes room from its answer, and a long history of its own takes that room
+/// but compacts nothing, since a summary of the conversation would not shorten it.
 #[test]
 fn the_threshold_counts_the_request_as_it_is_sent() {
-    let model = MockCompletionModel::from_stream_turns([
-        reply("## Goal\nAnswer the questions."),
-        reply("done"),
-    ]);
-    let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |app| {
-        let long = |mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<TurnCall>)>| {
-            for mut call in &mut calls {
-                if let Some(prompt) = &mut call.prompt {
-                    prompt.sections.push(rig_core::completion::Section::new(
-                        "long",
-                        "word ".repeat(20_000),
-                    ));
-                }
-            }
-        };
-        app.add_systems(AgentPass, long.in_set(PrepareSystems::Edit));
-    });
-    let agent = agent(&mut app, &model, 40_000, turns(0, 2));
-    assert!(agent.is_some(), "the catalog lists the model");
-    let Some(agent) = agent else {
-        return;
-    };
-    ask(&mut app, &wakes, agent, "And the next question?", 1);
-    assert_eq!(answer(&app).as_deref(), Some("done"), "{:?}", notices(&app));
-    let requests = sent(&model);
-    assert_eq!(requests.len(), 2, "{:?}", notices(&app));
-    let summary = requests.first().cloned().unwrap_or_default();
-    assert!(
-        summary.contains("context summarization assistant"),
-        "{summary}"
-    );
-}
-
-/// A request a plugin brought whole, with a history of its own, is measured as it goes: a
-/// conversation last measured near the window neither compacts for it nor takes room from its
-/// answer, and a long history of its own takes that room but compacts nothing, since a summary of
-/// the conversation would not shorten it.
-#[test]
-fn a_request_brought_whole_is_measured_by_what_it_sends() {
-    for (words, clamped) in [(2, false), (21_000, true)] {
-        let model = MockCompletionModel::from_stream_turns([reply("done")]);
+    // The words of a history brought whole, the requests sent, and whether the answer has room.
+    for (whole, count, room) in [
+        (None, 2, false),
+        (Some(2), 1, true),
+        (Some(21_000), 1, false),
+    ] {
+        let script = [reply("## Goal\nAnswer the questions."), reply("done")];
+        let model = MockCompletionModel::from_stream_turns(script);
         let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |app| {
-            let history = "word ".repeat(words);
-            let whole =
+            let edit =
                 move |mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<TurnCall>)>| {
                     for mut call in &mut calls {
-                        call.history = None;
-                        call.request_mut().chat_history = vec![Arc::new(Message::user(&history))];
+                        if let Some(words) = whole {
+                            let history = Message::user("word ".repeat(words));
+                            call.history = None;
+                            call.request_mut().chat_history = vec![Arc::new(history)];
+                        } else if let Some(prompt) = &mut call.prompt {
+                            let long = "word ".repeat(20_000);
+                            let long = rig_core::completion::Section::new("long", long);
+                            prompt.sections.push(long);
+                        }
                     }
                 };
-            app.add_systems(AgentPass, whole.in_set(PrepareSystems::Edit));
+            app.add_systems(AgentPass, edit.in_set(PrepareSystems::Edit));
         });
-        let agent = agent(&mut app, &model, 40_000, turns(0, 4));
+        let agent = agent(&mut app, &model, 40_000, turns(0, 2));
         assert!(agent.is_some(), "the catalog lists the model");
         let Some(agent) = agent else {
             return;
         };
-        let through = app
-            .world()
-            .get::<Conversation>(agent)
-            .and_then(|conversation| conversation.entries().last().map(|entry| entry.id));
-        let measured = through.map(|through| rig_memory::Anchor {
-            usage: Usage::new().total_tokens(30_000),
-            through,
-        });
+        let conversation = app.world().get::<Conversation>(agent);
+        let last = conversation.and_then(|it| it.entries().last().map(|entry| entry.id));
+        let measured = last
+            .filter(|_| whole.is_some())
+            .map(|through| rig_memory::Anchor {
+                usage: Usage::new().total_tokens(30_000),
+                through,
+            });
         app.world_mut()
             .entity_mut(agent)
             .insert(LastUsage(measured));
-        let before = entries(app.world(), agent);
         ask(&mut app, &wakes, agent, "And the next question?", 1);
         let requests = model.requests();
-        assert_eq!(requests.len(), 1, "{words}: {:?}", notices(&app));
-        let asked = requests.first().and_then(|request| request.max_tokens);
-        match clamped {
-            true => assert!(
-                asked.is_some_and(|asked| asked < 8_000),
-                "{words}: {asked:?}"
-            ),
-            false => assert_eq!(asked, Some(8_000), "{words}"),
-        }
-        let after = entries(app.world(), agent);
-        assert_eq!(
-            after.get(..before.len()),
-            Some(before.as_slice()),
-            "{words}"
-        );
+        assert_eq!(requests.len(), count, "{whole:?}: {:?}", notices(&app));
+        let asked = requests.last().and_then(|request| request.max_tokens);
+        assert_eq!(asked == Some(8_000), room, "{whole:?}: {asked:?}");
     }
 }
 

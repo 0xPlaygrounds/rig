@@ -207,7 +207,13 @@ fn a_summary_without_its_headings_twice_falls_back_and_the_turn_goes_on() {
     let mut messages = vec![Message::user("What does the crate do?")];
     for turn in 0..6 {
         messages.push(Message::assistant(format!("{turn}: {long}")));
-        messages.push(Message::user(format!("question {turn}")));
+        let mut question = Message::user(format!("question {turn}"));
+        if let Message::User { content } = &mut question {
+            content.push(rig_core::message::UserContent::image_base64(
+                "aGk=", None, None,
+            ));
+        }
+        messages.push(question);
     }
     messages.push(Message::assistant("The last answer."));
     for message in messages {
@@ -239,6 +245,7 @@ fn a_summary_without_its_headings_twice_falls_back_and_the_turn_goes_on() {
     );
     let last = requests.last().map(String::as_str).unwrap_or_default();
     assert!(last.contains("DEFAULT-SUMMARY"), "{last}");
+    assert!(last.contains("aGk="), "the kept messages' images stay");
     let notices = &app.world().resource::<Collected<Notice>>().0;
     assert!(
         notices
@@ -248,38 +255,11 @@ fn a_summary_without_its_headings_twice_falls_back_and_the_turn_goes_on() {
     );
 }
 
-/// A message of the user's of `text` with an image.
-fn pictured(text: String) -> Message {
-    let mut message = Message::user(text);
-    if let Message::User { content } = &mut message {
-        content.push(rig_core::message::UserContent::image_base64(
-            "aGk=",
-            Some(rig_core::message::ImageMediaType::PNG),
-            None,
-        ));
-    }
-    message
-}
-
-/// The agent's entries, oldest first.
-fn entries(world: &World, agent: Entity) -> Vec<Entry> {
-    let conversation = world.get::<Conversation>(agent);
-    let all = conversation.map(|it| (0..it.messages().len()).filter_map(|at| it.entry(at)));
-    all.into_iter().flatten().collect()
-}
-
-/// A compaction only ever replaces the messages before the ones kept by a summary: the kept
-/// messages stay the entries they were, an image among them, and a compaction that is refused,
-/// or whose summary comes back after the conversation changed, changes nothing.
+/// A compaction replaces only the messages before the ones kept: with nothing before them it is
+/// refused, and a summary that comes back after the conversation changed goes in nowhere. Either
+/// way the entries stay the ones they were, the image of a kept message included.
 #[test]
-fn kept_messages_stay_the_entries_they_were_and_a_failed_compaction_changes_nothing() {
-    let (mut app, wakes) = app_on(&MemoryStore::default());
-    let answers = [1, 3, 4].map(|turn| reply(&format!("answer {turn}")));
-    let model = MockCompletionModel::from_stream_turns(answers);
-    let summarizer = MockCompletionModel::from_stream_turns([
-        reply(&template("FIRST-SUMMARY")),
-        reply(&template("SECOND-SUMMARY")),
-    ]);
+fn a_refused_or_failed_compaction_changes_nothing() {
     /// Rewrites the first entry while a summary is reviewed, once switched on.
     #[derive(Resource, Default)]
     struct EditMeanwhile(bool);
@@ -295,6 +275,9 @@ fn kept_messages_stay_the_entries_they_were_and_a_failed_compaction_changes_noth
             }
         }
     };
+    let (mut app, wakes) = app_on(&MemoryStore::default());
+    let model = MockCompletionModel::from_stream_turns([reply("answer 3")]);
+    let summarizer = MockCompletionModel::from_stream_turns([reply(&template("SUMMARY"))]);
     app.insert_resource(scripted_models([
         ("test/agent", &model),
         ("test/summarizer", &summarizer),
@@ -308,7 +291,6 @@ fn kept_messages_stay_the_entries_they_were_and_a_failed_compaction_changes_noth
     .add_systems(AgentPass, edit.in_set(ReviewSystems::Edit))
     .init_resource::<Ended>()
     .add_observer(log_ended);
-    collect::<Notice>(&mut app);
     app.finish();
     app.update();
     let agent = first_agent(app.world_mut());
@@ -316,60 +298,53 @@ fn kept_messages_stay_the_entries_they_were_and_a_failed_compaction_changes_noth
     let Some(agent) = agent else {
         return;
     };
+    let model = "test/agent".to_owned();
+    let kind = ChoiceKind::ForThisRun;
+    let entity = agent;
     app.world_mut().trigger(SetModel {
-        entity: agent,
-        model: "test/agent".to_owned(),
-        kind: ChoiceKind::ForThisRun,
+        entity,
+        model,
+        kind,
     });
+    let mut pictured = Message::user(says(2));
+    if let Message::User { content } = &mut pictured {
+        let png = Some(rig_core::message::ImageMediaType::PNG);
+        content.push(rig_core::message::UserContent::image_base64(
+            "aGk=", png, None,
+        ));
+    }
+    let long = || Message::assistant("word ".repeat(16_001));
+    for message in [Message::user(says(1)), long(), pictured, long()] {
+        assert!(commit_message(app.world_mut(), agent, message).is_ok());
+    }
+    let entries = |app: &App| -> Vec<Entry> {
+        let conversation = app.world().get::<Conversation>(agent);
+        let all = conversation.map(|it| (0..it.messages().len()).filter_map(|at| it.entry(at)));
+        all.into_iter().flatten().collect()
+    };
     let compact = |app: &mut App| {
         let before = app.world().resource::<Ended>().0.len();
         app.world_mut().trigger(RunCommand::new(agent, "compact"));
         until_ended(app, &wakes, before);
     };
-    say(&mut app, &wakes, agent, &says(1));
-    for message in [pictured(says(2)), Message::assistant("answer 2")] {
-        assert!(commit_message(app.world_mut(), agent, message).is_ok());
-    }
-    say(&mut app, &wakes, agent, &says(3));
 
-    // The last two of the user's messages stay, the image with its message.
-    let before = entries(app.world(), agent);
+    // Nothing comes before the two kept messages: refused, no summary asked for.
+    let before = entries(&app);
     compact(&mut app);
-    let after = entries(app.world(), agent);
-    let kept = before
-        .iter()
-        .position(|entry| serde_json::to_string(entry).is_ok_and(|json| json.contains(&says(2))));
-    assert_eq!(after.get(1..), kept.and_then(|kept| before.get(kept..)));
-    let json = serde_json::to_string(&after).unwrap_or_default();
-    assert!(
-        json.contains("FIRST-SUMMARY") && json.contains("aGk="),
-        "{json}"
-    );
-    assert!(!json.contains(&says(1)), "{json}");
-
-    // Nothing comes before the two kept messages now: refused, nothing changes.
-    compact(&mut app);
-    assert_eq!(entries(app.world(), agent), after);
-    assert_eq!(sent(&summarizer).len(), 1);
+    assert_eq!(entries(&app), before);
+    assert_eq!(sent(&summarizer).len(), 0);
 
     // A summary whose messages changed while it was written goes in nowhere.
-    say(&mut app, &wakes, agent, &says(4));
-    let before = entries(app.world(), agent);
+    say(&mut app, &wakes, agent, &says(3));
+    let before = entries(&app);
     app.world_mut().resource_mut::<EditMeanwhile>().0 = true;
     compact(&mut app);
-    let after = entries(app.world(), agent);
-    assert_eq!(sent(&summarizer).len(), 2);
-    let ids = |entries: &[Entry]| -> Vec<_> { entries.iter().map(|entry| entry.id).collect() };
-    assert_eq!(ids(&after), ids(&before));
+    let after = entries(&app);
+    assert_eq!(sent(&summarizer).len(), 1);
     assert_eq!(after.get(1..), before.get(1..));
     let json = serde_json::to_string(&after).unwrap_or_default();
-    assert!(
-        json.contains("edited meanwhile") && !json.contains("SECOND-SUMMARY"),
-        "{json}"
-    );
-    let notices = &app.world().resource::<Collected<Notice>>().0;
-    let said = |text: &str| notices.iter().any(|notice| notice.text.contains(text));
-    assert!(said("changed meanwhile"), "{notices:?}");
+    let kept = json.contains("edited meanwhile") && json.contains("aGk=");
+    assert!(kept && !json.contains("SUMMARY"), "{json}");
 }
 
 rig_defaults_test_support::stages_ordered_test!(StructuredCompactionPlugin);

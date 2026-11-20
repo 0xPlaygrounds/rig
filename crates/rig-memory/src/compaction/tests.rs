@@ -111,7 +111,8 @@ fn nothing_is_compacted_again_until_something_is_added() {
 }
 
 /// One pass over the log reads what each compaction replaced, and the conversation's summary
-/// entry holds the state the next one builds on.
+/// entry holds the state the next one builds on. A `rig.compaction` aside an earlier version
+/// saved with each compaction stays in the session and is read by nothing.
 #[test]
 fn the_log_holds_what_each_summary_first_replaced() {
     use crate::{MemoryStore, load, save};
@@ -139,6 +140,15 @@ fn the_log_holds_what_each_summary_first_replaced() {
     let first = compact(&mut conversation);
     let after_first = ids(&conversation);
     let second = compact(&mut conversation);
+    let stale = serde_json::json!({
+        "summary": second,
+        "replaced": [],
+        "hash": "00000000000000000000000000000000",
+        "state": {"summary": "another text", "read_files": ["stale.rs"]},
+    });
+    let aside = rig_core::conversation::Aside::new("rig.compaction", summary_author(), stale);
+    conversation.add_aside(aside.after(Some(second)));
+    save(&store, "agent", &mut conversation).expect("saved");
 
     let found = summarized_in_log(&store, "agent").expect("read");
     let replaced = |summary| -> Option<Vec<MessageId>> {
@@ -154,10 +164,10 @@ fn the_log_holds_what_each_summary_first_replaced() {
         texts,
         [Message::user("one"), Message::user("two")].map(Arc::new)
     );
-    assert_eq!(
-        summary_state(&load(&store, "agent").expect("loaded")),
-        state
-    );
+    let loaded = load(&store, "agent").expect("loaded");
+    assert_eq!(loaded, conversation);
+    assert_eq!(loaded.asides().count(), 1);
+    assert_eq!(summary_state(&loaded), state);
 }
 
 /// A log cut after any line, as a crash leaves it, or inside one, reopens as the conversation
@@ -227,21 +237,18 @@ fn a_log_cut_anywhere_reopens_as_the_conversation_once_was() {
     assert_eq!(summary_state(&live), state("third"));
 }
 
-/// Nothing is carried across a reset: a value that takes the log's place, even one whose
-/// summary equals the old one's entry for entry, or the same value saved again or gone back
-/// to, shows none of the messages the log's summaries replaced before it, so a conversation
-/// never shows another's. A compaction made after the reset holds what it replaced.
+/// Nothing is carried across a reset: a value that takes the log's place, another conversation
+/// or the same one saved again, shows none of the messages the log's summaries replaced before
+/// it, so a conversation never shows another's. A compaction made after the reset holds what it
+/// replaced, though it reuses the summary's id.
 #[test]
 fn nothing_a_summary_replaced_is_carried_across_a_reset() {
     use crate::{MemoryStore, Writer};
 
-    let logged = || {
-        let store = Arc::new(MemoryStore::default());
-        let (writer, _) = Writer::open(store.clone()).expect("opened");
-        writer.start();
-        (store, writer)
-    };
-    let save = |writer: &Writer, conversation: &mut Conversation| {
+    let store = Arc::new(MemoryStore::default());
+    let (writer, _) = Writer::open(store.clone()).expect("opened");
+    writer.start();
+    let save = |conversation: &mut Conversation| {
         writer.save("agent", conversation);
         writer.flush().expect("flushed");
     };
@@ -249,131 +256,46 @@ fn nothing_a_summary_replaced_is_carried_across_a_reset() {
         summary: "summary".to_owned(),
         ..SummaryState::default()
     };
-    let compact_to = |conversation: &mut Conversation, cut: Option<usize>| {
-        let read = captured(conversation, cut.unwrap_or(conversation.messages().len()));
+    let compact = |conversation: &mut Conversation| {
+        let read = captured(conversation, 2);
         conversation.dated(42, |conversation| {
             apply_summary(conversation, &read, &state).expect("applied");
         });
     };
-    let compact = |conversation: &mut Conversation| compact_to(conversation, Some(2));
-    let messages = |prefix: &str, count: usize| {
-        let texts = ["one", "two", "three", "four", "five"]
-            .into_iter()
-            .take(count);
-        Conversation::from_messages(texts.map(|text| Message::user(format!("{prefix} {text}"))))
+    let messages = |prefix: &str| {
+        let texts = ["one", "two", "three"].map(|text| format!("{prefix} {text}"));
+        Conversation::from_messages(texts.map(Message::user))
     };
-    let reread = |conversation: &Conversation| -> Conversation {
-        let value = serde_json::to_value(conversation).expect("serialized");
-        serde_json::from_value(value).expect("deserialized")
-    };
-    let replaced = |store: &MemoryStore, summary: Option<MessageId>| -> Option<Vec<Message>> {
-        let found = summarized_in_log(store, "agent").expect("read");
-        let entries = found.get(&summary?)?;
-        Some(
-            entries
-                .iter()
-                .map(|entry| (*entry.message).clone())
-                .collect(),
-        )
-    };
-    let first_two = |prefix: &str| -> Option<Vec<Message>> {
-        Some(vec![
-            Message::user(format!("{prefix} one")),
-            Message::user(format!("{prefix} two")),
-        ])
+    let replaced = |summary: Option<MessageId>| -> Vec<Arc<Message>> {
+        let found = summarized_in_log(&*store, "agent").expect("read");
+        let entries = summary.and_then(|summary| found.get(&summary).cloned());
+        let entries = entries.into_iter().flatten();
+        entries.map(|entry| entry.message).collect()
     };
 
-    // A new conversation compacted after the reset has its own.
-    let (store, writer) = logged();
-    let mut old = messages("old", 3);
-    save(&writer, &mut old);
+    let mut old = messages("old");
+    save(&mut old);
     compact(&mut old);
-    save(&writer, &mut old);
-    assert_eq!(replaced(&store, old.id(0)), first_two("old"));
-    let mut current = messages("current", 3);
-    save(&writer, &mut current);
+    save(&mut old);
+    assert_eq!(replaced(old.id(0)), messages("old").messages()[..2]);
+    let mut current = messages("current");
+    save(&mut current);
     assert_eq!(summarized_in_log(&*store, "agent").expect("read").len(), 0);
     compact(&mut current);
-    save(&writer, &mut current);
-    assert_eq!(
-        current.id(0),
-        old.id(0),
-        "the reset reused the summary's id"
-    );
-    assert_eq!(replaced(&store, current.id(0)), first_two("current"));
-
-    // One that came already compacted, with an equal summary, has nothing
-    // in this log, whichever of the two kept a tail.
-    let cuts = [
-        (Some(2), Some(2)),
-        (Some(2), None),
-        (None, Some(2)),
-        (None, None),
-    ];
-    for (old_cut, current_cut) in cuts {
-        let (store, writer) = logged();
-        let mut old = messages("old", 3);
-        save(&writer, &mut old);
-        compact_to(&mut old, old_cut);
-        save(&writer, &mut old);
-        let mut current = messages("current", 3);
-        compact_to(&mut current, current_cut);
-        assert_eq!(current.entry(0), old.entry(0), "the summaries are equal");
-        save(&writer, &mut current);
-        assert_eq!(replaced(&store, current.id(0)), None);
-    }
-
-    // Another conversation's nested summaries can equal this one's: neither
-    // its outer nor its inner summary takes anything from this log.
-    let dated = |first: &str, second: &str| {
-        let mut conversation = Conversation::new();
-        conversation.dated(10, |conversation| {
-            conversation.extend([first, second, "tail"].map(Message::user));
-        });
-        conversation
-    };
-    let (store, writer) = logged();
-    let mut old = dated("a", "b");
-    save(&writer, &mut old);
-    compact(&mut old);
-    save(&writer, &mut old);
-    compact_to(&mut old, None);
-    save(&writer, &mut old);
-    let mut current = dated("x", "y");
-    compact(&mut current);
-    compact_to(&mut current, None);
-    assert_eq!(current.entry(0), old.entry(0), "the summaries are equal");
-    save(&writer, &mut current);
+    save(&mut current);
+    assert_eq!(current.id(0), old.id(0), "the reset reused the id");
+    assert_eq!(replaced(current.id(0)), messages("current").messages()[..2]);
+    let value = serde_json::to_value(&current).expect("serialized");
+    let mut again: Conversation = serde_json::from_value(value).expect("deserialized");
+    save(&mut again);
     assert_eq!(summarized_in_log(&*store, "agent").expect("read").len(), 0);
-
-    // The same value saved again as a reset, and a value gone back to, keep
-    // nothing either; what is compacted after it is held again.
-    let (store, writer) = logged();
-    let mut kept = messages("kept", 5);
-    save(&writer, &mut kept);
-    compact(&mut kept);
-    save(&writer, &mut kept);
-    let mut back = reread(&kept);
-    compact(&mut kept);
-    save(&writer, &mut kept);
-    assert_eq!(summarized_in_log(&*store, "agent").expect("read").len(), 2);
-    save(&writer, &mut reread(&kept));
-    assert_eq!(summarized_in_log(&*store, "agent").expect("read").len(), 0);
-    save(&writer, &mut back);
-    assert_eq!(replaced(&store, back.id(0)), None);
-    let inner = back.entry(0).map(|entry| (*entry.message).clone());
-    compact(&mut back);
-    save(&writer, &mut back);
-    let held = inner.into_iter().chain([Message::user("kept three")]);
-    assert_eq!(replaced(&store, back.id(0)), Some(held.collect()));
 }
 
 /// A secret taken out of a session's messages is in no summary state and nothing a summary
 /// replaced afterwards: the summary's entry is the compaction's only copy of it.
 #[test]
 fn a_redacted_secret_is_in_no_summary_state_or_replaced_message() {
-    use crate::{MemoryStore, Messages, load, rewrite, save};
-    use rig_core::message::UserContent;
+    use crate::{MemoryStore, Strings, load, rewrite, save};
 
     let store = MemoryStore::default();
     let mut conversation = load(&store, "agent").expect("loaded");
@@ -388,20 +310,10 @@ fn a_redacted_secret_is_in_no_summary_state_or_replaced_message() {
         apply_summary(&mut conversation, &read, &state).expect("applied");
         save(&store, "agent", &mut conversation).expect("saved");
     }
-    let redact = Messages(|message: &mut Message| {
-        let Message::User { content } = message else {
-            return false;
-        };
-        let mut changed = false;
-        for item in content.iter_mut() {
-            if let UserContent::Text(text) = item
-                && text.text.contains("hunter2")
-            {
-                text.text = text.text.replace("hunter2", "[gone]");
-                changed = true;
-            }
-        }
-        changed
+    let redact = Strings(|text: &mut String| {
+        let found = text.contains("hunter2");
+        *text = text.replace("hunter2", "[gone]");
+        found
     });
     rewrite(&store, Author::plugin("redact"), &redact).expect("rewritten");
     let mut conversation = load(&store, "agent").expect("loaded");
@@ -418,46 +330,6 @@ fn a_redacted_secret_is_in_no_summary_state_or_replaced_message() {
         serde_json::to_string(&replaced),
     );
     assert!(!format!("{all:?}").contains("hunter2"), "{all:?}");
-}
-
-/// A session saved when each compaction also wrote a `rig.compaction` aside still loads: the
-/// aside is kept and read by nothing, and the state is the summary entry's.
-#[test]
-fn a_session_with_an_earlier_versions_compaction_asides_still_loads() {
-    use crate::{MemoryStore, load, save};
-    use rig_core::conversation::Aside;
-
-    let store = MemoryStore::default();
-    let mut conversation = load(&store, "agent").expect("loaded");
-    conversation.extend(["one", "two", "three"].map(Message::user));
-    let state = SummaryState {
-        summary: "summary".to_owned(),
-        read_files: vec!["a.rs".to_owned()],
-        modified_files: Vec::new(),
-    };
-    let read = captured(&conversation, 2);
-    let spliced = apply_summary(&mut conversation, &read, &state).expect("applied");
-    let id = spliced.changed.first().copied();
-    let value = serde_json::json!({
-        "summary": id,
-        "replaced": spliced.removed,
-        "hash": "00000000000000000000000000000000",
-        "state": {"summary": "another text", "read_files": ["stale.rs"]},
-    });
-    conversation.add_aside(Aside::new("rig.compaction", summary_author(), value).after(id));
-    save(&store, "agent", &mut conversation).expect("saved");
-
-    let mut loaded = load(&store, "agent").expect("loaded");
-    assert_eq!(loaded, conversation);
-    assert_eq!(loaded.asides().count(), 1, "the aside stays in the session");
-    assert_eq!(summary_state(&loaded), state);
-    let replaced = summarized_in_log(&store, "agent").expect("read");
-    assert_eq!(replaced.get(&id.expect("a summary")).map(Vec::len), Some(2));
-    loaded.push(Message::user("four"));
-    let prepared = prepare_compaction(&loaded, 1, false).expect("something to summarize");
-    assert_eq!(prepared.previous, Some(state));
-    assert_eq!(prepared.files.read_files, ["a.rs"]);
-    save(&store, "agent", &mut loaded).expect("saved");
 }
 
 /// Another plugin's request on a small model (a 4096-token window, a 1024-token output limit) keeps

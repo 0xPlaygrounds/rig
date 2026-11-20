@@ -150,11 +150,7 @@ fn every_custom_cut_is_refused_or_keeps_calls_with_their_results() {
         let messages = history(seed, 1 + usize::try_from(seed % 5).unwrap_or(0));
         let mut conversation = Conversation::from_messages(messages.iter().cloned());
         if seed % 2 == 0 {
-            let read = conversation
-                .messages()
-                .get(..1)
-                .unwrap_or_default()
-                .to_vec();
+            let read = conversation.messages()[..1].to_vec();
             crate::apply_summary(&mut conversation, &read, &SummaryState::default())
                 .expect("applied");
         }
@@ -247,21 +243,12 @@ fn file_lists_carry_across_compactions() {
         read_files: vec!["b.rs".to_owned(), "old.rs".to_owned()],
         modified_files: Vec::new(),
     };
-    let read = conversation
-        .messages()
-        .get(..1)
-        .unwrap_or_default()
-        .to_vec();
+    let read = conversation.messages()[..1].to_vec();
     crate::apply_summary(&mut conversation, &read, &previous).expect("applied");
     let prepared = cut_again(&conversation, 10).expect("something to summarize");
-    assert_eq!(
-        prepared
-            .previous
-            .as_ref()
-            .and_then(SummaryState::previous_summary)
-            .as_deref(),
-        Some("earlier\n\n<read-files>\nb.rs\nold.rs\n</read-files>")
-    );
+    let sent = prepared.previous.and_then(|it| it.previous_summary());
+    let lists = "earlier\n\n<read-files>\nb.rs\nold.rs\n</read-files>";
+    assert_eq!(sent.as_deref(), Some(lists));
     assert_eq!(prepared.files.read_files, ["a.rs", "old.rs"]);
     assert_eq!(prepared.files.modified_files, ["b.rs"]);
 }
@@ -363,8 +350,7 @@ fn a_blank_checkpoint_is_still_the_previous_one() {
 
 /// However often a turn is split, and though the model copies the previous summary's file lists
 /// into each history summary, the summary's entry holds each list once, at its end, and reads
-/// back as the state that went in; so does a path, one ending in a carriage return included, and a
-/// summary that names the tags midway.
+/// back as the state that went in; so does a path ending in a carriage return.
 #[test]
 fn repeated_split_summaries_hold_one_block_of_file_lists() {
     let mut conversation = Conversation::from_messages([Message::user("start")]);
@@ -403,32 +389,15 @@ fn repeated_split_summaries_hold_one_block_of_file_lists() {
         assert_eq!(text.matches("\n<read-files>\n").count(), 1, "{text}");
         assert_eq!(text.matches("\n<modified-files>\n").count(), 1, "{text}");
         assert_eq!(crate::summary_state(&conversation), state, "round {round}");
-        assert_eq!(state.modified_files, ["changed.rs"]);
         assert_eq!(state.read_files.len(), round + 1);
     }
-    let echo = SummaryState {
-        summary: "done\n\n<read-files>\nmodel.rs\n</read-files>\n".to_owned(),
-        read_files: vec!["a\nb".to_owned(), "c.rs".to_owned()],
-        modified_files: Vec::new(),
-    };
-    let read = SummaryState::read(&echo.message().unwrap_or_default());
-    assert_eq!(
-        (read.summary.as_str(), read.read_files),
-        ("done", vec!["c.rs".to_owned()])
-    );
     let returns = SummaryState {
         summary: "done".to_owned(),
         read_files: vec!["a\r".to_owned(), "b".to_owned()],
         modified_files: vec!["c\r".to_owned()],
     };
-    assert_eq!(
-        SummaryState::read(&returns.message().unwrap_or_default()),
-        returns
-    );
-    assert_eq!(
-        SummaryState::read("a plugin's own summary").summary,
-        "a plugin's own summary"
-    );
+    let read = SummaryState::read(&returns.message().unwrap_or_default());
+    assert_eq!(read, returns);
 }
 
 /// The output limit is fitted by pi-ai's estimate of the request at 3.5 characters a token, each

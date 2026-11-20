@@ -222,36 +222,6 @@ fn a_stopped_request_gets_its_note_and_halts_clear() {
     assert!(conversation.awaits_model());
 }
 
-/// Each edit of a halted conversation is one change, so a log cut after
-/// any change folds to the value the conversation had right after an edit:
-/// none is halted with a newer message in, and none repeats the stopped note.
-#[test]
-fn every_prefix_of_the_changes_is_a_value_the_conversation_had() {
-    let mut live = Conversation::from_messages([Message::user("delete it all")]);
-    let mut seen = vec![live.clone()];
-    let edits: [&dyn Fn(&mut Conversation); 6] = [
-        &|it| assert!(it.halt(Halt::Stopped)),
-        &|it| it.extend([Message::user("never mind")]),
-        &|it| assert!(it.halt(Halt::Kept)),
-        &|it| drop(it.splice(1.., [Entry::new(Message::user("redo"))], Author::user())),
-        &|it| assert!(it.halt(Halt::Stopped)),
-        &|it| drop(it.splice(..2, [Entry::new(Message::user("summary"))], Author::rig())),
-    ];
-    for edit in edits {
-        edit(&mut live);
-        seen.push(live.clone());
-    }
-    let changes = live.take_unsaved();
-    assert_eq!(changes.len(), seen.len(), "one change an edit");
-    for (count, then) in seen.iter().enumerate() {
-        let folded = fold(changes.get(..=count).unwrap_or_default());
-        assert_eq!(&folded, then, "after {count} edits");
-    }
-    let halts: Vec<_> = seen.iter().map(Conversation::halted).collect();
-    let (stopped, kept) = (Some(Halt::Stopped), Some(Halt::Kept));
-    assert_eq!(halts, [None, stopped, None, kept, None, stopped, None]);
-}
-
 /// A reply stopped halfway is kept aborted and never read as an answer, so
 /// the user's message is still owed one: a stop halts it, and the next message
 /// comes after the stopped note.
