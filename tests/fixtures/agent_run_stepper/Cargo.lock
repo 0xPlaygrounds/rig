@@ -593,7 +593,7 @@ dependencies = [
 
 [[package]]
 name = "rig-agent"
-version = "0.46.0"
+version = "0.47.0"
 dependencies = [
  "async-stream",
  "futures",
@@ -621,7 +621,7 @@ dependencies = [
 
 [[package]]
 name = "rig-core"
-version = "0.46.0"
+version = "0.47.0"
 dependencies = [
  "async-stream",
  "base64",
@@ -651,7 +651,7 @@ dependencies = [
 
 [[package]]
 name = "rig-http"
-version = "0.46.0"
+version = "0.47.0"
 dependencies = [
  "bytes",
  "futures",
@@ -664,7 +664,7 @@ dependencies = [
 
 [[package]]
 name = "rig-memory"
-version = "0.46.0"
+version = "0.47.0"
 dependencies = [
  "base64",
  "memchr",
