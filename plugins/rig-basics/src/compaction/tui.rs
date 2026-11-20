@@ -5,11 +5,13 @@
 //! draws summaries its own way draws [`summary_author`]'s entries in a
 //! system after [`SummaryLooks`].
 
-use rig_core::conversation::{Change, Entry, Spliced};
+use std::collections::BTreeMap;
+
+use rig_core::conversation::{Change, Entry, MessageId, Spliced};
 use rig_ecs::fork::AgentForked;
 use rig_ecs::prelude::*;
 use rig_ecs::session_log::{ConversationChanged, SessionStore};
-use rig_memory::{SummaryState, summarized_in_log, summarized_prefix};
+use rig_memory::{SummaryState, summarized_in_log, summarized_prefix, summary_in};
 use rig_tui::ratatui::style::Style;
 use rig_tui::ratatui::text::Line;
 use rig_tui::{LookLine, RenderBatch, RenderSystems, Replaced, Theme, TranscriptRender};
@@ -30,16 +32,30 @@ pub(crate) fn add(app: &mut App) {
         draw.in_set(SummaryLooks).in_set(RenderSystems::Render),
     )
     .add_systems(PostStartup, replaced_from_logs)
-    .add_systems(Update, forget_at_resets)
+    .add_systems(Update, forget_at_resets.after(AgentLoop))
     .add_observer(replaced_in_fork);
 }
 
-/// Drops what the summaries of an agent whose conversation was replaced whole replaced, as a
-/// restart from its log, which reads nothing across the reset, does.
-fn forget_at_resets(mut changed: MessageReader<ConversationChanged>, mut commands: Commands) {
+/// Drops what an agent's summaries replaced before its conversation was replaced whole, as a
+/// restart from its log, which reads nothing across the reset, does. A summary saved after the
+/// reset keeps what it replaced. Changing the archive lays the transcript out again.
+fn forget_at_resets(
+    mut changed: MessageReader<ConversationChanged>,
+    mut agents: Query<&mut Replaced>,
+) {
+    let mut since = BTreeMap::<Entity, Vec<MessageId>>::new();
     for ConversationChanged { agent, change } in changed.read() {
         if matches!(change.change, Change::Reset { .. }) {
-            commands.entity(*agent).try_remove::<Replaced>();
+            since.insert(*agent, Vec::new());
+        } else if let (Some(summaries), Some(summary)) =
+            (since.get_mut(agent), summary_in(&change.change))
+        {
+            summaries.push(summary);
+        }
+    }
+    for (agent, summaries) in since {
+        if let Ok(mut replaced) = agents.get_mut(agent) {
+            replaced.0.retain(|summary, _| summaries.contains(summary));
         }
     }
 }
@@ -55,7 +71,7 @@ pub(crate) fn keep(commands: &mut Commands, agent: Entity, spliced: &Spliced, ta
         .entry::<Replaced>()
         .or_default()
         .and_modify(move |mut replaced| {
-            replaced.0.entry(summary).or_insert(taken);
+            replaced.0.insert(summary, taken);
         });
 }
 
