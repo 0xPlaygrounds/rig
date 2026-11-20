@@ -560,6 +560,14 @@ const RENAMED: &[(&str, &str)] = &[(
     "rig_basics::sessions::forks::ForksPlugin",
 )];
 
+/// The type path that `plugin`, a plugin of rig's in an earlier version,
+/// has now, when it has a new one.
+pub fn renamed(plugin: &str) -> Option<&'static str> {
+    (RENAMED.iter())
+        .find(|(old, _)| *old == plugin)
+        .map(|(_, now)| *now)
+}
+
 /// The `[plugins]` table of one file, checked.
 #[derive(Default)]
 struct Changes {
@@ -596,7 +604,7 @@ pub fn plugins(home: &SettingsFile) -> Result<Plugins, Error> {
                 format!(
                     "`{plugin}` in `{list}` is a branch, and branches go in [plugins] off: {fix}"
                 )
-            } else if let Some((_, now)) = RENAMED.iter().find(|(old, _)| old == plugin) {
+            } else if let Some(now) = renamed(plugin) {
                 format!(
                     "unknown plugin `{plugin}` in `{list}`, now `{now}`: {fix}, then \
                      `rig plugin {list} {now}` sets the new one"

@@ -241,7 +241,8 @@ pub struct RunCommand {
 }
 
 impl RunCommand {
-    /// Run `line` for `agent`, as if typed and sent at once.
+    /// Run `line`, the command line without its `/`, for `agent`, sent at
+    /// once.
     pub fn new(agent: Entity, line: impl Into<String>) -> Self {
         Self {
             entity: agent,

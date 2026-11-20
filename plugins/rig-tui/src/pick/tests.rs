@@ -1,7 +1,7 @@
 use rig_harness::prelude::*;
 
 use super::*;
-use crate::tests::{line_of, press, type_text, view_app};
+use crate::tests::{line_of, press, push, type_text, view_app};
 use rig_harness::ask::Choice;
 use rig_harness::pick::{Chosen, PickItem, Picked, Picker};
 
@@ -1277,17 +1277,25 @@ fn an_unticked_branch_runs_none_of_its_items_commands_and_keeps_their_ticks() {
 }
 
 #[test]
-fn typing_selects_the_first_item_found_not_the_branch_above_it() {
+fn typing_or_pasting_selects_the_first_item_found_not_the_branch_above_it() {
     use rig_harness::pick::Ticked;
 
-    let (mut app, _) = view_app();
-    let entity = app.world_mut().spawn(tree()).id();
-    app.update();
-    // "r" finds the branch fruit and pear under it, and water: Enter ticks pear.
-    type_text(&mut app, "r");
-    press(&mut app, "enter");
-    let ticked = app.world().get::<Ticked>(entity).cloned();
-    assert_eq!(ticked, Some(Ticked(vec![0, 1, 2, 3])));
+    for paste in [false, true] {
+        let (mut app, _) = view_app();
+        let entity = app.world_mut().spawn(tree()).id();
+        app.update();
+        // "r" finds the branch fruit and pear under it, and water: Enter ticks pear.
+        if paste {
+            let pasted = crossterm::event::Event::Paste("r".to_owned());
+            push(&mut app, crate::KeyInput::Event(pasted));
+            app.update();
+        } else {
+            type_text(&mut app, "r");
+        }
+        press(&mut app, "enter");
+        let ticked = app.world().get::<Ticked>(entity).cloned();
+        assert_eq!(ticked, Some(Ticked(vec![0, 1, 2, 3])), "pasted: {paste}");
+    }
 }
 
 /// A picker with a tree whose items run `note <label>`: `fruit` holding

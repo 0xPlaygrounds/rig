@@ -1564,10 +1564,10 @@ fn messages_before_the_prompt_it_delivered_are_counted() {
     }
 }
 
-/// `/compact` with nothing to summarize says pi's reason: "Already compacted" right after a
-/// compaction, and "Nothing to compact (session too small)" for a conversation within the keep.
+/// `/compact` with nothing to summarize says why: pi's "Already compacted" right after a
+/// compaction, and for a conversation within the keep a notice that is no failure.
 #[test]
-fn compact_with_nothing_to_summarize_says_why_as_pi() {
+fn compact_with_nothing_to_summarize_says_why() {
     let model = MockCompletionModel::from_stream_turns([reply("## Goal\nAnswer.")]);
     let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |_| {});
     let compacted = agent(&mut app, &model, 1_000_000, turns(0, 4));
@@ -1595,10 +1595,15 @@ fn compact_with_nothing_to_summarize_says_why_as_pi() {
         return;
     };
     compact(&mut app, &wakes, agent, "", 1);
-    let said = notices(&app);
+    let said = &app.world().resource::<Collected<Notice>>().0;
     assert!(
         said.iter()
-            .any(|it| it == "Compaction failed: Nothing to compact (session too small)"),
+            .any(|it| it.text.starts_with("Nothing to compact yet: ")),
+        "{said:?}"
+    );
+    assert!(
+        said.iter()
+            .all(|it| it.level == NoticeLevel::Info && !it.text.contains("failed")),
         "{said:?}"
     );
     assert!(sent(&model).is_empty(), "{:?}", sent(&model));

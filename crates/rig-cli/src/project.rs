@@ -434,8 +434,11 @@ fn profile(plugins: &Plugins, source: &RigSource) -> Result<String> {
     for extra in plugins.extras_on() {
         match &extra.source {
             Source::Path(directory) => {
+                // cargo rebuilds them when they change, as it does the crate.
                 edited.insert(extra.krate.clone());
-                path_crates(directory, &mut edited);
+                path_crates(directory, &["dependencies"], &mut |name, _| {
+                    edited.insert(name.to_owned())
+                });
             }
             Source::Git { .. } => {
                 edited.insert(extra.krate.clone());
@@ -492,14 +495,16 @@ pub fn workspace_dependency(
     Some((workspace, item))
 }
 
-/// Adds to `found` the packages the crate in `directory` depends on by path,
-/// written out or inherited from its workspace, and theirs in turn: cargo rebuilds them when they change, as it does the
-/// crate. A manifest that cannot be read is skipped; cargo names it.
-fn path_crates(directory: &Path, found: &mut BTreeSet<String>) {
+/// Gives `new` the name and directory of each package the crate in
+/// `directory` depends on by path in its tables of `kinds`, written out or
+/// inherited from its workspace, and of theirs in turn where `new` answers
+/// that it had not seen the package. A manifest that cannot be read is
+/// skipped; cargo names it.
+pub fn path_crates(directory: &Path, kinds: &[&str], new: &mut dyn FnMut(&str, &Path) -> bool) {
     let Ok(manifest) = Manifest::read(directory) else {
         return;
     };
-    for (_, table) in manifest.dependency_tables(&["dependencies"]) {
+    for (_, table) in manifest.dependency_tables(kinds) {
         for (key, item) in table.iter() {
             let inherited = item.get("workspace").and_then(Item::as_bool) == Some(true);
             let written =
@@ -521,9 +526,9 @@ fn path_crates(directory: &Path, found: &mut BTreeSet<String>) {
                 Some(name.to_owned())
             });
             if let Some(name) = name
-                && found.insert(name)
+                && new(&name, &dependency)
             {
-                path_crates(&dependency, found);
+                path_crates(&dependency, kinds, new);
             }
         }
     }

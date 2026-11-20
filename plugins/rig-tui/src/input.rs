@@ -578,11 +578,13 @@ pub(crate) fn read_input(
             // A paste arrives whole, newlines included, so it is not sent
             // line by line. A panel with the keys reads it from the event.
             Event::Paste(text) => match showing.iter_mut().find(|(_, c)| c.draft.is_none()) {
-                Some((_, mut choosing)) => {
+                Some((entity, mut choosing)) => {
                     choosing
                         .filter
                         .push_str(text.lines().next().unwrap_or_default());
-                    choosing.selected = 0;
+                    choosing.selected = choices.shown(entity).map_or(0, |shown| {
+                        shown.found_row(&choosing, &shown.rows(&choosing))
+                    });
                 }
                 None if !in_panel && matches!(keymap.scope(reading), KeyScope::Panel(_)) => {}
                 None => {
