@@ -190,7 +190,11 @@ Examples: the scaffold `rig plugin new` writes, [session_goal].
 What the user types is a [`Deliver`] that spawns an `Incoming` effect for its
 agent, and so is what a plugin sends. A model call's [`ModelRequest`] holds
 the system prompt in parts and the messages sent; a `Prepare` system edits it
-or routes it to another model. A turn ends with a [`TurnOutcome`] the kernel
+or routes it to another model. Until Start, a request the kernel built has its
+system prompt in `prompt`, a [`SystemPrompt`] of [`Section`]s, and its messages
+in `history`: edit those there. When they are `None`, a plugin brought the
+request whole, and `request_mut()` edits them; it edits every other field,
+such as `max_tokens`, either way. A turn ends with a [`TurnOutcome`] the kernel
 proposes and a `Review` system may edit, hold or carry on.
 
 Examples: [model_router], [model_fallback], [auto_continue], [check_after_turn].
@@ -223,6 +227,10 @@ plugin adds to it with ordinary systems and entities:
 - a status line item, shown in `StatusSystems::Show`;
 - a panel, a `TuiPanel` entity drawn in `TuiSystems::Draw`;
 - a key binding, `app.add_key_binding(binding, observer)`.
+
+The mouse comes in with the keys, in `rig_tui::PendingInput`, whose
+documentation says what the view does with it. A plugin that takes a drag
+itself removes those events in an `InputSystems::Filter` system.
 
 The line under the input is a plugin of its own,
 `rig_tui::status::StatusLinePlugin`. Its `[status] hide` setting hides items
@@ -296,6 +304,8 @@ something happens; copy what you need from it.
 [plugin corpus]: https://github.com/0xPlaygrounds/rig/tree/main/corpus
 [`rig-basics`]: https://github.com/0xPlaygrounds/rig/tree/main/plugins/rig-basics
 [`ModelRequest`]: crate::prelude::ModelRequest
+[`SystemPrompt`]: rig_core::completion::SystemPrompt
+[`Section`]: rig_core::completion::Section
 [`ToolRequest`]: crate::prelude::ToolRequest
 [`Incoming`]: crate::prelude::Incoming
 [`EffectRequest`]: crate::prelude::EffectRequest

@@ -139,7 +139,8 @@ impl ToolRender {
         self.call.function.arguments.get(key)?.as_str()
     }
 
-    /// The result's text, joined, if the tool answered.
+    /// The result's blocks, joined, if the tool answered: its text, its JSON
+    /// as JSON, and a last line counting its images.
     pub fn result_text(&self) -> Option<String> {
         self.result.as_ref().map(result_text)
     }
