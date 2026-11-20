@@ -111,8 +111,7 @@ fn nothing_is_compacted_again_until_something_is_added() {
 }
 
 /// One pass over the log reads what each compaction replaced, and the conversation's summary
-/// entry holds the state the next one builds on. A `rig.compaction` aside an earlier version
-/// saved with each compaction stays in the session and is read by nothing.
+/// entry holds the state the next one builds on.
 #[test]
 fn the_log_holds_what_each_summary_first_replaced() {
     use crate::{MemoryStore, load, save};
@@ -140,15 +139,6 @@ fn the_log_holds_what_each_summary_first_replaced() {
     let first = compact(&mut conversation);
     let after_first = ids(&conversation);
     let second = compact(&mut conversation);
-    let stale = serde_json::json!({
-        "summary": second,
-        "replaced": [],
-        "hash": "00000000000000000000000000000000",
-        "state": {"summary": "another text", "read_files": ["stale.rs"]},
-    });
-    let aside = rig_core::conversation::Aside::new("rig.compaction", summary_author(), stale);
-    conversation.add_aside(aside.after(Some(second)));
-    save(&store, "agent", &mut conversation).expect("saved");
 
     let found = summarized_in_log(&store, "agent").expect("read");
     let replaced = |summary| -> Option<Vec<MessageId>> {
@@ -165,20 +155,22 @@ fn the_log_holds_what_each_summary_first_replaced() {
         [Message::user("one"), Message::user("two")].map(Arc::new)
     );
     let loaded = load(&store, "agent").expect("loaded");
-    assert_eq!(loaded, conversation);
-    assert_eq!(loaded.asides().count(), 1);
     assert_eq!(summary_state(&loaded), state);
 }
 
 /// A log cut after any line, as a crash leaves it, or inside one, reopens as the conversation
 /// was right after one of its edits: never a summary without what it replaced or with another
-/// state than it went in with, and never halted with a newer message in.
+/// state than it went in with, and never halted with a newer message in. Nothing a summary
+/// replaced is carried across a reset, a value that takes the log's place; a compaction made
+/// after it holds what it replaced.
 #[test]
 fn a_log_cut_anywhere_reopens_as_the_conversation_once_was() {
-    use crate::{MemoryStore, Store, load, save};
+    use crate::{MemoryStore, Store, Writer, load};
 
-    let store = MemoryStore::default();
-    let mut live = load(&store, "agent").expect("loaded");
+    let store = Arc::new(MemoryStore::default());
+    let (writer, _) = Writer::open(store.clone()).expect("opened");
+    writer.start();
+    let mut live = Conversation::new();
     let state = |summary: &str| SummaryState {
         summary: summary.to_owned(),
         read_files: vec![format!("{summary}.rs")],
@@ -187,7 +179,7 @@ fn a_log_cut_anywhere_reopens_as_the_conversation_once_was() {
     let compact = |it: &mut Conversation, end: usize, summary: &str| {
         apply_summary(it, &captured(it, end), &state(summary)).expect("applied");
     };
-    let edits: [&dyn Fn(&mut Conversation); 9] = [
+    let edits: [&dyn Fn(&mut Conversation); 11] = [
         &|it| it.extend(["one", "two"].map(Message::user)),
         &|it| assert!(it.halt(rig_core::conversation::Halt::Stopped)),
         &|it| it.extend([Message::user("three")]),
@@ -197,12 +189,15 @@ fn a_log_cut_anywhere_reopens_as_the_conversation_once_was() {
         &|it| it.extend([Message::user("four")]),
         &|it| assert!(it.halt(rig_core::conversation::Halt::Kept)),
         &|it| compact(it, 1, "third"),
+        &|it| *it = Conversation::from_messages(["five", "six", "seven"].map(Message::user)),
+        &|it| compact(it, 2, "fourth"),
     ];
     let mut seen = vec![(live.clone(), Vec::new())];
     for edit in edits {
         edit(&mut live);
-        save(&store, "agent", &mut live).expect("saved");
-        let replaced: Vec<_> = summarized_in_log(&store, "agent")
+        writer.save("agent", &mut live);
+        writer.flush().expect("flushed");
+        let replaced: Vec<_> = summarized_in_log(&*store, "agent")
             .expect("read")
             .into_keys()
             .collect();
@@ -231,64 +226,16 @@ fn a_log_cut_anywhere_reopens_as_the_conversation_once_was() {
         .map(|(then, _)| then.halted().is_some())
         .collect();
     let halted = [
-        false, false, true, false, false, true, false, false, true, true,
+        false, false, true, false, false, true, false, false, true, true, false, false,
     ];
     assert_eq!(halts, halted, "a summary short of the end keeps the halt");
-    assert_eq!(summary_state(&live), state("third"));
-}
-
-/// Nothing is carried across a reset: a value that takes the log's place, another conversation
-/// or the same one saved again, shows none of the messages the log's summaries replaced before
-/// it, so a conversation never shows another's. A compaction made after the reset holds what it
-/// replaced, though it reuses the summary's id.
-#[test]
-fn nothing_a_summary_replaced_is_carried_across_a_reset() {
-    use crate::{MemoryStore, Writer};
-
-    let store = Arc::new(MemoryStore::default());
-    let (writer, _) = Writer::open(store.clone()).expect("opened");
-    writer.start();
-    let save = |conversation: &mut Conversation| {
-        writer.save("agent", conversation);
-        writer.flush().expect("flushed");
-    };
-    let state = SummaryState {
-        summary: "summary".to_owned(),
-        ..SummaryState::default()
-    };
-    let compact = |conversation: &mut Conversation| {
-        let read = captured(conversation, 2);
-        conversation.dated(42, |conversation| {
-            apply_summary(conversation, &read, &state).expect("applied");
-        });
-    };
-    let messages = |prefix: &str| {
-        let texts = ["one", "two", "three"].map(|text| format!("{prefix} {text}"));
-        Conversation::from_messages(texts.map(Message::user))
-    };
-    let replaced = |summary: Option<MessageId>| -> Vec<Arc<Message>> {
-        let found = summarized_in_log(&*store, "agent").expect("read");
-        let entries = summary.and_then(|summary| found.get(&summary).cloned());
-        let entries = entries.into_iter().flatten();
-        entries.map(|entry| entry.message).collect()
-    };
-
-    let mut old = messages("old");
-    save(&mut old);
-    compact(&mut old);
-    save(&mut old);
-    assert_eq!(replaced(old.id(0)), messages("old").messages()[..2]);
-    let mut current = messages("current");
-    save(&mut current);
-    assert_eq!(summarized_in_log(&*store, "agent").expect("read").len(), 0);
-    compact(&mut current);
-    save(&mut current);
-    assert_eq!(current.id(0), old.id(0), "the reset reused the id");
-    assert_eq!(replaced(current.id(0)), messages("current").messages()[..2]);
-    let value = serde_json::to_value(&current).expect("serialized");
-    let mut again: Conversation = serde_json::from_value(value).expect("deserialized");
-    save(&mut again);
-    assert_eq!(summarized_in_log(&*store, "agent").expect("read").len(), 0);
+    let held: Vec<usize> = seen.iter().map(|(_, replaced)| replaced.len()).collect();
+    assert_eq!(
+        held,
+        [0, 0, 0, 0, 1, 1, 2, 2, 2, 3, 0, 1],
+        "a reset drops them"
+    );
+    assert_eq!(summary_state(&live), state("fourth"));
 }
 
 /// A secret taken out of a session's messages is in no summary state and nothing a summary

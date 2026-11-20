@@ -149,22 +149,19 @@ fn every_custom_cut_is_refused_or_keeps_calls_with_their_results() {
     for seed in 0..60 {
         let messages = history(seed, 1 + usize::try_from(seed % 5).unwrap_or(0));
         let mut conversation = Conversation::from_messages(messages.iter().cloned());
+        let state = SummaryState::default();
         if seed % 2 == 0 {
             let read = conversation.messages()[..1].to_vec();
-            crate::apply_summary(&mut conversation, &read, &SummaryState::default())
-                .expect("applied");
+            crate::apply_summary(&mut conversation, &read, &state).expect("applied");
         }
         let start = summarized_prefix(&conversation);
         let messages = conversation.messages().to_vec();
-        assert_eq!(
-            crate::apply_summary(&mut conversation.clone(), &[], &SummaryState::default()),
-            None
-        );
+        let empty = crate::apply_summary(&mut conversation.clone(), &[], &state);
+        assert_eq!(empty, None);
         for cut in 0..messages.len() + 3 {
             let at = format!("seed {seed}, cut {cut}");
             let read = messages.get(..cut.min(messages.len())).unwrap_or_default();
-            let applied =
-                crate::apply_summary(&mut conversation.clone(), read, &SummaryState::default());
+            let applied = crate::apply_summary(&mut conversation.clone(), read, &state);
             let Some(prepared) = prepare_compaction_at(&conversation, cut) else {
                 let fine = cut > start && cut <= messages.len() && !orphans(&messages, cut);
                 assert!(!fine, "{at}: refused");
@@ -372,13 +369,12 @@ fn repeated_split_summaries_hold_one_block_of_file_lists() {
         assert!(!prepared.turn_prefix.is_empty(), "round {round}");
         let previous = prepared.previous.as_ref();
         let echoed = previous.and_then(SummaryState::previous_summary);
-        let history = match prepared.to_summarize.is_empty() {
-            true => no_history(previous),
-            false => format!(
-                "the goal, see <read-files> below\n\n{}",
-                echoed.unwrap_or_default()
-            ),
-        };
+        let echoed = format!(
+            "the goal, see <read-files> below\n\n{}",
+            echoed.unwrap_or_default()
+        );
+        let first = prepared.to_summarize.is_empty();
+        let history = if first { no_history(previous) } else { echoed };
         let state = SummaryState {
             summary: merge_split_turn(&history, "the turn so far"),
             read_files: prepared.files.read_files,

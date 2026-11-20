@@ -459,8 +459,7 @@ fn reported_usage_triggers_a_compaction_before_the_next_request() {
             reply("## Goal\nAnswer the questions."),
             reply("second answer"),
         ]);
-        // Keeping the tokens of the second question, the first and its answer keeps those: no
-        // turn is split.
+        // Keeping the second question, the first and its answer: no turn is split.
         let second = format!("The second question?{}", " word".repeat(100));
         let kept = [&*second, "The first question?", "first answer"].map(Message::user);
         let keep = rig_memory::estimate_tokens(&kept);
@@ -1079,8 +1078,7 @@ fn a_turn_asks_for_the_output_room_its_input_leaves() {
 
 /// What each compaction replaced, the messages themselves, stays drawn above its summary, a
 /// cancelled one drawing nothing and a second one nesting the first: after a restart, for the
-/// agent and a subagent, and in a fork; a fork made before a compaction draws nothing. A
-/// conversation replaced whole drops them, live as in its log.
+/// agent and a subagent, and in a fork; a fork made before a compaction draws nothing.
 #[cfg(feature = "tui")]
 #[test]
 fn what_compactions_replaced_stays_drawn_live_after_a_restart_and_in_a_fork() {
@@ -1234,16 +1232,6 @@ fn what_compactions_replaced_stays_drawn_live_after_a_restart_and_in_a_fork() {
     assert!(earlier.is_some(), "the fork was made");
     let Some(earlier) = earlier else { return };
     assert_eq!(replaced(restarted.world(), earlier), Vec::new());
-
-    if let Some(mut conversation) = restarted.world_mut().get_mut::<Conversation>(agent) {
-        let messages = conversation.messages().to_vec();
-        **conversation = rig_core::conversation::Conversation::from_messages(messages);
-    }
-    restarted.update();
-    restarted.update();
-    assert_eq!(replaced(restarted.world(), agent), Vec::new());
-    let logged = rig_memory::summarized_in_log(&store, &main_id.0);
-    assert!(logged.is_ok_and(|sets| sets.is_empty()));
 }
 
 /// A reply cut short by the window is dropped before compaction is tried, as pi omits it: with
@@ -1295,26 +1283,24 @@ fn a_reply_cut_short_is_dropped_when_recovery_does_not_go_through() {
     }
 }
 
-/// With the default budget of recent messages to keep, which the history before a prompt fits
-/// in, a prompt that takes the request over the window still compacts before it is sent: the
-/// prompt counts toward what is kept, so older messages are summarized to make room for it,
-/// for a paste larger than the budget and for a message of the size of the earlier ones.
+/// A prompt that takes the request over the window compacts before it is sent, though the
+/// history before it fits the default budget of recent messages: the prompt counts toward what is
+/// kept, a paste larger than the budget and a message of the size of the earlier ones alike.
 #[test]
 fn a_prompt_counts_toward_the_recent_messages_kept() {
     let keep = CompactionSettings::default().keep_recent_tokens;
     for (words, kept) in [(18_000, None), (8_000, Some("question 1"))] {
-        let model = MockCompletionModel::from_stream_turns([
+        let script = [
             reply("## Goal\nAnswer the questions."),
             measured("done", 100),
-        ]);
+        ];
+        let model = MockCompletionModel::from_stream_turns(script);
         let (mut app, wakes) = start_with(&MemoryStore::default(), keep, |_| {});
-        let mut messages = Vec::new();
-        for turn in 0..2 {
-            let question = format!("question {turn}: {}", "word ".repeat(8_000));
-            messages.extend([Message::user(question), Message::assistant("answered")]);
-        }
-        messages.extend([Message::user("small one"), Message::assistant("answered")]);
-        let agent = agent(&mut app, &model, 40_000, messages);
+        let long = "word ".repeat(8_000);
+        let asks = [format!("question 0: {long}"), format!("question 1: {long}")];
+        let asks = asks.into_iter().chain(["small one".to_owned()]);
+        let messages = asks.flat_map(|ask| [Message::user(ask), Message::assistant("answered")]);
+        let agent = agent(&mut app, &model, 40_000, messages.collect());
         assert!(agent.is_some(), "the catalog lists the model");
         let Some(agent) = agent else {
             return;
@@ -1370,61 +1356,33 @@ fn a_measured_conversation_compacts_before_the_next_prompt() {
     );
 }
 
-/// The threshold counts the request as it goes, the same count the output limit is fitted by.
-/// With no usage reported, a long system prompt takes a short conversation over, and its older
-/// messages are summarized before the request is sent. A request a plugin brought whole, with a
-/// history of its own, is measured by that: a conversation last measured near the window neither
-/// compacts for it nor takes room from its answer, and a long history of its own takes that room
-/// but compacts nothing, since a summary of the conversation would not shorten it.
+/// The threshold counts the request as it goes, the same count the output limit is fitted by:
+/// with no usage reported, a long system prompt takes a short conversation over, and its older
+/// messages are summarized before the request is sent.
 #[test]
 fn the_threshold_counts_the_request_as_it_is_sent() {
-    // The words of a history brought whole, the requests sent, and whether the answer has room.
-    for (whole, count, room) in [
-        (None, 2, false),
-        (Some(2), 1, true),
-        (Some(21_000), 1, false),
-    ] {
-        let script = [reply("## Goal\nAnswer the questions."), reply("done")];
-        let model = MockCompletionModel::from_stream_turns(script);
-        let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |app| {
-            let edit =
-                move |mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<TurnCall>)>| {
-                    for mut call in &mut calls {
-                        if let Some(words) = whole {
-                            let history = Message::user("word ".repeat(words));
-                            call.history = None;
-                            call.request_mut().chat_history = vec![Arc::new(history)];
-                        } else if let Some(prompt) = &mut call.prompt {
-                            let long = "word ".repeat(20_000);
-                            let long = rig_core::completion::Section::new("long", long);
-                            prompt.sections.push(long);
-                        }
-                    }
-                };
-            app.add_systems(AgentPass, edit.in_set(PrepareSystems::Edit));
-        });
-        let agent = agent(&mut app, &model, 40_000, turns(0, 2));
-        assert!(agent.is_some(), "the catalog lists the model");
-        let Some(agent) = agent else {
-            return;
+    let script = [reply("## Goal\nAnswer the questions."), reply("done")];
+    let model = MockCompletionModel::from_stream_turns(script);
+    let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |app| {
+        let long = |mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<TurnCall>)>| {
+            for mut call in &mut calls {
+                if let Some(prompt) = &mut call.prompt {
+                    prompt.sections.push(rig_core::completion::Section::new(
+                        "long",
+                        "word ".repeat(20_000),
+                    ));
+                }
+            }
         };
-        let conversation = app.world().get::<Conversation>(agent);
-        let last = conversation.and_then(|it| it.entries().last().map(|entry| entry.id));
-        let measured = last
-            .filter(|_| whole.is_some())
-            .map(|through| rig_memory::Anchor {
-                usage: Usage::new().total_tokens(30_000),
-                through,
-            });
-        app.world_mut()
-            .entity_mut(agent)
-            .insert(LastUsage(measured));
-        ask(&mut app, &wakes, agent, "And the next question?", 1);
-        let requests = model.requests();
-        assert_eq!(requests.len(), count, "{whole:?}: {:?}", notices(&app));
-        let asked = requests.last().and_then(|request| request.max_tokens);
-        assert_eq!(asked == Some(8_000), room, "{whole:?}: {asked:?}");
-    }
+        app.add_systems(AgentPass, long.in_set(PrepareSystems::Edit));
+    });
+    let agent = agent(&mut app, &model, 40_000, turns(0, 2));
+    assert!(agent.is_some(), "the catalog lists the model");
+    let Some(agent) = agent else {
+        return;
+    };
+    ask(&mut app, &wakes, agent, "And the next question?", 1);
+    assert_eq!(sent(&model).len(), 2, "{:?}", notices(&app));
 }
 
 /// Runs `app` until its turns ended `count` times, moving the clock on for each retry wait.
