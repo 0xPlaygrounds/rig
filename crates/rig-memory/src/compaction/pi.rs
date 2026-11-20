@@ -447,7 +447,7 @@ pub(crate) fn take_file_list<'t>(body: &'t str, tag: &str) -> (&'t str, Vec<Stri
     let (open, close) = (format!("\n\n<{tag}>\n"), format!("\n</{tag}>"));
     let listed = body.strip_suffix(close.as_str());
     match listed.and_then(|listed| listed.rsplit_once(open.as_str())) {
-        Some((rest, files)) => (rest, files.lines().map(str::to_owned).collect()),
+        Some((rest, files)) => (rest, files.split('\n').map(str::to_owned).collect()),
         None => (body, Vec::new()),
     }
 }
