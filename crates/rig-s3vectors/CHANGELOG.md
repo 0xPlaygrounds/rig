@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.47.0](https://github.com/0xPlaygrounds/rig/compare/rig-s3vectors-v0.46.0...rig-s3vectors-v0.47.0) - 2026-11-20
+
+### Fixed
+
+- *(rig-core)* read the catalog and effect logs under serde_json/arbitrary_precision ([#3414](https://github.com/0xPlaygrounds/rig/pull/3414)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
 ## [0.44.0](https://github.com/0xPlaygrounds/rig/compare/rig-s3vectors-v0.43.0...rig-s3vectors-v0.44.0) - 2026-10-07
 
 ### Other
