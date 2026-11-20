@@ -489,9 +489,9 @@ fn on_delivered(
     }
 }
 
-/// Refuses each `/compact` summary call that nothing was planned for, nor a plugin planned anew,
-/// with pi's reason: "Already compacted" when nothing was added since the last summary, else
-/// "Nothing to compact (session too small)".
+/// Refuses each `/compact` summary call that nothing was planned for, nor a plugin planned anew:
+/// with pi's "Already compacted" when nothing was added since the last summary, else with a
+/// notice that is no failure, as a conversation within the keep has nothing to summarize yet.
 fn nothing_to_compact(
     calls: Query<(Entity, &Summarizing, &ForAgent), (Added<Admitted>, ModelCalls)>,
     conversations: Query<&Conversation>,
@@ -503,11 +503,21 @@ fn nothing_to_compact(
             let already = conversations
                 .get(agent)
                 .is_ok_and(|it| already_compacted(it));
-            let why = match already {
-                true => "Already compacted",
-                false => "Nothing to compact (session too small)",
+            let (why, notice) = match already {
+                true => (
+                    "Already compacted",
+                    Notice::error(agent, "Compaction failed: Already compacted"),
+                ),
+                false => (
+                    "Nothing to compact yet",
+                    Notice::info(
+                        agent,
+                        "Nothing to compact yet: the session fits in what `[compaction] \
+                         keep_recent_tokens` keeps",
+                    ),
+                ),
             };
-            notices.write(Notice::error(agent, format!("Compaction failed: {why}")));
+            notices.write(notice);
             let why = ErrorReport::new(ErrorKind::Cancelled, why);
             commands.entity(call).try_insert_if_new(Outcome(Err(why)));
         }

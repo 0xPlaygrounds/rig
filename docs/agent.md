@@ -503,8 +503,9 @@ request is refused again; and a summary request bigger than the model, such as
 after a switch to a smaller one, fails with the provider's reason. `/compact`
 compacts now, and `/compact <instructions>` says what the summary should focus
 on; with nothing to summarize it says, as pi does, "Compaction failed: Already
-compacted" right after a compaction, else "Compaction failed: Nothing to compact
-(session too small)". `[compaction]` in `RIG_HOME/settings.toml` takes `enabled`
+compacted" right after a compaction, else, as no failure, "Nothing to compact
+yet: the session fits in what `[compaction] keep_recent_tokens` keeps".
+`[compaction]` in `RIG_HOME/settings.toml` takes `enabled`
 (every automatic compaction, on by default; `/compact` works either way),
 `reserve_tokens` and `keep_recent_tokens`. The summarized messages stay in the
 transcript, under a line that shows the summary; a resumed session starts from
