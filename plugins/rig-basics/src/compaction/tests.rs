@@ -1075,6 +1075,57 @@ fn a_turn_asks_for_the_output_room_its_input_leaves() {
     );
 }
 
+/// A conversation replaced live, which its log records as a reset, drops what its compactions
+/// replaced, as a restart from that log does: whether it is the same value saved again or another
+/// whose entries reuse the summary's id, the summary never shows the messages from before.
+#[cfg(feature = "tui")]
+#[test]
+fn a_reset_drops_what_compactions_replaced_live() {
+    for unrelated in [false, true] {
+        let model = MockCompletionModel::from_stream_turns([reply("## Goal\nThe summary.")]);
+        let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |_| {});
+        let agent = agent(&mut app, &model, 1_000_000, turns(0, 4));
+        assert!(agent.is_some(), "the catalog lists the model");
+        let Some(agent) = agent else {
+            return;
+        };
+        app.update();
+        app.world_mut().trigger(Compact {
+            entity: agent,
+            focus: String::new(),
+        });
+        run_until(&mut app, &wakes, |world| {
+            world.resource::<Ended>().0.len() == 1
+        });
+        let archived = |app: &App| {
+            app.world()
+                .get::<rig_tui::Replaced>(agent)
+                .map_or(0, |replaced| replaced.0.len())
+        };
+        assert_eq!(archived(&app), 1, "{unrelated}: {:?}", notices(&app));
+
+        let world = app.world_mut();
+        let Some(mut conversation) = world.get_mut::<Conversation>(agent) else {
+            return;
+        };
+        let json = serde_json::to_string(&**conversation).unwrap_or_default();
+        let value = serde_json::from_str::<rig_core::conversation::Conversation>(&json);
+        assert!(value.is_ok(), "{json}");
+        let Ok(mut value) = value else {
+            return;
+        };
+        if unrelated {
+            value.edit_each(Author::plugin("test"), |entry| {
+                Some(Message::user(format!("other {}", entry.index)))
+            });
+        }
+        **conversation = value;
+        app.update();
+        app.update();
+        assert_eq!(archived(&app), 0, "{unrelated}");
+    }
+}
+
 /// What each compaction replaced, the messages themselves, stays drawn above its summary, a
 /// cancelled one drawing nothing and a second one nesting the first: after a restart, for the
 /// agent and a subagent, and in a fork; a fork made before a compaction draws nothing.
