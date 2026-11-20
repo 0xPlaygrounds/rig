@@ -21,8 +21,8 @@ cargo install rig
 rig
 ```
 
-This installs the launcher of the latest release, 0.47.0. Each release's guide
-is on its tag:
+This installs the launcher of the latest release. Each release's guide is on
+its tag, such as
 [0.47.0's guide](https://github.com/0xPlaygrounds/rig/blob/v0.47.0/docs/agent.md).
 The [agent guide](docs/agent.md#install-and-run) on `main` can be ahead of the
 release, and shows how to install `main` from a checkout. The agent needs Rust

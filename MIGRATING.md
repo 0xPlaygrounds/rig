@@ -1111,446 +1111,430 @@ let model = Model::new(wire, http).with_idle_timeout(None);
 - A run with an output schema now fails with
   `PromptError::OutputSchemaMismatch` when the final answer does not fit the
   schema, after one more try, where 0.46 returned unchecked text. Code that
-  parsed the text leniently afterwards now sees an error instead. See
-  [agent runs](#3-agent-runs-rig-agent).
-- A summed `Usage` remembers when a call reported no input,
-  output or total figure. `Usage::tokens_complete()` reads the mark, such a
-  sum serializes `"incomplete_tokens": true`, and it no longer equals the
-  same counters unmarked. A sum of calls that reported nothing serialized as
-  `{}` and now serializes as `{"incomplete_tokens":true}`. Where you compared
-  `sum == Usage::default()` to ask whether anything was reported, call
+  parsed the text leniently afterwards now sees an error instead. See [agent
+  runs](#3-agent-runs-rig-agent).
+- A summed `Usage` remembers when a call reported no input, output or total
+  figure. `Usage::tokens_complete()` reads the mark, such a sum serializes
+  `"incomplete_tokens": true`, and it no longer equals the same counters
+  unmarked. A sum of calls that reported nothing serialized as `{}` and now
+  serializes as `{"incomplete_tokens":true}`. Where you compared `sum ==
+  Usage::default()` to ask whether anything was reported, call
   `!sum.is_reported()`. Fold from `Usage::default()`; adding an empty `Usage`
   on the right marks the sum.
-- A streamed run yields the new
-  `MultiTurnStreamItem::ToolExecutionStarted` and `ToolResultItem` items. A
-  consumer that prints or counts every item it does not know sees more
-  items. See [agent runs](#3-agent-runs-rig-agent).
-- A tool call that a reply cut at the output limit is never run
-  and is answered "your reply reached the output limit, send less". It is
-  not offered to `on_invalid_tool_call`, and a cut call to the output tool is
-  never taken as the run's answer. `CompletionResponse::unfinished_calls()`
-  lists more calls for cut replies on OpenAI Chat Completions, OpenAI
-  Responses and Anthropic; 0.46 could run such a call with `{}`.
-- A tool call denied through an `ErrorKind::Denied` report (a
-  hook's `DispatchAction::Deny`, a layer's `BeforeServe::deny`) is a
-  refusal: `is_refused()` is true and its status is `denied`. 0.46 recorded
-  a skip or a failure. `DispatchAction::skip` still skips.
-- A tool that panics fails its own call with an internal error
-  reading `panicked: <message>`, and the run goes on with that as the tool's
-  failed result. 0.46 unwound through the run. If you relied on a panic to
-  abort, return an error from the tool and stop the run in a hook.
-- An `on_dispatch` patch of a completion that changes the tool
-  choice, the tool names, the provider-hosted tools or the output schema
-  fails the turn before the provider is called. Make that change in
-  `on_completion_call` with `CompletionCallAction::patch(RequestPatch::new()
-  .tool_choice(..))`.
-- `Reply::into_stream` on a finished reply, and rig-agent's
-  tool-call deltas for an answer that did not stream, carry a malformed
-  call's arguments as the model sent them, which may not be JSON. 0.46
-  restated the repaired object. Read the arguments from the call the `End`
-  event carries, or parse the text with
-  `streaming::parse_partial_arguments`. Calls that share an id stay distinct
-  through a restated reply.
-- `pairing::validate` and `Conversation::validate` accept two
-  assistant turns in a row when the two cannot merge (different origins or
-  outcomes), and `repair` and `normalize` leave them apart. Code that
-  assumed a repaired history never has two assistant turns in a row reads
-  each turn on its own.
-- Tool argument validation and vector-store JSON filters
-  compare an integer with a float exactly, and enforce `minLength`,
-  `maxLength`, `minItems` and `maxItems` written as a whole float such as
-  `2.0`. `args_schema` keeps `null` in the schemas of collection items, map
-  values and tuple elements. Arguments that passed by rounding can now fail.
-- `ChatBot::run` ends at end of input (Ctrl+D or a closed pipe)
-  instead of sending empty prompts, and returns
-  `StreamToStdoutError::Incomplete` when a stream ends with no final
-  response. A `HookStack` member whose `observes` returns false for
-  run-start, run-settled or a delta event is no longer called for it.
-  `prepare_request` fails when provider tools are set and
+- A streamed run yields the new `MultiTurnStreamItem::ToolExecutionStarted`
+  and `ToolResultItem` items. A consumer that prints or counts every item it
+  does not know sees more items. See [agent runs](#3-agent-runs-rig-agent).
+- A tool call that a reply cut at the output limit is never run and is
+  answered "your reply reached the output limit, send less". It is not offered
+  to `on_invalid_tool_call`, and a cut call to the output tool is never taken
+  as the run's answer. `CompletionResponse::unfinished_calls()` lists more
+  calls for cut replies on OpenAI Chat Completions, OpenAI Responses and
+  Anthropic; 0.46 could run such a call with `{}`.
+- A tool call denied through an `ErrorKind::Denied` report (a hook's
+  `DispatchAction::Deny`, a layer's `BeforeServe::deny`) is a refusal:
+  `is_refused()` is true and its status is `denied`. 0.46 recorded a skip or a
+  failure. `DispatchAction::skip` still skips.
+- A tool that panics fails its own call with an internal error reading
+  `panicked: <message>`, and the run goes on with that as the tool's failed
+  result. 0.46 unwound through the run. If you relied on a panic to abort,
+  return an error from the tool and stop the run in a hook.
+- An `on_dispatch` patch of a completion that changes the tool choice, the
+  tool names, the provider-hosted tools or the output schema fails the turn
+  before the provider is called. Make that change in `on_completion_call` with
+  `CompletionCallAction::patch(RequestPatch::new() .tool_choice(..))`.
+- `Reply::into_stream` on a finished reply, and rig-agent's tool-call deltas
+  for an answer that did not stream, carry a malformed call's arguments as the
+  model sent them, which may not be JSON. 0.46 restated the repaired object.
+  Read the arguments from the call the `End` event carries, or parse the text
+  with `streaming::parse_partial_arguments`. Calls that share an id stay
+  distinct through a restated reply.
+- `pairing::validate` and `Conversation::validate` accept two assistant turns
+  in a row when the two cannot merge (different origins or outcomes), and
+  `repair` and `normalize` leave them apart. Code that assumed a repaired
+  history never has two assistant turns in a row reads each turn on its own.
+- Tool argument validation and vector-store JSON filters compare an integer
+  with a float exactly, and enforce `minLength`, `maxLength`, `minItems` and
+  `maxItems` written as a whole float such as `2.0`. `args_schema` keeps
+  `null` in the schemas of collection items, map values and tuple elements.
+  Arguments that passed by rounding can now fail.
+- `ChatBot::run` ends at end of input (Ctrl+D or a closed pipe) instead of
+  sending empty prompts, and returns `StreamToStdoutError::Incomplete` when a
+  stream ends with no final response. A `HookStack` member whose `observes`
+  returns false for run-start, run-settled or a delta event is no longer
+  called for it. `prepare_request` fails when provider tools are set and
   `additional_params` is a string, an array or a number.
-- `EmbeddingsBuilder::build` rejects a document with no text
-  before it sends any request.
-- `BeforeServe::deny` marks its report as a refusal, so a tool
-  call a layer denies ends `Refused`, not failed, and denied completions and
-  uploads are marked the same way.
-- rig-memory's `estimate_tokens` keeps its name and signature
-  but counts differently. It was the default `HeuristicTokenCounter`'s count
-  (four bytes a token plus four per message). It is now four characters a
-  token, rounded up, with each tool result rounded apart
-  (`estimate_message_tokens`). Thresholds tuned against the old numbers
-  shift. See [memory and compaction](#4-memory-and-compaction-rig-memory).
-- `HeuristicTokenCounter::anthropic()` (3.5 bytes a token) is
-  gone, so code moved to `HeuristicTokenCounter::default()` counts at four
-  bytes a token and reports fewer tokens for the same text.
+- `EmbeddingsBuilder::build` rejects a document with no text before it sends
+  any request.
+- `BeforeServe::deny` marks its report as a refusal, so a tool call a layer
+  denies ends `Refused`, not failed, and denied completions and uploads are
+  marked the same way.
+- rig-memory's `estimate_tokens` keeps its name and signature but counts
+  differently. It was the default `HeuristicTokenCounter`'s count (four bytes
+  a token plus four per message). It is now four characters a token, rounded
+  up, with each tool result rounded apart (`estimate_message_tokens`).
+  Thresholds tuned against the old numbers shift. See [memory and
+  compaction](#4-memory-and-compaction-rig-memory).
+- `HeuristicTokenCounter::anthropic()` (3.5 bytes a token) is gone, so code
+  moved to `HeuristicTokenCounter::default()` counts at four bytes a token and
+  reports fewer tokens for the same text.
 - A summary request built by rig-memory (`summary_request`,
-  `summarization_request`) is a separate request with prompt-cache writes
-  off. It no longer shares the conversation's cached prefix. `summary_text`
-  refuses a reply that failed, was cut at the output limit, called a tool or
-  has no text, where 0.46 accepted an empty one.
-- `apply_summary` returns `None` and changes nothing when the
-  conversation no longer starts with the very messages the summary read, or
-  when what stays would start with a tool result whose call was summarized.
-  Check its result.
-- A crate that depends on `rig` with default features now
-  compiles the coding agent's launcher (`rig-cli`) through the new default
-  `cli` feature. Nothing in your program changes; the build gets longer. See
-  [cargo features](#5-vector-stores-cassettes-mcp-and-the-facades-features).
-- rig-lancedb: a row whose id column is missing, or neither
-  text nor a number, makes `top_n` and `top_n_ids` fail with
-  `MissingIdError`. 0.46 invented an id (such as `unknown3`, or an empty
-  string). A
-  number id reads as its decimal text. A dictionary column decodes to its
-  plain value per row, and a null cell of any type, at any depth, decodes to
-  JSON `null` where it used to come back as `0`, `""`, `[]` or `{}`. A struct
-  field that receives a null must be an `Option`, or the row fails to
-  deserialize. `top_n_ids` returns the distance instead of `0.0`.
-- rig-lancedb: `insert_documents` refuses an embedding whose
-  squared length is not finite, and `top_n` and `top_n_ids` return an error
-  naming the row when its distance is not finite, instead of scoring it
-  `0.0`.
-- rig-postgres: `top_n` returns the deserialization error for a
-  row it cannot read. 0.46 dropped the row and returned the others.
+  `summarization_request`) is a separate request with prompt-cache writes off.
+  It no longer shares the conversation's cached prefix. `summary_text` also
+  refuses a reply that was cut at the output limit or called a tool.
+- `apply_summary` returns `None` and changes nothing when the conversation no
+  longer starts with the very messages the summary read, or when what stays
+  would start with a tool result whose call was summarized. Check its result.
+- A crate that depends on `rig` with default features now compiles the coding
+  agent's launcher (`rig-cli`) through the new default `cli` feature. Nothing
+  in your program changes; the build gets longer. See [cargo
+  features](#5-vector-stores-cassettes-mcp-and-the-facades-features).
+- rig-lancedb: a row whose id column is missing, or neither text nor a number,
+  makes `top_n` and `top_n_ids` fail with `MissingIdError`. 0.46 invented an
+  id (such as `unknown3`, or an empty string). A number id reads as its
+  decimal text. A dictionary column decodes to its plain value per row, and a
+  null cell of any type, at any depth, decodes to JSON `null` where it used to
+  come back as `0`, `""`, `[]` or `{}`. A struct field that receives a null
+  must be an `Option`, or the row fails to deserialize. `top_n_ids` returns
+  the distance instead of `0.0`.
+- rig-lancedb: `insert_documents` refuses an embedding whose squared length is
+  not finite, and `top_n` and `top_n_ids` return an error naming the row when
+  its distance is not finite, instead of scoring it `0.0`.
+- rig-postgres: `top_n` returns the deserialization error for a row it cannot
+  read. 0.46 dropped the row and returned the others.
 - rig-mongodb: a filter value BSON cannot represent is
   `FilterError::Serialization`. 0.46 turned it into `null` and ran the query.
-- rig-vectorize: `VectorizeFilter::and` keeps every operator on
-  a shared field, and a repeated operator with another value fails
-  `validate()`. 0.46 kept one side silently.
-- rig-helixdb: `top_n_ids` applies the metadata filter, so it
-  can return fewer ids. With an API key, `HelixDB::new`'s client follows
-  redirects only within the endpoint's origin; a redirect to another origin
-  fails the query.
-- rig-sqlite: a filter on an indexed column that declares a
-  collation (such as `TEXT COLLATE NOCASE`) follows that collation, and an
-  insert removes the embeddings of every document a unique-key replacement
-  deletes.
-- rig-rmcp: a server that serves tools or resources without
-  declaring the capability yields none from `McpConnection::tools`,
-  `resources` and `McpClientHandler::connect`. See [rig-rmcp](#5-vector-stores-cassettes-mcp-and-the-facades-features).
-- rig-typesafeai: a stored `JevConfig` with an unknown
-  top-level key fails to load instead of loading without it.
+- rig-vectorize: `VectorizeFilter::and` keeps every operator on a shared
+  field, and a repeated operator with another value fails `validate()`. 0.46
+  kept one side silently.
+- rig-helixdb: `top_n_ids` applies the metadata filter, so it can return fewer
+  ids. With an API key, `HelixDB::new`'s client follows redirects only within
+  the endpoint's origin; a redirect to another origin fails the query.
+- rig-sqlite: a filter on an indexed column that declares a collation (such as
+  `TEXT COLLATE NOCASE`) follows that collation, and an insert removes the
+  embeddings of every document a unique-key replacement deletes.
+- rig-rmcp: a server that serves tools or resources without declaring the
+  capability yields none from `McpConnection::tools`, `resources` and
+  `McpClientHandler::connect`. See
+  [rig-rmcp](#5-vector-stores-cassettes-mcp-and-the-facades-features).
+- rig-typesafeai: a stored `JevConfig` with an unknown top-level key fails to
+  load instead of loading without it.
 
 #### Provider requests and errors in 0.47
 
-- Only an `http_client::Error::Transient` failure is retried.
-  A transport that reports every failure as `Permanent` is never retried,
-  and one that reports every failure as `Transient` always is, so a custom
-  `HttpClientExt` must pick the class with care. reqwest's builder and
-  redirect errors now fail at once. See [HTTP errors](#2-providers-sign-in-the-catalog-and-http-rig-core-rig-http-rig-reqwest).
-- The default client (rig-reqwest) forwards only `accept`,
-  `content-encoding`, `content-type`, `range` and `user-agent` on a redirect
-  to another scheme, host or port. Provider key headers such as `x-api-key`,
-  `api-key` and `x-goog-api-key` no longer follow. A `base_url` that
-  redirects to another origin and needs the key there stops working: point
-  `base_url` at the final origin, or pass your own client.
-- Gemini sends the API key in the `x-goog-api-key` header on
-  every wire and never as `?key=` in the URL. A gateway that accepts only
-  the query parameter must accept the header.
+- Only an `http_client::Error::Transient` failure is retried. A transport that
+  reports every failure as `Permanent` is never retried, and one that reports
+  every failure as `Transient` always is, so a custom `HttpClientExt` must
+  pick the class with care. reqwest's builder and redirect errors now fail at
+  once. See [HTTP
+  errors](#2-providers-sign-in-the-catalog-and-http-rig-core-rig-http-rig-reqwest).
+- The default client (rig-reqwest) forwards only `accept`, `content-encoding`,
+  `content-type`, `range` and `user-agent` on a redirect to another scheme,
+  host or port. Provider key headers such as `x-api-key`, `api-key` and
+  `x-goog-api-key` no longer follow. A `base_url` that redirects to another
+  origin and needs the key there stops working: point `base_url` at the final
+  origin, or pass your own client.
+- Gemini sends the API key in the `x-goog-api-key` header on every wire and
+  never as `?key=` in the URL. A gateway that accepts only the query parameter
+  must accept the header.
 - A streamed reply that sends no frame for 5 minutes fails as
   `ProviderError::Stalled` even while keep-alive bytes such as SSE comments
-  arrive. In 0.46 any byte restarted the timer. Use
-  `Model::with_idle_timeout` for a longer wait. The OpenAI Responses
-  WebSocket session times each event wait the same way by default and fails
-  as `Stalled`, not `ProviderError::Provider`; `.without_event_timeout()`
-  waits indefinitely.
-- A streamed reply with any 2xx status is read as a stream
-  (before, only 200). A provider error code listed as final, such as
-  `insufficient_quota`, is not retried, whatever the HTTP status.
-- `chatgpt::DEFAULT_MODEL` is `gpt-6.2-sol` (was
-  `gpt-6.1-sol`). Name `openai::GPT_6_1_SOL` to stay on the old model. The
-  catalog is refreshed from models.dev: 35 retired rows are removed and
-  follow each provider's rule for an unlisted model, and prices and limits
-  changed. `mistral/mistral-large-latest` now reasons with an effort and
-  refuses `Reasoning::Off`. Gemini `Effort::XHigh` is sent as
-  `thinkingLevel: "xhigh"` to the models the catalog lists with it, where
-  it was refused.
-- `voyageai::VOYAGE_3_5_LITE` is `"voyage-3.5-lite"`, the id
-  Voyage AI serves. It was `"voyage.3-5.lite"`. Code that wrote the old
-  literal uses the constant.
-- `ollama/*` catalog models read `OLLAMA_API_BASE_URL` as the
-  daemon's address and append `/v1` themselves. Drop a trailing `/v1` from
-  the variable.
-- DeepSeek Chat Completions sends user images as `image_url`
-  parts to the models the catalog says read them, where it sent a text
-  placeholder, so those requests are billed for the image. Azure OpenAI
-  transcription posts to `/audio/transcriptions` and keeps the spoken
-  language, where it posted to `/audio/translations` and returned English.
-  A Bedrock Converse tool call typed `"tool_use"` is a client call again.
-  Copilot routes by the model catalogue before its `codex` name check, so
-  `gpt-5.5`, `gpt-5.4` and the GPT-6.1 family go to `/responses`. An
-  embedding width the caller names is sent even when it equals the model's
-  native width.
-- On the Hugging Face router a sub-route is selected by
-  sending the model as `model:slug`, and the slugs changed
-  (`SubRoute::HFInference` is `hf-inference`, `SubRoute::Fireworks` is
-  `fireworks`). `SubRoute::model_identifier` returns `model:slug` for every
-  sub-route. Pass a Hub model id, not a sub-provider's own id. A model that
-  already selects another provider is refused.
-- Cohere's 200-status error body on the Compatibility wire
-  fails the turn as a truncated reply, without Cohere's message text.
-  `CohereExtras` and `GeminiExtras` read an empty list as absent. A Gemini
-  reply without `responseId` reports `response_id: None`, not `Some("")`.
-  `Gemini::verify` accepts a 2xx reply whose body is not JSON.
-- The Anthropic cache-marker checks run once, on the body
-  that is sent, and report the first problem in walk order (tools, system,
-  messages, top level), so a request with several problems can report a
-  different one. A `Reasoning::Budget` on an Anthropic Messages request for
-  a model with no dialect default `max_tokens` is checked against the
-  wire's `default_max_tokens` and refused locally when it is at or above
-  it. Set `max_tokens` above the budget.
-- `MultipartForm::encode` escapes `"`, CR and LF in part
-  names and filenames as `%22`, `%0D` and `%0A`. A third-party transport
-  that renders forms with it now sends the escaped names.
-- A stored `providers::registry::Format` with an unknown
-  family reports serde's "unknown variant" error. Provider reply types no
-  longer read a short JSON array by filling missing trailing `Option`
-  fields with `None`.
+  arrive. In 0.46 any byte restarted the timer. Use `Model::with_idle_timeout`
+  for a longer wait. The OpenAI Responses WebSocket session times each event
+  wait the same way by default and fails as `Stalled`, not
+  `ProviderError::Provider`; `.without_event_timeout()` waits indefinitely.
+- A streamed reply with any 2xx status is read as a stream (before, only 200).
+  A provider error code listed as final, such as `insufficient_quota`, is not
+  retried, whatever the HTTP status.
+- `chatgpt::DEFAULT_MODEL` is `gpt-6.2-sol` (was `gpt-6.1-sol`). Name
+  `openai::GPT_6_1_SOL` to stay on the old model. The catalog is refreshed
+  from models.dev: 35 retired rows are removed and follow each provider's rule
+  for an unlisted model, and prices and limits changed.
+  `mistral/mistral-large-latest` now reasons with an effort and refuses
+  `Reasoning::Off`. Gemini `Effort::XHigh` is sent as `thinkingLevel: "xhigh"`
+  to the models the catalog lists with it, where it was refused. The gRPC
+  route (rig-gemini-grpc) still refuses it.
+- `voyageai::VOYAGE_3_5_LITE` is `"voyage-3.5-lite"`, the id Voyage AI serves.
+  It was `"voyage.3-5.lite"`. Code that wrote the old literal uses the
+  constant.
+- `ollama/*` catalog models read `OLLAMA_API_BASE_URL` as the daemon's address
+  and append `/v1` themselves. Drop a trailing `/v1` from the variable.
+- DeepSeek Chat Completions sends user images as `image_url` parts to the
+  models the catalog says read them, where it sent a text placeholder, so
+  those requests are billed for the image. Azure OpenAI transcription posts to
+  `/audio/transcriptions` and keeps the spoken language, where it posted to
+  `/audio/translations` and returned English. A Bedrock Converse tool call
+  typed `"tool_use"` is a client call again. Copilot routes by the model
+  catalogue before its `codex` name check, so `gpt-5.5`, `gpt-5.4` and the
+  GPT-6.1 family go to `/responses`. The rule holds for any dialect that sets
+  both `routes_by_catalog` and a `model_route` hook: the catalogue row wins,
+  and the hook routes only the models the catalogue does not. A route set on
+  the provider itself still beats both. An embedding width the caller names is
+  sent even when it equals the model's native width.
+- On the Hugging Face router a sub-route is selected by sending the model as
+  `model:slug`, and the slugs changed (`SubRoute::HFInference` is
+  `hf-inference`, `SubRoute::Fireworks` is `fireworks`).
+  `SubRoute::model_identifier` returns `model:slug` for every sub-route. Pass
+  a Hub model id, not a sub-provider's own id. A model that already selects
+  another provider is refused.
+- Cohere's 200-status error body on the Compatibility wire fails the turn as a
+  truncated reply, without Cohere's message text. `CohereExtras` and
+  `GeminiExtras` read an empty list as absent. A Gemini reply without
+  `responseId` reports `response_id: None`, not `Some("")`. `Gemini::verify`
+  accepts a 2xx reply whose body is not JSON.
+- The Anthropic cache-marker checks run once, on the body that is sent, and
+  report the first problem in walk order (tools, system, messages, top level),
+  so a request with several problems can report a different one. A
+  `Reasoning::Budget` on an Anthropic Messages request for a model with no
+  dialect default `max_tokens` is checked against the wire's
+  `default_max_tokens` and refused locally when it is at or above it. Set
+  `max_tokens` above the budget.
+- `MultipartForm::encode` escapes `"`, CR and LF in part names and filenames
+  as `%22`, `%0D` and `%0A`. A third-party transport that renders forms with
+  it now sends the escaped names.
+- A stored `providers::registry::Format` with an unknown family reports
+  serde's "unknown variant" error. Provider reply types no longer read a short
+  JSON array by filling missing trailing `Option` fields with `None`.
 
 #### Stored data and files
 
-- A serialized `AgentRun` from 0.46 is refused
-  (`RUN_FORMAT` 5 → 7). See [agent runs](#3-agent-runs-rig-agent).
-- A saved `TurnEnd::Stopped` writes `by` and `cut` where
-  0.46 wrote `why` and `calls`. A record saved by 0.46 still reads; its
-  cause is `None` and its cut calls are empty.
-- Conversation entries saved by 0.46 carry no
-  `ResultFacts`. They load, with empty facts.
-- A conversation's change log records a push after a halt
-  as one change. 0.46 followed the push with a separate
-  `Change::Halt { halt: None }`. Code that counts or matches recorded changes
-  sees one record fewer.
-- `FileTokenStore` refuses a credential file that is a
-  symlink, not a regular file or over 64 KiB, and on Unix narrows one that
-  group or others can read to 0600. A Copilot credential saved by an older
-  build is exchanged once more on first use, because the bootstrap-token
-  fingerprint changed. A checkpointed Gemini cache lease whose name is not
-  `cachedContents/<id>` comes back from `CacheBook::restore` as lost. See
-  [sign-in types](#2-providers-sign-in-the-catalog-and-http-rig-core-rig-http-rig-reqwest).
-- A compaction's only record is its summary entry. Sessions
-  saved by 0.46 load unchanged; their `rig.compaction` asides stay in the
-  log and nothing reads them. `summarized_in_log` forgets what was replaced
-  once the log's conversation is reset.
-- `Session::save` refuses, with `SessionError::Changed`, a
-  session read before another writer saved or rewrote one of its logs. In
-  0.46 only a log holding changes was checked. Two writers on one store now
-  need a read-again-and-retry loop. `Session`'s `PartialEq` also compares
-  where its logs ended. See [sessions](#4-memory-and-compaction-rig-memory).
-- Sessions save a new key, `rig::current_agent`
-  (`rig_memory::CURRENT`), and `Session::main_agent()` returns the top-level
-  agent it names, else the first by id. A 0.46 session has no such key.
-- Tool results are saved with the facts their call
-  published (`ResultFacts`). A `Rewrite` that does not implement the new
-  `facts` hook leaves them as they are, so a redacting rewrite should cover
-  them.
-- Removing a saved resource is saved, so a restart no
-  longer brings its old value back.
-- Files rig creates through `fs::replace` (a first
-  `settings.toml`, a session's name and working-directory files, a run's end
-  record) are private to the user (0600 on unix). An existing file keeps its
-  mode and group.
-- A session whose saved working-directory file cannot be
-  read is refused. 0.46 opened it in the current directory and overwrote the
-  file.
-- On unix, `sessions/`, `projects/`, `data/` and `run/`
-  under `RIG_HOME` and each session directory are tightened to mode 0700
-  when a session starts.
+- A serialized `AgentRun` from 0.46 is refused (`RUN_FORMAT` 5 → 7). See
+  [agent runs](#3-agent-runs-rig-agent).
+- A saved `TurnEnd::Stopped` writes `by` and `cut` where 0.46 wrote `why` and
+  `calls`. A record saved by 0.46 still reads; its cause is `None` and its cut
+  calls are empty.
+- Conversation entries saved by 0.46 carry no `ResultFacts`. They load, with
+  empty facts.
+- A conversation's change log records a push after a halt as one change. 0.46
+  followed the push with a separate `Change::Halt { halt: None }`. Code that
+  counts or matches recorded changes sees one record fewer.
+- `FileTokenStore` refuses a credential file that is a symlink, not a regular
+  file or over 64 KiB, and on Unix narrows one that group or others can read
+  to 0600. A Copilot credential saved by an older build is exchanged once more
+  on first use, because the bootstrap-token fingerprint changed. A
+  checkpointed Gemini cache lease whose name is not `cachedContents/<id>`
+  comes back from `CacheBook::restore` as lost. See [sign-in
+  types](#2-providers-sign-in-the-catalog-and-http-rig-core-rig-http-rig-reqwest).
+- A compaction's only record is its summary entry. Sessions saved by 0.46 load
+  unchanged; their `rig.compaction` asides stay in the log and nothing reads
+  them. `summarized_in_log` forgets what was replaced once the log's
+  conversation is reset.
+- `Session::save` refuses, with `SessionError::Changed`, a session read before
+  another writer saved or rewrote one of its logs. In 0.46 only a log holding
+  changes was checked. Two writers on one store now need a
+  read-again-and-retry loop. `Session`'s `PartialEq` also compares where its
+  logs ended. See [sessions](#4-memory-and-compaction-rig-memory).
+- Sessions save a new key, `rig::current_agent` (`rig_memory::CURRENT`), and
+  `Session::main_agent()` returns the top-level agent it names, else the first
+  by id. A 0.46 session has no such key.
+- Tool results are saved with the facts their call published (`ResultFacts`).
+  A `Rewrite` that does not implement the new `facts` hook leaves them as they
+  are, so a redacting rewrite should cover them.
+- Removing a saved resource is saved, so a restart no longer brings its old
+  value back.
+- Files rig creates through `fs::replace` (a first `settings.toml`, a
+  session's name and working-directory files, a run's end record) are private
+  to the user (0600 on unix). An existing file keeps its mode and group.
+- A session whose saved working-directory file cannot be read is refused. 0.46
+  opened it in the current directory and overwrote the file.
+- On unix, `sessions/`, `projects/`, `data/` and `run/` under `RIG_HOME` and
+  each new session directory are tightened to mode 0700 when a session starts.
 
 #### The coding agent in use
 
-- `write` replaces an existing file only if the agent read
-  or wrote it in this session and it has not changed on disk since.
-  Otherwise it writes nothing and tells the model the file `has not been
-  read by you since rig started` or `changed since you last read or wrote
-  it`.
-- A confined file tool follows a dangling symlink before
-  it checks its base, so a write through a link that leads outside is
-  refused.
-- `RIG_HOME/plugins.toml` and `RIG_HOME/defaults.json` are
-  no longer read. Until their contents are moved into `settings.toml`, the
-  agent runs rig's default plugins and picks a model on its own, with a
-  warning at each start that prints the steps. See
-  [upgrading a 0.46 home](#9-upgrading-a-046-home-settings-plugins-and-scaffolded-plugin-crates).
-- Deleting `[compaction] keep_recent` or `limits.reserve`,
-  as the start's refusal advises, drops your value for the default (20000
-  and 16384 tokens). Rename them to `keep_recent_tokens` and
-  `reserve_tokens`. See [settings tables](#9-upgrading-a-046-home-settings-plugins-and-scaffolded-plugin-crates).
-- `[tui] mark_nonce_env` no longer applies, so OSC 133
-  prompt marks carry no nonce until the key is moved to `[title]`. A leftover
-  `[tui]` or `[checkpoints]` table only gets a "no enabled plugin reads"
-  notice.
-- Compaction summary calls no longer reuse the prompt
-  cache. 0.47 sends a separate summary request with cache writes off; 0.46
-  asked for the summary in place, over the cached conversation. Measured on
-  matched runs with 3 compactions in 27 model calls, uncached input was 1.91
-  times 0.46's on one model (81k to 155k tokens; 0.47's summary calls cached
-  0 of 62k input tokens, 0.46's 65k of 66k) and 2.30 times on another.
-  Ordinary sessions compact far less often than those runs did, so the cost
-  over a whole session is smaller.
-- Compaction keeps about `[compaction] keep_recent_tokens`
-  (20000) of the newest messages and summarizes the rest; it no longer
-  clears old tool outputs first, and `/compact` keeps the same amount as an
-  automatic compaction. After one, the status line shows `ctx ?` until the
-  next reply. See [commands and behaviour](#10-the-coding-agents-commands-and-behaviour).
-- Forks, rewind (Alt+Up, then Enter) and `/agents` are off
-  by default; `rig plugin enable rig_basics::sessions::forks::ForksPlugin`
-  turns them on. A session saved while a fork was shown reopens on its first
-  agent, and `/agents` picks the fork. See [section 9](#9-upgrading-a-046-home-settings-plugins-and-scaffolded-plugin-crates).
-- Nothing is redacted unless
-  `rig_basics::redact::RedactPlugin` is enabled; 0.46 always redacted. With
-  it on, a secret is a placeholder such as `‹SECRET_1›` (it was
-  `[REDACTED]`), and a tool call that names the placeholder runs with the
-  real value. See [section 9](#9-upgrading-a-046-home-settings-plugins-and-scaffolded-plugin-crates).
-- With the MCP plugin on, the servers of a project's
-  `.rig/mcp.json` start with no question and replace a user server of the
-  same name. Asking first is the opt-in
-  `rig_mcp_client::approval::McpApprovalPlugin`. See [section 9](#9-upgrading-a-046-home-settings-plugins-and-scaffolded-plugin-crates).
-- A project's `.rig/settings.toml` is not read, and no
-  notice says so. Settings live only in `RIG_HOME/settings.toml`. See
-  [section 9](#9-upgrading-a-046-home-settings-plugins-and-scaffolded-plugin-crates).
-- rig finds one project root, the nearest directory at or
-  above the working directory that holds `.git` or `.rig`, below your home.
-  Started in a subfolder, it reads the root's `.rig/mcp.json`, `AGENTS.md`
-  files and skills, and keeps per-project data such as the prompt history
-  under the root, so a subfolder's 0.46 prompt history is not carried over.
-  A folder with its own `.rig` directory is its own project. Started in the
-  home directory, rig reads no project `mcp.json`.
-- `--tools` limits only the run it is given to. A later
-  run of the session without it has every tool again.
-- Only `/model` or `/effort`, once that model has
-  answered, changes the default for new sessions. `/model` lists only models
-  usable now. With nothing saved or named, the terminal view starts on an
-  automatic pick, as `rig -p` and ACP do, and that pick takes the ChatGPT
-  plan's default model first when you are signed in. `chatgpt`'s default
-  model is `gpt-6.2-sol`.
-- A reasoning effort the model's route refuses, such as a
-  token budget on an Ollama model, is reset at start with a warning instead
-  of failing every turn. `[model] effort = "high"` is read by the model the
-  session starts on, so it works on a model that takes a budget and no
-  levels.
-- The mouse wheel scrolls the transcript instead of
-  browsing prompt history, and a drag copies text in rig. The terminal's own
-  selection and middle-click paste need Shift.
-- Ctrl+V pastes the clipboard's text when it holds no
-  image, pastes a JPEG or WebP image when no PNG is offered, and names the
-  clipboard program that is missing (`wl-paste`, `xclip`).
-- In `/plugins`, Enter ticks a row instead of applying at
-  once, and Esc asks when to apply. A command refused because a turn is
-  running comes back in the input with the reason.
-- A shell command's background job that still holds the
-  call's output open is ended with the call, and the result says so and how
-  to keep one running. A stopped call stops the processes it started.
-  `shell` no longer kills a command after 10 MB of output. `timeout_secs:
-  0`, `read`'s `offset: 0` and `list`'s `depth: 0` are refused.
-- Search, list, watch and the `@` picker leave out only
-  directories named `target`, so a file named `target` is listed.
-- Text that starts with a path, `//`, or `/` and a space
-  is a message for the model, not a slash command.
-- A `settings.toml` table that does not read, an unknown
-  plugin name in `[plugins]`, or a `[[plugins.extra]]` path that holds no
-  crate refuses the start; 0.46 started anyway or ran the previous build. A
-  table no enabled plugin reads gets a notice.
-- A saved `/login` key file that cannot be read or parsed
-  refuses its provider's models, naming the file, instead of falling back to
-  the environment's key. A credential file that is a symlink is refused, and
-  one that group or others can read is narrowed to 0600.
-- `cargo install`, `rig build`, cargo and the other
-  processes the launcher starts no longer inherit exported `RIG_SECRET_*`
-  variables or the launcher's `RIG_*` variables. A build script or cargo
-  wrapper that read them during a build no longer sees them. The browser
-  opened for a sign-in does not get the secrets either.
-- A stopped turn (Esc, `/compact`, an exit) is not an
-  error: the title reads `rig · error` and the OSC 133 mark is `D;1` only
-  after a failed turn. A stop writes `D;0`.
-- The first agent build after upgrading recompiles every
-  dependency once, because dependencies now build without debug info.
+- `write` replaces an existing file only if the agent read or wrote it in this
+  session and it has not changed on disk since. Otherwise it writes nothing
+  and tells the model the file `has not been read by you since rig started` or
+  `changed since you last read or wrote it`.
+- A confined file tool follows a dangling symlink before it checks its base,
+  so a write through a link that leads outside is refused.
+- `RIG_HOME/plugins.toml` and `RIG_HOME/defaults.json` are no longer read.
+  Until their contents are moved into `settings.toml`, the agent runs rig's
+  default plugins and picks a model on its own, with a warning at each start
+  that prints the steps. See [upgrading a 0.46
+  home](#9-upgrading-a-046-home-settings-plugins-and-scaffolded-plugin-crates).
+- Deleting `[compaction] keep_recent` or `limits.reserve`, as the start's
+  refusal advises, drops your value for the default (20000 and 16384 tokens).
+  Rename them to `keep_recent_tokens` and `reserve_tokens`. See [settings
+  tables](#9-upgrading-a-046-home-settings-plugins-and-scaffolded-plugin-crates).
+- `[tui] mark_nonce_env` no longer applies, so OSC 133 prompt marks carry no
+  nonce until the key is moved to `[title]`. A leftover `[tui]` or
+  `[checkpoints]` table only gets a "no enabled plugin reads" notice.
+- Compaction summary calls no longer reuse the prompt cache. 0.47 sends a
+  separate summary request with cache writes off; 0.46 asked for the summary
+  in place, over the cached conversation. Measured on matched runs with 3
+  compactions in 27 model calls, uncached input was 1.91 times 0.46's on one
+  model (81k to 155k tokens; 0.47's summary calls cached 0 of 62k input
+  tokens, 0.46's 65k of 66k) and 2.30 times on another. Ordinary sessions
+  compact far less often than those runs did, so the cost over a whole session
+  is smaller.
+- Compaction keeps about `[compaction] keep_recent_tokens` (20000) of the
+  newest messages and summarizes the rest; it no longer clears old tool
+  outputs first, and `/compact` keeps the same amount as an automatic
+  compaction. After one, the status line shows `ctx ?` until the next reply.
+  See [commands and behaviour](#10-the-coding-agents-commands-and-behaviour).
+- Forks, rewind (Alt+Up, then Enter) and `/agents` are off by default; `rig
+  plugin enable rig_basics::sessions::forks::ForksPlugin` turns them on. A
+  session saved while a fork was shown reopens on its first agent, and
+  `/agents` picks the fork. See [section
+  9](#9-upgrading-a-046-home-settings-plugins-and-scaffolded-plugin-crates).
+- Nothing is redacted unless `rig_basics::redact::RedactPlugin` is enabled;
+  0.46 always redacted. With it on, a secret is a placeholder such as
+  `‹SECRET_1›` (it was `[REDACTED]`), and a tool call that names the
+  placeholder runs with the real value. See [section
+  9](#9-upgrading-a-046-home-settings-plugins-and-scaffolded-plugin-crates).
+- With the MCP plugin on, the servers of a project's `.rig/mcp.json` start
+  with no question and replace a user server of the same name. Asking first is
+  the opt-in `rig_mcp_client::approval::McpApprovalPlugin`. See [section
+  9](#9-upgrading-a-046-home-settings-plugins-and-scaffolded-plugin-crates).
+- A project's `.rig/settings.toml` is not read, and no notice says so.
+  Settings live only in `RIG_HOME/settings.toml`. See [section
+  9](#9-upgrading-a-046-home-settings-plugins-and-scaffolded-plugin-crates).
+- rig finds one project root, the nearest directory at or above the working
+  directory that holds `.git` or `.rig`, below your home. Started in a
+  subfolder, it reads the root's `.rig/mcp.json`, `AGENTS.md` files and
+  skills, and keeps per-project data such as the prompt history under the
+  root, so a subfolder's 0.46 prompt history is not carried over. A folder
+  with its own `.rig` directory is its own project. Started in the home
+  directory, rig reads no project `mcp.json`.
+- `--tools` limits only the run it is given to. A later run of the session
+  without it has every tool again.
+- Only `/model` or `/effort`, once that model has answered, changes the
+  default for new sessions. `/model` lists only models usable now, plus the
+  current one with why it cannot be used, and a ChatGPT plan's models while
+  the plan is still being checked. With nothing saved or named, the terminal
+  view starts on an automatic pick, as `rig -p` and ACP do, and that pick
+  takes the ChatGPT plan's default model first when you are signed in.
+  `chatgpt`'s default model is `gpt-6.2-sol`.
+- A reasoning effort the model's route refuses, such as a token budget on an
+  Ollama model, is reset at start with a warning instead of failing every
+  turn. `[model] effort = "high"` is read by the model the session starts on,
+  so it works on a model that takes a budget and no levels.
+- The mouse wheel scrolls the transcript instead of browsing prompt history,
+  and a drag copies text in rig. The terminal's own selection and middle-click
+  paste need Shift.
+- Ctrl+V pastes the clipboard's text when it holds no image, pastes a JPEG or
+  WebP image when no PNG is offered, and names the clipboard program that is
+  missing (`wl-paste`, `xclip`).
+- In `/plugins`, Enter ticks a row instead of applying at once, and Esc asks
+  when to apply. A command refused because a turn is running comes back in the
+  input with the reason.
+- A shell command's background job that still holds the call's output open is
+  ended with the call, and the result says so and how to keep one running. A
+  stopped call stops the processes it started. `shell` no longer kills a
+  command after 10 MB of output. `timeout_secs: 0`, `read`'s `offset: 0` and
+  `list`'s `depth: 0` are refused.
+- Search, list, watch and the `@` picker leave out only directories named
+  `target`, so a file named `target` is listed.
+- Text that starts with a path, `//`, or `/` and a space is a message for the
+  model, not a slash command.
+- A `settings.toml` table that does not read, an unknown plugin name in
+  `[plugins]`, or a `[[plugins.extra]]` path that holds no crate refuses the
+  start; 0.46 started anyway or ran the previous build. A table no enabled
+  plugin reads gets a notice.
+- A saved `/login` key file that cannot be read or parsed refuses its
+  provider's models, naming the file, instead of falling back to the
+  environment's key. A credential file that is a symlink is refused, and one
+  that group or others can read is narrowed to 0600.
+- `cargo install`, `rig build`, cargo and the other processes the launcher
+  starts no longer inherit exported `RIG_SECRET_*` variables or the launcher's
+  `RIG_*` variables. A build script or cargo wrapper that read them during a
+  build no longer sees them. The browser opened for a sign-in does not get the
+  secrets either.
+- A stopped turn (Esc, `/compact`, an exit) is not an error: the title reads
+  `rig · error` and the OSC 133 mark is `D;1` only after a failed turn. A stop
+  writes `D;0`.
+- The first agent build after upgrading recompiles every dependency once,
+  because dependencies now build without debug info.
 - Steel's `spawn-agent`, `send` and `reply` work only with
-  `rig_basics::subagents::SubagentsPlugin` on. Subagents have no depth
-  limit.
+  `rig_basics::subagents::SubagentsPlugin` on. Subagents have no depth limit.
 
 #### Headless runs
 
-- `rig --json` speaks protocol version 3 and refuses a
-  version 1 line with an error reply, so a 0.46 driver that does not read
-  replies sees its requests do nothing. `tool_call` and `tool_result` ids
-  are places such as `m4/1`, not provider call ids. See
+- `rig --json` speaks protocol version 3 and refuses a version 1 line with an
+  error reply, so a 0.46 driver that does not read replies sees its requests
+  do nothing. `tool_call` and `tool_result` ids are places such as `m4/1`, not
+  provider call ids. See [headless
+  drivers](#11-headless-drivers-rig--p-rig---json-and-rig-acp).
+- `exit`'s `usage` is the session's total and `turn_end`'s includes its
+  helpers' spend. A driver that summed children's costs itself now counts them
+  twice.
+- `rig -p` waits for piped stdin to close, refuses input that is not UTF-8,
+  exits 2 for a command that opens a list (it exited 0 and printed nothing),
+  exits 1 when the agent build fails instead of answering with the previous
+  build, and writes tool progress on stderr without the `rig: ` prefix. See
   [headless drivers](#11-headless-drivers-rig--p-rig---json-and-rig-acp).
-- `exit`'s `usage` is the session's total and `turn_end`'s
-  includes its helpers' spend. A driver that summed children's costs itself
-  now counts them twice.
-- `rig -p` waits for piped stdin to close, refuses input that
-  is not UTF-8, exits 2 for a command that opens a list (it exited 0 and
-  printed nothing), exits 1 when the agent build fails instead of answering
-  with the previous build, and writes tool progress on stderr without the
-  `rig: ` prefix. See [headless drivers](#11-headless-drivers-rig--p-rig---json-and-rig-acp).
-- `rig acp` refuses a word after `acp`; an editor command
-  that put options there had them ignored and now fails to start.
+- `rig acp` refuses a word after `acp`; an editor command that put options
+  there had them ignored and now fails to start.
 
 #### Plugins built against the agent
 
-- `StreamDelta` now carries the text of every model
-  call's reply. A reply that did not stream, such as one a plugin answered
-  in place or a reviewer edited, is written once just before the call
-  settles. A reader that also rebuilt such replies from `Outcome` on
-  `Add<Settled>` now shows them twice: read the deltas alone. Tell an
-  in-place answer by `Decision::by()`.
-- A system in `Last` that is `.in_set(WriteLogs)` or
-  ordered `.after(WriteLogs)` still compiles, and no longer runs with the
-  save. Move it to `Persist` (see [the kernel](#6-the-kernel-rig-ecs)).
-- Once the session can no longer be saved, the kernel
-  refuses every effect whose `Footprint` says it may change something
-  before it starts, not only tool calls. Give a plugin `EffectRequest` that
-  changes files or anything outside the session a `Footprint`.
-- `ToolAccess::allows` answers for this run only, within
-  the run's `RunTools`. Code that derives a child's tools or a saved list
-  from it now loses the tools a `--tools` run left out; use `keeps` (see
-  [the kernel](#6-the-kernel-rig-ecs)).
-- A model call that was stopped, superseded or failed
-  mid-stream counts the usage its provider reported before the end
-  (`ReportedUsage`), else an estimate. Spend meters see calls they did not
-  see before.
-- `Incoming::command` returns `None` for text that
-  starts with a path (`/etc/hosts: what is this?`), with `//`, or with `/`
-  and a space. Such text is a message for the model in every front.
-- `NoticeLevel`'s variants are reordered to `Warn`,
-  `Error`, `Info`, so `as` casts of them changed value. It now serializes
-  as `info`, `warn` or `error`.
-- A settings table registered in a plugin's `finish`
-  compiles and refuses every start. Register it in `build`. See
-  [plugin host and tools](#7-plugin-host-and-tools-rig-harness-rig-harness-protocol-rig-tools).
-- A front that shows pickers and does not say so with
-  `Front::shows_pickers()` has every picker command refused in its runs.
-- A per-call shell starts its commands as the app's
-  `Processes` say and cuts its output as the app's `ShellOutput` says. The
-  `launcher` and `cut` of the `Shell` you registered are ignored.
-- A wrapper around a live per-call tool that does not
-  forward `const LIVE` gets no live output for its calls.
-- Each agent has its own record of the files its tools
-  saw (`FilesSeen`). A `Seen` you shared between the file tools is no longer
-  shared between agents, and a fork or a subagent starts with none.
-- An agent that exits with code 75 and wrote no
-  `AgentEnd::Reload` record is a failed run, not a reload.
-- A slash command registered with `In<NoArgs>` refuses
-  text after its name. One registered with `In<CommandArgs>` accepts it as
-  before.
-- A file watch tells a failed listing as
-  `WatchEvent::Unavailable` and the next good one as a new `Snapshot`. In
-  0.46 a failed listing looked like every file removed and then added again.
-- Commands started through rig-tools find no editor and
-  no pager (`process::NON_INTERACTIVE`): `git commit` without `-m` fails at
-  once instead of waiting. A variable the command sets itself is kept.
-- `rig_tui::TuiPlugin` alone no longer draws the status
-  line, the key hints or the terminal title and OSC 133 marks. An app or test
-  that adds the view itself adds `rig_tui::TuiPlugins` to keep them. See
-  [plugin crates](#8-plugin-crates-rig-basics-rig-tui-and-the-others).
-- `ToolRender::result_lines()` and `result_text()` include
-  a result's JSON blocks and a line counting its images. A look that appends
-  JSON itself now shows it twice; drop the JSON content first, as
-  [plugin crates](#8-plugin-crates-rig-basics-rig-tui-and-the-others) shows.
+- `StreamDelta` now carries the text of every model call's reply. A reply that
+  did not stream, such as one a plugin answered in place or a reviewer edited,
+  is written once just before the call settles. A reader that also rebuilt
+  such replies from `Outcome` on `Add<Settled>` now shows them twice: read the
+  deltas alone. Tell an in-place answer by `Decision::by()`.
+- A system in `Last` that is `.in_set(WriteLogs)` or ordered
+  `.after(WriteLogs)` still compiles, and no longer runs with the save. Move
+  it to `Persist` (see [the kernel](#6-the-kernel-rig-ecs)).
+- Once the session can no longer be saved, the kernel refuses every effect
+  whose `Footprint` says it may change something before it starts, not only
+  tool calls. Give a plugin `EffectRequest` that changes files or anything
+  outside the session a `Footprint`.
+- `ToolAccess::allows` answers for this run only, within the run's `RunTools`.
+  Code that derives a child's tools or a saved list from it now loses the
+  tools a `--tools` run left out; use `keeps` (see [the
+  kernel](#6-the-kernel-rig-ecs)).
+- A model call that was stopped, superseded or failed mid-stream counts the
+  usage its provider reported before the end (`ReportedUsage`), else an
+  estimate. Spend meters see calls they did not see before.
+- `Incoming::command` returns `None` for text that starts with a path
+  (`/etc/hosts: what is this?`), with `//`, or with `/` and a space. Such text
+  is a message for the model in every front.
+- `NoticeLevel`'s variants are reordered to `Warn`, `Error`, `Info`, so `as`
+  casts of them changed value. It now serializes as `info`, `warn` or `error`.
+- A settings table registered in a plugin's `finish` compiles and refuses
+  every start. Register it in `build`. See [plugin host and
+  tools](#7-plugin-host-and-tools-rig-harness-rig-harness-protocol-rig-tools).
+- A front that shows pickers and does not say so with `Front::shows_pickers()`
+  has every picker command refused in its runs.
+- A per-call shell starts its commands as the app's `Processes` say and cuts
+  its output as the app's `ShellOutput` says. The `launcher` and `cut` of the
+  `Shell` you registered are ignored.
+- A wrapper around a live per-call tool that does not forward `const LIVE`
+  gets no live output for its calls.
+- Each agent has its own record of the files its tools saw (`FilesSeen`). A
+  `Seen` you shared between the file tools is no longer shared between agents,
+  and a fork or a subagent starts with none.
+- An agent that exits with code 75 and wrote no `AgentEnd::Reload` record is a
+  failed run, not a reload.
+- A slash command registered with `In<NoArgs>` refuses text after its name.
+  One registered with `In<CommandArgs>` accepts it as before.
+- A file watch tells a failed listing as `WatchEvent::Unavailable` and the
+  next good one as a new `Snapshot`. In 0.46 a failed listing looked like
+  every file removed and then added again.
+- Commands started through rig-tools find no editor and no pager
+  (`process::NON_INTERACTIVE`): `git commit` without `-m` fails at once
+  instead of waiting. A variable the command sets itself is kept.
+- The `status` item's text is no longer exactly `thinking…` and the like while
+  the agent works: a wave of bars can come first and the elapsed time after 5
+  seconds. Read `Activity::status` instead of matching the text.
+- A remote `@HOST:PATH` attachment arrives after `AttachSystems`, under a hold
+  on its message, and later user-kind messages to that agent wait behind it.
+  See [plugin crates](#8-plugin-crates-rig-basics-rig-tui-and-the-others).
+- `rig_tui::TuiPlugin` alone no longer draws the status line, the key hints or
+  the terminal title and OSC 133 marks. An app or test that adds the view
+  itself adds `rig_tui::TuiPlugins` to keep them. See [plugin
+  crates](#8-plugin-crates-rig-basics-rig-tui-and-the-others).
+- `ToolRender::result_lines()` and `result_text()` include a result's JSON
+  blocks and a line counting its images. A look that appends JSON itself now
+  shows it twice; drop the JSON content first, as [plugin
+  crates](#8-plugin-crates-rig-basics-rig-tui-and-the-others) shows.
 - rig-basics no longer redacts anything unless
   `rig_basics::redact::RedactPlugin` is added. A plugin that relied on the
   kernel or the logs redacting for it redacts what it writes with
   `rig_core::redact`.
-- An app that adds `rig_basics::activity::ActivityPlugin`
-  without `WorkingAnimationPlugin` has no working animation, and one that adds
+- An app that adds `rig_basics::activity::ActivityPlugin` without
+  `WorkingAnimationPlugin` has no working animation, and one that adds
   `SteelPlugin` without `SubagentsPlugin` has no `spawn-agent`, `send` or
   `reply` in its Steel programs.
 
@@ -1643,17 +1627,22 @@ as its number. Go through serde, or through the printed number:
 
 ```rust
 // before
-let id = RunId::from_raw(7);
+let id = RunId::from_raw(7);   // Option<RunId>
 let id: RunId = "7".parse()?;
-let raw = id.to_raw();
+let raw = id.to_raw();         // u64
 // after
 let id: RunId = serde_json::from_value(serde_json::json!(7))?;
 let id: RunId = serde_json::from_str("7")?;
-let raw = serde_json::to_value(id)?.as_u64();
+let raw = serde_json::to_value(id)?.as_u64();   // Option<u64>
 let text = id.to_string();
 ```
 
 `conversation::ParseIdError` is another type and stays.
+
+`effect::family::Custom<E>` is only a type marker now. `Custom::new()` and
+its `Default`, `Debug`, `PartialEq`, `Eq` and `Hash` impls are removed;
+`Clone` and `Copy` stay. Name it as a type, as in `Key<family::Custom<E>>`,
+and drop any bound that asked for those traits.
 
 #### Conversations: stops, call places and entry facts
 
@@ -1795,27 +1784,34 @@ passed @ (Relayed::Origin(_) | Relayed::Usage(_)) => out.push(passed),
 ```
 
 `completion::CacheCost`, `completion::CacheRates` and the
-`completion::cache_cost` module are removed, with
-`impl From<&gemini::CacheReport> for CacheCost`. Price a call from `Usage`'s
-counters with your own rates:
+`completion::cache_cost` module are removed; see
+[cache cost helpers](#2-providers-sign-in-the-catalog-and-http-rig-core-rig-http-rig-reqwest).
+
+`loaders::file::IntoIter`, `loaders::pdf::IntoIter` and
+`loaders::epub::IntoIter` are removed. The `IntoIterator::IntoIter` of
+`FileLoader`, `PdfFileLoader` and `EpubFileLoader` is
+`Box<dyn Iterator<Item = T> + 'a>`; a `for` loop is unchanged, and only code
+that names the iterator type changes.
+
+On wasm only, `EmbedError` implements `From<Box<dyn Error>>` instead of
+`From<Box<dyn Error + Send + Sync>>`, and `EmbedError::new` accepts an error
+that is not `Send` or `Sync`. Cast an existing `Send + Sync` box first.
+Native targets are unchanged.
 
 ```rust
-// before
-let cost = CacheCost::from_usage(&usage);
-let usd = cost.usd(&CacheRates {
-    input: 3.0, cached_read: 0.3, cache_write: 3.75, storage_per_hour: 0.0,
-});
-// after
-let input = usage.input_tokens.unwrap_or(0);
-let reads = usage.cached_input_tokens.unwrap_or(0);
-let writes = usage.cache_creation_input_tokens.unwrap_or(0);
-let uncached = input.saturating_sub(reads + writes);
-let usd = (uncached as f64 * 3.0 + reads as f64 * 0.3 + writes as f64 * 3.75) / 1e6;
+// before (wasm)
+let error: EmbedError = boxed.into();
+// after (wasm)
+let error = EmbedError::from(boxed as Box<dyn std::error::Error>);
 ```
 
-`loaders::file::IntoIter` is removed. `FileLoader`'s `IntoIterator::IntoIter`
-is `Box<dyn Iterator<Item = T> + 'a>`; a `for` loop is unchanged, and only
-code that names the iterator type changes.
+`json_utils` is doc-hidden, but three of its helpers had callers:
+
+| Removed | Write instead |
+| --- | --- |
+| `json_utils::merge_inplace(a, b)` | `*a = json_utils::merge(std::mem::take(a), b)` |
+| `json_utils::string_or_vec` | none; deserialize through an untagged enum or a visitor of your own |
+| `json_utils::Lenient::i64(key)` | `value.get(key).and_then(Value::as_i64)`, or parse the string form yourself |
 
 `ReplayTarget::route` is removed with Cohere's automatic chat route; see
 [providers](#2-providers-sign-in-the-catalog-and-http-rig-core-rig-http-rig-reqwest).
@@ -1825,12 +1821,8 @@ dependency, and `audio_generation`, `image_generation` and the provider audio
 and image models now always compile. Delete the features from your manifest;
 [the facade's features](#5-vector-stores-cassettes-mcp-and-the-facades-features) shows the `rig` form.
 
-With the `test-utils` feature: `test_utils::raw_parity::assert_raw_parity` is
-removed (compare `raw_pair` through `comparable`), `RecordingHttpClient::with_error_response`
-is removed, and `streaming_conformance` loses `ScenarioReport` and its xfail
-arguments: `ScenarioOutcome::Ran` is a unit variant, and
-`check_gated_outcome` and `check_ungated_outcome` take the scenario, the
-capability and the result.
+The `test-utils` feature lost a few helpers; see
+[provider test utilities](#2-providers-sign-in-the-catalog-and-http-rig-core-rig-http-rig-reqwest).
 
 ### 2. Providers, sign-in, the catalog and HTTP (rig-core, rig-http, rig-reqwest)
 
@@ -1949,10 +1941,14 @@ for event in framer.push(&chunk) {
 }
 ```
 
-Do not `.flatten()` the iterator: that drops the refusal.
+Your error type needs a `From<TooLarge>` for the `?`. Do not `.flatten()`
+the iterator: that drops the refusal.
 
 `gemini::interactions_api::streaming::usage_of` now returns
-`Result<Usage, ProviderError>`.
+`Result<Usage, ProviderError>`. The doc-hidden
+`GenerateContentResponse::chunk` and `::document` are removed: call
+`absorb(&GenerateContentChunk(map))` and `finish()` with
+`rig_core::wire::document::Reassemble` in scope.
 
 #### The shared sign-in types have one path
 
@@ -2219,7 +2215,7 @@ override.
   let info = ModelInfo { id, name, description, r#type, created_at, owned_by,
       context_length, max_output_tokens };
   // after
-  let info = ModelInfo { name: Some(name), ..ModelInfo::from_id(id) };
+  let info = ModelInfo { name, description, ..ModelInfo::from_id(id) };
   ```
 
 - `catalog::ModelStatus` gains `Checking`, `NotOffered(String)` and
@@ -2324,7 +2320,8 @@ Read `prepared.request.<field>` where you read `prepared.<field>`. The
 provider-hosted tools that were `prepared.provider_tools` are in
 `prepared.request.additional_params` under `tools`. Where you matched
 `PrepareError::Request(reason)`, match `ProviderError::Request(reason)`:
-`reason` is a boxed error, not a `String`, so print it with `to_string()`,
+`reason` is a shared error (`Arc<dyn Error>`), not a `String`, so print it
+with `to_string()`,
 and `ProviderError` is `#[non_exhaustive]`, so the match needs a `_` arm.
 `TurnPolicy::new` returns `ProviderError` too, and `TurnPolicy::allowed` is
 removed.
@@ -2379,11 +2376,12 @@ write:
 | Removed | Write instead |
 | --- | --- |
 | `Agent::with_model(m)`, `Agent::with_model_label(l)` | `agent.set_model(..)`, `agent.set_model_label(l)`, or `using_model(l)` on the run |
-| `Agent::model_descriptor()`, `Agent::model_label()` | `agent.handler_descriptor(agent.model_key().raw())` |
+| `Agent::model_descriptor()` | `agent.handler_descriptor(agent.model_key().raw())` |
+| `Agent::model_label()` | the `model` of that descriptor's `family`, when it is `FamilyDescriptor::Completion { model, .. }` |
 | `Extractor::with_model`, `with_model_label`, `agent()` | pick the model on the builder (`ExtractorBuilder::from_agent_builder`) or per run with `using_model` |
 | `AgentBuilder::retrieved_tools_handler(..)` | `builder.tool_server_handle(ToolServer::new().retrieved_tools_handler(..).run())` |
 | `HookStack::with(hook)`, `HookStack::len()` | `let mut stack = HookStack::new(); stack.push(hook);` |
-| `HookContext::tool(&key)`, `index`, `model` | `ctx.bind(&Key::<family::Tool>::new_unchecked(key.clone()))` |
+| `HookContext::tool(&key)`, `index(&key)`, `model(&key)` | `ctx.bind(&Key::<F>::new_unchecked(key.clone()))`, with `F` the handler's family: `family::Tool`, `family::Retrieve`, `family::Completion`. Another family is refused at the bind |
 | `HookContext::agent_name()` | none |
 | `Scratchpad::contains::<T>()` | `scratchpad.get::<T>().is_some()` |
 | `DispatchEvent::completion_request()` | match `event.kind` on `EffectKind::Completion { request, .. }` |
@@ -2524,7 +2522,7 @@ The third argument of `prepare_compaction` is `true` after the provider
 refused a request as too long. The second element of `summary_request`'s
 tuple is the user's focus text, empty for none. `summary_text` takes a label
 that its `SummaryFailure` names (`Failed`, `Truncated`, `CalledTool`,
-`Empty`); a blank summary is now an error.
+`Empty`).
 
 `apply_summary` changed its second argument. It took the id of the first
 message to keep. It now takes the messages the summary read
@@ -2539,7 +2537,9 @@ apply_summary(&mut conversation, &prepared.replaces, &state);   // &[Arc<Message
 ```
 
 For your own prompts, build the request with `summarization_request`. It
-sets no prompt-cache writes and fits the output limit to the input:
+sets no prompt-cache writes. Its last argument is the output limit: `None`
+fits the model's limit to the input (`clamp_max_tokens`), and `Some(n)` is
+sent as it is:
 
 ```rust
 // before
@@ -2551,7 +2551,7 @@ let ask = format!(
     "<conversation>\n{}\n</conversation>\n\n{MY_ASK}",
     rig_memory::serialize_conversation(messages)
 );
-rig_memory::summarization_request((MY_SYSTEM, ask), spec, None, Some(4_000))
+rig_memory::summarization_request((MY_SYSTEM, ask), spec, None, None)
 ```
 
 #### `SummaryState` and a compaction's record
@@ -2715,6 +2715,23 @@ rig = { version = "0.47", default-features = false, features = ["reqwest", "agen
 ```
 
 The facade's internal `facade-build-tests` feature is removed.
+
+For contributors to the repository: nextest 0.9.130 or newer is required
+(`cargo install cargo-nextest --locked`). Each crate's integration tests are
+one binary, `integration`, and `cargo xtask verify` lost `--changed`, `--pr`
+and `--lanes`:
+
+| Before | After |
+| --- | --- |
+| `cargo xtask verify --changed`, `--pr --base X` | `cargo xtask verify --affected --base X` (`--plan --base X` prints the plan) |
+| `cargo nextest run -p rig-cassette --test anthropic` | `cargo nextest run -p rig-cassette --test integration -E 'test(/^anthropic::/)'` |
+| `cargo test -p rig --features facade-build-tests --test tool_facade_features` | `cargo xtask verify --check guard-facade-features` |
+
+A plugin test that leaned on built-in catalog rows through
+`rig-harness-test-support`'s `scripted_models` now gets only the scripted
+models and a client that refuses every request. Insert the row with
+`connector.catalog_mut().insert(..)`, give its vendor a key with
+`connector.provide(..)`, and install a fake client with `wrap_http`.
 
 #### `rig::agent::tool` is `rig::tool`
 
@@ -3128,6 +3145,17 @@ rig-memory's `migration` module ([memory](#4-memory-and-compaction-rig-memory)) 
   start.
 - `ContextStale` is unchanged. It is now also set on a fork cut before its
   source's end, until the fork's first reply.
+- `stage::follow_successor`'s query also reads `Option<&RequestOf>`. Adding
+  it as an observer is unchanged. A wrapper that forwards its arguments adds
+  the third element to the query tuple.
+- Types that stay and lost an impl or a method:
+
+  | Type | Lost | Do instead |
+  | --- | --- | --- |
+  | `agent::StopTurn` | `bevy_reflect::Struct` (its fields are private) | build it with its constructors; read nothing by field name |
+  | `fork::ForkAgent` | `Clone`, `Debug`, and being an event | build one per request with `ForkAgent::new` |
+  | `agent::ToolAccess` | `map_entities` | nothing; it holds no entity |
+  | `tasks::Running` | `Unpin` | nothing, unless a bound of yours asked for `Unpin` |
 - The session's current agent is rig-harness's `CurrentAgent`; see
   [plugin host](#7-plugin-host-and-tools-rig-harness-rig-harness-protocol-rig-tools).
 
@@ -3187,8 +3215,9 @@ your plugin refuses fails there too.
 `ProjectRoot` is still the directory the session works in. The project's own
 files are found through the new `rig_harness::services::Project` resource:
 `Project::root` is the `ProjectRoot` or the nearest directory above it that
-holds `.git` or `.rig`, and `Project::config` is its `.rig` directory, if it
-has one. A plugin that read `ProjectRoot/.rig` or keyed its data by
+holds `.git` or `.rig`, and `Project::config` is the path of its `.rig`
+directory, which may not exist. It is `None` only when the root is your
+home directory or the `.rig` is the `RIG_HOME` itself. A plugin that read `ProjectRoot/.rig` or keyed its data by
 `ProjectRoot` reads `Res<Project>` instead:
 
 ```rust
@@ -3420,6 +3449,12 @@ let WatchEvent::Changed(paths) = &change.event else { continue };
 
 A plugin that reads its files again on news waits for
 `change.event.names_files()`.
+
+`FileChanges` no longer implements `PartialEq`, `Eq`, `UnwindSafe` or
+`RefUnwindSafe`, because an `Unavailable` event carries an error; match on
+`change.event` where you compared two messages. `rig_tools::remote::Remote`
+lost `UnwindSafe` and `RefUnwindSafe` too: wrap it in `AssertUnwindSafe` if
+you pass it through `catch_unwind`.
 
 #### Timings and other removals
 
@@ -3818,6 +3853,16 @@ What the file tools saw is no longer shared between agents.
   `instruction_files(&project, dir, home)`.
 - `coding_tools::remote::RemoteSettings::remotes` takes
   `&rig_harness::services::Processes` instead of a `Launcher`.
+- `AttachPlugin` reads a file on another machine (`@HOST:PATH`) off the main
+  thread, under a hold on the message, so that attachment arrives after
+  `AttachSystems`. A system ordered `.after(AttachSystems)` sees local
+  attachments only; read the rest once the message's hold is released.
+  While a message waits, later user-kind messages to the same agent wait
+  behind it.
+- The `status` item's text changed while the agent works: it starts with a
+  six-bar wave and a space when `WorkingAnimationPlugin` is on, and gains
+  the time after 5 seconds (`thinking… 1m12s`). A plugin that matched the
+  text exactly reads `Activity::status` instead.
 - `print::VERSION` is 3 (was 1); see [headless drivers](#11-headless-drivers-rig--p-rig---json-and-rig-acp).
   `print::PIPED_LIMIT` and `REQUEST_LIMIT` are new.
 - New plugins, each off by default: `redact::RedactPlugin` (redaction, which
@@ -3982,9 +4027,9 @@ tools](#7-plugin-host-and-tools-rig-harness-rig-harness-protocol-rig-tools).
 ### 9. Upgrading a 0.46 home: settings, plugins and scaffolded plugin crates
 
 This section is for users of the `rig` coding agent. A `RIG_HOME` (default
-`~/.rig`) that 0.46 wrote does not start on 0.47 as it is. rig changes none
+`~/.rig`) that 0.46 wrote does not start on 0.47 as it is. rig rewrites none
 of your files: it refuses, or warns, and you make the edits. Do the steps in
-order. Each `rig` start reports one unknown settings key per table, so fixing
+order. Each `rig` start names one unknown key of a settings table, so fixing
 the whole file from the tables below saves several starts.
 
 #### The steps
@@ -4054,6 +4099,10 @@ reaches every home, because the file names only your changes.
 # before: RIG_HOME/plugins.toml (an entry behind `#` was off)
 [[plugin]]
 crate = "rig-basics"
+plugin = "rig_basics::sessions::agents::AgentsPlugin"
+
+[[plugin]]
+crate = "rig-basics"
 plugin = "rig_basics::subagents::SubagentsPlugin"
 
 # [[plugin]]
@@ -4077,7 +4126,10 @@ default = "openai/gpt-5.5"
 effort = "high"
 
 [plugins]
-enable = ["rig_basics::subagents::SubagentsPlugin"]
+enable = [
+    "rig_basics::sessions::forks::ForksPlugin",   # was sessions::agents::AgentsPlugin
+    "rig_basics::subagents::SubagentsPlugin",
+]
 disable = ["rig_basics::welcome::WelcomePlugin"]
 
 [[plugins.extra]]
@@ -4186,9 +4238,9 @@ It says "delete" for every unknown key. For `keep_recent` and
 `limits.reserve` the right step is to rename. Both still count tokens, with
 the same defaults (20000 and 16384), so the value carries over as it is. If
 you delete them instead, rig starts and uses the default without a word. The
-other old keys have no replacement and are deleted. rig names one key per
-start, so a table with three old keys takes three starts if you follow the
-messages one at a time.
+other old keys have no replacement and are deleted. rig names one key of a table
+per start, so a table with three old keys takes three starts if you follow
+the messages one at a time.
 
 ```toml
 # before (0.46)
@@ -4260,6 +4312,18 @@ These worked in a default 0.46 home and are off, gone or different in 0.47.
   `RIG_HOME/projects/<project>/mcp/approvals.json` still count. Both
   commands belong to the approval plugin. `McpPlugin` itself is off by
   default in both versions.
+- **An `mcp.json` may not name a `RIG_SECRET_*` variable.** A server whose
+  `mcp.json` entry expands one, in any letter case, is refused with
+  `` `<field>`: ${RIG_SECRET_X} is a secret of rig's, which no server is
+  given ``. 0.46 expanded it and sent the value. Pass the value through a
+  variable of its own:
+
+  ```json
+  { "env": { "API_TOKEN": "${RIG_SECRET_API_TOKEN}" } }
+  { "env": { "API_TOKEN": "${MY_SERVER_API_TOKEN}" } }
+  ```
+
+  The first line is the 0.46 form and the second the 0.47 form.
 - **Checkpoints and the `move` tool are gone**, with no replacement:
   `rig_basics::checkpoint::CheckpointPlugin`, its `[checkpoints]` table and
   the `move` tool.
@@ -4290,7 +4354,8 @@ bevy_reflect = { version = "0.20", default-features = false }
 Raise every other rig crate the plugin names, such as `rig-basics` or
 `rig-tui`, to `0.47.0` too. Any other Bevy crate takes `"0.20"`.
 
-Change both at once. The build error names only the Bevy lines:
+Change both at once. The build error names only the Bevy lines (shortened
+here; cargo's own conflict lines come between and after):
 
 ```text
 error: a plugin must write its Bevy requirements as "0.20", such as `bevy_ecs = { version = "0.20", default-features = false }`, or be taken out with `rig plugin remove <type>`. These ask for a Bevy that is not this agent's 0.20.1:
@@ -4329,11 +4394,16 @@ then read from `RIG_HOME/settings.toml` only. See section [7](#7-plugin-host-and
   is its own project and no longer reads the repository root's `AGENTS.md`.
   Started in your home directory, rig reads no project `mcp.json`.
 - On unix, `sessions/`, `projects/`, `data/` and `run/` under `RIG_HOME` and
-  every session directory are made private to you (mode 0700) when a session
-  starts. A tool of yours that read them as another user loses access.
+  each new session directory are made private to you (mode 0700) when a
+  session starts. A tool of yours that read them as another user loses access.
 - A new home gets a `writing-rig-plugins` skill in `RIG_HOME/skills`. rig
   writes it once, with a home's first agent project, so an existing home is
   not given one.
+- With `rig_claude_cloak::ClaudeCloakPlugin` on, do not run a 0.46 rig and a
+  0.47 rig on the same home at the same time, a rollback trial included.
+  The credentials file is the same, but 0.46 locks `lock` beside it and 0.47
+  locks `credentials.lock`, so the two no longer keep each other out while a
+  token is refreshed.
 - Going back to 0.46 works. In the release test it built and resumed every
   session, including one compacted by 0.47, after each plugin crate's
   `rig-harness` line was put back to `0.46.0`. 0.46 reads the untouched
@@ -4381,8 +4451,8 @@ renames.
 
 - `/compact` keeps the same amount as an automatic compaction, and
   `/compact <instructions>` says what the summary should focus on.
-- With nothing to summarize, `/compact` says `Nothing to compact yet: the
-  session fits in what [compaction] keep_recent_tokens keeps` as a plain
+- With nothing to summarize, `/compact` says ``Nothing to compact yet: the session
+  fits in what `[compaction] keep_recent_tokens` keeps`` as a plain
   notice, or `Compaction failed: Already compacted` right after a compaction.
 - After a compaction the status line shows the context as `ctx ?` until the
   next reply reports it.
@@ -4426,7 +4496,9 @@ command may not take that name.
 `/model`, its completion and an editor's model list offer only the models
 you can use now: a provider whose key is exported or saved with `/login`, a
 sign-in that is logged in, or a local Ollama or llama.cpp server that an
-environment variable names. `ollama/*` models read `OLLAMA_API_BASE_URL` as
+environment variable names. Two exceptions: the current model is listed even
+when it cannot be used, with the reason, and a ChatGPT plan's models show
+as `checking your plan` until the plan is known. `ollama/*` models read `OLLAMA_API_BASE_URL` as
 the daemon's address and append `/v1` themselves:
 
 ```console
@@ -4455,14 +4527,17 @@ rig -r <id>                      # 0.46: still only read and shell; 0.47: every 
 #### `@` references with spaces
 
 An `@` reference attaches exactly the file that was picked. A name with
-spaces is quoted, and an unquoted reference is no longer also tried without
-its trailing punctuation:
+spaces is quoted. An unquoted reference always ends before its trailing
+punctuation: `@notes.` attaches `notes`, and is no longer also tried as a
+file named `notes.`. Quote a name that ends in punctuation:
 
 ```console
 # before
 look at @my file.txt
+look at @notes.
 # after
 look at @"my file.txt"
+look at @"notes."
 ```
 
 `@HOST:PATH` attaches a file from a remote host. A path that cannot be read
@@ -4479,10 +4554,11 @@ selection hold Shift while dragging, and middle-click paste needs Shift too.
 #### Removed: the `move` tool, checkpoints and the subagent depth limit
 
 - rig-tools' `move` tool and `rig_basics::checkpoint::CheckpointPlugin`
-  (listed disabled in 0.46) are removed with no replacement. Take
-  `CheckpointPlugin` out of your plugin list: a `settings.toml` that names an
-  unknown plugin refuses the start, and `rig plugin disable <name>` removes
-  the name. A leftover `[checkpoints]` table only gets a notice that no
+  (listed disabled in 0.46) are removed with no replacement. A 0.46
+  `plugins.toml` that lists `CheckpointPlugin` needs no edit: the upgrade
+  warning says the plugin is gone and prints no command for it. Do not copy
+  the name into `[plugins]` of `settings.toml`: an unknown plugin there
+  refuses the start, and `rig plugin disable <name>` removes the name. A leftover `[checkpoints]` table only gets a notice that no
   enabled plugin reads it.
 - Subagents have no depth limit, and `[subagents] max_depth` is no longer a
   key. `[subagents]` now takes `model` and `tools`, which a `task` call that
@@ -4648,7 +4724,7 @@ Output changed only where a person reads it:
   open`. A load replays the history first. It is refused while a prompt
   runs, and a request naming other MCP servers is refused; the same servers
   in another order are accepted.
-- The model list an editor shows holds only the models usable now, as
+- The model list an editor shows holds the models usable now, as
   `/model` does, and a command that opens a list is refused with the
   commands to type instead.
 - A reply a plugin answers without streaming reaches the editor. A saved
@@ -10307,7 +10383,8 @@ Renamed or relocated items, for searching.
 | `structured_output::text_satisfies_schema` | `structured_output::validate_text` | 0.47 |
 | `redact::json_text`, `redact::tool_result` | `redact::json` on the parsed value | 0.47 |
 | `completion::{CacheCost, CacheRates}` | `Usage`'s counters and your own rates | 0.47 |
-| `loaders::file::IntoIter<'a, T>` | `Box<dyn Iterator<Item = T> + 'a>` | 0.47 |
+| `loaders::{file, pdf, epub}::IntoIter<'a, T>` | `Box<dyn Iterator<Item = T> + 'a>` | 0.47 |
+| `json_utils::merge_inplace(a, b)` | `*a = json_utils::merge(std::mem::take(a), b)` | 0.47 |
 | `cli_chatbot::ChatBotBuilder::new().agent(a).build()` | `cli_chatbot::ChatBot::new(a)` | 0.47 |
 | `ChatBot::run() -> Result<(), PromptError>` | `-> Result<(), StreamToStdoutError>` | 0.47 |
 | `PreparedRequest::apply(CompletionRequest::new(prompt))` | `prepare_request(.., prompt, ..)?.request` | 0.47 |
