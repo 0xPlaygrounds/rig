@@ -1392,40 +1392,53 @@ fn the_threshold_counts_the_request_as_it_is_sent() {
 
 /// A request a plugin brought whole, with a history of its own, is measured as it goes: a
 /// conversation last measured near the window neither compacts for it nor takes room from its
-/// answer.
+/// answer, and a long history of its own takes that room but compacts nothing, since a summary of
+/// the conversation would not shorten it.
 #[test]
 fn a_request_brought_whole_is_measured_by_what_it_sends() {
-    let model = MockCompletionModel::from_stream_turns([reply("done")]);
-    let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |app| {
-        let whole = |mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<TurnCall>)>| {
-            for mut call in &mut calls {
-                call.history = None;
-                call.request_mut().chat_history = vec![Arc::new(Message::user("Just this."))];
-            }
+    for (words, clamped) in [(2, false), (21_000, true)] {
+        let model = MockCompletionModel::from_stream_turns([reply("done")]);
+        let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |app| {
+            let history = "word ".repeat(words);
+            let whole =
+                move |mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<TurnCall>)>| {
+                    for mut call in &mut calls {
+                        call.history = None;
+                        call.request_mut().chat_history = vec![Arc::new(Message::user(&history))];
+                    }
+                };
+            app.add_systems(AgentPass, whole.in_set(PrepareSystems::Edit));
+        });
+        let agent = agent(&mut app, &model, 40_000, turns(0, 4));
+        assert!(agent.is_some(), "the catalog lists the model");
+        let Some(agent) = agent else {
+            return;
         };
-        app.add_systems(AgentPass, whole.in_set(PrepareSystems::Edit));
-    });
-    let agent = agent(&mut app, &model, 40_000, turns(0, 4));
-    assert!(agent.is_some(), "the catalog lists the model");
-    let Some(agent) = agent else {
-        return;
-    };
-    let through = app
-        .world()
-        .get::<Conversation>(agent)
-        .and_then(|conversation| conversation.entries().last().map(|entry| entry.id));
-    let measured = through.map(|through| rig_memory::Anchor {
-        usage: Usage::new().total_tokens(30_000),
-        through,
-    });
-    app.world_mut()
-        .entity_mut(agent)
-        .insert(LastUsage(measured));
-    ask(&mut app, &wakes, agent, "And the next question?", 1);
-    let requests = model.requests();
-    assert_eq!(requests.len(), 1, "{:?}", notices(&app));
-    let asked = requests.first().and_then(|request| request.max_tokens);
-    assert_eq!(asked, Some(8_000));
+        let through = app
+            .world()
+            .get::<Conversation>(agent)
+            .and_then(|conversation| conversation.entries().last().map(|entry| entry.id));
+        let measured = through.map(|through| rig_memory::Anchor {
+            usage: Usage::new().total_tokens(30_000),
+            through,
+        });
+        app.world_mut()
+            .entity_mut(agent)
+            .insert(LastUsage(measured));
+        let before = entries(app.world(), agent);
+        ask(&mut app, &wakes, agent, "And the next question?", 1);
+        let requests = model.requests();
+        assert_eq!(requests.len(), 1, "{words}: {:?}", notices(&app));
+        let asked = requests.first().and_then(|request| request.max_tokens);
+        assert_eq!(asked < Some(8_000), clamped, "{words}: {asked:?}");
+        assert!(asked.is_some(), "{words}");
+        let after = entries(app.world(), agent);
+        assert_eq!(
+            after.get(..before.len()),
+            Some(before.as_slice()),
+            "{words}"
+        );
+    }
 }
 
 /// Runs `app` until its turns ended `count` times, moving the clock on for each retry wait.
