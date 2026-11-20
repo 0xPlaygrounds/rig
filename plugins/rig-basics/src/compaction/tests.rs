@@ -1437,6 +1437,52 @@ fn a_big_prompt_over_the_threshold_compacts_before_the_first_send() {
     );
 }
 
+/// With the default budget of recent messages to keep, which the history before a prompt fits
+/// in, a prompt that takes the request over the window still compacts before it is sent: the
+/// prompt counts toward what is kept, so older messages are summarized to make room for it,
+/// for a paste larger than the budget and for a message of the size of the earlier ones.
+#[test]
+fn a_prompt_counts_toward_the_recent_messages_kept() {
+    let keep = CompactionSettings::default().keep_recent_tokens;
+    for (words, kept) in [(18_000, None), (8_000, Some("question 1"))] {
+        let model = MockCompletionModel::from_stream_turns([
+            reply("## Goal\nAnswer the questions."),
+            measured("done", 100),
+        ]);
+        let (mut app, wakes) = start_with(&MemoryStore::default(), keep, |_| {});
+        let mut messages = Vec::new();
+        for turn in 0..2 {
+            let question = format!("question {turn}: {}", "word ".repeat(8_000));
+            messages.extend([Message::user(question), Message::assistant("answered")]);
+        }
+        messages.extend([Message::user("small one"), Message::assistant("answered")]);
+        let agent = agent(&mut app, &model, 40_000, messages);
+        assert!(agent.is_some(), "the catalog lists the model");
+        let Some(agent) = agent else {
+            return;
+        };
+        let prompt = format!("Read this: {}", "word ".repeat(words));
+        ask(&mut app, &wakes, agent, &prompt, 1);
+        assert_eq!(answer(&app).as_deref(), Some("done"), "{:?}", notices(&app));
+        let requests = sent(&model);
+        assert_eq!(requests.len(), 2, "{words}: {:?}", notices(&app));
+        let summary = requests.first().cloned().unwrap_or_default();
+        assert!(
+            summary.contains("context summarization assistant")
+                && summary.contains("question 0")
+                && !summary.contains("Read this:"),
+            "{words}"
+        );
+        let asked = requests.last().cloned().unwrap_or_default();
+        assert!(
+            asked.contains("Read this:") && asked.contains("Answer the questions."),
+            "{words}"
+        );
+        assert!(!asked.contains("question 0"), "{words}");
+        assert_eq!(asked.contains("question 1"), kept.is_some(), "{words}");
+    }
+}
+
 /// The before-prompt check alone, as on a resumed session whose last reply was measured near the
 /// window: the summary goes before the prompt's request.
 #[test]
