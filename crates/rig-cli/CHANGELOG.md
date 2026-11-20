@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - *(rig-cli)* shorten the warning for a 0.46 home's plugins.toml and defaults.json ([#3245](https://github.com/0xPlaygrounds/rig/pull/3245)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
 - *(rig-cli)* warn once per start of a 0.46 home's plugins.toml and defaults.json ([#3239](https://github.com/0xPlaygrounds/rig/pull/3239)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
 - *(rig-cli)* [**breaking**] rig update reinstalls rig and /update restarts the session on it ([#3224](https://github.com/0xPlaygrounds/rig/pull/3224)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
-- *(rig-cli)* rig plugin list groups rig's plugins and yours; each build writes a writing-rig-plugins skill ([#3218](https://github.com/0xPlaygrounds/rig/pull/3218)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-cli)* rig plugin list groups rig's plugins and yours; a new home gets a writing-rig-plugins skill ([#3218](https://github.com/0xPlaygrounds/rig/pull/3218)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
 - *(harness,cli,mcp-client)* [**breaking**] one settings file, plugins from the home list, full trust in projects, and the launcher in its own crate ([#3005](https://github.com/0xPlaygrounds/rig/pull/3005)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
 
 ### Fixed
@@ -31,7 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - *(rig-cli, rig)* [**breaking**] the rig package alone owns the `rig` binary, and `rig update` installs it ([#3389](https://github.com/0xPlaygrounds/rig/pull/3389)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
 - *(rig)* the rig crate installs the rig launcher again ([#3385](https://github.com/0xPlaygrounds/rig/pull/3385)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
 - launcher, tools, plugin and memory bugs from the idiom audit (F5) ([#3365](https://github.com/0xPlaygrounds/rig/pull/3365)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #3365
-- minor bugs before the release: background jobs ended silently, refused lines after Ctrl+C, path prompts, @file notes to the model, ctx ~ after /compact, Bevy-pin error ([#3332](https://github.com/0xPlaygrounds/rig/pull/3332)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #3332
+- minor bugs before the release: background jobs ended silently, refused lines after Ctrl+C, path prompts, @file notes to the model, Bevy-pin error ([#3332](https://github.com/0xPlaygrounds/rig/pull/3332)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #3332
 - release blockers from the v0.46.0 upgrade test: /mcp approve recall, /fork context, Bevy pins, 0.46 home warnings, restore notice ([#3330](https://github.com/0xPlaygrounds/rig/pull/3330)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #3330
 - *(rig-cli)* a staged file that is not a program is passed over on macOS too ([#3307](https://github.com/0xPlaygrounds/rig/pull/3307)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
 - *(rig-cli)* a staged build that cannot be started gives way to the previous build ([#3297](https://github.com/0xPlaygrounds/rig/pull/3297)) (by [gold-silver-copper](https://github.com/gold-silver-copper))

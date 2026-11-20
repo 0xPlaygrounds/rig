@@ -21,11 +21,12 @@ cargo install rig
 rig
 ```
 
-This installs the launcher. Until the next release it is 0.46.0, and
-[its guide](https://github.com/0xPlaygrounds/rig/blob/v0.46.0/docs/agent.md)
-is on its tag. The [agent guide](docs/agent.md#install-and-run) describes
-`main` and how to install it from a checkout. The agent needs Rust 1.97.1 or
-newer and runs on Linux and macOS.
+This installs the launcher of the latest release. Each release's guide is on
+its tag, such as
+[0.47.0's guide](https://github.com/0xPlaygrounds/rig/blob/v0.47.0/docs/agent.md).
+The [agent guide](docs/agent.md#install-and-run) on `main` can be ahead of the
+release, and shows how to install `main` from a checkout. The agent needs Rust
+1.97.1 or newer and runs on Linux and macOS.
 
 The first `rig` builds the agent, which takes several minutes, and opens it.
 Run `/login` to sign in or save an API key, or export one such as

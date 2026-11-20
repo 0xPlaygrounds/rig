@@ -30,10 +30,11 @@ as Bevy entities, one recorded effect path, session logs) is the
 
 ## Install and run
 
-`cargo install rig` installs the launcher, the `rig` command. Until the next
-release it installs the last release, 0.46.0. This guide describes `main`;
-[0.46.0's guide](https://github.com/0xPlaygrounds/rig/blob/v0.46.0/docs/agent.md)
-is on its tag. To install `main`, build the launcher from a checkout
+`cargo install rig` installs the launcher, the `rig` command, at the latest
+release. This guide describes the branch or tag you read it on, and `main`
+can be ahead of the release. Each release's guide is on its tag, such as
+[0.47.0's guide](https://github.com/0xPlaygrounds/rig/blob/v0.47.0/docs/agent.md).
+To install `main`, build the launcher from a checkout
 (`--force` replaces a `rig` installed by another crate or source):
 
 ```bash
@@ -93,10 +94,10 @@ is refused, unchanged, with `this session was made by another version of rig;
 start a new session`.
 
 Coming from 0.46.0: it kept the plugin list in `RIG_HOME/plugins.toml` and the
-saved model in `RIG_HOME/defaults.json`. `main` reads neither. Turn your
-plugins off again with `rig plugin disable <type>`, add the plugin crates it
-listed as `[[plugins.extra]]` tables of `settings.toml` ([Plugins](#plugins)),
-and pick the model again with `/model`.
+saved model in `RIG_HOME/defaults.json`. This version reads neither. Its
+start warns once and prints the `rig plugin` commands and `[model]` lines
+that move them into `settings.toml` ([Plugins](#plugins)). The
+[0.46 → 0.47 migration guide](../MIGRATING.md#046--047) lists every step.
 
 ## What is per home and what is per project
 
