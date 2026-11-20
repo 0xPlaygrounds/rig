@@ -1179,8 +1179,8 @@ let model = Model::new(wire, http).with_idle_timeout(None);
   reports fewer tokens for the same text.
 - A summary request built by rig-memory (`summary_request`,
   `summarization_request`) is a separate request with prompt-cache writes off.
-  It no longer shares the conversation's cached prefix. `summary_text` also
-  refuses a reply that was cut at the output limit or called a tool.
+  It no longer shares the conversation's cached prefix. `summary_text` now
+  refuses any reply that holds a tool call, whatever its stop reason.
 - `apply_summary` returns `None` and changes nothing when the conversation no
   longer starts with the very messages the summary read, or when what stays
   would start with a tool result whose call was summarized. Check its result.
