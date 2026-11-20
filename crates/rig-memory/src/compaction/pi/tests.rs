@@ -363,7 +363,8 @@ fn a_blank_checkpoint_is_still_the_previous_one() {
 
 /// However often a turn is split, and though the model copies the previous summary's file lists
 /// into each history summary, the summary's entry holds each list once, at its end, and reads
-/// back as the state that went in; so does a path, and a summary that names the tags midway.
+/// back as the state that went in; so does a path, one ending in a carriage return included, and a
+/// summary that names the tags midway.
 #[test]
 fn repeated_split_summaries_hold_one_block_of_file_lists() {
     let mut conversation = Conversation::from_messages([Message::user("start")]);
@@ -414,6 +415,15 @@ fn repeated_split_summaries_hold_one_block_of_file_lists() {
     assert_eq!(
         (read.summary.as_str(), read.read_files),
         ("done", vec!["c.rs".to_owned()])
+    );
+    let returns = SummaryState {
+        summary: "done".to_owned(),
+        read_files: vec!["a\r".to_owned(), "b".to_owned()],
+        modified_files: vec!["c\r".to_owned()],
+    };
+    assert_eq!(
+        SummaryState::read(&returns.message().unwrap_or_default()),
+        returns
     );
     assert_eq!(
         SummaryState::read("a plugin's own summary").summary,
