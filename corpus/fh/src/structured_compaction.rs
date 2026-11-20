@@ -4,14 +4,15 @@
 //! `[compact]` table of `RIG_HOME/settings.toml` names (else the agent's own). Everything before
 //! the oldest of the user's last [`StructuredCompaction::keep_user_messages`] messages is
 //! summarized; those messages and all that follows them stay in the conversation as they are,
-//! attachments, tool calls and results included. With nothing before them, the compaction is
-//! refused with a notice. A summary that fails or lacks a heading is asked for once more, then
-//! the compaction runs the way it would have without this plugin, cut included, with a notice.
+//! attachments, tool calls and results included. With nothing before them, fewer are kept, the
+//! newest at least; with nothing before that one either, the compaction is refused with a
+//! notice. A summary that fails or lacks a heading is asked for once more, then the agent's model
+//! writes the default summary of the same messages, with a notice.
 //!
 //! It replaces the requests of `rig_basics::compaction`'s summary calls ([`Summarizing`]) with its
 //! own. In the terminal view the summary is a "Summary" entry.
 
-use rig_basics::compaction::{CompactionDefault, CompactionPlugin, Summarizing};
+use rig_basics::compaction::{CompactReason, CompactionPlugin, Summarizing};
 use rig_core::catalog::ModelSpec;
 use rig_core::completion::{CompletionRequest, Message, UnsupportedOption};
 use rig_core::error::{ErrorKind, ErrorReport};
@@ -171,43 +172,32 @@ pub fn has_headings(text: &str) -> bool {
     })
 }
 
-/// Plans a summary of `conversation` for `summarizing`'s reason in the template, written by
-/// `spec`, that keeps from the oldest of the user's own last `keep` messages, or from the
-/// nearest of their messages before it when a tool exchange spans that one.
-///
-/// # Errors
-///
-/// With why, when no message comes before those kept, or `spec` does not take the request.
-fn plan_structured(
+/// The first summary call of a compaction of `conversation` for `reason` that keeps the user's
+/// last `keep` messages, each with all that follows it; where a tool exchange spans the oldest,
+/// from the nearest of the user's messages before it; where nothing comes before them, as many as
+/// can be kept, the newest one at least. `None` when even that one has nothing before it.
+fn plan_kept(
     conversation: &Conversation,
-    summarizing: &Summarizing,
-    (spec, keep): (&ModelSpec, usize),
-) -> Result<(Summarizing, CompletionRequest), String> {
+    reason: &CompactReason,
+    keep: usize,
+) -> Option<Summarizing> {
     let typed = conversation
         .entries()
         .filter(|entry| entry.is_users_own() && matches!(entry.message, Message::User { .. }));
     let typed: Vec<usize> = typed.map(|entry| entry.index).collect();
-    let oldest_kept = typed.len().checked_sub(keep.max(1));
-    let before = oldest_kept.and_then(|oldest| typed.get(..=oldest));
-    let mut cuts = before.unwrap_or_default().iter().rev();
-    let reason = &summarizing.reason;
-    let planned = cuts.find_map(|&at| Summarizing::plan_at(conversation, at, reason.clone()));
-    let planned = planned.ok_or_else(|| {
-        format!(
-            "nothing comes before the user's last {} messages",
-            keep.max(1)
-        )
-    })?;
-    let request = template_request(&planned, spec).map_err(|why| why.to_string())?;
-    Ok((planned, request))
+    let (before, kept) = typed.split_at_checked(typed.len().saturating_sub(keep.max(1)))?;
+    let (oldest, later) = kept.split_first()?;
+    let mut cuts = std::iter::once(oldest)
+        .chain(before.iter().rev())
+        .chain(later);
+    cuts.find_map(|&at| Summarizing::plan_at(conversation, at, reason.clone()))
 }
 
-/// Plans each summary call `rig_basics::compaction` admits again, cut before the
-/// user's last messages, for the configured model's window, and sends it
-/// there; one it cannot plan, of a compaction that had something to
-/// summarize, is refused, so nothing the user's last messages hold is
-/// summarized. The fallback gets back the agent's model, the default
-/// prompts and `rig_basics::compaction`'s cut.
+/// Plans each summary call `rig_basics::compaction` admits again, cut before the user's last
+/// messages ([`plan_kept`]), in the template, for the configured model's window, and sends it
+/// there; one it cannot plan, of a compaction that had something to summarize, is refused, so the
+/// user's newest message is never summarized. The fallback asks the agent's model for the
+/// default summary of the same messages.
 fn structure(
     mut calls: Query<
         (
@@ -220,11 +210,7 @@ fn structure(
         (Added<Admitted>, ModelCalls),
     >,
     agents: Query<(&Conversation, Option<&Connection>)>,
-    (config, default, models): (
-        Res<StructuredCompaction>,
-        Res<CompactionDefault>,
-        Res<Models>,
-    ),
+    (config, models): (Res<StructuredCompaction>, Res<Models>),
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -232,10 +218,7 @@ fn structure(
         let Ok((conversation, own)) = agents.get(agent) else {
             continue;
         };
-        let reason = summarizing.reason.clone();
         match structured {
-            // The earlier part of a turn the default cut split: the fallback's.
-            None if summarizing.history.is_some() => {}
             None => {
                 let routed = config.model.as_deref().and_then(|name| {
                     let connected = models
@@ -254,14 +237,24 @@ fn structure(
                     continue;
                 };
                 let keep = config.keep_user_messages;
-                match plan_structured(conversation, &summarizing, (spec, keep)) {
+                let planned = plan_kept(conversation, &summarizing.reason, keep);
+                let planned = planned.ok_or_else(|| {
+                    "nothing comes before the user's last message to summarize".to_owned()
+                });
+                let request = planned.and_then(|planned| {
+                    let request = template_request(&planned, spec);
+                    request
+                        .map(|request| (planned, request))
+                        .map_err(|why| why.to_string())
+                });
+                match request {
                     Ok((planned, request)) => {
                         *summarizing = planned;
                         *model = ModelRequest::new(request);
                         model.connection = routed;
                         commands.entity(call).insert(Structured { tries: 1 });
                     }
-                    // `rig_basics::compaction` refuses its own empty plan.
+                    // A `/compact` `rig_basics::compaction` found nothing in, which it refuses.
                     Err(_) if summarizing.messages.is_empty() => {}
                     Err(why) => {
                         let why = ErrorReport::new(ErrorKind::Cancelled, why);
@@ -273,15 +266,9 @@ fn structure(
                 let Some(own) = own else {
                     continue;
                 };
-                let keep = default.0.keep_recent_tokens;
-                let planned = Summarizing::plan(conversation, keep, reason);
-                match planned.map(|planned| (planned.request(&own.spec, None), planned)) {
-                    Some((Ok(request), planned)) => {
-                        *summarizing = planned;
-                        *model = ModelRequest::new(request);
-                    }
-                    None => {}
-                    Some((Err(why), _)) => {
+                match summarizing.request(&own.spec, None) {
+                    Ok(request) => *model = ModelRequest::new(request),
+                    Err(why) => {
                         notices.write(Notice::warn(agent, format!("Cannot compact: {why}.")));
                     }
                 }
