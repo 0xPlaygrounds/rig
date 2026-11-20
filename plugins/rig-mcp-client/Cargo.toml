@@ -21,7 +21,7 @@ bevy_tasks = { workspace = true }
 # A streamable HTTP server's headers.
 http = { workspace = true }
 rig-core = { workspace = true }
-rig-harness = { path = "../../crates/rig-harness", version = "0.46.0" }
+rig-harness = { path = "../../crates/rig-harness", version = "0.47.0" }
 rig-rmcp = { workspace = true }
 rmcp = { workspace = true, features = ["client", "transport-async-rw", "transport-streamable-http-client-reqwest", "reqwest"] }
 serde = { workspace = true, features = ["derive"] }
