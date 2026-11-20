@@ -1551,8 +1551,13 @@ fn a_request_brought_whole_is_measured_by_what_it_sends() {
         let requests = model.requests();
         assert_eq!(requests.len(), 1, "{words}: {:?}", notices(&app));
         let asked = requests.first().and_then(|request| request.max_tokens);
-        assert_eq!(asked < Some(8_000), clamped, "{words}: {asked:?}");
-        assert!(asked.is_some(), "{words}");
+        match clamped {
+            true => assert!(
+                asked.is_some_and(|asked| asked < 8_000),
+                "{words}: {asked:?}"
+            ),
+            false => assert_eq!(asked, Some(8_000), "{words}"),
+        }
         let after = entries(app.world(), agent);
         assert_eq!(
             after.get(..before.len()),
