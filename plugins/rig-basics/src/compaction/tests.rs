@@ -1083,7 +1083,13 @@ fn a_turn_asks_for_the_output_room_its_input_leaves() {
 fn a_reset_drops_what_compactions_replaced_live() {
     for unrelated in [false, true] {
         let model = MockCompletionModel::from_stream_turns([reply("## Goal\nThe summary.")]);
-        let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |_| {});
+        let (mut app, wakes) = start_with(&MemoryStore::default(), 100, |app| {
+            let seen = |changed: Query<(), Changed<rig_tui::Replaced>>,
+                        mut redrawn: ResMut<Redrawn>| {
+                redrawn.0 |= !changed.is_empty();
+            };
+            app.init_resource::<Redrawn>().add_systems(PostUpdate, seen);
+        });
         let agent = agent(&mut app, &model, 1_000_000, turns(0, 4));
         assert!(agent.is_some(), "the catalog lists the model");
         let Some(agent) = agent else {
@@ -1105,6 +1111,7 @@ fn a_reset_drops_what_compactions_replaced_live() {
         assert_eq!(archived(&app), 1, "{unrelated}: {:?}", notices(&app));
 
         let world = app.world_mut();
+        world.resource_mut::<Redrawn>().0 = false;
         let Some(mut conversation) = world.get_mut::<Conversation>(agent) else {
             return;
         };
@@ -1123,7 +1130,70 @@ fn a_reset_drops_what_compactions_replaced_live() {
         app.update();
         app.update();
         assert_eq!(archived(&app), 0, "{unrelated}");
+        assert!(app.world().resource::<Redrawn>().0, "{unrelated}");
     }
+}
+
+/// Whether what an agent's compactions replaced changed since it was last set to false, which
+/// is what lays the terminal view's pane out again.
+#[cfg(feature = "tui")]
+#[derive(Resource, Default)]
+struct Redrawn(bool);
+
+/// A conversation replaced whole by another of the same messages, then compacted by a summary
+/// already on its way before anything reads the reset: the summary keeps what it replaced, as
+/// a restart from the log shows it, and what a summary from before the reset replaced is gone.
+#[cfg(feature = "tui")]
+#[test]
+fn a_summary_right_after_a_reset_keeps_what_it_replaced_live_as_a_restart_does() {
+    fn replace_under_the_summary(
+        answered: On<Add<Outcome>>,
+        calls: Query<&ForAgent, With<Summarizing>>,
+        mut agents: Query<&mut Conversation>,
+    ) {
+        let agent = calls.get(answered.entity).map(|&ForAgent(agent)| agent);
+        if let Some(mut conversation) = agent.ok().and_then(|agent| agents.get_mut(agent).ok()) {
+            let messages = conversation.messages().to_vec();
+            **conversation = rig_core::conversation::Conversation::from_messages(messages);
+        }
+    }
+
+    let store = MemoryStore::default();
+    let model = MockCompletionModel::from_stream_turns([
+        reply("## Goal\nThe first summary."),
+        reply("## Goal\nThe second summary."),
+    ]);
+    let (mut app, wakes) = start_with(&store, 100, |_| {});
+    let agent = agent(&mut app, &model, 1_000_000, turns(0, 4));
+    assert!(agent.is_some(), "the catalog lists the model");
+    let Some(agent) = agent else {
+        return;
+    };
+    app.update();
+    compact(&mut app, &wakes, agent, "", 1);
+    for message in turns(4, 4) {
+        assert!(commit_message(app.world_mut(), agent, message).is_ok());
+    }
+    app.update();
+    app.add_observer(replace_under_the_summary);
+    compact(&mut app, &wakes, agent, "", 2);
+    app.update();
+    app.update();
+
+    let ids = |sets: &BTreeMap<MessageId, Vec<Entry>>| -> Vec<(MessageId, Vec<Option<MessageId>>)> {
+        let ids = |entries: &Vec<Entry>| entries.iter().map(|entry| entry.id).collect();
+        sets.iter()
+            .map(|(id, entries)| (*id, ids(entries)))
+            .collect()
+    };
+    let live = app.world().get::<rig_tui::Replaced>(agent);
+    let live = live.map(|replaced| ids(&replaced.0)).unwrap_or_default();
+    let id = app.world().get::<AgentId>(agent).map(|id| id.0.clone());
+    let replayed = rig_memory::summarized_in_log(&store, &id.unwrap_or_default());
+    assert!(replayed.is_ok(), "{replayed:?}");
+    let replayed = replayed.map(|sets| ids(&sets)).unwrap_or_default();
+    assert_eq!(live.len(), 1, "{live:?} {:?}", notices(&app));
+    assert_eq!(live, replayed);
 }
 
 /// What each compaction replaced, the messages themselves, stays drawn above its summary, a
