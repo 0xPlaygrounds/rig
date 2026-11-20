@@ -457,16 +457,16 @@ Compaction works as in the [pi coding agent](https://github.com/badlogic/pi-mono
 It counts each request as it is sent: the tokens the provider reported for the
 last reply, plus an estimate of the messages after it (3.5 characters a token),
 or, when no usage was reported, an estimate of the system prompt, the tools and
-the messages. It compacts when that leaves less than
-`reserve_tokens` (16384) of the model's input limit free (its context window,
-or the smaller input limit some models have). The same count fits the request's
-output limit to the room left in the window. It checks before each request of
-a turn, against the model that request goes to: before a prompt is sent
-(the prompt is counted, where pi leaves it out, and is never summarized), and
-after tool results. So a large paste that takes the request over the limit is
-compacted for before it is sent, not refused first. It does not compact right
-after an answer,
-where pi does: the next prompt compacts first, and waits for the summary. The
+the messages. It compacts when that leaves less than `reserve_tokens` (16384)
+of the model's input limit free (its context window, or the smaller input limit
+some models have). The same count fits the request's output limit to the room
+left in the window. It checks before each request of a turn that sends the
+agent's conversation, against the model that request goes to: before a prompt
+is sent (the prompt is counted, where pi leaves it out, and is never
+summarized), and after tool results. So a large paste that takes the request
+over the limit is compacted for before it is sent, not refused first. It does
+not compact right after an answer, where pi does: the next prompt compacts
+first, and waits for the summary. The
 request waits while the summary is written, and is built again once it is in.
 The older messages are then summarized by the model, in a
 separate call, into a structured checkpoint (goal, constraints, progress,
@@ -511,8 +511,9 @@ transcript, under a line that shows the summary; a resumed session starts from
 the messages the summary kept. The summary's entry is the compaction's only
 record: what it replaced is read from the session's log, so once a plugin puts
 a whole other conversation in the agent's place, the messages summarized
-before that are no longer shown, in the terminal or to an ACP client. After a compaction the status line shows the
-context as unknown (`ctx ?`) until the next reply reports it, as pi does.
+before that are no longer shown, in the terminal or to an ACP client. After a
+compaction the status line shows the context as unknown (`ctx ?`) until the
+next reply reports it, as pi does.
 
 A model call that fails on a rate limit, an overloaded provider or a dropped
 connection is retried up to four times. It waits as long as the provider's
