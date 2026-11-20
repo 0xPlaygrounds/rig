@@ -156,6 +156,27 @@ fn a_list_with_only_a_gone_plugin_says_to_add_the_empty_table() {
     );
 }
 
+/// v0.46.0's `AgentsPlugin` is `ForksPlugin` now, off by default: a list
+/// with it on says how to turn the new one on, and one with it off nothing.
+#[test]
+fn a_renamed_plugin_that_was_on_is_enabled_by_its_new_name() {
+    let list = |comment: &str| {
+        let plugins = format!(
+            "{comment}[[plugin]]\n{comment}crate = \"rig-basics\"\n\
+             {comment}plugin = \"rig_basics::sessions::agents::AgentsPlugin\"\n"
+        );
+        plugin_moves(&plugins, Path::new("/h/settings.toml"))
+    };
+    assert_eq!(
+        list(""),
+        ["  rig plugin enable rig_basics::sessions::forks::ForksPlugin"]
+    );
+    assert_eq!(
+        list("# "),
+        ["  Add an empty [plugins] table to /h/settings.toml: the list was rig's defaults."]
+    );
+}
+
 /// A list that does not read as TOML says so, and to add the table.
 #[test]
 fn a_list_that_is_not_toml_is_named() {
