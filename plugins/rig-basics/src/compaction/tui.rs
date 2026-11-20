@@ -1,13 +1,14 @@
 //! The summary in the terminal view: a block that says it stands for the
 //! earlier messages, then the summary and its file lists as its entry holds
-//! them, below the messages it replaced ([`Replaced`]). A plugin that
+//! them, below the messages it replaced ([`Replaced`]) since the conversation
+//! was last replaced whole (a reset of its log). A plugin that
 //! draws summaries its own way draws [`summary_author`]'s entries in a
 //! system after [`SummaryLooks`].
 
-use rig_core::conversation::{Entry, Spliced};
+use rig_core::conversation::{Change, Entry, Spliced};
 use rig_ecs::fork::AgentForked;
 use rig_ecs::prelude::*;
-use rig_ecs::session_log::SessionStore;
+use rig_ecs::session_log::{ConversationChanged, SessionStore};
 use rig_memory::{SummaryState, summarized_in_log, summarized_prefix};
 use rig_tui::ratatui::style::Style;
 use rig_tui::ratatui::text::Line;
@@ -29,7 +30,18 @@ pub(crate) fn add(app: &mut App) {
         draw.in_set(SummaryLooks).in_set(RenderSystems::Render),
     )
     .add_systems(PostStartup, replaced_from_logs)
+    .add_systems(Update, forget_at_resets)
     .add_observer(replaced_in_fork);
+}
+
+/// Drops what the summaries of an agent whose conversation was replaced whole replaced, as a
+/// restart from its log, which reads nothing across the reset, does.
+fn forget_at_resets(mut changed: MessageReader<ConversationChanged>, mut commands: Commands) {
+    for ConversationChanged { agent, change } in changed.read() {
+        if matches!(change.change, Change::Reset { .. }) {
+            commands.entity(*agent).try_remove::<Replaced>();
+        }
+    }
 }
 
 /// Keeps `taken`, the entries `spliced`, a summary just put in `agent`'s
