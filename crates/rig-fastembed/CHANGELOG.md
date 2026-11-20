@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.47.0](https://github.com/0xPlaygrounds/rig/compare/rig-fastembed-v0.46.0...rig-fastembed-v0.47.0) - 2026-11-20
+
+### Other
+
+- 0.47.0 changelog and the 0.46 → 0.47 migration guide ([#3439](https://github.com/0xPlaygrounds/rig/pull/3439)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #3439
+- release v0.47.0 ([#3415](https://github.com/0xPlaygrounds/rig/pull/3415)) (by [github-actions[bot]](https://github.com/github-actions[bot])) - #3415
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
+* [github-actions[bot]](https://github.com/github-actions[bot])
 ## [0.44.0](https://github.com/0xPlaygrounds/rig/compare/rig-fastembed-v0.43.0...rig-fastembed-v0.44.0) - 2026-10-07
 
 ### Other
