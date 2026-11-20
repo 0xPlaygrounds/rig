@@ -140,7 +140,7 @@ impl ToolRender {
     }
 
     /// The result's blocks, joined, if the tool answered: its text, its JSON
-    /// as JSON, and a last line counting its images.
+    /// as JSON, and, when it has images, a last line counting them.
     pub fn result_text(&self) -> Option<String> {
         self.result.as_ref().map(result_text)
     }
