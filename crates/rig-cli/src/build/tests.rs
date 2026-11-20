@@ -579,14 +579,15 @@ fn only_a_bevy_version_conflict_is_explained_by_a_bevy_requirement() {
 }
 
 /// The pins that block a path plugin may be in the crates it depends on by
-/// path: each of their manifests is named, once, after the fix.
+/// path, here two packages of one name, the second a build dependency of
+/// the first, which is a plugin too: each manifest is named, once.
 #[test]
 fn a_bevy_conflict_names_the_pins_of_the_crates_a_path_plugin_depends_on_by_path() {
     let root = std::env::temp_dir().join(format!("rig-unresolved-paths-{}", std::process::id()));
     fs::remove_dir_all(&root).ok();
-    let pinned = |name: &str, more: &str| {
+    let pinned = |more: &str| {
         format!(
-            "[package]\nname = \"{name}\"\n\n[dependencies]\n\
+            "[package]\nname = \"dep\"\n\n[dependencies]\n\
              bevy_ecs = {{ version = \"=0.20.0\", default-features = false }}\n{more}"
         )
     };
@@ -594,12 +595,14 @@ fn a_bevy_conflict_names_the_pins_of_the_crates_a_path_plugin_depends_on_by_path
     manifest_at(
         &plugin,
         "[package]\nname = \"plugin\"\n\n[dependencies]\nbevy_ecs = \"0.20.0\"\n\
-         one = { path = \"../one\" }\n\n[build-dependencies]\ntwo = { path = \"../two\" }\n",
+         one = { path = \"../one\", package = \"dep\" }\n",
     );
-    manifest_at(&one, &pinned("one", "two = { path = \"../two\" }\n"));
-    manifest_at(&two, &pinned("two", ""));
+    let two_built = "\n[build-dependencies]\ntwo = { path = \"../two\", package = \"dep\" }\n";
+    manifest_at(&one, &pinned(two_built));
+    manifest_at(&two, &pinned(""));
     let lines: Vec<String> = real(PIN_CONFLICT).lines().map(str::to_owned).collect();
-    let told = unresolved("cargo failed".into(), &lines, [plugin.as_path()], "").to_string();
+    let local = [plugin.as_path(), one.as_path()];
+    let told = unresolved("cargo failed".into(), &lines, local, "").to_string();
     fs::remove_dir_all(&root).ok();
     assert!(told.starts_with("a plugin must write"), "{told}");
     for dependency in [one, two] {

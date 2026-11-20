@@ -1210,7 +1210,7 @@ fn foreign_bevy(krate: &str, plugin: &str, version: &str) -> String {
 
 /// Each requirement of one of Bevy's own crates (`bevy`, a crate named in
 /// the [`bevy_crates`] of the agent's lock) that the crates in `crates`, and
-/// the crates those depend on by path, each read once, build with and
+/// the crates those depend on by path, each listed once, build with and
 /// [`BEVY_VERSION`] does not meet, as `<its Cargo.toml>:<line>:
 /// [<its table>] <the line>`: of their dependencies and build dependencies,
 /// for every target, a renamed one by its `package`, and an inherited one
@@ -1222,30 +1222,35 @@ fn bevy_pins<'a>(
     bevy: &BTreeSet<String>,
 ) -> Vec<String> {
     const KINDS: [&str; 2] = ["dependencies", "build-dependencies"];
-    let mut pins = Vec::new();
-    let (mut names, mut read) = (BTreeSet::new(), BTreeSet::new());
+    let mut directories: Vec<PathBuf> = Vec::new();
     for plugin in crates {
-        let below = path_crates(plugin, &KINDS, &mut names);
-        for directory in std::iter::once(plugin.to_path_buf()).chain(below) {
-            let Some(manifest) = (read.insert(directory.clone()))
-                .then(|| Manifest::read(&directory).ok())
-                .flatten()
-            else {
-                continue;
-            };
-            for (table, dependencies) in manifest.dependency_tables(&KINDS) {
-                for (key, item) in dependencies.iter() {
-                    let pin = if item.get("workspace").and_then(Item::as_bool) == Some(true) {
-                        workspace_dependency(&manifest, &directory, key).and_then(
-                            |(workspace, item)| {
-                                workspace.refused("workspace.dependencies", key, &item, bevy)
-                            },
-                        )
-                    } else {
-                        manifest.refused(&table, key, item, bevy)
-                    };
-                    pins.extend(pin);
-                }
+        let mut new = |_: &str, directory: &Path| {
+            let new = !directories.iter().any(|read| read == directory);
+            if new {
+                directories.push(directory.to_path_buf());
+            }
+            new
+        };
+        if new("", plugin) {
+            path_crates(plugin, &KINDS, &mut new);
+        }
+    }
+    let mut pins = Vec::new();
+    for directory in &directories {
+        let Ok(manifest) = Manifest::read(directory) else {
+            continue;
+        };
+        for (table, dependencies) in manifest.dependency_tables(&KINDS) {
+            for (key, item) in dependencies.iter() {
+                let pin = if item.get("workspace").and_then(Item::as_bool) == Some(true) {
+                    workspace_dependency(&manifest, directory, key).and_then(|(workspace, item)| {
+                        workspace.refused("workspace.dependencies", key, &item, bevy)
+                    })
+                } else {
+                    manifest.refused(&table, key, item, bevy)
+                };
+                // Crates of one workspace inherit the same line.
+                pins.extend(pin.filter(|pin| !pins.contains(pin)));
             }
         }
     }
