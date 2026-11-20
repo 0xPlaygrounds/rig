@@ -434,8 +434,9 @@ fn profile(plugins: &Plugins, source: &RigSource) -> Result<String> {
     for extra in plugins.extras_on() {
         match &extra.source {
             Source::Path(directory) => {
+                // cargo rebuilds them when they change, as it does the crate.
                 edited.insert(extra.krate.clone());
-                path_crates(directory, &mut edited);
+                path_crates(directory, &["dependencies"], &mut edited);
             }
             Source::Git { .. } => {
                 edited.insert(extra.krate.clone());
@@ -492,14 +493,16 @@ pub fn workspace_dependency(
     Some((workspace, item))
 }
 
-/// Adds to `found` the packages the crate in `directory` depends on by path,
-/// written out or inherited from its workspace, and theirs in turn: cargo rebuilds them when they change, as it does the
-/// crate. A manifest that cannot be read is skipped; cargo names it.
-fn path_crates(directory: &Path, found: &mut BTreeSet<String>) {
+/// Adds to `found` the packages the crate in `directory` depends on by path
+/// in its tables of `kinds`, written out or inherited from its workspace,
+/// and theirs in turn, and gives the directory of each one added. A manifest
+/// that cannot be read is skipped; cargo names it.
+pub fn path_crates(directory: &Path, kinds: &[&str], found: &mut BTreeSet<String>) -> Vec<PathBuf> {
+    let mut directories = Vec::new();
     let Ok(manifest) = Manifest::read(directory) else {
-        return;
+        return directories;
     };
-    for (_, table) in manifest.dependency_tables(&["dependencies"]) {
+    for (_, table) in manifest.dependency_tables(kinds) {
         for (key, item) in table.iter() {
             let inherited = item.get("workspace").and_then(Item::as_bool) == Some(true);
             let written =
@@ -523,10 +526,13 @@ fn path_crates(directory: &Path, found: &mut BTreeSet<String>) {
             if let Some(name) = name
                 && found.insert(name)
             {
-                path_crates(&dependency, found);
+                let below = path_crates(&dependency, kinds, found);
+                directories.push(dependency);
+                directories.extend(below);
             }
         }
     }
+    directories
 }
 
 /// The dependency source of the rig crate `name`: its directory in the

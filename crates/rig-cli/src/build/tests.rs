@@ -578,6 +578,39 @@ fn only_a_bevy_version_conflict_is_explained_by_a_bevy_requirement() {
     assert_eq!(other, [const { None }; 9]);
 }
 
+/// The pins that block a path plugin may be in the crates it depends on by
+/// path: each of their manifests is named, once, after the fix.
+#[test]
+fn a_bevy_conflict_names_the_pins_of_the_crates_a_path_plugin_depends_on_by_path() {
+    let root = std::env::temp_dir().join(format!("rig-unresolved-paths-{}", std::process::id()));
+    fs::remove_dir_all(&root).ok();
+    let pinned = |name: &str, more: &str| {
+        format!(
+            "[package]\nname = \"{name}\"\n\n[dependencies]\n\
+             bevy_ecs = {{ version = \"=0.20.0\", default-features = false }}\n{more}"
+        )
+    };
+    let (plugin, one, two) = (root.join("plugin"), root.join("one"), root.join("two"));
+    manifest_at(
+        &plugin,
+        "[package]\nname = \"plugin\"\n\n[dependencies]\nbevy_ecs = \"0.20.0\"\n\
+         one = { path = \"../one\" }\n\n[build-dependencies]\ntwo = { path = \"../two\" }\n",
+    );
+    manifest_at(&one, &pinned("one", "two = { path = \"../two\" }\n"));
+    manifest_at(&two, &pinned("two", ""));
+    let lines: Vec<String> = real(PIN_CONFLICT).lines().map(str::to_owned).collect();
+    let told = unresolved("cargo failed".into(), &lines, [plugin.as_path()], "").to_string();
+    fs::remove_dir_all(&root).ok();
+    assert!(told.starts_with("a plugin must write"), "{told}");
+    for dependency in [one, two] {
+        let line = format!(
+            "{}:5: [dependencies] ",
+            dependency.join("Cargo.toml").display()
+        );
+        assert_eq!(told.matches(&line).count(), 1, "{told}");
+    }
+}
+
 /// A short wait for cargo's lock in one command says nothing when a later
 /// command of the same build is silent for long.
 #[test]
