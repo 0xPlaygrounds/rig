@@ -64,6 +64,19 @@ fn at(text: &str, part: &str) -> usize {
     text.find(part).unwrap_or(usize::MAX)
 }
 
+/// The agent's entries, each with its id, as text.
+fn entries(app: &App, agent: Entity) -> String {
+    let entries = app
+        .world()
+        .get::<Conversation>(agent)
+        .map(|it| it.entries());
+    let entries = entries.into_iter().flatten();
+    format!(
+        "{:?}",
+        entries.map(|it| (it.id, it.message)).collect::<Vec<_>>()
+    )
+}
+
 #[test]
 fn compact_writes_the_template_keeps_the_last_exchanges_and_builds_on_the_last_summary() {
     let home = scratch_home("fh-structured-compaction");
@@ -161,17 +174,7 @@ fn compact_writes_the_template_keeps_the_last_exchanges_and_builds_on_the_last_s
     for message in [picture, Message::assistant("answer 8")] {
         assert!(commit_message(app.world_mut(), agent, message).is_ok());
     }
-    let seen = |app: &App| {
-        let entries = app
-            .world()
-            .get::<Conversation>(agent)
-            .map(|it| it.entries());
-        let entries = entries.into_iter().flatten();
-        format!(
-            "{:?}",
-            entries.map(|it| (it.id, it.message)).collect::<Vec<_>>()
-        )
-    };
+    let seen = |app: &App| entries(app, agent);
     let edit = |answered: On<Add<Outcome>>,
                 calls: Query<(), With<Summarizing>>,
                 mut agents: Query<&mut Conversation>,
@@ -187,14 +190,16 @@ fn compact_writes_the_template_keeps_the_last_exchanges_and_builds_on_the_last_s
     let before = seen(&app).replace(&says(4), "edited meanwhile");
     compact(&mut app, "compact");
     assert!(before.contains("edited meanwhile") && before.contains("aGk="));
-    assert_eq!((seen(&app), sent(&summarizer).len()), (before, 2));
+    assert_eq!((seen(&app), sent(&summarizer).len()), (before.clone(), 2));
 
     compact(&mut app, "compact");
     let asked = sent(&summarizer);
     let second = asked.get(2).map(String::as_str).unwrap_or_default();
     assert!(second.contains("<previous-summary>"), "{second}");
     assert!(second.contains("FIRST-SUMMARY"), "{second}");
+    let kept = before.split_once(&says(6)).map(|(_, kept)| kept);
     let before = seen(&app);
+    assert!(kept.is_some_and(|kept| kept.contains("aGk=") && before.ends_with(kept)));
     compact(&mut app, "compact");
     assert_eq!((seen(&app), sent(&summarizer).len()), (before, 3));
 
@@ -250,12 +255,19 @@ fn a_summary_without_its_headings_twice_falls_back_and_the_turn_goes_on() {
     let mut messages = vec![Message::user("What does the crate do?")];
     for turn in 0..6 {
         messages.push(Message::assistant(format!("{turn}: {long}")));
-        messages.push(Message::user(format!("question {turn}")));
+        let mut question = Message::user(format!("question {turn}"));
+        if let Message::User { content } = &mut question {
+            content.push(rig_core::message::UserContent::image_base64(
+                "aGk=", None, None,
+            ));
+        }
+        messages.push(question);
     }
     messages.push(Message::assistant("The last answer."));
     for message in messages {
         assert!(commit_message(app.world_mut(), agent, message).is_ok());
     }
+    let before = entries(&app, agent);
 
     let next = Deliver::new(agent, "And the next question?", DeliveryMode::Steer);
     app.world_mut().trigger(next);
@@ -263,6 +275,7 @@ fn a_summary_without_its_headings_twice_falls_back_and_the_turn_goes_on() {
 
     assert_eq!(sent(&summarizer).len(), 2, "the template, asked twice");
     let requests = sent(&model);
+    assert_eq!(requests.len(), 2, "one default summary, then the turn");
     let default = requests.first().map(String::as_str).unwrap_or_default();
     assert!(
         default.contains("You are a context summarization assistant"),
@@ -280,6 +293,15 @@ fn a_summary_without_its_headings_twice_falls_back_and_the_turn_goes_on() {
     );
     let last = requests.last().map(String::as_str).unwrap_or_default();
     assert!(last.contains("DEFAULT-SUMMARY"), "{last}");
+    // The kept messages stay the entries they were, their images included.
+    let kept = before
+        .split_once("question 4")
+        .map(|(_, kept)| kept.trim_end_matches(']'));
+    let after = entries(&app, agent);
+    assert!(
+        kept.is_some_and(|kept| kept.contains("aGk=") && after.contains(kept)),
+        "{after}"
+    );
     let notices = &app.world().resource::<Collected<Notice>>().0;
     assert!(
         notices

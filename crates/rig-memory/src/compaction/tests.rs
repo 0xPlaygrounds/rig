@@ -242,7 +242,8 @@ fn a_log_cut_anywhere_reopens_as_the_conversation_once_was() {
 /// replaced afterwards: the summary's entry is the compaction's only copy of it.
 #[test]
 fn a_redacted_secret_is_in_no_summary_state_or_replaced_message() {
-    use crate::{MemoryStore, Strings, load, rewrite, save};
+    use crate::{MemoryStore, Messages, load, rewrite, save};
+    use rig_core::message::UserContent;
 
     let store = MemoryStore::default();
     let mut conversation = load(&store, "agent").expect("loaded");
@@ -257,10 +258,20 @@ fn a_redacted_secret_is_in_no_summary_state_or_replaced_message() {
         apply_summary(&mut conversation, &read, &state).expect("applied");
         save(&store, "agent", &mut conversation).expect("saved");
     }
-    let redact = Strings(|text: &mut String| {
-        let found = text.contains("hunter2");
-        *text = text.replace("hunter2", "[gone]");
-        found
+    let redact = Messages(|message: &mut Message| {
+        let Message::User { content } = message else {
+            return false;
+        };
+        let mut changed = false;
+        for item in content.iter_mut() {
+            if let UserContent::Text(text) = item
+                && text.text.contains("hunter2")
+            {
+                text.text = text.text.replace("hunter2", "[gone]");
+                changed = true;
+            }
+        }
+        changed
     });
     rewrite(&store, Author::plugin("redact"), &redact).expect("rewritten");
     let mut conversation = load(&store, "agent").expect("loaded");

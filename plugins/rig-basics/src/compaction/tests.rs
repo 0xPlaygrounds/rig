@@ -1311,11 +1311,18 @@ fn a_prompt_counts_toward_the_recent_messages_kept() {
         let requests = sent(&model);
         assert_eq!(requests.len(), 2, "{words}: {:?}", notices(&app));
         let summary = requests.first().cloned().unwrap_or_default();
-        let summarized = summary.contains("question 0") && !summary.contains("Read this:");
-        assert!(summarized, "{words}");
+        assert!(
+            summary.contains("context summarization assistant")
+                && summary.contains("question 0")
+                && !summary.contains("Read this:"),
+            "{words}"
+        );
         let asked = requests.last().cloned().unwrap_or_default();
-        let whole = asked.contains("Read this:") && !asked.contains("question 0");
-        assert!(whole, "{words}");
+        assert!(
+            asked.contains("Read this:") && asked.contains("Answer the questions."),
+            "{words}"
+        );
+        assert!(!asked.contains("question 0"), "{words}");
         assert_eq!(asked.contains("question 1"), kept.is_some(), "{words}");
     }
 }
@@ -1382,7 +1389,14 @@ fn the_threshold_counts_the_request_as_it_is_sent() {
         return;
     };
     ask(&mut app, &wakes, agent, "And the next question?", 1);
-    assert_eq!(sent(&model).len(), 2, "{:?}", notices(&app));
+    assert_eq!(answer(&app).as_deref(), Some("done"), "{:?}", notices(&app));
+    let requests = sent(&model);
+    assert_eq!(requests.len(), 2, "{:?}", notices(&app));
+    let summary = requests.first().cloned().unwrap_or_default();
+    assert!(
+        summary.contains("context summarization assistant"),
+        "{summary}"
+    );
 }
 
 /// Runs `app` until its turns ended `count` times, moving the clock on for each retry wait.

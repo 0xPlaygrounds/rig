@@ -337,6 +337,7 @@ fn repeated_split_summaries_hold_one_block_of_file_lists() {
         ]);
         let cut = conversation.messages().len() - 1;
         let prepared = prepare_compaction_at(&conversation, cut).expect("a split turn");
+        assert!(!prepared.turn_prefix.is_empty(), "round {round}");
         let previous = prepared.previous.as_ref();
         let echoed = previous.and_then(SummaryState::previous_summary);
         let echoed = format!("see <read-files> below\n\n{}", echoed.unwrap_or_default());
