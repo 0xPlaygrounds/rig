@@ -14,6 +14,7 @@ pub mod anthropic;
 pub mod auth;
 pub mod azure;
 pub mod chatgpt;
+pub mod cheaperinference;
 pub mod cohere;
 pub mod copilot;
 pub mod deepseek;
