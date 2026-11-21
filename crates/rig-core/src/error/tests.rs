@@ -261,6 +261,7 @@ fn dispatch_report_kinds_map_to_tool_kinds() {
         (ErrorKind::HandlerUnavailable, ToolErrorKind::NotFound),
         (ErrorKind::Http, ToolErrorKind::Network),
         (ErrorKind::ProviderResponse, ToolErrorKind::Provider),
+        (ErrorKind::Truncated, ToolErrorKind::Other),
         (ErrorKind::Internal, ToolErrorKind::Other),
     ] {
         let error = ToolExecutionError::from(ErrorReport::new(kind, "failed").with_retryable(true));
@@ -297,6 +298,28 @@ fn report_round_trips_through_serde() {
     let back: ErrorReport = serde_json::from_str(&json).expect("deserialize");
     assert_eq!(back, report);
     assert_eq!(report.to_string(), "slow down");
+}
+
+/// Report classification is a wire contract, independent of provider frames.
+#[test]
+fn truncation_survives_reporting_serialization_and_relay() {
+    let error = ProviderError::Truncated;
+    let report = error.report();
+    assert_eq!(error.kind(), ErrorKind::Truncated);
+    assert_eq!(report.kind, ErrorKind::Truncated);
+    assert!(report.is_retryable());
+
+    let Ok(json) = serde_json::to_value(&report) else {
+        panic!("the report must serialize");
+    };
+    assert_eq!(json.get("kind"), Some(&serde_json::json!("truncated")));
+    let Ok(back) = serde_json::from_value::<ErrorReport>(json) else {
+        panic!("the report must deserialize");
+    };
+    let relayed = ProviderError::Relayed(Box::new(back));
+    assert_eq!(relayed.kind(), ErrorKind::Truncated);
+    assert!(relayed.is_retryable());
+    assert_eq!(relayed.report(), report);
 }
 
 #[test]
@@ -604,6 +627,7 @@ fn every_error_kind_has_its_own_stable_code() {
         (ErrorKind::Url, "url"),
         (ErrorKind::Request, "request"),
         (ErrorKind::Response, "response"),
+        (ErrorKind::Truncated, "truncated"),
         (ErrorKind::Provider, "provider"),
         (ErrorKind::ProviderResponse, "provider_response"),
         (ErrorKind::Tool(ToolErrorKind::Timeout), "tool"),

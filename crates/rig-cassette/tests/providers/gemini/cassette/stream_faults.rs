@@ -105,19 +105,12 @@ async fn truncation_after_content_fails_the_run_and_keeps_the_prefix() {
     assert_eq!(drained.terminals, 0, "{drained:?}");
     assert!(!drained.errors.is_empty(), "{drained:?}");
     for report in &drained.errors {
-        assert_eq!(report.kind, ErrorKind::Response, "{report:?}");
-        assert!(
-            report
-                .message
-                .contains("ended before the provider ended it"),
-            "a truncation, by name: {report:?}"
-        );
+        assert_eq!(report.kind, ErrorKind::Truncated, "{report:?}");
     }
 
     let log = agent.stamp(recorder.take());
     let recorded = sole_failed_completion(&log);
-    assert_eq!(recorded.kind, ErrorKind::Response, "{recorded:?}");
-    assert_eq!(recorded.message, rig::serve::stream_truncated().message);
+    assert_eq!(recorded.kind, ErrorKind::Truncated, "{recorded:?}");
 }
 
 /// An error envelope after content: the run fails with the envelope's
@@ -223,8 +216,5 @@ async fn multi_frame_stream_cut_before_its_terminal_is_a_truncation() {
     assert_eq!(drained.text, expected, "{drained:?}");
     assert_eq!(drained.finals, 0, "{drained:?}");
     let log = agent.stamp(recorder.take());
-    assert_eq!(
-        sole_failed_completion(&log).message,
-        rig::serve::stream_truncated().message
-    );
+    assert_eq!(sole_failed_completion(&log).kind, ErrorKind::Truncated);
 }

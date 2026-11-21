@@ -250,8 +250,8 @@ fn a_layer_does_not_repoll_an_exhausted_non_fused_stream() {
             .await
             .into_stream();
         assert_eq!(
-            stream.next().await.unwrap().unwrap_err().message,
-            rig_core::serve::stream_truncated().message
+            stream.next().await.unwrap().unwrap_err().kind,
+            ErrorKind::Truncated
         );
         assert!(stream.next().await.is_none());
     });

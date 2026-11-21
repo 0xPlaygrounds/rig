@@ -18,6 +18,7 @@ use crate::test_utils::{
 };
 use crate::tool::ToolContext;
 use futures::{StreamExt, TryStreamExt};
+use rig_core::error::ErrorKind;
 use rig_core::message::{AssistantContent, Message, ToolChoice, ToolResultContent, UserContent};
 use rig_core::operation::Finish;
 use rig_core::providers::anthropic;
@@ -56,9 +57,7 @@ async fn text_only_stream_without_terminal_record_is_rejected_as_truncated() {
         match item {
             Err(error) => {
                 assert!(
-                    error
-                        .to_string()
-                        .contains("the reply ended before the provider ended it"),
+                    matches!(&error, PromptError::Report(report) if report.kind == ErrorKind::Truncated),
                     "truncation should surface as a truncated reply, got: {error}"
                 );
                 saw_error = true;
