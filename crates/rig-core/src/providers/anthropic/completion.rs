@@ -647,15 +647,28 @@ const ROOT_KEPT: [&str; 9] = [
     "description",
 ];
 
-/// Move a root `allOf`, `anyOf` or `oneOf`, with any root `not`, under
-/// `not: {not: ...}`, which accepts the same inputs, and type the root
-/// `object`, the root Anthropic takes. A subschema under `not` reports no
-/// evaluated properties or items, so with a root `unevaluatedProperties` or
-/// `unevaluatedItems` every root keyword but [`ROOT_KEPT`] moves. Local
-/// `#/...` pointer references into a moved keyword follow it; a percent
-/// encoded pointer, or one through the root's `$id`, is left as written. A schema with no
-/// root combinator is left as written.
-fn nest_root_combinators(schema: &mut Value) {
+/// Nest root `allOf`, `anyOf`, `oneOf` and any root `not` under `not: {not: ...}`
+/// for non-strict Claude tools, adding `type: "object"` if absent. Schemas without
+/// a root combinator are unchanged. Messages wires apply this automatically;
+/// callers using another wire format must apply it before encoding Claude tools.
+///
+/// With root `unevaluatedProperties` or `unevaluatedItems`, move all validation
+/// keywords except `type` together so they still see the same evaluated inputs.
+/// Local `#/...` references into moved keywords follow them; percent-encoded
+/// pointers and references through the root's `$id` are left as written.
+/// Do not use this for native OpenAI tools, which reject root `not`.
+///
+/// ```
+/// use rig_core::providers::anthropic::completion::nest_root_combinators;
+/// use serde_json::json;
+///
+/// let mut schema = json!({"oneOf": [{"required": ["a"]}, {"required": ["b"]}]});
+/// nest_root_combinators(&mut schema);
+/// assert_eq!(schema, json!({"type": "object", "not": {"not": {
+///     "oneOf": [{"required": ["a"]}, {"required": ["b"]}]
+/// }}}));
+/// ```
+pub fn nest_root_combinators(schema: &mut Value) {
     let Value::Object(root) = schema else {
         return;
     };
