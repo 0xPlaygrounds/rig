@@ -4,6 +4,27 @@ use rig_core::{ProviderResponseError, http_client};
 use super::*;
 
 #[test]
+fn prompt_errors_expose_the_preserved_provider_response_directly_and_when_relayed() {
+    let response = ProviderResponseError::without_status("gateway timed out")
+        .with_code(Some("gateway_stream_timeout".to_owned()));
+    let provider = ProviderError::ProviderResponse(response.clone());
+    let report = provider.report();
+
+    for error in [
+        PromptError::Provider(provider),
+        PromptError::Report(report.clone()),
+        PromptError::Provider(ProviderError::Relayed(Box::new(report.clone()))),
+        PromptError::from(ProviderError::Relayed(Box::new(report))),
+    ] {
+        assert_eq!(error.provider_response(), Some(&response));
+        assert_eq!(
+            StructuredOutputError::Prompt(error).provider_response(),
+            Some(&response)
+        );
+    }
+}
+
+#[test]
 fn prompt_error_provider_response_helpers_forward_http_status_and_body() {
     let body = r#"{"error":{"message":"unauthorized"}}"#;
     let error = PromptError::Provider(ProviderError::from_transport_error(
@@ -110,6 +131,7 @@ fn prompt_error_provider_response_helpers_return_none_for_unrelated_variant() {
         reason: "cancelled".to_string(),
     };
 
+    assert_eq!(error.provider_response(), None);
     assert_eq!(error.provider_response_body(), None);
     assert_eq!(error.provider_response_status(), None);
     assert_eq!(
