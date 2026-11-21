@@ -4,12 +4,15 @@
 use serde_json::{Value, json};
 
 use super::Chat;
+use crate::catalog::{Catalog, ModelFacts, ModelSpec};
 use crate::completion::{CompletionRequest, Message, ToolDefinition};
 use crate::message::{
-    AssistantContent, AssistantMessage, CallId, DocumentMediaType, DocumentSourceKind, Image,
-    ImageMediaType, ToolName, ToolResult, ToolResultContent, UserContent,
+    AssistantContent, AssistantMessage, AudioMediaType, CallId, DocumentMediaType,
+    DocumentSourceKind, Image, ImageMediaType, ToolName, ToolResult, ToolResultContent,
+    UserContent, VideoMediaType,
 };
-use crate::providers::openai::wire::{GROQ, OpenAIConfig};
+use crate::providers::openai::wire::{AZURE, GROQ, OPENAI, OpenAIConfig};
+use crate::providers::registry::ProviderId;
 use crate::test_utils::json_body;
 use crate::wire::{Mode, Operation, Wire};
 
@@ -38,6 +41,23 @@ fn body_on(wire: &Chat, request: CompletionRequest) -> Value {
 
 fn body(request: CompletionRequest) -> Value {
     body_on(&wire(), request)
+}
+
+fn video_spec(provider: &str, model: &str, enabled: bool) -> anyhow::Result<ModelSpec> {
+    let provider = ProviderId::catalog(provider)
+        .ok_or_else(|| anyhow::anyhow!("{provider} is not a registered provider"))?;
+    let mut spec = ModelSpec::new(provider, model);
+    spec.input.video = enabled;
+    Ok(spec)
+}
+
+fn video_request() -> CompletionRequest {
+    CompletionRequest::from(vec![Message::User {
+        content: vec![
+            UserContent::text("Describe the video."),
+            UserContent::video_url("https://example.com/v.mp4".to_owned(), None),
+        ],
+    }])
 }
 
 fn result(call: &str, content: Vec<ToolResultContent>) -> UserContent {
@@ -172,6 +192,257 @@ fn user_parts_take_their_wire_shapes() {
         file_id["messages"][0]["content"][1],
         json!({"type": "file", "file": {"file_id": "file_abc"}})
     );
+}
+
+/// Video requires matching facts on OpenAI and Azure. This tests local
+/// adaptation of an unlisted model, without provider traffic to record.
+#[test]
+fn video_parts_follow_bound_model_facts() -> anyhow::Result<()> {
+    let default = body_on(&wire(), video_request());
+    anyhow::ensure!(
+        default.pointer("/messages/0/content/1") == Some(&omitted_video()),
+        "the default OpenAI model still omits video"
+    );
+
+    let model = "gateway-video-model";
+    for dialect in [&OPENAI, &AZURE] {
+        let bound =
+            |provider, model, enabled| video_spec(provider, model, enabled).map(ModelFacts::new);
+        for (case, facts, enabled) in [
+            ("absent", ModelFacts::default(), false),
+            ("enabled", bound(dialect.name, model, true)?, true),
+            ("disabled", bound(dialect.name, model, false)?, false),
+            (
+                "other model",
+                bound(dialect.name, "other-model", true)?,
+                false,
+            ),
+            ("other provider", bound("anthropic", model, true)?, false),
+        ] {
+            let chat = OpenAIConfig::with_key(dialect, "key")
+                .chat(model)
+                .with_facts(facts);
+            let expected = if enabled {
+                json!({"type": "video_url", "video_url": {"url": "https://example.com/v.mp4"}})
+            } else {
+                omitted_video()
+            };
+            for mode in [Mode::Unary, Mode::Streaming] {
+                let request =
+                    crate::operation::Completion::prepare(video_request(), &chat.describe())?;
+                let sent = json_body(&chat.encode(request, mode)?.request);
+                anyhow::ensure!(
+                    sent.pointer("/messages/0/content/1") == Some(&expected),
+                    "{} with {case} facts in {mode:?}: {sent}",
+                    dialect.name
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+fn omitted_video() -> Value {
+    json!({"type": "text", "text": "(video omitted: the provider cannot receive it in this form)"})
+}
+
+/// Video facts permit typed data but do not make untyped data encodable.
+/// This checks local preparation and encoding without provider traffic.
+#[test]
+fn video_parts_require_a_url_or_typed_base64() -> anyhow::Result<()> {
+    let model = "gateway-video-model";
+    for dialect in [&OPENAI, &AZURE] {
+        let chat = OpenAIConfig::with_key(dialect, "key")
+            .chat(model)
+            .with_facts(ModelFacts::new(video_spec(dialect.name, model, true)?));
+        let request = CompletionRequest::from(vec![Message::User {
+            content: vec![
+                UserContent::text("Describe the videos."),
+                UserContent::video_base64("AAAA", Some(VideoMediaType::MP4)),
+                UserContent::video_base64("AAAA", None),
+            ],
+        }]);
+        let sent = body_on(&chat, request);
+        anyhow::ensure!(
+            sent.pointer("/messages/0/content")
+                == Some(&json!([
+                    {"type": "text", "text": "Describe the videos."},
+                    {"type": "video_url", "video_url": {"url": "data:video/mp4;base64,AAAA"}},
+                    omitted_video(),
+                ])),
+            "{} keeps the video source requirements: {sent}",
+            dialect.name
+        );
+    }
+    Ok(())
+}
+
+/// Bound facts take precedence and request overrides consult the catalog.
+/// This tests local model selection without provider traffic to record.
+#[test]
+fn video_parts_follow_the_requested_models_facts() -> anyhow::Result<()> {
+    let model = "gateway-video-model";
+    let other = "another-video-model";
+    for dialect in [&OPENAI, &AZURE] {
+        let mut catalog = Catalog::builtin().clone();
+        catalog.insert(video_spec(dialect.name, model, true)?);
+        catalog.insert(video_spec(dialect.name, other, true)?);
+        let facts = ModelFacts::new(video_spec(dialect.name, model, false)?).with_catalog(&catalog);
+        let chat = OpenAIConfig::with_key(dialect, "key")
+            .chat(model)
+            .with_facts(facts);
+        for (requested, enabled) in [(model, false), (other, true), ("unlisted-model", false)] {
+            let sent = body_on(&chat, video_request().model(requested));
+            let expected = if enabled {
+                json!({"type": "video_url", "video_url": {"url": "https://example.com/v.mp4"}})
+            } else {
+                omitted_video()
+            };
+            anyhow::ensure!(
+                sent.pointer("/messages/0/content/1") == Some(&expected),
+                "{} requested {requested}: {sent}",
+                dialect.name
+            );
+        }
+    }
+    Ok(())
+}
+
+/// Changing video facts must invalidate a prepared conversation's prefix.
+/// This exercises the driver's local preparation cache without HTTP traffic.
+#[test]
+fn video_facts_refresh_prepared_history() -> anyhow::Result<()> {
+    let model = "gateway-video-model";
+    let request = CompletionRequest::from(vec![
+        Message::User {
+            content: vec![
+                UserContent::text("Describe the video."),
+                UserContent::video_url("https://example.com/v.mp4", None),
+            ],
+        },
+        Message::assistant("A person is walking."),
+        Message::user("Describe the scene in more detail."),
+    ]);
+    for dialect in [&OPENAI, &AZURE] {
+        let prepared = crate::wire::Prepared::default();
+        for enabled in [false, true, false] {
+            let chat = OpenAIConfig::with_key(dialect, "key")
+                .chat(model)
+                .with_facts(ModelFacts::new(video_spec(dialect.name, model, enabled)?));
+            let descriptor = crate::wire::Descriptor {
+                prepared: Some(&prepared),
+                ..chat.describe()
+            };
+            let request = crate::operation::Completion::prepare(request.clone(), &descriptor)?;
+            let sent = json_body(&chat.encode(request, Mode::Unary)?.request);
+            let expected = if enabled {
+                json!({"type": "video_url", "video_url": {"url": "https://example.com/v.mp4"}})
+            } else {
+                omitted_video()
+            };
+            anyhow::ensure!(
+                sent.pointer("/messages/0/content/1") == Some(&expected),
+                "{} with video={enabled} must refresh its prepared prefix: {sent}",
+                dialect.name
+            );
+        }
+    }
+    Ok(())
+}
+
+/// Other dialects keep their existing video encoding regardless of the fact.
+/// This compares locally encoded requests without provider traffic.
+#[test]
+fn video_facts_preserve_other_chat_dialects() -> anyhow::Result<()> {
+    let model = "gateway-video-model";
+    for dialect in crate::providers::openai::wire::all()
+        .filter(|dialect| ![OPENAI.name, AZURE.name].contains(&dialect.name))
+    {
+        let chat = OpenAIConfig::with_key(dialect, "key").chat(model);
+        for mode in [Mode::Unary, Mode::Streaming] {
+            let body = |chat: &Chat| -> anyhow::Result<Value> {
+                let request =
+                    crate::operation::Completion::prepare(video_request(), &chat.describe())?;
+                Ok(json_body(&chat.encode(request, mode)?.request))
+            };
+            let default = body(&chat)?;
+            for enabled in [false, true] {
+                let configured = chat.clone().with_facts(ModelFacts::new(video_spec(
+                    dialect.name,
+                    model,
+                    enabled,
+                )?));
+                let sent = body(&configured)?;
+                anyhow::ensure!(
+                    sent == default,
+                    "{} changed with video={enabled} in {mode:?}: {sent}",
+                    dialect.name
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The video fact leaves text, image, audio and document encoding unchanged.
+/// This compares local request bodies without provider traffic.
+#[test]
+fn video_facts_preserve_non_video_content() -> anyhow::Result<()> {
+    let model = "gateway-video-model";
+    let request = CompletionRequest::from(vec![Message::User {
+        content: vec![
+            UserContent::text("Describe the media."),
+            UserContent::image_base64("iVBORw0KGgo=", Some(ImageMediaType::PNG), None),
+            UserContent::audio_base64("AAAA", Some(AudioMediaType::MP3)),
+            UserContent::document_base64("JVBERi0xLjQK", Some(DocumentMediaType::PDF)),
+        ],
+    }]);
+    for dialect in [&OPENAI, &AZURE] {
+        for mode in [Mode::Unary, Mode::Streaming] {
+            let body = |enabled| -> anyhow::Result<Value> {
+                let mut spec = video_spec(dialect.name, model, enabled)?;
+                spec.input.image = true;
+                let chat = OpenAIConfig::with_key(dialect, "key")
+                    .chat(model)
+                    .with_facts(ModelFacts::new(spec));
+                let request =
+                    crate::operation::Completion::prepare(request.clone(), &chat.describe())?;
+                Ok(json_body(&chat.encode(request, mode)?.request))
+            };
+            let disabled = body(false)?;
+            let enabled = body(true)?;
+            anyhow::ensure!(
+                disabled == enabled,
+                "{} changed non-video content in {mode:?}: {disabled} != {enabled}",
+                dialect.name
+            );
+        }
+    }
+    Ok(())
+}
+
+/// OpenAI's default Responses route still omits video even with video facts.
+/// This checks local routing and encoding without provider traffic.
+#[test]
+fn video_facts_preserve_the_default_responses_route() -> anyhow::Result<()> {
+    let model = "gateway-video-model";
+    let routed = OpenAIConfig::new("key")
+        .completion(model)
+        .with_facts(ModelFacts::new(video_spec("openai", model, true)?));
+    for mode in [Mode::Unary, Mode::Streaming] {
+        let request = crate::operation::Completion::prepare(video_request(), &routed.describe())?;
+        let encoded = routed.encode(request, mode)?;
+        let sent = json_body(&encoded.request);
+        anyhow::ensure!(
+            encoded.request.uri().path().ends_with("/responses"),
+            "the default route changed"
+        );
+        anyhow::ensure!(
+            sent.pointer("/input/1/content/0/text") == omitted_video().get("text"),
+            "Responses changed its video handling in {mode:?}: {sent}"
+        );
+    }
+    Ok(())
 }
 
 /// The legacy cap stays where the endpoint wants it; OpenAI's reasoning
