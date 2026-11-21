@@ -113,6 +113,19 @@ pub enum ToolInputStreaming {
     Off,
 }
 
+/// The text returned in Anthropic thinking blocks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ThinkingDisplay {
+    /// Return summaries of reasoning and progress updates.
+    Summarized,
+    /// Return signatures without thinking text.
+    Omitted,
+    /// Return progress updates without reasoning summaries. Requires
+    /// `thinking-display-updates-2026-08-18` through [`AnthropicConfig::with_beta`].
+    Updates,
+}
+
 impl Quirks {
     /// Anthropic's own contract.
     pub const fn anthropic() -> Self {
@@ -444,6 +457,7 @@ impl AnthropicConfig {
             prompt_caching: false,
             static_prefix_cache_ttl: None,
             strict_tools: false,
+            thinking_display: None,
             tool_input_streaming: self.dialect.quirks.tool_input_streaming,
             facts: ModelFacts::default(),
         }
@@ -524,6 +538,9 @@ pub struct Messages {
     pub static_prefix_cache_ttl: Option<CacheTtl>,
     /// Whether Rig-generated tools request the provider's strict validation.
     pub strict_tools: bool,
+    /// The `thinking.display` used when an active thinking request sets none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thinking_display: Option<ThinkingDisplay>,
     /// How a request with tools asks for tool input as it is written; the
     /// dialect's by default.
     #[serde(default)]
@@ -556,6 +573,14 @@ impl Messages {
                 other_model.and_then(|m| self.provider.dialect.default_max_tokens(&self.facts, m))
             })
             .or(self.default_max_tokens)
+    }
+
+    /// Default `thinking.display` for requests with `thinking.type` set to
+    /// `adaptive` or `enabled`. This does not enable thinking. A request's
+    /// `additional_params.thinking.display` overrides the default.
+    pub fn with_thinking_display(mut self, display: ThinkingDisplay) -> Self {
+        self.thinking_display = Some(display);
+        self
     }
 
     /// Enable cache breakpoints on the system prompt, final tool, and final message block.
