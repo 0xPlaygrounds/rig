@@ -100,6 +100,12 @@ where
         self
     }
 
+    /// The per-call timeout applied to tools this handler registers. `None`
+    /// means calls are unbounded.
+    pub fn timeout(&self) -> Option<Duration> {
+        self.timeout
+    }
+
     /// Derive request `_meta` from each call of every tool this handler
     /// registers, as [`McpTool::with_call_meta`] does for one tool.
     #[must_use = "the setting applies to the returned value"]
