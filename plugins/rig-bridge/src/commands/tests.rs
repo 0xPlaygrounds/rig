@@ -11,8 +11,9 @@ use serde_json::json;
 use tokio::sync::mpsc;
 
 use super::{
-    BridgeSignal, SignalInbox, drain_signals, format_grok_usage_error, parse_claude_usage,
-    parse_codex_usage, parse_grok_usage, parse_muse_usage,
+    BridgeSignal, SignalInbox, drain_signals, format_grok_usage_error, parse_antigravity_usage,
+    parse_claude_usage, parse_codex_usage, parse_copilot_usage, parse_grok_billing,
+    parse_grok_usage, parse_muse_usage,
 };
 use crate::harness::Vendor;
 
@@ -80,6 +81,58 @@ fn grok_usage_handles_percent_fields() {
             "Error: `grok usage` can't show your plan's usage here yet. Run /usage inside grok instead."
         ),
         "unavailable (run `/usage` inside grok)"
+    );
+}
+
+#[test]
+fn grok_billing_antigravity_and_copilot_quotas_format_cleanly() {
+    let grok = json!({
+        "config": {
+            "currentPeriod": {
+                "type": "USAGE_PERIOD_TYPE_WEEKLY",
+                "end": "2026-11-29T06:48:28.227+00:00"
+            },
+            "creditUsagePercent": 2.0
+        }
+    });
+    assert_eq!(
+        parse_grok_billing(&grok).as_deref(),
+        Some("weekly 2% used (resets 2026-11-29T06:48)")
+    );
+
+    let agy = json!({
+        "models": {
+            "gemini-4-neon-high": {
+                "quotaInfo": { "remainingFraction": 0.91, "resetTime": "2026-11-22T21:56:27Z" }
+            },
+            "gemini-4-carbon-low": {
+                "quotaInfo": { "remainingFraction": 0.95, "resetTime": "2026-11-22T22:00:00Z" }
+            },
+            "claude-opus-5-5-high": {
+                "quotaInfo": { "remainingFraction": 0.98, "resetTime": "2026-11-23T01:50:31Z" }
+            }
+        }
+    });
+    assert_eq!(
+        parse_antigravity_usage(&agy).as_deref(),
+        Some("Gemini 9% used (resets 2026-11-22T21:56), Claude 2% used (resets 2026-11-23T01:50)")
+    );
+
+    let copilot = json!({
+        "copilot_plan": "individual",
+        "quota_reset_date": "2026-12-01",
+        "quota_snapshots": {
+            "premium_interactions": {
+                "unlimited": false,
+                "percent_remaining": 97.1,
+                "remaining": 1456,
+                "entitlement": 1500
+            }
+        }
+    });
+    assert_eq!(
+        parse_copilot_usage(&copilot),
+        "plan individual, premium 3% used [1456/1500 left] (resets 2026-12-01)"
     );
 }
 

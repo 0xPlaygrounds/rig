@@ -123,7 +123,7 @@ mod plugin {
         /// Files the models once every plugin's `build` ran, so the process
         /// launcher and tokio runtime the harnesses run with exist.
         fn finish(&self, app: &mut App) {
-            let (bridge, processes, entries, signal_tx, signal_rx) = {
+            let (bridge, processes, http, entries, signal_tx, signal_rx) = {
                 let world = app.world_mut();
                 let settings = world.get_resource_or_init::<BridgeSettings>().clone();
                 let Some(runtime) = world.get_resource::<TokioRuntime>().cloned() else {
@@ -310,6 +310,7 @@ mod plugin {
                             .collect(),
                     ),
                 );
+                let http = models.0.transport().shared();
                 let entries = vec![
                     claude_entry,
                     grok_entry,
@@ -318,12 +319,13 @@ mod plugin {
                     muse_entry,
                     copilot_entry,
                 ];
-                (bridge, processes, entries, signal_tx, signal_rx)
+                (bridge, processes, http, entries, signal_tx, signal_rx)
             };
 
             let handle = BridgeHandle {
                 bridge,
                 processes,
+                http,
                 installed: entries,
                 signals: signal_tx,
             };

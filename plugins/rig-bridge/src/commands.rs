@@ -10,10 +10,13 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use axum::body::Bytes;
+use axum::http::{Method, Request, header};
 use bevy_ecs::message::Messages;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::ModelSpec;
 use rig_harness::rig_core::completion::ContextUse;
+use rig_harness::rig_core::http_client::{DynHttpClient, HttpClientExt};
 use rig_harness::rig_core::providers::registry::ProviderId;
 use rig_harness::rig_ecs::stage::AgentLoop;
 use rig_harness::rig_ecs::tasks::Wake;
@@ -53,6 +56,7 @@ pub(crate) enum BridgeSignal {
 pub(crate) struct BridgeHandle {
     pub bridge: Arc<Bridge>,
     pub processes: Processes,
+    pub http: Option<DynHttpClient>,
     pub installed: Vec<HarnessEntry>,
     pub signals: mpsc::UnboundedSender<BridgeSignal>,
 }
@@ -313,6 +317,7 @@ fn format_session_stats(stats: &VendorStats) -> String {
 fn collect_usage(handle: &BridgeHandle) -> String {
     let snap = handle.bridge.snapshot();
     let scratch_root = handle.bridge.scratch_root().to_path_buf();
+    let runtime = handle.bridge.runtime().clone();
     let results: Vec<(Vendor, String)> = std::thread::scope(|scope| {
         let jobs: Vec<_> = handle
             .installed
@@ -320,12 +325,19 @@ fn collect_usage(handle: &BridgeHandle) -> String {
             .map(|entry| {
                 let processes = handle.processes.clone();
                 let scratch = scratch_root.clone();
+                let http = handle.http.clone();
+                let runtime = runtime.clone();
                 scope.spawn(move || {
                     let plan = match &entry.program {
                         None => "not installed".to_owned(),
-                        Some(program) => {
-                            probe_vendor_usage(&processes, entry.vendor, program, &scratch)
-                        }
+                        Some(program) => probe_vendor_usage(
+                            &processes,
+                            &runtime,
+                            http.as_ref(),
+                            entry.vendor,
+                            program,
+                            &scratch,
+                        ),
                     };
                     (entry.vendor, plan)
                 })
@@ -354,6 +366,8 @@ fn collect_usage(handle: &BridgeHandle) -> String {
 
 fn probe_vendor_usage(
     processes: &Processes,
+    runtime: &tokio::runtime::Handle,
+    http: Option<&DynHttpClient>,
     vendor: Vendor,
     program: &Path,
     scratch_root: &Path,
@@ -362,10 +376,9 @@ fn probe_vendor_usage(
         Vendor::ClaudeCode => probe_claude_usage(processes, program),
         Vendor::Codex => probe_codex_usage(processes, program, scratch_root),
         Vendor::Muse => probe_muse_usage(processes, program),
-        Vendor::GrokBuild => probe_grok_usage(processes, program),
-        Vendor::Antigravity | Vendor::Copilot => {
-            "unavailable (no official CLI/RPC quota API)".to_owned()
-        }
+        Vendor::GrokBuild => probe_grok_usage(processes, runtime, http, program),
+        Vendor::Antigravity => probe_antigravity_usage(runtime, http),
+        Vendor::Copilot => probe_copilot_usage(processes),
     }
 }
 
@@ -590,11 +603,268 @@ pub(crate) fn parse_muse_usage(value: &Value) -> String {
     }
 }
 
-/// Queries Grok's official `grok usage --json` without starting Grok's daemon.
-fn probe_grok_usage(processes: &Processes, program: &Path) -> String {
+/// Sends one bounded HTTP JSON request over Rig's shared HTTP transport.
+fn fetch_json(
+    runtime: &tokio::runtime::Handle,
+    http: &DynHttpClient,
+    method: Method,
+    url: &str,
+    bearer: &str,
+    user_agent: Option<&str>,
+    body: Option<&'static [u8]>,
+) -> Result<Value, &'static str> {
+    let mut builder = Request::builder()
+        .method(method)
+        .uri(url)
+        .header(header::AUTHORIZATION, format!("Bearer {bearer}"))
+        .header(header::ACCEPT, "application/json");
+    if let Some(ua) = user_agent {
+        builder = builder.header(header::USER_AGENT, ua);
+    }
+    let payload = if let Some(bytes) = body {
+        builder = builder.header(header::CONTENT_TYPE, "application/json");
+        Bytes::from_static(bytes)
+    } else {
+        Bytes::new()
+    };
+    let request = builder.body(payload).map_err(|_| "invalid request")?;
+    let http = http.clone();
+    runtime.block_on(async move {
+        let response = tokio::time::timeout(PROBE_TIMEOUT, http.send(request))
+            .await
+            .map_err(|_| "timed out")?
+            .map_err(|_| "request failed")?;
+        if !response.status().is_success() {
+            return Err("request rejected");
+        }
+        let bytes = tokio::time::timeout(PROBE_TIMEOUT, response.into_body())
+            .await
+            .map_err(|_| "timed out")?
+            .map_err(|_| "could not read response")?;
+        serde_json::from_slice(&bytes).map_err(|_| "invalid response")
+    })
+}
+
+/// Queries Grok's billing endpoint using the CLI's cached sign-in token,
+/// falling back to `grok usage --json`.
+fn probe_grok_usage(
+    processes: &Processes,
+    runtime: &tokio::runtime::Handle,
+    http: Option<&DynHttpClient>,
+    program: &Path,
+) -> String {
+    const GROK_BILLING_URL: &str = "https://cli-chat-proxy.grok.com/v1/billing?format=credits";
+    if let Some(http) = http
+        && let Some(token) = read_grok_token()
+        && let Ok(value) = fetch_json(
+            runtime,
+            http,
+            Method::GET,
+            GROK_BILLING_URL,
+            &token,
+            None,
+            None,
+        )
+        && let Some(formatted) = parse_grok_billing(&value)
+    {
+        return formatted;
+    }
     match probe_cli_json(processes, program, &["usage", "--json"]) {
         Ok(value) => parse_grok_usage(&value),
         Err(text) => format_grok_usage_error(&text),
+    }
+}
+
+fn read_grok_token() -> Option<String> {
+    let text = std::fs::read_to_string(crate::grok::signed_in()?).ok()?;
+    let value: Value = serde_json::from_str(&text).ok()?;
+    value
+        .as_object()?
+        .values()
+        .find_map(|entry| entry.get("key").and_then(Value::as_str))
+        .filter(|token| !token.is_empty())
+        .map(str::to_owned)
+}
+
+/// Formats Grok's `/v1/billing?format=credits` response.
+pub(crate) fn parse_grok_billing(value: &Value) -> Option<String> {
+    let config = value.get("config").unwrap_or(value);
+    let pct = config
+        .get("creditUsagePercent")
+        .and_then(Value::as_f64)
+        .or_else(|| {
+            config
+                .get("productUsage")
+                .and_then(Value::as_array)
+                .and_then(|items| {
+                    items
+                        .iter()
+                        .find_map(|item| item.get("usagePercent").and_then(Value::as_f64))
+                })
+        })?;
+    let period = match config
+        .pointer("/currentPeriod/type")
+        .and_then(Value::as_str)
+    {
+        Some(kind) if kind.contains("WEEKLY") => "weekly",
+        Some(kind) if kind.contains("MONTHLY") => "monthly",
+        Some(kind) if kind.contains("DAILY") => "daily",
+        _ => "period",
+    };
+    let reset = config
+        .pointer("/currentPeriod/end")
+        .or_else(|| config.get("billingPeriodEnd"))
+        .and_then(Value::as_str)
+        .map(|ts| format!(" (resets {})", short_iso(ts)))
+        .unwrap_or_default();
+    Some(format!("{period} {pct:.0}% used{reset}"))
+}
+
+/// Queries Antigravity's quota endpoint using `agy`'s stored OAuth access token.
+fn probe_antigravity_usage(
+    runtime: &tokio::runtime::Handle,
+    http: Option<&DynHttpClient>,
+) -> String {
+    let Some(http) = http else {
+        return "unavailable (no HTTP client)".to_owned();
+    };
+    let Some((token, business)) = read_antigravity_token() else {
+        return "unavailable (not signed in: run `agy`)".to_owned();
+    };
+    let hosts = if business {
+        [
+            "https://cloudcode-pa.googleapis.com",
+            "https://daily-cloudcode-pa.googleapis.com",
+        ]
+    } else {
+        [
+            "https://daily-cloudcode-pa.googleapis.com",
+            "https://cloudcode-pa.googleapis.com",
+        ]
+    };
+    let ua = format!(
+        "antigravity/hub/2.24.0 (aidev_client; os_type={}; arch={}; cl=963137146)",
+        std::env::consts::OS,
+        std::env::consts::ARCH
+    );
+    for host in hosts {
+        let url = format!("{host}/v1internal:fetchAvailableModels");
+        if let Ok(value) = fetch_json(
+            runtime,
+            http,
+            Method::POST,
+            &url,
+            &token,
+            Some(&ua),
+            Some(b"{}"),
+        ) && let Some(formatted) = parse_antigravity_usage(&value)
+        {
+            return formatted;
+        }
+    }
+    "unavailable (could not query Antigravity quota; run `agy` to refresh sign-in)".to_owned()
+}
+
+fn read_antigravity_token() -> Option<(String, bool)> {
+    let text = std::fs::read_to_string(crate::antigravity::signed_in()?).ok()?;
+    let value: Value = serde_json::from_str(&text).ok()?;
+    let token = value
+        .pointer("/token/access_token")
+        .or_else(|| value.get("access_token"))
+        .and_then(Value::as_str)
+        .filter(|tok| !tok.is_empty())?
+        .to_owned();
+    let business = value.get("auth_method").and_then(Value::as_str) == Some("oauth-business");
+    Some((token, business))
+}
+
+/// Summarizes Antigravity's `fetchAvailableModels` per-model `quotaInfo` by
+/// model family (tightest remaining fraction per family).
+pub(crate) fn parse_antigravity_usage(value: &Value) -> Option<String> {
+    let models = value.get("models").and_then(Value::as_object)?;
+    let mut gemini: Option<(f64, Option<&str>)> = None;
+    let mut claude: Option<(f64, Option<&str>)> = None;
+    fn update<'a>(slot: &mut Option<(f64, Option<&'a str>)>, rem: f64, reset: Option<&'a str>) {
+        if slot.is_none_or(|(best, _)| rem < best) {
+            *slot = Some((rem, reset));
+        }
+    }
+    for (id, entry) in models {
+        let Some(quota) = entry.get("quotaInfo") else {
+            continue;
+        };
+        let Some(rem) = quota.get("remainingFraction").and_then(Value::as_f64) else {
+            continue;
+        };
+        let reset = quota.get("resetTime").and_then(Value::as_str);
+        if id.starts_with("gemini-") {
+            update(&mut gemini, rem, reset);
+        } else if id.starts_with("claude-") {
+            update(&mut claude, rem, reset);
+        }
+    }
+    let fmt = |label: &str, (rem, reset): (f64, Option<&str>)| {
+        let used = ((1.0 - rem.clamp(0.0, 1.0)) * 100.0).round();
+        let reset = reset
+            .map(|ts| format!(" (resets {})", short_iso(ts)))
+            .unwrap_or_default();
+        format!("{label} {used:.0}% used{reset}")
+    };
+    let mut parts = Vec::new();
+    if let Some(entry) = gemini {
+        parts.push(fmt("Gemini", entry));
+    }
+    if let Some(entry) = claude {
+        parts.push(fmt("Claude", entry));
+    }
+    (!parts.is_empty()).then(|| parts.join(", "))
+}
+
+/// Queries GitHub Copilot's subscription quota via `gh api /copilot_internal/user`.
+fn probe_copilot_usage(processes: &Processes) -> String {
+    match probe_cli_json(
+        processes,
+        Path::new("gh"),
+        &["api", "/copilot_internal/user"],
+    ) {
+        Ok(value) => parse_copilot_usage(&value),
+        Err(_) => "unavailable (sign in with `gh auth login` for Copilot quota)".to_owned(),
+    }
+}
+
+/// Formats GitHub's `/copilot_internal/user` quota response.
+pub(crate) fn parse_copilot_usage(value: &Value) -> String {
+    let mut parts: Vec<String> = value
+        .get("copilot_plan")
+        .and_then(Value::as_str)
+        .map(|plan| format!("plan {plan}"))
+        .into_iter()
+        .collect();
+    let reset = value
+        .get("quota_reset_date")
+        .or_else(|| value.get("quota_reset_date_utc"))
+        .and_then(Value::as_str)
+        .map(|ts| format!(" (resets {})", ts.get(..10).unwrap_or(ts)))
+        .unwrap_or_default();
+    if let Some(premium) = value.pointer("/quota_snapshots/premium_interactions") {
+        if premium.get("unlimited").and_then(Value::as_bool) == Some(true) {
+            parts.push("premium unlimited".to_owned());
+        } else if let Some(pct_rem) = premium.get("percent_remaining").and_then(Value::as_f64) {
+            let used = (100.0 - pct_rem.clamp(0.0, 100.0)).round();
+            let count = match (
+                premium.get("remaining").and_then(Value::as_i64),
+                premium.get("entitlement").and_then(Value::as_i64),
+            ) {
+                (Some(rem), Some(total)) if total > 0 => format!(" [{rem}/{total} left]"),
+                _ => String::new(),
+            };
+            parts.push(format!("premium {used:.0}% used{count}{reset}"));
+        }
+    }
+    if parts.is_empty() {
+        "unavailable".to_owned()
+    } else {
+        parts.join(", ")
     }
 }
 

@@ -66,7 +66,7 @@ fn settings(opening: &Opening) -> PathBuf {
 }
 
 /// Where the user's sign-in is kept.
-fn signed_in() -> Option<PathBuf> {
+pub(crate) fn signed_in() -> Option<PathBuf> {
     let home = PathBuf::from(std::env::var_os("HOME")?);
     Some(home.join(".gemini").join(APP_DATA).join(TOKEN))
 }
