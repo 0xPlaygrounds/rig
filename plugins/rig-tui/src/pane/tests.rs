@@ -237,8 +237,8 @@ fn numbered(rows: &[String]) -> Vec<usize> {
 }
 
 #[test]
-fn a_page_key_keeps_a_line_of_text_and_stops_at_the_ends() {
-    // 20 rows page by 18.
+fn a_page_key_scrolls_half_a_page_and_stops_at_the_ends() {
+    // 20 rows page by 9 (half of 19 text rows).
     for height in [20, 10, 2, 1] {
         let (mut app, _) = view_app();
         app.insert_resource(TuiTestScreen::new(60, 30));
@@ -265,10 +265,18 @@ fn a_page_key_keeps_a_line_of_text_and_stops_at_the_ends() {
         let back = shown(&app);
         let progress = [&bottom, &first, &second, &back].map(|rows| rows.first().copied());
         if height >= 10 {
-            // The old top text row is the new bottom one, and back.
-            assert_eq!(first.last(), bottom.first(), "{progress:?}");
-            assert_eq!(second.last(), first.first(), "{progress:?}");
-            assert_eq!(back.first(), second.last(), "{progress:?}");
+            let step = (usize::from(height) - 1) / 2;
+            assert_eq!(
+                first.first().copied(),
+                bottom.first().map(|n| n - step),
+                "{progress:?}"
+            );
+            assert_eq!(
+                second.first().copied(),
+                first.first().map(|n| n - step),
+                "{progress:?}"
+            );
+            assert_eq!(back, first, "{progress:?}");
         } else {
             let [bottom, first, second, back] = progress;
             let shown = progress.iter().all(Option::is_some);

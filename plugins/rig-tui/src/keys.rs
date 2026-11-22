@@ -635,8 +635,8 @@ fn built_in() -> Vec<(Keys, &'static str, InputAction)> {
             "Scroll down",
             Do::ScrollDown,
         ),
-        (key(K::PageUp), "Scroll a page up", Do::PageUp),
-        (key(K::PageDown), "Scroll a page down", Do::PageDown),
+        (key(K::PageUp), "Scroll half a page up", Do::PageUp),
+        (key(K::PageDown), "Scroll half a page down", Do::PageDown),
         (key(K::Tab), "Complete, or send after this turn", Do::Tab),
         (key(K::Enter), "Send, or steer the running turn", Do::Send),
         (
