@@ -634,3 +634,112 @@ fn enter_after_a_pasted_partial_command_does_not_complete_it() {
     type_text(&mut app, "p");
     assert!(app.world().resource::<TuiView>().completion.is_none());
 }
+
+/// Waiting inbox messages for `agent` (accepted and not yet answered), in
+/// send order: `(mode, text)`.
+fn waiting_inbox(app: &mut App, agent: Entity) -> Vec<(DeliveryMode, String)> {
+    let world = app.world_mut();
+    let mut query = world
+        .query_filtered::<(&Effect, &Incoming, &ForAgent), (With<Started>, Without<Outcome>)>();
+    let mut items: Vec<_> = query
+        .iter(world)
+        .filter(|(.., to)| to.0 == agent)
+        .map(|(effect, message, _)| (effect.id(), message.mode, message.text().to_owned()))
+        .collect();
+    items.sort_by_key(|(id, ..)| *id);
+    items
+        .into_iter()
+        .map(|(_, mode, text)| (mode, text))
+        .collect()
+}
+
+/// Pressing Up on an empty input while a steering message is waiting pulls
+/// that message back out of the inbox so editing and re-sending replaces it
+/// instead of queuing a second steering message.
+#[test]
+fn up_recalls_waiting_steering_message_to_edit_instead_of_duplicating() {
+    let (mut app, agent) = view_app();
+    // Simulate a running turn so Enter steers into the inbox.
+    app.world_mut().spawn(TurnOf(agent));
+    app.update();
+
+    type_text(&mut app, "first steer");
+    press(&mut app, "enter");
+    assert_eq!(typed(&app), "");
+    assert_eq!(
+        waiting_inbox(&mut app, agent),
+        [(DeliveryMode::Steer, "first steer".to_owned())]
+    );
+
+    // Up on empty input recalls the waiting message and removes it from the inbox.
+    press(&mut app, "up");
+    assert_eq!(typed(&app), "first steer");
+    assert!(waiting_inbox(&mut app, agent).is_empty());
+
+    // Editing and sending queues only the updated steering message.
+    type_text(&mut app, " edited");
+    press(&mut app, "enter");
+    assert_eq!(typed(&app), "");
+    assert_eq!(
+        waiting_inbox(&mut app, agent),
+        [(DeliveryMode::Steer, "first steer edited".to_owned())]
+    );
+}
+
+/// Up recalls waiting user Steer/Queue messages newest-first only when the
+/// main input is empty, leaving Inform notes, non-user messages, and typed
+/// drafts untouched, and falls back to prompt history once none remain.
+#[test]
+fn up_recalls_waiting_messages_newest_first_and_preserves_drafts_and_other_messages() {
+    let (mut app, agent) = view_app();
+    app.world_mut().spawn(TurnOf(agent));
+    app.update();
+
+    // Non-user steer and user Inform messages must not be recalled by Up.
+    app.world_mut().trigger(
+        Deliver::new(agent, "subagent note", DeliveryMode::Steer).with_author(Author::rig()),
+    );
+    app.world_mut()
+        .trigger(Deliver::new(agent, "fyi note", DeliveryMode::Inform));
+    app.update();
+
+    type_text(&mut app, "steer one");
+    press(&mut app, "enter");
+    type_text(&mut app, "queue two");
+    press(&mut app, "tab");
+    assert_eq!(
+        waiting_inbox(&mut app, agent),
+        [
+            (DeliveryMode::Steer, "subagent note".to_owned()),
+            (DeliveryMode::Inform, "fyi note".to_owned()),
+            (DeliveryMode::Steer, "steer one".to_owned()),
+            (DeliveryMode::Queue, "queue two".to_owned()),
+        ]
+    );
+
+    // A non-empty draft is not clobbered by Up.
+    type_text(&mut app, "draft");
+    press(&mut app, "up");
+    assert_eq!(typed(&app), "draft");
+    assert_eq!(waiting_inbox(&mut app, agent).len(), 4);
+
+    // Clear draft, then Up pops newest ("queue two"), then ("steer one").
+    press(&mut app, "ctrl+c");
+    press(&mut app, "up");
+    assert_eq!(typed(&app), "queue two");
+    press(&mut app, "ctrl+c");
+    press(&mut app, "up");
+    assert_eq!(typed(&app), "steer one");
+    assert_eq!(
+        waiting_inbox(&mut app, agent),
+        [
+            (DeliveryMode::Steer, "subagent note".to_owned()),
+            (DeliveryMode::Inform, "fyi note".to_owned()),
+        ]
+    );
+
+    // With no waiting user Steer/Queue messages left, Up browses prompt history.
+    press(&mut app, "ctrl+c");
+    press(&mut app, "up");
+    assert_eq!(typed(&app), "steer one");
+}

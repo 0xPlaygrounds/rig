@@ -303,7 +303,8 @@ Typing while the agent works is fine. Enter steers the running turn:
 already-running tool calls finish, unstarted tool calls in the same reply are
 skipped (unless a plugin is holding them), and the message goes to the model
 on its next call. Tab queues a follow-up that is sent when the turn would end.
-Both wait under the transcript. Esc stops the turn and puts them back in the input
+Both wait under the transcript; Up on an empty input pulls the last waiting
+message back to edit or cancel. Esc stops the turn and puts them back in the input
 (a plugin may keep them for the next turn instead); what the reply had
 streamed stays in the transcript, saved as stopped. A tool call cut while its
 arguments streamed stays as a row that says it never ran; the model later
