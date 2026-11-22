@@ -2,16 +2,69 @@
 //! takes prompts and reports what its model says. Each harness module
 //! implements [`Harness`] for one program's protocol.
 
+use std::fmt;
 use std::path::Path;
 use std::process::Command;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use rig_harness::rig_core::completion::{Effort, ToolDefinition, Usage};
+use rig_harness::rig_core::completion::{Effort, FinishReason, ToolDefinition, Usage};
 use rig_harness::rig_tools::process::Process;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::mpsc;
 
 use crate::mcp::Entry;
+
+/// Every coding-agent vendor bridged by this plugin.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) enum Vendor {
+    ClaudeCode,
+    GrokBuild,
+    Antigravity,
+    Codex,
+    Muse,
+    Copilot,
+}
+
+impl Vendor {
+    /// Stable catalog vendor name used in `<vendor>/<model>`.
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::ClaudeCode => "claude-code",
+            Self::GrokBuild => "grok-build",
+            Self::Antigravity => "antigravity",
+            Self::Codex => "codex",
+            Self::Muse => "muse",
+            Self::Copilot => "copilot",
+        }
+    }
+
+    /// Human-readable display label for `/bridge` output.
+    pub(crate) const fn label(self) -> &'static str {
+        match self {
+            Self::ClaudeCode => "Claude Code",
+            Self::GrokBuild => "Grok Build",
+            Self::Antigravity => "Antigravity",
+            Self::Codex => "Codex",
+            Self::Muse => "Meta AI Muse",
+            Self::Copilot => "GitHub Copilot",
+        }
+    }
+}
+
+impl fmt::Display for Vendor {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// Live single-inference context window metrics reported by a harness.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct ContextSnapshot {
+    /// Tokens currently occupying the model's context window.
+    pub used: Option<u64>,
+    /// Authoritative context window limit in tokens.
+    pub window: Option<u32>,
+}
 
 /// One piece of a prompt.
 #[derive(Debug, Clone, PartialEq)]
@@ -39,15 +92,10 @@ pub(crate) enum Event {
     Began,
     /// The token counters of one inference.
     Usage(Usage),
-    /// Context window metrics reported at runtime by a harness (for example,
-    /// ACP `usage_update` with `used` tokens currently in context and `size`
-    /// window).
-    Context {
-        used: Option<u64>,
-        size: Option<u32>,
-    },
-    /// The prompt is answered, or failed for the reason given.
-    Done(Result<(), String>),
+    /// Context window metrics reported at runtime by a harness.
+    Context(ContextSnapshot),
+    /// The prompt is answered with its finish reason, or failed.
+    Done(Result<FinishReason, String>),
 }
 
 /// What a session is started with.
@@ -123,6 +171,15 @@ pub(crate) fn note(shown: &str, how: &str, scratch: Option<Option<&Path>>) -> St
     note
 }
 
+/// Makes `to` a symlink to `from` so renewed credentials stay shared with the
+/// user's own sessions.
+pub(crate) fn link(from: &Path, to: &Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    return std::os::unix::fs::symlink(from, to);
+    #[cfg(not(unix))]
+    return Err(std::io::Error::other("this platform has no links"));
+}
+
 /// The pipes of a process started with all three piped.
 pub(crate) struct Pipes {
     pub stdin: tokio::process::ChildStdin,
@@ -177,10 +234,7 @@ impl Stderr {
                 let mut tail = tail.lock().unwrap_or_else(PoisonError::into_inner);
                 tail.push_str(&line);
                 tail.push('\n');
-                let over = tail.len().saturating_sub(KEPT);
-                let cut = (over..=tail.len())
-                    .find(|at| tail.is_char_boundary(*at))
-                    .unwrap_or(0);
+                let cut = tail.ceil_char_boundary(tail.len().saturating_sub(KEPT));
                 tail.drain(..cut);
             }
         });

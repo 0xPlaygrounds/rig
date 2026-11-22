@@ -223,7 +223,7 @@ impl Agent for Grok {
 
     /// A call of one of the two tools that reach MCP servers, of which the
     /// session has Rig's alone, and of no tool of another server.
-    fn is_rig_tool(&self, tool_call: &Value) -> bool {
+    fn is_rig_tool(&self, tool_call: &Value, _: Option<&str>) -> bool {
         let built_in = tool_call
             .get("_meta")
             .and_then(|meta| meta.get("x.ai/tool"))
@@ -234,8 +234,10 @@ impl Agent for Grok {
             .and_then(|input| input.get("tool_name"))
             .and_then(Value::as_str);
         let rigs = |name: &str| {
-            let rest = name.strip_prefix(SERVER);
-            rest.is_some_and(|rest| rest.starts_with("__"))
+            name == "search_tool"
+                || name
+                    .strip_prefix(SERVER)
+                    .is_some_and(|rest| rest.starts_with("__"))
         };
         built_in.is_some_and(|name| META_TOOLS.contains(&name)) && named.is_none_or(rigs)
     }

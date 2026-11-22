@@ -21,6 +21,7 @@ fn the_listed_models_are_read_with_the_default_first() {
 fn only_a_call_that_reaches_rig_s_server_is_a_rig_tool() {
     let meta = |name: &str| json!({ "x.ai/tool": { "name": name } });
     let search = json!({ "title": "search_tool", "rawInput": { "query": "read" }, "_meta": meta("search_tool") });
+    let use_search = json!({ "title": "search_tool", "rawInput": { "variant": "UseTool", "tool_name": "search_tool", "tool_input": { "query": "read" } }, "_meta": meta("use_tool") });
     let ours = json!({ "rawInput": { "tool_name": "rig__read", "tool_input": {} }, "_meta": meta("use_tool") });
     let other_server =
         json!({ "rawInput": { "tool_name": "rigged__read" }, "_meta": meta("use_tool") });
@@ -29,9 +30,10 @@ fn only_a_call_that_reaches_rig_s_server_is_a_rig_tool() {
         json!({ "rawInput": { "tool_name": "rig__read" }, "_meta": meta("run_terminal_cmd") });
     let unnamed = json!({ "rawInput": { "tool_name": "rig__read" } });
 
-    let judged = [search, ours, other_server, dressed, unnamed].map(|call| Grok.is_rig_tool(&call));
+    let judged = [search, use_search, ours, other_server, dressed, unnamed]
+        .map(|call| Grok.is_rig_tool(&call, None));
 
-    assert_eq!(judged, [true, true, false, false, false]);
+    assert_eq!(judged, [true, true, true, false, false, false]);
 }
 
 #[test]

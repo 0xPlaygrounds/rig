@@ -54,9 +54,9 @@ fn copilot_accepts_only_rig_prefixed_tool_titles() {
     let prefixed = json!({ "title": "rig-read" });
     let other = json!({ "title": "bash" });
 
-    assert!(Copilot.is_rig_tool_with_title(&stripped, Some("rig-read")));
-    assert!(!Copilot.is_rig_tool_with_title(&stripped, Some("bash")));
-    assert!(!Copilot.is_rig_tool_with_title(&stripped, None));
-    assert!(Copilot.is_rig_tool_with_title(&prefixed, None));
-    assert!(!Copilot.is_rig_tool_with_title(&other, None));
+    assert!(Copilot.is_rig_tool(&stripped, Some("rig-read")));
+    assert!(!Copilot.is_rig_tool(&stripped, Some("bash")));
+    assert!(!Copilot.is_rig_tool(&stripped, None));
+    assert!(Copilot.is_rig_tool(&prefixed, None));
+    assert!(!Copilot.is_rig_tool(&other, None));
 }

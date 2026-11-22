@@ -1,4 +1,4 @@
-use rig_harness::rig_core::completion::Usage;
+use rig_harness::rig_core::completion::{FinishReason, Usage};
 use serde_json::json;
 
 use super::{Reader, user_message};
@@ -130,13 +130,27 @@ fn a_result_ends_the_prompt_and_an_error_result_says_why() {
         "content": [{ "type": "text", "text": "You are out of usage." }] } }),
     );
 
-    assert_eq!(answered, vec![Event::Done(Ok(()))]);
+    assert_eq!(answered, vec![Event::Done(Ok(FinishReason::Stop))]);
     assert_eq!(
         limited,
         vec![Event::Done(Err("You are out of usage.".to_owned()))]
     );
     assert_eq!(failed, vec![Event::Done(Err("a; b".to_owned()))]);
     assert_eq!(notice, Vec::new());
+
+    let truncated = read(
+        &mut reader,
+        json!({ "type": "result", "subtype": "success", "is_error": false, "stop_reason": "max_tokens" }),
+    );
+    let refused = read(
+        &mut reader,
+        json!({ "type": "result", "subtype": "success", "is_error": false, "stop_reason": "refusal" }),
+    );
+    assert_eq!(truncated, vec![Event::Done(Ok(FinishReason::Length))]);
+    assert_eq!(
+        refused,
+        vec![Event::Done(Err("the model refused to answer".to_owned()))]
+    );
 }
 
 #[test]

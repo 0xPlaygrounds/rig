@@ -6,7 +6,7 @@
 use std::collections::HashSet;
 use std::path::Path;
 
-use rig_harness::rig_core::completion::{Effort, Usage};
+use rig_harness::rig_core::completion::{Effort, FinishReason, Usage};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -28,7 +28,7 @@ const TOOL_TIMEOUT_MS: &str = "86400000";
 /// Variables a child `claude` must not inherit: those that say this process
 /// runs inside Claude Code, and those that would make it answer with an API
 /// key or another provider instead of its own sign-in.
-const INHERITED: &[&str] = &[
+pub(crate) const INHERITED: &[&str] = &[
     "ANTHROPIC_API_KEY",
     "ANTHROPIC_AUTH_TOKEN",
     "ANTHROPIC_BASE_URL",
@@ -113,24 +113,32 @@ impl Harness for Claude {
         let (process, pipes) = spawn(command)?;
         let (prompts, mut prompted) = mpsc::unbounded_channel::<Vec<Part>>();
         let (events, reported) = mpsc::unbounded_channel();
-        let mut stdin = pipes.stdin;
-        tokio::spawn(async move {
-            while let Some(prompt) = prompted.recv().await {
-                let mut line = user_message(&prompt).to_string();
-                line.push('\n');
-                if stdin.write_all(line.as_bytes()).await.is_err() {
-                    return;
-                }
-            }
-        });
         let stderr = Stderr::follow(pipes.stderr);
         tokio::spawn(async move {
+            let mut stdin = pipes.stdin;
             let mut reader = Reader::default();
             let mut lines = BufReader::new(pipes.stdout).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                for event in reader.read(&line) {
-                    if events.send(event).is_err() {
-                        return;
+            loop {
+                tokio::select! {
+                    prompt = prompted.recv() => {
+                        let Some(prompt) = prompt else {
+                            return;
+                        };
+                        let mut line = user_message(&prompt).to_string();
+                        line.push('\n');
+                        if stdin.write_all(line.as_bytes()).await.is_err() {
+                            break;
+                        }
+                    }
+                    line = lines.next_line() => match line {
+                        Ok(Some(line)) => {
+                            for event in reader.read(&line) {
+                                if events.send(event).is_err() {
+                                    return;
+                                }
+                            }
+                        }
+                        Ok(None) | Err(_) => break,
                     }
                 }
             }
@@ -194,6 +202,8 @@ enum Line {
     Result {
         #[serde(default)]
         is_error: bool,
+        #[serde(default)]
+        stop_reason: Option<String>,
         #[serde(default)]
         result: Option<String>,
         #[serde(default)]
@@ -374,9 +384,11 @@ impl Reader {
             Line::Assistant { .. } | Line::Other => Vec::new(),
             Line::Result {
                 is_error,
+                stop_reason,
                 result,
                 errors,
             } => {
+                self.streamed.clear();
                 let done = if is_error {
                     let why = result.unwrap_or_else(|| errors.join("; "));
                     Err(if why.is_empty() {
@@ -385,7 +397,11 @@ impl Reader {
                         why
                     })
                 } else {
-                    Ok(())
+                    match stop_reason.as_deref() {
+                        Some("max_tokens") => Ok(FinishReason::Length),
+                        Some("refusal") => Err("the model refused to answer".to_owned()),
+                        _ => Ok(FinishReason::Stop),
+                    }
                 };
                 vec![Event::Done(done)]
             }

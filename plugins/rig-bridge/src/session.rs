@@ -31,7 +31,8 @@ use rig_harness::rig_core::serve::{Dispatch, Reply, Serve};
 use serde_json::{Value, json};
 use tokio::sync::{OnceCell, mpsc, oneshot};
 
-use crate::harness::{Event, Harness, Launch, Part, Running};
+use crate::commands::BridgeSignal;
+use crate::harness::{ContextSnapshot, Event, Harness, Launch, Part, Running, Vendor};
 use crate::mcp::{Call, Entry, Outcome, Server};
 
 #[cfg(test)]
@@ -42,6 +43,9 @@ mod tests;
 /// say how many follow; a call that arrives later starts the next reply. A
 /// reply also stays open until the inference that made the call is counted.
 const SETTLE: Duration = Duration::from_millis(50);
+
+/// Maximum time a pending `Began` counter may delay settling an open tool call.
+const COUNT_SETTLE: Duration = Duration::from_secs(2);
 
 /// How long a harness told that the tools changed has to list them again.
 const RELIST: Duration = Duration::from_secs(5);
@@ -54,8 +58,8 @@ pub(crate) const REPLAY_BUDGET: usize = 160 * 1024;
 /// Bytes kept from the head and tail when eliding an old tool output.
 const TOOL_PREVIEW_BYTES: usize = 1024;
 
-/// Minimum input tokens before a warm turn with `cached_input_tokens == 0`
-/// triggers a cache-drop warning (below this, providers may skip caching).
+/// Minimum input tokens before consecutive warm prompts with zero cached tokens
+/// trigger a cache-drop warning (below this, providers may skip caching).
 const CACHE_WARN_MIN_INPUT: u64 = 2048;
 
 /// Prefix of per-session scratch directories created under the bridge root.
@@ -78,7 +82,7 @@ pub(crate) struct VendorStats {
 /// Summary of one warm idle harness process.
 #[derive(Debug, Clone)]
 pub(crate) struct WarmSession {
-    pub vendor: &'static str,
+    pub vendor: Vendor,
     pub model: String,
     pub turns: u32,
     pub relists: bool,
@@ -91,7 +95,7 @@ pub(crate) struct WarmSession {
 pub(crate) struct BridgeSnapshot {
     pub scratch_root: PathBuf,
     pub warm: Vec<WarmSession>,
-    pub vendors: BTreeMap<&'static str, VendorStats>,
+    pub vendors: BTreeMap<Vendor, VendorStats>,
 }
 
 /// What the bridge's models share: where harnesses run and the sessions
@@ -109,9 +113,9 @@ pub(crate) struct Bridge {
     /// Disk-backed root directory where per-session scratch dirs live.
     scratch_root: PathBuf,
     /// Per-vendor usage and diagnostic state.
-    stats: Mutex<BTreeMap<&'static str, VendorStats>>,
-    /// Optional channel for surfacing non-fatal warnings to Rig's UI.
-    notices: Option<mpsc::UnboundedSender<String>>,
+    stats: Mutex<BTreeMap<Vendor, VendorStats>>,
+    /// Optional channel for notices and runtime context window updates.
+    signals: Option<mpsc::UnboundedSender<BridgeSignal>>,
 }
 
 impl Bridge {
@@ -131,12 +135,12 @@ impl Bridge {
             limit,
             scratch_root,
             stats: Mutex::default(),
-            notices: None,
+            signals: None,
         }
     }
 
-    pub(crate) fn with_notices(mut self, notices: mpsc::UnboundedSender<String>) -> Self {
-        self.notices = Some(notices);
+    pub(crate) fn with_signals(mut self, signals: mpsc::UnboundedSender<BridgeSignal>) -> Self {
+        self.signals = Some(signals);
         self
     }
 
@@ -148,7 +152,7 @@ impl Bridge {
         self.waiting.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    fn stats(&self) -> std::sync::MutexGuard<'_, BTreeMap<&'static str, VendorStats>> {
+    fn stats(&self) -> std::sync::MutexGuard<'_, BTreeMap<Vendor, VendorStats>> {
         self.stats.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
@@ -187,13 +191,7 @@ impl Bridge {
         }
     }
 
-    fn record_usage(
-        &self,
-        vendor: &'static str,
-        model: &str,
-        usage: &Usage,
-        context_limit: Option<u32>,
-    ) {
+    fn record_usage(&self, vendor: Vendor, model: &str, usage: &Usage, context_limit: Option<u32>) {
         let mut stats = self.stats();
         let entry = stats.entry(vendor).or_default();
         entry.calls = entry.calls.saturating_add(1);
@@ -213,31 +211,52 @@ impl Bridge {
         }
     }
 
-    fn record_note(&self, vendor: &'static str, note: String) {
+    fn record_note(&self, vendor: Vendor, note: String) {
         let mut stats = self.stats();
         stats.entry(vendor).or_default().last_note = Some(note);
     }
 
-    fn warn(&self, message: String) {
-        if let Some(notices) = &self.notices {
-            let _ = notices.send(message);
+    fn warn(&self, text: String) {
+        if let Some(signals) = &self.signals {
+            let _ = signals.send(BridgeSignal::Notice { warn: true, text });
+        }
+    }
+
+    fn report_window(&self, vendor: Vendor, model: &str, limit: u32) {
+        if let Some(signals) = &self.signals {
+            let _ = signals.send(BridgeSignal::Window {
+                vendor,
+                model: model.to_owned(),
+                limit,
+            });
         }
     }
 
     /// The waiting session `history` continues, with what to send it.
+    /// Any idle session whose harness has already exited is pruned so the
+    /// conversation transparently starts a fresh process.
     fn resume(&self, setup: &Setup, history: &[Arc<Message>]) -> Option<(Session, Next)> {
-        let mut waiting = self.waiting();
-        let (index, next) = waiting
-            .iter()
-            .enumerate()
-            .rev()
-            .find_map(|(index, session)| {
-                (session.setup.fits(setup))
-                    .then(|| session.next(history))
-                    .flatten()
-                    .map(|next| (index, next))
-            })?;
-        waiting.remove(index).map(|session| (session, next))
+        let (found, dead) = {
+            let mut waiting = self.waiting();
+            let (alive, dead): (VecDeque<_>, VecDeque<_>) = waiting
+                .drain(..)
+                .partition(|session| !session.running.prompts.is_closed());
+            *waiting = alive;
+            let found = waiting
+                .iter()
+                .enumerate()
+                .rev()
+                .find_map(|(index, session)| {
+                    (session.setup.fits(setup))
+                        .then(|| session.next(history))
+                        .flatten()
+                        .map(|next| (index, next))
+                })
+                .and_then(|(index, next)| waiting.remove(index).map(|session| (session, next)));
+            (found, dead)
+        };
+        drop(dead);
+        found
     }
 
     /// Keeps `session` for its next request, ending those past the limit.
@@ -273,13 +292,14 @@ impl Setup {
 }
 
 /// A harness's model as an effect handler.
+#[derive(Clone)]
 pub(crate) struct Model {
     pub bridge: Arc<Bridge>,
     pub harness: Arc<dyn Harness>,
     /// The harness's program.
     pub program: PathBuf,
     /// The catalog vendor the model is filed under.
-    pub vendor: &'static str,
+    pub vendor: Vendor,
     /// The model's id, as the harness names it.
     pub model: String,
     /// The model's catalog input limit, when known.
@@ -311,16 +331,12 @@ impl Serve for Model {
             )));
         };
         let (out, mut written) = mpsc::unbounded_channel();
-        let step = Step {
-            bridge: self.bridge.clone(),
-            harness: self.harness.clone(),
-            program: self.program.clone(),
-            vendor: self.vendor,
-            model: self.model.clone(),
-            context_limit: self.context_limit,
-        };
-        self.bridge.runtime.spawn(step.run(request, out));
-        let origin = Origin::new(Api::from_static("bridge"), self.vendor, self.model.clone());
+        self.bridge.runtime.spawn(self.clone().run(request, out));
+        let origin = Origin::new(
+            Api::from_static("bridge"),
+            self.vendor.as_str(),
+            self.model.clone(),
+        );
         Reply::written(origin, |mut writer| async move {
             while let Some(wrote) = written.recv().await {
                 let sent = match wrote {
@@ -357,7 +373,7 @@ impl Serve for Model {
             .map(|option| {
                 UnsupportedOption::new(
                     option,
-                    self.vendor,
+                    self.vendor.as_str(),
                     self.model.clone(),
                     "the program takes no such option",
                 )
@@ -390,17 +406,7 @@ enum Wrote {
     Failed(String),
 }
 
-/// One request's work, run on the tokio runtime.
-struct Step {
-    bridge: Arc<Bridge>,
-    harness: Arc<dyn Harness>,
-    program: PathBuf,
-    vendor: &'static str,
-    model: String,
-    context_limit: Option<u32>,
-}
-
-impl Step {
+impl Model {
     async fn run(self, request: Arc<CompletionRequest>, out: mpsc::UnboundedSender<Wrote>) {
         let answered = tokio::select! {
             // The reply was dropped: the session ends with this future.
@@ -432,17 +438,21 @@ impl Step {
         let resumed = match self.bridge.resume(&setup, &history) {
             // The harness is told of other tools before it goes on, or is
             // ended when it cannot take them.
-            Some((mut session, next)) => (session.retool(&setup.tools).await
-                && session.send(next).is_ok())
-            .then_some(session),
+            Some((mut session, next)) => {
+                let is_prompt = matches!(next, Next::Prompt(_));
+                (session.retool(&setup.tools).await && session.send(next).is_ok())
+                    .then_some((session, is_prompt))
+            }
             None => None,
         };
-        let was_warm = resumed.is_some();
-        let mut session = match resumed {
-            Some(session) => session,
-            None => self.start(setup, &history).await?,
+        let (mut session, warm_prompt) = match resumed {
+            Some((session, is_prompt)) => (session, is_prompt),
+            None => (self.start(setup, &history).await?, false),
         };
-        let finish = session.answer(out).await?;
+        if warm_prompt {
+            session.prompts = session.prompts.saturating_add(1);
+        }
+        let finish = session.answer(out, &self.bridge).await?;
         session.turns = session.turns.saturating_add(1);
         if let Some(ctx) = finish.usage.context_tokens() {
             session.last_context_tokens = Some(ctx);
@@ -453,21 +463,30 @@ impl Step {
             &finish.usage,
             session.context_limit,
         );
-        if was_warm
-            && !session.warned_cache_drop
-            && finish.usage.input_tokens.unwrap_or(0) >= CACHE_WARN_MIN_INPUT
-            && finish.usage.cached_input_tokens == Some(0)
+        if session.prompts >= 2
+            && let Some(cached) = finish.usage.cached_input_tokens
         {
-            session.warned_cache_drop = true;
-            let input = finish.usage.input_tokens.unwrap_or(0);
-            let note = format!(
-                "warm turn reported 0 cached tokens ({input} input); prompt prefix may have changed"
-            );
-            self.bridge.record_note(self.vendor, note.clone());
-            self.bridge.warn(format!(
-                "rig-bridge ({}/{}): {note}",
-                self.vendor, self.model
-            ));
+            if cached > 0 {
+                session.consecutive_zero_cache = 0;
+                session.last_zero_cache_prompt = 0;
+            } else if finish.usage.input_tokens.unwrap_or(0) >= CACHE_WARN_MIN_INPUT
+                && session.last_zero_cache_prompt != session.prompts
+            {
+                session.last_zero_cache_prompt = session.prompts;
+                session.consecutive_zero_cache = session.consecutive_zero_cache.saturating_add(1);
+                if session.consecutive_zero_cache == 2 && !session.warned_cache_drop {
+                    session.warned_cache_drop = true;
+                    let input = finish.usage.input_tokens.unwrap_or(0);
+                    let note = format!(
+                        "2 consecutive warm prompts reported 0 cached tokens ({input} input); prompt prefix may have changed"
+                    );
+                    self.bridge.record_note(self.vendor, note.clone());
+                    self.bridge.warn(format!(
+                        "rig-bridge ({}/{}): {note}",
+                        self.vendor, self.model
+                    ));
+                }
+            }
         }
         session.seen = history;
         self.bridge.keep(session);
@@ -505,6 +524,9 @@ impl Step {
             setup,
             relists: self.harness.relists(),
             turns: 0,
+            prompts: 1,
+            consecutive_zero_cache: 0,
+            last_zero_cache_prompt: 0,
             warned_cache_drop: false,
             last_context_tokens: None,
             context_limit: self.context_limit,
@@ -558,26 +580,28 @@ fn split(messages: &[Arc<Message>]) -> (String, Vec<Arc<Message>>) {
 }
 
 /// A session's private directory, removed with it.
-struct Dir(PathBuf);
+pub(crate) struct Dir(PathBuf);
 
 impl Dir {
-    fn create(root: &Path) -> std::io::Result<Self> {
-        let mut root_builder = std::fs::DirBuilder::new();
-        root_builder.recursive(true);
-        #[cfg(unix)]
-        std::os::unix::fs::DirBuilderExt::mode(&mut root_builder, 0o700);
-        root_builder.create(root)?;
-
-        let pid = std::process::id();
-        let path = root.join(format!(
-            "{DIR_PREFIX}{pid}-{}",
-            uuid::Uuid::new_v4().simple()
-        ));
+    pub(crate) fn create(root: &Path) -> std::io::Result<Self> {
         let mut builder = std::fs::DirBuilder::new();
+        builder.recursive(true);
         #[cfg(unix)]
         std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+        builder.create(root)?;
+
+        let path = root.join(format!(
+            "{DIR_PREFIX}{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4().simple()
+        ));
+        builder.recursive(false);
         builder.create(&path)?;
         Ok(Self(path))
+    }
+
+    pub(crate) fn path(&self) -> &Path {
+        &self.0
     }
 }
 
@@ -661,13 +685,19 @@ impl Said {
 
 /// A running harness and where its conversation stands.
 struct Session {
-    vendor: &'static str,
+    vendor: Vendor,
     setup: Setup,
     /// Whether the harness takes a changed tool list while it runs.
     relists: bool,
-    /// How many turns this process has completed.
+    /// How many steps this process has completed.
     turns: u32,
-    /// Whether we already warned about a warm turn reporting 0 cached tokens.
+    /// How many user prompts (`Next::Prompt`) have been sent to this process.
+    prompts: u32,
+    /// Consecutive warm user prompts reporting 0 cached tokens.
+    consecutive_zero_cache: u8,
+    /// Prompt number most recently counted toward `consecutive_zero_cache`.
+    last_zero_cache_prompt: u32,
+    /// Whether we already warned about repeated warm prompts reporting 0 cached tokens.
     warned_cache_drop: bool,
     /// Context tokens reported on the last completed reply.
     last_context_tokens: Option<u64>,
@@ -735,7 +765,11 @@ impl Session {
             match content {
                 UserContent::ToolResult(result) => {
                     let index = calls.iter().position(|call| **call == result.call)?;
-                    *outcomes.get_mut(index)? = Some(outcome(result));
+                    let slot = outcomes.get_mut(index)?;
+                    if slot.is_some() {
+                        return None;
+                    }
+                    *slot = Some(outcome(result));
                 }
                 other => said.push(other),
             }
@@ -792,19 +826,24 @@ impl Session {
 
     /// Streams the harness into `out` until its turn ends or it calls
     /// tools, which stay open.
-    async fn answer(&mut self, out: &mpsc::UnboundedSender<Wrote>) -> Result<Finish, String> {
+    async fn answer(
+        &mut self,
+        out: &mpsc::UnboundedSender<Wrote>,
+        bridge: &Bridge,
+    ) -> Result<Finish, String> {
         self.said = Said::default();
         let mut usage = Usage::new();
         let mut usage_reports: u32 = 0;
         let mut last_inference_context: Option<u64> = None;
         let mut context_used: Option<u64> = None;
         let mut settled = None;
+        let mut count_deadline = None;
         // Whether an inference began whose counters have not arrived: a
         // harness may call a tool before it finishes reading the message.
         let mut counting = false;
         loop {
-            let settle = async {
-                match settled {
+            let wait_until = |at: Option<tokio::time::Instant>| async move {
+                match at {
                     Some(at) => tokio::time::sleep_until(at).await,
                     None => std::future::pending().await,
                 }
@@ -824,10 +863,14 @@ impl Session {
                         usage_reports = usage_reports.saturating_add(1);
                         usage += counted;
                         counting = false;
+                        count_deadline = None;
                     }
-                    Some(Event::Context { used, size }) => {
-                        if let Some(tokens) = size {
+                    Some(Event::Context(ContextSnapshot { used, window })) => {
+                        if let Some(tokens) = window
+                            && self.context_limit != Some(tokens)
+                        {
                             self.context_limit = Some(tokens);
+                            bridge.report_window(self.vendor, &self.setup.model, tokens);
                         }
                         if let Some(tokens) = used {
                             context_used = Some(tokens);
@@ -835,13 +878,13 @@ impl Session {
                     }
                     // A turn that ends with calls open gave them up: Rig
                     // must not run them for a harness that no longer waits.
-                    Some(Event::Done(Ok(()))) if !self.open.is_empty() => {
+                    Some(Event::Done(Ok(_))) if !self.open.is_empty() => {
                         return Err("the harness ended its turn before its tools answered".to_owned());
                     }
-                    Some(Event::Done(Ok(()))) => {
+                    Some(Event::Done(Ok(reason))) => {
                         return Ok(finish(
                             apply_context(usage, context_used, last_inference_context, usage_reports),
-                            FinishReason::Stop,
+                            reason,
                         ));
                     }
                     Some(Event::Done(Err(why))) => return Err(why),
@@ -854,9 +897,19 @@ impl Session {
                     self.said.calls.push((name.clone(), arguments.clone()));
                     let _ = out.send(Wrote::Call { name, arguments: Value::Object(arguments) });
                     self.open.push(answer);
-                    settled.get_or_insert_with(|| tokio::time::Instant::now() + SETTLE);
+                    let now = tokio::time::Instant::now();
+                    settled.get_or_insert(now + SETTLE);
+                    if counting {
+                        count_deadline.get_or_insert(now + COUNT_SETTLE);
+                    }
                 }
-                () = settle, if !counting => {
+                () = wait_until(settled), if !counting => {
+                    return Ok(finish(
+                        apply_context(usage, context_used, last_inference_context, usage_reports),
+                        FinishReason::ToolCalls,
+                    ));
+                }
+                () = wait_until(count_deadline), if counting => {
                     return Ok(finish(
                         apply_context(usage, context_used, last_inference_context, usage_reports),
                         FinishReason::ToolCalls,
@@ -975,105 +1028,53 @@ fn told(result: &ToolResult) -> String {
     text
 }
 
-/// One serialized piece of a prior message, distinguishing raw tool results
-/// so they can be elided before whole turns are dropped.
-struct ReplayPiece {
-    text: String,
-    is_tool_result: bool,
-    elided: bool,
-}
-
-/// One atomic replay unit (either a single message, or an assistant tool-call
-/// message paired with its following user tool-result message(s)).
-struct ReplayUnit {
-    pieces: Vec<ReplayPiece>,
-}
+/// One atomic replay unit: pieces of `(text, can_elide_as_tool_result)`.
+struct ReplayUnit(Vec<(String, bool)>);
 
 impl ReplayUnit {
     fn byte_len(&self) -> usize {
-        self.pieces.iter().map(|piece| piece.text.len()).sum()
+        self.0.iter().map(|(text, _)| text.len()).sum()
     }
-}
-
-/// Largest valid UTF-8 prefix of `text` of at most `max_bytes`.
-fn prefix_utf8(text: &str, max_bytes: usize) -> &str {
-    if text.len() <= max_bytes {
-        return text;
-    }
-    let mut end = max_bytes;
-    while end > 0 && !text.is_char_boundary(end) {
-        end -= 1;
-    }
-    text.get(..end).unwrap_or_default()
-}
-
-/// Largest valid UTF-8 suffix of `text` of at most `max_bytes`.
-fn suffix_utf8(text: &str, max_bytes: usize) -> &str {
-    if text.len() <= max_bytes {
-        return text;
-    }
-    let mut start = text.len().saturating_sub(max_bytes);
-    while start < text.len() && !text.is_char_boundary(start) {
-        start += 1;
-    }
-    text.get(start..).unwrap_or_default()
 }
 
 /// Elides the middle of a large tool output while keeping a UTF-8-safe head
-/// and tail preview plus the exact original byte count.
+/// and tail preview plus the original byte count.
 fn elide_tool_output(text: &str) -> String {
-    let min_to_elide = TOOL_PREVIEW_BYTES.saturating_mul(2).saturating_add(128);
-    if text.len() <= min_to_elide {
+    if text.len() <= TOOL_PREVIEW_BYTES.saturating_mul(2).saturating_add(128) {
         return text.to_owned();
     }
-    let head = prefix_utf8(text, TOOL_PREVIEW_BYTES);
-    let tail = suffix_utf8(text, TOOL_PREVIEW_BYTES);
+    let head = text
+        .get(..text.floor_char_boundary(TOOL_PREVIEW_BYTES))
+        .unwrap_or_default();
+    let tail_start = text.ceil_char_boundary(text.len().saturating_sub(TOOL_PREVIEW_BYTES));
+    let tail = text.get(tail_start..).unwrap_or_default();
     format!(
         "{head}\n... [tool output elided: {} bytes] ...\n{tail}",
         text.len()
     )
 }
 
-fn render_message_pieces(message: &Message) -> Vec<ReplayPiece> {
+fn render_message_pieces(message: &Message) -> Vec<(String, bool)> {
     match message {
         Message::User { content } => {
-            let mut out = vec![ReplayPiece {
-                text: "## User\n".to_owned(),
-                is_tool_result: false,
-                elided: false,
-            }];
+            let mut out = vec![("## User\n".to_owned(), false)];
             for item in content {
                 match item {
                     UserContent::ToolResult(result) => {
-                        let mut text = told(result);
-                        text.push('\n');
-                        out.push(ReplayPiece {
-                            text,
-                            is_tool_result: true,
-                            elided: false,
-                        });
+                        out.push((format!("{}\n", told(result)), true));
                     }
                     other => {
                         for part in parts([other]) {
-                            let mut line = match part {
-                                Part::Text(said) => said,
-                                Part::Image { .. } => "[an image]".to_owned(),
+                            let line = match part {
+                                Part::Text(said) => format!("{said}\n"),
+                                Part::Image { .. } => "[an image]\n".to_owned(),
                             };
-                            line.push('\n');
-                            out.push(ReplayPiece {
-                                text: line,
-                                is_tool_result: false,
-                                elided: false,
-                            });
+                            out.push((line, false));
                         }
                     }
                 }
             }
-            out.push(ReplayPiece {
-                text: "\n".to_owned(),
-                is_tool_result: false,
-                elided: false,
-            });
+            out.push(("\n".to_owned(), false));
             out
         }
         Message::Assistant(reply) => {
@@ -1091,55 +1092,39 @@ fn render_message_pieces(message: &Message) -> Vec<ReplayPiece> {
                 text.push('\n');
             }
             text.push('\n');
-            vec![ReplayPiece {
-                text,
-                is_tool_result: false,
-                elided: false,
-            }]
+            vec![(text, false)]
         }
         Message::System { .. } => Vec::new(),
     }
 }
 
-fn has_tool_calls(message: &Message) -> bool {
-    matches!(
-        message,
-        Message::Assistant(reply)
-            if reply
-                .content
-                .iter()
-                .any(|item| matches!(item, AssistantContent::ToolCall(_)))
-    )
-}
-
-fn has_tool_results(message: &Message) -> bool {
-    matches!(
-        message,
-        Message::User { content }
-            if content
-                .iter()
-                .any(|item| matches!(item, UserContent::ToolResult(_)))
-    )
-}
-
 fn group_replay_units(messages: &[Arc<Message>]) -> Vec<ReplayUnit> {
+    let is_tool_call = |m: &Message| {
+        matches!(
+            m,
+            Message::Assistant(r) if r.content.iter().any(|c| matches!(c, AssistantContent::ToolCall(_)))
+        )
+    };
+    let is_tool_result = |m: &Message| {
+        matches!(
+            m,
+            Message::User { content } if content.iter().any(|c| matches!(c, UserContent::ToolResult(_)))
+        )
+    };
     let mut units = Vec::new();
     let mut idx = 0;
-    while idx < messages.len() {
-        let Some(message) = messages.get(idx) else {
-            break;
-        };
+    while let Some(message) = messages.get(idx) {
         let mut pieces = render_message_pieces(message);
-        if has_tool_calls(message) {
+        if is_tool_call(message) {
             while let Some(next) = messages.get(idx + 1)
-                && has_tool_results(next)
+                && is_tool_result(next)
             {
                 idx += 1;
                 pieces.extend(render_message_pieces(next));
             }
         }
         if !pieces.is_empty() {
-            units.push(ReplayUnit { pieces });
+            units.push(ReplayUnit(pieces));
         }
         idx += 1;
     }
@@ -1171,9 +1156,11 @@ pub(crate) fn budgeted_opening(
     for message in latest {
         if let Message::User { content } = &**message {
             for part in parts(content) {
-                if let Part::Text(text) = &part {
-                    latest_bytes = latest_bytes.saturating_add(text.len());
-                }
+                let bytes = match &part {
+                    Part::Text(text) => text.len(),
+                    Part::Image { data, .. } => data.len(),
+                };
+                latest_bytes = latest_bytes.saturating_add(bytes);
                 latest_parts.push(part);
             }
         }
@@ -1199,15 +1186,15 @@ pub(crate) fn budgeted_opening(
         let mut elided_tools = 0usize;
         if total > history_budget {
             'elide: for unit in &mut units {
-                for piece in &mut unit.pieces {
-                    if !piece.is_tool_result || piece.elided {
+                for (piece, can_elide) in &mut unit.0 {
+                    if !*can_elide {
                         continue;
                     }
-                    let shrunk = elide_tool_output(&piece.text);
-                    if shrunk.len() < piece.text.len() {
-                        total = total.saturating_sub(piece.text.len() - shrunk.len());
-                        piece.text = shrunk;
-                        piece.elided = true;
+                    let shrunk = elide_tool_output(piece);
+                    if shrunk.len() < piece.len() {
+                        total = total.saturating_sub(piece.len() - shrunk.len());
+                        *piece = shrunk;
+                        *can_elide = false;
                         elided_tools += 1;
                         if total <= history_budget {
                             break 'elide;
@@ -1220,9 +1207,16 @@ pub(crate) fn budgeted_opening(
             trim_notes.push(format!("elided {elided_tools} old tool output(s)"));
         }
 
-        // Pass 2: drop oldest atomic turns until within budget.
+        // Pass 2: drop oldest turns while pinning a leading compaction summary.
+        let pin_summary = units.first().is_some_and(|unit| {
+            unit.0.iter().any(|(piece, _)| {
+                piece.contains("The conversation history before this point was compacted")
+                    || piece.contains("<summary>")
+            })
+        });
+        let mut kept_summary = pin_summary;
         let mut omitted_turns = 0usize;
-        let mut start = 0usize;
+        let mut start = usize::from(pin_summary);
         while total > history_budget && start < units.len() {
             if let Some(unit) = units.get(start) {
                 total = total.saturating_sub(unit.byte_len());
@@ -1230,11 +1224,20 @@ pub(crate) fn budgeted_opening(
             start += 1;
             omitted_turns += 1;
         }
+        if total > history_budget && kept_summary {
+            kept_summary = false;
+            omitted_turns += 1;
+        }
         if omitted_turns > 0 {
             trim_notes.push(format!("omitted {omitted_turns} earlier turn(s)"));
         }
 
         let mut text = String::from(header);
+        if kept_summary && let Some(summary) = units.first() {
+            for (piece, _) in &summary.0 {
+                text.push_str(piece);
+            }
+        }
         if omitted_turns > 0 {
             text.push_str(&format!(
                 "[{omitted_turns} earlier turn(s) omitted due to replay budget]\n\n"
@@ -1242,8 +1245,8 @@ pub(crate) fn budgeted_opening(
         }
         if let Some(kept) = units.get(start..) {
             for unit in kept {
-                for piece in &unit.pieces {
-                    text.push_str(&piece.text);
+                for (piece, _) in &unit.0 {
+                    text.push_str(piece);
                 }
             }
         }

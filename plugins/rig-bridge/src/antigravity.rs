@@ -10,6 +10,7 @@ use std::process::Command;
 use serde_json::{Value, json};
 
 use crate::acp::{Agent, Opening, SERVER};
+use crate::harness::link;
 
 #[cfg(test)]
 mod tests;
@@ -145,7 +146,7 @@ impl Agent for Antigravity {
         false
     }
 
-    fn is_rig_tool(&self, tool_call: &Value) -> bool {
+    fn is_rig_tool(&self, tool_call: &Value, _: Option<&str>) -> bool {
         let name = tool_call.get("name").and_then(Value::as_str);
         name.is_some_and(|name| name.starts_with(&format!("mcp_{SERVER}_")))
     }
@@ -173,21 +174,19 @@ impl Agent for Antigravity {
     }
 }
 
-/// Makes `to` a link to `from`.
-fn link(from: &Path, to: &Path) -> std::io::Result<()> {
-    #[cfg(unix)]
-    return std::os::unix::fs::symlink(from, to);
-    // A copy would keep a renewed token from the user's own sessions.
-    #[cfg(not(unix))]
-    return Err(std::io::Error::other("this platform has no links"));
-}
-
-/// The model ids `agy models` lists: the first column of each line.
-pub(crate) fn models(listing: &str) -> Vec<String> {
+/// The `(id, display_name)` pairs `agy models` lists: two tab-separated columns.
+pub(crate) fn models(listing: &str) -> Vec<(String, String)> {
     listing
         .lines()
         .filter_map(|line| line.split_once('\t'))
-        .map(|(id, _)| id.trim().to_owned())
-        .filter(|id| !id.is_empty() && !id.contains(char::is_whitespace))
+        .filter_map(|(id, name)| {
+            let id = id.trim();
+            if id.is_empty() || id.contains(char::is_whitespace) {
+                return None;
+            }
+            let name = name.trim();
+            let display = if name.is_empty() { id } else { name };
+            Some((id.to_owned(), display.to_owned()))
+        })
         .collect()
 }

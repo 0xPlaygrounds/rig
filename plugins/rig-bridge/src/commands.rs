@@ -1,25 +1,28 @@
-//! `/bridge` commands (`status`, `usage`, `reset`) and background UI notices.
+//! `/bridge` commands (`status`, `usage`, `reset`) and background signals.
 //!
-//! `/bridge status` and `/bridge reset` answer synchronously from the shared
-//! [`Bridge`] state. `/bridge usage` queries each installed harness's official
-//! quota interface in parallel off the UI thread (with a short timeout) and
-//! delivers the formatted report via the bridge notice channel so the UI never
-//! stalls.
+//! `/bridge status` and `/bridge reset` read shared [`Bridge`] state directly.
+//! `/bridge usage` probes each installed harness's official quota interface in
+//! parallel with a short timeout. Background signals also synchronize runtime
+//! context windows onto active agent [`Connection`]s.
 
-use std::io::{BufRead, BufReader, Write};
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
 use std::sync::{Arc, Mutex, PoisonError};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use bevy_ecs::message::Messages;
 use rig_harness::prelude::*;
+use rig_harness::rig_core::catalog::ModelSpec;
 use rig_harness::rig_core::completion::ContextUse;
+use rig_harness::rig_core::providers::registry::ProviderId;
+use rig_harness::rig_ecs::stage::AgentLoop;
 use rig_harness::rig_tools::process::{Process, Spawn};
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
 
-use crate::session::{Bridge, VendorStats};
+use crate::harness::{Vendor, link};
+use crate::rpc;
+use crate::session::{Bridge, Dir, VendorStats};
 
 #[cfg(test)]
 mod tests;
@@ -27,11 +30,16 @@ mod tests;
 /// Per-harness timeout for `/bridge usage` probes.
 const PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 
-/// A message queued from background bridge tasks for Rig's notice feed.
-pub(crate) struct BridgeNotice {
-    pub agent: Option<Entity>,
-    pub warn: bool,
-    pub text: String,
+/// Background bridge signal drained on Bevy's `Update` schedule.
+pub(crate) enum BridgeSignal {
+    /// A notice for Rig's UI feed.
+    Notice { warn: bool, text: String },
+    /// An authoritative runtime context window reported by a harness.
+    Window {
+        vendor: Vendor,
+        model: String,
+        limit: u32,
+    },
 }
 
 /// Shared handle held as a Bevy resource for `/bridge` commands.
@@ -42,41 +50,107 @@ pub(crate) struct BridgeHandle {
     pub installed: Vec<HarnessEntry>,
 }
 
-/// One configured harness and its resolved executable path (if installed).
+/// One configured harness and its resolved executable path, if installed.
 #[derive(Clone, Debug)]
 pub(crate) struct HarnessEntry {
-    pub vendor: &'static str,
-    pub label: &'static str,
+    pub vendor: Vendor,
     pub program: Option<PathBuf>,
     pub model_count: usize,
 }
 
-/// Receiver drained into Rig's [`Notice`] stream each frame.
+/// Receiver drained into Rig's UI, catalog, and active [`Connection`]s each frame.
 #[derive(Resource)]
-pub(crate) struct NoticeInbox(Mutex<mpsc::UnboundedReceiver<BridgeNotice>>);
+pub(crate) struct SignalInbox {
+    rx: Mutex<mpsc::UnboundedReceiver<BridgeSignal>>,
+    /// Agents whose `Connection` window was updated mid-turn and need one
+    /// `Connection` refresh once `LastUsage` settles (clearing any stale
+    /// `InputLimit` written from the call's pre-turn `SentTo` snapshot).
+    pending_refresh: Mutex<HashSet<Entity>>,
+}
 
-impl NoticeInbox {
-    pub(crate) fn new(rx: mpsc::UnboundedReceiver<BridgeNotice>) -> Self {
-        Self(Mutex::new(rx))
+impl SignalInbox {
+    pub(crate) fn new(rx: mpsc::UnboundedReceiver<BridgeSignal>) -> Self {
+        Self {
+            rx: Mutex::new(rx),
+            pending_refresh: Mutex::default(),
+        }
     }
 }
 
-/// Drains queued bridge notices into Rig's UI notice stream.
-pub(crate) fn drain_notices(
-    inbox: Option<Res<NoticeInbox>>,
+fn set_window(spec: &mut ModelSpec, limit: u32) {
+    spec.context_window = Some(limit);
+    spec.max_input_tokens = Some(limit);
+}
+
+/// Drains queued bridge signals into notices, the model catalog, and active
+/// agent connections.
+pub(crate) fn drain_signals(
+    inbox: Option<Res<SignalInbox>>,
     mut notices: Option<MessageWriter<Notice>>,
+    mut models: Option<ResMut<Models>>,
+    updated_usage: Query<(Entity, &Connection), Changed<LastUsage>>,
+    agents: Query<(Entity, &Connection)>,
+    mut commands: Commands,
 ) {
-    let (Some(inbox), Some(notices)) = (inbox, notices.as_mut()) else {
+    let Some(inbox) = inbox else {
         return;
     };
-    let mut rx = inbox.0.lock().unwrap_or_else(PoisonError::into_inner);
-    while let Ok(item) = rx.try_recv() {
-        let notice = if item.warn {
-            Notice::warn(item.agent, item.text)
-        } else {
-            Notice::info(item.agent, item.text)
-        };
-        notices.write(notice);
+    let mut pending = inbox
+        .pending_refresh
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
+    // Run before draining new signals so `conn.spec` already holds the
+    // updated window from an earlier frame rather than a stale pre-command value.
+    for (entity, conn) in &updated_usage {
+        if pending.remove(&entity) {
+            commands.entity(entity).insert(Connection {
+                spec: conn.spec.clone(),
+                handler: conn.handler.clone(),
+            });
+        }
+    }
+    let mut rx = inbox.rx.lock().unwrap_or_else(PoisonError::into_inner);
+    while let Ok(signal) = rx.try_recv() {
+        match signal {
+            BridgeSignal::Notice { warn, text } => {
+                if let Some(notices) = notices.as_mut() {
+                    let notice = if warn {
+                        Notice::warn(None, text)
+                    } else {
+                        Notice::info(None, text)
+                    };
+                    notices.write(notice);
+                }
+            }
+            BridgeSignal::Window {
+                vendor,
+                model,
+                limit,
+            } => {
+                if let Some(models) = models.as_deref_mut()
+                    && let Ok(pid) = ProviderId::declare(vendor.as_str())
+                    && let Some(mut spec) = models.0.catalog().get_exact(pid, &model).cloned()
+                    && spec.input_limit() != Some(limit)
+                {
+                    set_window(&mut spec, limit);
+                    models.0.catalog_mut().insert(spec);
+                }
+                for (entity, conn) in &agents {
+                    if conn.spec.provider.vendor() == vendor.as_str()
+                        && conn.spec.id == model
+                        && conn.spec.input_limit() != Some(limit)
+                    {
+                        let mut spec = (*conn.spec).clone();
+                        set_window(&mut spec, limit);
+                        commands.entity(entity).insert(Connection {
+                            spec: Arc::new(spec),
+                            handler: conn.handler.clone(),
+                        });
+                        pending.insert(entity);
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -90,50 +164,51 @@ pub(crate) fn command(
         notices.write(Notice::warn(args.agent, "Bridge plugin is not active."));
         return;
     };
-    let sub = args.args.split_whitespace().next().unwrap_or("status");
-    match sub {
-        "status" => {
-            notices.write(Notice::info(args.agent, format_status(&handle)));
-        }
+    let notice = match args.args.split_whitespace().next().unwrap_or("status") {
+        "status" => Notice::info(args.agent, format_status(&handle)),
+        "usage" => Notice::info(args.agent, collect_usage(&handle)),
         "reset" => {
-            let stopped = handle.bridge.reset();
-            let text = match stopped {
+            let text = match handle.bridge.reset() {
                 0 => "No warm bridge sessions were running.".to_owned(),
                 1 => "Stopped 1 warm bridge session and removed its scratch directory.".to_owned(),
                 n => format!(
                     "Stopped {n} warm bridge sessions and removed their scratch directories."
                 ),
             };
-            notices.write(Notice::info(args.agent, text));
+            Notice::info(args.agent, text)
         }
-        "usage" => {
-            notices.write(Notice::info(args.agent, collect_usage(&handle)));
-        }
-        other => {
-            notices.write(Notice::warn(
-                args.agent,
-                format!("Unknown `/bridge` subcommand `{other}`. Try `/bridge status`, `/bridge usage`, or `/bridge reset`."),
-            ));
-        }
-    }
+        other => Notice::warn(
+            args.agent,
+            format!(
+                "Unknown `/bridge` subcommand `{other}`. Try `/bridge status`, `/bridge usage`, or `/bridge reset`."
+            ),
+        ),
+    };
+    notices.write(notice);
 }
 
-/// Registers `/bridge` and the notice-draining system when Rig's notice feed exists.
+/// Registers `/bridge` and the signal-draining system.
 pub(crate) fn register(
     app: &mut App,
     handle: BridgeHandle,
-    rx: mpsc::UnboundedReceiver<BridgeNotice>,
+    rx: mpsc::UnboundedReceiver<BridgeSignal>,
 ) {
     app.insert_resource(handle)
-        .insert_resource(NoticeInbox::new(rx))
+        .insert_resource(SignalInbox::new(rx))
         .add_command(
             "bridge",
             "Bridge status, subscription usage, or reset: /bridge [status|usage|reset]",
             command,
         );
     if app.world().contains_resource::<Messages<Notice>>() {
-        app.add_systems(Update, drain_notices);
+        app.add_systems(Update, drain_signals.after(AgentLoop));
     }
+}
+
+fn format_ctx(tokens: Option<u64>, limit: Option<u32>) -> String {
+    tokens
+        .map(|tokens| format!(", ctx {}", ContextUse { tokens, limit }))
+        .unwrap_or_default()
 }
 
 fn format_status(handle: &BridgeHandle) -> String {
@@ -152,7 +227,7 @@ fn format_status(handle: &BridgeHandle) -> String {
             None => "not installed".to_owned(),
         };
         let mut line = format!("- {}: {state}", entry.vendor);
-        if let Some(stats) = snap.vendors.get(entry.vendor) {
+        if let Some(stats) = snap.vendors.get(&entry.vendor) {
             line.push_str(&format!(" | {}", format_session_stats(stats)));
             if let Some(note) = &stats.last_note {
                 line.push_str(&format!(" | note: {note}"));
@@ -169,18 +244,7 @@ fn format_status(handle: &BridgeHandle) -> String {
             } else {
                 "fixed-tools"
             };
-            let ctx = warm
-                .context_tokens
-                .map(|tokens| {
-                    format!(
-                        ", ctx {}",
-                        ContextUse {
-                            tokens,
-                            limit: warm.context_limit,
-                        }
-                    )
-                })
-                .unwrap_or_default();
+            let ctx = format_ctx(warm.context_tokens, warm.context_limit);
             lines.push(format!(
                 "- {}/{} ({} turn(s){ctx}, {relist})",
                 warm.vendor, warm.model, warm.turns
@@ -199,28 +263,17 @@ fn format_session_stats(stats: &VendorStats) -> String {
         .checked_div(stats.input_tokens)
         .map(|pct| format!(" ({pct}% cached)"))
         .unwrap_or_default();
-    let ctx = stats
-        .last_context_tokens
-        .map(|tokens| {
-            format!(
-                ", ctx {}",
-                ContextUse {
-                    tokens,
-                    limit: stats.last_context_limit,
-                }
-            )
-        })
-        .unwrap_or_default();
+    let ctx = format_ctx(stats.last_context_tokens, stats.last_context_limit);
     format!(
-        "{} call(s), {} in{} / {} out{ctx}",
-        stats.calls, stats.input_tokens, cache_pct, stats.output_tokens
+        "{} call(s), {} in{cache_pct} / {} out{ctx}",
+        stats.calls, stats.input_tokens, stats.output_tokens
     )
 }
 
 fn collect_usage(handle: &BridgeHandle) -> String {
     let snap = handle.bridge.snapshot();
     let scratch_root = handle.bridge.scratch_root().to_path_buf();
-    let results: Vec<(&'static str, &'static str, String)> = std::thread::scope(|scope| {
+    let results: Vec<(Vendor, String)> = std::thread::scope(|scope| {
         let jobs: Vec<_> = handle
             .installed
             .iter()
@@ -234,7 +287,7 @@ fn collect_usage(handle: &BridgeHandle) -> String {
                             probe_vendor_usage(&processes, entry.vendor, program, &scratch)
                         }
                     };
-                    (entry.vendor, entry.label, plan)
+                    (entry.vendor, plan)
                 })
             })
             .collect();
@@ -245,14 +298,15 @@ fn collect_usage(handle: &BridgeHandle) -> String {
         "Bridge subscription usage & session totals:".to_owned(),
         String::new(),
     ];
-    for (vendor, label, plan) in results {
+    for (vendor, plan) in results {
         let session = snap
             .vendors
-            .get(vendor)
+            .get(&vendor)
             .map(format_session_stats)
             .unwrap_or_else(|| "0 calls this session".to_owned());
         lines.push(format!(
-            "- {label} (`{vendor}`): {plan} | session: {session}"
+            "- {} (`{vendor}`): {plan} | session: {session}",
+            vendor.label()
         ));
     }
     lines.join("\n")
@@ -260,79 +314,52 @@ fn collect_usage(handle: &BridgeHandle) -> String {
 
 fn probe_vendor_usage(
     processes: &Processes,
-    vendor: &str,
+    vendor: Vendor,
     program: &Path,
     scratch_root: &Path,
 ) -> String {
     match vendor {
-        "claude-code" => probe_claude_usage(processes, program),
-        "codex" => probe_codex_usage(processes, program, scratch_root),
-        "muse" => probe_muse_usage(processes, program),
-        "grok-build" => probe_grok_usage(processes, program),
-        "antigravity" | "copilot" => "unavailable (no official CLI/RPC quota API)".to_owned(),
-        _ => "unavailable".to_owned(),
+        Vendor::ClaudeCode => probe_claude_usage(processes, program),
+        Vendor::Codex => probe_codex_usage(processes, program, scratch_root),
+        Vendor::Muse => probe_muse_usage(processes, program),
+        Vendor::GrokBuild => probe_grok_usage(processes, program),
+        Vendor::Antigravity | Vendor::Copilot => {
+            "unavailable (no official CLI/RPC quota API)".to_owned()
+        }
     }
 }
 
 /// Queries Claude Code's official `stream-json` `get_usage` control request.
 fn probe_claude_usage(processes: &Processes, program: &Path) -> String {
     let mut command = processes.launcher().command(program);
-    command
-        .args([
-            "--print",
-            "--verbose",
-            "--input-format",
-            "stream-json",
-            "--output-format",
-            "stream-json",
-            "--tools",
-            "",
-            "--setting-sources",
-            "",
-            "--disable-slash-commands",
-            "--no-session-persistence",
-        ])
-        .env_remove("ANTHROPIC_API_KEY")
-        .env_remove("ANTHROPIC_AUTH_TOKEN")
-        .env_remove("CLAUDECODE")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null());
-    let Ok(mut process) = Process::start_with_stdio(command) else {
-        return "unavailable (could not start claude)".to_owned();
-    };
-    let (Some(mut stdin), Some(stdout)) = (process.take_stdin(), process.take_stdout()) else {
-        return "unavailable".to_owned();
-    };
-    let (tx, rx) = std::sync::mpsc::channel();
-    let reader = std::thread::spawn(move || {
-        let req = json!({
-            "type": "control_request",
-            "request_id": "rig-usage",
-            "request": { "subtype": "get_usage" },
-        });
-        if writeln!(stdin, "{req}").is_err() || stdin.flush().is_err() {
-            return;
-        }
-        let mut lines = BufReader::new(stdout).lines();
-        while let Some(Ok(line)) = lines.next() {
-            let Ok(msg) = serde_json::from_str::<Value>(&line) else {
-                continue;
-            };
-            if msg.get("type").and_then(Value::as_str) == Some("control_response")
-                && msg.pointer("/response/request_id").and_then(Value::as_str) == Some("rig-usage")
-            {
-                let _ = tx.send(msg);
-                return;
-            }
-        }
+    command.args([
+        "--print",
+        "--verbose",
+        "--input-format",
+        "stream-json",
+        "--output-format",
+        "stream-json",
+        "--tools",
+        "",
+        "--setting-sources",
+        "",
+        "--disable-slash-commands",
+        "--no-session-persistence",
+    ]);
+    for name in crate::claude::INHERITED {
+        command.env_remove(name);
+    }
+    let req = json!({
+        "type": "control_request",
+        "request_id": "rig-usage",
+        "request": { "subtype": "get_usage" },
     });
-    let response = rx.recv_timeout(PROBE_TIMEOUT).ok();
-    drop(process);
-    let _ = reader.join();
-    match response {
-        Some(msg) => parse_claude_usage(&msg),
-        None => "unavailable (timed out)".to_owned(),
+    match rpc::probe(command, vec![req], PROBE_TIMEOUT, |msg| {
+        msg.get("type").and_then(Value::as_str) == Some("control_response")
+            && msg.pointer("/response/request_id").and_then(Value::as_str) == Some("rig-usage")
+    }) {
+        Ok(msg) => parse_claude_usage(&msg),
+        Err(why) => format!("unavailable ({why})"),
     }
 }
 
@@ -347,10 +374,12 @@ pub(crate) fn parse_claude_usage(msg: &Value) -> String {
     let Some(limits) = body.get("rate_limits") else {
         return "unavailable".to_owned();
     };
-    let mut parts = Vec::new();
-    if let Some(plan) = body.get("subscription_type").and_then(Value::as_str) {
-        parts.push(format!("plan {plan}"));
-    }
+    let mut parts: Vec<String> = body
+        .get("subscription_type")
+        .and_then(Value::as_str)
+        .map(|plan| format!("plan {plan}"))
+        .into_iter()
+        .collect();
     for (key, label) in [
         ("five_hour", "5h"),
         ("seven_day", "weekly"),
@@ -377,31 +406,15 @@ pub(crate) fn parse_claude_usage(msg: &Value) -> String {
 
 /// Queries Codex's official `codex app-server` `account/rateLimits/read` RPC.
 fn probe_codex_usage(processes: &Processes, program: &Path, scratch_root: &Path) -> String {
-    let dir = scratch_root.join(format!(
-        "rig-bridge-{}-codex-usage-{}",
-        std::process::id(),
-        uuid::Uuid::new_v4().simple()
-    ));
-    if std::fs::create_dir_all(&dir).is_err() {
+    let Ok(dir) = Dir::create(scratch_root) else {
         return "unavailable (could not create probe dir)".to_owned();
-    }
-    let result = probe_codex_in_dir(processes, program, &dir);
-    let _ = std::fs::remove_dir_all(&dir);
-    result
-}
-
-fn probe_codex_in_dir(processes: &Processes, program: &Path, dir: &Path) -> String {
-    let auth = std::env::var_os("CODEX_HOME")
-        .map(PathBuf::from)
-        .or_else(|| Some(PathBuf::from(std::env::var_os("HOME")?).join(".codex")))
-        .map(|home| home.join("auth.json"));
-    if let Some(auth) = auth.filter(|auth| auth.is_file()) {
-        #[cfg(unix)]
-        let _ = std::os::unix::fs::symlink(&auth, dir.join("auth.json"));
+    };
+    if let Some(auth) = crate::codex::signed_in().filter(|auth| auth.is_file()) {
+        let _ = link(&auth, &dir.path().join("auth.json"));
     }
     let mut command = processes.launcher().command(program);
     command
-        .current_dir(dir)
+        .current_dir(dir.path())
         .args([
             "app-server",
             "-c",
@@ -409,20 +422,11 @@ fn probe_codex_in_dir(processes: &Processes, program: &Path, dir: &Path) -> Stri
             "-c",
             "check_for_update_on_startup=false",
         ])
-        .env("CODEX_HOME", dir)
+        .env("CODEX_HOME", dir.path())
         .env_remove("OPENAI_API_KEY")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null());
-    let Ok(mut process) = Process::start_with_stdio(command) else {
-        return "unavailable (could not start codex)".to_owned();
-    };
-    let (Some(mut stdin), Some(stdout)) = (process.take_stdin(), process.take_stdout()) else {
-        return "unavailable".to_owned();
-    };
-    let (tx, rx) = std::sync::mpsc::channel();
-    let reader = std::thread::spawn(move || {
-        let init = json!({
+        .env_remove("OPENAI_BASE_URL");
+    let requests = vec![
+        json!({
             "jsonrpc": "2.0",
             "id": 1,
             "method": "initialize",
@@ -430,39 +434,20 @@ fn probe_codex_in_dir(processes: &Processes, program: &Path, dir: &Path) -> Stri
                 "clientInfo": { "name": "rig", "version": env!("CARGO_PKG_VERSION") },
                 "capabilities": {},
             },
-        });
-        let read = json!({
+        }),
+        json!({ "method": "initialized" }),
+        json!({
             "jsonrpc": "2.0",
             "id": 2,
             "method": "account/rateLimits/read",
             "params": {},
-        });
-        if writeln!(stdin, "{init}").is_err()
-            || writeln!(stdin, "{read}").is_err()
-            || stdin.flush().is_err()
-        {
-            return;
-        }
-        let mut lines = BufReader::new(stdout).lines();
-        while let Some(Ok(line)) = lines.next() {
-            let Ok(msg) = serde_json::from_str::<Value>(&line) else {
-                continue;
-            };
-            if msg.get("id").and_then(Value::as_u64) == Some(2) {
-                let _ = tx.send(msg);
-                return;
-            }
-        }
-    });
-    let deadline = Instant::now() + PROBE_TIMEOUT;
-    let response = rx
-        .recv_timeout(deadline.saturating_duration_since(Instant::now()))
-        .ok();
-    drop(process);
-    let _ = reader.join();
-    match response {
-        Some(msg) => parse_codex_usage(&msg),
-        None => "unavailable (timed out)".to_owned(),
+        }),
+    ];
+    match rpc::probe(command, requests, PROBE_TIMEOUT, |msg| {
+        msg.get("id").and_then(Value::as_u64) == Some(2)
+    }) {
+        Ok(msg) => parse_codex_usage(&msg),
+        Err(why) => format!("unavailable ({why})"),
     }
 }
 
@@ -477,10 +462,12 @@ pub(crate) fn parse_codex_usage(msg: &Value) -> String {
     else {
         return "unavailable (not signed in or no limits reported)".to_owned();
     };
-    let mut parts = Vec::new();
-    if let Some(plan) = limits.get("planType").and_then(Value::as_str) {
-        parts.push(format!("plan {plan}"));
-    }
+    let mut parts: Vec<String> = limits
+        .get("planType")
+        .and_then(Value::as_str)
+        .map(|plan| format!("plan {plan}"))
+        .into_iter()
+        .collect();
     for (key, fallback) in [("primary", "primary"), ("secondary", "secondary")] {
         if let Some(win) = limits.get(key)
             && let Some(pct) = win.get("usedPercent").and_then(Value::as_f64)
@@ -506,19 +493,27 @@ pub(crate) fn parse_codex_usage(msg: &Value) -> String {
     }
 }
 
+/// Runs `program` with `args` and parses stdout as JSON.
+fn probe_cli_json(processes: &Processes, program: &Path, args: &[&str]) -> Result<Value, String> {
+    let mut command = processes.launcher().command(program);
+    command.args(args);
+    let output = Process::start(command, Spawn::default())
+        .and_then(|process| process.output(Some(PROBE_TIMEOUT)))
+        .map_err(|_| "timed out or failed to run".to_owned())?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("{stdout} {stderr}"));
+    }
+    serde_json::from_str(&stdout).map_err(|_| "invalid response".to_owned())
+}
+
 /// Queries Muse's official `muse usage --json` CLI output.
 fn probe_muse_usage(processes: &Processes, program: &Path) -> String {
-    let mut command = processes.launcher().command(program);
-    command.args(["usage", "--json"]);
-    let output = Process::start(command, Spawn::default())
-        .and_then(|process| process.output(Some(PROBE_TIMEOUT)));
-    let Ok(output) = output else {
-        return "unavailable (timed out or failed to run)".to_owned();
-    };
-    let text = String::from_utf8_lossy(&output.stdout);
-    serde_json::from_str::<Value>(&text)
-        .map(|value| parse_muse_usage(&value))
-        .unwrap_or_else(|_| "unavailable (invalid response)".to_owned())
+    match probe_cli_json(processes, program, &["usage", "--json"]) {
+        Ok(value) => parse_muse_usage(&value),
+        Err(why) => format!("unavailable ({why})"),
+    }
 }
 
 /// Formats `muse usage --json`.
@@ -530,10 +525,12 @@ pub(crate) fn parse_muse_usage(value: &Value) -> String {
             .unwrap_or("not signed in");
         return format!("unavailable ({reason})");
     };
-    let mut parts = Vec::new();
-    if let Some(tier) = allowance.get("tier").and_then(Value::as_str) {
-        parts.push(tier.to_owned());
-    }
+    let mut parts: Vec<String> = allowance
+        .get("tier")
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+        .into_iter()
+        .collect();
     for (key, label) in [("window", "window"), ("weekly", "weekly")] {
         if let Some(win) = allowance.get(key)
             && let Some(pct) = win.get("usedPercent").and_then(Value::as_f64)
@@ -555,29 +552,24 @@ pub(crate) fn parse_muse_usage(value: &Value) -> String {
 
 /// Queries Grok's official `grok usage --json` without starting Grok's daemon.
 fn probe_grok_usage(processes: &Processes, program: &Path) -> String {
-    let mut command = processes.launcher().command(program);
-    command.args(["usage", "--json"]);
-    let output = Process::start(command, Spawn::default())
-        .and_then(|process| process.output(Some(PROBE_TIMEOUT)));
-    let Ok(output) = output else {
-        return "unavailable (timed out)".to_owned();
-    };
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    if !output.status.success() {
-        let combined = format!("{stdout} {stderr}").to_lowercase();
-        if combined.contains("background")
-            || combined.contains("daemon")
-            || combined.contains("service")
-            || combined.contains("leader")
-        {
-            return "unavailable (Grok background service not running)".to_owned();
-        }
-        return "unavailable (Grok background service not running or not signed in)".to_owned();
+    match probe_cli_json(processes, program, &["usage", "--json"]) {
+        Ok(value) => parse_grok_usage(&value),
+        Err(text) => format_grok_usage_error(&text),
     }
-    serde_json::from_str::<Value>(&stdout)
-        .map(|value| parse_grok_usage(&value))
-        .unwrap_or_else(|_| "unavailable (Grok background service not running)".to_owned())
+}
+
+pub(crate) fn format_grok_usage_error(text: &str) -> String {
+    let low = text.to_lowercase();
+    if low.contains("/usage") || low.contains("can't show") {
+        "unavailable (run `/usage` inside grok)".to_owned()
+    } else if ["background", "daemon", "service", "leader"]
+        .iter()
+        .any(|word| low.contains(word))
+    {
+        "unavailable (Grok background service not running)".to_owned()
+    } else {
+        "unavailable (not signed in or unsupported CLI version)".to_owned()
+    }
 }
 
 /// Formats `grok usage --json` output.
@@ -590,17 +582,17 @@ pub(crate) fn parse_grok_usage(value: &Value) -> String {
         return format!("{pct:.0}% used");
     }
     if let Some(obj) = value.as_object() {
-        let mut parts = Vec::new();
-        for (key, val) in obj {
-            if let Some(pct) = val
-                .get("usedPercent")
-                .or_else(|| val.get("used_percent"))
-                .or_else(|| val.get("utilization"))
-                .and_then(Value::as_f64)
-            {
-                parts.push(format!("{key} {pct:.0}% used"));
-            }
-        }
+        let parts: Vec<String> = obj
+            .iter()
+            .filter_map(|(key, val)| {
+                let pct = val
+                    .get("usedPercent")
+                    .or_else(|| val.get("used_percent"))
+                    .or_else(|| val.get("utilization"))
+                    .and_then(Value::as_f64)?;
+                Some(format!("{key} {pct:.0}% used"))
+            })
+            .collect();
         if !parts.is_empty() {
             return parts.join(", ");
         }
@@ -618,9 +610,7 @@ fn format_relative_secs(target_epoch_secs: u64) -> String {
         .map(|duration| duration.as_secs())
         .unwrap_or_default();
     let delta = target_epoch_secs.saturating_sub(now);
-    let days = delta / 86_400;
-    let hours = (delta % 86_400) / 3600;
-    let mins = (delta % 3600) / 60;
+    let (days, hours, mins) = (delta / 86_400, (delta % 86_400) / 3600, (delta % 3600) / 60);
     if days > 0 {
         format!("{days}d {hours}h")
     } else if hours > 0 {

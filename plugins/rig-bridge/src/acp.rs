@@ -10,12 +10,13 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
 
-use rig_harness::rig_core::completion::{Effort, Usage};
+use rig_harness::rig_core::completion::{Effort, FinishReason, Usage};
 use serde_json::{Value, json};
-use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader, Lines};
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::mpsc;
 
-use crate::harness::{Event, Harness, Launch, Part, Running, Stderr, spawn};
+use crate::harness::{ContextSnapshot, Event, Harness, Launch, Part, Running, Stderr, spawn};
+use crate::rpc::Transport;
 
 #[cfg(test)]
 mod tests;
@@ -64,16 +65,9 @@ pub(crate) trait Agent: Send + Sync + 'static {
     fn login_hint(&self) -> &'static str;
 
     /// Whether the tool call a permission request describes is a call of
-    /// one of Rig's tools.
-    fn is_rig_tool(&self, tool_call: &Value) -> bool;
-
-    /// Whether a permission request is for one of Rig's tools, given any
-    /// `title` previously announced for the same `toolCallId` in a
-    /// `tool_call` update.
-    fn is_rig_tool_with_title(&self, tool_call: &Value, recorded_title: Option<&str>) -> bool {
-        let _ = recorded_title;
-        self.is_rig_tool(tool_call)
-    }
+    /// one of Rig's tools, given any `title` previously announced for the
+    /// same `toolCallId` in a `tool_call` update.
+    fn is_rig_tool(&self, tool_call: &Value, recorded_title: Option<&str>) -> bool;
 
     /// Whether an `agent_message_chunk` text fragment should be forwarded to
     /// Rig. Agents that emit CLI status banners as message chunks return
@@ -226,9 +220,7 @@ impl std::fmt::Display for Failed {
 
 /// The client's end of the connection.
 pub(crate) struct Peer<R, W> {
-    lines: Lines<BufReader<R>>,
-    writer: W,
-    next_id: u64,
+    transport: Transport<R, W>,
     events: mpsc::UnboundedSender<Event>,
     agent: Arc<dyn Agent>,
     /// The client's name for the prompt being answered.
@@ -236,10 +228,6 @@ pub(crate) struct Peer<R, W> {
     /// Whether the agent reported an inference's counters since the last
     /// prompt was answered.
     counted: bool,
-    /// Latest non-zero context token count seen in `usage_update` during the
-    /// active `session/prompt`, so the turn-wide `result.usage` does not
-    /// overstate context fill across tool-call rounds.
-    context_used: Option<u64>,
     /// `toolCallId` -> `title` seen in `tool_call` updates, for agents that
     /// strip the MCP server prefix in `session/request_permission`.
     call_titles: HashMap<String, String>,
@@ -253,52 +241,30 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Peer<R, W> {
         agent: Arc<dyn Agent>,
     ) -> Self {
         Self {
-            lines: BufReader::new(reader).lines(),
-            writer,
-            next_id: 0,
+            transport: Transport::new(reader, writer),
             events,
             agent,
             prompt: None,
             counted: false,
-            context_used: None,
             call_titles: HashMap::new(),
         }
     }
 
-    async fn write(&mut self, message: &Value) -> Result<(), Failed> {
-        let mut line = message.to_string();
-        line.push('\n');
-        self.writer
-            .write_all(line.as_bytes())
-            .await
-            .map_err(|_| Failed::Closed)
-    }
-
-    /// The next JSON message. A line that is not JSON is skipped.
     async fn read(&mut self) -> Result<Value, Failed> {
-        loop {
-            let line = self
-                .lines
-                .next_line()
-                .await
-                .ok()
-                .flatten()
-                .ok_or(Failed::Closed)?;
-            if let Ok(message) = serde_json::from_str::<Value>(&line)
-                && message.is_object()
-            {
-                return Ok(message);
-            }
-        }
+        self.transport
+            .next_object()
+            .await
+            .map_err(|()| Failed::Closed)
     }
 
     /// Sends a request and waits for its answer, handling what the agent
     /// sends meanwhile.
     async fn request(&mut self, method: &str, params: Value) -> Result<Value, Failed> {
-        self.next_id += 1;
-        let id = self.next_id;
-        self.write(&json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }))
-            .await?;
+        let id = self
+            .transport
+            .send_request(method, params, true)
+            .await
+            .map_err(|()| Failed::Closed)?;
         loop {
             let message = self.read().await?;
             let answers = message.get("method").is_none()
@@ -356,17 +322,15 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Peer<R, W> {
                     .and_then(Value::as_str)
                     .and_then(|id| self.call_titles.get(id))
                     .map(String::as_str);
-                let ours = self.agent.is_rig_tool_with_title(tool_call, recorded);
+                let ours = self.agent.is_rig_tool(tool_call, recorded);
                 json!({ "result": { "outcome": decide(ours, params.get("options")) } })
             }
             _ => json!({ "error": { "code": -32601, "message": format!("no method `{method}`") } }),
         };
-        let mut answer = answer;
-        if let Some(answer) = answer.as_object_mut() {
-            answer.insert("jsonrpc".to_owned(), "2.0".into());
-            answer.insert("id".to_owned(), id.clone());
-        }
-        self.write(&answer).await
+        self.transport
+            .reply(id, answer, true)
+            .await
+            .map_err(|()| Failed::Closed)
     }
 
     /// Reports the text of a `session/update`.
@@ -382,20 +346,25 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Peer<R, W> {
             return;
         }
         if kind == Some("usage_update") {
-            let used = update
-                .get("used")
-                .and_then(Value::as_u64)
-                .filter(|used| *used > 0);
-            let size = update
+            let used = self
+                .prompt
+                .is_some()
+                .then(|| {
+                    update
+                        .get("used")
+                        .and_then(Value::as_u64)
+                        .filter(|used| *used > 0)
+                })
+                .flatten();
+            let window = update
                 .get("size")
                 .and_then(Value::as_u64)
                 .filter(|size| *size > 0)
                 .and_then(|size| u32::try_from(size).ok());
-            if let Some(used) = used {
-                self.context_used = Some(used);
-            }
-            if used.is_some() || size.is_some() {
-                let _ = self.events.send(Event::Context { used, size });
+            if used.is_some() || window.is_some() {
+                let _ = self
+                    .events
+                    .send(Event::Context(ContextSnapshot { used, window }));
             }
             return;
         }
@@ -511,6 +480,12 @@ where
         .ok_or("it opened a session without an id")?
         .to_owned();
     agent.opened(&opening)?;
+    if let Some(window) = model_context_window(&opened, &opening.model) {
+        let _ = peer.events.send(Event::Context(ContextSnapshot {
+            used: None,
+            window: Some(window),
+        }));
+    }
     for (method, params) in agent.choose(&session, &opened, &opening) {
         peer.request(method, params)
             .await
@@ -550,29 +525,22 @@ where
             asked.insert("_meta".to_owned(), meta);
         }
         peer.prompt = Some(named);
-        peer.context_used = None;
+        peer.call_titles.clear();
         let answered = peer.request("session/prompt", asked).await;
         peer.prompt = None;
+        let was_counted = std::mem::take(&mut peer.counted);
         let done = match answered {
             Ok(result) => {
                 // The turn's totals, unless each inference was counted.
                 let cache_apart = agent.input_leaves_out_cache();
-                if let Some(mut usage) = usage(&result, cache_apart).filter(|_| !peer.counted) {
-                    // `session/prompt` result usage sums every inference in
-                    // the turn, so `total_tokens` would overstate the context
-                    // window fill on multi-tool turns. Use the latest
-                    // per-inference `usage_update.used` when reported.
-                    if let Some(used) = peer.context_used {
-                        usage.total_tokens = Some(used);
-                    }
+                if let Some(usage) = usage(&result, cache_apart).filter(|_| !was_counted) {
                     let _ = peer.events.send(Event::Usage(usage));
                 }
-                peer.counted = false;
-                peer.context_used = None;
                 match result.get("stopReason").and_then(Value::as_str) {
+                    Some("max_tokens") => Ok(FinishReason::Length),
                     Some("refusal") => Err("the model refused to answer".to_owned()),
                     Some("cancelled") => Err("the turn was cancelled".to_owned()),
-                    _ => Ok(()),
+                    _ => Ok(FinishReason::Stop),
                 }
             }
             Err(Failed::Closed) => return Err(Failed::Closed.to_string()),
@@ -580,6 +548,20 @@ where
         };
         let _ = peer.events.send(Event::Done(done));
     }
+}
+
+/// Extracts a model's declared context window from `session/new` metadata
+/// (`models.availableModels[*]._meta.totalContextTokens`), when present.
+fn model_context_window(opened: &Value, model: &str) -> Option<u32> {
+    opened
+        .pointer("/models/availableModels")
+        .and_then(Value::as_array)?
+        .iter()
+        .find(|entry| entry.get("modelId").and_then(Value::as_str) == Some(model))?
+        .pointer("/_meta/totalContextTokens")
+        .and_then(Value::as_u64)
+        .filter(|tokens| *tokens > 0)
+        .and_then(|tokens| u32::try_from(tokens).ok())
 }
 
 /// The token counters of a `session/prompt` result: the turn's totals.
@@ -614,6 +596,7 @@ fn usage(result: &Value, cache_apart: bool) -> Option<Usage> {
     usage.total_tokens = usage
         .input_tokens
         .zip(usage.output_tokens)
-        .map(|(input, output)| input + output);
+        .map(|(input, output)| input + output)
+        .or_else(|| count(&["totalTokens", "total_tokens"]));
     usage.is_reported().then_some(usage)
 }

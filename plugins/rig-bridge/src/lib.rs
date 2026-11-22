@@ -40,7 +40,11 @@ mod mcp;
 #[cfg(not(target_family = "wasm"))]
 mod muse;
 #[cfg(not(target_family = "wasm"))]
+mod rpc;
+#[cfg(not(target_family = "wasm"))]
 mod session;
+#[cfg(all(test, not(target_family = "wasm")))]
+mod tests;
 
 #[cfg(not(target_family = "wasm"))]
 pub use plugin::BridgeSettings;
@@ -68,8 +72,8 @@ mod plugin {
 
     use crate::BridgePlugin;
     use crate::acp::Acp;
-    use crate::commands::{BridgeHandle, BridgeNotice, HarnessEntry};
-    use crate::harness::Harness;
+    use crate::commands::{BridgeHandle, BridgeSignal, HarnessEntry};
+    use crate::harness::{Harness, Vendor};
     use crate::session::{Bridge, Model, reap_stale_dirs};
 
     /// How long a program has to list its models as the agent starts.
@@ -119,7 +123,7 @@ mod plugin {
         /// Files the models once every plugin's `build` ran, so the process
         /// launcher and tokio runtime the harnesses run with exist.
         fn finish(&self, app: &mut App) {
-            let (bridge, processes, entries, notice_rx) = {
+            let (bridge, processes, entries, signal_rx) = {
                 let world = app.world_mut();
                 let settings = world.get_resource_or_init::<BridgeSettings>().clone();
                 let Some(runtime) = world.get_resource::<TokioRuntime>().cloned() else {
@@ -132,24 +136,7 @@ mod plugin {
                 let scratch_root = RigHome::of(world).root().join("run").join("bridge");
                 reap_stale_dirs(&scratch_root);
 
-                let (notice_tx, notice_rx) = mpsc::unbounded_channel::<BridgeNotice>();
-                let (warn_tx, mut warn_rx) = mpsc::unbounded_channel::<String>();
-                let forward_tx = notice_tx.clone();
-                runtime.0.spawn(async move {
-                    while let Some(text) = warn_rx.recv().await {
-                        if forward_tx
-                            .send(BridgeNotice {
-                                agent: None,
-                                warn: true,
-                                text,
-                            })
-                            .is_err()
-                        {
-                            break;
-                        }
-                    }
-                });
-
+                let (signal_tx, signal_rx) = mpsc::unbounded_channel::<BridgeSignal>();
                 let bridge = Arc::new(
                     Bridge::new(
                         runtime.0,
@@ -158,7 +145,7 @@ mod plugin {
                         project,
                         scratch_root.clone(),
                     )
-                    .with_notices(warn_tx),
+                    .with_signals(signal_tx),
                 );
 
                 // Discover installed harness model catalogs in parallel so startup
@@ -196,164 +183,142 @@ mod plugin {
                     });
 
                 let mut models = world.get_resource_or_init::<Models>();
-                let mut file = |vendor: &str,
-                                program: PathBuf,
+                let mut file = |vendor: Vendor,
+                                program: &Path,
                                 harness: Arc<dyn Harness>,
                                 ids: Ids|
-                 -> usize {
-                    let Ok(vendor) = ProviderId::declare(vendor) else {
-                        return 0;
-                    };
-                    let specs: Vec<ModelSpec> = match ids {
-                        Ids::Of(other) => models
-                            .0
-                            .catalog()
-                            .iter()
-                            .filter(|spec| spec.provider.vendor() == other)
-                            .cloned()
-                            .map(|mut spec| {
-                                spec.provider = vendor;
-                                spec.pricing = None;
-                                spec
-                            })
-                            .collect(),
-                        Ids::Listed(ids) => ids
-                            .iter()
-                            .map(|id| {
-                                let spec = ModelSpec::new(vendor, id)
-                                    .with_tools(true)
-                                    .with_reasoning(ReasoningSupport::Unknown { default: None });
-                                enrich_limits(models.0.catalog(), vendor.vendor(), spec)
-                            })
-                            .collect(),
-                        Ids::Specs(specs) => specs
-                            .into_iter()
-                            .map(|spec| {
-                                enrich_limits(models.0.catalog(), vendor.vendor(), spec(vendor))
-                            })
-                            .collect(),
-                    };
-                    let count = specs.len();
-                    for spec in specs {
-                        models.0.catalog_mut().insert(spec);
+                 -> HarnessEntry {
+                    let count = ProviderId::declare(vendor.as_str())
+                        .map(|pid| {
+                            let specs: Vec<ModelSpec> = match ids {
+                                Ids::Of(other) => models
+                                    .0
+                                    .catalog()
+                                    .iter()
+                                    .filter(|spec| spec.provider.vendor() == other)
+                                    .cloned()
+                                    .map(|mut spec| {
+                                        spec.provider = pid;
+                                        spec.pricing = None;
+                                        spec
+                                    })
+                                    .collect(),
+                                Ids::Described(listed) => listed
+                                    .into_iter()
+                                    .map(|(id, name, window)| {
+                                        let mut spec = ModelSpec::new(pid, id)
+                                            .with_tools(true)
+                                            .with_reasoning(ReasoningSupport::Unknown {
+                                                default: None,
+                                            });
+                                        if let Some(name) = name {
+                                            spec = spec.with_display_name(name);
+                                        }
+                                        if let Some(tokens) = window {
+                                            spec = spec.with_context_window(tokens);
+                                        }
+                                        enrich_limits(models.0.catalog(), vendor, spec)
+                                    })
+                                    .collect(),
+                            };
+                            let count = specs.len();
+                            if count > 0 {
+                                for spec in specs {
+                                    models.0.catalog_mut().insert(spec);
+                                }
+                                models.0.provide(
+                                    pid,
+                                    Provider {
+                                        bridge: bridge.clone(),
+                                        harness,
+                                        program: program.to_path_buf(),
+                                        vendor,
+                                    },
+                                );
+                            }
+                            count
+                        })
+                        .unwrap_or(0);
+                    HarnessEntry {
+                        vendor,
+                        program: installed(program),
+                        model_count: count,
                     }
-                    let provider = Provider {
-                        bridge: bridge.clone(),
-                        harness,
-                        program,
-                    };
-                    models.0.provide(vendor, provider);
-                    count
+                };
+                let listed = |ids: Vec<String>| {
+                    Ids::Described(ids.into_iter().map(|id| (id, None, None)).collect())
                 };
 
                 // Claude Code takes the ids of Anthropic's API.
-                let claude_count = file(
-                    "claude-code",
-                    settings.claude.clone(),
+                let claude_entry = file(
+                    Vendor::ClaudeCode,
+                    &settings.claude,
                     Arc::new(crate::claude::Claude),
                     Ids::Of(anthropic::PROVIDER_NAME),
                 );
-                let grok_count = file(
-                    "grok-build",
-                    settings.grok.clone(),
+                let grok_entry = file(
+                    Vendor::GrokBuild,
+                    &settings.grok,
                     Arc::new(Acp(Arc::new(crate::grok::Grok))),
-                    Ids::Listed(crate::grok::models(&grok_out)),
+                    listed(crate::grok::models(&grok_out)),
                 );
-                let agy_count = file(
-                    "antigravity",
-                    settings.antigravity.clone(),
+                let agy_entry = file(
+                    Vendor::Antigravity,
+                    &settings.antigravity,
                     Arc::new(Acp(Arc::new(crate::antigravity::Antigravity))),
-                    Ids::Listed(crate::antigravity::models(&agy_out)),
+                    Ids::Described(
+                        crate::antigravity::models(&agy_out)
+                            .into_iter()
+                            .map(|(id, name)| (id, Some(name), None))
+                            .collect(),
+                    ),
                 );
-                let codex_count =
-                    if let Some((codex, listed)) = crate::codex::Codex::new(&codex_out) {
-                        let specs = listed.into_iter().map(|model| {
-                            let spec = move |vendor| {
-                                let spec = ModelSpec::new(vendor, &model.id)
-                                    .with_display_name(model.name)
-                                    .with_tools(true)
-                                    .with_reasoning(ReasoningSupport::Unknown { default: None });
-                                match model.context_window {
-                                    Some(tokens) => spec.with_context_window(tokens),
-                                    None => spec,
-                                }
-                            };
-                            Box::new(spec) as Box<dyn FnOnce(ProviderId) -> ModelSpec>
-                        });
+                let codex_entry =
+                    if let Some((codex, models_list)) = crate::codex::Codex::new(&codex_out) {
                         file(
-                            "codex",
-                            settings.codex.clone(),
+                            Vendor::Codex,
+                            &settings.codex,
                             Arc::new(codex),
-                            Ids::Specs(specs.collect()),
+                            Ids::Described(
+                                models_list
+                                    .into_iter()
+                                    .map(|m| (m.id, Some(m.name), m.context_window))
+                                    .collect(),
+                            ),
                         )
                     } else {
-                        0
+                        HarnessEntry {
+                            vendor: Vendor::Codex,
+                            program: installed(&settings.codex),
+                            model_count: 0,
+                        }
                     };
-                let muse_count = file(
-                    "muse",
-                    settings.muse.clone(),
+                let muse_entry = file(
+                    Vendor::Muse,
+                    &settings.muse,
                     Arc::new(crate::muse::Muse),
-                    Ids::Listed(crate::muse::models(&muse_out)),
+                    listed(crate::muse::models(&muse_out)),
                 );
-                let copilot_count = if !copilot_models.is_empty() {
-                    let specs = copilot_models.into_iter().map(|model| {
-                        let spec = move |vendor| {
-                            ModelSpec::new(vendor, &model.id)
-                                .with_display_name(model.name)
-                                .with_tools(true)
-                                .with_reasoning(ReasoningSupport::Unknown { default: None })
-                        };
-                        Box::new(spec) as Box<dyn FnOnce(ProviderId) -> ModelSpec>
-                    });
-                    file(
-                        "copilot",
-                        settings.copilot.clone(),
-                        Arc::new(Acp(Arc::new(crate::copilot::Copilot))),
-                        Ids::Specs(specs.collect()),
-                    )
-                } else {
-                    0
-                };
-
+                let copilot_entry = file(
+                    Vendor::Copilot,
+                    &settings.copilot,
+                    Arc::new(Acp(Arc::new(crate::copilot::Copilot))),
+                    Ids::Described(
+                        copilot_models
+                            .into_iter()
+                            .map(|m| (m.id, Some(m.name), None))
+                            .collect(),
+                    ),
+                );
                 let entries = vec![
-                    HarnessEntry {
-                        vendor: "claude-code",
-                        label: "Claude Code",
-                        program: installed(&settings.claude),
-                        model_count: claude_count,
-                    },
-                    HarnessEntry {
-                        vendor: "grok-build",
-                        label: "Grok Build",
-                        program: installed(&settings.grok),
-                        model_count: grok_count,
-                    },
-                    HarnessEntry {
-                        vendor: "antigravity",
-                        label: "Antigravity",
-                        program: installed(&settings.antigravity),
-                        model_count: agy_count,
-                    },
-                    HarnessEntry {
-                        vendor: "codex",
-                        label: "Codex",
-                        program: installed(&settings.codex),
-                        model_count: codex_count,
-                    },
-                    HarnessEntry {
-                        vendor: "muse",
-                        label: "Meta AI Muse",
-                        program: installed(&settings.muse),
-                        model_count: muse_count,
-                    },
-                    HarnessEntry {
-                        vendor: "copilot",
-                        label: "GitHub Copilot",
-                        program: installed(&settings.copilot),
-                        model_count: copilot_count,
-                    },
+                    claude_entry,
+                    grok_entry,
+                    agy_entry,
+                    codex_entry,
+                    muse_entry,
+                    copilot_entry,
                 ];
-                (bridge, processes, entries, notice_rx)
+                (bridge, processes, entries, signal_rx)
             };
 
             let handle = BridgeHandle {
@@ -361,7 +326,7 @@ mod plugin {
                 processes,
                 installed: entries,
             };
-            crate::commands::register(app, handle, notice_rx);
+            crate::commands::register(app, handle, signal_rx);
         }
     }
 
@@ -369,10 +334,8 @@ mod plugin {
     enum Ids {
         /// Another vendor's models in the catalog, under the same ids.
         Of(&'static str),
-        /// The ids the program listed.
-        Listed(Vec<String>),
-        /// The models the program listed, as specs of the vendor given.
-        Specs(Vec<Box<dyn FnOnce(ProviderId) -> ModelSpec>>),
+        /// `(id, display_name, context_window)` tuples reported by the program.
+        Described(Vec<(String, Option<String>, Option<u32>)>),
     }
 
     /// What `program` prints when run with `args`; nothing when it is not
@@ -394,6 +357,7 @@ mod plugin {
         bridge: Arc<Bridge>,
         harness: Arc<dyn Harness>,
         program: PathBuf,
+        vendor: Vendor,
     }
 
     impl rig_harness::rig_core::catalog::Provide for Provider {
@@ -412,27 +376,37 @@ mod plugin {
                 bridge: self.bridge.clone(),
                 harness: self.harness.clone(),
                 program,
-                vendor: spec.provider.vendor(),
+                vendor: self.vendor,
                 model: spec.id.to_string(),
                 context_limit: spec.input_limit(),
             }))
         }
     }
 
-    /// Context and output token limits copied from a matching catalog row or
-    /// verified harness default.
-    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     struct Limits {
         context_window: Option<u32>,
         max_input_tokens: Option<u32>,
         max_output_tokens: Option<u32>,
     }
 
-    /// Fills in missing context/input/output token limits on `spec` from Rig's
-    /// catalog (and verified harness defaults for models not yet in the
-    /// built-in catalog) so the status meter, `/usage`, and compaction know
-    /// the model's context window.
-    fn enrich_limits(catalog: &Catalog, vendor: &str, mut spec: ModelSpec) -> ModelSpec {
+    impl Limits {
+        const fn window(tokens: u32) -> Self {
+            Self {
+                context_window: Some(tokens),
+                max_input_tokens: None,
+                max_output_tokens: None,
+            }
+        }
+    }
+
+    /// Populates missing context/token limits for bridged models from Rig's
+    /// catalog and verified harness defaults so the status meter, `/usage`,
+    /// and compaction know the model's context window.
+    pub(super) fn enrich_limits(
+        catalog: &Catalog,
+        vendor: Vendor,
+        mut spec: ModelSpec,
+    ) -> ModelSpec {
         spec.pricing = None;
         if spec.input_limit().is_some() {
             return spec;
@@ -440,15 +414,9 @@ mod plugin {
         let Some(limits) = lookup_limits(catalog, vendor, &spec.id) else {
             return spec;
         };
-        if spec.context_window.is_none() {
-            spec.context_window = limits.context_window;
-        }
-        if spec.max_input_tokens.is_none() {
-            spec.max_input_tokens = limits.max_input_tokens;
-        }
-        if spec.max_output_tokens.is_none() {
-            spec.max_output_tokens = limits.max_output_tokens;
-        }
+        spec.context_window = spec.context_window.or(limits.context_window);
+        spec.max_input_tokens = spec.max_input_tokens.or(limits.max_input_tokens);
+        spec.max_output_tokens = spec.max_output_tokens.or(limits.max_output_tokens);
         spec
     }
 
@@ -463,83 +431,47 @@ mod plugin {
         })
     }
 
-    fn lookup_limits(catalog: &Catalog, vendor: &str, id: &str) -> Option<Limits> {
+    fn lookup_limits(catalog: &Catalog, vendor: Vendor, id: &str) -> Option<Limits> {
         match vendor {
-            "copilot" => {
-                if let Some(limits) = catalog_limits(catalog, "copilot", id) {
-                    return Some(limits);
-                }
-                let dashed = id.replace('.', "-");
-                for source in ["openai", "anthropic", "gcp.gemini", "xai", "openrouter"] {
-                    if let Some(limits) = catalog_limits(catalog, source, id)
-                        .or_else(|| catalog_limits(catalog, source, &dashed))
-                    {
-                        return Some(limits);
-                    }
-                }
-                if matches!(id, "mai-code-2" | "mai-code-2-flash") {
-                    return Some(Limits {
-                        context_window: Some(200_000),
-                        max_input_tokens: None,
-                        max_output_tokens: None,
-                    });
-                }
-                None
-            }
-            "grok-build" => {
-                if let Some(limits) = catalog_limits(catalog, "xai", id) {
-                    return Some(limits);
-                }
+            Vendor::ClaudeCode | Vendor::Codex => None,
+            Vendor::Copilot => catalog_limits(catalog, "copilot", id).or_else(|| {
+                matches!(id, "mai-code-2" | "mai-code-2-flash").then_some(Limits::window(200_000))
+            }),
+            Vendor::GrokBuild => {
                 let mut prefix = id;
-                while let Some((head, _)) = prefix.rsplit_once('-') {
-                    if let Some(limits) = catalog_limits(catalog, "xai", head) {
+                loop {
+                    if let Some(limits) = catalog_limits(catalog, "xai", prefix) {
                         return Some(limits);
                     }
+                    let (head, _) = prefix.rsplit_once('-')?;
                     prefix = head;
                 }
-                None
             }
-            "antigravity" => {
-                let base = id
-                    .strip_suffix("-xhigh")
-                    .or_else(|| id.strip_suffix("-high"))
-                    .or_else(|| id.strip_suffix("-medium"))
-                    .or_else(|| id.strip_suffix("-low"))
+            Vendor::Antigravity => {
+                let base = ["-xhigh", "-high", "-medium", "-low"]
+                    .into_iter()
+                    .find_map(|suffix| id.strip_suffix(suffix))
                     .unwrap_or(id);
-                for source in ["gcp.gemini", "anthropic", "openai", "openrouter"] {
-                    if let Some(limits) = catalog_limits(catalog, source, base) {
-                        return Some(limits);
-                    }
-                }
-                if let Some(limits) =
-                    catalog_limits(catalog, "openrouter", &format!("openai/{base}"))
-                {
-                    return Some(limits);
-                }
-                if base.starts_with("gemini-4-neon") || base.starts_with("gemini-pro-orchestrator")
-                {
-                    return Some(Limits {
-                        context_window: Some(1_048_576),
-                        max_input_tokens: None,
-                        max_output_tokens: None,
-                    });
-                }
-                None
+                ["gcp.gemini", "anthropic", "openai", "openrouter"]
+                    .into_iter()
+                    .find_map(|source| catalog_limits(catalog, source, base))
+                    .or_else(|| catalog_limits(catalog, "openrouter", &format!("openai/{base}")))
+                    .or_else(|| {
+                        (base.starts_with("gemini-4-neon")
+                            || base.starts_with("gemini-pro-orchestrator"))
+                        .then_some(Limits::window(1_048_576))
+                    })
             }
-            "muse" => {
-                for source in ["opencode", "venice", "ollama"] {
-                    if let Some(limits) = catalog_limits(catalog, source, id) {
-                        return Some(limits);
-                    }
-                }
-                let base = id
-                    .strip_suffix("-full-1.0")
-                    .or_else(|| id.strip_suffix("-full"))
-                    .or_else(|| id.strip_suffix("-1.0"))
-                    .unwrap_or(id);
-                catalog_limits(catalog, "openrouter", &format!("meta/{base}"))
-            }
-            _ => None,
+            Vendor::Muse => ["opencode", "venice", "ollama"]
+                .into_iter()
+                .find_map(|source| catalog_limits(catalog, source, id))
+                .or_else(|| {
+                    let base = ["-full-1.0", "-full", "-1.0"]
+                        .into_iter()
+                        .find_map(|suffix| id.strip_suffix(suffix))
+                        .unwrap_or(id);
+                    catalog_limits(catalog, "openrouter", &format!("meta/{base}"))
+                }),
         }
     }
 
@@ -553,44 +485,5 @@ mod plugin {
         std::env::split_paths(&path)
             .map(|dir| dir.join(program))
             .find(|candidate| candidate.is_file())
-    }
-
-    #[cfg(test)]
-    mod tests {
-        use super::*;
-
-        #[test]
-        fn enrich_limits_populates_context_windows_across_bridge_vendors() {
-            let catalog = Catalog::builtin();
-            let check = |vendor: &str, id: &str| {
-                let Ok(pid) = ProviderId::declare(vendor) else {
-                    return None;
-                };
-                enrich_limits(catalog, vendor, ModelSpec::new(pid, id)).input_limit()
-            };
-
-            assert_eq!(check("grok-build", "grok-4.7"), Some(500_000));
-            assert_eq!(check("grok-build", "grok-4.7-build-fast"), Some(500_000));
-            assert_eq!(check("antigravity", "gemini-4-neon-high"), Some(1_048_576));
-            assert_eq!(
-                check("antigravity", "gemini-4-carbon-medium"),
-                Some(1_048_576)
-            );
-            assert_eq!(
-                check("antigravity", "gemini-pro-orchestrator-neon"),
-                Some(1_048_576)
-            );
-            assert_eq!(
-                check("antigravity", "claude-opus-5-5-medium"),
-                Some(1_000_000)
-            );
-            assert_eq!(check("antigravity", "gpt-oss-120b-medium"), Some(131_072));
-            assert_eq!(check("muse", "muse-wonder-1.0"), Some(1_048_576));
-            assert_eq!(check("muse", "muse-wonder-full-1.0"), Some(1_048_576));
-            assert_eq!(check("copilot", "gpt-6.1-terra"), Some(922_000));
-            assert_eq!(check("copilot", "claude-sonnet-5.5"), Some(1_000_000));
-            assert_eq!(check("copilot", "mai-code-2"), Some(200_000));
-            assert_eq!(check("copilot", "auto"), None);
-        }
     }
 }

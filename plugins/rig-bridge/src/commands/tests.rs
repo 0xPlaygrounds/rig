@@ -1,6 +1,20 @@
-use serde_json::json;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
-use super::{parse_claude_usage, parse_codex_usage, parse_grok_usage, parse_muse_usage};
+use rig_harness::prelude::*;
+use rig_harness::rig_core::catalog::ModelSpec;
+use rig_harness::rig_core::effect::{EffectKind, FamilyDescriptor, HandlerDescriptor};
+use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
+use rig_harness::rig_core::providers::registry::ProviderId;
+use rig_harness::rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
+use serde_json::json;
+use tokio::sync::mpsc;
+
+use super::{
+    BridgeSignal, SignalInbox, drain_signals, format_grok_usage_error, parse_claude_usage,
+    parse_codex_usage, parse_grok_usage, parse_muse_usage,
+};
+use crate::harness::Vendor;
 
 #[test]
 fn claude_usage_formats_subscription_windows() {
@@ -61,4 +75,97 @@ fn muse_usage_formats_tier_and_windows() {
 fn grok_usage_handles_percent_fields() {
     let val = json!({ "weekly": { "usedPercent": 35 } });
     assert_eq!(parse_grok_usage(&val), "weekly 35% used");
+    assert_eq!(
+        format_grok_usage_error(
+            "Error: `grok usage` can't show your plan's usage here yet. Run /usage inside grok instead."
+        ),
+        "unavailable (run `/usage` inside grok)"
+    );
+}
+
+#[test]
+fn drain_signals_updates_catalog_connection_and_refreshes_on_last_usage() {
+    struct Stub;
+    impl Serve for Stub {
+        type Family = rig_harness::rig_core::effect::family::Completion;
+        fn descriptor(&self) -> HandlerDescriptor {
+            HandlerDescriptor {
+                key: rig_harness::rig_core::effect::model_key("grok-build/grok-4.7"),
+                family: FamilyDescriptor::Completion {
+                    model: "grok-build/grok-4.7".into(),
+                    capabilities: Default::default(),
+                },
+                layers: Vec::new(),
+            }
+        }
+        async fn serve(&self, _: EffectKind, _: Dispatch) -> Reply {
+            Reply::Outcome(Err(ErrorReport::new(ErrorKind::Internal, "stub")))
+        }
+    }
+
+    let Ok(pid) = ProviderId::declare(Vendor::GrokBuild.as_str()) else {
+        return;
+    };
+    let initial = ModelSpec::new(pid, "grok-4.7").with_context_window(500_000);
+    let (tx, rx) = mpsc::unbounded_channel();
+    let inserts = Arc::new(AtomicUsize::new(0));
+    let seen_inserts = inserts.clone();
+
+    let mut app = App::new();
+    let mut models = Models::default();
+    models.0.catalog_mut().insert(initial.clone());
+    app.insert_resource(models)
+        .insert_resource(SignalInbox::new(rx))
+        .add_observer(move |_: On<Insert<Connection>>| {
+            seen_inserts.fetch_add(1, Ordering::SeqCst);
+        })
+        .add_systems(Update, drain_signals);
+
+    let agent = app
+        .world_mut()
+        .spawn((
+            Connection {
+                spec: Arc::new(initial),
+                handler: rig_harness::rig_ecs::effects::Handler(ErasedHandler::new(Stub)),
+            },
+            LastUsage(None),
+        ))
+        .id();
+    inserts.store(0, Ordering::SeqCst);
+
+    let _ = tx.send(BridgeSignal::Window {
+        vendor: Vendor::GrokBuild,
+        model: "grok-4.7".to_owned(),
+        limit: 256_000,
+    });
+    app.update();
+
+    let conn_limit = app
+        .world()
+        .get::<Connection>(agent)
+        .and_then(|c| c.spec.input_limit());
+    let cat_limit = app
+        .world()
+        .resource::<Models>()
+        .0
+        .catalog()
+        .get_exact(pid, "grok-4.7")
+        .and_then(ModelSpec::input_limit);
+    assert_eq!(conn_limit, Some(256_000));
+    assert_eq!(cat_limit, Some(256_000));
+    assert_eq!(inserts.load(Ordering::SeqCst), 1);
+
+    // Simulate Turn 1 completing (changing LastUsage): drain_signals must
+    // re-insert Connection once so rig-basics clears any stale Turn-1 InputLimit.
+    if let Some(mut last) = app.world_mut().get_mut::<LastUsage>(agent) {
+        last.0 = None;
+    }
+    app.update();
+    assert_eq!(inserts.load(Ordering::SeqCst), 2);
+    assert_eq!(
+        app.world()
+            .get::<Connection>(agent)
+            .and_then(|c| c.spec.input_limit()),
+        Some(256_000)
+    );
 }

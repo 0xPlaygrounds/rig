@@ -6,17 +6,17 @@
 //! disabled.
 
 use std::collections::HashSet;
-use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
-use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
+use std::process::Command;
+use std::time::Duration;
 
 use rig_harness::prelude::Processes;
 use rig_harness::rig_core::completion::Effort;
-use rig_harness::rig_tools::process::Process;
 use serde_json::{Value, json};
 
 use crate::acp::{Agent, Opening, SERVER};
+use crate::rpc;
+use crate::session::Dir;
 
 #[cfg(test)]
 mod tests;
@@ -145,15 +145,12 @@ impl Agent for Copilot {
             && !trimmed.starts_with("Info: Unknown tool name in the tool allowlist:")
     }
 
-    fn is_rig_tool(&self, tool_call: &Value) -> bool {
-        tool_call
-            .get("title")
-            .and_then(Value::as_str)
-            .is_some_and(is_rig_title)
-    }
-
-    fn is_rig_tool_with_title(&self, tool_call: &Value, recorded_title: Option<&str>) -> bool {
-        recorded_title.is_some_and(is_rig_title) || self.is_rig_tool(tool_call)
+    fn is_rig_tool(&self, tool_call: &Value, recorded_title: Option<&str>) -> bool {
+        recorded_title.is_some_and(is_rig_title)
+            || tool_call
+                .get("title")
+                .and_then(Value::as_str)
+                .is_some_and(is_rig_title)
     }
 }
 
@@ -202,30 +199,16 @@ pub(crate) fn discover_models(
     scratch_root: &Path,
     timeout: Duration,
 ) -> Vec<Listed> {
-    let dir = scratch_root.join(format!(
-        "rig-bridge-{}-copilot-list-{}",
-        std::process::id(),
-        uuid::Uuid::new_v4().simple()
-    ));
-    let copilot_home = dir.join("copilot");
+    let Ok(dir) = Dir::create(scratch_root) else {
+        return Vec::new();
+    };
+    let copilot_home = dir.path().join("copilot");
     if std::fs::create_dir_all(&copilot_home).is_err() {
         return Vec::new();
     }
-    let result = probe_models(processes, program, &dir, &copilot_home, timeout);
-    let _ = std::fs::remove_dir_all(&dir);
-    result
-}
-
-fn probe_models(
-    processes: &Processes,
-    program: &Path,
-    dir: &Path,
-    copilot_home: &Path,
-    timeout: Duration,
-) -> Vec<Listed> {
     let mut command = processes.launcher().command(program);
     command
-        .current_dir(dir)
+        .current_dir(dir.path())
         .args([
             "--acp",
             "--stdio",
@@ -236,25 +219,14 @@ fn probe_models(
             "--no-bash-env",
             "--disable-client-telemetry",
         ])
-        .env("COPILOT_HOME", copilot_home)
+        .env("COPILOT_HOME", &copilot_home)
         .env("COPILOT_AUTO_UPDATE", "false")
         .env("COPILOT_PLUGIN_DIR_ONLY", "true")
         .env("COPILOT_MCP_TOOL_CACHE", "false")
         .env("COPILOT_DISABLE_DESKTOP_NOTIFICATIONS", "1")
-        .env("COPILOT_DISABLE_LOGIN_SHELL_ENV", "1")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null());
-    let Ok(mut process) = Process::start_with_stdio(command) else {
-        return Vec::new();
-    };
-    let (Some(mut stdin), Some(stdout)) = (process.take_stdin(), process.take_stdout()) else {
-        return Vec::new();
-    };
-    let (tx, rx) = std::sync::mpsc::channel();
-    let cwd = dir.to_string_lossy().into_owned();
-    let reader = std::thread::spawn(move || {
-        let init = json!({
+        .env("COPILOT_DISABLE_LOGIN_SHELL_ENV", "1");
+    let requests = vec![
+        json!({
             "jsonrpc": "2.0",
             "id": 1,
             "method": "initialize",
@@ -266,39 +238,18 @@ fn probe_models(
                 },
                 "clientInfo": { "name": "rig", "version": env!("CARGO_PKG_VERSION") },
             }
-        });
-        let new = json!({
+        }),
+        json!({
             "jsonrpc": "2.0",
             "id": 2,
             "method": "session/new",
-            "params": { "cwd": cwd, "mcpServers": [] },
-        });
-        if writeln!(stdin, "{init}").is_err()
-            || writeln!(stdin, "{new}").is_err()
-            || stdin.flush().is_err()
-        {
-            return;
-        }
-        let mut lines = BufReader::new(stdout).lines();
-        while let Some(Ok(line)) = lines.next() {
-            let Ok(message) = serde_json::from_str::<Value>(&line) else {
-                continue;
-            };
-            if message.get("id").and_then(Value::as_u64) == Some(2) {
-                let listed = message
-                    .get("result")
-                    .map(models_from_session)
-                    .unwrap_or_default();
-                let _ = tx.send(listed);
-                return;
-            }
-        }
-    });
-    let deadline = Instant::now() + timeout;
-    let listed = rx
-        .recv_timeout(deadline.saturating_duration_since(Instant::now()))
-        .unwrap_or_default();
-    drop(process);
-    let _ = reader.join();
-    listed
+            "params": { "cwd": dir.path().to_string_lossy(), "mcpServers": [] },
+        }),
+    ];
+    rpc::probe(command, requests, timeout, |msg| {
+        msg.get("id").and_then(Value::as_u64) == Some(2)
+    })
+    .ok()
+    .and_then(|msg| msg.get("result").map(models_from_session))
+    .unwrap_or_default()
 }

@@ -10,12 +10,15 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use base64::Engine;
-use rig_harness::rig_core::completion::{Effort, Usage};
+use rig_harness::rig_core::completion::{Effort, FinishReason, Usage};
 use serde_json::{Value, json};
-use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader, Lines};
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::mpsc;
 
-use crate::harness::{Event, Harness, Launch, Part, Running, Stderr, note, spawn};
+use crate::harness::{
+    ContextSnapshot, Event, Harness, Launch, Part, Running, Stderr, link, note, spawn,
+};
+use crate::rpc::Transport;
 
 #[cfg(test)]
 mod tests;
@@ -112,7 +115,18 @@ impl Codex {
             model.insert("supports_search_tool".to_owned(), false.into());
             let text = |key: &str| model.get(key).and_then(Value::as_str);
             if let (Some(id), Some("list")) = (text("slug"), text("visibility")) {
-                let window = model.get("context_window").and_then(Value::as_u64);
+                let window = model
+                    .get("context_window")
+                    .and_then(Value::as_u64)
+                    .map(|raw| {
+                        match model
+                            .get("effective_context_window_percent")
+                            .and_then(Value::as_u64)
+                        {
+                            Some(pct @ 1..=100) => raw.saturating_mul(pct) / 100,
+                            _ => raw,
+                        }
+                    });
                 listed.push(Listed {
                     id: id.to_owned(),
                     name: text("display_name").unwrap_or(id).to_owned(),
@@ -128,7 +142,7 @@ impl Codex {
 }
 
 /// Where the user's sign-in is kept.
-fn signed_in() -> Option<PathBuf> {
+pub(crate) fn signed_in() -> Option<PathBuf> {
     let home = std::env::var_os("CODEX_HOME")
         .map(PathBuf::from)
         .or_else(|| Some(PathBuf::from(std::env::var_os("HOME")?).join(".codex")))?;
@@ -208,15 +222,6 @@ impl Harness for Codex {
     }
 }
 
-/// Makes `to` a link to `from`.
-fn link(from: &Path, to: &Path) -> std::io::Result<()> {
-    #[cfg(unix)]
-    return std::os::unix::fs::symlink(from, to);
-    // A copy would keep a renewed token from the user's own sessions.
-    #[cfg(not(unix))]
-    return Err(std::io::Error::other("this platform has no links"));
-}
-
 /// What a thread opens with.
 pub(crate) struct Opening {
     /// The session's private directory, the program's working directory.
@@ -244,22 +249,18 @@ fn level(effort: Effort) -> &'static str {
 /// under its id. The program's own requests carry a method and ids of
 /// their own numbering.
 pub(crate) struct Wire<R, W> {
-    lines: Lines<BufReader<R>>,
-    writer: W,
-    next_id: u64,
+    transport: Transport<R, W>,
     events: mpsc::UnboundedSender<Event>,
     /// Whether the program reached Rig's MCP server, once it said.
     server: Option<Result<(), String>>,
     /// How the turn being answered ended, once it did.
-    ended: Option<Result<(), String>>,
+    ended: Option<Result<FinishReason, String>>,
 }
 
 impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Wire<R, W> {
     pub(crate) fn new(reader: R, writer: W, events: mpsc::UnboundedSender<Event>) -> Self {
         Self {
-            lines: BufReader::new(reader).lines(),
-            writer,
-            next_id: 0,
+            transport: Transport::new(reader, writer),
             events,
             server: None,
             ended: None,
@@ -267,29 +268,22 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Wire<R, W> {
     }
 
     async fn write(&mut self, message: &Value) -> Result<(), String> {
-        let mut line = message.to_string();
-        line.push('\n');
-        let written = self.writer.write_all(line.as_bytes()).await;
-        written.map_err(|_| "the program exited".to_owned())
+        self.transport
+            .write(message)
+            .await
+            .map_err(|()| "the program exited".to_owned())
     }
 
-    /// The next line. Dropping this future loses nothing.
-    async fn line(&mut self) -> Result<String, String> {
-        let line = self.lines.next_line().await.ok().flatten();
-        line.ok_or_else(|| "the program exited".to_owned())
+    /// Reads the next JSON object. Cancel-safe for use in `tokio::select!`.
+    async fn next_message(&mut self) -> Result<Value, String> {
+        self.transport
+            .next_object()
+            .await
+            .map_err(|()| "the program exited".to_owned())
     }
 
-    /// Reads and handles one message; the message, when it answers `id`.
-    async fn read(&mut self, id: Option<u64>) -> Result<Option<Value>, String> {
-        let line = self.line().await?;
-        self.handle(&line, id).await
-    }
-
-    /// Handles one line; its message, when it answers `id`.
-    async fn handle(&mut self, line: &str, id: Option<u64>) -> Result<Option<Value>, String> {
-        let Ok(message) = serde_json::from_str::<Value>(line) else {
-            return Ok(None);
-        };
+    /// Handles one message; returns it when it answers `id`.
+    async fn handle(&mut self, message: Value, id: Option<u64>) -> Result<Option<Value>, String> {
         let Some(method) = message.get("method").and_then(Value::as_str) else {
             let answers = id.is_some() && message.get("id").and_then(Value::as_u64) == id;
             return Ok(answers.then_some(message));
@@ -298,11 +292,10 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Wire<R, W> {
         match message.get("id").filter(|id| !id.is_null()) {
             Some(asked) => {
                 let answer = self.decide(method, params);
-                let mut answer = answer;
-                if let Some(answer) = answer.as_object_mut() {
-                    answer.insert("id".to_owned(), asked.clone());
-                }
-                self.write(&answer).await?;
+                self.transport
+                    .reply(asked, answer, false)
+                    .await
+                    .map_err(|()| "the program exited".to_owned())?;
             }
             None => self.notified(method, params),
         }
@@ -336,10 +329,24 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Wire<R, W> {
                 let later = params.get("summaryIndex").and_then(Value::as_u64) > Some(0);
                 later.then(|| Event::Reasoning("\n\n".to_owned()))
             }
-            "thread/tokenUsage/updated" => params
-                .get("tokenUsage")
-                .and_then(|counted| counted.get("last"))
-                .map(|last| Event::Usage(usage(last))),
+            "thread/tokenUsage/updated" => {
+                if let Some(counted) = params.get("tokenUsage") {
+                    if let Some(window) = counted
+                        .get("modelContextWindow")
+                        .and_then(Value::as_u64)
+                        .filter(|tokens| *tokens > 0)
+                        .and_then(|tokens| u32::try_from(tokens).ok())
+                    {
+                        let _ = self.events.send(Event::Context(ContextSnapshot {
+                            used: None,
+                            window: Some(window),
+                        }));
+                    }
+                    counted.get("last").map(|last| Event::Usage(usage(last)))
+                } else {
+                    None
+                }
+            }
             "mcpServer/startupStatus/updated" => {
                 if params.get("name").and_then(Value::as_str) == Some(SERVER) {
                     match params.get("status").and_then(Value::as_str) {
@@ -356,7 +363,7 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Wire<R, W> {
             "turn/completed" => {
                 let turn = params.get("turn").unwrap_or(&Value::Null);
                 self.ended = Some(match turn.get("status").and_then(Value::as_str) {
-                    Some("completed") => Ok(()),
+                    Some("completed") => Ok(FinishReason::Stop),
                     Some("interrupted") => Err("the turn was interrupted".to_owned()),
                     _ => Err(turn
                         .pointer("/error/message")
@@ -375,12 +382,14 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Wire<R, W> {
 
     /// Sends a request and waits for its result.
     async fn request(&mut self, method: &str, params: Value) -> Result<Value, String> {
-        self.next_id += 1;
-        let id = self.next_id;
-        self.write(&json!({ "id": id, "method": method, "params": params }))
-            .await?;
+        let id = self
+            .transport
+            .send_request(method, params, false)
+            .await
+            .map_err(|()| "the program exited".to_owned())?;
         loop {
-            let Some(message) = self.read(Some(id)).await? else {
+            let msg = self.next_message().await?;
+            let Some(message) = self.handle(msg, Some(id)).await? else {
                 continue;
             };
             return match message.pointer("/error/message").and_then(Value::as_str) {
@@ -408,6 +417,26 @@ fn usage(last: &Value) -> Usage {
     usage
 }
 
+/// Maps a MIME type to a safe filename extension for `localImage`.
+pub(crate) fn image_extension(media_type: &str) -> &str {
+    let subtype = media_type
+        .split(';')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .split_once('/')
+        .map(|(_, sub)| sub)
+        .unwrap_or_default();
+    match subtype {
+        "png" => "png",
+        "jpeg" | "jpg" => "jpg",
+        "gif" => "gif",
+        "webp" => "webp",
+        other if !other.is_empty() && other.bytes().all(|b| b.is_ascii_alphanumeric()) => other,
+        _ => "png",
+    }
+}
+
 /// A prompt as a turn's input. An image is a file in `dir`, numbered from
 /// `images`.
 fn input(prompt: &[Part], dir: &Path, images: &mut usize) -> Result<Vec<Value>, String> {
@@ -418,7 +447,7 @@ fn input(prompt: &[Part], dir: &Path, images: &mut usize) -> Result<Vec<Value>, 
             Part::Image { media_type, data } => {
                 let bytes = base64::engine::general_purpose::STANDARD.decode(data);
                 let bytes = bytes.map_err(|why| format!("an image is not base 64: {why}"))?;
-                let kind = media_type.rsplit('/').next().unwrap_or("png");
+                let kind = image_extension(media_type);
                 *images += 1;
                 let path = dir.join(format!("image-{images}.{kind}"));
                 std::fs::write(&path, bytes)
@@ -477,7 +506,8 @@ where
             if let Some(reached) = wire.server.take() {
                 return reached;
             }
-            wire.read(None).await?;
+            let msg = wire.next_message().await?;
+            wire.handle(msg, None).await?;
         }
     });
     reached
@@ -491,7 +521,7 @@ where
         let prompt = loop {
             tokio::select! {
                 prompt = prompts.recv() => break prompt,
-                line = wire.line() => drop(wire.handle(&line?, None).await?),
+                msg = wire.next_message() => drop(wire.handle(msg?, None).await?),
             }
         };
         let Some(prompt) = prompt else {
@@ -511,7 +541,8 @@ where
                 if let Some(ended) = wire.ended.take() {
                     break ended;
                 }
-                wire.read(None).await?;
+                let msg = wire.next_message().await?;
+                wire.handle(msg, None).await?;
             },
             Err(why) => Err(why),
         };

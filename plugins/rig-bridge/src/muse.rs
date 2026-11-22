@@ -9,12 +9,13 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use rig_harness::rig_core::completion::{Effort, Usage};
+use rig_harness::rig_core::completion::{Effort, FinishReason, Usage};
 use serde_json::{Value, json};
-use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader, Lines};
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::mpsc;
 
-use crate::harness::{Event, Harness, Launch, Part, Running, Stderr, note, spawn};
+use crate::harness::{Event, Harness, Launch, Part, Running, Stderr, link, note, spawn};
+use crate::rpc::Transport;
 
 #[cfg(test)]
 mod tests;
@@ -41,14 +42,6 @@ fn signed_in() -> Option<PathBuf> {
         .map(PathBuf::from)
         .or_else(|| Some(PathBuf::from(std::env::var_os("HOME")?).join(".config")))?;
     Some(config.join("muse").join("auth.json"))
-}
-
-/// Makes `to` a symlink to `from`.
-fn link(from: &Path, to: &Path) -> std::io::Result<()> {
-    #[cfg(unix)]
-    return std::os::unix::fs::symlink(from, to);
-    #[cfg(not(unix))]
-    return Err(std::io::Error::other("this platform has no links"));
 }
 
 impl Harness for Muse {
@@ -166,55 +159,33 @@ pub(crate) fn uuidv7() -> String {
 
 /// The client's end of a Muse MSP stdio session.
 pub(crate) struct Wire<R, W> {
-    lines: Lines<BufReader<R>>,
-    writer: W,
-    next_id: u64,
+    transport: Transport<R, W>,
     events: mpsc::UnboundedSender<Event>,
     /// `itemId` -> item `kind` (`agentMessage`, `reasoning`, ...).
     items: HashMap<String, String>,
     /// How the active turn ended, once `turn/completed` arrives.
-    ended: Option<Result<(), String>>,
+    ended: Option<Result<FinishReason, String>>,
 }
 
 impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Wire<R, W> {
     pub(crate) fn new(reader: R, writer: W, events: mpsc::UnboundedSender<Event>) -> Self {
         Self {
-            lines: BufReader::new(reader).lines(),
-            writer,
-            next_id: 0,
+            transport: Transport::new(reader, writer),
             events,
             items: HashMap::new(),
             ended: None,
         }
     }
 
-    async fn write(&mut self, message: &Value) -> Result<(), String> {
-        let mut line = message.to_string();
-        line.push('\n');
-        self.writer
-            .write_all(line.as_bytes())
+    /// Reads the next JSON object. Cancel-safe for use in `tokio::select!`.
+    async fn next_message(&mut self) -> Result<Value, String> {
+        self.transport
+            .next_object()
             .await
-            .map_err(|_| "the program exited".to_owned())
+            .map_err(|()| "the program exited".to_owned())
     }
 
-    async fn line(&mut self) -> Result<String, String> {
-        self.lines
-            .next_line()
-            .await
-            .ok()
-            .flatten()
-            .ok_or_else(|| "the program exited".to_owned())
-    }
-
-    async fn read(&mut self, id: Option<u64>) -> Result<Option<Value>, String> {
-        let line = self.line().await?;
-        self.handle(&line, id).await
-    }
-
-    async fn handle(&mut self, line: &str, id: Option<u64>) -> Result<Option<Value>, String> {
-        let Ok(message) = serde_json::from_str::<Value>(line) else {
-            return Ok(None);
-        };
+    async fn handle(&mut self, message: Value, id: Option<u64>) -> Result<Option<Value>, String> {
         let Some(method) = message.get("method").and_then(Value::as_str) else {
             let answers = id.is_some() && message.get("id").and_then(Value::as_u64) == id;
             return Ok(answers.then_some(message));
@@ -222,12 +193,10 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Wire<R, W> {
         let params = message.get("params").unwrap_or(&Value::Null);
         match message.get("id").filter(|id| !id.is_null()) {
             Some(asked) => {
-                let mut answer = decide(method, params);
-                if let Some(answer) = answer.as_object_mut() {
-                    answer.insert("jsonrpc".to_owned(), "2.0".into());
-                    answer.insert("id".to_owned(), asked.clone());
-                }
-                self.write(&answer).await?;
+                self.transport
+                    .reply(asked, decide(method, params), true)
+                    .await
+                    .map_err(|()| "the program exited".to_owned())?;
             }
             None => self.notified(method, params),
         }
@@ -235,17 +204,14 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Wire<R, W> {
     }
 
     async fn request(&mut self, method: &str, params: Value) -> Result<Value, String> {
-        self.next_id += 1;
-        let id = self.next_id;
-        self.write(&json!({
-            "jsonrpc": "2.0",
-            "id": id,
-            "method": method,
-            "params": params,
-        }))
-        .await?;
+        let id = self
+            .transport
+            .send_request(method, params, true)
+            .await
+            .map_err(|()| "the program exited".to_owned())?;
         loop {
-            let Some(message) = self.read(Some(id)).await? else {
+            let msg = self.next_message().await?;
+            let Some(message) = self.handle(msg, Some(id)).await? else {
                 continue;
             };
             return match message.get("error") {
@@ -262,12 +228,14 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Wire<R, W> {
     }
 
     async fn notify(&mut self, method: &str, params: Value) -> Result<(), String> {
-        self.write(&json!({
-            "jsonrpc": "2.0",
-            "method": method,
-            "params": params,
-        }))
-        .await
+        self.transport
+            .write(&json!({
+                "jsonrpc": "2.0",
+                "method": method,
+                "params": params,
+            }))
+            .await
+            .map_err(|()| "the program exited".to_owned())
     }
 
     fn notified(&mut self, method: &str, params: &Value) {
@@ -304,6 +272,11 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Wire<R, W> {
                     _ => {}
                 }
             }
+            "item/completed" => {
+                if let Some(id) = params.pointer("/item/itemId").and_then(Value::as_str) {
+                    self.items.remove(id);
+                }
+            }
             "turn/modelAttemptStarted" => {
                 let _ = self.events.send(Event::Began);
             }
@@ -313,8 +286,10 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Wire<R, W> {
                 }
             }
             "turn/completed" => {
+                self.items.clear();
                 let outcome = match params.get("terminal").and_then(Value::as_str) {
-                    Some("completed") => Ok(()),
+                    Some("completed") => Ok(FinishReason::Stop),
+                    Some("maxTokens" | "max_tokens" | "length") => Ok(FinishReason::Length),
                     Some("cancelled") => Err("the turn was cancelled".to_owned()),
                     _ => {
                         let why = params
@@ -456,9 +431,7 @@ where
         let prompt = loop {
             tokio::select! {
                 prompt = prompts.recv() => break prompt,
-                read = wire.read(None) => {
-                    let _ = read?;
-                }
+                msg = wire.next_message() => drop(wire.handle(msg?, None).await?),
             }
         };
         let Some(prompt) = prompt else {
@@ -491,7 +464,8 @@ where
             if let Some(done) = wire.ended.take() {
                 break done;
             }
-            wire.read(None).await?;
+            let msg = wire.next_message().await?;
+            wire.handle(msg, None).await?;
         };
         if wire.events.send(Event::Done(done)).is_err() {
             return Ok(());

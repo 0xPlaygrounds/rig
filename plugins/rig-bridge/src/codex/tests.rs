@@ -1,11 +1,12 @@
 use std::sync::{Arc, Mutex, PoisonError};
 
+use rig_harness::rig_core::completion::FinishReason;
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, DuplexStream};
 use tokio::sync::mpsc;
 
-use super::{Codex, Listed, Opening, Wire, converse};
-use crate::harness::{Event, Part};
+use super::{Codex, Listed, Opening, Wire, converse, image_extension};
+use crate::harness::{ContextSnapshot, Event, Part};
 
 #[test]
 fn the_catalog_lists_the_shown_models_and_gives_none_of_them_tools() {
@@ -209,7 +210,7 @@ async fn a_turn_is_answered_with_what_the_model_says_and_each_call_s_count() {
             &Event::Reasoning("Plan".to_owned()),
             &Event::Reasoning("\n\n".to_owned()),
             &Event::Text("Hello".to_owned()),
-            &Event::Done(Ok(())),
+            &Event::Done(Ok(FinishReason::Stop)),
             &Event::Done(Err("The model is not supported.".to_owned())),
         ],
     );
@@ -285,4 +286,45 @@ async fn a_program_that_is_not_signed_in_says_how_to_sign_in() {
         ))]
     );
     assert_eq!(received.len(), 3);
+}
+
+#[test]
+fn effective_context_window_percent_and_image_extension_are_handled() {
+    let listing = json!({ "models": [
+        { "slug": "gpt-6.2-sol", "display_name": "GPT-6.2", "visibility": "list",
+          "context_window": 500_000, "effective_context_window_percent": 95 }
+    ] });
+    let window = Codex::new(&listing.to_string())
+        .and_then(|(_, listed)| listed.first().and_then(|model| model.context_window));
+    assert_eq!(window, Some(475_000));
+
+    assert_eq!(image_extension("image/jpeg"), "jpg");
+    assert_eq!(image_extension("image/png; charset=binary"), "png");
+    assert_eq!(image_extension("image/svg+xml"), "png");
+    assert_eq!(image_extension("image/../../evil"), "png");
+}
+
+#[test]
+fn token_usage_update_emits_runtime_model_context_window() {
+    let (client, _server) = tokio::io::duplex(64);
+    let (reader, writer) = tokio::io::split(client);
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let mut wire = Wire::new(reader, writer, tx);
+    wire.notified(
+        "thread/tokenUsage/updated",
+        &json!({
+            "tokenUsage": {
+                "last": { "inputTokens": 100, "outputTokens": 20 },
+                "modelContextWindow": 475_000,
+            }
+        }),
+    );
+    assert_eq!(
+        rx.try_recv().ok(),
+        Some(Event::Context(ContextSnapshot {
+            used: None,
+            window: Some(475_000),
+        }))
+    );
+    assert!(matches!(rx.try_recv().ok(), Some(Event::Usage(_))));
 }

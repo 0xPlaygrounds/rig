@@ -13,10 +13,10 @@ use rig_harness::rig_core::message::{
 };
 use rig_harness::rig_core::serve::{Dispatch, Reply, Serve};
 use serde_json::{Value, json};
-use tokio::sync::mpsc;
+use tokio::sync::{Notify, mpsc};
 
 use super::{Bridge, Model, apply_context, budgeted_opening};
-use crate::harness::{Event, Harness, Launch, Part, Running};
+use crate::harness::{Event, Harness, Launch, Part, Running, Vendor};
 use crate::mcp::tests::{post, request};
 
 /// What the scripted harness saw: each start's system prompt and prompts.
@@ -39,13 +39,23 @@ struct Scripted {
     /// Whether the harness holds a stream open for the server's
     /// notifications and lists the tools again when told they changed.
     listens: bool,
+    /// Signaled once the SSE notification stream has received its 200 OK header.
+    listening: Arc<Notify>,
+    /// Signaled after `listen` records a refreshed tool list into `seen.listed`.
+    listed_done: Arc<Notify>,
     /// What the harness says of taking tools while it runs.
     fixed_tools: bool,
 }
 
 /// Holds a notification stream open on the server at `url` and lists the
 /// tools again, into `seen`, each time it says they changed.
-async fn listen(url: String, token: String, seen: Arc<Mutex<Seen>>) {
+async fn listen(
+    url: String,
+    token: String,
+    seen: Arc<Mutex<Seen>>,
+    ready: Arc<Notify>,
+    listed_done: Arc<Notify>,
+) {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let address = url
         .trim_start_matches("http://")
@@ -62,6 +72,7 @@ async fn listen(url: String, token: String, seen: Arc<Mutex<Seen>>) {
         return;
     }
     let mut chunk = [0u8; 4096];
+    let mut signaled = false;
     while let Ok(read) = stream.read(&mut chunk).await {
         let told = chunk
             .get(..read)
@@ -69,6 +80,10 @@ async fn listen(url: String, token: String, seen: Arc<Mutex<Seen>>) {
             .unwrap_or_default();
         if read == 0 {
             return;
+        }
+        if !signaled && told.contains("200") {
+            signaled = true;
+            ready.notify_one();
         }
         if told.contains("tools/list_changed") {
             let (_, listed) = post(&url, &token, &request(99, "tools/list", json!({})))
@@ -84,6 +99,7 @@ async fn listen(url: String, token: String, seen: Arc<Mutex<Seen>>) {
                 .unwrap_or_else(PoisonError::into_inner)
                 .listed
                 .push(names);
+            listed_done.notify_one();
         }
     }
 }
@@ -116,7 +132,13 @@ impl Harness for Scripted {
         };
         let (url, token) = (launch.mcp.url().to_owned(), launch.mcp.token().to_owned());
         if self.listens {
-            tokio::spawn(listen(url.clone(), token.clone(), seen.clone()));
+            tokio::spawn(listen(
+                url.clone(),
+                token.clone(),
+                seen.clone(),
+                self.listening.clone(),
+                self.listed_done.clone(),
+            ));
         }
         tokio::spawn(async move {
             while let Some(prompt) = prompted.recv().await {
@@ -184,7 +206,7 @@ impl Harness for Scripted {
                 usage.input_tokens = Some(10);
                 usage.output_tokens = Some(2);
                 let _ = events.send(Event::Usage(usage));
-                let _ = events.send(Event::Done(Ok(())));
+                let _ = events.send(Event::Done(Ok(FinishReason::Stop)));
             }
         });
         Ok(Running {
@@ -217,7 +239,7 @@ fn on(harness: Scripted, limit: usize) -> (Model, Arc<Mutex<Seen>>, Arc<AtomicUs
         bridge: Arc::new(bridge),
         harness: Arc::new(harness),
         program: "scripted".into(),
-        vendor: "scripted",
+        vendor: Vendor::ClaudeCode,
         model: "model-1".to_owned(),
         context_limit: Some(200_000),
     };
@@ -565,6 +587,10 @@ async fn a_history_with_another_reply_is_another_conversation() {
 /// One turn offering `read`, then the next offering `read` and `write`:
 /// how many harnesses ran, and the listings made on being told.
 async fn retooled(harness: Scripted) -> (usize, Vec<Vec<String>>) {
+    let waits_relist = harness.listens && !harness.fixed_tools;
+    let listens = harness.listens;
+    let listening = harness.listening.clone();
+    let listed_done = harness.listed_done.clone();
     let (model, seen, _) = on(harness, 4);
     let mut history = vec![Message::user("one")];
     let first = answer(&model, asks("", &history)).await;
@@ -573,10 +599,15 @@ async fn retooled(harness: Scripted) -> (usize, Vec<Vec<String>>) {
     let write = ToolName::new("write").ok();
     let write =
         write.map(|name| ToolDefinition::new(name, "Writes a file.", json!({ "type": "object" })));
-    // Time for the harness to open its stream.
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    if listens {
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(2), listening.notified()).await;
+    }
 
     let _ = answer(&model, asks("", &history).tools(write)).await;
+    if waits_relist {
+        let _ =
+            tokio::time::timeout(std::time::Duration::from_secs(2), listed_done.notified()).await;
+    }
 
     let seen = seen.lock().unwrap_or_else(PoisonError::into_inner);
     (seen.started.len(), seen.listed.clone())
@@ -688,4 +719,199 @@ fn apply_context_prefers_per_inference_context_over_summed_totals() {
     let fixed = apply_context(summed, None, Some(2_921), 2);
     assert_eq!(fixed.context_tokens(), Some(2_921));
     assert_eq!(fixed.input_tokens, Some(5_736));
+}
+
+#[test]
+fn budgeted_opening_pins_leading_compaction_summary_before_dropping_middle_turns() {
+    let summary = "The conversation history before this point was compacted into the following summary:\n<summary>\nPINNED_SUMMARY_CANARY\n</summary>";
+    let filler = "x".repeat(4_000);
+    let ack = || {
+        Arc::new(Message::Assistant(AssistantMessage::new(vec![
+            AssistantContent::text("ok"),
+        ])))
+    };
+    let history = vec![
+        Arc::new(Message::user(summary)),
+        ack(),
+        Arc::new(Message::user(format!("middle-1 {filler}"))),
+        ack(),
+        Arc::new(Message::user(format!("middle-2 {filler}"))),
+        ack(),
+        Arc::new(Message::user("LATEST_USER_TURN")),
+    ];
+
+    let (parts, trimmed) = budgeted_opening(&history, 5_000);
+    assert!(trimmed.is_some());
+    let joined: String = parts
+        .iter()
+        .filter_map(|part| match part {
+            Part::Text(text) => Some(text.as_str()),
+            Part::Image { .. } => None,
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(joined.contains("PINNED_SUMMARY_CANARY"));
+    assert!(joined.contains("LATEST_USER_TURN"));
+    assert!(!joined.contains("middle-1"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn duplicate_tool_results_do_not_reuse_waiting_session() {
+    let (model, seen, _) = model(4);
+    let mut history = vec![Message::user("call read a.txt and call read b.txt")];
+    let called = answer(&model, asks("", &history)).await;
+    let first_call = called
+        .as_ref()
+        .into_iter()
+        .flat_map(|response| &response.choice)
+        .find_map(|content| match content {
+            AssistantContent::ToolCall(call) => Some(call.clone()),
+            _ => None,
+        });
+    assert_eq!(said(called.as_ref()).1.len(), 2);
+    let Some(first_call) = first_call else {
+        return;
+    };
+    history.push(turn(called.as_ref()));
+    // Send two results for the SAME CallId instead of one for each call.
+    history.push(Message::tool_results(vec![
+        first_call.result(vec![ToolResultContent::Text("one".into())]),
+        first_call.result(vec![ToolResultContent::Text("two".into())]),
+    ]));
+
+    let _ = answer(&model, asks("", &history)).await;
+    // Duplicate results must reject session reuse and start a fresh harness.
+    assert_eq!(prompts(&seen).len(), 2);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn counting_tool_call_without_usage_settles_on_watchdog() {
+    struct SilentCounter;
+    impl Harness for SilentCounter {
+        fn note(&self, _: Option<&std::path::Path>) -> String {
+            String::new()
+        }
+        fn start(&self, launch: Launch<'_>) -> Result<Running, String> {
+            let (prompts, mut prompted) = mpsc::unbounded_channel::<Vec<Part>>();
+            let (events, reported) = mpsc::unbounded_channel();
+            let (url, token) = (launch.mcp.url().to_owned(), launch.mcp.token().to_owned());
+            tokio::spawn(async move {
+                if prompted.recv().await.is_some() {
+                    // Emit Began and invoke a tool, but never send Event::Usage.
+                    let _ = events.send(Event::Began);
+                    let call = request(
+                        1,
+                        "tools/call",
+                        json!({ "name": "read", "arguments": { "path": "a.txt" } }),
+                    );
+                    let _ = post(&url, &token, &call).await;
+                    let _ = events.send(Event::Done(Ok(FinishReason::Stop)));
+                }
+            });
+            Ok(Running {
+                prompts,
+                events: reported,
+                _alive: Box::new(()),
+            })
+        }
+    }
+
+    let scratch =
+        std::env::temp_dir().join(format!("rig-bridge-test-{}", uuid::Uuid::new_v4().simple()));
+    let bridge = Bridge::new(
+        tokio::runtime::Handle::current(),
+        Processes::default(),
+        2,
+        None,
+        scratch,
+    );
+    let model = Model {
+        bridge: Arc::new(bridge),
+        harness: Arc::new(SilentCounter),
+        program: "silent".into(),
+        vendor: Vendor::ClaudeCode,
+        model: "model-1".to_owned(),
+        context_limit: Some(200_000),
+    };
+    let reply = tokio::time::timeout(
+        std::time::Duration::from_secs(4),
+        answer(&model, asks("", &[Message::user("go")])),
+    )
+    .await;
+    assert!(
+        reply.is_ok(),
+        "counting watchdog must settle instead of hanging"
+    );
+    let called = reply.ok().flatten();
+    assert_eq!(said(called.as_ref()).1.len(), 1);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn idle_crashed_session_is_pruned_and_restarts_cleanly() {
+    struct DieAfterFirst {
+        starts: Arc<AtomicUsize>,
+    }
+    impl Harness for DieAfterFirst {
+        fn note(&self, _: Option<&std::path::Path>) -> String {
+            String::new()
+        }
+        fn start(&self, _: Launch<'_>) -> Result<Running, String> {
+            let run = self.starts.fetch_add(1, Ordering::SeqCst);
+            let (prompts, mut prompted) = mpsc::unbounded_channel::<Vec<Part>>();
+            let (events, reported) = mpsc::unbounded_channel();
+            tokio::spawn(async move {
+                if prompted.recv().await.is_some() {
+                    let _ = events.send(Event::Text(format!("reply-{run}")));
+                    let _ = events.send(Event::Done(Ok(FinishReason::Stop)));
+                }
+                if run == 0 {
+                    // Simulate the idle harness crashing right after turn 1.
+                    return;
+                }
+                while prompted.recv().await.is_some() {
+                    let _ = events.send(Event::Text(format!("reply-{run}-next")));
+                    let _ = events.send(Event::Done(Ok(FinishReason::Stop)));
+                }
+            });
+            Ok(Running {
+                prompts,
+                events: reported,
+                _alive: Box::new(()),
+            })
+        }
+    }
+
+    let starts = Arc::new(AtomicUsize::new(0));
+    let scratch =
+        std::env::temp_dir().join(format!("rig-bridge-test-{}", uuid::Uuid::new_v4().simple()));
+    let bridge = Arc::new(Bridge::new(
+        tokio::runtime::Handle::current(),
+        Processes::default(),
+        2,
+        None,
+        scratch,
+    ));
+    let model = Model {
+        bridge,
+        harness: Arc::new(DieAfterFirst {
+            starts: starts.clone(),
+        }),
+        program: "crashy".into(),
+        vendor: Vendor::ClaudeCode,
+        model: "model-1".to_owned(),
+        context_limit: Some(200_000),
+    };
+    let h1 = vec![Message::user("first")];
+    let first = answer(&model, asks("", &h1)).await;
+    assert_eq!(said(first.as_ref()).0, "reply-0");
+    tokio::task::yield_now().await;
+
+    let h2 = vec![
+        Message::user("first"),
+        Message::assistant("reply-0"),
+        Message::user("second"),
+    ];
+    let second = answer(&model, asks("", &h2)).await;
+    assert_eq!(said(second.as_ref()).0, "reply-1");
+    assert_eq!(starts.load(Ordering::SeqCst), 2);
 }

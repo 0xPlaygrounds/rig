@@ -2,12 +2,13 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::{Arc, Mutex, PoisonError};
 
+use rig_harness::rig_core::completion::FinishReason;
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, DuplexStream};
 use tokio::sync::mpsc;
 
 use super::{Agent, Opening, Peer, converse};
-use crate::harness::{Event, Part};
+use crate::harness::{ContextSnapshot, Event, Part};
 
 /// An agent with no system prompt channel, one sign-in and a model request.
 struct Plain;
@@ -44,7 +45,7 @@ impl Agent for Plain {
         String::new()
     }
 
-    fn is_rig_tool(&self, tool_call: &Value) -> bool {
+    fn is_rig_tool(&self, tool_call: &Value, _: Option<&str>) -> bool {
         tool_call.get("title").and_then(Value::as_str) == Some("rig")
     }
 }
@@ -191,8 +192,8 @@ async fn a_prompt_is_answered_with_what_the_agent_says_and_counts() {
         ),
     );
     assert_eq!(counted, Some((Some(10), Some(5), Some(4))));
-    assert_eq!(events.get(3), Some(&Event::Done(Ok(()))));
-    assert_eq!(events.last(), Some(&Event::Done(Ok(()))));
+    assert_eq!(events.get(3), Some(&Event::Done(Ok(FinishReason::Stop))));
+    assert_eq!(events.last(), Some(&Event::Done(Ok(FinishReason::Stop))));
 }
 
 #[tokio::test]
@@ -288,7 +289,7 @@ async fn only_rig_s_tools_are_permitted_and_other_requests_refused() {
 }
 
 #[tokio::test]
-async fn usage_update_overrides_cumulative_turn_context_tokens() {
+async fn usage_update_session_window_and_max_tokens_are_emitted_cleanly() {
     let (client, server_stream) = tokio::io::duplex(16 * 1024);
     let task = tokio::spawn(async move {
         let (reader, mut writer) = tokio::io::split(server_stream);
@@ -302,7 +303,17 @@ async fn usage_update_overrides_cumulative_turn_context_tokens() {
             let out: Vec<Value> = match method {
                 Some("initialize") => vec![json!({ "jsonrpc": "2.0", "id": id, "result": {} })],
                 Some("session/new") => vec![json!({
-                    "jsonrpc": "2.0", "id": id, "result": { "sessionId": "s1" }
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": {
+                        "sessionId": "s1",
+                        "models": {
+                            "availableModels": [{
+                                "modelId": "model-1",
+                                "_meta": { "totalContextTokens": 256000 }
+                            }]
+                        }
+                    }
                 })],
                 Some("session/set_model") => {
                     vec![json!({ "jsonrpc": "2.0", "id": id, "result": {} })]
@@ -327,7 +338,7 @@ async fn usage_update_overrides_cumulative_turn_context_tokens() {
                         "jsonrpc": "2.0",
                         "id": id,
                         "result": {
-                            "stopReason": "end_turn",
+                            "stopReason": "max_tokens",
                             "usage": {
                                 "inputTokens": 3500000,
                                 "outputTokens": 40000,
@@ -375,15 +386,32 @@ async fn usage_update_overrides_cumulative_turn_context_tokens() {
     while let Ok(event) = events_rx.try_recv() {
         events.push(event);
     }
+    let contexts: Vec<ContextSnapshot> = events
+        .iter()
+        .filter_map(|event| match event {
+            Event::Context(snapshot) => Some(*snapshot),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        contexts.first().copied(),
+        Some(ContextSnapshot {
+            used: None,
+            window: Some(256_000),
+        })
+    );
+    assert_eq!(
+        contexts.last().copied(),
+        Some(ContextSnapshot {
+            used: Some(105_000),
+            window: Some(1_048_576),
+        })
+    );
     let usage = events.iter().find_map(|event| match event {
         Event::Usage(usage) => Some(*usage),
         _ => None,
     });
-    assert_eq!(
-        usage.and_then(|u| u.context_tokens()),
-        Some(105_000),
-        "context_tokens must use per-inference usage_update.used, not cumulative turn total"
-    );
     assert_eq!(usage.and_then(|u| u.input_tokens), Some(3_500_000));
     assert_eq!(usage.and_then(|u| u.output_tokens), Some(40_000));
+    assert_eq!(events.last(), Some(&Event::Done(Ok(FinishReason::Length))));
 }
