@@ -149,6 +149,12 @@ pub struct DynamicTool {
     definition: ToolDefinition,
     callback: Arc<dyn ToolCallback>,
     liveness: Option<LivenessFn>,
+    /// An explicit footprint statement, such as one derived from a remote
+    /// server's annotations (see [`Touches::from_hints`]). When set it wins
+    /// over what the definition's annotations imply, so a host can keep the
+    /// two apart: annotations a tool's own code wrote describe the tool
+    /// itself, annotations relayed from elsewhere describe a server's word.
+    footprint_hint: Option<Touches>,
 }
 
 impl DynamicTool {
@@ -189,12 +195,27 @@ impl DynamicTool {
             definition: ToolDefinition::new(name, description, parameters),
             callback: Arc::new(callback),
             liveness: None,
+            footprint_hint: None,
         }
     }
 
     /// The same tool, stating what calling it does to the world.
     pub fn with_annotations(mut self, annotations: ToolAnnotations) -> Self {
         self.definition.annotations = annotations;
+        self
+    }
+
+    /// The same tool, stating exactly what a call touches, for hosts that
+    /// run a reply's calls side by side ([`Serve::footprint`]). The hint
+    /// wins over what the definition's annotations imply, so a caller can
+    /// keep its own annotations and a remote server's word apart:
+    /// annotations written by this tool's own code are read as
+    /// [`Touches::from_annotations`] reads them, while annotations relayed
+    /// from a remote server should be paired with a hint built by
+    /// [`Touches::from_hints`], which reads a read-only server tool as
+    /// [`Touches::Independent`] (never run again after a restart).
+    pub fn with_footprint(mut self, footprint: Touches) -> Self {
+        self.footprint_hint = Some(footprint);
         self
     }
 
@@ -224,11 +245,13 @@ impl DynamicTool {
             definition,
             callback,
             liveness,
+            footprint_hint,
         } = self;
         let handler = ErasedHandler::new(Self {
             definition: definition.clone(),
             callback,
             liveness: None,
+            footprint_hint,
         });
         (definition, handler, liveness)
     }
@@ -305,6 +328,22 @@ impl DynamicTool {
 
 impl crate::serve::Serve for DynamicTool {
     type Family = crate::effect::family::Tool;
+
+    fn footprint(
+        &self,
+        _kind: &crate::effect::EffectKind,
+    ) -> Option<crate::tool::Touches> {
+        // The annotations a tool's own code wrote are the tool's word about
+        // itself: a read-only tool touches nothing, so its calls may run
+        // beside other readers. Without this statement a dynamic tool reads
+        // as the default footprint, `Writes(Anything)`, and hosts serialize
+        // every call no matter what the annotations say.
+        Some(
+            self.footprint_hint
+                .clone()
+                .unwrap_or_else(|| Touches::from_annotations(&self.definition.annotations)),
+        )
+    }
 
     fn descriptor(&self) -> crate::effect::HandlerDescriptor {
         let ToolDefinition {
@@ -385,4 +424,80 @@ pub fn tool_name<T: Tool>() -> ToolName {
 pub fn tool_definition<T: Tool>(tool: &T) -> ToolDefinition {
     ToolDefinition::new(tool_name::<T>(), tool.description(), tool.parameters())
         .with_annotations(tool.annotations())
+}
+
+#[cfg(test)]
+mod dynamic_footprint_tests {
+    use super::DynamicTool;
+    use crate::completion::message::ToolName;
+    use crate::completion::ToolAnnotations;
+    use crate::effect::EffectKind;
+    use crate::tool::{ToolExecutionError, ToolOutput, Touches};
+    use crate::wasm_compat::WasmBoxedFuture;
+
+    /// A trivial dynamic tool whose footprint the tests state or imply.
+    fn echo_tool(
+        annotations: Option<ToolAnnotations>,
+        hint: Option<Touches>,
+    ) -> Result<DynamicTool, crate::message::EmptyToolName> {
+        let callback = |_args: serde_json::Value| -> WasmBoxedFuture<
+            'static,
+            Result<ToolOutput, ToolExecutionError>,
+        > {
+            Box::pin(async { Ok(ToolOutput::text("ok")) })
+        };
+        let mut tool = DynamicTool::new(
+            ToolName::new("echo")?,
+            "Echoes nothing",
+            serde_json::json!({}),
+            callback,
+        );
+        if let Some(annotations) = annotations {
+            tool = tool.with_annotations(annotations);
+        }
+        if let Some(hint) = hint {
+            tool = tool.with_footprint(hint);
+        }
+        Ok(tool)
+    }
+
+    /// The footprint a host reads when it orders a reply's calls side by side.
+    fn footprint_of(tool: &DynamicTool) -> Touches {
+        let kind = EffectKind::ToolCall {
+            name: "echo".to_owned(),
+            args: "{}".to_owned(),
+        };
+        crate::serve::Serve::footprint(tool, &kind)
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn footprint_defaults_to_writes_anything() -> Result<(), crate::message::EmptyToolName> {
+        let tool = echo_tool(None, None)?;
+        assert_eq!(footprint_of(&tool), Touches::default());
+        Ok(())
+    }
+
+    #[test]
+    fn footprint_follows_own_annotations() -> Result<(), crate::message::EmptyToolName> {
+        let mut read_only = ToolAnnotations::default();
+        read_only.read_only_hint = Some(true);
+        let tool = echo_tool(Some(read_only), None)?;
+        assert_eq!(footprint_of(&tool), Touches::Reads(crate::tool::Scope::Anything));
+        Ok(())
+    }
+
+    #[test]
+    fn explicit_hint_wins_over_annotations() -> Result<(), crate::message::EmptyToolName> {
+        let mut read_only = ToolAnnotations::default();
+        read_only.read_only_hint = Some(true);
+        // A remote server's read-only word must not read as a local
+        // declaration: the hint keeps the replay semantics distinct.
+        let tool = echo_tool(
+            Some(read_only),
+            Some(Touches::Independent),
+        )?;
+        assert_eq!(footprint_of(&tool), Touches::Independent);
+        Ok(())
+    }
 }
