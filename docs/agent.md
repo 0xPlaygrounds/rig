@@ -935,10 +935,6 @@ serves the Agent Client Protocol on stdin and stdout, so an editor such as Zed
 uses rig's models, tools, sessions and slash commands: `rig plugin enable
 rig_acp::AcpPlugin`. Its README has the editor's settings.
 
-The optional [`rig-claude-cloak`](../plugins/rig-claude-cloak) plugin adds
-`claude-cloak/*` models signed in with a Claude subscription instead of an API
-key, on Linux and macOS: `rig plugin enable rig_claude_cloak::ClaudeCloakPlugin`.
-
 Code mode is the optional [`rig-steel`](../plugins/rig-steel) plugin: a
 `run_steel` tool whose [Steel](https://github.com/mattwparas/steel) (Scheme)
 program calls the model's tools, loops and branches on what they return, in a
@@ -987,7 +983,6 @@ processes can share one:
 | `AGENTS.md`, `skills/` | Your own instructions and skills, read in every project. A new home gets the `writing-rig-plugins` skill once. |
 | `plugins/` | The plugin crates `rig plugin new` makes. |
 | `auth/` | `/login`'s credentials: `chatgpt.json` and the API keys in `keys/`. |
-| `anthropic-oauth/` | The Claude sign-in and device id of the optional `rig-claude-cloak` plugin. |
 | `project/` | The generated agent project, regenerated before each build. |
 | `kept-locks/` | The project's lock files while a `rig --safe` build runs, and after one was stopped, until the next build puts them back. |
 | `target/` | cargo's build of the agent project, a few gigabytes. |

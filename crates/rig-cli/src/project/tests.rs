@@ -204,26 +204,22 @@ fn a_path_plugins_own_path_dependencies_keep_line_tables() {
 #[test]
 fn a_crate_of_another_rig_checkout_by_path_is_refused() {
     let checkout = checkout();
-    let cloak = extra(
-        "rig_claude_cloak::ClaudeCloakPlugin",
-        "rig-claude-cloak",
-        checkout.join("plugins/rig-claude-cloak"),
+    let acp = extra(
+        "rig_acp::AcpPlugin",
+        "rig-acp",
+        checkout.join("plugins/rig-acp"),
     );
     assert_eq!(
-        foreign_rig_crate(&cloak, &RigSource::Local(checkout.clone())),
+        foreign_rig_crate(&acp, &RigSource::Local(checkout.clone())),
         None
     );
-    let problem = foreign_rig_crate(&cloak, &RigSource::Registry).unwrap_or_default();
+    let problem = foreign_rig_crate(&acp, &RigSource::Registry).unwrap_or_default();
     assert!(
         problem.contains("name them in `[plugins] enable` instead"),
         "{problem}"
     );
     // A crate rig does not ship has no plain entry to point at.
-    let renamed = extra(
-        "x::X",
-        "claude-cloak",
-        checkout.join("plugins/rig-claude-cloak"),
-    );
+    let renamed = extra("x::X", "acp", checkout.join("plugins/rig-acp"));
     let problem = foreign_rig_crate(&renamed, &RigSource::Registry).unwrap_or_default();
     assert!(
         problem.contains("rig ships no crate of that name") && !problem.contains("enable"),
@@ -233,17 +229,13 @@ fn a_crate_of_another_rig_checkout_by_path_is_refused() {
     assert!(
         manifest(
             &home,
-            &only(std::slice::from_ref(&cloak)),
+            &only(std::slice::from_ref(&acp)),
             &RigSource::Registry
         )
         .is_err()
     );
     // An alias of the same directory is the same crate.
-    let alias = extra(
-        "x::X",
-        "rig-claude-cloak",
-        checkout.join("plugins/rig-claude-cloak/src/.."),
-    );
+    let alias = extra("x::X", "rig-acp", checkout.join("plugins/rig-acp/src/.."));
     assert!(foreign_rig_crate(&alias, &RigSource::Registry).is_some());
     assert_eq!(
         foreign_rig_crate(&alias, &RigSource::Local(checkout.join("crates/.."))),
@@ -253,11 +245,7 @@ fn a_crate_of_another_rig_checkout_by_path_is_refused() {
     let viz = extra("viz::VizPlugin", "viz", PathBuf::from("/home/viz"));
     assert_eq!(foreign_rig_crate(&viz, &RigSource::Registry), None);
     // Nor is a directory that is not there.
-    let gone = extra(
-        "x::X",
-        "claude-cloak",
-        checkout.join("plugins/claude-cloak"),
-    );
+    let gone = extra("x::X", "acp", checkout.join("plugins/acp"));
     assert_eq!(foreign_rig_crate(&gone, &RigSource::Registry), None);
 }
 

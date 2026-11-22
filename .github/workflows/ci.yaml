@@ -376,10 +376,9 @@ jobs:
         env:
           RIG_CI_PLAN: ${{ needs.plan.outputs.plan }}
 
-  # Native macOS coverage for the subscription plugin, and for the agent's
-  # signal and process handling.
+  # Native macOS coverage for the agent's signal and process handling.
   macos:
-    name: stable / rig-claude-cloak macOS
+    name: stable / macOS
     needs: plan
     if: contains(fromJSON(needs.plan.outputs.jobs), 'macos')
     runs-on: macos-latest
