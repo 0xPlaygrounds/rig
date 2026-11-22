@@ -188,10 +188,20 @@ pub(crate) struct Pipes {
     pub stderr: tokio::process::ChildStderr,
 }
 
+/// Environment variables set on short-lived discovery and usage probes to
+/// suppress auto-updaters and offline-stalling version-manager shims.
+pub(crate) const PROBE_ENV: &[(&str, &str)] = &[
+    ("MISE_OFFLINE", "1"),
+    ("MUSE_NO_AUTO_UPDATE", "1"),
+    ("GROK_DISABLE_AUTOUPDATER", "1"),
+    ("AGY_CLI_DISABLE_AUTO_UPDATE", "1"),
+];
+
 /// Starts `command` with its three pipes taken for tokio.
 pub(crate) fn spawn(mut command: Command) -> Result<(Process, Pipes), String> {
     let program = command.get_program().to_string_lossy().into_owned();
     command
+        .env("MISE_OFFLINE", "1")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
@@ -217,7 +227,7 @@ pub(crate) fn spawn(mut command: Command) -> Result<(Process, Pipes), String> {
 }
 
 /// How long a harness has to finish its startup handshake (`initialize`,
-/// session creation, model selection, and MCP readiness).
+/// session creation, model selection, and where applicable MCP readiness).
 pub(crate) const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// How much of a program's stderr is kept to explain its exit.
@@ -258,10 +268,8 @@ impl Stderr {
     /// `what`, followed by what the program last said, if anything. Waits
     /// briefly for the stderr pipe to drain when the child just exited.
     pub(crate) async fn explain(&self, what: &str) -> String {
-        if !*self.done.borrow() {
-            let mut done = self.done.clone();
-            let _ = tokio::time::timeout(STDERR_DRAIN, done.wait_for(|finished| *finished)).await;
-        }
+        let mut done = self.done.clone();
+        let _ = tokio::time::timeout(STDERR_DRAIN, done.wait_for(|finished| *finished)).await;
         let tail = self.tail.lock().unwrap_or_else(PoisonError::into_inner);
         match tail.trim() {
             "" => what.to_owned(),

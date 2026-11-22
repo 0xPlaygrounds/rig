@@ -135,6 +135,7 @@ mod plugin {
                     .map(|root| root.0.clone());
                 let scratch_root = RigHome::of(world).root().join("run").join("bridge");
                 reap_stale_dirs(&scratch_root);
+                let _ = std::fs::create_dir_all(&scratch_root);
 
                 let (signal_tx, signal_rx) = mpsc::unbounded_channel::<BridgeSignal>();
                 let bridge = Arc::new(
@@ -152,14 +153,32 @@ mod plugin {
                 // stays bounded by a single `LISTING` timeout.
                 let (grok_out, agy_out, codex_out, muse_out, copilot_models) =
                     std::thread::scope(|scope| {
-                        let grok_h =
-                            scope.spawn(|| listing(&processes, &settings.grok, &["models"]));
-                        let agy_h =
-                            scope.spawn(|| listing(&processes, &settings.antigravity, &["models"]));
-                        let codex_h = scope
-                            .spawn(|| listing(&processes, &settings.codex, &["debug", "models"]));
+                        let grok_h = scope.spawn(|| {
+                            listing(&processes, &settings.grok, &["models"], &scratch_root)
+                        });
+                        let agy_h = scope.spawn(|| {
+                            listing(
+                                &processes,
+                                &settings.antigravity,
+                                &["models"],
+                                &scratch_root,
+                            )
+                        });
+                        let codex_h = scope.spawn(|| {
+                            listing(
+                                &processes,
+                                &settings.codex,
+                                &["debug", "models"],
+                                &scratch_root,
+                            )
+                        });
                         let muse_h = scope.spawn(|| {
-                            listing(&processes, &settings.muse, &["exec", "--list-models"])
+                            listing(
+                                &processes,
+                                &settings.muse,
+                                &["exec", "--list-models"],
+                                &scratch_root,
+                            )
                         });
                         let copilot_h = scope.spawn(|| {
                             installed(&settings.copilot)
@@ -340,18 +359,31 @@ mod plugin {
     }
 
     /// What `program` prints when run with `args`; nothing when it is not
-    /// installed, fails to start or takes too long.
-    fn listing(processes: &Processes, program: &Path, args: &[&str]) -> String {
+    /// installed, fails to start or takes too long. Runs in `scratch_root` so
+    /// discovery never inspects the workspace or trips CLIs (like `muse`) that
+    /// reject a `TMPDIR` located inside their working directory.
+    fn listing(
+        processes: &Processes,
+        program: &Path,
+        args: &[&str],
+        scratch_root: &Path,
+    ) -> String {
         let Some(program) = installed(program) else {
             return String::new();
         };
         let mut command = processes.launcher().command(program);
-        command
-            .args(args)
-            .env("MISE_OFFLINE", "1")
-            .env("MUSE_NO_AUTO_UPDATE", "1")
-            .env("GROK_DISABLE_AUTOUPDATER", "1")
-            .env("AGY_CLI_DISABLE_AUTO_UPDATE", "1");
+        command.args(args);
+        if scratch_root.is_dir() {
+            command.current_dir(scratch_root);
+            if let Some(tmpdir) = std::env::var_os("TMPDIR")
+                && Path::new(&tmpdir).starts_with(scratch_root)
+            {
+                command.env_remove("TMPDIR");
+            }
+        }
+        for (key, value) in crate::harness::PROBE_ENV {
+            command.env(key, value);
+        }
         Process::start(command, Spawn::default())
             .and_then(|process| process.output(Some(LISTING)))
             .map(|output| String::from_utf8_lossy(&output.stdout).into_owned())
@@ -483,6 +515,10 @@ mod plugin {
 
     /// Expands a leading `~/` against `HOME` when present.
     pub(super) fn expand_home(program: &Path) -> PathBuf {
+        expand_home_with(program, std::env::var_os("HOME").as_deref())
+    }
+
+    pub(super) fn expand_home_with(program: &Path, home: Option<&std::ffi::OsStr>) -> PathBuf {
         let Some(rest) = program
             .strip_prefix("~")
             .ok()
@@ -490,7 +526,7 @@ mod plugin {
         else {
             return program.to_path_buf();
         };
-        std::env::var_os("HOME")
+        home.filter(|h| !h.is_empty())
             .map(|home| PathBuf::from(home).join(rest))
             .unwrap_or_else(|| program.to_path_buf())
     }

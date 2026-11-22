@@ -457,10 +457,14 @@ fn probe_codex_usage(processes: &Processes, program: &Path, scratch_root: &Path)
         .current_dir(dir.path())
         .args([
             "app-server",
+            "--disable",
+            "daemon_auto_start",
             "-c",
             "analytics.enabled=false",
             "-c",
             "check_for_update_on_startup=false",
+            "-c",
+            "thread_unload_delay_secs=0",
         ])
         .env("CODEX_HOME", dir.path())
         .env_remove("OPENAI_API_KEY")
@@ -536,11 +540,15 @@ pub(crate) fn parse_codex_usage(msg: &Value) -> String {
 /// Runs `program` with `args` and parses stdout as JSON.
 fn probe_cli_json(processes: &Processes, program: &Path, args: &[&str]) -> Result<Value, String> {
     let mut command = processes.launcher().command(program);
-    command
-        .args(args)
-        .env("MISE_OFFLINE", "1")
-        .env("MUSE_NO_AUTO_UPDATE", "1")
-        .env("GROK_DISABLE_AUTOUPDATER", "1");
+    command.args(args);
+    for (key, value) in crate::harness::PROBE_ENV {
+        command.env(key, value);
+    }
+    if let (Ok(cwd), Some(tmpdir)) = (std::env::current_dir(), std::env::var_os("TMPDIR"))
+        && Path::new(&tmpdir).starts_with(&cwd)
+    {
+        command.env_remove("TMPDIR");
+    }
     let output = Process::start(command, Spawn::default())
         .and_then(|process| process.output(Some(PROBE_TIMEOUT)))
         .map_err(|_| "timed out or failed to run".to_owned())?;

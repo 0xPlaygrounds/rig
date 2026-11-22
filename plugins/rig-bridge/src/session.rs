@@ -462,7 +462,11 @@ impl Model {
             Ok(finish) => finish,
             // Transparently recover once if a resumed warm prompt fails before
             // streaming any output (e.g. corrupt session state or sudden exit).
-            Err(_) if warm_prompt && !emitted => {
+            Err(why) if warm_prompt && !emitted && !is_non_recoverable(&why) => {
+                self.bridge.record_note(
+                    self.vendor,
+                    format!("restarted warm session after error before output: {why}"),
+                );
                 drop(session);
                 session = self.start(setup, &history).await?;
                 session.answer(out, &self.bridge, &mut emitted).await?
@@ -662,17 +666,28 @@ fn process_alive(pid: u32) -> bool {
 
 #[cfg(target_os = "macos")]
 fn process_alive(pid: u32) -> bool {
-    std::process::Command::new("kill")
+    std::process::Command::new("/bin/kill")
+        .env_clear()
         .args(["-0", &pid.to_string()])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .map_or(true, |status| status.success())
+        .output()
+        .map_or(true, |output| {
+            output.status.success()
+                || String::from_utf8_lossy(&output.stderr).contains("Operation not permitted")
+        })
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos")))]
 fn process_alive(_pid: u32) -> bool {
     true
+}
+
+/// Errors on a warm prompt that represent deterministic rejections or
+/// cancellation rather than stale-session corruption and should not be retried.
+fn is_non_recoverable(why: &str) -> bool {
+    matches!(
+        why,
+        "the model refused to answer" | "the turn was cancelled" | "the tool server closed"
+    )
 }
 
 /// What a waiting session is sent to go on.
