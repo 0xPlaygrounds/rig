@@ -148,6 +148,10 @@ impl Bridge {
         &self.scratch_root
     }
 
+    pub(crate) fn runtime(&self) -> &tokio::runtime::Handle {
+        &self.runtime
+    }
+
     fn waiting(&self) -> std::sync::MutexGuard<'_, VecDeque<Session>> {
         self.waiting.lock().unwrap_or_else(PoisonError::into_inner)
     }

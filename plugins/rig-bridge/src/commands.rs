@@ -8,12 +8,15 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use axum::body::Bytes;
+use axum::http::{HeaderValue, Method, Request, StatusCode, header};
 use bevy_ecs::message::Messages;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::ModelSpec;
 use rig_harness::rig_core::completion::ContextUse;
+use rig_harness::rig_core::http_client::{DynHttpClient, HttpClientExt};
 use rig_harness::rig_core::providers::registry::ProviderId;
 use rig_harness::rig_ecs::stage::AgentLoop;
 use rig_harness::rig_ecs::tasks::Wake;
@@ -177,6 +180,7 @@ pub(crate) fn drain_signals(
 pub(crate) fn command(
     In(args): In<CommandArgs>,
     handle: Option<Res<BridgeHandle>>,
+    models: Option<Res<Models>>,
     wake: Option<Res<Wake>>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -191,10 +195,11 @@ pub(crate) fn command(
             // Probe harnesses off the UI thread while keeping headless `-p` alive.
             let holder = commands.spawn(KeepRunning).id();
             let handle = handle.clone();
+            let http = models.and_then(|models| models.0.transport().shared());
             let wake = wake.as_deref().cloned();
             let agent = args.agent;
             std::thread::spawn(move || {
-                let text = collect_usage(&handle);
+                let text = collect_usage(&handle, http);
                 let _ = handle.signals.send(BridgeSignal::Notice {
                     agent: Some(agent),
                     warn: false,
@@ -310,9 +315,10 @@ fn format_session_stats(stats: &VendorStats) -> String {
     )
 }
 
-fn collect_usage(handle: &BridgeHandle) -> String {
+fn collect_usage(handle: &BridgeHandle, http: Option<DynHttpClient>) -> String {
     let snap = handle.bridge.snapshot();
     let scratch_root = handle.bridge.scratch_root().to_path_buf();
+    let runtime = handle.bridge.runtime().clone();
     let results: Vec<(Vendor, String)> = std::thread::scope(|scope| {
         let jobs: Vec<_> = handle
             .installed
@@ -320,12 +326,19 @@ fn collect_usage(handle: &BridgeHandle) -> String {
             .map(|entry| {
                 let processes = handle.processes.clone();
                 let scratch = scratch_root.clone();
+                let http = http.clone();
+                let runtime = runtime.clone();
                 scope.spawn(move || {
                     let plan = match &entry.program {
                         None => "not installed".to_owned(),
-                        Some(program) => {
-                            probe_vendor_usage(&processes, entry.vendor, program, &scratch)
-                        }
+                        Some(program) => probe_vendor_usage(
+                            &processes,
+                            &runtime,
+                            http.as_ref(),
+                            entry.vendor,
+                            program,
+                            &scratch,
+                        ),
                     };
                     (entry.vendor, plan)
                 })
@@ -354,6 +367,8 @@ fn collect_usage(handle: &BridgeHandle) -> String {
 
 fn probe_vendor_usage(
     processes: &Processes,
+    runtime: &tokio::runtime::Handle,
+    http: Option<&DynHttpClient>,
     vendor: Vendor,
     program: &Path,
     scratch_root: &Path,
@@ -362,10 +377,9 @@ fn probe_vendor_usage(
         Vendor::ClaudeCode => probe_claude_usage(processes, program),
         Vendor::Codex => probe_codex_usage(processes, program, scratch_root),
         Vendor::Muse => probe_muse_usage(processes, program),
-        Vendor::GrokBuild => probe_grok_usage(processes, program),
-        Vendor::Antigravity | Vendor::Copilot => {
-            "unavailable (no official CLI/RPC quota API)".to_owned()
-        }
+        Vendor::GrokBuild => probe_grok_usage(processes, runtime, http, program),
+        Vendor::Antigravity => probe_antigravity_usage(runtime, http),
+        Vendor::Copilot => probe_copilot_usage(processes),
     }
 }
 
@@ -606,11 +620,386 @@ pub(crate) fn parse_muse_usage(value: &Value) -> String {
     }
 }
 
-/// Queries Grok's official `grok usage --json` without starting Grok's daemon.
-fn probe_grok_usage(processes: &Processes, program: &Path) -> String {
-    match probe_cli_json(processes, program, &["usage", "--json"]) {
+enum FetchError {
+    Unauthorized,
+    Failed,
+}
+
+/// Sends one HTTP JSON request over Rig's shared HTTP transport within a
+/// single end-to-end `deadline`.
+#[expect(clippy::too_many_arguments)]
+fn fetch_json(
+    runtime: &tokio::runtime::Handle,
+    http: &DynHttpClient,
+    method: Method,
+    url: &str,
+    bearer: &str,
+    user_agent: Option<&str>,
+    body: Option<&'static [u8]>,
+    deadline: Instant,
+) -> Result<Value, FetchError> {
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    if remaining.is_zero() {
+        return Err(FetchError::Failed);
+    }
+    let mut auth =
+        HeaderValue::from_str(&format!("Bearer {bearer}")).map_err(|_| FetchError::Failed)?;
+    auth.set_sensitive(true);
+    let mut builder = Request::builder()
+        .method(method)
+        .uri(url)
+        .header(header::AUTHORIZATION, auth)
+        .header(header::ACCEPT, "application/json");
+    if let Some(ua) = user_agent {
+        builder = builder.header(header::USER_AGENT, ua);
+    }
+    let payload = if let Some(bytes) = body {
+        builder = builder.header(header::CONTENT_TYPE, "application/json");
+        Bytes::from_static(bytes)
+    } else {
+        Bytes::new()
+    };
+    let request = builder.body(payload).map_err(|_| FetchError::Failed)?;
+    let http = http.clone();
+    runtime.block_on(async move {
+        tokio::time::timeout(remaining, async move {
+            let response = http.send(request).await.map_err(|_| FetchError::Failed)?;
+            let status = response.status();
+            if matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
+                return Err(FetchError::Unauthorized);
+            }
+            if !status.is_success() {
+                return Err(FetchError::Failed);
+            }
+            let bytes = response.into_body().await.map_err(|_| FetchError::Failed)?;
+            serde_json::from_slice(&bytes).map_err(|_| FetchError::Failed)
+        })
+        .await
+        .map_err(|_| FetchError::Failed)?
+    })
+}
+
+/// Runs `program` with `args` and `extra_env`, parsing stdout as JSON within
+/// `timeout`. Returns `Err(None)` when the executable cannot be found.
+fn probe_cli_json_budget(
+    processes: &Processes,
+    program: &Path,
+    args: &[&str],
+    extra_env: &[(&str, &str)],
+    timeout: Duration,
+) -> Result<Value, Option<String>> {
+    if timeout.is_zero() {
+        return Err(Some("timed out".to_owned()));
+    }
+    let mut command = processes.launcher().command(program);
+    command.args(args);
+    for (key, value) in extra_env {
+        command.env(key, value);
+    }
+    let process = match Process::start(command, Spawn::default()) {
+        Ok(process) => process,
+        Err(why) if why.kind() == std::io::ErrorKind::NotFound => return Err(None),
+        Err(_) => return Err(Some("failed to run".to_owned())),
+    };
+    let output = process
+        .output(Some(timeout))
+        .map_err(|_| Some("timed out or failed to run".to_owned()))?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(Some(format!("{stdout} {stderr}")));
+    }
+    serde_json::from_str(&stdout).map_err(|_| Some("invalid response".to_owned()))
+}
+
+/// Queries Grok's billing endpoint using the CLI's cached sign-in token,
+/// falling back to `grok usage --json` within a single [`PROBE_TIMEOUT`] budget.
+fn probe_grok_usage(
+    processes: &Processes,
+    runtime: &tokio::runtime::Handle,
+    http: Option<&DynHttpClient>,
+    program: &Path,
+) -> String {
+    const GROK_BILLING_URL: &str = "https://cli-chat-proxy.grok.com/v1/billing?format=credits";
+    let deadline = Instant::now() + PROBE_TIMEOUT;
+    if let Some(http) = http
+        && let Some(token) = read_grok_token()
+        && let Ok(value) = fetch_json(
+            runtime,
+            http,
+            Method::GET,
+            GROK_BILLING_URL,
+            &token,
+            None,
+            None,
+            deadline,
+        )
+        && let Some(formatted) = parse_grok_billing(&value)
+    {
+        return formatted;
+    }
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    match probe_cli_json_budget(
+        processes,
+        program,
+        &["usage", "--json"],
+        &[("MISE_OFFLINE", "1"), ("GROK_DISABLE_AUTOUPDATER", "1")],
+        remaining,
+    ) {
         Ok(value) => parse_grok_usage(&value),
-        Err(text) => format_grok_usage_error(&text),
+        Err(Some(text)) => format_grok_usage_error(&text),
+        Err(None) => "not installed".to_owned(),
+    }
+}
+
+fn read_grok_token() -> Option<String> {
+    let text = std::fs::read_to_string(crate::grok::signed_in()?).ok()?;
+    let value: Value = serde_json::from_str(&text).ok()?;
+    grok_token(&value)
+}
+
+/// Extracts the Grok Build bearer token from parsed `~/.grok/auth.json`.
+pub(crate) fn grok_token(value: &Value) -> Option<String> {
+    if let Some(token) = value
+        .get("key")
+        .and_then(Value::as_str)
+        .filter(|tok| !tok.is_empty())
+    {
+        return Some(token.to_owned());
+    }
+    let map = value.as_object()?;
+    let entry_key = |entry: &Value| {
+        entry
+            .get("key")
+            .and_then(Value::as_str)
+            .filter(|tok| !tok.is_empty())
+            .map(str::to_owned)
+    };
+    if let Some(token) = map.iter().find_map(|(host, entry)| {
+        let lower = host.to_ascii_lowercase();
+        (lower.contains("x.ai") || lower.contains("grok"))
+            .then(|| entry_key(entry))
+            .flatten()
+    }) {
+        return Some(token);
+    }
+    (map.len() == 1)
+        .then(|| map.values().find_map(entry_key))
+        .flatten()
+}
+
+/// Formats Grok's `/v1/billing?format=credits` response.
+pub(crate) fn parse_grok_billing(value: &Value) -> Option<String> {
+    let config = value.get("config").unwrap_or(value);
+    let pct = config
+        .get("creditUsagePercent")
+        .and_then(Value::as_f64)
+        .or_else(|| {
+            config
+                .get("productUsage")
+                .and_then(Value::as_array)
+                .and_then(|items| {
+                    items
+                        .iter()
+                        .find_map(|item| item.get("usagePercent").and_then(Value::as_f64))
+                })
+        })?;
+    let period = match config
+        .pointer("/currentPeriod/type")
+        .and_then(Value::as_str)
+    {
+        Some(kind) if kind.contains("WEEKLY") => "weekly",
+        Some(kind) if kind.contains("MONTHLY") => "monthly",
+        Some(kind) if kind.contains("DAILY") => "daily",
+        _ => "period",
+    };
+    let reset = config
+        .pointer("/currentPeriod/end")
+        .or_else(|| config.get("billingPeriodEnd"))
+        .and_then(Value::as_str)
+        .map(|ts| format!(" (resets {})", short_iso(ts)))
+        .unwrap_or_default();
+    Some(format!("{period} {pct:.0}% used{reset}"))
+}
+
+/// Queries Antigravity's quota endpoint using `agy`'s stored OAuth access token.
+fn probe_antigravity_usage(
+    runtime: &tokio::runtime::Handle,
+    http: Option<&DynHttpClient>,
+) -> String {
+    let Some(http) = http else {
+        return "unavailable (no HTTP client)".to_owned();
+    };
+    let Some((token, business)) = read_antigravity_token() else {
+        return "unavailable (not signed in: run `agy`)".to_owned();
+    };
+    let hosts = if business {
+        [
+            "https://cloudcode-pa.googleapis.com",
+            "https://daily-cloudcode-pa.googleapis.com",
+        ]
+    } else {
+        [
+            "https://daily-cloudcode-pa.googleapis.com",
+            "https://cloudcode-pa.googleapis.com",
+        ]
+    };
+    let ua = format!(
+        "antigravity/hub/2.24.0 (aidev_client; os_type={}; arch={}; cl=963137146)",
+        std::env::consts::OS,
+        std::env::consts::ARCH
+    );
+    let deadline = Instant::now() + PROBE_TIMEOUT;
+    for host in hosts {
+        let url = format!("{host}/v1internal:fetchAvailableModels");
+        match fetch_json(
+            runtime,
+            http,
+            Method::POST,
+            &url,
+            &token,
+            Some(&ua),
+            Some(b"{}"),
+            deadline,
+        ) {
+            Ok(value) => {
+                if let Some(formatted) = parse_antigravity_usage(&value) {
+                    return formatted;
+                }
+            }
+            Err(FetchError::Unauthorized) => break,
+            Err(FetchError::Failed) => {}
+        }
+    }
+    "unavailable (could not query Antigravity quota; run `agy` to refresh sign-in)".to_owned()
+}
+
+fn read_antigravity_token() -> Option<(String, bool)> {
+    let text = std::fs::read_to_string(crate::antigravity::signed_in()?).ok()?;
+    let value: Value = serde_json::from_str(&text).ok()?;
+    antigravity_token(&value)
+}
+
+/// Extracts `(access_token, is_oauth_business)` from parsed Antigravity
+/// `oauth_creds.json`.
+pub(crate) fn antigravity_token(value: &Value) -> Option<(String, bool)> {
+    let token = value
+        .pointer("/token/access_token")
+        .and_then(Value::as_str)
+        .filter(|tok| !tok.is_empty())
+        .or_else(|| {
+            value
+                .get("access_token")
+                .and_then(Value::as_str)
+                .filter(|tok| !tok.is_empty())
+        })?
+        .to_owned();
+    let business = value.get("auth_method").and_then(Value::as_str) == Some("oauth-business");
+    Some((token, business))
+}
+
+/// Summarizes Antigravity's `fetchAvailableModels` per-model `quotaInfo` by
+/// model family (tightest remaining fraction per family).
+pub(crate) fn parse_antigravity_usage(value: &Value) -> Option<String> {
+    let models = value.get("models").and_then(Value::as_object)?;
+    let mut gemini: Option<(f64, Option<&str>)> = None;
+    let mut claude: Option<(f64, Option<&str>)> = None;
+    fn update<'a>(slot: &mut Option<(f64, Option<&'a str>)>, rem: f64, reset: Option<&'a str>) {
+        if slot.is_none_or(|(best, best_reset)| {
+            rem < best || (rem == best && best_reset.is_none() && reset.is_some())
+        }) {
+            *slot = Some((rem, reset));
+        }
+    }
+    for (id, entry) in models {
+        let Some(quota) = entry.get("quotaInfo") else {
+            continue;
+        };
+        let reset = quota.get("resetTime").and_then(Value::as_str);
+        // Proto3 JSON omits default `0.0`: a `quotaInfo` carrying `resetTime`
+        // without `remainingFraction` means the model's quota is 100% exhausted.
+        let rem = match quota.get("remainingFraction").and_then(Value::as_f64) {
+            Some(rem) => rem,
+            None if reset.is_some() => 0.0,
+            None => continue,
+        };
+        if id.starts_with("gemini-") {
+            update(&mut gemini, rem, reset);
+        } else if id.starts_with("claude-") {
+            update(&mut claude, rem, reset);
+        }
+    }
+    let fmt = |label: &str, (rem, reset): (f64, Option<&str>)| {
+        let used = ((1.0 - rem.clamp(0.0, 1.0)) * 100.0).round();
+        let reset = reset
+            .map(|ts| format!(" (resets {})", short_iso(ts)))
+            .unwrap_or_default();
+        format!("{label} {used:.0}% used{reset}")
+    };
+    let mut parts = Vec::new();
+    if let Some(entry) = gemini {
+        parts.push(fmt("Gemini", entry));
+    }
+    if let Some(entry) = claude {
+        parts.push(fmt("Claude", entry));
+    }
+    (!parts.is_empty()).then(|| parts.join(", "))
+}
+
+/// Queries GitHub Copilot's subscription quota via `gh api --hostname github.com /copilot_internal/user`.
+fn probe_copilot_usage(processes: &Processes) -> String {
+    match probe_cli_json_budget(
+        processes,
+        Path::new("gh"),
+        &["api", "--hostname", "github.com", "/copilot_internal/user"],
+        &[
+            ("MISE_OFFLINE", "1"),
+            ("GH_PROMPT_DISABLED", "1"),
+            ("GH_NO_UPDATE_NOTIFIER", "1"),
+        ],
+        PROBE_TIMEOUT,
+    ) {
+        Ok(value) => parse_copilot_usage(&value),
+        Err(None) => {
+            "unavailable (install `gh` and run `gh auth login` for Copilot quota)".to_owned()
+        }
+        Err(Some(_)) => "unavailable (sign in with `gh auth login` for Copilot quota)".to_owned(),
+    }
+}
+
+/// Formats GitHub's `/copilot_internal/user` quota response.
+pub(crate) fn parse_copilot_usage(value: &Value) -> String {
+    let mut parts: Vec<String> = value
+        .get("copilot_plan")
+        .and_then(Value::as_str)
+        .map(|plan| format!("plan {plan}"))
+        .into_iter()
+        .collect();
+    let reset = value
+        .get("quota_reset_date")
+        .or_else(|| value.get("quota_reset_date_utc"))
+        .and_then(Value::as_str)
+        .map(|ts| format!(" (resets {})", ts.get(..10).unwrap_or(ts)))
+        .unwrap_or_default();
+    if let Some(premium) = value.pointer("/quota_snapshots/premium_interactions") {
+        if premium.get("unlimited").and_then(Value::as_bool) == Some(true) {
+            parts.push("premium unlimited".to_owned());
+        } else if let Some(pct_rem) = premium.get("percent_remaining").and_then(Value::as_f64) {
+            let used = (100.0 - pct_rem.clamp(0.0, 100.0)).round();
+            let count = match (
+                premium.get("remaining").and_then(Value::as_i64),
+                premium.get("entitlement").and_then(Value::as_i64),
+            ) {
+                (Some(rem), Some(total)) if total > 0 => format!(" [{}/{total} left]", rem.max(0)),
+                _ => String::new(),
+            };
+            parts.push(format!("premium {used:.0}% used{count}{reset}"));
+        }
+    }
+    if parts.is_empty() {
+        "unavailable".to_owned()
+    } else {
+        parts.join(", ")
     }
 }
 

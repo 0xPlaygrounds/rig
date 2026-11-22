@@ -83,6 +83,25 @@ const META_TOOLS: &[&str] = &["search_tool", "use_tool"];
 /// Grok Build.
 pub(crate) struct Grok;
 
+/// Where the user's Grok sign-in file lives.
+pub(crate) fn signed_in() -> Option<PathBuf> {
+    std::env::var_os("GROK_AUTH_PATH")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| {
+            let home = std::env::var_os("GROK_HOME")
+                .filter(|value| !value.is_empty())
+                .map(PathBuf::from)
+                .or_else(|| {
+                    Some(
+                        PathBuf::from(std::env::var_os("HOME").filter(|value| !value.is_empty())?)
+                            .join(".grok"),
+                    )
+                })?;
+            Some(home.join("auth.json"))
+        })
+}
+
 impl Agent for Grok {
     fn name(&self) -> &'static str {
         "grok"
@@ -90,14 +109,7 @@ impl Agent for Grok {
 
     fn prepare(&self, command: &mut Command, opening: &Opening) -> Result<(), String> {
         // Where the user's sign-in is, before the home is replaced.
-        let signed_in = std::env::var_os("GROK_AUTH_PATH")
-            .map(PathBuf::from)
-            .or_else(|| {
-                let home = std::env::var_os("GROK_HOME")
-                    .map(PathBuf::from)
-                    .or_else(|| Some(PathBuf::from(std::env::var_os("HOME")?).join(".grok")))?;
-                Some(home.join("auth.json"))
-            });
+        let signed_in = signed_in();
         let home = opening.dir.join("home");
         let grok_home = home.join(".grok");
         let profile_path = opening.dir.join("rig.md");
