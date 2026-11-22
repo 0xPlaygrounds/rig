@@ -299,10 +299,11 @@ cannot be written, a notice says why and the row goes back.
 `/plugins defaults` shows every part again at once. Without a terminal it
 writes nothing and names the `hide` line to delete.
 
-Typing while the agent works is fine. Enter steers the running turn (the
-message goes to the model with its next call, after the tool results it waits
-for) and Tab queues a follow-up that is sent when the turn would end. Both
-wait under the transcript. Esc stops the turn and puts them back in the input
+Typing while the agent works is fine. Enter steers the running turn:
+already-running tool calls finish, unstarted tool calls in the same reply are
+skipped (unless a plugin is holding them), and the message goes to the model
+on its next call. Tab queues a follow-up that is sent when the turn would end.
+Both wait under the transcript. Esc stops the turn and puts them back in the input
 (a plugin may keep them for the next turn instead); what the reply had
 streamed stays in the transcript, saved as stopped. A tool call cut while its
 arguments streamed stays as a row that says it never ran; the model later

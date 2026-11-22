@@ -547,6 +547,20 @@ impl Inboxes<'_, '_> {
                 message.mode != DeliveryMode::Inform && !decision.is_decided()
             })
     }
+
+    /// Whether `agent` accepted a user steering message not yet given to its
+    /// model.
+    pub(crate) fn user_steering(&self, agent: Entity) -> bool {
+        let work = self.work.get(agent).into_iter().flat_map(AgentWork::iter);
+        self.accepted
+            .iter_many(work)
+            .flatten()
+            .any(|(_, _, message, decision)| {
+                !decision.is_decided()
+                    && message.mode == DeliveryMode::Steer
+                    && message.author.kind == AuthorKind::User
+            })
+    }
 }
 
 /// What of `waiting` carries a turn on that would end: the Inform messages
