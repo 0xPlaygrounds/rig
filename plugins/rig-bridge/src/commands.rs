@@ -536,7 +536,11 @@ pub(crate) fn parse_codex_usage(msg: &Value) -> String {
 /// Runs `program` with `args` and parses stdout as JSON.
 fn probe_cli_json(processes: &Processes, program: &Path, args: &[&str]) -> Result<Value, String> {
     let mut command = processes.launcher().command(program);
-    command.args(args);
+    command
+        .args(args)
+        .env("MISE_OFFLINE", "1")
+        .env("MUSE_NO_AUTO_UPDATE", "1")
+        .env("GROK_DISABLE_AUTOUPDATER", "1");
     let output = Process::start(command, Spawn::default())
         .and_then(|process| process.output(Some(PROBE_TIMEOUT)))
         .map_err(|_| "timed out or failed to run".to_owned())?;
@@ -558,10 +562,14 @@ fn probe_muse_usage(processes: &Processes, program: &Path) -> String {
 
 /// Formats `muse usage --json`.
 pub(crate) fn parse_muse_usage(value: &Value) -> String {
-    let Some(allowance) = value.get("allowance") else {
+    let Some(allowance) = value.get("allowance").filter(|v| !v.is_null()) else {
         let reason = value
             .get("reason")
             .and_then(Value::as_str)
+            .map(|r| match r {
+                "server_sent_no_usage" => "no usage data yet in this window",
+                other => other,
+            })
             .unwrap_or("not signed in");
         return format!("unavailable ({reason})");
     };

@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license = "MIT"
 readme = "README.md"
-description = "Other coding agents' CLIs as model providers for the Rig coding agent: Claude Code, Grok Build, Antigravity and Codex answer with their own sign-ins, stripped to inference, and reach Rig's tools over MCP."
+description = "Other coding agents' CLIs as model providers for the Rig coding agent: Claude Code, Grok Build, Antigravity, Codex, Meta AI Muse, and GitHub Copilot answer with their own sign-ins, stripped to inference, and reach Rig's tools over MCP."
 repository = "https://github.com/0xPlaygrounds/rig"
 
 [lints]

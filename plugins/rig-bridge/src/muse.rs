@@ -14,7 +14,9 @@ use serde_json::{Value, json};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::mpsc;
 
-use crate::harness::{Event, Harness, Launch, Part, Running, Stderr, link, note, spawn};
+use crate::harness::{
+    Event, HANDSHAKE_TIMEOUT, Harness, Launch, Part, Running, Stderr, link, note, spawn,
+};
 use crate::rpc::Transport;
 
 #[cfg(test)]
@@ -86,7 +88,8 @@ impl Harness for Muse {
             ])
             .env("XDG_CONFIG_HOME", &xdg_config)
             .env("XDG_DATA_HOME", &xdg_data)
-            .env("XDG_STATE_HOME", &xdg_state);
+            .env("XDG_STATE_HOME", &xdg_state)
+            .env("MUSE_NO_AUTO_UPDATE", "1");
         for name in REMOVED_ENV {
             command.env_remove(name);
         }
@@ -104,7 +107,7 @@ impl Harness for Muse {
         tokio::spawn(async move {
             let mut wire = Wire::new(pipes.stdout, pipes.stdin, events.clone());
             if let Err(why) = converse(&mut wire, opening, prompted).await {
-                let why = stderr.explain(&format!("muse: {why}"));
+                let why = stderr.explain(&format!("muse: {why}")).await;
                 let _ = events.send(Event::Done(Err(why)));
             }
         });
@@ -369,63 +372,69 @@ where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 {
-    let init = wire
-        .request(
-            "initialize",
-            json!({
-                "clientInfo": { "name": "rig", "version": env!("CARGO_PKG_VERSION") },
-                "capabilities": {
-                    "requestedCapabilities": ["sessionMcp"],
-                    "userInputDialogs": false,
-                },
-            }),
-        )
-        .await
-        .map_err(|why| format!("it did not start: {why}"))?;
-    let has_mcp = init
-        .get("grantedCapabilities")
-        .and_then(Value::as_array)
-        .is_some_and(|caps| caps.iter().any(|cap| cap.as_str() == Some("sessionMcp")));
-    if !has_mcp {
-        return Err("muse did not grant the `sessionMcp` capability".to_owned());
-    }
-    wire.notify("initialized", json!({})).await?;
+    let session_id = tokio::time::timeout(HANDSHAKE_TIMEOUT, async {
+        let init = wire
+            .request(
+                "initialize",
+                json!({
+                    "clientInfo": { "name": "rig", "version": env!("CARGO_PKG_VERSION") },
+                    "capabilities": {
+                        "requestedCapabilities": ["sessionMcp"],
+                        "userInputDialogs": false,
+                    },
+                }),
+            )
+            .await
+            .map_err(|why| format!("it did not start: {why}"))?;
+        let has_mcp = init
+            .get("grantedCapabilities")
+            .and_then(Value::as_array)
+            .is_some_and(|caps| caps.iter().any(|cap| cap.as_str() == Some("sessionMcp")));
+        if !has_mcp {
+            return Err("muse did not grant the `sessionMcp` capability".to_owned());
+        }
+        wire.notify("initialized", json!({})).await?;
 
-    let mut config = json!({
-        "mcpServers": {
-            SERVER: {
-                "transport": "streamableHttp",
-                "url": opening.mcp_url,
-                "headers": {
-                    "Authorization": format!("Bearer {}", opening.mcp_token),
+        let mut config = json!({
+            "mcpServers": {
+                SERVER: {
+                    "transport": "streamableHttp",
+                    "url": opening.mcp_url,
+                    "headers": {
+                        "Authorization": format!("Bearer {}", opening.mcp_token),
+                    },
+                    "mode": "required",
                 },
-                "mode": "required",
             },
-        },
-    });
-    if !opening.system.trim().is_empty()
-        && let Some(obj) = config.as_object_mut()
-    {
-        obj.insert("developerPrompt".to_owned(), opening.system.into());
-    }
-    let started = wire
-        .request(
-            "session/start",
-            json!({
-                "commandId": uuidv7(),
-                "modelId": opening.model,
-                "approvalMode": "allowAll",
-                "config": config,
-            }),
-        )
-        .await
-        .map_err(|why| format!("it opened no session (run `muse login` if signed out): {why}"))?;
-    let session_id = started
-        .pointer("/session/sessionId")
-        .or_else(|| started.get("sessionId"))
-        .and_then(Value::as_str)
-        .ok_or("it opened a session without an id")?
-        .to_owned();
+        });
+        if !opening.system.trim().is_empty()
+            && let Some(obj) = config.as_object_mut()
+        {
+            obj.insert("developerPrompt".to_owned(), opening.system.into());
+        }
+        let started = wire
+            .request(
+                "session/start",
+                json!({
+                    "commandId": uuidv7(),
+                    "modelId": opening.model,
+                    "approvalMode": "allowAll",
+                    "config": config,
+                }),
+            )
+            .await
+            .map_err(|why| {
+                format!("it opened no session (run `muse login` if signed out): {why}")
+            })?;
+        started
+            .pointer("/session/sessionId")
+            .or_else(|| started.get("sessionId"))
+            .and_then(Value::as_str)
+            .ok_or_else(|| "it opened a session without an id".to_owned())
+            .map(str::to_owned)
+    })
+    .await
+    .map_err(|_| "it did not finish starting in time".to_owned())??;
 
     loop {
         let prompt = loop {

@@ -6,11 +6,12 @@ use std::fmt;
 use std::path::Path;
 use std::process::Command;
 use std::sync::{Arc, Mutex, PoisonError};
+use std::time::Duration;
 
 use rig_harness::rig_core::completion::{Effort, FinishReason, ToolDefinition, Usage};
 use rig_harness::rig_tools::process::Process;
 use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 
 use crate::mcp::Entry;
 
@@ -215,35 +216,53 @@ pub(crate) fn spawn(mut command: Command) -> Result<(Process, Pipes), String> {
     Ok((process, pipes))
 }
 
+/// How long a harness has to finish its startup handshake (`initialize`,
+/// session creation, model selection, and MCP readiness).
+pub(crate) const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(30);
+
 /// How much of a program's stderr is kept to explain its exit.
 const KEPT: usize = 2048;
 
+/// Grace period for the stderr reader to finish draining after stdout closes
+/// on an early child exit, so startup errors report stderr instead of EOF.
+const STDERR_DRAIN: Duration = Duration::from_millis(100);
+
 /// The end of what a program wrote to stderr so far.
-#[derive(Clone, Default)]
-pub(crate) struct Stderr(Arc<Mutex<String>>);
+#[derive(Clone)]
+pub(crate) struct Stderr {
+    tail: Arc<Mutex<String>>,
+    done: watch::Receiver<bool>,
+}
 
 impl Stderr {
     /// Reads `stderr` to its end on the tokio runtime, keeping its last
     /// lines, so the program never blocks on a full pipe.
     pub(crate) fn follow(stderr: tokio::process::ChildStderr) -> Self {
-        let kept = Self::default();
-        let tail = kept.0.clone();
+        let tail = Arc::new(Mutex::new(String::new()));
+        let (done_tx, done) = watch::channel(false);
+        let shared = tail.clone();
         tokio::spawn(async move {
             let mut lines = BufReader::new(stderr).lines();
             while let Ok(Some(line)) = lines.next_line().await {
-                let mut tail = tail.lock().unwrap_or_else(PoisonError::into_inner);
+                let mut tail = shared.lock().unwrap_or_else(PoisonError::into_inner);
                 tail.push_str(&line);
                 tail.push('\n');
                 let cut = tail.ceil_char_boundary(tail.len().saturating_sub(KEPT));
                 tail.drain(..cut);
             }
+            let _ = done_tx.send(true);
         });
-        kept
+        Self { tail, done }
     }
 
-    /// `what`, followed by what the program last said, if anything.
-    pub(crate) fn explain(&self, what: &str) -> String {
-        let tail = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+    /// `what`, followed by what the program last said, if anything. Waits
+    /// briefly for the stderr pipe to drain when the child just exited.
+    pub(crate) async fn explain(&self, what: &str) -> String {
+        if !*self.done.borrow() {
+            let mut done = self.done.clone();
+            let _ = tokio::time::timeout(STDERR_DRAIN, done.wait_for(|finished| *finished)).await;
+        }
+        let tail = self.tail.lock().unwrap_or_else(PoisonError::into_inner);
         match tail.trim() {
             "" => what.to_owned(),
             said => format!("{what}: {said}"),

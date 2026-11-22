@@ -7,7 +7,6 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Duration;
 
 use base64::Engine;
 use rig_harness::rig_core::completion::{Effort, FinishReason, Usage};
@@ -16,7 +15,8 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::mpsc;
 
 use crate::harness::{
-    ContextSnapshot, Event, Harness, Launch, Part, Running, Stderr, link, note, spawn,
+    ContextSnapshot, Event, HANDSHAKE_TIMEOUT, Harness, Launch, Part, Running, Stderr, link, note,
+    spawn,
 };
 use crate::rpc::Transport;
 
@@ -33,9 +33,6 @@ const TOKEN_ENV: &str = "RIG_MCP_TOKEN";
 /// How long the program waits for one of Rig's tools, in seconds.
 const TOOL_TIMEOUT_SECS: u64 = 86_400;
 
-/// How long the program has to reach Rig's MCP server.
-const SERVER_READY: Duration = Duration::from_secs(30);
-
 /// The features of Codex's own that a model does not need.
 const DISABLED: &[&str] = &[
     "apps",
@@ -47,8 +44,16 @@ const DISABLED: &[&str] = &[
     "image_generation",
     "browser_use",
     "browser_use_external",
+    "browser_use_full_cdp_access",
+    "browser_annotation_api",
     "computer_use",
     "in_app_browser",
+    "in_app_chat",
+    "in_app_dictation",
+    "in_app_local_automation",
+    "in_app_updates",
+    "in_app_voice",
+    "daemon_auto_start",
     "sleep_tool",
     "multi_agent",
     "multi_agent_v2",
@@ -57,6 +62,7 @@ const DISABLED: &[&str] = &[
     "goals",
     "tool_suggest",
     "skill_search",
+    "skill_mcp_dependency_install",
     "remote_plugin",
     "plugin_sharing",
     "workspace_dependencies",
@@ -78,6 +84,7 @@ const SETTINGS: &[&str] = &[
     "analytics.enabled=false",
     "history.persistence=\"none\"",
     "check_for_update_on_startup=false",
+    "thread_unload_delay_secs=0",
 ];
 
 /// A model the program lists.
@@ -154,6 +161,12 @@ impl Harness for Codex {
         note(&format!("mcp__{SERVER}.read"), "", None)
     }
 
+    /// Codex 0.171 disables `mcp_tool_list_changed` by default, so waiting on
+    /// `tools/list` after `notifications/tools/list_changed` would time out.
+    fn relists(&self) -> bool {
+        false
+    }
+
     fn start(&self, launch: Launch<'_>) -> Result<Running, String> {
         let Launch {
             mut command,
@@ -210,7 +223,7 @@ impl Harness for Codex {
         tokio::spawn(async move {
             let mut wire = Wire::new(pipes.stdout, pipes.stdin, events.clone());
             if let Err(why) = converse(&mut wire, opening, prompted).await {
-                let why = stderr.explain(&format!("codex: {why}"));
+                let why = stderr.explain(&format!("codex: {why}")).await;
                 let _ = events.send(Event::Done(Err(why)));
             }
         });
@@ -469,51 +482,51 @@ where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 {
-    let hello = json!({
-        "clientInfo": { "name": "rig", "title": "Rig", "version": env!("CARGO_PKG_VERSION") },
-        "capabilities": {},
-    });
-    wire.request("initialize", hello).await?;
-    wire.write(&json!({ "method": "initialized" })).await?;
-    let account = wire
-        .request("account/read", json!({ "refreshToken": false }))
-        .await?;
-    if account.get("account").is_none_or(Value::is_null) {
-        return Err("it is not signed in: run `codex login`".to_owned());
-    }
-    let started = wire
-        .request(
-            "thread/start",
-            json!({
-                "model": opening.model,
-                "cwd": opening.dir.to_string_lossy(),
-                // Nothing of Codex's own is left to approve or to sandbox.
-                "approvalPolicy": "never",
-                "sandbox": "read-only",
-                "ephemeral": true,
-                "baseInstructions": opening.system,
-            }),
-        )
-        .await?;
-    let thread = started
-        .pointer("/thread/id")
-        .and_then(Value::as_str)
-        .ok_or("it started a thread without an id")?
-        .to_owned();
-    // A turn started before the server is reached runs without Rig's tools.
-    let reached = tokio::time::timeout(SERVER_READY, async {
+    let thread = tokio::time::timeout(HANDSHAKE_TIMEOUT, async {
+        let hello = json!({
+            "clientInfo": { "name": "rig", "title": "Rig", "version": env!("CARGO_PKG_VERSION") },
+            "capabilities": {},
+        });
+        wire.request("initialize", hello).await?;
+        wire.write(&json!({ "method": "initialized" })).await?;
+        let account = wire
+            .request("account/read", json!({ "refreshToken": false }))
+            .await?;
+        if account.get("account").is_none_or(Value::is_null) {
+            return Err("it is not signed in: run `codex login`".to_owned());
+        }
+        let started = wire
+            .request(
+                "thread/start",
+                json!({
+                    "model": opening.model,
+                    "cwd": opening.dir.to_string_lossy(),
+                    // Nothing of Codex's own is left to approve or to sandbox.
+                    "approvalPolicy": "never",
+                    "sandbox": "read-only",
+                    "ephemeral": true,
+                    "baseInstructions": opening.system,
+                }),
+            )
+            .await?;
+        let thread = started
+            .pointer("/thread/id")
+            .and_then(Value::as_str)
+            .ok_or("it started a thread without an id")?
+            .to_owned();
+        // A turn started before the server is reached runs without Rig's tools.
         loop {
             if let Some(reached) = wire.server.take() {
-                return reached;
+                reached.map_err(|why| format!("it did not reach rig's tools: {why}"))?;
+                break;
             }
             let msg = wire.next_message().await?;
             wire.handle(msg, None).await?;
         }
-    });
-    reached
-        .await
-        .map_err(|_| "it did not reach rig's tools in time".to_owned())?
-        .map_err(|why| format!("it did not reach rig's tools: {why}"))?;
+        Ok::<_, String>(thread)
+    })
+    .await
+    .map_err(|_| "it did not finish starting in time".to_owned())??;
 
     let mut images = 0;
     loop {

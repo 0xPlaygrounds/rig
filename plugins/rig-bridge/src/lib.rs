@@ -346,7 +346,12 @@ mod plugin {
             return String::new();
         };
         let mut command = processes.launcher().command(program);
-        command.args(args);
+        command
+            .args(args)
+            .env("MISE_OFFLINE", "1")
+            .env("MUSE_NO_AUTO_UPDATE", "1")
+            .env("GROK_DISABLE_AUTOUPDATER", "1")
+            .env("AGY_CLI_DISABLE_AUTO_UPDATE", "1");
         Process::start(command, Spawn::default())
             .and_then(|process| process.output(Some(LISTING)))
             .map(|output| String::from_utf8_lossy(&output.stdout).into_owned())
@@ -476,15 +481,30 @@ mod plugin {
         }
     }
 
-    /// The file `program` names: itself when it is a path, or else the
-    /// first of that name on `PATH`.
+    /// Expands a leading `~/` against `HOME` when present.
+    pub(super) fn expand_home(program: &Path) -> PathBuf {
+        let Some(rest) = program
+            .strip_prefix("~")
+            .ok()
+            .filter(|p| p != &Path::new(""))
+        else {
+            return program.to_path_buf();
+        };
+        std::env::var_os("HOME")
+            .map(|home| PathBuf::from(home).join(rest))
+            .unwrap_or_else(|| program.to_path_buf())
+    }
+
+    /// The file `program` names: itself when it is a path (expanding a leading
+    /// `~/`), or else the first of that name on `PATH`.
     fn installed(program: &Path) -> Option<PathBuf> {
-        if program.components().count() > 1 {
-            return program.is_file().then(|| program.to_path_buf());
+        let expanded = expand_home(program);
+        if expanded.components().count() > 1 {
+            return expanded.is_file().then_some(expanded);
         }
         let path = std::env::var_os("PATH")?;
         std::env::split_paths(&path)
-            .map(|dir| dir.join(program))
+            .map(|dir| dir.join(&expanded))
             .find(|candidate| candidate.is_file())
     }
 }

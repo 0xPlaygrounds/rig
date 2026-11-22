@@ -88,6 +88,7 @@ pub(crate) fn probe(
     predicate: impl Fn(&Value) -> bool + Send + 'static,
 ) -> Result<Value, &'static str> {
     command
+        .env("MISE_OFFLINE", "1")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null());

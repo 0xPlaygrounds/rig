@@ -915,3 +915,71 @@ async fn idle_crashed_session_is_pruned_and_restarts_cleanly() {
     assert_eq!(said(second.as_ref()).0, "reply-1");
     assert_eq!(starts.load(Ordering::SeqCst), 2);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn warm_prompt_failing_before_output_recovers_on_fresh_session() {
+    struct FailWarmOnce {
+        starts: Arc<AtomicUsize>,
+    }
+    impl Harness for FailWarmOnce {
+        fn note(&self, _: Option<&std::path::Path>) -> String {
+            String::new()
+        }
+        fn start(&self, _: Launch<'_>) -> Result<Running, String> {
+            let run = self.starts.fetch_add(1, Ordering::SeqCst);
+            let (prompts, mut prompted) = mpsc::unbounded_channel::<Vec<Part>>();
+            let (events, reported) = mpsc::unbounded_channel();
+            tokio::spawn(async move {
+                let mut turn = 0;
+                while prompted.recv().await.is_some() {
+                    turn += 1;
+                    if run == 0 && turn == 2 {
+                        let _ = events
+                            .send(Event::Done(Err("corrupted thinking signature".to_owned())));
+                        return;
+                    }
+                    let _ = events.send(Event::Text(format!("run-{run}-turn-{turn}")));
+                    let _ = events.send(Event::Done(Ok(FinishReason::Stop)));
+                }
+            });
+            Ok(Running {
+                prompts,
+                events: reported,
+                _alive: Box::new(()),
+            })
+        }
+    }
+
+    let starts = Arc::new(AtomicUsize::new(0));
+    let scratch =
+        std::env::temp_dir().join(format!("rig-bridge-test-{}", uuid::Uuid::new_v4().simple()));
+    let bridge = Arc::new(Bridge::new(
+        tokio::runtime::Handle::current(),
+        Processes::default(),
+        2,
+        None,
+        scratch,
+    ));
+    let model = Model {
+        bridge,
+        harness: Arc::new(FailWarmOnce {
+            starts: starts.clone(),
+        }),
+        program: "flaky".into(),
+        vendor: Vendor::Antigravity,
+        model: "gemini-4-neon-high".to_owned(),
+        context_limit: Some(1_048_576),
+    };
+    let h1 = vec![Message::user("first")];
+    let first = answer(&model, asks("", &h1)).await;
+    assert_eq!(said(first.as_ref()).0, "run-0-turn-1");
+
+    let h2 = vec![
+        Message::user("first"),
+        Message::assistant("run-0-turn-1"),
+        Message::user("second"),
+    ];
+    let second = answer(&model, asks("", &h2)).await;
+    assert_eq!(said(second.as_ref()).0, "run-1-turn-1");
+    assert_eq!(starts.load(Ordering::SeqCst), 2);
+}

@@ -1,8 +1,10 @@
+use std::path::Path;
+
 use rig_harness::rig_core::catalog::{Catalog, ModelSpec};
 use rig_harness::rig_core::providers::registry::ProviderId;
 
 use crate::harness::Vendor;
-use crate::plugin::enrich_limits;
+use crate::plugin::{enrich_limits, expand_home};
 
 #[test]
 fn enrich_limits_populates_context_windows_across_bridge_vendors() {
@@ -45,4 +47,19 @@ fn enrich_limits_populates_context_windows_across_bridge_vendors() {
     assert_eq!(check(Vendor::Copilot, "claude-sonnet-5.5"), Some(1_000_000));
     assert_eq!(check(Vendor::Copilot, "mai-code-2"), Some(200_000));
     assert_eq!(check(Vendor::Copilot, "auto"), None);
+}
+
+#[test]
+fn expand_home_resolves_tilde_prefix_only() {
+    assert_eq!(expand_home(Path::new("agy")), Path::new("agy"));
+    assert_eq!(
+        expand_home(Path::new("/usr/bin/agy")),
+        Path::new("/usr/bin/agy")
+    );
+    if let Some(home) = std::env::var_os("HOME") {
+        assert_eq!(
+            expand_home(Path::new("~/.local/bin/agy")),
+            Path::new(&home).join(".local/bin/agy")
+        );
+    }
 }

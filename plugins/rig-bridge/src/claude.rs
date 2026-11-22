@@ -143,7 +143,7 @@ impl Harness for Claude {
                 }
             }
             // The program is gone: a prompt it left open failed.
-            let why = stderr.explain("claude exited");
+            let why = stderr.explain("claude exited").await;
             let _ = events.send(Event::Done(Err(why)));
         });
         Ok(Running {

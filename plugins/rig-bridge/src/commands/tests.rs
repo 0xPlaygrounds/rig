@@ -69,6 +69,16 @@ fn muse_usage_formats_tier_and_windows() {
     assert!(text.contains("Muse Code Max Usage"));
     assert!(text.contains("window 5% used"));
     assert!(text.contains("weekly 22% used"));
+
+    let empty = json!({
+        "allowance": null,
+        "reason": "server_sent_no_usage",
+        "hint": "the server sent no usage data"
+    });
+    assert_eq!(
+        parse_muse_usage(&empty),
+        "unavailable (no usage data yet in this window)"
+    );
 }
 
 #[test]
