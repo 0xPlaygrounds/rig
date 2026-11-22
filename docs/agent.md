@@ -937,6 +937,14 @@ The optional [`rig-claude-cloak`](../plugins/rig-claude-cloak) plugin adds
 `claude-cloak/*` models signed in with a Claude subscription instead of an API
 key, on Linux and macOS: `rig plugin enable rig_claude_cloak::ClaudeCloakPlugin`.
 
+The optional [`rig-bridge`](../plugins/rig-bridge) plugin adds `claude-code/*`,
+`grok-build/*`, `antigravity/*` and `codex/*` models, answered by the Claude
+Code, Grok Build, Antigravity and Codex programs with the sign-ins those
+programs already have:
+`rig plugin enable rig_bridge::BridgePlugin`. Each program is run for
+inference alone, without its own tools, instructions or memory, and calls
+rig's tools, which rig runs. Its README says what each program is left with.
+
 Code mode is the optional [`rig-steel`](../plugins/rig-steel) plugin: a
 `run_steel` tool whose [Steel](https://github.com/mattwparas/steel) (Scheme)
 program calls the model's tools, loops and branches on what they return, in a

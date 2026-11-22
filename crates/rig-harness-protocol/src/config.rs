@@ -266,6 +266,11 @@ the editor names, and /mcp.";
                 "Claude subscription", ["linux", "macos"], None,
                 "Claude Cloak: `claude-cloak/*` models signed in with a Claude subscription \
 (OAuth) instead of an API key, and /claude-cloak login and logout.";
+            off rig_bridge::BridgePlugin, "rig-bridge", "Other agents' CLIs",
+                ["linux", "macos"], None,
+                "Bridge: `claude-code/*`, `grok-build/*`, `antigravity/*` and `codex/*` models \
+answered by the `claude`, `grok`, `agy` and `codex` programs with their own sign-ins, each run \
+for inference alone: none of its tools, instructions or memory, and rig's tools over MCP.";
         }
     };
 }

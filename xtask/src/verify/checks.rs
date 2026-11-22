@@ -48,6 +48,7 @@ pub(crate) const HARNESS_PACKAGES: &[&str] = &[
     "rig-tui",
     "rig-fold",
     "rig-claude-cloak",
+    "rig-bridge",
     "rig-traffic",
     "rig-mcp-client",
     "rig-acp",

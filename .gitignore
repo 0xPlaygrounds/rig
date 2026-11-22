@@ -10,6 +10,19 @@ target/
 .envrc
 .direnv
 
+# Agent homes and sign-ins: the rig agent's project and home directories,
+# and those of the other coding agents rig can run. They hold sessions,
+# settings and credentials, and never belong in the repository.
+.rig/
+.claude/
+.codex/
+.grok/
+.gemini/
+.cursor/
+auth.json
+.credentials.json
+*-oauth-token
+
 # nodejs stuff
 node_modules/
 dist/

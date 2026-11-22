@@ -30,6 +30,7 @@ rig-harness-test-support = { path = "../rig-harness-test-support" }
 rig-inspect = { path = "../../plugins/rig-inspect" }
 rig-fold = { path = "../../plugins/rig-fold" }
 rig-claude-cloak = { path = "../../plugins/rig-claude-cloak" }
+rig-bridge = { path = "../../plugins/rig-bridge" }
 rig-mcp-client = { path = "../../plugins/rig-mcp-client" }
 rig-acp = { path = "../../plugins/rig-acp" }
 serde_json = { workspace = true }
