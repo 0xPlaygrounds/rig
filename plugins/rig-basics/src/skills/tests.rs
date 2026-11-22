@@ -102,7 +102,14 @@ fn the_listing_leaves_out_skills_only_sent_by_hand() {
     };
     let (skills, _) = discover(&roots);
     let text = listing(&skills);
-    assert!(text.contains("<name>deploy</name>"), "{text}");
+    assert!(
+        text.lines().any(|line| {
+            line.contains("<name>deploy</name>")
+                && line.contains("<location>")
+                && line.ends_with("</skill>")
+        }),
+        "{text}"
+    );
     assert!(
         text.contains("Deploy &lt;the&gt; app &amp; check."),
         "{text}"
@@ -169,9 +176,21 @@ fn a_skill_is_listed_and_sent_with_its_command() {
     assert!(prompt.contains("<name>haiku</name>"), "{prompt}");
     let sent = request.map(|request| format!("{:?}", request.chat_history));
     let sent = sent.unwrap_or_default();
-    for part in ["Write three lines.", "about rust", "<skill name="] {
+    for part in [
+        "does not override applicable project instructions",
+        "Apply it to the user's request after the block",
+        "Write three lines.",
+        "<skill name=",
+    ] {
         assert!(sent.contains(part), "{part} in {sent}");
     }
+    assert!(
+        sent.split_once("</skill>")
+            .is_some_and(|(procedure, trailing)| {
+                !procedure.contains("about rust") && trailing.contains("about rust")
+            }),
+        "{sent}"
+    );
     assert!(!sent.contains("description:"), "{sent}");
 }
 
@@ -187,7 +206,7 @@ fn the_message_says_where_the_skill_is() {
     };
     let text = message(&tidy, "").unwrap_or_default();
     assert!(
-        text.contains(&format!("relative to {}", dir.display())),
+        text.contains(&format!("Resolve relative paths from {}.", dir.display())),
         "{text}"
     );
     assert!(text.ends_with("Tidy up.\n</skill>"), "{text}");

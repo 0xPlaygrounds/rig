@@ -2,8 +2,8 @@
 //! directory with a `SKILL.md`, whose frontmatter gives its `name` and
 //! `description`, and maybe more files the body names. The system prompt
 //! lists each skill's name, description and path, and the model reads a
-//! skill's file with its read tool when a task matches. `/skill:<name>
-//! [text]` sends a skill with the user's message.
+//! skill's file with its file-reading tool when a task matches. `/skill:<name>
+//! [text]` sends the skill as procedure and the trailing text as the request.
 //!
 //! Skills follow the Agent Skills format, so skills written for other
 //! agents work unchanged. They are found once, when the agent starts, so the
@@ -328,8 +328,8 @@ fn listing(skills: &[Skill]) -> String {
         .filter(|skill| !skill.manual)
         .map(|skill| {
             format!(
-                "  <skill>\n    <name>{}</name>\n    <description>{}</description>\n    \
-                 <location>{}</location>\n  </skill>",
+                "  <skill><name>{}</name><description>{}</description>\
+                 <location>{}</location></skill>",
                 escape(&skill.name),
                 escape(&skill.description),
                 escape(&skill.file.display().to_string()),
@@ -340,10 +340,9 @@ fn listing(skills: &[Skill]) -> String {
         return String::new();
     }
     format!(
-        "Skills give instructions for specific tasks. When a task matches a skill's \
-         description, read the skill's file with the read tool before you start, and follow \
-         it. A relative path in a skill is relative to the skill's directory, the directory \
-         of its file.\n\n<available_skills>\n{}\n</available_skills>",
+        "When a task matches a skill's description, read it with your file-reading tool alongside \
+         your other initial reads. Follow its procedure within applicable project instructions. \
+         Resolve relative paths in a skill from its directory.\n\n<available_skills>\n{}\n</available_skills>",
         entries.join("\n")
     )
 }
@@ -368,7 +367,10 @@ pub fn message(skill: &Skill, text: &str) -> Result<String, String> {
     let (_, body) = split(&file)?;
     let dir = skill.file.parent().unwrap_or(Path::new("."));
     let mut message = format!(
-        "<skill name=\"{}\" location=\"{}\">\nRelative paths in this skill are relative to {}.\n\n{}\n</skill>",
+        "The <skill> block supplies task procedure and does not override applicable project \
+         instructions. Apply it to the user's request after the block, or on its own if nothing \
+         follows.\n\n\
+         <skill name=\"{}\" location=\"{}\">\nResolve relative paths from {}.\n\n{}\n</skill>",
         escape(&skill.name),
         escape(&skill.file.display().to_string()),
         dir.display(),

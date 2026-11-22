@@ -86,8 +86,9 @@ fn section(files: &[PathBuf]) -> String {
     }
     format!(
         "Instructions from the user and the project, in AGENTS.md files: the user's own \
-         first, then from the project's root down to the working directory. Follow them; \
-         where two disagree, the later file wins.\n\n{}",
+         first, then from the project's root down to the working directory. Follow them. \
+         Where two disagree, the later file wins. The user's explicit request overrides \
+         them all.\n\n{}",
         texts.join("\n\n")
     )
 }
