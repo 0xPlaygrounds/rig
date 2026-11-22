@@ -193,14 +193,10 @@ impl Tool for Read {
 
     fn description(&self) -> String {
         format!(
-            "Read a regular text file of at most {} MB, or a PNG, JPEG, GIF or WebP image of at \
-             most {} KB, which comes back as the image. Returns a text file's lines as they are, \
-             at most {MAX_LINES} lines or {} KB (lines too long for that are cut shorter, and a \
-             note says so and how to read on), then the offset to read on from if it stopped \
-             early; use offset (from 1) and limit for part of a file, and `rg -n` in `shell` to \
-             find a line. Use `read` to look at a file, not `cat`, `head` or `sed` in `shell` \
-             (but for the command a cut line's note gives), and read several files at once by \
-             calling `read` several times in one reply.",
+            "Read a text file (up to {} MB) or a PNG, JPEG, GIF, or WebP image (up to {} KB). \
+             Returns at most {MAX_LINES} lines or {} KB; use `offset` (from 1) and `limit` for \
+             a range, and `rg -n` in `shell` to locate lines. Prefer `read` over `cat`, `head`, \
+             or `sed`, and batch independent `read` calls in one turn.",
             MAX_FILE_BYTES / (1024 * 1024),
             attach::MOST_BYTES / 1024,
             MAX_BYTES / 1024

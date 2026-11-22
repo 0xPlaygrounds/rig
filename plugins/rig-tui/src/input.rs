@@ -30,7 +30,9 @@ use super::status::{AppStatus, Side, StatusItem, Tone};
 use super::terminal::TerminalFocus;
 use super::view::{ItemRow, TranscriptItem, TranscriptView, TuiView};
 use rig_ecs::agent::{ActiveTurn, Notice, StopTurn};
-use rig_ecs::inbox::{Deliver, DeliveryMode};
+use rig_ecs::inbox::{Deliver, DeliveryMode, Incoming};
+use rig_ecs::prelude::Author;
+use rig_ecs::stage::{Decision, Effect, ForAgent, Holds, Outcome, Settled, SupersededBy};
 use rig_ecs::tasks::Wake;
 use rig_harness::main_agent::ShownAgent;
 use rig_harness::pick::{Chosen, Pick, Ticked};
@@ -421,6 +423,11 @@ pub(crate) struct Target<'a> {
     input: &'a mut Editor,
     /// The input's entity, if it is one.
     editor: Option<Entity>,
+    /// Whether `input` is the main editor (not a panel's).
+    main: bool,
+    /// Waiting user messages of the shown busy agent, oldest first, so Up on
+    /// an empty main editor pops the newest back into the input.
+    waiting: &'a mut Vec<(Entity, String)>,
     pane: Option<(Mut<'a, TranscriptView>, Mut<'a, PaneState>)>,
 }
 
@@ -438,6 +445,25 @@ type Panes<'w, 's> = Query<
 
 /// The editors, which the keys type into.
 type Editors<'w, 's> = Query<'w, 's, (Entity, &'static mut Editor, Has<MainEditor>)>;
+
+/// Waiting user messages that have not been delivered, decided, or held yet.
+type WaitingMessages<'w, 's> = Query<
+    'w,
+    's,
+    (
+        Entity,
+        &'static Effect,
+        &'static Incoming,
+        &'static ForAgent,
+        &'static Decision,
+    ),
+    (
+        Without<Outcome>,
+        Without<Settled>,
+        Without<SupersededBy>,
+        Without<Holds>,
+    ),
+>;
 
 /// The editor the keys type into: the panel's with the keys, else the main
 /// one.
@@ -466,7 +492,7 @@ pub(crate) fn read_input(
     (mut editors, mut showing): (Editors, Showing),
     mut keymap: Keymap,
     choices: Choices,
-    agents: Query<Has<ActiveTurn>>,
+    (agents, waiting): (Query<Has<ActiveTurn>>, WaitingMessages),
     (scratch, processes, wake, history): (
         Option<Res<Scratch>>,
         Option<Res<Processes>>,
@@ -485,6 +511,26 @@ pub(crate) fn read_input(
         .0
         .and_then(|agent| agents.get(agent).ok())
         .unwrap_or(false);
+    let mut recallable: Vec<(Entity, String)> = match shown.0.filter(|_| busy) {
+        Some(agent) => {
+            let mut pending: Vec<_> = waiting
+                .iter()
+                .filter(|(_, _, message, to, decision)| {
+                    to.0 == agent
+                        && message.author == Author::user()
+                        && message.mode != DeliveryMode::Inform
+                        && !decision.is_decided()
+                        && !message.text().trim().is_empty()
+                })
+                .collect();
+            pending.sort_unstable_by_key(|(_, effect, ..)| effect.id());
+            pending
+                .into_iter()
+                .map(|(entity, _, message, ..)| (entity, message.text().trim().to_owned()))
+                .collect()
+        }
+        None => Vec::new(),
+    };
     let context = Context {
         agent: shown.0,
         busy,
@@ -518,6 +564,8 @@ pub(crate) fn read_input(
                     view: &mut view,
                     input,
                     editor,
+                    main,
+                    waiting: &mut recallable,
                     pane: pane.map(|(_, view, state, _)| (view, state)),
                 };
                 act(action, &mut target, (&context, &showing), &mut commands);
@@ -564,6 +612,8 @@ pub(crate) fn read_input(
                     view: &mut view,
                     input,
                     editor,
+                    main,
+                    waiting: &mut recallable,
                     pane: pane.map(|(_, view, state, _)| (view, state)),
                 };
                 pressed(
@@ -773,6 +823,8 @@ fn act(
         view,
         input,
         editor,
+        main,
+        waiting,
         pane,
     } = target;
     // A question answered in the input: Enter answers it, Esc refuses it.
@@ -807,11 +859,19 @@ fn act(
         Do::DeleteWordAfter => input.delete_word_after(),
         Do::DeleteToLineStart => input.delete_to_line_start(),
         Do::DeleteToLineEnd => input.delete_to_line_end(),
-        Do::LineUp => input.line_up(context.history),
+        Do::LineUp => {
+            if !recall_waiting(*main, editing, input, waiting, commands) {
+                input.line_up(context.history);
+            }
+        }
         Do::LineDown => input.down(context.history),
         Do::Up => match &mut view.completion {
             Some(completion) => completion.select(-1),
-            None => input.up(context.history),
+            None => {
+                if !recall_waiting(*main, editing, input, waiting, commands) {
+                    input.up(context.history);
+                }
+            }
         },
         Do::Down => match &mut view.completion {
             Some(completion) => completion.select(1),
@@ -1010,6 +1070,29 @@ pub(crate) fn send(
     let refused = view.refused.take().as_ref() == Some(&text);
     let typed = Deliver::new(entity, text, mode);
     commands.trigger(if refused { typed.literal() } else { typed });
+}
+
+/// Pops the newest waiting user message of the shown busy agent back into
+/// the main editor when it is empty, cancelling its pending [`Incoming`] so
+/// editing and re-sending replaces it instead of queuing a duplicate.
+fn recall_waiting(
+    main: bool,
+    editing: Option<Entity>,
+    input: &mut Editor,
+    waiting: &mut Vec<(Entity, String)>,
+    commands: &mut Commands,
+) -> bool {
+    if !main || editing.is_some() || !input.is_empty() {
+        return false;
+    }
+    let Some((entity, text)) = waiting.pop() else {
+        return false;
+    };
+    commands
+        .entity(entity)
+        .try_insert_if_new(Outcome::custom("recalled"));
+    input.set(text);
+    true
 }
 
 /// Puts the selected completion in place of the token being completed.

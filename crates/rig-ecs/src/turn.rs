@@ -41,7 +41,7 @@ use rig_core::conversation::{
     Author, AuthorKind, CallRef, Entry, Halt, MessageId, ResultFacts, StopCause, TurnEnd,
     is_attachment_text,
 };
-use rig_core::effect::{self, EffectId, EffectKind, Family};
+use rig_core::effect::{self, Decider, EffectId, EffectKind, Family};
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::message::{
     AssistantContent, AssistantMessage, CallId, StopReason, ToolCall, UserContent,
@@ -58,7 +58,9 @@ use super::agent::{
     LastUsage, Notice, Partial, Spawned, Stop, StopReached, StopTurn, SystemPrompt, ToolAccess,
     Turn, TurnOf, TurnOutcome,
 };
-use super::inbox::{DeliveryMode, Inboxes, Unanswered, carry_on, deliver, keep_on_the_way};
+use super::inbox::{
+    DeliveryMode, Inboxes, Incoming, Unanswered, carry_on, deliver, keep_on_the_way,
+};
 use super::model::{Connection, ReasoningSetting};
 use super::prompt::{PromptSection, SectionOf};
 use super::requests::Requests;
@@ -1973,6 +1975,8 @@ pub(crate) struct ReplyCall {
     footprint: Option<&'static Footprint>,
     decision: &'static Decision,
     interrupted: Option<&'static Interrupted>,
+    admitted: Has<Admitted>,
+    held: Has<Holds>,
     restored: Has<Restored>,
     settled: Has<Settled>,
     started: Has<Started>,
@@ -2026,6 +2030,22 @@ fn reply_calls<'a>(
     asked
 }
 
+/// Whether `entity` is an active call of `reply` (following [`SupersededBy`])
+/// among `calls`.
+pub(crate) fn is_reply_call(
+    entity: Entity,
+    reply: EffectId,
+    calls: &Calls,
+    replies: &Query<ReplyCall>,
+) -> bool {
+    reply_calls(reply, calls, replies)
+        .into_iter()
+        .any(|call| call.entity == entity)
+}
+
+/// Why an unstarted tool call is skipped when a user steering message arrives.
+const STEERED_SKIP: &str = "Skipped because a steering message arrived before this call started.";
+
 /// Marks each call of a running reply [`Waiting`] while an earlier call
 /// whose [`Footprint`] conflicts with its own is not settled, and takes
 /// the mark off once none is, when [`Stage::Gate`](super::stage::Stage::Gate)
@@ -2057,6 +2077,55 @@ pub(crate) fn wait_in_order(
             if !call.settled {
                 earlier.push(footprint);
             }
+        }
+    }
+}
+
+/// Skips each unstarted, undecided, unheld tool call of a turn's running
+/// reply when its agent has an accepted user steering message waiting in
+/// its inbox, in [`GateSystems::Fallback`](super::stage::GateSystems::Fallback).
+/// Calls [`Waiting`] on an earlier conflicting call are included so they
+/// never start once the running call finishes; already-started calls keep
+/// running.
+pub(crate) fn skip_steered(
+    turns: Query<(&TurnOf, &Turn, &Calls, Option<&TurnOutcome>)>,
+    mut calls: ParamSet<(
+        Query<ReplyCall>,
+        Query<&mut Decision, (With<ToolRequest>, Without<Incoming>)>,
+    )>,
+    inboxes: Inboxes,
+) {
+    let mut to_skip = Vec::new();
+    {
+        let replies = calls.p0();
+        for (&TurnOf(agent), state, of, ending) in &turns {
+            let Some(reply) = state.reply else {
+                continue;
+            };
+            if ending.is_some_and(TurnOutcome::is_stopping) || !inboxes.user_steering(agent) {
+                continue;
+            }
+            for call in reply_calls(reply, of, &replies) {
+                let open = call.admitted
+                    && !call.started
+                    && call.outcome.is_none()
+                    && !call.settled
+                    && !call.held
+                    && call.interrupted.is_none()
+                    && !call.decision.is_decided();
+                if open {
+                    to_skip.push(call.entity);
+                }
+            }
+        }
+    }
+    let mut decisions = calls.p1();
+    for entity in to_skip {
+        if let Ok(mut decision) = decisions.get_mut(entity) {
+            decision.decide(
+                Decider::plugin("rig-ecs"),
+                ToolResult::skipped(STEERED_SKIP),
+            );
         }
     }
 }

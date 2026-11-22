@@ -55,16 +55,14 @@ const WAIT_DESCRIPTION: &str = "Wait, without ending your turn, until the agent 
 
 /// What every subagent is told about its role, in a prompt section of its
 /// own after its parent's own system prompt.
-pub(super) const SUBAGENT_ROLE: &str = "You are a subagent. Another agent gave you the task in the \
-    first message and expects your answer. Decide what you can yourself and say what you \
-    assumed; when you cannot go on without that agent, `message` it your question and `wait` \
-    for its answer, or, without those tools, say what you need in your final answer. A message is not your report: your final answer, when your turn ends, is \
-    sent to that agent as the task's result, so make it complete on its own, with file paths, \
-    findings and what you changed, and keep it short. That agent may send you corrections \
-    while you work and follow-ups later; answer each in your final answer. If you start \
-    subagents of your own, end your turn while they work: their reports come back to you, \
-    and you answer once they have. Never invent, simulate or paraphrase as fact another \
-    agent's reply.";
+pub(super) const SUBAGENT_ROLE: &str = "You are a subagent. Your parent agent gave you the task \
+    in the first message. Report to that agent, not to the user. State your assumptions. \
+    If blocked, use `message` to ask your parent and `wait` for its reply without ending your \
+    turn. If you cannot use those tools, state the blocker in your final answer. A `message` call \
+    is not your report. Your final answer ends your turn and reports the result. Keep it concise \
+    and self-contained. Include findings, what you changed, and file paths. Address corrections \
+    and follow-ups. If you start subagents, end your turn while they work and answer after their \
+    reports arrive. Never invent, simulate or paraphrase as fact another agent's reply.";
 
 /// What a subagent started with `peers` is told, after [`SUBAGENT_ROLE`].
 pub(super) const PEER_ROLE: &str = "Other subagents of that agent work beside you; your task names the \

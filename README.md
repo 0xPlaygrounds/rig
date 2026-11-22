@@ -114,8 +114,7 @@ and, not facade features, [`rig-harness`](crates/rig-harness),
 [`rig-basics`](plugins/rig-basics), [`rig-tui`](plugins/rig-tui),
 [`rig-fold`](plugins/rig-fold), [`rig-steel`](plugins/rig-steel),
 [`rig-mcp-client`](plugins/rig-mcp-client), [`rig-acp`](plugins/rig-acp),
-[`rig-inspect`](plugins/rig-inspect), [`rig-traffic`](plugins/rig-traffic),
-[`rig-claude-cloak`](plugins/rig-claude-cloak) and
+[`rig-inspect`](plugins/rig-inspect), [`rig-traffic`](plugins/rig-traffic) and
 [`rig-bridge`](plugins/rig-bridge).
 
 ## Community

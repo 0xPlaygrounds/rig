@@ -108,16 +108,10 @@ impl Tool for Edit {
     type Error = ToolExecutionError;
 
     fn description(&self) -> String {
-        "Replace text in one file. Each entry of `edits` replaces `old_text` with `new_text`. \
-         Copy each `old_text` from the file as `read` showed it, with just enough lines around \
-         the change to match one place, or set `replace_all` to replace every exact match. \
-         Text with no exact match still matches line by line once trailing whitespace and \
-         typographic quotes, dashes and spaces are evened out, but only where exactly one place \
-         matches that way, and the result says so. Make all changes to one file in one call, \
-         one entry per change: the entries apply in order, each to the text the ones before it \
-         left, and all of them or none. Returns the lines that now hold the changed text, and \
-         those lines and a few around each as the file now holds them, so there is no need to \
-         read it again."
+        "Replace text in one file. Copy each `old_text` exactly from `read` with enough \
+         surrounding lines to match one place, or set `replace_all` to replace every exact \
+         match. Batch all edits to one file in one call; all apply or none. The result shows \
+         the changed lines with context, so do not re-read the file after."
             .to_owned()
     }
 

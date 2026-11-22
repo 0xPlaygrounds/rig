@@ -65,10 +65,10 @@ use rig_core::tool::{ToolResult, ToolResultContext};
 use rig_core::{millis, now_ms};
 use web_time::SystemTime;
 
-use super::agent::{AgentId, CallOf, Conversation, Notice, Turn, TurnOutcome};
+use super::agent::{AgentId, CallOf, Calls, Conversation, Notice, Turn, TurnOf, TurnOutcome};
 use super::effects::{Effects, Handler, Ran};
 use super::fork::{Forking, make_forks};
-use super::inbox::{Incoming, accept, carry_on_accepted, message_kind, settle_unsent};
+use super::inbox::{Inboxes, Incoming, accept, carry_on_accepted, message_kind, settle_unsent};
 use super::requests::RequestOf;
 use super::restore::{Interrupted, answer_interrupted, mark_started, stop_restored};
 use super::session_log::{Drain, SessionLog, save_now};
@@ -78,10 +78,10 @@ use super::tools::{
     compute_footprints, refuse_calls,
 };
 use super::turn::{
-    Adapted, ModelRequest, NO_MODEL, SentTo, StreamDelta, back_off, build_requests,
-    carry_on_called, commit_replies, commit_turn_calls, end_turns, feed, judge_failures,
-    keeps_settled, model_pool, route_calls, stop_calls, stream_partials, stream_reply,
-    wait_in_order, write_unstreamed,
+    Adapted, ModelRequest, NO_MODEL, ReplyCall, SentTo, StreamDelta, back_off, build_requests,
+    carry_on_called, commit_replies, commit_turn_calls, end_turns, feed, is_reply_call,
+    judge_failures, keeps_settled, model_pool, route_calls, skip_steered, stop_calls,
+    stream_partials, stream_reply, wait_in_order, write_unstreamed,
 };
 
 /// One pass over the stages. Plugins add their systems to it in a
@@ -229,8 +229,9 @@ pub enum GateSystems {
     /// answered with an error, else releases its holds.
     After,
     /// The kernel's own answers once every plugin had its say, such as an
-    /// [`Interrupted`] call's or an [`Unsent`](super::inbox::Unsent)
-    /// message's. A default plugin's fallback goes between
+    /// [`Interrupted`] call's, an unstarted tool call skipped when the user
+    /// steers, or an [`Unsent`](super::inbox::Unsent) message's. A default
+    /// plugin's fallback goes between
     /// (`.after(GateSystems::After).before(GateSystems::Fallback)`), so it
     /// sees what every plugin decided or held and the kernel has not
     /// answered yet.
@@ -810,7 +811,7 @@ pub(crate) fn build(app: &mut App) {
                     .before(Stage::Gate)
                     .run_if(moved_since_quiet),
                 stop_restored.after(Stage::Gate).before(GateSystems::After),
-                (answer_interrupted, settle_unsent)
+                (answer_interrupted, skip_steered, settle_unsent)
                     .chain()
                     .in_set(GateSystems::Fallback),
                 apply_decisions.in_set(Enter(Stage::Start)),
@@ -1202,7 +1203,11 @@ type Saving<'w, 's> = ParamSet<
 fn start(
     mut ready: Query<StartItem, ReadyToStart>,
     agents: Query<&AgentId>,
-    turns: Query<&TurnOutcome>,
+    (turns, replies, inboxes): (
+        Query<(&TurnOf, &Turn, &Calls, Option<&TurnOutcome>)>,
+        Query<ReplyCall>,
+        Inboxes,
+    ),
     tools: ToolStarts,
     effects: Res<Effects>,
     wake: Res<Wake>,
@@ -1226,9 +1231,18 @@ fn start(
     let mut ready: Vec<_> = ready
         .iter_mut()
         .filter(|item| {
-            let ending = item.of.and_then(|of| turns.get(of.0).ok());
-            let stopping = ending.is_some_and(TurnOutcome::is_stopping);
-            !item.message && !item.decision.is_decided() && !stopping
+            let turn = item.of.and_then(|of| turns.get(of.0).ok());
+            let stopping = turn
+                .and_then(|(_, _, _, ending)| ending)
+                .is_some_and(TurnOutcome::is_stopping);
+            let steered = item.tool.is_some()
+                && turn.is_some_and(|(&TurnOf(agent), state, calls, _)| {
+                    state.reply.is_some_and(|reply| {
+                        inboxes.user_steering(agent)
+                            && is_reply_call(item.entity, reply, calls, &replies)
+                    })
+                });
+            !item.message && !item.decision.is_decided() && !stopping && !steered
         })
         .collect();
     ready.sort_unstable_by_key(|item| item.effect.id());

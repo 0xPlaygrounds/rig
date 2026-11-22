@@ -226,6 +226,9 @@ the keys out of a question, a panel or an earlier prompt still show.";
                 "The terminal's title (rig · working, needs you, error or idle) and the prompt \
 marks around each turn that let a terminal jump between prompts; [title] \
 mark_nonce_env names the variable holding the shell's mark nonce.";
+            on rig_tui::sticky::StickyPromptPlugin, "rig-tui", "Sticky prompt", [], None,
+                "Pins the most recent user message scrolled above the top of the transcript \
+over its top row, and hides it whenever that message is visible on screen.";
             off rig_fold::FoldPlugin, "rig-fold", "Folded output", [], None,
                 "Folded tool output in the terminal view: a finished call shows its first and last \
 lines, and Ctrl+O ([fold] key) shows the selected call, or every call, whole. Off, \
@@ -262,15 +265,12 @@ and again once its entry changes: /mcp approve and /mcp deny.";
                 "ACP: `rig acp` serves the Agent Client Protocol on stdin and stdout, so an editor \
 such as Zed uses rig, each session in a process of its own, with the MCP servers \
 the editor names, and /mcp.";
-            off rig_claude_cloak::ClaudeCloakPlugin, "rig-claude-cloak",
-                "Claude subscription", ["linux", "macos"], None,
-                "Claude Cloak: `claude-cloak/*` models signed in with a Claude subscription \
-(OAuth) instead of an API key, and /claude-cloak login and logout.";
             off rig_bridge::BridgePlugin, "rig-bridge", "Other agents' CLIs",
                 ["linux", "macos"], None,
-                "Bridge: `claude-code/*`, `grok-build/*`, `antigravity/*` and `codex/*` models \
-answered by the `claude`, `grok`, `agy` and `codex` programs with their own sign-ins, each run \
-for inference alone: none of its tools, instructions or memory, and rig's tools over MCP.";
+                "Bridge: `claude-code/*`, `grok-build/*`, `antigravity/*`, `codex/*`, `muse/*` \
+and `copilot/*` models answered by the `claude`, `grok`, `agy`, `codex`, `muse` and `copilot` \
+programs with their own sign-ins, each run for inference alone: none of its tools, instructions \
+or memory, and rig's tools over MCP.";
         }
     };
 }

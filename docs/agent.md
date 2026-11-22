@@ -250,6 +250,9 @@ use against the model's window, or `?` after a compaction, until the next
 reply measures it (`ctx ?/1.0M`). `/usage` breaks them down. Key hints
 (`rig_tui::hints::KeyHintsPlugin`) lists those keys; disabled, that row is
 empty, but a question's keys and a panel's "Esc gives them back" still show.
+Sticky prompt (`rig_tui::sticky::StickyPromptPlugin`, on by default) pins your
+most recent user message over the top row of the transcript whenever it has
+scrolled off screen, and hides it again once that message is visible.
 While the agent works, a
 small wave of six bars moves before what it is doing, and rig's mark in the
 welcome at the top of the transcript pulses with it;
@@ -299,10 +302,12 @@ cannot be written, a notice says why and the row goes back.
 `/plugins defaults` shows every part again at once. Without a terminal it
 writes nothing and names the `hide` line to delete.
 
-Typing while the agent works is fine. Enter steers the running turn (the
-message goes to the model with its next call, after the tool results it waits
-for) and Tab queues a follow-up that is sent when the turn would end. Both
-wait under the transcript. Esc stops the turn and puts them back in the input
+Typing while the agent works is fine. Enter steers the running turn:
+already-running tool calls finish, unstarted tool calls in the same reply are
+skipped (unless a plugin is holding them), and the message goes to the model
+on its next call. Tab queues a follow-up that is sent when the turn would end.
+Both wait under the transcript; Up on an empty input pulls the last waiting
+message back to edit or cancel. Esc stops the turn and puts them back in the input
 (a plugin may keep them for the next turn instead); what the reply had
 streamed stays in the transcript, saved as stopped. A tool call cut while its
 arguments streamed stays as a row that says it never ran; the model later
@@ -933,14 +938,10 @@ serves the Agent Client Protocol on stdin and stdout, so an editor such as Zed
 uses rig's models, tools, sessions and slash commands: `rig plugin enable
 rig_acp::AcpPlugin`. Its README has the editor's settings.
 
-The optional [`rig-claude-cloak`](../plugins/rig-claude-cloak) plugin adds
-`claude-cloak/*` models signed in with a Claude subscription instead of an API
-key, on Linux and macOS: `rig plugin enable rig_claude_cloak::ClaudeCloakPlugin`.
-
 The optional [`rig-bridge`](../plugins/rig-bridge) plugin adds `claude-code/*`,
-`grok-build/*`, `antigravity/*` and `codex/*` models, answered by the Claude
-Code, Grok Build, Antigravity and Codex programs with the sign-ins those
-programs already have:
+`grok-build/*`, `antigravity/*`, `codex/*`, `muse/*` and `copilot/*` models,
+answered by the Claude Code, Grok Build, Antigravity, Codex, Meta AI Muse and
+GitHub Copilot programs with the sign-ins those programs already have:
 `rig plugin enable rig_bridge::BridgePlugin`. Each program is run for
 inference alone, without its own tools, instructions or memory, and calls
 rig's tools, which rig runs. Its README says what each program is left with.
@@ -993,7 +994,6 @@ processes can share one:
 | `AGENTS.md`, `skills/` | Your own instructions and skills, read in every project. A new home gets the `writing-rig-plugins` skill once. |
 | `plugins/` | The plugin crates `rig plugin new` makes. |
 | `auth/` | `/login`'s credentials: `chatgpt.json` and the API keys in `keys/`. |
-| `anthropic-oauth/` | The Claude sign-in and device id of the optional `rig-claude-cloak` plugin. |
 | `project/` | The generated agent project, regenerated before each build. |
 | `kept-locks/` | The project's lock files while a `rig --safe` build runs, and after one was stopped, until the next build puts them back. |
 | `target/` | cargo's build of the agent project, a few gigabytes. |
