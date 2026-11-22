@@ -11,9 +11,9 @@ use serde_json::json;
 use tokio::sync::mpsc;
 
 use super::{
-    BridgeSignal, SignalInbox, drain_signals, format_grok_usage_error, parse_antigravity_usage,
-    parse_claude_usage, parse_codex_usage, parse_copilot_usage, parse_grok_billing,
-    parse_grok_usage, parse_muse_usage,
+    BridgeSignal, SignalInbox, antigravity_token, drain_signals, format_grok_usage_error,
+    grok_token, parse_antigravity_usage, parse_claude_usage, parse_codex_usage,
+    parse_copilot_usage, parse_grok_billing, parse_grok_usage, parse_muse_usage,
 };
 use crate::harness::Vendor;
 
@@ -133,6 +133,96 @@ fn grok_billing_antigravity_and_copilot_quotas_format_cleanly() {
     assert_eq!(
         parse_copilot_usage(&copilot),
         "plan individual, premium 3% used [1456/1500 left] (resets 2026-12-01)"
+    );
+
+    // Proto3 omits default 0.0 remainingFraction when a model is 100% exhausted.
+    let agy_exhausted = json!({
+        "models": {
+            "gemini-4-neon-high": {
+                "quotaInfo": { "resetTime": "2026-11-22T21:56:27Z" }
+            },
+            "gemini-4-carbon-low": {
+                "quotaInfo": { "remainingFraction": 0.95, "resetTime": "2026-11-22T22:00:00Z" }
+            },
+            "claude-a": {
+                "quotaInfo": { "remainingFraction": 0.5 }
+            },
+            "claude-b": {
+                "quotaInfo": { "remainingFraction": 0.5, "resetTime": "2026-11-23T01:50:31Z" }
+            }
+        }
+    });
+    assert_eq!(
+        parse_antigravity_usage(&agy_exhausted).as_deref(),
+        Some(
+            "Gemini 100% used (resets 2026-11-22T21:56), Claude 50% used (resets 2026-11-23T01:50)"
+        )
+    );
+
+    // Copilot overage clamps negative remaining to 0.
+    let copilot_overage = json!({
+        "copilot_plan": "pro",
+        "quota_reset_date": "2026-12-01",
+        "quota_snapshots": {
+            "premium_interactions": {
+                "unlimited": false,
+                "percent_remaining": 0.0,
+                "remaining": -12,
+                "entitlement": 300
+            }
+        }
+    });
+    assert_eq!(
+        parse_copilot_usage(&copilot_overage),
+        "plan pro, premium 100% used [0/300 left] (resets 2026-12-01)"
+    );
+}
+
+#[test]
+fn grok_and_antigravity_token_extractors_handle_real_and_edge_shapes() {
+    // Real ~/.grok/auth.json shape + earlier empty/unrelated entries must not mask x.ai key.
+    let grok_multi = json!({
+        "aaa-empty": { "key": "" },
+        "api.other.example": { "key": "other-secret" },
+        "https://auth.x.ai::b1a00492": { "key": "xai-real-token" }
+    });
+    assert_eq!(grok_token(&grok_multi).as_deref(), Some("xai-real-token"));
+
+    // Multiple unrelated entries with no x.ai/grok host must not leak an unrelated token.
+    let grok_unrelated = json!({
+        "api.one.example": { "key": "tok-1" },
+        "api.two.example": { "key": "tok-2" }
+    });
+    assert_eq!(grok_token(&grok_unrelated), None);
+
+    // Flat shape and single-entry fallback both work.
+    assert_eq!(
+        grok_token(&json!({ "key": "flat-tok" })).as_deref(),
+        Some("flat-tok")
+    );
+    assert_eq!(
+        grok_token(&json!({ "default": { "key": "single-tok" } })).as_deref(),
+        Some("single-tok")
+    );
+
+    // Antigravity nested, top-level, nested-null fallback, and business flag.
+    assert_eq!(
+        antigravity_token(&json!({
+            "auth_method": "oauth-business",
+            "token": { "access_token": "biz-tok" }
+        })),
+        Some(("biz-tok".to_owned(), true))
+    );
+    assert_eq!(
+        antigravity_token(&json!({
+            "token": { "access_token": null },
+            "access_token": "top-tok"
+        })),
+        Some(("top-tok".to_owned(), false))
+    );
+    assert_eq!(
+        antigravity_token(&json!({ "token": { "access_token": "" } })),
+        None
     );
 }
 

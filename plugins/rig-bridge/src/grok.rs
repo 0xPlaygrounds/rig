@@ -86,11 +86,18 @@ pub(crate) struct Grok;
 /// Where the user's Grok sign-in file lives.
 pub(crate) fn signed_in() -> Option<PathBuf> {
     std::env::var_os("GROK_AUTH_PATH")
+        .filter(|value| !value.is_empty())
         .map(PathBuf::from)
         .or_else(|| {
             let home = std::env::var_os("GROK_HOME")
+                .filter(|value| !value.is_empty())
                 .map(PathBuf::from)
-                .or_else(|| Some(PathBuf::from(std::env::var_os("HOME")?).join(".grok")))?;
+                .or_else(|| {
+                    Some(
+                        PathBuf::from(std::env::var_os("HOME").filter(|value| !value.is_empty())?)
+                            .join(".grok"),
+                    )
+                })?;
             Some(home.join("auth.json"))
         })
 }
