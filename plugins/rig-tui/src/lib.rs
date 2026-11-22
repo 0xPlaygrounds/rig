@@ -13,7 +13,8 @@
 //!
 //! [`TuiPlugin`] is [`TuiViewPlugin`] plus [`DefaultScreenPlugin`];
 //! [`TuiPlugins`] adds it with the parts a user may leave out, such as
-//! the [`status`] line, the [`hints`] and the terminal's title ([`title`]).
+//! the [`status`] line, the [`hints`], the terminal's title ([`title`])
+//! and the [`sticky`] prompt bar.
 //! Where a plugin hooks in:
 //!
 //! - **Panels:** [`TuiPanel`], drawn in [`TuiSystems::Draw`] ([`panel`]);
@@ -59,6 +60,7 @@ mod renderers;
 mod screen;
 mod selection;
 pub mod status;
+pub mod sticky;
 mod terminal;
 mod theme;
 pub mod title;
@@ -126,8 +128,9 @@ impl Plugin for TuiPlugin {
 /// The terminal view ([`TuiPlugin`]) with the parts the agent adds as
 /// plugins of their own, each unless the app has it: the
 /// [`StatusLinePlugin`](status::StatusLinePlugin), the
-/// [`KeyHintsPlugin`](hints::KeyHintsPlugin) and the
-/// [`TerminalTitlePlugin`](title::TerminalTitlePlugin). For an app or a test
+/// [`KeyHintsPlugin`](hints::KeyHintsPlugin), the
+/// [`TerminalTitlePlugin`](title::TerminalTitlePlugin) and the
+/// [`StickyPromptPlugin`](sticky::StickyPromptPlugin). For an app or a test
 /// that adds the view itself; the agent adds each from the settings.
 #[derive(Default)]
 pub struct TuiPlugins;
@@ -145,6 +148,9 @@ impl Plugin for TuiPlugins {
         }
         if !app.is_plugin_added::<title::TerminalTitlePlugin>() {
             app.add_plugins(title::TerminalTitlePlugin);
+        }
+        if !app.is_plugin_added::<sticky::StickyPromptPlugin>() {
+            app.add_plugins(sticky::StickyPromptPlugin);
         }
     }
 
@@ -341,7 +347,7 @@ pub fn add_view(app: &mut App) {
                     .run_if(resource_exists_and_changed::<view::TuiView>)
                     .in_set(StatusSystems::Show),
                 (
-                    pane::draw_panes,
+                    pane::draw_panes.in_set(pane::DrawPanes),
                     editor::draw_editors,
                     status::draw_status_lines,
                     pick::draw_inline_strips,

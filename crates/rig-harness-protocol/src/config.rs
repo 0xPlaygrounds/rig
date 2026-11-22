@@ -226,6 +226,9 @@ the keys out of a question, a panel or an earlier prompt still show.";
                 "The terminal's title (rig · working, needs you, error or idle) and the prompt \
 marks around each turn that let a terminal jump between prompts; [title] \
 mark_nonce_env names the variable holding the shell's mark nonce.";
+            on rig_tui::sticky::StickyPromptPlugin, "rig-tui", "Sticky prompt", [], None,
+                "Pins the most recent user message scrolled above the top of the transcript \
+over its top row, and hides it whenever that message is visible on screen.";
             off rig_fold::FoldPlugin, "rig-fold", "Folded output", [], None,
                 "Folded tool output in the terminal view: a finished call shows its first and last \
 lines, and Ctrl+O ([fold] key) shows the selected call, or every call, whole. Off, \

@@ -124,6 +124,11 @@ pub type MainTranscript<'w, 's> = Single<'w, 's, &'static mut TranscriptView, Wi
 #[component(on_add = bind_pane_keys)]
 pub struct PaneKeys;
 
+/// Draws every transcript pane into its canvas, in
+/// [`TuiSystems::Draw`](crate::TuiSystems::Draw).
+#[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct DrawPanes;
+
 /// A pane's rows and scroll, laid out in `Layout` and drawn in `Draw`.
 #[derive(Component, Default)]
 pub(crate) struct PaneState {
@@ -142,6 +147,8 @@ pub(crate) struct PaneState {
     pub(crate) parts: Vec<Part>,
     /// The rows to draw this frame, and what is below them.
     pub(crate) rows: Vec<Line<'static>>,
+    /// The rows of the whole transcript on screen this frame.
+    pub(crate) on_screen: std::ops::Range<usize>,
     pub(crate) below: Below,
     /// Where its rows go, inside its border.
     pub(crate) area: Rect,
@@ -289,13 +296,13 @@ pub(crate) fn lay_out_panes(
             &mut state.scroll,
             &view.highlights,
         );
+        let on_screen = visible.first..visible.first + visible.rows.len();
         // Copying every row as text costs the whole transcript, so only a
         // pane whose rows a plugin reads gets them.
         let drawn = world.get::<DrawnTranscript>(entity).is_some().then(|| {
-            let on_screen = visible.first..visible.first + visible.rows.len();
             state
                 .transcript
-                .laid_out(agent, &parts, &view.highlights, on_screen)
+                .laid_out(agent, &parts, &view.highlights, on_screen.clone())
                 .at(area)
         });
         let selected = view
@@ -303,6 +310,7 @@ pub(crate) fn lay_out_panes(
             .as_ref()
             .and_then(|item| state.transcript.rows_of(&parts, item));
         state.rows = decorate(visible.rows, visible.first, selected, &theme);
+        state.on_screen = on_screen;
         state.below = visible.below;
         state.parts = parts;
         state.area = area;

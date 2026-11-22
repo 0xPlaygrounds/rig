@@ -9,8 +9,10 @@ input, leaving out the parts `[status] hide` in `settings.toml` names. A
 plugin declares the parts it draws with `app.add_status_part(&item, "Label")`
 (`AppStatusPartsExt`), so `/plugins` lists them to show and hide. The keys
 listed over an empty input are a plugin of their own, `hints::KeyHintsPlugin`,
-so a user can turn them off. An app or test that adds the view itself adds
-`TuiPlugins`, the view with such parts.
+so a user can turn them off. `sticky::StickyPromptPlugin` pins the most recent
+user message scrolled above the top of a transcript pane over its top row, and
+hides it while that message is visible. An app or test that adds the view
+itself adds `TuiPlugins`, the view with such parts.
 
 `TerminalTitlePlugin` (`rig_tui::title`, on by default) tells the terminal when
 a turn of an agent nothing spawned runs, as a shell does a command: OSC 133 marks (`C` as it starts, `D;1` as it fails or
