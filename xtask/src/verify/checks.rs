@@ -47,7 +47,6 @@ pub(crate) const HARNESS_PACKAGES: &[&str] = &[
     "rig-steel",
     "rig-tui",
     "rig-fold",
-    "rig-claude-cloak",
     "rig-traffic",
     "rig-mcp-client",
     "rig-acp",
@@ -146,19 +145,6 @@ pub(super) fn all() -> Vec<Check> {
                         "scripts",
                         "-p",
                         "test_dependency_floors.py",
-                    ],
-                ),
-                Step::new(
-                    "python3",
-                    &[
-                        "-B",
-                        "-m",
-                        "unittest",
-                        "discover",
-                        "-s",
-                        "plugins/rig-claude-cloak/tests/acceptance",
-                        "-p",
-                        "test_*.py",
                     ],
                 ),
                 cargo(&["test", "--locked", "-p", "xtask"]),
@@ -286,19 +272,6 @@ pub(super) fn all() -> Vec<Check> {
                 "test(/^process::tests::/) | test(/^host::(signals|launcher)::tests::/) \
                  | (package(rig-cli) & test(/^(run|locks|run::stop)::tests::/)) \
                  | test(/^tests::a_group_whose_leader_left/)",
-            ])],
-        ),
-        check(
-            "rig-claude-cloak-tests",
-            vec![cargo(&[
-                "nextest",
-                "run",
-                "--locked",
-                "-p",
-                "rig-claude-cloak",
-                "--lib",
-                "--no-tests",
-                "fail",
             ])],
         ),
         // The effect-corpus cells, in the two dependency graphs they must hold
@@ -752,7 +725,7 @@ pub(crate) fn job(id: &str) -> &'static str {
         "default-check" => "check-default",
         "kernel-only" => "kernel-only",
         "dependency-floors" => "floors",
-        "rig-claude-cloak-tests" | "process-tests" => "macos",
+        "process-tests" => "macos",
         id if id.starts_with("guard-") => "compile-guards",
         _ => "wasm",
     }

@@ -262,10 +262,6 @@ and again once its entry changes: /mcp approve and /mcp deny.";
                 "ACP: `rig acp` serves the Agent Client Protocol on stdin and stdout, so an editor \
 such as Zed uses rig, each session in a process of its own, with the MCP servers \
 the editor names, and /mcp.";
-            off rig_claude_cloak::ClaudeCloakPlugin, "rig-claude-cloak",
-                "Claude subscription", ["linux", "macos"], None,
-                "Claude Cloak: `claude-cloak/*` models signed in with a Claude subscription \
-(OAuth) instead of an API key, and /claude-cloak login and logout.";
         }
     };
 }

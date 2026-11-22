@@ -1087,14 +1087,11 @@ version = "0.4.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06575e6a9673580f52661c92107baabffbf41e2141373441cbcdc47cb733003c"
 dependencies = [
- "brotli 7.0.0",
  "flate2",
  "futures-core",
  "memchr",
  "pin-project-lite",
  "tokio",
- "zstd",
- "zstd-safe",
 ]
 
 [[package]]
@@ -3517,34 +3514,13 @@ checksum = "36f64beae40a84da1b4b26ff2761a5b895c12adc41dc25aaee1c4f2bbfe97a6e"
 
 [[package]]
 name = "brotli"
-version = "7.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc97b8f16f944bba54f0433f07e30be199b6dc2bd25937444bbad560bcea29bd"
-dependencies = [
- "alloc-no-stdlib",
- "alloc-stdlib",
- "brotli-decompressor 4.0.3",
-]
-
-[[package]]
-name = "brotli"
 version = "8.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4bd8b9603c7aa97359dbd97ecf258968c95f3adddd6db2f7e7a5bef101c84560"
 dependencies = [
  "alloc-no-stdlib",
  "alloc-stdlib",
- "brotli-decompressor 5.0.0",
-]
-
-[[package]]
-name = "brotli-decompressor"
-version = "4.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a334ef7c9e23abf0ce748e8cd309037da93e606ad52eb372e4ce327a0dcfbdfd"
-dependencies = [
- "alloc-no-stdlib",
- "alloc-stdlib",
+ "brotli-decompressor",
 ]
 
 [[package]]
@@ -13222,7 +13198,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e47a395bdb55442b883c89062d6bcff25dc90fa5f8369af81e0ac6d49d78cf81"
 dependencies = [
  "ahash 0.8.12",
- "brotli 8.0.2",
+ "brotli",
  "paste",
  "rand 0.9.4",
  "unicase",
@@ -14105,36 +14081,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rig-claude-cloak"
-version = "0.47.0"
-dependencies = [
- "anyhow",
- "base64 0.23.1",
- "bevy_ecs",
- "bevy_reflect",
- "bevy_tasks",
- "flate2",
- "rand 0.9.4",
- "reqwest 0.13.5",
- "rig-cassette",
- "rig-harness",
- "rig-harness-test-support",
- "rig-http",
- "rig-reqwest",
- "ryu-js",
- "schemars 1.2.1",
- "serde",
- "serde_json",
- "sha2 0.11.1",
- "tempfile",
- "thiserror 2.0.21",
- "tokio",
- "url",
- "uuid",
- "xxhash-rust",
-]
-
-[[package]]
 name = "rig-cli"
 version = "0.47.0"
 dependencies = [
@@ -14200,7 +14146,6 @@ dependencies = [
  "bevy_reflect",
  "rig-acp",
  "rig-basics",
- "rig-claude-cloak",
  "rig-core",
  "rig-ecs",
  "rig-fold",
@@ -15365,12 +15310,6 @@ name = "ryu"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
-
-[[package]]
-name = "ryu-js"
-version = "1.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "04d056b875a9d2e6cb9a61d127afee9ac5999b9f87bcb32079d1318e505be714"
 
 [[package]]
 name = "safetensors"
