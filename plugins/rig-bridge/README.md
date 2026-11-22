@@ -59,10 +59,7 @@ Each program runs in an empty directory, never in your project, so it finds
 no project files to read on its own. After rig's system prompt each model is
 told, in a sentence or two, how the program prefixes rig's tool names and,
 for Claude Code and Grok, that the working directory the program reports is
-that empty directory and not the project.
-
-Grok may still name that directory when asked where it works; its tool calls
-go through rig and act on the project all the same.
+that empty directory, and which directory the project is.
 
 What stays that rig cannot remove: the vendor's own system layer in front of
 rig's prompt on Codex; on Grok, the list of skills bundled with the program;
@@ -78,8 +75,14 @@ sessions and replay all see it, and the program waits for the result.
 One process serves one conversation and stays up between your messages, so the
 program's prompt cache is used. Rig remains the owner of the history: when a
 request does not continue what a running process answered (after `/compact`, a
-restart with `-r`, a changed system prompt, tool set, model or effort, or
-Esc), rig starts a new process and gives it the conversation so far as text.
+restart with `-r`, a changed system prompt, model or effort, or Esc), rig
+starts a new process and gives it the conversation so far as text.
+
+When rig's tools change mid-conversation, a running program is told so over
+MCP and lists them again, and the conversation goes on in the same process.
+Claude Code does this. A program that keeps no connection open to be told on
+(Grok), or that fixes its tools as it starts (Antigravity), gets a new
+process instead.
 
 `[bridge]` in `RIG_HOME/settings.toml`:
 

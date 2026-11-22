@@ -5,7 +5,7 @@
 //! agent asks for that is not for a tool of that server. What differs
 //! between agents is an [`Agent`].
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
 
@@ -52,7 +52,12 @@ pub(crate) trait Agent: Send + Sync + 'static {
     fn sign_in(&self, initialized: &Value) -> Option<String>;
 
     /// What the model is told about the agent, after Rig's system prompt.
-    fn note(&self) -> String;
+    fn note(&self, project: Option<&Path>) -> String;
+
+    /// Whether the agent offers its model a tool added while it runs.
+    fn relists(&self) -> bool {
+        true
+    }
 
     /// What a person runs to sign in.
     fn login_hint(&self) -> &'static str;
@@ -113,8 +118,12 @@ pub(crate) trait Agent: Send + Sync + 'static {
 pub(crate) struct Acp<A>(pub Arc<A>);
 
 impl<A: Agent> Harness for Acp<A> {
-    fn note(&self) -> String {
-        self.0.note()
+    fn note(&self, project: Option<&Path>) -> String {
+        self.0.note(project)
+    }
+
+    fn relists(&self) -> bool {
+        self.0.relists()
     }
 
     fn start(&self, launch: Launch<'_>) -> Result<Running, String> {

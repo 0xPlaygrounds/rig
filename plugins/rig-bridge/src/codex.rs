@@ -136,8 +136,8 @@ fn signed_in() -> Option<PathBuf> {
 }
 
 impl Harness for Codex {
-    fn note(&self) -> String {
-        note(&format!("mcp__{SERVER}.read"), "", false)
+    fn note(&self, _: Option<&Path>) -> String {
+        note(&format!("mcp__{SERVER}.read"), "", None)
     }
 
     fn start(&self, launch: Launch<'_>) -> Result<Running, String> {

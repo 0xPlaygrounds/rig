@@ -4,7 +4,7 @@
 //! agent profile that leaves it the two tools it reaches MCP servers
 //! through. Only its sign-in is the user's.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use rig_harness::rig_core::completion::{Effort, Usage};
@@ -179,9 +179,9 @@ impl Agent for Grok {
         "grok login"
     }
 
-    fn note(&self) -> String {
+    fn note(&self, project: Option<&Path>) -> String {
         let how = ", found with `search_tool` and called with `use_tool`";
-        crate::harness::note(&format!("{SERVER}__read"), how, true)
+        crate::harness::note(&format!("{SERVER}__read"), how, Some(project))
     }
 
     /// A call of one of the two tools that reach MCP servers, of which the

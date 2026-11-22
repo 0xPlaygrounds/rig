@@ -23,6 +23,9 @@ use crate::mcp::tests::{post, request};
 #[derive(Default)]
 struct Seen {
     started: Vec<(String, Vec<String>)>,
+    /// The tool names of each listing a harness made once told the tools
+    /// changed.
+    listed: Vec<Vec<String>>,
 }
 
 /// A harness whose model does what its prompt says. A prompt containing
@@ -33,6 +36,56 @@ struct Scripted {
     seen: Arc<Mutex<Seen>>,
     /// How many started harnesses were dropped.
     ended: Arc<AtomicUsize>,
+    /// Whether the harness holds a stream open for the server's
+    /// notifications and lists the tools again when told they changed.
+    listens: bool,
+    /// What the harness says of taking tools while it runs.
+    fixed_tools: bool,
+}
+
+/// Holds a notification stream open on the server at `url` and lists the
+/// tools again, into `seen`, each time it says they changed.
+async fn listen(url: String, token: String, seen: Arc<Mutex<Seen>>) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let address = url
+        .trim_start_matches("http://")
+        .trim_end_matches("/mcp")
+        .to_owned();
+    let Ok(mut stream) = tokio::net::TcpStream::connect(&address).await else {
+        return;
+    };
+    let get = format!(
+        "GET /mcp HTTP/1.1\r\nHost: {address}\r\nAuthorization: Bearer {token}\r\n\
+         Accept: text/event-stream\r\n\r\n"
+    );
+    if stream.write_all(get.as_bytes()).await.is_err() {
+        return;
+    }
+    let mut chunk = [0u8; 4096];
+    while let Ok(read) = stream.read(&mut chunk).await {
+        let told = chunk
+            .get(..read)
+            .map(String::from_utf8_lossy)
+            .unwrap_or_default();
+        if read == 0 {
+            return;
+        }
+        if told.contains("tools/list_changed") {
+            let (_, listed) = post(&url, &token, &request(99, "tools/list", json!({})))
+                .await
+                .unwrap_or_default();
+            let tools = listed.pointer("/result/tools").and_then(Value::as_array);
+            let names = tools
+                .into_iter()
+                .flatten()
+                .filter_map(|tool| tool.get("name")?.as_str());
+            let names = names.map(str::to_owned).collect();
+            seen.lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .listed
+                .push(names);
+        }
+    }
 }
 
 struct Ended(Arc<AtomicUsize>);
@@ -44,8 +97,12 @@ impl Drop for Ended {
 }
 
 impl Harness for Scripted {
-    fn note(&self) -> String {
+    fn note(&self, _: Option<&std::path::Path>) -> String {
         "Tools are `x__read`.".to_owned()
+    }
+
+    fn relists(&self) -> bool {
+        !self.fixed_tools
     }
 
     fn start(&self, launch: Launch<'_>) -> Result<Running, String> {
@@ -58,6 +115,9 @@ impl Harness for Scripted {
             seen.started.len() - 1
         };
         let (url, token) = (launch.mcp.url().to_owned(), launch.mcp.token().to_owned());
+        if self.listens {
+            tokio::spawn(listen(url.clone(), token.clone(), seen.clone()));
+        }
         tokio::spawn(async move {
             while let Some(prompt) = prompted.recv().await {
                 let text: String = prompt
@@ -138,12 +198,17 @@ impl Harness for Scripted {
 /// A model on a scripted harness, with what the harness saw and how many
 /// of its processes ended.
 fn model(limit: usize) -> (Model, Arc<Mutex<Seen>>, Arc<AtomicUsize>) {
-    let harness = Scripted::default();
+    on(Scripted::default(), limit)
+}
+
+/// A model on `harness`.
+fn on(harness: Scripted, limit: usize) -> (Model, Arc<Mutex<Seen>>, Arc<AtomicUsize>) {
     let (seen, ended) = (harness.seen.clone(), harness.ended.clone());
     let bridge = Bridge::new(
         tokio::runtime::Handle::current(),
         Processes::default(),
         limit,
+        None,
     );
     let model = Model {
         bridge: Arc::new(bridge),
@@ -491,4 +556,53 @@ async fn a_history_with_another_reply_is_another_conversation() {
     assert_eq!(said(first.as_ref()).0, "echo: one");
     assert!(said(second.as_ref()).0.ends_with("two"));
     assert_eq!(prompts(&seen).len(), 2);
+}
+
+/// One turn offering `read`, then the next offering `read` and `write`:
+/// how many harnesses ran, and the listings made on being told.
+async fn retooled(harness: Scripted) -> (usize, Vec<Vec<String>>) {
+    let (model, seen, _) = on(harness, 4);
+    let mut history = vec![Message::user("one")];
+    let first = answer(&model, asks("", &history)).await;
+    history.push(turn(first.as_ref()));
+    history.push(Message::user("two"));
+    let write = ToolName::new("write").ok();
+    let write =
+        write.map(|name| ToolDefinition::new(name, "Writes a file.", json!({ "type": "object" })));
+    // Time for the harness to open its stream.
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    let _ = answer(&model, asks("", &history).tools(write)).await;
+
+    let seen = seen.lock().unwrap_or_else(PoisonError::into_inner);
+    (seen.started.len(), seen.listed.clone())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_harness_told_of_other_tools_lists_them_and_runs_on() {
+    let listening = Scripted {
+        listens: true,
+        ..Scripted::default()
+    };
+
+    let (harnesses, listed) = retooled(listening).await;
+
+    assert_eq!(harnesses, 1);
+    assert_eq!(listed, [["read".to_owned(), "write".to_owned()]]);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_harness_that_cannot_be_told_or_fixes_its_tools_is_replaced() {
+    let deaf = Scripted::default();
+    let fixed = Scripted {
+        listens: true,
+        fixed_tools: true,
+        ..Scripted::default()
+    };
+
+    let (unheard, _) = retooled(deaf).await;
+    let (unchanged, listed) = retooled(fixed).await;
+
+    assert_eq!(unheard, 2);
+    assert_eq!((unchanged, listed), (2, Vec::new()));
 }

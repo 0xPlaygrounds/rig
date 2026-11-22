@@ -136,8 +136,13 @@ impl Agent for Antigravity {
         "agy"
     }
 
-    fn note(&self) -> String {
-        crate::harness::note(&format!("mcp_{SERVER}_read"), "", false)
+    fn note(&self, _: Option<&Path>) -> String {
+        crate::harness::note(&format!("mcp_{SERVER}_read"), "", None)
+    }
+
+    /// The agent definition names each tool as the program starts.
+    fn relists(&self) -> bool {
+        false
     }
 
     fn is_rig_tool(&self, tool_call: &Value) -> bool {

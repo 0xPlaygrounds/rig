@@ -43,6 +43,9 @@ mod tests;
 /// reply also stays open until the inference that made the call is counted.
 const SETTLE: Duration = Duration::from_millis(50);
 
+/// How long a harness told that the tools changed has to list them again.
+const RELIST: Duration = Duration::from_secs(5);
+
 /// What the bridge's models share: where harnesses run and the sessions
 /// waiting for their next request.
 pub(crate) struct Bridge {
@@ -53,11 +56,19 @@ pub(crate) struct Bridge {
     waiting: Mutex<VecDeque<Session>>,
     /// How many sessions may wait. The least recently used is ended first.
     limit: usize,
+    /// The project Rig works in, when it is known.
+    project: Option<PathBuf>,
 }
 
 impl Bridge {
-    pub(crate) fn new(runtime: tokio::runtime::Handle, processes: Processes, limit: usize) -> Self {
+    pub(crate) fn new(
+        runtime: tokio::runtime::Handle,
+        processes: Processes,
+        limit: usize,
+        project: Option<PathBuf>,
+    ) -> Self {
         Self {
+            project,
             runtime,
             processes,
             server: OnceCell::new(),
@@ -78,7 +89,7 @@ impl Bridge {
             .enumerate()
             .rev()
             .find_map(|(index, session)| {
-                (session.setup == *setup)
+                (session.setup.fits(setup))
                     .then(|| session.next(history))
                     .flatten()
                     .map(|next| (index, next))
@@ -107,6 +118,15 @@ struct Setup {
     effort: Option<Effort>,
     system: String,
     tools: Arc<[Arc<ToolDefinition>]>,
+}
+
+impl Setup {
+    /// Whether a session with this setup can serve `other`: the same in
+    /// all but the tools, which a running harness can be given anew.
+    fn fits(&self, other: &Self) -> bool {
+        (&self.program, &self.model, self.effort, &self.system)
+            == (&other.program, &other.model, other.effort, &other.system)
+    }
 }
 
 /// A harness's model as an effect handler.
@@ -260,10 +280,14 @@ impl Step {
         };
         // A session that cannot take what is next, its harness gone or a
         // call given up, is ended: the conversation goes on in a new one.
-        let resumed = self
-            .bridge
-            .resume(&setup, &history)
-            .and_then(|(mut session, next)| session.send(next).ok().map(|()| session));
+        let resumed = match self.bridge.resume(&setup, &history) {
+            // The harness is told of other tools before it goes on, or is
+            // ended when it cannot take them.
+            Some((mut session, next)) => (session.retool(&setup.tools).await
+                && session.send(next).is_ok())
+            .then_some(session),
+            None => None,
+        };
         let mut session = match resumed {
             Some(session) => session,
             None => self.start(setup, &history).await?,
@@ -284,7 +308,7 @@ impl Step {
             .map_err(|why| format!("could not serve the tools: {why}"))?;
         let (entry, calls) = server.open(setup.tools.clone());
         let dir = Dir::create().map_err(|why| format!("could not make a directory: {why}"))?;
-        let note = self.harness.note();
+        let note = self.harness.note(self.bridge.project.as_deref());
         let system = match (setup.system.as_str(), note.as_str()) {
             (system, "") => system.to_owned(),
             ("", note) => note.to_owned(),
@@ -301,12 +325,13 @@ impl Step {
         })?;
         let mut session = Session {
             setup,
+            relists: self.harness.relists(),
             seen: Vec::new(),
             said: Said::default(),
             open: Vec::new(),
             calls,
             running,
-            _entry: entry,
+            entry,
             _dir: dir,
         };
         session.send(Next::Prompt(opening(history)))?;
@@ -399,6 +424,8 @@ impl Said {
 /// A running harness and where its conversation stands.
 struct Session {
     setup: Setup,
+    /// Whether the harness takes a changed tool list while it runs.
+    relists: bool,
     /// The history of the last request this session answered. The reply to
     /// it is the message after.
     seen: Vec<Arc<Message>>,
@@ -409,7 +436,7 @@ struct Session {
     open: Vec<oneshot::Sender<Outcome>>,
     calls: mpsc::UnboundedReceiver<Call>,
     running: Running,
-    _entry: Entry,
+    entry: Entry,
     _dir: Dir,
 }
 
@@ -472,6 +499,28 @@ impl Session {
             last.content.extend(parts(said).iter().map(block));
         }
         Some(Next::Results(outcomes))
+    }
+
+    /// Offers `tools` in place of the session's, if they differ: whether
+    /// the harness now has them. It has once it listed the tools again
+    /// after being told they changed; one that is not told, or does not
+    /// list them in time, has not.
+    async fn retool(&mut self, tools: &Arc<[Arc<ToolDefinition>]>) -> bool {
+        if self.setup.tools == *tools {
+            return true;
+        }
+        if !self.relists {
+            return false;
+        }
+        let Some(mut listed) = self.entry.retool(tools.clone()) else {
+            return false;
+        };
+        let relisted = tokio::time::timeout(RELIST, listed.changed()).await;
+        if !matches!(relisted, Ok(Ok(()))) {
+            return false;
+        }
+        self.setup.tools = tools.clone();
+        true
     }
 
     fn send(&mut self, next: Next) -> Result<(), String> {

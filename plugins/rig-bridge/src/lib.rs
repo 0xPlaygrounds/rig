@@ -110,7 +110,15 @@ mod plugin {
                 return;
             };
             let processes = world.get_resource_or_init::<Processes>().clone();
-            let bridge = Arc::new(Bridge::new(runtime.0, processes.clone(), settings.sessions));
+            let project = world
+                .get_resource::<ProjectRoot>()
+                .map(|root| root.0.clone());
+            let bridge = Arc::new(Bridge::new(
+                runtime.0,
+                processes.clone(),
+                settings.sessions,
+                project,
+            ));
             let mut models = world.get_resource_or_init::<Models>();
             let mut file = |vendor: &str, program: PathBuf, harness: Arc<dyn Harness>, ids: Ids| {
                 let Ok(vendor) = ProviderId::declare(vendor) else {

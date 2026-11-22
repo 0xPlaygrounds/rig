@@ -84,22 +84,34 @@ pub(crate) trait Harness: Send + Sync + 'static {
     /// What the model must be told about this program, after Rig's system
     /// prompt: the names it gives Rig's tools, and what else it says that
     /// Rig's prompt does not mean.
-    fn note(&self) -> String;
+    fn note(&self, project: Option<&Path>) -> String;
+
+    /// Whether the program offers its model a tool that is added while it
+    /// runs, once it is told the list changed and has listed the tools
+    /// again. One that fixes its tools as it starts says no.
+    fn relists(&self) -> bool {
+        true
+    }
 }
 
 /// The note on a program that shows the tool Rig calls `read` as `shown`
-/// and, when `scratch`, tells the model of a working directory of its own.
-pub(crate) fn note(shown: &str, how: &str, scratch: bool) -> String {
+/// and, when `scratch` is given, tells the model of a working directory of
+/// its own in place of the project's, `scratch`'s when known.
+pub(crate) fn note(shown: &str, how: &str, scratch: Option<Option<&Path>>) -> String {
     let mut note = format!(
         "Your tools come from an MCP server named `rig`, so their names carry its prefix: \
          the tool these instructions and the tools' descriptions call `read` is `{shown}` \
          here{how}, and the others likewise."
     );
-    if scratch {
+    if let Some(project) = scratch {
         note.push_str(
             " The working directory this program reports to you is a scratch directory of \
-             its own, not the project: paths are as these instructions and the tools give them.",
+             its own, not the project",
         );
+        match project {
+            Some(project) => note.push_str(&format!(", which is `{}`.", project.display())),
+            None => note.push_str(": paths are as these instructions and the tools give them."),
+        }
     }
     note
 }

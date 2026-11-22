@@ -39,7 +39,7 @@ impl Agent for Plain {
         "plain login"
     }
 
-    fn note(&self) -> String {
+    fn note(&self, _: Option<&std::path::Path>) -> String {
         String::new()
     }
 

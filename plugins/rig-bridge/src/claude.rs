@@ -4,6 +4,7 @@
 //! out; the process sees the system prompt and the tools Rig gives it.
 
 use std::collections::HashSet;
+use std::path::Path;
 
 use rig_harness::rig_core::completion::{Effort, Usage};
 use serde::Deserialize;
@@ -46,8 +47,8 @@ const INHERITED: &[&str] = &[
 pub(crate) struct Claude;
 
 impl Harness for Claude {
-    fn note(&self) -> String {
-        note(&format!("mcp__{SERVER}__read"), "", true)
+    fn note(&self, project: Option<&Path>) -> String {
+        note(&format!("mcp__{SERVER}__read"), "", Some(project))
     }
 
     fn start(&self, launch: Launch<'_>) -> Result<Running, String> {

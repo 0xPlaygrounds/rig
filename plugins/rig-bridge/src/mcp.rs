@@ -12,10 +12,11 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode, header};
+use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use rig_harness::rig_core::completion::ToolDefinition;
 use serde_json::{Value, json};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, watch};
 
 #[cfg(test)]
 pub(crate) mod tests;
@@ -57,6 +58,10 @@ pub(crate) struct Call {
 struct Door {
     tools: Arc<[Arc<ToolDefinition>]>,
     calls: mpsc::UnboundedSender<Call>,
+    /// The streams the harness holds open for the server's notifications.
+    streams: Vec<mpsc::UnboundedSender<Value>>,
+    /// How many times the harness listed the tools.
+    listed: watch::Sender<u64>,
 }
 
 type Doors = Arc<Mutex<HashMap<String, Door>>>;
@@ -85,6 +90,20 @@ impl Entry {
     pub(crate) fn token(&self) -> &str {
         &self.token
     }
+
+    /// Offers `tools` from now on and tells the harness the list changed.
+    /// The count of the harness's listings, to wait for its next one on;
+    /// `None` when the harness holds no stream open to be told on.
+    pub(crate) fn retool(&self, tools: Arc<[Arc<ToolDefinition>]>) -> Option<watch::Receiver<u64>> {
+        let mut doors = self.doors.lock().unwrap_or_else(PoisonError::into_inner);
+        let door = doors.get_mut(&self.token)?;
+        door.tools = tools;
+        let listed = door.listed.subscribe();
+        let changed = json!({ "jsonrpc": "2.0", "method": "notifications/tools/list_changed" });
+        door.streams
+            .retain(|stream| stream.send(changed.clone()).is_ok());
+        (!door.streams.is_empty()).then_some(listed)
+    }
 }
 
 impl Drop for Entry {
@@ -103,7 +122,7 @@ impl Server {
         let addr = listener.local_addr()?;
         let doors = Doors::default();
         let router = axum::Router::new()
-            .route("/mcp", axum::routing::post(post))
+            .route("/mcp", axum::routing::post(post).get(stream))
             .with_state(doors.clone());
         tokio::spawn(async move {
             let _ = axum::serve(listener, router).await;
@@ -122,7 +141,15 @@ impl Server {
         self.doors
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .insert(token.clone(), Door { tools, calls });
+            .insert(
+                token.clone(),
+                Door {
+                    tools,
+                    calls,
+                    streams: Vec::new(),
+                    listed: watch::Sender::new(0),
+                },
+            );
         let entry = Entry {
             token,
             url: format!("http://{}/mcp", self.addr),
@@ -132,19 +159,44 @@ impl Server {
     }
 }
 
-/// Answers one JSON-RPC message for the door the bearer token names.
-async fn post(State(doors): State<Doors>, headers: HeaderMap, body: String) -> Response {
+/// The door the request's bearer token names.
+fn named<'a>(doors: &'a mut HashMap<String, Door>, headers: &HeaderMap) -> Option<&'a mut Door> {
     let token = headers
         .get(header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.strip_prefix("Bearer "));
-    let door = token.and_then(|token| {
-        let doors = doors.lock().unwrap_or_else(PoisonError::into_inner);
-        doors
-            .get(token)
-            .map(|door| (door.tools.clone(), door.calls.clone()))
+        .and_then(|value| value.strip_prefix("Bearer "))?;
+    doors.get_mut(token)
+}
+
+/// Opens a stream of the server's notifications to the harness, kept open
+/// until the harness closes it or the session ends.
+async fn stream(State(doors): State<Doors>, headers: HeaderMap) -> Response {
+    let (sender, receiver) = mpsc::unbounded_channel::<Value>();
+    {
+        let mut doors = doors.lock().unwrap_or_else(PoisonError::into_inner);
+        let Some(door) = named(&mut doors, &headers) else {
+            return StatusCode::UNAUTHORIZED.into_response();
+        };
+        door.streams.push(sender);
+    }
+    let events = futures::stream::unfold(receiver, |mut receiver| async {
+        let message = receiver.recv().await?;
+        let event = Event::default().event("message").data(message.to_string());
+        Some((Ok::<_, std::convert::Infallible>(event), receiver))
     });
-    let Some((tools, calls)) = door else {
+    Sse::new(events)
+        .keep_alive(KeepAlive::default())
+        .into_response()
+}
+
+/// Answers one JSON-RPC message for the door the bearer token names.
+async fn post(State(doors): State<Doors>, headers: HeaderMap, body: String) -> Response {
+    let door = {
+        let mut doors = doors.lock().unwrap_or_else(PoisonError::into_inner);
+        named(&mut doors, &headers)
+            .map(|door| (door.tools.clone(), door.calls.clone(), door.listed.clone()))
+    };
+    let Some((tools, calls, listings)) = door else {
         return StatusCode::UNAUTHORIZED.into_response();
     };
     let Ok(message) = serde_json::from_str::<Value>(&body) else {
@@ -163,12 +215,13 @@ async fn post(State(doors): State<Doors>, headers: HeaderMap, body: String) -> R
                 .unwrap_or(PROTOCOL_VERSION);
             json!({
                 "protocolVersion": version,
-                "capabilities": { "tools": {} },
+                "capabilities": { "tools": { "listChanged": true } },
                 "serverInfo": { "name": "rig", "version": env!("CARGO_PKG_VERSION") },
             })
         }
         Some("ping") => json!({}),
         Some("tools/list") => {
+            listings.send_modify(|count| *count += 1);
             json!({ "tools": tools.iter().map(|tool| listed(tool)).collect::<Vec<_>>() })
         }
         Some("tools/call") => call(&tools, &calls, params).await,
