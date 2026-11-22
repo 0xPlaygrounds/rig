@@ -148,12 +148,11 @@ pub(crate) struct PaneState {
 }
 
 impl PaneState {
-    /// Rows a page key moves: the text rows of the pane scrolled up but
-    /// one, so a line of text stays on screen, also on the first PageUp
-    /// from the bottom; at least one.
+    /// Rows a page key moves: half the text rows of the pane scrolled up,
+    /// at least one.
     pub(crate) fn page(&self) -> usize {
         let rows = Below::More.text_rows(usize::from(self.area.height));
-        rows.saturating_sub(1).max(1)
+        (rows / 2).max(1)
     }
 }
 
