@@ -240,9 +240,12 @@ readers. A plugin declares each part it draws, with a short label, in its
 `app.add_status_part(&PINNED, "Pinned notes")` (`rig_tui::AppStatusPartsExt`),
 `PINNED` being the part's `StatusItem`. A part drawn without one shows in
 `/plugins` by its name once it is drawn. The key list over an empty input is
-a plugin of its own too, `rig_tui::hints::KeyHintsPlugin`. Code that adds
-`rig_tui::TuiPlugin` itself gets the view without them; `rig_tui::TuiPlugins`
-adds the view with its optional parts, each unless the app already has it.
+a plugin of its own too, `rig_tui::hints::KeyHintsPlugin`, and so is the
+sticky prompt bar that pins the most recent off-screen user message over the
+top row of a transcript pane, `rig_tui::sticky::StickyPromptPlugin`. Code
+that adds `rig_tui::TuiPlugin` itself gets the view without them;
+`rig_tui::TuiPlugins` adds the view with its optional parts, each unless the
+app already has it.
 
 The window title and the OSC 133 prompt marks around each turn come from
 `rig_tui::title::TerminalTitlePlugin`, which works only with `TuiPlugin`;

@@ -250,6 +250,9 @@ use against the model's window, or `?` after a compaction, until the next
 reply measures it (`ctx ?/1.0M`). `/usage` breaks them down. Key hints
 (`rig_tui::hints::KeyHintsPlugin`) lists those keys; disabled, that row is
 empty, but a question's keys and a panel's "Esc gives them back" still show.
+Sticky prompt (`rig_tui::sticky::StickyPromptPlugin`, on by default) pins your
+most recent user message over the top row of the transcript whenever it has
+scrolled off screen, and hides it again once that message is visible.
 While the agent works, a
 small wave of six bars moves before what it is doing, and rig's mark in the
 welcome at the top of the transcript pulses with it;
