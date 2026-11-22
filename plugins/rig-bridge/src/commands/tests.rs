@@ -169,3 +169,33 @@ fn drain_signals_updates_catalog_connection_and_refreshes_on_last_usage() {
         Some(256_000)
     );
 }
+
+#[test]
+fn drain_signals_emits_notice_and_releases_keep_running_holder() {
+    use bevy_ecs::message::Messages;
+
+    let (tx, rx) = mpsc::unbounded_channel();
+    let mut app = App::new();
+    app.init_resource::<Messages<Notice>>()
+        .insert_resource(SignalInbox::new(rx))
+        .add_systems(Update, drain_signals);
+
+    let agent = app.world_mut().spawn_empty().id();
+    let holder = app.world_mut().spawn(KeepRunning).id();
+    let _ = tx.send(BridgeSignal::Notice {
+        agent: Some(agent),
+        warn: false,
+        text: "usage report".to_owned(),
+        release: Some(holder),
+    });
+    app.update();
+
+    assert!(app.world().get_entity(holder).is_err());
+    let notices = app.world().resource::<Messages<Notice>>();
+    let mut cursor = notices.get_cursor();
+    let texts: Vec<_> = cursor
+        .read(notices)
+        .map(|notice| (notice.agent, notice.text.as_str()))
+        .collect();
+    assert_eq!(texts, vec![(Some(agent), "usage report")]);
+}

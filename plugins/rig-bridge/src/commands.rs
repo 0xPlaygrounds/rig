@@ -16,6 +16,7 @@ use rig_harness::rig_core::catalog::ModelSpec;
 use rig_harness::rig_core::completion::ContextUse;
 use rig_harness::rig_core::providers::registry::ProviderId;
 use rig_harness::rig_ecs::stage::AgentLoop;
+use rig_harness::rig_ecs::tasks::Wake;
 use rig_harness::rig_tools::process::{Process, Spawn};
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
@@ -32,8 +33,13 @@ const PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Background bridge signal drained on Bevy's `Update` schedule.
 pub(crate) enum BridgeSignal {
-    /// A notice for Rig's UI feed.
-    Notice { warn: bool, text: String },
+    /// A notice for Rig's UI feed, optionally releasing a [`KeepRunning`] entity.
+    Notice {
+        agent: Option<Entity>,
+        warn: bool,
+        text: String,
+        release: Option<Entity>,
+    },
     /// An authoritative runtime context window reported by a harness.
     Window {
         vendor: Vendor,
@@ -48,6 +54,7 @@ pub(crate) struct BridgeHandle {
     pub bridge: Arc<Bridge>,
     pub processes: Processes,
     pub installed: Vec<HarnessEntry>,
+    pub signals: mpsc::UnboundedSender<BridgeSignal>,
 }
 
 /// One configured harness and its resolved executable path, if installed.
@@ -88,6 +95,7 @@ pub(crate) fn drain_signals(
     inbox: Option<Res<SignalInbox>>,
     mut notices: Option<MessageWriter<Notice>>,
     mut models: Option<ResMut<Models>>,
+    wake: Option<Res<Wake>>,
     updated_usage: Query<(Entity, &Connection), Changed<LastUsage>>,
     agents: Query<(Entity, &Connection)>,
     mut commands: Commands,
@@ -112,14 +120,25 @@ pub(crate) fn drain_signals(
     let mut rx = inbox.rx.lock().unwrap_or_else(PoisonError::into_inner);
     while let Ok(signal) = rx.try_recv() {
         match signal {
-            BridgeSignal::Notice { warn, text } => {
+            BridgeSignal::Notice {
+                agent,
+                warn,
+                text,
+                release,
+            } => {
                 if let Some(notices) = notices.as_mut() {
                     let notice = if warn {
-                        Notice::warn(None, text)
+                        Notice::warn(agent, text)
                     } else {
-                        Notice::info(None, text)
+                        Notice::info(agent, text)
                     };
                     notices.write(notice);
+                }
+                if let Some(holder) = release {
+                    commands.entity(holder).try_despawn();
+                    if let Some(wake) = wake.as_deref() {
+                        wake.wake();
+                    }
                 }
             }
             BridgeSignal::Window {
@@ -158,6 +177,8 @@ pub(crate) fn drain_signals(
 pub(crate) fn command(
     In(args): In<CommandArgs>,
     handle: Option<Res<BridgeHandle>>,
+    wake: Option<Res<Wake>>,
+    mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
     let Some(handle) = handle else {
@@ -166,7 +187,26 @@ pub(crate) fn command(
     };
     let notice = match args.args.split_whitespace().next().unwrap_or("status") {
         "status" => Notice::info(args.agent, format_status(&handle)),
-        "usage" => Notice::info(args.agent, collect_usage(&handle)),
+        "usage" => {
+            // Probe harnesses off the UI thread while keeping headless `-p` alive.
+            let holder = commands.spawn(KeepRunning).id();
+            let handle = handle.clone();
+            let wake = wake.as_deref().cloned();
+            let agent = args.agent;
+            std::thread::spawn(move || {
+                let text = collect_usage(&handle);
+                let _ = handle.signals.send(BridgeSignal::Notice {
+                    agent: Some(agent),
+                    warn: false,
+                    text,
+                    release: Some(holder),
+                });
+                if let Some(wake) = wake {
+                    wake.wake();
+                }
+            });
+            return;
+        }
         "reset" => {
             let text = match handle.bridge.reset() {
                 0 => "No warm bridge sessions were running.".to_owned(),

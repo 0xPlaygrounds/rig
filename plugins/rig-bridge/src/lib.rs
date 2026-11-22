@@ -123,7 +123,7 @@ mod plugin {
         /// Files the models once every plugin's `build` ran, so the process
         /// launcher and tokio runtime the harnesses run with exist.
         fn finish(&self, app: &mut App) {
-            let (bridge, processes, entries, signal_rx) = {
+            let (bridge, processes, entries, signal_tx, signal_rx) = {
                 let world = app.world_mut();
                 let settings = world.get_resource_or_init::<BridgeSettings>().clone();
                 let Some(runtime) = world.get_resource::<TokioRuntime>().cloned() else {
@@ -145,7 +145,7 @@ mod plugin {
                         project,
                         scratch_root.clone(),
                     )
-                    .with_signals(signal_tx),
+                    .with_signals(signal_tx.clone()),
                 );
 
                 // Discover installed harness model catalogs in parallel so startup
@@ -318,13 +318,14 @@ mod plugin {
                     muse_entry,
                     copilot_entry,
                 ];
-                (bridge, processes, entries, signal_rx)
+                (bridge, processes, entries, signal_tx, signal_rx)
             };
 
             let handle = BridgeHandle {
                 bridge,
                 processes,
                 installed: entries,
+                signals: signal_tx,
             };
             crate::commands::register(app, handle, signal_rx);
         }

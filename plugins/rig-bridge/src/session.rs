@@ -218,7 +218,12 @@ impl Bridge {
 
     fn warn(&self, text: String) {
         if let Some(signals) = &self.signals {
-            let _ = signals.send(BridgeSignal::Notice { warn: true, text });
+            let _ = signals.send(BridgeSignal::Notice {
+                agent: None,
+                warn: true,
+                text,
+                release: None,
+            });
         }
     }
 

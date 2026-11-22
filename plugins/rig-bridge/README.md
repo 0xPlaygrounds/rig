@@ -116,9 +116,9 @@ sessions = 8           # how many idle processes are kept; the oldest ends first
 
 - `/bridge` or `/bridge status`: installed harnesses, warm sessions, scratch
   directory path, session token totals, and cache hit rates.
-- `/bridge usage`: queries official plan/subscription quotas in parallel
-  (Claude Code `get_usage`, Codex `account/rateLimits/read`, Muse
-  `muse usage --json`, Grok `grok usage --json` when its daemon is running;
+- `/bridge usage`: queries official plan/subscription quotas in parallel in the
+  background (Claude Code `get_usage`, Codex `account/rateLimits/read`, Muse
+  `muse usage --json`, Grok `grok usage --json` when supported by the CLI;
   reports `unavailable` where no official CLI/RPC quota exists) alongside
   Rig's session token totals.
 - `/bridge reset`: stops all warm idle harness processes and removes their
