@@ -5,6 +5,7 @@
 //! agent asks for that is not for a tool of that server. What differs
 //! between agents is an [`Agent`].
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
@@ -65,6 +66,22 @@ pub(crate) trait Agent: Send + Sync + 'static {
     /// Whether the tool call a permission request describes is a call of
     /// one of Rig's tools.
     fn is_rig_tool(&self, tool_call: &Value) -> bool;
+
+    /// Whether a permission request is for one of Rig's tools, given any
+    /// `title` previously announced for the same `toolCallId` in a
+    /// `tool_call` update.
+    fn is_rig_tool_with_title(&self, tool_call: &Value, recorded_title: Option<&str>) -> bool {
+        let _ = recorded_title;
+        self.is_rig_tool(tool_call)
+    }
+
+    /// Whether an `agent_message_chunk` text fragment should be forwarded to
+    /// Rig. Agents that emit CLI status banners as message chunks return
+    /// `false` for those lines.
+    fn keep_text(&self, text: &str) -> bool {
+        let _ = text;
+        true
+    }
 
     /// Whether `session/new` names Rig's MCP server. An agent that is told
     /// of it another way, in [`prepare`](Self::prepare), says no.
@@ -219,6 +236,13 @@ pub(crate) struct Peer<R, W> {
     /// Whether the agent reported an inference's counters since the last
     /// prompt was answered.
     counted: bool,
+    /// Latest non-zero context token count seen in `usage_update` during the
+    /// active `session/prompt`, so the turn-wide `result.usage` does not
+    /// overstate context fill across tool-call rounds.
+    context_used: Option<u64>,
+    /// `toolCallId` -> `title` seen in `tool_call` updates, for agents that
+    /// strip the MCP server prefix in `session/request_permission`.
+    call_titles: HashMap<String, String>,
 }
 
 impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Peer<R, W> {
@@ -236,6 +260,8 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Peer<R, W> {
             agent,
             prompt: None,
             counted: false,
+            context_used: None,
+            call_titles: HashMap::new(),
         }
     }
 
@@ -325,7 +351,12 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Peer<R, W> {
         let answer = match method {
             "session/request_permission" => {
                 let tool_call = params.get("toolCall").unwrap_or(&Value::Null);
-                let ours = self.agent.is_rig_tool(tool_call);
+                let recorded = tool_call
+                    .get("toolCallId")
+                    .and_then(Value::as_str)
+                    .and_then(|id| self.call_titles.get(id))
+                    .map(String::as_str);
+                let ours = self.agent.is_rig_tool_with_title(tool_call, recorded);
                 json!({ "result": { "outcome": decide(ours, params.get("options")) } })
             }
             _ => json!({ "error": { "code": -32601, "message": format!("no method `{method}`") } }),
@@ -339,7 +370,35 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Peer<R, W> {
     }
 
     /// Reports the text of a `session/update`.
-    fn update(&self, update: &Value) {
+    fn update(&mut self, update: &Value) {
+        let kind = update.get("sessionUpdate").and_then(Value::as_str);
+        if kind == Some("tool_call") {
+            if let (Some(id), Some(title)) = (
+                update.get("toolCallId").and_then(Value::as_str),
+                update.get("title").and_then(Value::as_str),
+            ) {
+                self.call_titles.insert(id.to_owned(), title.to_owned());
+            }
+            return;
+        }
+        if kind == Some("usage_update") {
+            let used = update
+                .get("used")
+                .and_then(Value::as_u64)
+                .filter(|used| *used > 0);
+            let size = update
+                .get("size")
+                .and_then(Value::as_u64)
+                .filter(|size| *size > 0)
+                .and_then(|size| u32::try_from(size).ok());
+            if let Some(used) = used {
+                self.context_used = Some(used);
+            }
+            if used.is_some() || size.is_some() {
+                let _ = self.events.send(Event::Context { used, size });
+            }
+            return;
+        }
         let text = || {
             update
                 .get("content")
@@ -348,8 +407,10 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Peer<R, W> {
                 .filter(|text| !text.is_empty())
                 .map(str::to_owned)
         };
-        let event = match update.get("sessionUpdate").and_then(Value::as_str) {
-            Some("agent_message_chunk") => text().map(Event::Text),
+        let event = match kind {
+            Some("agent_message_chunk") => text()
+                .filter(|text| self.agent.keep_text(text))
+                .map(Event::Text),
             Some("agent_thought_chunk") => text().map(Event::Reasoning),
             _ => None,
         };
@@ -489,16 +550,25 @@ where
             asked.insert("_meta".to_owned(), meta);
         }
         peer.prompt = Some(named);
+        peer.context_used = None;
         let answered = peer.request("session/prompt", asked).await;
         peer.prompt = None;
         let done = match answered {
             Ok(result) => {
                 // The turn's totals, unless each inference was counted.
                 let cache_apart = agent.input_leaves_out_cache();
-                if let Some(usage) = usage(&result, cache_apart).filter(|_| !peer.counted) {
+                if let Some(mut usage) = usage(&result, cache_apart).filter(|_| !peer.counted) {
+                    // `session/prompt` result usage sums every inference in
+                    // the turn, so `total_tokens` would overstate the context
+                    // window fill on multi-tool turns. Use the latest
+                    // per-inference `usage_update.used` when reported.
+                    if let Some(used) = peer.context_used {
+                        usage.total_tokens = Some(used);
+                    }
                     let _ = peer.events.send(Event::Usage(usage));
                 }
                 peer.counted = false;
+                peer.context_used = None;
                 match result.get("stopReason").and_then(Value::as_str) {
                     Some("refusal") => Err("the model refused to answer".to_owned()),
                     Some("cancelled") => Err("the turn was cancelled".to_owned()),

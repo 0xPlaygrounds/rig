@@ -1,7 +1,10 @@
+use std::path::PathBuf;
+
+use rig_harness::rig_core::completion::Effort;
 use serde_json::json;
 
-use super::{Grok, models};
-use crate::acp::Agent;
+use super::{Grok, models, profile};
+use crate::acp::{Agent, Opening};
 
 #[test]
 fn the_listed_models_are_read_with_the_default_first() {
@@ -91,4 +94,32 @@ fn a_prompt_ends_when_grok_says_so_for_that_prompt() {
     );
     assert_eq!(Grok.ended("_x.ai/session_notification", &wake, "p1"), None);
     assert_eq!(Grok.ended("session/update", &turn, "p1"), None);
+}
+
+#[test]
+fn profile_carries_rigs_system_prompt_in_its_body() {
+    let text = profile("You are Rig.\n<skills>canary</skills>");
+    assert!(text.starts_with("---\nname: rig\n"));
+    assert!(text.contains("tools: search_tool, use_tool\n"));
+    assert!(text.ends_with("You are Rig.\n<skills>canary</skills>\n"));
+}
+
+#[test]
+fn choose_skips_set_model_when_session_already_runs_requested_model() {
+    let opening = Opening {
+        dir: PathBuf::from("/tmp/unused"),
+        system: "sys".to_owned(),
+        model: "grok-4.7".to_owned(),
+        effort: Some(Effort::Medium),
+        mcp_url: "http://127.0.0.1:1/mcp".to_owned(),
+        mcp_token: "tok".to_owned(),
+        tools: Vec::new(),
+    };
+    let same = json!({ "models": { "currentModelId": "grok-4.7" } });
+    let other = json!({ "models": { "currentModelId": "grok-4.6" } });
+    let unknown = json!({});
+
+    assert!(Grok.choose("s1", &same, &opening).is_empty());
+    assert_eq!(Grok.choose("s1", &other, &opening).len(), 1);
+    assert_eq!(Grok.choose("s1", &unknown, &opening).len(), 1);
 }

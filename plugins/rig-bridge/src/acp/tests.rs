@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::process::Command;
 use std::sync::{Arc, Mutex, PoisonError};
 
@@ -284,4 +285,105 @@ async fn only_rig_s_tools_are_permitted_and_other_requests_refused() {
         Some(&json!({ "outcome": "selected", "optionId": "no" })),
     );
     assert_eq!(answer(999).pointer("/error/code"), Some(&json!(-32601)));
+}
+
+#[tokio::test]
+async fn usage_update_overrides_cumulative_turn_context_tokens() {
+    let (client, server_stream) = tokio::io::duplex(16 * 1024);
+    let task = tokio::spawn(async move {
+        let (reader, mut writer) = tokio::io::split(server_stream);
+        let mut lines = BufReader::new(reader).lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            let Ok(message) = serde_json::from_str::<Value>(&line) else {
+                continue;
+            };
+            let id = message.get("id").cloned().unwrap_or(Value::Null);
+            let method = message.get("method").and_then(Value::as_str);
+            let out: Vec<Value> = match method {
+                Some("initialize") => vec![json!({ "jsonrpc": "2.0", "id": id, "result": {} })],
+                Some("session/new") => vec![json!({
+                    "jsonrpc": "2.0", "id": id, "result": { "sessionId": "s1" }
+                })],
+                Some("session/set_model") => {
+                    vec![json!({ "jsonrpc": "2.0", "id": id, "result": {} })]
+                }
+                Some("session/prompt") => vec![
+                    json!({
+                        "jsonrpc": "2.0",
+                        "method": "session/update",
+                        "params": { "update": { "sessionUpdate": "usage_update", "used": 0, "size": 1048576 } }
+                    }),
+                    json!({
+                        "jsonrpc": "2.0",
+                        "method": "session/update",
+                        "params": { "update": { "sessionUpdate": "usage_update", "used": 100000, "size": 1048576 } }
+                    }),
+                    json!({
+                        "jsonrpc": "2.0",
+                        "method": "session/update",
+                        "params": { "update": { "sessionUpdate": "usage_update", "used": 105000, "size": 1048576 } }
+                    }),
+                    json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "result": {
+                            "stopReason": "end_turn",
+                            "usage": {
+                                "inputTokens": 3500000,
+                                "outputTokens": 40000,
+                                "cachedReadTokens": 3300000,
+                                "totalTokens": 3540000
+                            }
+                        }
+                    }),
+                ],
+                _ => vec![],
+            };
+            for msg in out {
+                let mut line = msg.to_string();
+                line.push('\n');
+                let _ = writer.write_all(line.as_bytes()).await;
+            }
+        }
+    });
+
+    let (reader, writer) = tokio::io::split(client);
+    let (events_tx, mut events_rx) = mpsc::unbounded_channel();
+    let (prompts_tx, prompts_rx) = mpsc::unbounded_channel();
+    let mut peer = Peer::new(reader, writer, events_tx, Arc::new(Plain));
+    let _ = prompts_tx.send(vec![Part::Text("go".to_owned())]);
+    drop(prompts_tx);
+    let ended = converse(
+        &mut peer,
+        Opening {
+            dir: PathBuf::from("/work"),
+            system: String::new(),
+            model: "model-1".to_owned(),
+            effort: None,
+            mcp_url: "http://127.0.0.1:1/mcp".to_owned(),
+            mcp_token: "secret".to_owned(),
+            tools: Vec::new(),
+        },
+        prompts_rx,
+    )
+    .await;
+    drop(peer);
+    let _ = task.await;
+    assert_eq!(ended, Ok(()));
+
+    let mut events = Vec::new();
+    while let Ok(event) = events_rx.try_recv() {
+        events.push(event);
+    }
+    let usage = events.iter().find_map(|event| match event {
+        Event::Usage(usage) => Some(*usage),
+        _ => None,
+    });
+    assert_eq!(
+        usage.and_then(|u| u.context_tokens()),
+        Some(105_000),
+        "context_tokens must use per-inference usage_update.used, not cumulative turn total"
+    );
+    assert_eq!(usage.and_then(|u| u.input_tokens), Some(3_500_000));
+    assert_eq!(usage.and_then(|u| u.output_tokens), Some(40_000));
 }

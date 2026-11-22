@@ -9,8 +9,8 @@
 //! history is the one the session answered plus what came since; any other
 //! request starts a new harness with the history written out as text.
 
-use std::collections::VecDeque;
-use std::path::PathBuf;
+use std::collections::{BTreeMap, VecDeque};
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
@@ -46,6 +46,54 @@ const SETTLE: Duration = Duration::from_millis(50);
 /// How long a harness told that the tools changed has to list them again.
 const RELIST: Duration = Duration::from_secs(5);
 
+/// Maximum bytes of prior conversation history serialized into a cold
+/// session's opening replay. Kept well below harness tail-truncation limits
+/// so the latest user turn is never cut off.
+pub(crate) const REPLAY_BUDGET: usize = 160 * 1024;
+
+/// Bytes kept from the head and tail when eliding an old tool output.
+const TOOL_PREVIEW_BYTES: usize = 1024;
+
+/// Minimum input tokens before a warm turn with `cached_input_tokens == 0`
+/// triggers a cache-drop warning (below this, providers may skip caching).
+const CACHE_WARN_MIN_INPUT: u64 = 2048;
+
+/// Prefix of per-session scratch directories created under the bridge root.
+const DIR_PREFIX: &str = "rig-bridge-";
+
+/// Per-vendor runtime counters and diagnostics shown by `/bridge status` and
+/// `/bridge usage`.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct VendorStats {
+    pub calls: u64,
+    pub input_tokens: u64,
+    pub cached_input_tokens: u64,
+    pub output_tokens: u64,
+    pub last_model: Option<String>,
+    pub last_context_tokens: Option<u64>,
+    pub last_context_limit: Option<u32>,
+    pub last_note: Option<String>,
+}
+
+/// Summary of one warm idle harness process.
+#[derive(Debug, Clone)]
+pub(crate) struct WarmSession {
+    pub vendor: &'static str,
+    pub model: String,
+    pub turns: u32,
+    pub relists: bool,
+    pub context_tokens: Option<u64>,
+    pub context_limit: Option<u32>,
+}
+
+/// Point-in-time snapshot of the bridge for `/bridge status` and `/bridge usage`.
+#[derive(Debug, Clone)]
+pub(crate) struct BridgeSnapshot {
+    pub scratch_root: PathBuf,
+    pub warm: Vec<WarmSession>,
+    pub vendors: BTreeMap<&'static str, VendorStats>,
+}
+
 /// What the bridge's models share: where harnesses run and the sessions
 /// waiting for their next request.
 pub(crate) struct Bridge {
@@ -58,6 +106,12 @@ pub(crate) struct Bridge {
     limit: usize,
     /// The project Rig works in, when it is known.
     project: Option<PathBuf>,
+    /// Disk-backed root directory where per-session scratch dirs live.
+    scratch_root: PathBuf,
+    /// Per-vendor usage and diagnostic state.
+    stats: Mutex<BTreeMap<&'static str, VendorStats>>,
+    /// Optional channel for surfacing non-fatal warnings to Rig's UI.
+    notices: Option<mpsc::UnboundedSender<String>>,
 }
 
 impl Bridge {
@@ -66,6 +120,7 @@ impl Bridge {
         processes: Processes,
         limit: usize,
         project: Option<PathBuf>,
+        scratch_root: PathBuf,
     ) -> Self {
         Self {
             project,
@@ -74,11 +129,99 @@ impl Bridge {
             server: OnceCell::new(),
             waiting: Mutex::default(),
             limit,
+            scratch_root,
+            stats: Mutex::default(),
+            notices: None,
         }
+    }
+
+    pub(crate) fn with_notices(mut self, notices: mpsc::UnboundedSender<String>) -> Self {
+        self.notices = Some(notices);
+        self
+    }
+
+    pub(crate) fn scratch_root(&self) -> &Path {
+        &self.scratch_root
     }
 
     fn waiting(&self) -> std::sync::MutexGuard<'_, VecDeque<Session>> {
         self.waiting.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn stats(&self) -> std::sync::MutexGuard<'_, BTreeMap<&'static str, VendorStats>> {
+        self.stats.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Stops every warm idle harness process and removes its scratch dir.
+    pub(crate) fn reset(&self) -> usize {
+        let ended: Vec<Session> = {
+            let mut waiting = self.waiting();
+            waiting.drain(..).collect()
+        };
+        let count = ended.len();
+        drop(ended);
+        count
+    }
+
+    /// Current warm sessions and per-vendor counters.
+    pub(crate) fn snapshot(&self) -> BridgeSnapshot {
+        let warm = {
+            let waiting = self.waiting();
+            waiting
+                .iter()
+                .map(|session| WarmSession {
+                    vendor: session.vendor,
+                    model: session.setup.model.clone(),
+                    turns: session.turns,
+                    relists: session.relists,
+                    context_tokens: session.last_context_tokens,
+                    context_limit: session.context_limit,
+                })
+                .collect()
+        };
+        let vendors = self.stats().clone();
+        BridgeSnapshot {
+            scratch_root: self.scratch_root.clone(),
+            warm,
+            vendors,
+        }
+    }
+
+    fn record_usage(
+        &self,
+        vendor: &'static str,
+        model: &str,
+        usage: &Usage,
+        context_limit: Option<u32>,
+    ) {
+        let mut stats = self.stats();
+        let entry = stats.entry(vendor).or_default();
+        entry.calls = entry.calls.saturating_add(1);
+        entry.last_model = Some(model.to_owned());
+        if let Some(input) = usage.input_tokens {
+            entry.input_tokens = entry.input_tokens.saturating_add(input);
+        }
+        if let Some(cached) = usage.cached_input_tokens {
+            entry.cached_input_tokens = entry.cached_input_tokens.saturating_add(cached);
+        }
+        if let Some(output) = usage.output_tokens {
+            entry.output_tokens = entry.output_tokens.saturating_add(output);
+        }
+        if let Some(ctx) = usage.context_tokens() {
+            entry.last_context_tokens = Some(ctx);
+            entry.last_context_limit = context_limit;
+        }
+    }
+
+    fn record_note(&self, vendor: &'static str, note: String) {
+        let mut stats = self.stats();
+        stats.entry(vendor).or_default().last_note = Some(note);
+    }
+
+    fn warn(&self, message: String) {
+        if let Some(notices) = &self.notices {
+            let _ = notices.send(message);
+        }
     }
 
     /// The waiting session `history` continues, with what to send it.
@@ -139,6 +282,8 @@ pub(crate) struct Model {
     pub vendor: &'static str,
     /// The model's id, as the harness names it.
     pub model: String,
+    /// The model's catalog input limit, when known.
+    pub context_limit: Option<u32>,
 }
 
 impl Serve for Model {
@@ -170,7 +315,9 @@ impl Serve for Model {
             bridge: self.bridge.clone(),
             harness: self.harness.clone(),
             program: self.program.clone(),
+            vendor: self.vendor,
             model: self.model.clone(),
+            context_limit: self.context_limit,
         };
         self.bridge.runtime.spawn(step.run(request, out));
         let origin = Origin::new(Api::from_static("bridge"), self.vendor, self.model.clone());
@@ -248,7 +395,9 @@ struct Step {
     bridge: Arc<Bridge>,
     harness: Arc<dyn Harness>,
     program: PathBuf,
+    vendor: &'static str,
     model: String,
+    context_limit: Option<u32>,
 }
 
 impl Step {
@@ -288,11 +437,38 @@ impl Step {
             .then_some(session),
             None => None,
         };
+        let was_warm = resumed.is_some();
         let mut session = match resumed {
             Some(session) => session,
             None => self.start(setup, &history).await?,
         };
         let finish = session.answer(out).await?;
+        session.turns = session.turns.saturating_add(1);
+        if let Some(ctx) = finish.usage.context_tokens() {
+            session.last_context_tokens = Some(ctx);
+        }
+        self.bridge.record_usage(
+            self.vendor,
+            &self.model,
+            &finish.usage,
+            session.context_limit,
+        );
+        if was_warm
+            && !session.warned_cache_drop
+            && finish.usage.input_tokens.unwrap_or(0) >= CACHE_WARN_MIN_INPUT
+            && finish.usage.cached_input_tokens == Some(0)
+        {
+            session.warned_cache_drop = true;
+            let input = finish.usage.input_tokens.unwrap_or(0);
+            let note = format!(
+                "warm turn reported 0 cached tokens ({input} input); prompt prefix may have changed"
+            );
+            self.bridge.record_note(self.vendor, note.clone());
+            self.bridge.warn(format!(
+                "rig-bridge ({}/{}): {note}",
+                self.vendor, self.model
+            ));
+        }
         session.seen = history;
         self.bridge.keep(session);
         Ok(finish)
@@ -307,7 +483,8 @@ impl Step {
             .await
             .map_err(|why| format!("could not serve the tools: {why}"))?;
         let (entry, calls) = server.open(setup.tools.clone());
-        let dir = Dir::create().map_err(|why| format!("could not make a directory: {why}"))?;
+        let dir = Dir::create(&self.bridge.scratch_root)
+            .map_err(|why| format!("could not make a directory: {why}"))?;
         let note = self.harness.note(self.bridge.project.as_deref());
         let system = match (setup.system.as_str(), note.as_str()) {
             (system, "") => system.to_owned(),
@@ -324,8 +501,13 @@ impl Step {
             tools: &setup.tools,
         })?;
         let mut session = Session {
+            vendor: self.vendor,
             setup,
             relists: self.harness.relists(),
+            turns: 0,
+            warned_cache_drop: false,
+            last_context_tokens: None,
+            context_limit: self.context_limit,
             seen: Vec::new(),
             said: Said::default(),
             open: Vec::new(),
@@ -334,7 +516,16 @@ impl Step {
             entry,
             _dir: dir,
         };
-        session.send(Next::Prompt(opening(history)))?;
+        let (prompt, trimmed) = budgeted_opening(history, REPLAY_BUDGET);
+        if let Some(summary) = trimmed {
+            self.bridge
+                .record_note(self.vendor, format!("replay trimmed: {summary}"));
+            self.bridge.warn(format!(
+                "rig-bridge ({}/{}): history replay trimmed ({summary}); latest turn kept intact",
+                self.vendor, self.model
+            ));
+        }
+        session.send(Next::Prompt(prompt))?;
         Ok(session)
     }
 }
@@ -370,9 +561,18 @@ fn split(messages: &[Arc<Message>]) -> (String, Vec<Arc<Message>>) {
 struct Dir(PathBuf);
 
 impl Dir {
-    fn create() -> std::io::Result<Self> {
-        let path =
-            std::env::temp_dir().join(format!("rig-bridge-{}", uuid::Uuid::new_v4().simple()));
+    fn create(root: &Path) -> std::io::Result<Self> {
+        let mut root_builder = std::fs::DirBuilder::new();
+        root_builder.recursive(true);
+        #[cfg(unix)]
+        std::os::unix::fs::DirBuilderExt::mode(&mut root_builder, 0o700);
+        root_builder.create(root)?;
+
+        let pid = std::process::id();
+        let path = root.join(format!(
+            "{DIR_PREFIX}{pid}-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
         let mut builder = std::fs::DirBuilder::new();
         #[cfg(unix)]
         std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
@@ -385,6 +585,44 @@ impl Drop for Dir {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.0);
     }
+}
+
+/// Removes leftover `rig-bridge-<pid>-*` directories whose owning process is
+/// no longer alive.
+pub(crate) fn reap_stale_dirs(root: &Path) {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return;
+    };
+    let me = std::process::id();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        let Some(rest) = name.strip_prefix(DIR_PREFIX) else {
+            continue;
+        };
+        let Some((pid_str, _)) = rest.split_once('-') else {
+            continue;
+        };
+        let Ok(pid) = pid_str.parse::<u32>() else {
+            continue;
+        };
+        if pid == me || process_alive(pid) {
+            continue;
+        }
+        let _ = std::fs::remove_dir_all(&path);
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn process_alive(pid: u32) -> bool {
+    Path::new(&format!("/proc/{pid}")).exists()
+}
+
+#[cfg(not(target_os = "linux"))]
+fn process_alive(_pid: u32) -> bool {
+    true
 }
 
 /// What a waiting session is sent to go on.
@@ -423,9 +661,18 @@ impl Said {
 
 /// A running harness and where its conversation stands.
 struct Session {
+    vendor: &'static str,
     setup: Setup,
     /// Whether the harness takes a changed tool list while it runs.
     relists: bool,
+    /// How many turns this process has completed.
+    turns: u32,
+    /// Whether we already warned about a warm turn reporting 0 cached tokens.
+    warned_cache_drop: bool,
+    /// Context tokens reported on the last completed reply.
+    last_context_tokens: Option<u64>,
+    /// Input/context limit known from the catalog or reported by the harness.
+    context_limit: Option<u32>,
     /// The history of the last request this session answered. The reply to
     /// it is the message after.
     seen: Vec<Arc<Message>>,
@@ -548,6 +795,9 @@ impl Session {
     async fn answer(&mut self, out: &mpsc::UnboundedSender<Wrote>) -> Result<Finish, String> {
         self.said = Said::default();
         let mut usage = Usage::new();
+        let mut usage_reports: u32 = 0;
+        let mut last_inference_context: Option<u64> = None;
+        let mut context_used: Option<u64> = None;
         let mut settled = None;
         // Whether an inference began whose counters have not arrived: a
         // harness may call a tool before it finishes reading the message.
@@ -568,15 +818,32 @@ impl Session {
                     Some(Event::Reasoning(text)) => drop(out.send(Wrote::Reasoning(text))),
                     Some(Event::Began) => counting = true,
                     Some(Event::Usage(counted)) => {
+                        if let Some(ctx) = counted.context_tokens().filter(|tokens| *tokens > 0) {
+                            last_inference_context = Some(ctx);
+                        }
+                        usage_reports = usage_reports.saturating_add(1);
                         usage += counted;
                         counting = false;
+                    }
+                    Some(Event::Context { used, size }) => {
+                        if let Some(tokens) = size {
+                            self.context_limit = Some(tokens);
+                        }
+                        if let Some(tokens) = used {
+                            context_used = Some(tokens);
+                        }
                     }
                     // A turn that ends with calls open gave them up: Rig
                     // must not run them for a harness that no longer waits.
                     Some(Event::Done(Ok(()))) if !self.open.is_empty() => {
                         return Err("the harness ended its turn before its tools answered".to_owned());
                     }
-                    Some(Event::Done(Ok(()))) => return Ok(finish(usage, FinishReason::Stop)),
+                    Some(Event::Done(Ok(()))) => {
+                        return Ok(finish(
+                            apply_context(usage, context_used, last_inference_context, usage_reports),
+                            FinishReason::Stop,
+                        ));
+                    }
                     Some(Event::Done(Err(why))) => return Err(why),
                     None => return Err("the harness exited before it answered".to_owned()),
                 },
@@ -589,10 +856,34 @@ impl Session {
                     self.open.push(answer);
                     settled.get_or_insert_with(|| tokio::time::Instant::now() + SETTLE);
                 }
-                () = settle, if !counting => return Ok(finish(usage, FinishReason::ToolCalls)),
+                () = settle, if !counting => {
+                    return Ok(finish(
+                        apply_context(usage, context_used, last_inference_context, usage_reports),
+                        FinishReason::ToolCalls,
+                    ));
+                }
             }
         }
     }
+}
+
+/// Ensures `usage.total_tokens` (read by Rig's `LastUsage::context()` and
+/// compaction) reflects the single latest inference's context fill rather than
+/// a sum across multiple inferences or tool-call rounds.
+fn apply_context(
+    mut usage: Usage,
+    context_used: Option<u64>,
+    last_inference_context: Option<u64>,
+    usage_reports: u32,
+) -> Usage {
+    if let Some(used) = context_used {
+        usage.total_tokens = Some(used);
+    } else if usage_reports > 1
+        && let Some(ctx) = last_inference_context
+    {
+        usage.total_tokens = Some(ctx);
+    }
+    usage
 }
 
 fn finish(usage: Usage, reason: FinishReason) -> Finish {
@@ -684,68 +975,283 @@ fn told(result: &ToolResult) -> String {
     text
 }
 
+/// One serialized piece of a prior message, distinguishing raw tool results
+/// so they can be elided before whole turns are dropped.
+struct ReplayPiece {
+    text: String,
+    is_tool_result: bool,
+    elided: bool,
+}
+
+/// One atomic replay unit (either a single message, or an assistant tool-call
+/// message paired with its following user tool-result message(s)).
+struct ReplayUnit {
+    pieces: Vec<ReplayPiece>,
+}
+
+impl ReplayUnit {
+    fn byte_len(&self) -> usize {
+        self.pieces.iter().map(|piece| piece.text.len()).sum()
+    }
+}
+
+/// Largest valid UTF-8 prefix of `text` of at most `max_bytes`.
+fn prefix_utf8(text: &str, max_bytes: usize) -> &str {
+    if text.len() <= max_bytes {
+        return text;
+    }
+    let mut end = max_bytes;
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    text.get(..end).unwrap_or_default()
+}
+
+/// Largest valid UTF-8 suffix of `text` of at most `max_bytes`.
+fn suffix_utf8(text: &str, max_bytes: usize) -> &str {
+    if text.len() <= max_bytes {
+        return text;
+    }
+    let mut start = text.len().saturating_sub(max_bytes);
+    while start < text.len() && !text.is_char_boundary(start) {
+        start += 1;
+    }
+    text.get(start..).unwrap_or_default()
+}
+
+/// Elides the middle of a large tool output while keeping a UTF-8-safe head
+/// and tail preview plus the exact original byte count.
+fn elide_tool_output(text: &str) -> String {
+    let min_to_elide = TOOL_PREVIEW_BYTES.saturating_mul(2).saturating_add(128);
+    if text.len() <= min_to_elide {
+        return text.to_owned();
+    }
+    let head = prefix_utf8(text, TOOL_PREVIEW_BYTES);
+    let tail = suffix_utf8(text, TOOL_PREVIEW_BYTES);
+    format!(
+        "{head}\n... [tool output elided: {} bytes] ...\n{tail}",
+        text.len()
+    )
+}
+
+fn render_message_pieces(message: &Message) -> Vec<ReplayPiece> {
+    match message {
+        Message::User { content } => {
+            let mut out = vec![ReplayPiece {
+                text: "## User\n".to_owned(),
+                is_tool_result: false,
+                elided: false,
+            }];
+            for item in content {
+                match item {
+                    UserContent::ToolResult(result) => {
+                        let mut text = told(result);
+                        text.push('\n');
+                        out.push(ReplayPiece {
+                            text,
+                            is_tool_result: true,
+                            elided: false,
+                        });
+                    }
+                    other => {
+                        for part in parts([other]) {
+                            let mut line = match part {
+                                Part::Text(said) => said,
+                                Part::Image { .. } => "[an image]".to_owned(),
+                            };
+                            line.push('\n');
+                            out.push(ReplayPiece {
+                                text: line,
+                                is_tool_result: false,
+                                elided: false,
+                            });
+                        }
+                    }
+                }
+            }
+            out.push(ReplayPiece {
+                text: "\n".to_owned(),
+                is_tool_result: false,
+                elided: false,
+            });
+            out
+        }
+        Message::Assistant(reply) => {
+            let mut text = String::from("## Assistant\n");
+            for content in &reply.content {
+                match content {
+                    AssistantContent::Text(said) => text.push_str(&said.text),
+                    AssistantContent::ToolCall(call) => text.push_str(&format!(
+                        "[called `{}` with {}]",
+                        call.function.name.as_str(),
+                        Value::Object(call.function.arguments.clone()),
+                    )),
+                    _ => continue,
+                }
+                text.push('\n');
+            }
+            text.push('\n');
+            vec![ReplayPiece {
+                text,
+                is_tool_result: false,
+                elided: false,
+            }]
+        }
+        Message::System { .. } => Vec::new(),
+    }
+}
+
+fn has_tool_calls(message: &Message) -> bool {
+    matches!(
+        message,
+        Message::Assistant(reply)
+            if reply
+                .content
+                .iter()
+                .any(|item| matches!(item, AssistantContent::ToolCall(_)))
+    )
+}
+
+fn has_tool_results(message: &Message) -> bool {
+    matches!(
+        message,
+        Message::User { content }
+            if content
+                .iter()
+                .any(|item| matches!(item, UserContent::ToolResult(_)))
+    )
+}
+
+fn group_replay_units(messages: &[Arc<Message>]) -> Vec<ReplayUnit> {
+    let mut units = Vec::new();
+    let mut idx = 0;
+    while idx < messages.len() {
+        let Some(message) = messages.get(idx) else {
+            break;
+        };
+        let mut pieces = render_message_pieces(message);
+        if has_tool_calls(message) {
+            while let Some(next) = messages.get(idx + 1)
+                && has_tool_results(next)
+            {
+                idx += 1;
+                pieces.extend(render_message_pieces(next));
+            }
+        }
+        if !pieces.is_empty() {
+            units.push(ReplayUnit { pieces });
+        }
+        idx += 1;
+    }
+    units
+}
+
 /// The first prompt of a new session for `history`: the user's last
-/// messages, after the conversation before them written out as text.
-fn opening(history: &[Arc<Message>]) -> Vec<Part> {
+/// messages, after the conversation before them written out as text under
+/// `budget`. The latest user turn is always preserved intact at the end.
+pub(crate) fn budgeted_opening(
+    history: &[Arc<Message>],
+    budget: usize,
+) -> (Vec<Part>, Option<String>) {
     let asked = |message: &Arc<Message>| match &**message {
         Message::User { content } => !content
             .iter()
             .any(|content| matches!(content, UserContent::ToolResult(_))),
         _ => false,
     };
-    let latest = history
+    let latest_count = history
         .iter()
         .rev()
         .take_while(|message| asked(message))
         .count();
-    let (before, latest) = history.split_at(history.len() - latest);
-    let mut prompt = Vec::new();
-    if !before.is_empty() {
-        let mut text = String::from(
-            "The conversation so far follows between the markers. Continue it: the tool calls \
-             in it were yours.\n\n<conversation>\n",
-        );
-        for message in before {
-            match &**message {
-                Message::User { content } => {
-                    text.push_str("## User\n");
-                    for part in parts(content) {
-                        match part {
-                            Part::Text(said) => text.push_str(&said),
-                            Part::Image { .. } => text.push_str("[an image]"),
-                        }
-                        text.push('\n');
-                    }
-                }
-                Message::Assistant(reply) => {
-                    text.push_str("## Assistant\n");
-                    for content in &reply.content {
-                        match content {
-                            AssistantContent::Text(said) => text.push_str(&said.text),
-                            AssistantContent::ToolCall(call) => text.push_str(&format!(
-                                "[called `{}` with {}]",
-                                call.function.name.as_str(),
-                                Value::Object(call.function.arguments.clone()),
-                            )),
-                            _ => continue,
-                        }
-                        text.push('\n');
-                    }
-                }
-                Message::System { .. } => {}
-            }
-            text.push('\n');
-        }
-        text.push_str("</conversation>\n");
-        if latest.is_empty() {
-            text.push_str("\nGo on from where the conversation stops.");
-        }
-        prompt.push(Part::Text(text));
-    }
+    let (before, latest) = history.split_at(history.len().saturating_sub(latest_count));
+
+    let mut latest_parts = Vec::new();
+    let mut latest_bytes = 0usize;
     for message in latest {
         if let Message::User { content } = &**message {
-            prompt.extend(parts(content));
+            for part in parts(content) {
+                if let Part::Text(text) = &part {
+                    latest_bytes = latest_bytes.saturating_add(text.len());
+                }
+                latest_parts.push(part);
+            }
         }
     }
-    prompt
+
+    let mut prompt = Vec::new();
+    let mut trim_notes = Vec::new();
+    if !before.is_empty() {
+        let header = "The conversation so far follows between the markers. Continue it: the tool calls \
+             in it were yours.\n\n<conversation>\n";
+        let footer = if latest.is_empty() {
+            "</conversation>\n\nGo on from where the conversation stops."
+        } else {
+            "</conversation>\n"
+        };
+        let framing = header.len().saturating_add(footer.len()).saturating_add(96);
+        let history_budget = budget.saturating_sub(latest_bytes).saturating_sub(framing);
+
+        let mut units = group_replay_units(before);
+        let mut total: usize = units.iter().map(ReplayUnit::byte_len).sum();
+
+        // Pass 1: elide oldest tool results first.
+        let mut elided_tools = 0usize;
+        if total > history_budget {
+            'elide: for unit in &mut units {
+                for piece in &mut unit.pieces {
+                    if !piece.is_tool_result || piece.elided {
+                        continue;
+                    }
+                    let shrunk = elide_tool_output(&piece.text);
+                    if shrunk.len() < piece.text.len() {
+                        total = total.saturating_sub(piece.text.len() - shrunk.len());
+                        piece.text = shrunk;
+                        piece.elided = true;
+                        elided_tools += 1;
+                        if total <= history_budget {
+                            break 'elide;
+                        }
+                    }
+                }
+            }
+        }
+        if elided_tools > 0 {
+            trim_notes.push(format!("elided {elided_tools} old tool output(s)"));
+        }
+
+        // Pass 2: drop oldest atomic turns until within budget.
+        let mut omitted_turns = 0usize;
+        let mut start = 0usize;
+        while total > history_budget && start < units.len() {
+            if let Some(unit) = units.get(start) {
+                total = total.saturating_sub(unit.byte_len());
+            }
+            start += 1;
+            omitted_turns += 1;
+        }
+        if omitted_turns > 0 {
+            trim_notes.push(format!("omitted {omitted_turns} earlier turn(s)"));
+        }
+
+        let mut text = String::from(header);
+        if omitted_turns > 0 {
+            text.push_str(&format!(
+                "[{omitted_turns} earlier turn(s) omitted due to replay budget]\n\n"
+            ));
+        }
+        if let Some(kept) = units.get(start..) {
+            for unit in kept {
+                for piece in &unit.pieces {
+                    text.push_str(&piece.text);
+                }
+            }
+        }
+        text.push_str(footer);
+        prompt.push(Part::Text(text));
+    }
+
+    prompt.extend(latest_parts);
+    let summary = (!trim_notes.is_empty()).then(|| trim_notes.join("; "));
+    (prompt, summary)
 }

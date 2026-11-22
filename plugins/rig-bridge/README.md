@@ -14,17 +14,20 @@ works in rig without an API key:
 | `grok-build/` | Grok Build (`grok`) | Agent Client Protocol, `grok agent stdio` | what `grok models` lists |
 | `antigravity/` | Antigravity (`agy`) | Agent Client Protocol, `agy acp` | what `agy models` lists |
 | `codex/` | Codex (`codex`) | its app server, `codex app-server` | what `codex debug models` lists |
+| `muse/` | Meta AI Muse (`muse`) | MSP session host, `muse serve` | what `muse exec --list-models` lists |
+| `copilot/` | GitHub Copilot CLI (`copilot`) | Agent Client Protocol, `copilot --acp` | what Copilot's `session/new` advertises |
 
 ```bash
 rig plugin enable rig_bridge::BridgePlugin
-rig --model claude-code/claude-sonnet-4-6
+rig --model claude-code/claude-opus-5-5
 ```
 
 Sign in with the program itself first (`claude`, `grok login`, `agy`,
-`codex login`). The program answers with that sign-in: an API key in rig's
-environment (`ANTHROPIC_API_KEY`, `XAI_API_KEY`, `GEMINI_API_KEY`,
-`OPENAI_API_KEY` and the like) is not passed on to it. Linux and macOS only. A
-program that is not installed leaves its models out of `/model`.
+`codex login`, `muse login`, `copilot login`). The program answers with that
+sign-in: an API key in rig's environment (`ANTHROPIC_API_KEY`, `XAI_API_KEY`,
+`GEMINI_API_KEY`, `OPENAI_API_KEY`, `META_API_KEY` and the like) is not passed
+on to it. Linux and macOS only. A program that is not installed leaves its
+models out of `/model`.
 
 ## What the program is used for
 
@@ -54,16 +57,28 @@ the tools; the program is started with everything of its own turned off:
   `list_mcp_resource_templates` and `read_mcp_resource`, which cannot be
   turned off and find nothing. The model sees rig's tools as
   `mcp__rig.<tool>`.
+- **Meta AI Muse**: private XDG directories (sharing only `auth.json`),
+  `--no-session-log`, `--preset empty`, and shell/write/user-input tools
+  disabled. Rig's system prompt is passed as `config.developerPrompt` and
+  Rig's MCP server as `config.mcpServers.rig`, so the model sees only
+  `mcp__rig.<tool>`.
+- **GitHub Copilot CLI**: a private `COPILOT_HOME` holding one custom agent
+  (`rig.agent.md`) whose body carries rig's system prompt, `--available-tools
+  rig` disabling all built-in tools while keeping Rig's MCP server
+  (`rig-<tool>`), and built-in MCPs, custom instructions, auto-update,
+  ask-user and telemetry switched off.
 
-Each program runs in an empty directory, never in your project, so it finds
+Each program runs in a private, disk-backed empty directory under
+`RIG_HOME/run/bridge/`, never in your project or RAM-backed `/tmp`, so it finds
 no project files to read on its own. After rig's system prompt each model is
 told, in a sentence or two, how the program prefixes rig's tool names and,
-for Claude Code and Grok, that the working directory the program reports is
-that empty directory, and which directory the project is.
+for programs that report a scratch directory, which directory the project is.
 
 What stays that rig cannot remove: the vendor's own system layer in front of
-rig's prompt on Codex; on Grok, the list of skills bundled with the program;
-and Codex and Antigravity call tools one at a time, never several at once.
+rig's prompt on Codex; on Grok, the list of skills bundled with the program
+(and Grok's own preamble when switching away from Grok's default model via
+`session/set_model`); and Codex and Antigravity call tools one at a time,
+never several at once.
 
 Rig's tools reach the program as one MCP server the plugin serves on loopback,
 named by a bearer token only that process is given. When the model calls a
@@ -92,8 +107,22 @@ claude = "claude"      # each program: a name on PATH or a path
 grok = "grok"
 antigravity = "agy"
 codex = "codex"
+muse = "muse"
+copilot = "copilot"
 sessions = 8           # how many idle processes are kept; the oldest ends first
 ```
+
+## Commands
+
+- `/bridge` or `/bridge status`: installed harnesses, warm sessions, scratch
+  directory path, session token totals, and cache hit rates.
+- `/bridge usage`: queries official plan/subscription quotas in parallel
+  (Claude Code `get_usage`, Codex `account/rateLimits/read`, Muse
+  `muse usage --json`, Grok `grok usage --json` when its daemon is running;
+  reports `unavailable` where no official CLI/RPC quota exists) alongside
+  Rig's session token totals.
+- `/bridge reset`: stops all warm idle harness processes and removes their
+  scratch directories without restarting rig.
 
 ## Limits
 
@@ -106,6 +135,8 @@ sessions = 8           # how many idle processes are kept; the oldest ends first
   call's tokens can show on the reply after it.
 - Images in your message are sent; audio, video and documents are not.
 - No cost is reported: the programs bill your subscription.
-- Starting rig runs `grok models`, `agy models` and `codex debug models` when
-  those programs are installed, to list their models. `agy models` asks
-  Google, which takes about half a second.
+- Starting rig discovers models across installed harnesses in parallel
+  (bounded by one 5-second timeout).
+- When starting a fresh harness mid-conversation, rig budgets the replayed
+  history so large prior tool outputs are elided before old turns are dropped
+  and the latest user turn is always preserved intact.

@@ -39,6 +39,13 @@ pub(crate) enum Event {
     Began,
     /// The token counters of one inference.
     Usage(Usage),
+    /// Context window metrics reported at runtime by a harness (for example,
+    /// ACP `usage_update` with `used` tokens currently in context and `size`
+    /// window).
+    Context {
+        used: Option<u64>,
+        size: Option<u32>,
+    },
     /// The prompt is answered, or failed for the reason given.
     Done(Result<(), String>),
 }

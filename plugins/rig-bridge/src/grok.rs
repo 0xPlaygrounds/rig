@@ -51,15 +51,31 @@ enabled = false
 enabled = false
 "#;
 
-/// The agent Grok runs as: only the tools that list and call an MCP
+/// The agent file Grok runs as: only the tools that list and call an MCP
 /// server's tools, which Grok offers a model in place of the tools
-/// themselves.
-const PROFILE: &str = "---\n\
+/// themselves. Rig's system prompt is placed in the body as a fallback for
+/// non-default model switches: `session/new`'s `systemPromptOverride`
+/// replaces Grok's prompt cleanly on the default model (where `choose`
+/// skips `session/set_model`), and when `session/set_model` must switch to
+/// another model it rebuilds the prompt from this file's body instead of
+/// dropping Rig's prompt.
+fn profile(system: &str) -> String {
+    let mut text = String::from(
+        "---\n\
 name: rig\n\
 description: A model for Rig, with Rig's tools.\n\
 tools: search_tool, use_tool\n\
 mcpInheritance: none\n\
----\n";
+---\n",
+    );
+    if !system.is_empty() {
+        text.push_str(system);
+        if !system.ends_with('\n') {
+            text.push('\n');
+        }
+    }
+    text
+}
 
 /// The built-in tools the profile keeps.
 const META_TOOLS: &[&str] = &["search_tool", "use_tool"];
@@ -84,10 +100,10 @@ impl Agent for Grok {
             });
         let home = opening.dir.join("home");
         let grok_home = home.join(".grok");
-        let profile = opening.dir.join("rig.md");
+        let profile_path = opening.dir.join("rig.md");
         std::fs::create_dir_all(&grok_home)
             .and_then(|()| std::fs::write(grok_home.join("config.toml"), CONFIG))
-            .and_then(|()| std::fs::write(&profile, PROFILE))
+            .and_then(|()| std::fs::write(&profile_path, profile(&opening.system)))
             .map_err(|why| format!("could not write the session's files: {why}"))?;
         command
             .env("HOME", &home)
@@ -103,10 +119,16 @@ impl Agent for Grok {
             // The sign-in answers, not an API key.
             .env_remove("XAI_API_KEY")
             .args(["agent", "--no-leader"]);
+        if let Some(effort) = opening.effort {
+            command.args(["--reasoning-effort", level(effort)]);
+        }
         if let Some(signed_in) = signed_in {
             command.env("GROK_AUTH_PATH", signed_in);
         }
-        command.arg("--agent-profile").arg(&profile).arg("stdio");
+        command
+            .arg("--agent-profile")
+            .arg(&profile_path)
+            .arg("stdio");
         Ok(())
     }
 
@@ -114,7 +136,22 @@ impl Agent for Grok {
         Some(json!({ "systemPromptOverride": system }))
     }
 
-    fn choose(&self, session: &str, _: &Value, opening: &Opening) -> Vec<(&'static str, Value)> {
+    fn choose(
+        &self,
+        session: &str,
+        opened: &Value,
+        opening: &Opening,
+    ) -> Vec<(&'static str, Value)> {
+        // `session/set_model` rebuilds the system prompt from `--agent-profile`,
+        // discarding `systemPromptOverride` and prepending Grok's default prompt.
+        // Skip it when `session/new` already opened on the requested model
+        // (effort was already applied via `--reasoning-effort`).
+        let current = opened
+            .pointer("/models/currentModelId")
+            .and_then(Value::as_str);
+        if current == Some(opening.model.as_str()) {
+            return Vec::new();
+        }
         let mut chosen = json!({ "sessionId": session, "modelId": opening.model });
         if let (Some(effort), Some(chosen)) = (opening.effort, chosen.as_object_mut()) {
             chosen.insert(

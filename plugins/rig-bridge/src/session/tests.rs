@@ -15,7 +15,7 @@ use rig_harness::rig_core::serve::{Dispatch, Reply, Serve};
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
 
-use super::{Bridge, Model};
+use super::{Bridge, Model, apply_context, budgeted_opening};
 use crate::harness::{Event, Harness, Launch, Part, Running};
 use crate::mcp::tests::{post, request};
 
@@ -204,11 +204,14 @@ fn model(limit: usize) -> (Model, Arc<Mutex<Seen>>, Arc<AtomicUsize>) {
 /// A model on `harness`.
 fn on(harness: Scripted, limit: usize) -> (Model, Arc<Mutex<Seen>>, Arc<AtomicUsize>) {
     let (seen, ended) = (harness.seen.clone(), harness.ended.clone());
+    let scratch =
+        std::env::temp_dir().join(format!("rig-bridge-test-{}", uuid::Uuid::new_v4().simple()));
     let bridge = Bridge::new(
         tokio::runtime::Handle::current(),
         Processes::default(),
         limit,
         None,
+        scratch,
     );
     let model = Model {
         bridge: Arc::new(bridge),
@@ -216,6 +219,7 @@ fn on(harness: Scripted, limit: usize) -> (Model, Arc<Mutex<Seen>>, Arc<AtomicUs
         program: "scripted".into(),
         vendor: "scripted",
         model: "model-1".to_owned(),
+        context_limit: Some(200_000),
     };
     (model, seen, ended)
 }
@@ -605,4 +609,83 @@ async fn a_harness_that_cannot_be_told_or_fixes_its_tools_is_replaced() {
 
     assert_eq!(unheard, 2);
     assert_eq!((unchanged, listed), (2, Vec::new()));
+}
+
+#[test]
+fn budgeted_opening_always_preserves_latest_user_turn_under_huge_tool_history() {
+    let huge_output = "🚀".repeat(40_000); // 160 KB of 4-byte UTF-8
+    let Ok(shell_name) = ToolName::new("shell") else {
+        return;
+    };
+    let call = ToolCall::new(
+        rig_harness::rig_core::message::CallId::from_wire("call-1"),
+        ToolFunction::new(shell_name, json!({})),
+    );
+    let tool_result = Message::tool_results(vec![
+        call.result(vec![ToolResultContent::Text(huge_output.into())]),
+    ]);
+    let assistant_call =
+        Message::Assistant(AssistantMessage::new(vec![AssistantContent::ToolCall(
+            call,
+        )]));
+    let latest_canary = "LATEST_USER_CANARY_998877";
+    let history = vec![
+        Arc::new(Message::user("first turn")),
+        Arc::new(assistant_call),
+        Arc::new(tool_result),
+        Arc::new(Message::user(latest_canary)),
+    ];
+
+    let (parts, trimmed) = budgeted_opening(&history, 16 * 1024);
+    assert!(trimmed.is_some());
+    let joined: String = parts
+        .iter()
+        .filter_map(|part| match part {
+            Part::Text(text) => Some(text.as_str()),
+            Part::Image { .. } => None,
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(joined.contains(latest_canary));
+    assert!(joined.contains("tool output elided"));
+    assert!(joined.len() < 20 * 1024);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn bridge_reset_stops_waiting_sessions() {
+    let (model, _, ended) = model(4);
+    let _ = answer(&model, asks("", &[Message::user("hello")])).await;
+    assert_eq!(model.bridge.snapshot().warm.len(), 1);
+    assert_eq!(model.bridge.reset(), 1);
+    assert_eq!(model.bridge.snapshot().warm.len(), 0);
+    assert_eq!(ended.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn apply_context_prefers_per_inference_context_over_summed_totals() {
+    // Multi-round ACP turn: turn totals have 3.5M input, but latest
+    // usage_update says 105k context.
+    let turn_totals = Usage::new()
+        .input_tokens(3_500_000)
+        .output_tokens(40_000)
+        .total_tokens(3_540_000);
+    let fixed = apply_context(turn_totals, Some(105_000), Some(3_540_000), 1);
+    assert_eq!(fixed.context_tokens(), Some(105_000));
+    assert_eq!(fixed.input_tokens, Some(3_500_000));
+    assert_eq!(fixed.output_tokens, Some(40_000));
+
+    // Delayed multi-report harness (e.g. Codex): two per-inference usages
+    // landed in one answer() call, summing input_tokens to 5,736; context
+    // must reflect only the last inference (2,921), not the sum (5,761).
+    let mut summed = Usage::new()
+        .input_tokens(2_830)
+        .output_tokens(10)
+        .total_tokens(2_840);
+    summed += Usage::new()
+        .input_tokens(2_906)
+        .output_tokens(15)
+        .total_tokens(2_921);
+    let fixed = apply_context(summed, None, Some(2_921), 2);
+    assert_eq!(fixed.context_tokens(), Some(2_921));
+    assert_eq!(fixed.input_tokens, Some(5_736));
 }
