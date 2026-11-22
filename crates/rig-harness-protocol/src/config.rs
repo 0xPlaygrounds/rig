@@ -265,6 +265,12 @@ and again once its entry changes: /mcp approve and /mcp deny.";
                 "ACP: `rig acp` serves the Agent Client Protocol on stdin and stdout, so an editor \
 such as Zed uses rig, each session in a process of its own, with the MCP servers \
 the editor names, and /mcp.";
+            off rig_bridge::BridgePlugin, "rig-bridge", "Other agents' CLIs",
+                ["linux", "macos"], None,
+                "Bridge: `claude-code/*`, `grok-build/*`, `antigravity/*`, `codex/*`, `muse/*` \
+and `copilot/*` models answered by the `claude`, `grok`, `agy`, `codex`, `muse` and `copilot` \
+programs with their own sign-ins, each run for inference alone: none of its tools, instructions \
+or memory, and rig's tools over MCP.";
         }
     };
 }

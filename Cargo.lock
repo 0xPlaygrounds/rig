@@ -14002,6 +14002,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "rig-bridge"
+version = "0.47.0"
+dependencies = [
+ "axum",
+ "base64 0.23.1",
+ "bevy_app",
+ "bevy_ecs",
+ "futures",
+ "rig-core",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "rig-candle"
 version = "0.47.0"
 dependencies = [
@@ -14146,6 +14164,7 @@ dependencies = [
  "bevy_reflect",
  "rig-acp",
  "rig-basics",
+ "rig-bridge",
  "rig-core",
  "rig-ecs",
  "rig-fold",

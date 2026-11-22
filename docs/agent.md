@@ -938,6 +938,14 @@ serves the Agent Client Protocol on stdin and stdout, so an editor such as Zed
 uses rig's models, tools, sessions and slash commands: `rig plugin enable
 rig_acp::AcpPlugin`. Its README has the editor's settings.
 
+The optional [`rig-bridge`](../plugins/rig-bridge) plugin adds `claude-code/*`,
+`grok-build/*`, `antigravity/*`, `codex/*`, `muse/*` and `copilot/*` models,
+answered by the Claude Code, Grok Build, Antigravity, Codex, Meta AI Muse and
+GitHub Copilot programs with the sign-ins those programs already have:
+`rig plugin enable rig_bridge::BridgePlugin`. Each program is run for
+inference alone, without its own tools, instructions or memory, and calls
+rig's tools, which rig runs. Its README says what each program is left with.
+
 Code mode is the optional [`rig-steel`](../plugins/rig-steel) plugin: a
 `run_steel` tool whose [Steel](https://github.com/mattwparas/steel) (Scheme)
 program calls the model's tools, loops and branches on what they return, in a

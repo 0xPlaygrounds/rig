@@ -1,0 +1,33 @@
+[package]
+name = "rig-bridge"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT"
+readme = "README.md"
+description = "Other coding agents' CLIs as model providers for the Rig coding agent: Claude Code, Grok Build, Antigravity and Codex answer with their own sign-ins, stripped to inference, and reach Rig's tools over MCP."
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[lints]
+workspace = true
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+# The loopback MCP server a harness reaches Rig's tools through.
+axum = { workspace = true }
+# An image a tool returned or a user sent, for the harness.
+base64 = { workspace = true }
+bevy_app = { workspace = true }
+bevy_ecs = { workspace = true }
+# The stream of notifications a harness holds open.
+futures = { workspace = true }
+rig-harness = { path = "../../crates/rig-harness", version = "0.47.0" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["rt", "net", "process", "sync", "time", "io-util", "macros"] }
+# A session's bearer token and directory name.
+uuid = { workspace = true, features = ["v4"] }
+
+[dev-dependencies]
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support", default-features = false }
+tokio = { workspace = true, features = ["rt-multi-thread", "io-util"] }
