@@ -452,12 +452,27 @@ impl Model {
         };
         let (mut session, warm_prompt) = match resumed {
             Some((session, is_prompt)) => (session, is_prompt),
-            None => (self.start(setup, &history).await?, false),
+            None => (self.start(setup.clone(), &history).await?, false),
         };
         if warm_prompt {
             session.prompts = session.prompts.saturating_add(1);
         }
-        let finish = session.answer(out, &self.bridge).await?;
+        let mut emitted = false;
+        let finish = match session.answer(out, &self.bridge, &mut emitted).await {
+            Ok(finish) => finish,
+            // Transparently recover once if a resumed warm prompt fails before
+            // streaming any output (e.g. corrupt session state or sudden exit).
+            Err(why) if warm_prompt && !emitted && !is_non_recoverable(&why) => {
+                self.bridge.record_note(
+                    self.vendor,
+                    format!("restarted warm session after error before output: {why}"),
+                );
+                drop(session);
+                session = self.start(setup, &history).await?;
+                session.answer(out, &self.bridge, &mut emitted).await?
+            }
+            Err(why) => return Err(why),
+        };
         session.turns = session.turns.saturating_add(1);
         if let Some(ctx) = finish.usage.context_tokens() {
             session.last_context_tokens = Some(ctx);
@@ -649,9 +664,30 @@ fn process_alive(pid: u32) -> bool {
     Path::new(&format!("/proc/{pid}")).exists()
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(target_os = "macos")]
+fn process_alive(pid: u32) -> bool {
+    std::process::Command::new("/bin/kill")
+        .env_clear()
+        .args(["-0", &pid.to_string()])
+        .output()
+        .map_or(true, |output| {
+            output.status.success()
+                || String::from_utf8_lossy(&output.stderr).contains("Operation not permitted")
+        })
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 fn process_alive(_pid: u32) -> bool {
     true
+}
+
+/// Errors on a warm prompt that represent deterministic rejections or
+/// cancellation rather than stale-session corruption and should not be retried.
+fn is_non_recoverable(why: &str) -> bool {
+    matches!(
+        why,
+        "the model refused to answer" | "the turn was cancelled" | "the tool server closed"
+    )
 }
 
 /// What a waiting session is sent to go on.
@@ -830,11 +866,13 @@ impl Session {
     }
 
     /// Streams the harness into `out` until its turn ends or it calls
-    /// tools, which stay open.
+    /// tools, which stay open. Sets `emitted` once any output or tool call is
+    /// forwarded to `out`.
     async fn answer(
         &mut self,
         out: &mpsc::UnboundedSender<Wrote>,
         bridge: &Bridge,
+        emitted: &mut bool,
     ) -> Result<Finish, String> {
         self.said = Said::default();
         let mut usage = Usage::new();
@@ -856,10 +894,14 @@ impl Session {
             tokio::select! {
                 event = self.running.events.recv() => match event {
                     Some(Event::Text(text)) => {
+                        *emitted = true;
                         self.said.text.push_str(&text);
                         let _ = out.send(Wrote::Text(text));
                     }
-                    Some(Event::Reasoning(text)) => drop(out.send(Wrote::Reasoning(text))),
+                    Some(Event::Reasoning(text)) => {
+                        *emitted = true;
+                        drop(out.send(Wrote::Reasoning(text)));
+                    }
                     Some(Event::Began) => counting = true,
                     Some(Event::Usage(counted)) => {
                         if let Some(ctx) = counted.context_tokens().filter(|tokens| *tokens > 0) {
@@ -899,6 +941,7 @@ impl Session {
                     let Some(Call { name, arguments, answer }) = call else {
                         return Err("the tool server closed".to_owned());
                     };
+                    *emitted = true;
                     self.said.calls.push((name.clone(), arguments.clone()));
                     let _ = out.send(Wrote::Call { name, arguments: Value::Object(arguments) });
                     self.open.push(answer);

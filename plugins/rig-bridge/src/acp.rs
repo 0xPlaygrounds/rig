@@ -15,7 +15,9 @@ use serde_json::{Value, json};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::mpsc;
 
-use crate::harness::{ContextSnapshot, Event, Harness, Launch, Part, Running, Stderr, spawn};
+use crate::harness::{
+    ContextSnapshot, Event, HANDSHAKE_TIMEOUT, Harness, Launch, Part, Running, Stderr, spawn,
+};
 use crate::rpc::Transport;
 
 #[cfg(test)]
@@ -170,7 +172,7 @@ impl<A: Agent> Harness for Acp<A> {
             let name = agent.name();
             let mut peer = Peer::new(pipes.stdout, pipes.stdin, events.clone(), agent);
             if let Err(why) = converse(&mut peer, opening, prompted).await {
-                let why = stderr.explain(&format!("{name}: {why}"));
+                let why = stderr.explain(&format!("{name}: {why}")).await;
                 let _ = events.send(Event::Done(Err(why)));
             }
         });
@@ -423,74 +425,10 @@ where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 {
-    let failed = |what: &str| {
-        let what = what.to_owned();
-        move |why: Failed| format!("{what}: {why}")
-    };
     let agent = peer.agent.clone();
-    let mut hello = json!({
-        "protocolVersion": 1,
-        "clientCapabilities": {
-            "fs": { "readTextFile": false, "writeTextFile": false },
-            "terminal": false,
-        },
-        "clientInfo": { "name": "rig", "title": "Rig", "version": env!("CARGO_PKG_VERSION") },
-    });
-    if let (Some(meta), Some(hello)) = (agent.initialize_meta(), hello.as_object_mut()) {
-        hello.insert("_meta".to_owned(), meta);
-    }
-    let initialized = peer
-        .request("initialize", hello)
+    let (session, mut system) = tokio::time::timeout(HANDSHAKE_TIMEOUT, handshake(peer, &opening))
         .await
-        .map_err(failed("it did not start"))?;
-    let meta = agent.session_meta(&initialized, &opening.system);
-    let mut system = meta.is_none().then(|| opening.system.clone());
-    let servers = if agent.serves_in_session() {
-        json!([{
-            "type": "http",
-            "name": SERVER,
-            "url": opening.mcp_url,
-            "headers": [{ "name": "Authorization", "value": format!("Bearer {}", opening.mcp_token) }],
-        }])
-    } else {
-        json!([])
-    };
-    let mut new = json!({ "cwd": opening.dir.to_string_lossy(), "mcpServers": servers });
-    if let (Some(meta), Some(new)) = (meta, new.as_object_mut()) {
-        new.insert("_meta".to_owned(), meta);
-    }
-    let opened = match peer.request("session/new", new.clone()).await {
-        Err(Failed::Refused {
-            code: AUTH_REQUIRED,
-            ..
-        }) => {
-            let not_signed_in = || format!("it is not signed in: run `{}`", agent.login_hint());
-            let method = agent.sign_in(&initialized).ok_or_else(not_signed_in)?;
-            peer.request("authenticate", json!({ "methodId": method }))
-                .await
-                .map_err(|_| not_signed_in())?;
-            peer.request("session/new", new).await
-        }
-        opened => opened,
-    }
-    .map_err(failed("it opened no session"))?;
-    let session = opened
-        .get("sessionId")
-        .and_then(Value::as_str)
-        .ok_or("it opened a session without an id")?
-        .to_owned();
-    agent.opened(&opening)?;
-    if let Some(window) = model_context_window(&opened, &opening.model) {
-        let _ = peer.events.send(Event::Context(ContextSnapshot {
-            used: None,
-            window: Some(window),
-        }));
-    }
-    for (method, params) in agent.choose(&session, &opened, &opening) {
-        peer.request(method, params)
-            .await
-            .map_err(failed(&format!("it refused the model `{}`", opening.model)))?;
-    }
+        .map_err(|_| "it did not finish starting in time".to_owned())??;
 
     loop {
         // Between prompts the agent may still send requests and updates.
@@ -548,6 +486,87 @@ where
         };
         let _ = peer.events.send(Event::Done(done));
     }
+}
+
+/// Runs the ACP startup handshake (`initialize`, `session/new`, optional auth,
+/// and model/effort selection).
+async fn handshake<R, W>(
+    peer: &mut Peer<R, W>,
+    opening: &Opening,
+) -> Result<(String, Option<String>), String>
+where
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin,
+{
+    let failed = |what: &str| {
+        let what = what.to_owned();
+        move |why: Failed| format!("{what}: {why}")
+    };
+    let agent = peer.agent.clone();
+    let mut hello = json!({
+        "protocolVersion": 1,
+        "clientCapabilities": {
+            "fs": { "readTextFile": false, "writeTextFile": false },
+            "terminal": false,
+        },
+        "clientInfo": { "name": "rig", "title": "Rig", "version": env!("CARGO_PKG_VERSION") },
+    });
+    if let (Some(meta), Some(hello)) = (agent.initialize_meta(), hello.as_object_mut()) {
+        hello.insert("_meta".to_owned(), meta);
+    }
+    let initialized = peer
+        .request("initialize", hello)
+        .await
+        .map_err(failed("it did not start"))?;
+    let meta = agent.session_meta(&initialized, &opening.system);
+    let system = meta.is_none().then(|| opening.system.clone());
+    let servers = if agent.serves_in_session() {
+        json!([{
+            "type": "http",
+            "name": SERVER,
+            "url": opening.mcp_url,
+            "headers": [{ "name": "Authorization", "value": format!("Bearer {}", opening.mcp_token) }],
+        }])
+    } else {
+        json!([])
+    };
+    let mut new = json!({ "cwd": opening.dir.to_string_lossy(), "mcpServers": servers });
+    if let (Some(meta), Some(new)) = (meta, new.as_object_mut()) {
+        new.insert("_meta".to_owned(), meta);
+    }
+    let opened = match peer.request("session/new", new.clone()).await {
+        Err(Failed::Refused {
+            code: AUTH_REQUIRED,
+            ..
+        }) => {
+            let not_signed_in = || format!("it is not signed in: run `{}`", agent.login_hint());
+            let method = agent.sign_in(&initialized).ok_or_else(not_signed_in)?;
+            peer.request("authenticate", json!({ "methodId": method }))
+                .await
+                .map_err(|_| not_signed_in())?;
+            peer.request("session/new", new).await
+        }
+        opened => opened,
+    }
+    .map_err(failed("it opened no session"))?;
+    let session = opened
+        .get("sessionId")
+        .and_then(Value::as_str)
+        .ok_or("it opened a session without an id")?
+        .to_owned();
+    agent.opened(opening)?;
+    if let Some(window) = model_context_window(&opened, &opening.model) {
+        let _ = peer.events.send(Event::Context(ContextSnapshot {
+            used: None,
+            window: Some(window),
+        }));
+    }
+    for (method, params) in agent.choose(&session, &opened, opening) {
+        peer.request(method, params)
+            .await
+            .map_err(failed(&format!("it refused the model `{}`", opening.model)))?;
+    }
+    Ok((session, system))
 }
 
 /// Extracts a model's declared context window from `session/new` metadata

@@ -50,8 +50,7 @@ fn agent_definition(system: &str) -> String {
 /// An effort level as `copilot --reasoning-effort` names it.
 fn level(effort: Effort) -> &'static str {
     match effort {
-        Effort::Minimal => "minimal",
-        Effort::Low => "low",
+        Effort::Minimal | Effort::Low => "low",
         Effort::Medium => "medium",
         Effort::High => "high",
         Effort::XHigh => "xhigh",

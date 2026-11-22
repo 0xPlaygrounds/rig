@@ -915,3 +915,290 @@ async fn idle_crashed_session_is_pruned_and_restarts_cleanly() {
     assert_eq!(said(second.as_ref()).0, "reply-1");
     assert_eq!(starts.load(Ordering::SeqCst), 2);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn warm_prompt_failing_before_output_recovers_on_fresh_session() {
+    struct FailWarmOnce {
+        starts: Arc<AtomicUsize>,
+        prompts_seen: Arc<Mutex<Vec<String>>>,
+    }
+    impl Harness for FailWarmOnce {
+        fn note(&self, _: Option<&std::path::Path>) -> String {
+            String::new()
+        }
+        fn start(&self, _: Launch<'_>) -> Result<Running, String> {
+            let run = self.starts.fetch_add(1, Ordering::SeqCst);
+            let prompts_seen = self.prompts_seen.clone();
+            let (prompts, mut prompted) = mpsc::unbounded_channel::<Vec<Part>>();
+            let (events, reported) = mpsc::unbounded_channel();
+            tokio::spawn(async move {
+                let mut turn = 0;
+                while let Some(parts) = prompted.recv().await {
+                    let text: String = parts
+                        .into_iter()
+                        .filter_map(|p| match p {
+                            Part::Text(t) => Some(t),
+                            Part::Image { .. } => None,
+                        })
+                        .collect();
+                    prompts_seen
+                        .lock()
+                        .unwrap_or_else(PoisonError::into_inner)
+                        .push(text);
+                    turn += 1;
+                    if run == 0 && turn == 2 {
+                        let _ = events
+                            .send(Event::Done(Err("corrupted thinking signature".to_owned())));
+                        return;
+                    }
+                    let _ = events.send(Event::Text(format!("run-{run}-turn-{turn}")));
+                    let _ = events.send(Event::Done(Ok(FinishReason::Stop)));
+                }
+            });
+            Ok(Running {
+                prompts,
+                events: reported,
+                _alive: Box::new(()),
+            })
+        }
+    }
+
+    let starts = Arc::new(AtomicUsize::new(0));
+    let prompts_seen = Arc::new(Mutex::new(Vec::new()));
+    let scratch =
+        std::env::temp_dir().join(format!("rig-bridge-test-{}", uuid::Uuid::new_v4().simple()));
+    let bridge = Arc::new(Bridge::new(
+        tokio::runtime::Handle::current(),
+        Processes::default(),
+        2,
+        None,
+        scratch,
+    ));
+    let model = Model {
+        bridge: bridge.clone(),
+        harness: Arc::new(FailWarmOnce {
+            starts: starts.clone(),
+            prompts_seen: prompts_seen.clone(),
+        }),
+        program: "flaky".into(),
+        vendor: Vendor::Antigravity,
+        model: "gemini-4-neon-high".to_owned(),
+        context_limit: Some(1_048_576),
+    };
+    let h1 = vec![Message::user("first")];
+    let first = answer(&model, asks("", &h1)).await;
+    assert_eq!(said(first.as_ref()).0, "run-0-turn-1");
+
+    let h2 = vec![
+        Message::user("first"),
+        Message::assistant("run-0-turn-1"),
+        Message::user("second"),
+    ];
+    let second = answer(&model, asks("", &h2)).await;
+    assert_eq!(said(second.as_ref()).0, "run-1-turn-1");
+    assert_eq!(starts.load(Ordering::SeqCst), 2);
+    let captured = prompts_seen
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clone();
+    assert_eq!(captured.len(), 3);
+    let replayed = captured.get(2).map(String::as_str).unwrap_or_default();
+    assert!(replayed.contains("first") && replayed.contains("second"));
+    let note = bridge
+        .snapshot()
+        .vendors
+        .get(&Vendor::Antigravity)
+        .and_then(|stats| stats.last_note.clone())
+        .unwrap_or_default();
+    assert!(
+        note.contains("corrupted thinking signature"),
+        "expected recovery note, got {note:?}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn warm_prompt_does_not_retry_after_partial_output_or_tool_call() {
+    #[derive(Clone, Copy)]
+    enum BeforeErr {
+        Text,
+        Reasoning,
+        ToolCall,
+    }
+    struct FailAfter {
+        mode: BeforeErr,
+        starts: Arc<AtomicUsize>,
+    }
+    impl Harness for FailAfter {
+        fn note(&self, _: Option<&std::path::Path>) -> String {
+            String::new()
+        }
+        fn start(&self, launch: Launch<'_>) -> Result<Running, String> {
+            let run = self.starts.fetch_add(1, Ordering::SeqCst);
+            let mode = self.mode;
+            let url = launch.mcp.url().to_owned();
+            let token = launch.mcp.token().to_owned();
+            let (prompts, mut prompted) = mpsc::unbounded_channel::<Vec<Part>>();
+            let (events, reported) = mpsc::unbounded_channel();
+            tokio::spawn(async move {
+                let mut turn = 0;
+                while prompted.recv().await.is_some() {
+                    turn += 1;
+                    if run == 0 && turn == 2 {
+                        match mode {
+                            BeforeErr::Text => {
+                                let _ = events.send(Event::Text("partial".to_owned()));
+                            }
+                            BeforeErr::Reasoning => {
+                                let _ = events.send(Event::Reasoning("thinking".to_owned()));
+                            }
+                            BeforeErr::ToolCall => {
+                                let _ = events.send(Event::Began);
+                                let req = request(
+                                    1,
+                                    "tools/call",
+                                    json!({ "name": "read", "arguments": { "path": "a" } }),
+                                );
+                                let url_c = url.clone();
+                                let tok_c = token.clone();
+                                tokio::spawn(async move {
+                                    let _ = post(&url_c, &tok_c, &req).await;
+                                });
+                                tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+                            }
+                        }
+                        let _ = events.send(Event::Done(Err("mid-turn boom".to_owned())));
+                        return;
+                    }
+                    let _ = events.send(Event::Text(format!("ok-{run}-{turn}")));
+                    let _ = events.send(Event::Done(Ok(FinishReason::Stop)));
+                }
+            });
+            Ok(Running {
+                prompts,
+                events: reported,
+                _alive: Box::new(()),
+            })
+        }
+    }
+
+    for mode in [BeforeErr::Text, BeforeErr::Reasoning, BeforeErr::ToolCall] {
+        let starts = Arc::new(AtomicUsize::new(0));
+        let scratch =
+            std::env::temp_dir().join(format!("rig-bridge-test-{}", uuid::Uuid::new_v4().simple()));
+        let bridge = Arc::new(Bridge::new(
+            tokio::runtime::Handle::current(),
+            Processes::default(),
+            2,
+            None,
+            scratch,
+        ));
+        let model = Model {
+            bridge,
+            harness: Arc::new(FailAfter {
+                mode,
+                starts: starts.clone(),
+            }),
+            program: "flaky".into(),
+            vendor: Vendor::Antigravity,
+            model: "gemini-4-neon-high".to_owned(),
+            context_limit: Some(1_048_576),
+        };
+        let h1 = vec![Message::user("first")];
+        assert_eq!(
+            said(answer(&model, asks("", &h1)).await.as_ref()).0,
+            "ok-0-1"
+        );
+
+        let h2 = vec![
+            Message::user("first"),
+            Message::assistant("ok-0-1"),
+            Message::user("second"),
+        ];
+        let outcome = reply(&model, asks("", &h2)).await.into_outcome().await;
+        assert!(
+            outcome.is_err(),
+            "partial-output failure must surface error"
+        );
+        assert_eq!(
+            starts.load(Ordering::SeqCst),
+            1,
+            "must not restart session after emitting output or tool call"
+        );
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn warm_prompt_retries_at_most_once_and_skips_non_recoverable_errors() {
+    struct AlwaysFailWarm {
+        starts: Arc<AtomicUsize>,
+        error: &'static str,
+    }
+    impl Harness for AlwaysFailWarm {
+        fn note(&self, _: Option<&std::path::Path>) -> String {
+            String::new()
+        }
+        fn start(&self, _: Launch<'_>) -> Result<Running, String> {
+            let run = self.starts.fetch_add(1, Ordering::SeqCst);
+            let error = self.error;
+            let (prompts, mut prompted) = mpsc::unbounded_channel::<Vec<Part>>();
+            let (events, reported) = mpsc::unbounded_channel();
+            tokio::spawn(async move {
+                let mut turn = 0;
+                while prompted.recv().await.is_some() {
+                    turn += 1;
+                    if run == 0 && turn == 1 {
+                        let _ = events.send(Event::Text("ok-0".to_owned()));
+                        let _ = events.send(Event::Done(Ok(FinishReason::Stop)));
+                    } else {
+                        let _ = events.send(Event::Done(Err(error.to_owned())));
+                        return;
+                    }
+                }
+            });
+            Ok(Running {
+                prompts,
+                events: reported,
+                _alive: Box::new(()),
+            })
+        }
+    }
+
+    for (error, expected_starts) in [
+        ("corrupted thinking signature", 2),
+        ("the model refused to answer", 1),
+        ("the turn was cancelled", 1),
+    ] {
+        let starts = Arc::new(AtomicUsize::new(0));
+        let scratch =
+            std::env::temp_dir().join(format!("rig-bridge-test-{}", uuid::Uuid::new_v4().simple()));
+        let bridge = Arc::new(Bridge::new(
+            tokio::runtime::Handle::current(),
+            Processes::default(),
+            2,
+            None,
+            scratch,
+        ));
+        let model = Model {
+            bridge,
+            harness: Arc::new(AlwaysFailWarm {
+                starts: starts.clone(),
+                error,
+            }),
+            program: "flaky".into(),
+            vendor: Vendor::Antigravity,
+            model: "gemini-4-neon-high".to_owned(),
+            context_limit: Some(1_048_576),
+        };
+        let h1 = vec![Message::user("first")];
+        assert_eq!(said(answer(&model, asks("", &h1)).await.as_ref()).0, "ok-0");
+
+        let h2 = vec![
+            Message::user("first"),
+            Message::assistant("ok-0"),
+            Message::user("second"),
+        ];
+        let outcome = reply(&model, asks("", &h2)).await.into_outcome().await;
+        assert!(outcome.is_err());
+        assert_eq!(starts.load(Ordering::SeqCst), expected_starts);
+    }
+}

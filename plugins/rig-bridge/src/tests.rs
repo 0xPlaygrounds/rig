@@ -1,8 +1,11 @@
+use std::ffi::OsStr;
+use std::path::Path;
+
 use rig_harness::rig_core::catalog::{Catalog, ModelSpec};
 use rig_harness::rig_core::providers::registry::ProviderId;
 
 use crate::harness::Vendor;
-use crate::plugin::enrich_limits;
+use crate::plugin::{enrich_limits, expand_home_with};
 
 #[test]
 fn enrich_limits_populates_context_windows_across_bridge_vendors() {
@@ -45,4 +48,31 @@ fn enrich_limits_populates_context_windows_across_bridge_vendors() {
     assert_eq!(check(Vendor::Copilot, "claude-sonnet-5.5"), Some(1_000_000));
     assert_eq!(check(Vendor::Copilot, "mai-code-2"), Some(200_000));
     assert_eq!(check(Vendor::Copilot, "auto"), None);
+}
+
+#[test]
+fn expand_home_resolves_tilde_prefix_only() {
+    let home = Some(OsStr::new("/home/tester"));
+    assert_eq!(expand_home_with(Path::new("agy"), home), Path::new("agy"));
+    assert_eq!(
+        expand_home_with(Path::new("/usr/bin/agy"), home),
+        Path::new("/usr/bin/agy")
+    );
+    assert_eq!(
+        expand_home_with(Path::new("~/.local/bin/agy"), home),
+        Path::new("/home/tester/.local/bin/agy")
+    );
+    assert_eq!(expand_home_with(Path::new("~"), home), Path::new("~"));
+    assert_eq!(
+        expand_home_with(Path::new("~other/bin/agy"), home),
+        Path::new("~other/bin/agy")
+    );
+    assert_eq!(
+        expand_home_with(Path::new("~/.local/bin/agy"), Some(OsStr::new(""))),
+        Path::new("~/.local/bin/agy")
+    );
+    assert_eq!(
+        expand_home_with(Path::new("~/.local/bin/agy"), None),
+        Path::new("~/.local/bin/agy")
+    );
 }
