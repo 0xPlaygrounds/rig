@@ -44,6 +44,10 @@ impl Drop for Ended {
 }
 
 impl Harness for Scripted {
+    fn note(&self) -> String {
+        "Tools are `x__read`.".to_owned()
+    }
+
     fn start(&self, launch: Launch<'_>) -> Result<Running, String> {
         let (prompts, mut prompted) = mpsc::unbounded_channel::<Vec<Part>>();
         let (events, reported) = mpsc::unbounded_channel();
@@ -386,7 +390,15 @@ async fn another_system_prompt_or_tool_set_is_another_harness() {
             .map(|(system, _)| system.clone())
             .collect()
     };
-    assert_eq!(systems, ["Be brief.", "Be thorough.", "Be brief."]);
+    // Each harness is told its own note after the system prompt.
+    assert_eq!(
+        systems,
+        [
+            "Be brief.\n\nTools are `x__read`.",
+            "Be thorough.\n\nTools are `x__read`.",
+            "Be brief.\n\nTools are `x__read`.",
+        ],
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]

@@ -39,6 +39,10 @@ impl Agent for Plain {
         "plain login"
     }
 
+    fn note(&self) -> String {
+        String::new()
+    }
+
     fn is_rig_tool(&self, tool_call: &Value) -> bool {
         tool_call.get("title").and_then(Value::as_str) == Some("rig")
     }

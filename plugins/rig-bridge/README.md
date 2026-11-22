@@ -56,7 +56,17 @@ the tools; the program is started with everything of its own turned off:
   `mcp__rig.<tool>`.
 
 Each program runs in an empty directory, never in your project, so it finds
-no project files to read on its own.
+no project files to read on its own. After rig's system prompt each model is
+told, in a sentence or two, how the program prefixes rig's tool names and,
+for Claude Code and Grok, that the working directory the program reports is
+that empty directory and not the project.
+
+Grok may still name that directory when asked where it works; its tool calls
+go through rig and act on the project all the same.
+
+What stays that rig cannot remove: the vendor's own system layer in front of
+rig's prompt on Codex; on Grok, the list of skills bundled with the program;
+and Codex and Antigravity call tools one at a time, never several at once.
 
 Rig's tools reach the program as one MCP server the plugin serves on loopback,
 named by a bearer token only that process is given. When the model calls a

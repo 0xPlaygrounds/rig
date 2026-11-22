@@ -284,10 +284,16 @@ impl Step {
             .map_err(|why| format!("could not serve the tools: {why}"))?;
         let (entry, calls) = server.open(setup.tools.clone());
         let dir = Dir::create().map_err(|why| format!("could not make a directory: {why}"))?;
+        let note = self.harness.note();
+        let system = match (setup.system.as_str(), note.as_str()) {
+            (system, "") => system.to_owned(),
+            ("", note) => note.to_owned(),
+            (system, note) => format!("{system}\n\n{note}"),
+        };
         let running = self.harness.start(Launch {
             command: self.bridge.processes.launcher().command(&setup.program),
             dir: &dir.0,
-            system: &setup.system,
+            system: &system,
             model: &setup.model,
             effort: setup.effort,
             mcp: &entry,

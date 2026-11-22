@@ -11,7 +11,7 @@ use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::mpsc;
 
-use crate::harness::{Event, Harness, Launch, Part, Running, Stderr, spawn};
+use crate::harness::{Event, Harness, Launch, Part, Running, Stderr, note, spawn};
 
 #[cfg(test)]
 mod tests;
@@ -46,6 +46,10 @@ const INHERITED: &[&str] = &[
 pub(crate) struct Claude;
 
 impl Harness for Claude {
+    fn note(&self) -> String {
+        note(&format!("mcp__{SERVER}__read"), "", true)
+    }
+
     fn start(&self, launch: Launch<'_>) -> Result<Running, String> {
         let Launch {
             mut command,

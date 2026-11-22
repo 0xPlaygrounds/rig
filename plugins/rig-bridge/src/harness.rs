@@ -80,6 +80,28 @@ pub(crate) trait Harness: Send + Sync + 'static {
     /// its own tools, instructions, memory or extensions, and Rig's tools
     /// as its only MCP server. Runs inside the tokio runtime.
     fn start(&self, launch: Launch<'_>) -> Result<Running, String>;
+
+    /// What the model must be told about this program, after Rig's system
+    /// prompt: the names it gives Rig's tools, and what else it says that
+    /// Rig's prompt does not mean.
+    fn note(&self) -> String;
+}
+
+/// The note on a program that shows the tool Rig calls `read` as `shown`
+/// and, when `scratch`, tells the model of a working directory of its own.
+pub(crate) fn note(shown: &str, how: &str, scratch: bool) -> String {
+    let mut note = format!(
+        "Your tools come from an MCP server named `rig`, so their names carry its prefix: \
+         the tool these instructions and the tools' descriptions call `read` is `{shown}` \
+         here{how}, and the others likewise."
+    );
+    if scratch {
+        note.push_str(
+            " The working directory this program reports to you is a scratch directory of \
+             its own, not the project: paths are as these instructions and the tools give them.",
+        );
+    }
+    note
 }
 
 /// The pipes of a process started with all three piped.

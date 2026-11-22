@@ -51,6 +51,9 @@ pub(crate) trait Agent: Send + Sync + 'static {
     /// already has, if it has one to offer.
     fn sign_in(&self, initialized: &Value) -> Option<String>;
 
+    /// What the model is told about the agent, after Rig's system prompt.
+    fn note(&self) -> String;
+
     /// What a person runs to sign in.
     fn login_hint(&self) -> &'static str;
 
@@ -110,6 +113,10 @@ pub(crate) trait Agent: Send + Sync + 'static {
 pub(crate) struct Acp<A>(pub Arc<A>);
 
 impl<A: Agent> Harness for Acp<A> {
+    fn note(&self) -> String {
+        self.0.note()
+    }
+
     fn start(&self, launch: Launch<'_>) -> Result<Running, String> {
         let Launch {
             mut command,

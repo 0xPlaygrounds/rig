@@ -136,6 +136,10 @@ impl Agent for Antigravity {
         "agy"
     }
 
+    fn note(&self) -> String {
+        crate::harness::note(&format!("mcp_{SERVER}_read"), "", false)
+    }
+
     fn is_rig_tool(&self, tool_call: &Value) -> bool {
         let name = tool_call.get("name").and_then(Value::as_str);
         name.is_some_and(|name| name.starts_with(&format!("mcp_{SERVER}_")))

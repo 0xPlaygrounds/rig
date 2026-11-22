@@ -179,6 +179,11 @@ impl Agent for Grok {
         "grok login"
     }
 
+    fn note(&self) -> String {
+        let how = ", found with `search_tool` and called with `use_tool`";
+        crate::harness::note(&format!("{SERVER}__read"), how, true)
+    }
+
     /// A call of one of the two tools that reach MCP servers, of which the
     /// session has Rig's alone, and of no tool of another server.
     fn is_rig_tool(&self, tool_call: &Value) -> bool {

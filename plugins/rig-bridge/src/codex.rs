@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader, Lines};
 use tokio::sync::mpsc;
 
-use crate::harness::{Event, Harness, Launch, Part, Running, Stderr, spawn};
+use crate::harness::{Event, Harness, Launch, Part, Running, Stderr, note, spawn};
 
 #[cfg(test)]
 mod tests;
@@ -136,6 +136,10 @@ fn signed_in() -> Option<PathBuf> {
 }
 
 impl Harness for Codex {
+    fn note(&self) -> String {
+        note(&format!("mcp__{SERVER}.read"), "", false)
+    }
+
     fn start(&self, launch: Launch<'_>) -> Result<Running, String> {
         let Launch {
             mut command,
