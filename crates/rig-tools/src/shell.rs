@@ -155,19 +155,18 @@ impl Tool for Shell {
     fn description(&self) -> String {
         let kept = match self.cut {
             Some(cut) => format!(
-                "; past {} lines or {} KB, its first and last lines and the lines with errors \
-                 or failures from between",
+                "; past {} lines or {} KB, keeps the head, tail, and error lines",
                 cut.lines,
                 cut.bytes / 1024
             ),
             None => String::new(),
         };
         format!(
-            "Run a shell command with `sh -c` in the current directory, or in cwd, and wait \
-             until it ends, however long it takes; set timeout_secs only for a command that may \
-             hang. Returns the exit code and stdout and stderr interleaved line by line{kept}. Each call starts a fresh `sh` with an \
-             empty stdin. Do not run what never ends, such as a server, in the foreground, and \
-             do not assume a git repository."
+            "Run a command with `sh -c` in the working directory (or `cwd`). Each call uses a \
+             fresh shell with empty stdin and waits until the command exits; set `timeout_secs` \
+             only if it may hang, and do not run never-ending commands such as servers. Returns \
+             the exit code with interleaved stdout and stderr{kept}. Do not assume a git \
+             repository."
         )
     }
 
