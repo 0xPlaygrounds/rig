@@ -129,16 +129,16 @@ impl Activity {
     }
 }
 
-/// Redacts what is sent: every secret rig-core's redaction finds, and each
-/// of `secrets`, such as the Linear token itself.
+/// Scrubs the plugin's own credentials, such as the Linear token, from what
+/// is sent. Other secrets are `rig_basics::redact::RedactPlugin`'s: with it
+/// on, they reach the records as placeholders already.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Redactor {
     secrets: Vec<String>,
 }
 
 impl Redactor {
-    /// Redacts these values besides what rig-core finds; empty ones are
-    /// left out.
+    /// Scrubs these values; empty ones are left out.
     pub(crate) fn new(secrets: impl IntoIterator<Item = String>) -> Self {
         Self {
             secrets: secrets
@@ -148,16 +148,16 @@ impl Redactor {
         }
     }
 
-    /// Redacts `secret` too.
+    /// Scrubs `secret` too.
     pub(crate) fn add(&mut self, secret: String) {
         if !secret.is_empty() {
             self.secrets.push(secret);
         }
     }
 
-    /// `text` redacted.
+    /// `text` scrubbed.
     pub(crate) fn text(&self, text: &str) -> String {
-        let mut text = rig_core::redact::text(text).into_owned();
+        let mut text = text.to_owned();
         for secret in &self.secrets {
             if text.contains(secret.as_str()) {
                 text = text.replace(secret.as_str(), REDACTED);

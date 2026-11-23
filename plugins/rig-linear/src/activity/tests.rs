@@ -464,13 +464,10 @@ fn a_secret_added_later_is_replaced() {
 }
 
 #[test]
-fn a_secret_rig_core_recognises_is_redacted() {
-    let key = "sk-ant-api03-abcdefghijklmnopqrstuvwxyz";
-    let token = format!("ghp_{}", "a1B2c3D4e5".repeat(4));
-    let text = Redactor::default().text(&format!("key {key} token {token}"));
-    assert!(!text.contains(key));
-    assert!(!text.contains(&token));
-    assert!(text.starts_with("key "));
+fn placeholders_and_other_text_pass_through_unchanged() {
+    let redactor = Redactor::new(["s3cret".to_owned()]);
+    let text = "uses \u{2039}SECRET_1\u{203a} and sk-ant-api03-abcdefghijklmnopqrstuvwxyz";
+    assert_eq!(redactor.text(text), text);
 }
 
 #[test]

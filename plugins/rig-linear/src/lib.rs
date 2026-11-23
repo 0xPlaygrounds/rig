@@ -326,7 +326,14 @@ impl Plugin for LinearPlugin {
             )
             .value("ID"),
         )
-        .add_secret(Secret::new(
+        .add_setting::<LinearSettings>("linear");
+        let env = |name: &str| std::env::var(name).ok();
+        // Only a run shown on Linear asks for its secrets, so a build with
+        // the plugin on prompts nobody else.
+        let Some(target) = target(app.world().get_resource::<Invoked>(), &env) else {
+            return;
+        };
+        app.add_secret(Secret::new(
             TOKEN_SECRET,
             "Linear access token or API key, empty to leave Linear off",
         ))
@@ -337,14 +344,13 @@ impl Plugin for LinearPlugin {
         .add_secret(Secret::new(
             CLIENT_SECRET_SECRET,
             "Linear OAuth client secret, empty unless signing in as an app",
-        ))
-        .add_setting::<LinearSettings>("linear");
+        ));
         let world = app.world();
         let Some(setup) = configure(
-            world.get_resource::<Invoked>(),
+            target,
             world.get_resource::<Secrets>(),
             world.get_resource::<LinearSettings>(),
-            &|name| std::env::var(name).ok(),
+            &env,
         ) else {
             return;
         };
@@ -373,23 +379,31 @@ impl Plugin for LinearPlugin {
     }
 }
 
-/// What the plugin starts with, or `None` when it lacks a token or a
-/// target: the flags before `env`'s variables, a session before an issue,
-/// an access token before client credentials.
+/// Text that is there and not blank.
+fn given(value: Option<String>) -> Option<String> {
+    value.filter(|value| !value.trim().is_empty())
+}
+
+/// The session the run shows on, if any: the options before `env`'s
+/// variables, a session before an issue.
+fn target(invoked: Option<&Invoked>, env: &dyn Fn(&str) -> Option<String>) -> Option<Target> {
+    let flag =
+        |name| given(invoked.and_then(|invoked| invoked.flag_value(name).map(str::to_owned)));
+    flag(SESSION_FLAG)
+        .map(Target::Session)
+        .or_else(|| flag(ISSUE_FLAG).map(Target::Issue))
+        .or_else(|| given(env(SESSION_ENV)).map(Target::Session))
+        .or_else(|| given(env(ISSUE_ENV)).map(Target::Issue))
+}
+
+/// What the plugin starts with on `target`, or `None` without a token: an
+/// access token before client credentials.
 fn configure(
-    invoked: Option<&Invoked>,
+    target: Target,
     secrets: Option<&Secrets>,
     settings: Option<&LinearSettings>,
     env: &dyn Fn(&str) -> Option<String>,
 ) -> Option<Setup> {
-    let given = |value: Option<String>| value.filter(|value| !value.trim().is_empty());
-    let flag =
-        |name| given(invoked.and_then(|invoked| invoked.flag_value(name).map(str::to_owned)));
-    let target = flag(SESSION_FLAG)
-        .map(Target::Session)
-        .or_else(|| flag(ISSUE_FLAG).map(Target::Issue))
-        .or_else(|| given(env(SESSION_ENV)).map(Target::Session))
-        .or_else(|| given(env(ISSUE_ENV)).map(Target::Issue))?;
     let secret = |name| given(secrets.and_then(|secrets| secrets.get(name).map(str::to_owned)));
     let defaults = LinearSettings::default();
     let settings = settings.unwrap_or(&defaults);

@@ -157,13 +157,11 @@ fn internal(root: &Path, target: &Path, step: &Step) -> Result<()> {
             // Redaction is one plugin's: no kernel crate or front calls the
             // detection library itself. Its other callers redact what they
             // record or export of their own.
-            const CALLERS: [&str; 5] = [
+            const CALLERS: [&str; 4] = [
                 "crates/rig-core/src/redact",
                 "crates/rig-cassette/src/http/",
                 "crates/rig-cassette/src/scrub.rs",
                 "plugins/rig-basics/src/redact",
-                // What it sends to Linear.
-                "plugins/rig-linear/src/activity.rs",
             ];
             let tested = |p: &str| {
                 p.ends_with("tests.rs")

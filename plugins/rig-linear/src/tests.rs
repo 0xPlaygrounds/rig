@@ -35,22 +35,21 @@ fn no_env(_: &str) -> Option<String> {
 #[test]
 fn without_a_token_or_a_target_it_is_off() {
     let token = Secrets::from_iter([(TOKEN_SECRET, "lin_api_key")]);
-    let issue = invoked(&[(ISSUE_FLAG, "ENG-1")]);
-    assert!(configure(Some(&issue), None, None, &no_env).is_none());
-    assert!(configure(None, Some(&token), None, &no_env).is_none());
+    let issue = || Target::Issue("ENG-1".to_owned());
+    assert_eq!(target(None, &no_env), None);
+    assert_eq!(target(Some(&invoked(&[(ISSUE_FLAG, " ")])), &no_env), None);
+    assert!(configure(issue(), None, None, &no_env).is_none());
     let empty = Secrets::from_iter([(TOKEN_SECRET, " ")]);
-    assert!(configure(Some(&issue), Some(&empty), None, &no_env).is_none());
+    assert!(configure(issue(), Some(&empty), None, &no_env).is_none());
     let half = Secrets::from_iter([(CLIENT_ID_SECRET, "client")]);
-    assert!(configure(Some(&issue), Some(&half), None, &no_env).is_none());
-    assert!(configure(Some(&issue), Some(&token), None, &no_env).is_some());
+    assert!(configure(issue(), Some(&half), None, &no_env).is_none());
+    assert!(configure(issue(), Some(&token), None, &no_env).is_some());
 }
 
 #[test]
 fn options_beat_variables_and_a_session_beats_an_issue() {
-    let token = Secrets::from_iter([(TOKEN_SECRET, "lin_api_key")]);
-    let target = |invoked: &Invoked, env: &dyn Fn(&str) -> Option<String>| {
-        configure(Some(invoked), Some(&token), None, env).map(|setup| setup.config.target)
-    };
+    let target =
+        |invoked: &Invoked, env: &dyn Fn(&str) -> Option<String>| target(Some(invoked), env);
     let env = |name: &str| match name {
         ISSUE_ENV => Some("ENV-1".to_owned()),
         SESSION_ENV => Some("env-session".to_owned()),
@@ -80,15 +79,14 @@ fn options_beat_variables_and_a_session_beats_an_issue() {
 
 #[test]
 fn an_access_token_beats_client_credentials_which_take_the_scope_setting() {
-    let issue = invoked(&[(ISSUE_FLAG, "ENG-1")]);
+    let issue = || Target::Issue("ENG-1".to_owned());
     let both = Secrets::from_iter([
         (TOKEN_SECRET, "token"),
         (CLIENT_ID_SECRET, "client"),
         (CLIENT_SECRET_SECRET, "secret"),
     ]);
     let credentials = |secrets: &Secrets, settings: Option<&LinearSettings>| {
-        configure(Some(&issue), Some(secrets), settings, &no_env)
-            .map(|setup| setup.config.credentials)
+        configure(issue(), Some(secrets), settings, &no_env).map(|setup| setup.config.credentials)
     };
     assert_eq!(
         credentials(&both, None),
@@ -133,7 +131,6 @@ fn the_plan_file_replaces_the_settings_plan_and_a_bad_one_does_not() {
     .ok();
     std::fs::write(&bad, "[[plan]]\ncontents = \"typo\"\n").ok();
     let token = Secrets::from_iter([(TOKEN_SECRET, "lin_api_key")]);
-    let issue = invoked(&[(ISSUE_FLAG, "ENG-1")]);
     let settings = LinearSettings {
         plan: vec![PlanStep {
             content: "From settings".to_owned(),
@@ -144,7 +141,8 @@ fn the_plan_file_replaces_the_settings_plan_and_a_bad_one_does_not() {
     let plan = |path: &std::path::Path| {
         let path = path.display().to_string();
         let env = move |name: &str| (name == PLAN_ENV).then(|| path.clone());
-        configure(Some(&issue), Some(&token), Some(&settings), &env).map(|setup| setup.plan)
+        let issue = Target::Issue("ENG-1".to_owned());
+        configure(issue, Some(&token), Some(&settings), &env).map(|setup| setup.plan)
     };
     assert_eq!(
         plan(&good),
@@ -193,8 +191,30 @@ fn the_settings_read_from_the_linear_table() {
     );
 }
 
+/// The secrets the app asks for.
+fn secrets_asked(app: &mut App) -> Vec<&'static str> {
+    let mut secrets = app.world_mut().query::<&Secret>();
+    secrets
+        .iter(app.world())
+        .map(|secret| secret.name)
+        .collect()
+}
+
 #[test]
-fn off_it_declares_its_options_and_secrets_but_adds_no_tool_state_or_section() {
+fn without_a_target_it_asks_for_no_secret() {
+    let mut app = App::new();
+    app.insert_resource(invoked(&[]))
+        .insert_resource(Secrets::default())
+        .add_plugins(LinearPlugin);
+    app.finish();
+    if std::env::var_os(ISSUE_ENV).is_none() && std::env::var_os(SESSION_ENV).is_none() {
+        assert_eq!(secrets_asked(&mut app), Vec::<&str>::new());
+    }
+    assert!(!app.world().contains_resource::<Linear>());
+}
+
+#[test]
+fn with_a_target_but_no_token_it_asks_for_secrets_but_adds_no_tool_state_or_section() {
     let mut app = App::new();
     app.insert_resource(invoked(&[(ISSUE_FLAG, "ENG-1")]))
         .insert_resource(Secrets::default())
@@ -205,13 +225,8 @@ fn off_it_declares_its_options_and_secrets_but_adds_no_tool_state_or_section() {
     let mut flags = app.world_mut().query::<&Flag>();
     let names: Vec<&str> = flags.iter(app.world()).map(|flag| flag.name).collect();
     assert_eq!(names, [ISSUE_FLAG, SESSION_FLAG]);
-    let mut secrets = app.world_mut().query::<&Secret>();
-    let names: Vec<&str> = secrets
-        .iter(app.world())
-        .map(|secret| secret.name)
-        .collect();
     assert_eq!(
-        names,
+        secrets_asked(&mut app),
         [TOKEN_SECRET, CLIENT_ID_SECRET, CLIENT_SECRET_SECRET]
     );
     let mut tools = app.world_mut().query::<&ToolDef>();

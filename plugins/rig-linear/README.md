@@ -32,10 +32,10 @@ nothing more for the rest of the run.
   application's client credentials, exchanged once at startup for an app
   token, with the scopes `[linear] scope` names.
 
-A secret reaches the agent as `RIG_SECRET_LINEAR`,
-`RIG_SECRET_LINEAR_CLIENT_ID` and `RIG_SECRET_LINEAR_CLIENT_SECRET`. On a
-terminal the launcher asks for each one the environment does not hold; an
-empty answer leaves it out.
+Give them in the environment as `RIG_SECRET_LINEAR`,
+`RIG_SECRET_LINEAR_CLIENT_ID` and `RIG_SECRET_LINEAR_CLIENT_SECRET`. The
+plugin asks for them only in a build that is given a target, so enabling
+it makes rig prompt nobody who does not use Linear.
 
 ## Target
 
@@ -115,8 +115,10 @@ coalesced to the last. A 429 is sent again after its `Retry-After`. When
 nothing was sent for `heartbeat_minutes`, a passing "Still working…" thought
 keeps the session from going stale. A failure is a warning and never stops
 or slows the run. On exit the plugin waits at most 10 s for the queue.
-Every string sent goes through rig-core's redaction, and the token is
-redacted too.
+The plugin's own token and client secret are scrubbed from everything it
+sends. Other secrets are `rig_basics::redact::RedactPlugin`'s: with it on,
+they reach the records, and so Linear, as `‹SECRET_n›` placeholders.
+Without it nothing else is redacted.
 
 ## Smoke test
 
