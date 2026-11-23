@@ -15,7 +15,7 @@ works in rig without an API key:
 | `antigravity/` | Antigravity (`agy`) | Agent Client Protocol, `agy acp` | what `agy models` lists |
 | `codex/` | Codex (`codex`) | its app server, `codex app-server` | what `codex debug models` lists |
 | `muse/` | Meta AI Muse (`muse`) | MSP session host, `muse serve` | what `muse exec --list-models` lists |
-| `copilot/` | GitHub Copilot CLI (`copilot`) | Agent Client Protocol, `copilot --acp` | what Copilot's `session/new` advertises |
+| `copilot-cli/` | GitHub Copilot CLI (`copilot`) | Agent Client Protocol, `copilot --acp` | what Copilot's `session/new` advertises |
 
 ```bash
 rig plugin enable rig_bridge::BridgePlugin

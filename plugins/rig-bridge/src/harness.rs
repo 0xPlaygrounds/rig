@@ -35,7 +35,7 @@ impl Vendor {
             Self::Antigravity => "antigravity",
             Self::Codex => "codex",
             Self::Muse => "muse",
-            Self::Copilot => "copilot",
+            Self::Copilot => "copilot-cli",
         }
     }
 

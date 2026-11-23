@@ -52,6 +52,28 @@ fn enrich_limits_populates_context_windows_across_bridge_vendors() {
 }
 
 #[test]
+fn bridge_vendor_names_do_not_collide_with_builtin_catalog_vendors() {
+    let catalog = Catalog::builtin();
+    assert_eq!(Vendor::Copilot.as_str(), "copilot-cli");
+    for vendor in [
+        Vendor::ClaudeCode,
+        Vendor::GrokBuild,
+        Vendor::Antigravity,
+        Vendor::Codex,
+        Vendor::Muse,
+        Vendor::Copilot,
+    ] {
+        assert!(
+            !catalog
+                .iter()
+                .any(|spec| spec.provider.vendor() == vendor.as_str()),
+            "bridge vendor `{}` must not collide with a built-in catalog vendor",
+            vendor.as_str()
+        );
+    }
+}
+
+#[test]
 fn expand_home_resolves_tilde_prefix_only() {
     let home = Some(OsStr::new("/home/tester"));
     assert_eq!(expand_home_with(Path::new("agy"), home), Path::new("agy"));
