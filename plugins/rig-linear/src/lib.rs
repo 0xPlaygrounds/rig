@@ -73,7 +73,7 @@ pub const OUTCOME_TOOL: &str = "report_outcome";
 pub const DEFAULT_API_URL: &str = "https://api.linear.app/graphql";
 
 /// The scopes the client credentials ask for by default.
-pub const DEFAULT_SCOPE: &str = "read,comments:create,issues:create,app:assignable,app:mentionable";
+pub const DEFAULT_SCOPE: &str = "read,write,app:assignable,app:mentionable";
 
 /// The label of the session's own link, which the plugin publishes as a
 /// [`SessionLink`].

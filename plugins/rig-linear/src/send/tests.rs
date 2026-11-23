@@ -295,6 +295,20 @@ fn a_failed_request_is_dropped_and_the_next_one_still_goes() {
 }
 
 #[test]
+fn a_refused_session_is_warned_in_linears_words() {
+    let said = ApiError::Reply("agent sessions disabled".to_owned());
+    assert_eq!(
+        refused(&said),
+        "Linear refused the agent session: agent sessions disabled. Is the app configured for \
+         agent sessions?"
+    );
+    assert_eq!(
+        refused(&ApiError::Timeout),
+        "Linear: the agent session could not start: no reply within 10 s"
+    );
+}
+
+#[test]
 fn a_session_that_cannot_start_answers_the_close_and_sends_nothing_more() {
     let linear = StandIn::scripted(|_, _| Some((401, Vec::new(), "{}".to_owned())));
     let target = Target::Issue("ENG-1".to_owned());

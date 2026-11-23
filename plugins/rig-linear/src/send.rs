@@ -136,11 +136,9 @@ pub(crate) async fn run(
     let mut sender = match start(&config, &http, &redactor).await {
         Ok(sender) => sender,
         Err(why) => {
-            warn!(
-                "Linear: the agent session could not start: {}",
-                redactor.text(&why.to_string())
-            );
-            // Answer the close, if one comes, at once.
+            warn!("{}", redactor.text(&refused(&why)));
+            // Nothing more is sent this run: answer the close, if one comes,
+            // at once.
             while let Ok(job) = jobs.recv().await {
                 if let Job::Close(done) = job {
                     done.send(()).ok();
@@ -165,6 +163,18 @@ pub(crate) async fn run(
         sender.send(Job::Plan(plan)).await;
     }
     sender.serve(jobs, config.heartbeat).await;
+}
+
+/// The warning for a session that could not start: Linear's own words when
+/// it refused, which name a missing scope or an app not set up for agent
+/// sessions.
+pub(crate) fn refused(why: &ApiError) -> String {
+    match why {
+        ApiError::Reply(said) => format!(
+            "Linear refused the agent session: {said}. Is the app configured for agent sessions?"
+        ),
+        why => format!("Linear: the agent session could not start: {why}"),
+    }
 }
 
 /// Signs in and creates or attaches to the session.

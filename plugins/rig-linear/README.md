@@ -13,6 +13,17 @@ rig plugin enable rig_linear::LinearPlugin
 On, it does nothing and sends nothing unless it has both a token and a
 target.
 
+## Setup
+
+Agent sessions need an OAuth application that Linear treats as an agent:
+in the application's settings, turn webhooks on with the "Agent session
+events" category, as Linear's agent documentation describes. Until then
+Linear answers "agent sessions disabled". The token needs the `write`
+scope, which the default `[linear] scope` asks for; without it every agent
+session request fails with "Invalid scope: `write` required". When Linear
+refuses the session, the plugin warns once with Linear's message and sends
+nothing more for the rest of the run.
+
 ## Token
 
 - The secret `linear`: an OAuth access token, an app token, or a personal API
@@ -41,7 +52,7 @@ An option wins over a variable, and a session over an issue.
 [linear]
 api_url = "https://api.linear.app/graphql" # the OAuth token endpoint is /oauth/token on its origin
 heartbeat_minutes = 10
-scope = "read,comments:create,issues:create,app:assignable,app:mentionable"
+scope = "read,write,app:assignable,app:mentionable"
 
 [[linear.plan]]
 content = "Reproduce the bug"
