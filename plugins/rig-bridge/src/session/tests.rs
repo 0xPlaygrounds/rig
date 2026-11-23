@@ -785,103 +785,71 @@ async fn duplicate_tool_results_do_not_reuse_waiting_session() {
     assert_eq!(prompts(&seen).len(), 2);
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn counting_tool_call_without_usage_settles_on_watchdog() {
-    struct SilentCounter;
-    impl Harness for SilentCounter {
-        fn note(&self, _: Option<&std::path::Path>) -> String {
-            String::new()
-        }
-        fn start(&self, launch: Launch<'_>) -> Result<Running, String> {
-            let (prompts, mut prompted) = mpsc::unbounded_channel::<Prompt>();
-            let (events, reported) = mpsc::unbounded_channel();
-            let (url, token) = (launch.mcp.url().to_owned(), launch.mcp.token().to_owned());
-            tokio::spawn(async move {
-                if prompted.recv().await.is_some() {
-                    // Emit Began and invoke a tool, but never send Event::Usage.
-                    let _ = events.send(Event::Began);
-                    let call = request(
-                        1,
-                        "tools/call",
-                        json!({ "name": "read", "arguments": { "path": "a.txt" } }),
-                    );
-                    let _ = post(&url, &token, &call).await;
-                    let _ = events.send(Event::Done(Ok(FinishReason::Stop)));
-                }
-            });
-            Ok(Running {
-                prompts,
-                events: reported,
-                _alive: Box::new(()),
-            })
-        }
-    }
-
-    let scratch =
-        std::env::temp_dir().join(format!("rig-bridge-test-{}", uuid::Uuid::new_v4().simple()));
-    let bridge = Bridge::new(
-        tokio::runtime::Handle::current(),
-        Processes::default(),
-        2,
-        None,
-        scratch,
-    );
-    let model = Model {
-        bridge: Arc::new(bridge),
-        harness: Arc::new(SilentCounter),
-        program: "silent".into(),
-        vendor: Vendor::ClaudeCode,
-        model: "model-1".to_owned(),
-        context_limit: Some(200_000),
-    };
-    let reply = tokio::time::timeout(
-        std::time::Duration::from_secs(4),
-        answer(&model, asks("", &[Message::user("go")])),
-    )
-    .await;
-    assert!(
-        reply.is_ok(),
-        "counting watchdog must settle instead of hanging"
-    );
-    let called = reply.ok().flatten();
-    assert_eq!(said(called.as_ref()).1.len(), 1);
+/// Closure-backed test harness that records how many sessions started and
+/// runs `run(start_index, mcp_url, mcp_token, prompts, events)` per session.
+struct FnHarness<F> {
+    starts: Arc<AtomicUsize>,
+    dynamic_effort: bool,
+    run: Arc<F>,
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn idle_crashed_session_is_pruned_and_restarts_cleanly() {
-    struct DieAfterFirst {
-        starts: Arc<AtomicUsize>,
+impl<F, Fut> Harness for FnHarness<F>
+where
+    F: Fn(
+            usize,
+            String,
+            String,
+            mpsc::UnboundedReceiver<Prompt>,
+            mpsc::UnboundedSender<Event>,
+        ) -> Fut
+        + Send
+        + Sync
+        + 'static,
+    Fut: std::future::Future<Output = ()> + Send + 'static,
+{
+    fn note(&self, _: Option<&std::path::Path>) -> String {
+        String::new()
     }
-    impl Harness for DieAfterFirst {
-        fn note(&self, _: Option<&std::path::Path>) -> String {
-            String::new()
-        }
-        fn start(&self, _: Launch<'_>) -> Result<Running, String> {
-            let run = self.starts.fetch_add(1, Ordering::SeqCst);
-            let (prompts, mut prompted) = mpsc::unbounded_channel::<Prompt>();
-            let (events, reported) = mpsc::unbounded_channel();
-            tokio::spawn(async move {
-                if prompted.recv().await.is_some() {
-                    let _ = events.send(Event::Text(format!("reply-{run}")));
-                    let _ = events.send(Event::Done(Ok(FinishReason::Stop)));
-                }
-                if run == 0 {
-                    // Simulate the idle harness crashing right after turn 1.
-                    return;
-                }
-                while prompted.recv().await.is_some() {
-                    let _ = events.send(Event::Text(format!("reply-{run}-next")));
-                    let _ = events.send(Event::Done(Ok(FinishReason::Stop)));
-                }
-            });
-            Ok(Running {
-                prompts,
-                events: reported,
-                _alive: Box::new(()),
-            })
-        }
+    fn changes_effort(&self) -> bool {
+        self.dynamic_effort
     }
+    fn start(&self, launch: Launch<'_>) -> Result<Running, String> {
+        let run = self.starts.fetch_add(1, Ordering::SeqCst);
+        let (prompts, prompted) = mpsc::unbounded_channel::<Prompt>();
+        let (events, reported) = mpsc::unbounded_channel();
+        tokio::spawn((self.run)(
+            run,
+            launch.mcp.url().to_owned(),
+            launch.mcp.token().to_owned(),
+            prompted,
+            events,
+        ));
+        Ok(Running {
+            prompts,
+            events: reported,
+            _alive: Box::new(()),
+        })
+    }
+}
 
+fn fn_model<F, Fut>(
+    vendor: Vendor,
+    dynamic_effort: bool,
+    run: F,
+) -> (Arc<Bridge>, Model, Arc<AtomicUsize>)
+where
+    F: Fn(
+            usize,
+            String,
+            String,
+            mpsc::UnboundedReceiver<Prompt>,
+            mpsc::UnboundedSender<Event>,
+        ) -> Fut
+        + Send
+        + Sync
+        + 'static,
+    Fut: std::future::Future<Output = ()> + Send + 'static,
+{
     let starts = Arc::new(AtomicUsize::new(0));
     let scratch =
         std::env::temp_dir().join(format!("rig-bridge-test-{}", uuid::Uuid::new_v4().simple()));
@@ -893,18 +861,75 @@ async fn idle_crashed_session_is_pruned_and_restarts_cleanly() {
         scratch,
     ));
     let model = Model {
-        bridge,
-        harness: Arc::new(DieAfterFirst {
+        bridge: bridge.clone(),
+        harness: Arc::new(FnHarness {
             starts: starts.clone(),
+            dynamic_effort,
+            run: Arc::new(run),
         }),
-        program: "crashy".into(),
-        vendor: Vendor::ClaudeCode,
+        program: "test".into(),
+        vendor,
         model: "model-1".to_owned(),
         context_limit: Some(200_000),
     };
+    (bridge, model, starts)
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn counting_tool_call_without_usage_settles_on_watchdog() {
+    let (_, model, _) = fn_model(
+        Vendor::ClaudeCode,
+        false,
+        |_, url, token, mut prompted, events| async move {
+            if prompted.recv().await.is_some() {
+                // Emit Began and invoke a tool, but never send Event::Usage.
+                let _ = events.send(Event::Began);
+                let call = request(
+                    1,
+                    "tools/call",
+                    json!({ "name": "read", "arguments": { "path": "a.txt" } }),
+                );
+                let _ = post(&url, &token, &call).await;
+                let _ = events.send(Event::Done(Ok(FinishReason::Stop)));
+            }
+        },
+    );
+    let reply = tokio::time::timeout(
+        std::time::Duration::from_secs(4),
+        answer(&model, asks("", &[Message::user("go")])),
+    )
+    .await;
+    assert!(
+        reply.is_ok(),
+        "counting watchdog must settle instead of hanging"
+    );
+    assert_eq!(said(reply.ok().flatten().as_ref()).1.len(), 1);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn idle_crashed_session_is_pruned_and_restarts_cleanly() {
+    let (_, model, starts) = fn_model(
+        Vendor::ClaudeCode,
+        false,
+        |run, _, _, mut prompted, events| async move {
+            if prompted.recv().await.is_some() {
+                let _ = events.send(Event::Text(format!("reply-{run}")));
+                let _ = events.send(Event::Done(Ok(FinishReason::Stop)));
+            }
+            if run == 0 {
+                return;
+            }
+            while prompted.recv().await.is_some() {
+                let _ = events.send(Event::Text(format!("reply-{run}-next")));
+                let _ = events.send(Event::Done(Ok(FinishReason::Stop)));
+            }
+        },
+    );
     let h1 = vec![Message::user("first")];
-    let first = answer(&model, asks("", &h1)).await;
-    assert_eq!(said(first.as_ref()).0, "reply-0");
+    assert_eq!(
+        said(answer(&model, asks("", &h1)).await.as_ref()).0,
+        "reply-0"
+    );
     tokio::task::yield_now().await;
 
     let h2 = vec![
@@ -912,27 +937,23 @@ async fn idle_crashed_session_is_pruned_and_restarts_cleanly() {
         Message::assistant("reply-0"),
         Message::user("second"),
     ];
-    let second = answer(&model, asks("", &h2)).await;
-    assert_eq!(said(second.as_ref()).0, "reply-1");
+    assert_eq!(
+        said(answer(&model, asks("", &h2)).await.as_ref()).0,
+        "reply-1"
+    );
     assert_eq!(starts.load(Ordering::SeqCst), 2);
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn warm_prompt_failing_before_output_recovers_on_fresh_session() {
-    struct FailWarmOnce {
-        starts: Arc<AtomicUsize>,
-        prompts_seen: Arc<Mutex<Vec<String>>>,
-    }
-    impl Harness for FailWarmOnce {
-        fn note(&self, _: Option<&std::path::Path>) -> String {
-            String::new()
-        }
-        fn start(&self, _: Launch<'_>) -> Result<Running, String> {
-            let run = self.starts.fetch_add(1, Ordering::SeqCst);
-            let prompts_seen = self.prompts_seen.clone();
-            let (prompts, mut prompted) = mpsc::unbounded_channel::<Prompt>();
-            let (events, reported) = mpsc::unbounded_channel();
-            tokio::spawn(async move {
+    let prompts_seen = Arc::new(Mutex::new(Vec::new()));
+    let captured_in = prompts_seen.clone();
+    let (bridge, model, starts) = fn_model(
+        Vendor::Antigravity,
+        false,
+        move |run, _, _, mut prompted, events| {
+            let prompts_seen = captured_in.clone();
+            async move {
                 let mut turn = 0;
                 while let Some(prompt) = prompted.recv().await {
                     let text: String = prompt
@@ -956,48 +977,24 @@ async fn warm_prompt_failing_before_output_recovers_on_fresh_session() {
                     let _ = events.send(Event::Text(format!("run-{run}-turn-{turn}")));
                     let _ = events.send(Event::Done(Ok(FinishReason::Stop)));
                 }
-            });
-            Ok(Running {
-                prompts,
-                events: reported,
-                _alive: Box::new(()),
-            })
-        }
-    }
-
-    let starts = Arc::new(AtomicUsize::new(0));
-    let prompts_seen = Arc::new(Mutex::new(Vec::new()));
-    let scratch =
-        std::env::temp_dir().join(format!("rig-bridge-test-{}", uuid::Uuid::new_v4().simple()));
-    let bridge = Arc::new(Bridge::new(
-        tokio::runtime::Handle::current(),
-        Processes::default(),
-        2,
-        None,
-        scratch,
-    ));
-    let model = Model {
-        bridge: bridge.clone(),
-        harness: Arc::new(FailWarmOnce {
-            starts: starts.clone(),
-            prompts_seen: prompts_seen.clone(),
-        }),
-        program: "flaky".into(),
-        vendor: Vendor::Antigravity,
-        model: "gemini-4-neon-high".to_owned(),
-        context_limit: Some(1_048_576),
-    };
+            }
+        },
+    );
     let h1 = vec![Message::user("first")];
-    let first = answer(&model, asks("", &h1)).await;
-    assert_eq!(said(first.as_ref()).0, "run-0-turn-1");
+    assert_eq!(
+        said(answer(&model, asks("", &h1)).await.as_ref()).0,
+        "run-0-turn-1"
+    );
 
     let h2 = vec![
         Message::user("first"),
         Message::assistant("run-0-turn-1"),
         Message::user("second"),
     ];
-    let second = answer(&model, asks("", &h2)).await;
-    assert_eq!(said(second.as_ref()).0, "run-1-turn-1");
+    assert_eq!(
+        said(answer(&model, asks("", &h2)).await.as_ref()).0,
+        "run-1-turn-1"
+    );
     assert_eq!(starts.load(Ordering::SeqCst), 2);
     let captured = prompts_seen
         .lock()
@@ -1026,22 +1023,11 @@ async fn warm_prompt_does_not_retry_after_partial_output_or_tool_call() {
         Reasoning,
         ToolCall,
     }
-    struct FailAfter {
-        mode: BeforeErr,
-        starts: Arc<AtomicUsize>,
-    }
-    impl Harness for FailAfter {
-        fn note(&self, _: Option<&std::path::Path>) -> String {
-            String::new()
-        }
-        fn start(&self, launch: Launch<'_>) -> Result<Running, String> {
-            let run = self.starts.fetch_add(1, Ordering::SeqCst);
-            let mode = self.mode;
-            let url = launch.mcp.url().to_owned();
-            let token = launch.mcp.token().to_owned();
-            let (prompts, mut prompted) = mpsc::unbounded_channel::<Prompt>();
-            let (events, reported) = mpsc::unbounded_channel();
-            tokio::spawn(async move {
+    for mode in [BeforeErr::Text, BeforeErr::Reasoning, BeforeErr::ToolCall] {
+        let (_, model, starts) = fn_model(
+            Vendor::Antigravity,
+            false,
+            move |run, url, token, mut prompted, events| async move {
                 let mut turn = 0;
                 while prompted.recv().await.is_some() {
                     turn += 1;
@@ -1060,10 +1046,8 @@ async fn warm_prompt_does_not_retry_after_partial_output_or_tool_call() {
                                     "tools/call",
                                     json!({ "name": "read", "arguments": { "path": "a" } }),
                                 );
-                                let url_c = url.clone();
-                                let tok_c = token.clone();
                                 tokio::spawn(async move {
-                                    let _ = post(&url_c, &tok_c, &req).await;
+                                    let _ = post(&url, &token, &req).await;
                                 });
                                 tokio::time::sleep(std::time::Duration::from_millis(30)).await;
                             }
@@ -1074,37 +1058,8 @@ async fn warm_prompt_does_not_retry_after_partial_output_or_tool_call() {
                     let _ = events.send(Event::Text(format!("ok-{run}-{turn}")));
                     let _ = events.send(Event::Done(Ok(FinishReason::Stop)));
                 }
-            });
-            Ok(Running {
-                prompts,
-                events: reported,
-                _alive: Box::new(()),
-            })
-        }
-    }
-
-    for mode in [BeforeErr::Text, BeforeErr::Reasoning, BeforeErr::ToolCall] {
-        let starts = Arc::new(AtomicUsize::new(0));
-        let scratch =
-            std::env::temp_dir().join(format!("rig-bridge-test-{}", uuid::Uuid::new_v4().simple()));
-        let bridge = Arc::new(Bridge::new(
-            tokio::runtime::Handle::current(),
-            Processes::default(),
-            2,
-            None,
-            scratch,
-        ));
-        let model = Model {
-            bridge,
-            harness: Arc::new(FailAfter {
-                mode,
-                starts: starts.clone(),
-            }),
-            program: "flaky".into(),
-            vendor: Vendor::Antigravity,
-            model: "gemini-4-neon-high".to_owned(),
-            context_limit: Some(1_048_576),
-        };
+            },
+        );
         let h1 = vec![Message::user("first")];
         assert_eq!(
             said(answer(&model, asks("", &h1)).await.as_ref()).0,
@@ -1116,9 +1071,12 @@ async fn warm_prompt_does_not_retry_after_partial_output_or_tool_call() {
             Message::assistant("ok-0-1"),
             Message::user("second"),
         ];
-        let outcome = reply(&model, asks("", &h2)).await.into_outcome().await;
         assert!(
-            outcome.is_err(),
+            reply(&model, asks("", &h2))
+                .await
+                .into_outcome()
+                .await
+                .is_err(),
             "partial-output failure must surface error"
         );
         assert_eq!(
@@ -1131,20 +1089,15 @@ async fn warm_prompt_does_not_retry_after_partial_output_or_tool_call() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn warm_prompt_retries_at_most_once_and_skips_non_recoverable_errors() {
-    struct AlwaysFailWarm {
-        starts: Arc<AtomicUsize>,
-        error: &'static str,
-    }
-    impl Harness for AlwaysFailWarm {
-        fn note(&self, _: Option<&std::path::Path>) -> String {
-            String::new()
-        }
-        fn start(&self, _: Launch<'_>) -> Result<Running, String> {
-            let run = self.starts.fetch_add(1, Ordering::SeqCst);
-            let error = self.error;
-            let (prompts, mut prompted) = mpsc::unbounded_channel::<Prompt>();
-            let (events, reported) = mpsc::unbounded_channel();
-            tokio::spawn(async move {
+    for (error, expected_starts) in [
+        ("corrupted thinking signature", 2),
+        ("the model refused to answer", 1),
+        ("the turn was cancelled", 1),
+    ] {
+        let (_, model, starts) = fn_model(
+            Vendor::Antigravity,
+            false,
+            move |run, _, _, mut prompted, events| async move {
                 let mut turn = 0;
                 while prompted.recv().await.is_some() {
                     turn += 1;
@@ -1156,41 +1109,8 @@ async fn warm_prompt_retries_at_most_once_and_skips_non_recoverable_errors() {
                         return;
                     }
                 }
-            });
-            Ok(Running {
-                prompts,
-                events: reported,
-                _alive: Box::new(()),
-            })
-        }
-    }
-
-    for (error, expected_starts) in [
-        ("corrupted thinking signature", 2),
-        ("the model refused to answer", 1),
-        ("the turn was cancelled", 1),
-    ] {
-        let starts = Arc::new(AtomicUsize::new(0));
-        let scratch =
-            std::env::temp_dir().join(format!("rig-bridge-test-{}", uuid::Uuid::new_v4().simple()));
-        let bridge = Arc::new(Bridge::new(
-            tokio::runtime::Handle::current(),
-            Processes::default(),
-            2,
-            None,
-            scratch,
-        ));
-        let model = Model {
-            bridge,
-            harness: Arc::new(AlwaysFailWarm {
-                starts: starts.clone(),
-                error,
-            }),
-            program: "flaky".into(),
-            vendor: Vendor::Antigravity,
-            model: "gemini-4-neon-high".to_owned(),
-            context_limit: Some(1_048_576),
-        };
+            },
+        );
         let h1 = vec![Message::user("first")];
         assert_eq!(said(answer(&model, asks("", &h1)).await.as_ref()).0, "ok-0");
 
@@ -1199,74 +1119,40 @@ async fn warm_prompt_retries_at_most_once_and_skips_non_recoverable_errors() {
             Message::assistant("ok-0"),
             Message::user("second"),
         ];
-        let outcome = reply(&model, asks("", &h2)).await.into_outcome().await;
-        assert!(outcome.is_err());
+        assert!(
+            reply(&model, asks("", &h2))
+                .await
+                .into_outcome()
+                .await
+                .is_err()
+        );
         assert_eq!(starts.load(Ordering::SeqCst), expected_starts);
     }
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn warm_session_reuses_harness_across_effort_changes_only_when_supported() {
-    struct EffortRecorder {
-        dynamic: bool,
-        starts: Arc<AtomicUsize>,
-        efforts: Arc<Mutex<Vec<Option<Effort>>>>,
-    }
-    impl Harness for EffortRecorder {
-        fn note(&self, _: Option<&std::path::Path>) -> String {
-            String::new()
-        }
-        fn changes_effort(&self) -> bool {
-            self.dynamic
-        }
-        fn start(&self, _: Launch<'_>) -> Result<Running, String> {
-            self.starts.fetch_add(1, Ordering::SeqCst);
-            let efforts = self.efforts.clone();
-            let (prompts, mut prompted) = mpsc::unbounded_channel::<Prompt>();
-            let (events, reported) = mpsc::unbounded_channel();
-            tokio::spawn(async move {
-                while let Some(prompt) = prompted.recv().await {
-                    efforts
-                        .lock()
-                        .unwrap_or_else(PoisonError::into_inner)
-                        .push(prompt.effort);
-                    let label = prompt.effort.map_or("default", |e| e.as_str());
-                    let _ = events.send(Event::Text(format!("ok-{label}")));
-                    let _ = events.send(Event::Done(Ok(FinishReason::Stop)));
-                }
-            });
-            Ok(Running {
-                prompts,
-                events: reported,
-                _alive: Box::new(()),
-            })
-        }
-    }
-
     for (dynamic, expected_starts, expected_warm) in [(true, 1, 1), (false, 3, 2)] {
-        let starts = Arc::new(AtomicUsize::new(0));
         let efforts = Arc::new(Mutex::new(Vec::new()));
-        let scratch =
-            std::env::temp_dir().join(format!("rig-bridge-test-{}", uuid::Uuid::new_v4().simple()));
-        let bridge = Arc::new(Bridge::new(
-            tokio::runtime::Handle::current(),
-            Processes::default(),
-            2,
-            None,
-            scratch,
-        ));
-        let model = Model {
-            bridge: bridge.clone(),
-            harness: Arc::new(EffortRecorder {
-                dynamic,
-                starts: starts.clone(),
-                efforts: efforts.clone(),
-            }),
-            program: "effort-test".into(),
-            vendor: Vendor::Codex,
-            model: "gpt-6.2-sol".to_owned(),
-            context_limit: Some(475_000),
-        };
+        let recorded = efforts.clone();
+        let (bridge, model, starts) = fn_model(
+            Vendor::Codex,
+            dynamic,
+            move |_, _, _, mut prompted, events| {
+                let efforts = recorded.clone();
+                async move {
+                    while let Some(prompt) = prompted.recv().await {
+                        efforts
+                            .lock()
+                            .unwrap_or_else(PoisonError::into_inner)
+                            .push(prompt.effort);
+                        let label = prompt.effort.map_or("default", |e| e.as_str());
+                        let _ = events.send(Event::Text(format!("ok-{label}")));
+                        let _ = events.send(Event::Done(Ok(FinishReason::Stop)));
+                    }
+                }
+            },
+        );
 
         let ask_effort = |history: &[Message], effort: Option<Effort>| {
             let mut req = asks("", history);
@@ -1274,37 +1160,25 @@ async fn warm_session_reuses_harness_across_effort_changes_only_when_supported()
             req
         };
 
-        let h1 = vec![Message::user("t1")];
+        let mut h = vec![Message::user("t1")];
         assert_eq!(
-            said(answer(&model, ask_effort(&h1, None)).await.as_ref()).0,
+            said(answer(&model, ask_effort(&h, None)).await.as_ref()).0,
             "ok-default"
         );
-
-        let h2 = vec![
-            Message::user("t1"),
-            Message::assistant("ok-default"),
-            Message::user("t2"),
-        ];
+        h.extend([Message::assistant("ok-default"), Message::user("t2")]);
         assert_eq!(
             said(
-                answer(&model, ask_effort(&h2, Some(Effort::Low)))
+                answer(&model, ask_effort(&h, Some(Effort::Low)))
                     .await
                     .as_ref()
             )
             .0,
             "ok-low"
         );
-
-        let h3 = vec![
-            Message::user("t1"),
-            Message::assistant("ok-default"),
-            Message::user("t2"),
-            Message::assistant("ok-low"),
-            Message::user("t3"),
-        ];
+        h.extend([Message::assistant("ok-low"), Message::user("t3")]);
         assert_eq!(
             said(
-                answer(&model, ask_effort(&h3, Some(Effort::High)))
+                answer(&model, ask_effort(&h, Some(Effort::High)))
                     .await
                     .as_ref()
             )
@@ -1313,11 +1187,10 @@ async fn warm_session_reuses_harness_across_effort_changes_only_when_supported()
         );
 
         assert_eq!(starts.load(Ordering::SeqCst), expected_starts);
-        let seen = efforts
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .clone();
-        assert_eq!(seen, vec![None, Some(Effort::Low), Some(Effort::High)]);
+        assert_eq!(
+            *efforts.lock().unwrap_or_else(PoisonError::into_inner),
+            vec![None, Some(Effort::Low), Some(Effort::High)]
+        );
         let snap = bridge.snapshot();
         assert_eq!(snap.warm.len(), expected_warm);
         assert_eq!(snap.warm.last().and_then(|w| w.effort), Some(Effort::High));

@@ -6,13 +6,15 @@
 use std::collections::HashSet;
 use std::path::Path;
 
-use rig_harness::rig_core::completion::{Effort, FinishReason, Usage};
+use rig_harness::rig_core::completion::{FinishReason, Usage};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::mpsc;
 
-use crate::harness::{Event, Harness, Launch, Part, Prompt, Running, Stderr, note, spawn};
+use crate::harness::{
+    Event, Harness, Launch, Part, Prompt, Running, Stderr, effort_wire, note, spawn,
+};
 
 #[cfg(test)]
 mod tests;
@@ -105,7 +107,7 @@ impl Harness for Claude {
             .env("MCP_TOOL_TIMEOUT", TOOL_TIMEOUT_MS)
             .env("MAX_MCP_OUTPUT_TOKENS", "1000000");
         if let Some(effort) = effort {
-            command.args(["--effort", level(effort)]);
+            command.args(["--effort", effort_wire(effort, true)]);
         }
         for name in INHERITED {
             command.env_remove(name);
@@ -151,18 +153,6 @@ impl Harness for Claude {
             events: reported,
             _alive: Box::new(process),
         })
-    }
-}
-
-/// An effort as `--effort` names it.
-fn level(effort: Effort) -> &'static str {
-    match effort {
-        Effort::Minimal | Effort::Low => "low",
-        Effort::Medium => "medium",
-        Effort::High => "high",
-        Effort::XHigh => "xhigh",
-        Effort::Max => "max",
-        _ => "high",
     }
 }
 

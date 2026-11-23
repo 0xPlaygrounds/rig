@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, DuplexStream};
 use tokio::sync::mpsc;
 
-use super::{Codex, Listed, Opening, Wire, converse, image_extension};
+use super::{Codex, Listed, Opening, Wire, converse, image_extension, notify};
 use crate::harness::{ContextSnapshot, Event, Part, Prompt};
 
 #[test]
@@ -323,11 +323,12 @@ fn effective_context_window_percent_and_image_extension_are_handled() {
 
 #[test]
 fn token_usage_update_emits_runtime_model_context_window() {
-    let (client, _server) = tokio::io::duplex(64);
-    let (reader, writer) = tokio::io::split(client);
     let (tx, mut rx) = mpsc::unbounded_channel();
-    let mut wire = Wire::new(reader, writer, tx);
-    wire.notified(
+    let (mut server, mut ended) = (None, None);
+    notify(
+        &tx,
+        &mut server,
+        &mut ended,
         "thread/tokenUsage/updated",
         &json!({
             "tokenUsage": {

@@ -19,7 +19,7 @@ use crate::harness::{
     ContextSnapshot, Event, HANDSHAKE_TIMEOUT, Harness, Launch, Part, Prompt, Running, Stderr,
     parse_effort, spawn,
 };
-use crate::rpc::Transport;
+use crate::rpc::{Transport, method_not_found, positive_u32};
 
 #[cfg(test)]
 mod tests;
@@ -64,15 +64,9 @@ pub(crate) trait Agent: Send + Sync + 'static {
         true
     }
 
-    /// Whether the running session can update its reasoning effort between
-    /// prompts without restarting.
-    fn changes_effort(&self) -> bool {
-        false
-    }
-
-    /// The request that changes reasoning effort on a live session, when
-    /// supported.
-    fn set_effort(&self, _session: &str, _effort: Effort) -> Option<(&'static str, Value)> {
+    /// Wire value for ACP `session/set_config_option` (`reasoning_effort`)
+    /// when this agent supports live in-session effort updates.
+    fn effort_value(&self, _effort: Effort) -> Option<&'static str> {
         None
     }
 
@@ -153,7 +147,7 @@ impl<A: Agent> Harness for Acp<A> {
     }
 
     fn changes_effort(&self) -> bool {
-        self.0.changes_effort()
+        self.0.effort_value(Effort::High).is_some()
     }
 
     fn start(&self, launch: Launch<'_>) -> Result<Running, String> {
@@ -344,7 +338,7 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Peer<R, W> {
                 let ours = self.agent.is_rig_tool(tool_call, recorded);
                 json!({ "result": { "outcome": decide(ours, params.get("options")) } })
             }
-            _ => json!({ "error": { "code": -32601, "message": format!("no method `{method}`") } }),
+            _ => method_not_found(method),
         };
         self.transport
             .reply(id, answer, true)
@@ -375,11 +369,7 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Peer<R, W> {
                         .filter(|used| *used > 0)
                 })
                 .flatten();
-            let window = update
-                .get("size")
-                .and_then(Value::as_u64)
-                .filter(|size| *size > 0)
-                .and_then(|size| u32::try_from(size).ok());
+            let window = positive_u32(update.get("size"));
             if used.is_some() || window.is_some() {
                 let _ = self
                     .events
@@ -432,6 +422,18 @@ fn decide(ours: bool, options: Option<&Value>) -> Value {
     }
 }
 
+/// Builds an ACP `session/set_config_option` request for `reasoning_effort`.
+pub(crate) fn set_effort_request(session: &str, value: &str) -> (&'static str, Value) {
+    (
+        "session/set_config_option",
+        json!({
+            "sessionId": session,
+            "configId": "reasoning_effort",
+            "value": value,
+        }),
+    )
+}
+
 /// Whether a session supports runtime `reasoning_effort` updates, and what
 /// default effort to restore when a prompt asks for `None` (provider default).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -475,9 +477,12 @@ where
         };
         if prompt.effort != current_effort
             && let EffortConfig::Supported(default_effort) = effort_config
-            && let Some(target) = prompt.effort.or(default_effort)
-            && let Some((method, params)) = agent.set_effort(&session, target)
+            && let Some(value) = prompt
+                .effort
+                .or(default_effort)
+                .and_then(|effort| agent.effort_value(effort))
         {
+            let (method, params) = set_effort_request(&session, value);
             match peer.request(method, params).await {
                 Ok(_) => current_effort = prompt.effort,
                 Err(Failed::Closed) => return Err(Failed::Closed.to_string()),
@@ -613,6 +618,15 @@ where
     Ok((session, system, effort_config))
 }
 
+/// Looks up one `configOptions` entry by `id` in a `session/new` response.
+pub(crate) fn config_option<'a>(opened: &'a Value, id: &str) -> Option<&'a Value> {
+    opened
+        .get("configOptions")
+        .and_then(Value::as_array)?
+        .iter()
+        .find(|opt| opt.get("id").and_then(Value::as_str) == Some(id))
+}
+
 /// Inspects `session/new` metadata for whether the session supports runtime
 /// `reasoning_effort` configuration and what its unmodified default effort is.
 fn session_effort_config(opened: &Value, model: &str) -> EffortConfig {
@@ -634,13 +648,14 @@ fn session_effort_config(opened: &Value, model: &str) -> EffortConfig {
                     .and_then(parse_effort)
             })
         });
-    let Some(options) = opened.get("configOptions").and_then(Value::as_array) else {
+    if opened
+        .get("configOptions")
+        .and_then(Value::as_array)
+        .is_none()
+    {
         return EffortConfig::Supported(model_default);
-    };
-    let Some(option) = options
-        .iter()
-        .find(|opt| opt.get("id").and_then(Value::as_str) == Some("reasoning_effort"))
-    else {
+    }
+    let Some(option) = config_option(opened, "reasoning_effort") else {
         return EffortConfig::Unsupported;
     };
     let current = option
@@ -653,15 +668,14 @@ fn session_effort_config(opened: &Value, model: &str) -> EffortConfig {
 /// Extracts a model's declared context window from `session/new` metadata
 /// (`models.availableModels[*]._meta.totalContextTokens`), when present.
 fn model_context_window(opened: &Value, model: &str) -> Option<u32> {
-    opened
-        .pointer("/models/availableModels")
-        .and_then(Value::as_array)?
-        .iter()
-        .find(|entry| entry.get("modelId").and_then(Value::as_str) == Some(model))?
-        .pointer("/_meta/totalContextTokens")
-        .and_then(Value::as_u64)
-        .filter(|tokens| *tokens > 0)
-        .and_then(|tokens| u32::try_from(tokens).ok())
+    positive_u32(
+        opened
+            .pointer("/models/availableModels")
+            .and_then(Value::as_array)?
+            .iter()
+            .find(|entry| entry.get("modelId").and_then(Value::as_str) == Some(model))?
+            .pointer("/_meta/totalContextTokens"),
+    )
 }
 
 /// The token counters of a `session/prompt` result: the turn's totals.

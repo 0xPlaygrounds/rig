@@ -10,16 +10,16 @@ use std::sync::Arc;
 
 use base64::Engine;
 use rig_harness::rig_core::catalog::ReasoningSupport;
-use rig_harness::rig_core::completion::{Effort, FinishReason, Usage};
+use rig_harness::rig_core::completion::{FinishReason, Usage};
 use serde_json::{Value, json};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::mpsc;
 
 use crate::harness::{
     ContextSnapshot, Event, HANDSHAKE_TIMEOUT, Harness, Launch, Part, Prompt, Running, Stderr,
-    link, note, parse_effort, spawn,
+    effort_wire, env_path, link, note, parse_effort, spawn,
 };
-use crate::rpc::Transport;
+use crate::rpc::{Transport, method_not_found, positive_u32};
 
 #[cfg(test)]
 mod tests;
@@ -181,9 +181,7 @@ impl Codex {
 
 /// Where the user's sign-in is kept.
 pub(crate) fn signed_in() -> Option<PathBuf> {
-    let home = std::env::var_os("CODEX_HOME")
-        .map(PathBuf::from)
-        .or_else(|| Some(PathBuf::from(std::env::var_os("HOME")?).join(".codex")))?;
+    let home = env_path("CODEX_HOME").or_else(|| Some(env_path("HOME")?.join(".codex")))?;
     Some(home.join("auth.json"))
 }
 
@@ -279,17 +277,6 @@ pub(crate) struct Opening {
     pub model: String,
 }
 
-/// An effort as a turn names it.
-fn level(effort: Effort) -> &'static str {
-    match effort {
-        Effort::Minimal | Effort::Low => "low",
-        Effort::Medium => "medium",
-        Effort::High => "high",
-        Effort::XHigh => "xhigh",
-        _ => "max",
-    }
-}
-
 /// The client's end of the connection: JSON lines, each request answered
 /// under its id. The program's own requests carry a method and ids of
 /// their own numbering.
@@ -321,127 +308,110 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Wire<R, W> {
 
     /// Reads the next JSON object. Cancel-safe for use in `tokio::select!`.
     async fn next_message(&mut self) -> Result<Value, String> {
-        self.transport
-            .next_object()
-            .await
-            .map_err(|()| "the program exited".to_owned())
+        self.transport.next_message().await
     }
 
-    /// Handles one message; returns it when it answers `id`.
-    async fn handle(&mut self, message: Value, id: Option<u64>) -> Result<Option<Value>, String> {
-        let Some(method) = message.get("method").and_then(Value::as_str) else {
-            let answers = id.is_some() && message.get("id").and_then(Value::as_u64) == id;
-            return Ok(answers.then_some(message));
-        };
-        let params = message.get("params").unwrap_or(&Value::Null);
-        match message.get("id").filter(|id| !id.is_null()) {
-            Some(asked) => {
-                let answer = self.decide(method, params);
-                self.transport
-                    .reply(asked, answer, false)
-                    .await
-                    .map_err(|()| "the program exited".to_owned())?;
-            }
-            None => self.notified(method, params),
-        }
-        Ok(None)
-    }
-
-    /// The answer to a request of the program's: yes to a call of one of
-    /// Rig's tools, and a refusal of anything else.
-    fn decide(&self, method: &str, params: &Value) -> Value {
-        let ours = params.get("serverName").and_then(Value::as_str) == Some(SERVER);
-        if method == "mcpServer/elicitation/request" && ours {
-            json!({ "result": { "action": "accept", "content": null } })
-        } else {
-            json!({ "error": { "code": -32601, "message": format!("no method `{method}`") } })
-        }
-    }
-
-    /// Reports what a notification says.
-    fn notified(&mut self, method: &str, params: &Value) {
-        let delta = || {
-            let delta = params.get("delta").and_then(Value::as_str);
-            delta.filter(|delta| !delta.is_empty()).map(str::to_owned)
-        };
-        let event = match method {
-            "item/agentMessage/delta" => delta().map(Event::Text),
-            "item/reasoning/summaryTextDelta" | "item/reasoning/textDelta" => {
-                delta().map(Event::Reasoning)
-            }
-            // A new part of a reasoning summary is a new paragraph.
-            "item/reasoning/summaryPartAdded" => {
-                let later = params.get("summaryIndex").and_then(Value::as_u64) > Some(0);
-                later.then(|| Event::Reasoning("\n\n".to_owned()))
-            }
-            "thread/tokenUsage/updated" => {
-                if let Some(counted) = params.get("tokenUsage") {
-                    if let Some(window) = counted
-                        .get("modelContextWindow")
-                        .and_then(Value::as_u64)
-                        .filter(|tokens| *tokens > 0)
-                        .and_then(|tokens| u32::try_from(tokens).ok())
-                    {
-                        let _ = self.events.send(Event::Context(ContextSnapshot {
-                            used: None,
-                            window: Some(window),
-                        }));
-                    }
-                    counted.get("last").map(|last| Event::Usage(usage(last)))
-                } else {
-                    None
-                }
-            }
-            "mcpServer/startupStatus/updated" => {
-                if params.get("name").and_then(Value::as_str) == Some(SERVER) {
-                    match params.get("status").and_then(Value::as_str) {
-                        Some("ready") => self.server = Some(Ok(())),
-                        Some("failed") => {
-                            let why = params.get("error").and_then(Value::as_str);
-                            self.server = Some(Err(why.unwrap_or("it failed").to_owned()));
-                        }
-                        _ => {}
-                    }
-                }
-                None
-            }
-            "turn/completed" => {
-                let turn = params.get("turn").unwrap_or(&Value::Null);
-                self.ended = Some(match turn.get("status").and_then(Value::as_str) {
-                    Some("completed") => Ok(FinishReason::Stop),
-                    Some("interrupted") => Err("the turn was interrupted".to_owned()),
-                    _ => Err(turn
-                        .pointer("/error/message")
-                        .and_then(Value::as_str)
-                        .unwrap_or("the turn failed")
-                        .to_owned()),
-                });
-                None
-            }
-            _ => None,
-        };
-        if let Some(event) = event {
-            let _ = self.events.send(event);
-        }
+    /// Handles one incoming notification or server request.
+    async fn handle(&mut self, message: Value) -> Result<(), String> {
+        let events = &self.events;
+        let server = &mut self.server;
+        let ended = &mut self.ended;
+        let _ = self
+            .transport
+            .dispatch(message, None, false, decide, |method, params| {
+                notify(events, server, ended, method, params);
+            })
+            .await?;
+        Ok(())
     }
 
     /// Sends a request and waits for its result.
     async fn request(&mut self, method: &str, params: Value) -> Result<Value, String> {
-        let id = self
-            .transport
-            .send_request(method, params, false)
+        let events = &self.events;
+        let server = &mut self.server;
+        let ended = &mut self.ended;
+        self.transport
+            .request(method, params, false, decide, |method, params| {
+                notify(events, server, ended, method, params);
+            })
             .await
-            .map_err(|()| "the program exited".to_owned())?;
-        loop {
-            let msg = self.next_message().await?;
-            let Some(message) = self.handle(msg, Some(id)).await? else {
-                continue;
-            };
-            return match message.pointer("/error/message").and_then(Value::as_str) {
-                Some(why) => Err(why.to_owned()),
-                None => Ok(message.get("result").cloned().unwrap_or(Value::Null)),
-            };
+    }
+}
+
+/// The answer to a request of the program's: yes to a call of one of
+/// Rig's tools, and a refusal of anything else.
+fn decide(method: &str, params: &Value) -> Value {
+    let ours = params.get("serverName").and_then(Value::as_str) == Some(SERVER);
+    if method == "mcpServer/elicitation/request" && ours {
+        json!({ "result": { "action": "accept", "content": null } })
+    } else {
+        method_not_found(method)
+    }
+}
+
+/// Reports what a notification says.
+fn notify(
+    events: &mpsc::UnboundedSender<Event>,
+    server: &mut Option<Result<(), String>>,
+    ended: &mut Option<Result<FinishReason, String>>,
+    method: &str,
+    params: &Value,
+) {
+    let delta = || {
+        params
+            .get("delta")
+            .and_then(Value::as_str)
+            .filter(|delta| !delta.is_empty())
+            .map(str::to_owned)
+    };
+    let event = match method {
+        "item/agentMessage/delta" => delta().map(Event::Text),
+        "item/reasoning/summaryTextDelta" | "item/reasoning/textDelta" => {
+            delta().map(Event::Reasoning)
         }
+        // A new part of a reasoning summary is a new paragraph.
+        "item/reasoning/summaryPartAdded" => (params.get("summaryIndex").and_then(Value::as_u64)
+            > Some(0))
+        .then(|| Event::Reasoning("\n\n".to_owned())),
+        "thread/tokenUsage/updated" => params.get("tokenUsage").and_then(|counted| {
+            if let Some(window) = positive_u32(counted.get("modelContextWindow")) {
+                let _ = events.send(Event::Context(ContextSnapshot {
+                    used: None,
+                    window: Some(window),
+                }));
+            }
+            counted.get("last").map(|last| Event::Usage(usage(last)))
+        }),
+        "mcpServer/startupStatus/updated" => {
+            if params.get("name").and_then(Value::as_str) == Some(SERVER) {
+                match params.get("status").and_then(Value::as_str) {
+                    Some("ready") => *server = Some(Ok(())),
+                    Some("failed") => {
+                        let why = params.get("error").and_then(Value::as_str);
+                        *server = Some(Err(why.unwrap_or("it failed").to_owned()));
+                    }
+                    _ => {}
+                }
+            }
+            None
+        }
+        "turn/completed" => {
+            let turn = params.get("turn").unwrap_or(&Value::Null);
+            *ended = Some(match turn.get("status").and_then(Value::as_str) {
+                Some("completed") => Ok(FinishReason::Stop),
+                Some("interrupted") => Err("the turn was interrupted".to_owned()),
+                _ => Err(turn
+                    .pointer("/error/message")
+                    .and_then(Value::as_str)
+                    .unwrap_or("the turn failed")
+                    .to_owned()),
+            });
+            None
+        }
+        _ => None,
+    };
+    if let Some(event) = event {
+        let _ = events.send(event);
     }
 }
 
@@ -553,7 +523,7 @@ where
                 break;
             }
             let msg = wire.next_message().await?;
-            wire.handle(msg, None).await?;
+            wire.handle(msg).await?;
         }
         Ok::<_, String>(thread)
     })
@@ -566,7 +536,7 @@ where
         let prompt = loop {
             tokio::select! {
                 prompt = prompts.recv() => break prompt,
-                msg = wire.next_message() => drop(wire.handle(msg?, None).await?),
+                msg = wire.next_message() => wire.handle(msg?).await?,
             }
         };
         let Some(prompt) = prompt else {
@@ -578,7 +548,7 @@ where
             "summary": "auto",
         });
         if let (Some(effort), Some(turn)) = (prompt.effort, turn.as_object_mut()) {
-            turn.insert("effort".to_owned(), level(effort).into());
+            turn.insert("effort".to_owned(), effort_wire(effort, true).into());
         }
         wire.ended = None;
         let done = match wire.request("turn/start", turn).await {
@@ -587,7 +557,7 @@ where
                     break ended;
                 }
                 let msg = wire.next_message().await?;
-                wire.handle(msg, None).await?;
+                wire.handle(msg).await?;
             },
             Err(why) => Err(why),
         };

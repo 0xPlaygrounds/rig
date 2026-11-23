@@ -101,6 +101,20 @@ pub(crate) fn parse_effort(word: &str) -> Option<Effort> {
     }
 }
 
+/// Maps `effort` to a harness wire string, clamping `Minimal` to `"low"` and,
+/// when `allow_max` is false, `Max` to `"xhigh"`.
+pub(crate) const fn effort_wire(effort: Effort, allow_max: bool) -> &'static str {
+    match effort {
+        Effort::Minimal | Effort::Low => "low",
+        Effort::Medium => "medium",
+        Effort::High => "high",
+        Effort::XHigh => "xhigh",
+        Effort::Max if allow_max => "max",
+        Effort::Max => "xhigh",
+        _ => "high",
+    }
+}
+
 /// What a harness reports while it answers a prompt.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Event {
@@ -196,6 +210,13 @@ pub(crate) fn note(shown: &str, how: &str, scratch: Option<Option<&Path>>) -> St
         }
     }
     note
+}
+
+/// Reads a non-empty path from environment variable `var`.
+pub(crate) fn env_path(var: &str) -> Option<std::path::PathBuf> {
+    std::env::var_os(var)
+        .filter(|value| !value.is_empty())
+        .map(std::path::PathBuf::from)
 }
 
 /// Makes `to` a symlink to `from` so renewed credentials stay shared with the

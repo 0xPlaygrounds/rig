@@ -903,12 +903,6 @@ impl Session {
         // harness may call a tool before it finishes reading the message.
         let mut counting = false;
         loop {
-            let wait_until = |at: Option<tokio::time::Instant>| async move {
-                match at {
-                    Some(at) => tokio::time::sleep_until(at).await,
-                    None => std::future::pending().await,
-                }
-            };
             tokio::select! {
                 event = self.running.events.recv() => match event {
                     Some(Event::Text(text)) => {
@@ -969,13 +963,12 @@ impl Session {
                         count_deadline.get_or_insert(now + COUNT_SETTLE);
                     }
                 }
-                () = wait_until(settled), if !counting => {
-                    return Ok(finish(
-                        apply_context(usage, context_used, last_inference_context, usage_reports),
-                        FinishReason::ToolCalls,
-                    ));
-                }
-                () = wait_until(count_deadline), if counting => {
+                () = async {
+                    match if counting { count_deadline } else { settled } {
+                        Some(at) => tokio::time::sleep_until(at).await,
+                        None => std::future::pending().await,
+                    }
+                } => {
                     return Ok(finish(
                         apply_context(usage, context_used, last_inference_context, usage_reports),
                         FinishReason::ToolCalls,
@@ -1299,22 +1292,21 @@ pub(crate) fn budgeted_opening(
         }
 
         let mut text = String::from(header);
-        if kept_summary && let Some(summary) = units.first() {
-            for (piece, _) in &summary.0 {
-                text.push_str(piece);
+        let push_unit = |out: &mut String, unit: &ReplayUnit| {
+            for (piece, _) in &unit.0 {
+                out.push_str(piece);
             }
+        };
+        if kept_summary && let Some(summary) = units.first() {
+            push_unit(&mut text, summary);
         }
         if omitted_turns > 0 {
             text.push_str(&format!(
                 "[{omitted_turns} earlier turn(s) omitted due to replay budget]\n\n"
             ));
         }
-        if let Some(kept) = units.get(start..) {
-            for unit in kept {
-                for (piece, _) in &unit.0 {
-                    text.push_str(piece);
-                }
-            }
+        for unit in units.get(start..).unwrap_or_default() {
+            push_unit(&mut text, unit);
         }
         text.push_str(footer);
         prompt.push(Part::Text(text));

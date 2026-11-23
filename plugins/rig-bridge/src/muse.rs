@@ -9,15 +9,16 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use rig_harness::rig_core::completion::{Effort, FinishReason, Usage};
+use rig_harness::rig_core::completion::{FinishReason, Usage};
 use serde_json::{Value, json};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::mpsc;
 
 use crate::harness::{
-    Event, HANDSHAKE_TIMEOUT, Harness, Launch, Part, Prompt, Running, Stderr, link, note, spawn,
+    Event, HANDSHAKE_TIMEOUT, Harness, Launch, Part, Prompt, Running, Stderr, env_path, link, note,
+    spawn,
 };
-use crate::rpc::Transport;
+use crate::rpc::{Transport, method_not_found};
 
 #[cfg(test)]
 mod tests;
@@ -39,10 +40,7 @@ pub(crate) struct Muse;
 
 /// Where the user's Muse sign-in lives.
 fn signed_in() -> Option<PathBuf> {
-    let config = std::env::var_os("XDG_CONFIG_HOME")
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-        .or_else(|| Some(PathBuf::from(std::env::var_os("HOME")?).join(".config")))?;
+    let config = env_path("XDG_CONFIG_HOME").or_else(|| Some(env_path("HOME")?.join(".config")))?;
     Some(config.join("muse").join("auth.json"))
 }
 
@@ -130,18 +128,6 @@ pub(crate) struct Opening {
     pub mcp_token: String,
 }
 
-/// An effort level as Muse MSP names it.
-fn level(effort: Effort) -> &'static str {
-    match effort {
-        Effort::Minimal => "minimal",
-        Effort::Low => "low",
-        Effort::Medium => "medium",
-        Effort::High => "high",
-        Effort::XHigh => "xhigh",
-        _ => "max",
-    }
-}
-
 /// A UUIDv7 string for MSP `commandId` fields (48-bit Unix ms timestamp +
 /// version 7 + random payload from `Uuid::new_v4()`).
 pub(crate) fn uuidv7() -> String {
@@ -184,52 +170,31 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Wire<R, W> {
 
     /// Reads the next JSON object. Cancel-safe for use in `tokio::select!`.
     async fn next_message(&mut self) -> Result<Value, String> {
-        self.transport
-            .next_object()
-            .await
-            .map_err(|()| "the program exited".to_owned())
+        self.transport.next_message().await
     }
 
-    async fn handle(&mut self, message: Value, id: Option<u64>) -> Result<Option<Value>, String> {
-        let Some(method) = message.get("method").and_then(Value::as_str) else {
-            let answers = id.is_some() && message.get("id").and_then(Value::as_u64) == id;
-            return Ok(answers.then_some(message));
-        };
-        let params = message.get("params").unwrap_or(&Value::Null);
-        match message.get("id").filter(|id| !id.is_null()) {
-            Some(asked) => {
-                self.transport
-                    .reply(asked, decide(method, params), true)
-                    .await
-                    .map_err(|()| "the program exited".to_owned())?;
-            }
-            None => self.notified(method, params),
-        }
-        Ok(None)
+    async fn handle(&mut self, message: Value) -> Result<(), String> {
+        let events = &self.events;
+        let items = &mut self.items;
+        let ended = &mut self.ended;
+        let _ = self
+            .transport
+            .dispatch(message, None, true, decide, |method, params| {
+                notify(events, items, ended, method, params);
+            })
+            .await?;
+        Ok(())
     }
 
     async fn request(&mut self, method: &str, params: Value) -> Result<Value, String> {
-        let id = self
-            .transport
-            .send_request(method, params, true)
+        let events = &self.events;
+        let items = &mut self.items;
+        let ended = &mut self.ended;
+        self.transport
+            .request(method, params, true, decide, |method, params| {
+                notify(events, items, ended, method, params);
+            })
             .await
-            .map_err(|()| "the program exited".to_owned())?;
-        loop {
-            let msg = self.next_message().await?;
-            let Some(message) = self.handle(msg, Some(id)).await? else {
-                continue;
-            };
-            return match message.get("error") {
-                Some(error) => {
-                    let text = error
-                        .get("message")
-                        .and_then(Value::as_str)
-                        .unwrap_or("the request failed");
-                    Err(text.to_owned())
-                }
-                None => Ok(message.get("result").cloned().unwrap_or(Value::Null)),
-            };
-        }
     }
 
     async fn notify(&mut self, method: &str, params: Value) -> Result<(), String> {
@@ -242,73 +207,76 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Wire<R, W> {
             .await
             .map_err(|()| "the program exited".to_owned())
     }
+}
 
-    fn notified(&mut self, method: &str, params: &Value) {
-        match method {
-            "item/started" => {
-                if let Some(item) = params.get("item")
-                    && let (Some(id), Some(kind)) = (
-                        item.get("itemId").and_then(Value::as_str),
-                        item.get("kind").and_then(Value::as_str),
-                    )
-                {
-                    self.items.insert(id.to_owned(), kind.to_owned());
-                }
+fn notify(
+    events: &mpsc::UnboundedSender<Event>,
+    items: &mut HashMap<String, String>,
+    ended: &mut Option<Result<FinishReason, String>>,
+    method: &str,
+    params: &Value,
+) {
+    match method {
+        "item/started" => {
+            if let Some(item) = params.get("item")
+                && let (Some(id), Some(kind)) = (
+                    item.get("itemId").and_then(Value::as_str),
+                    item.get("kind").and_then(Value::as_str),
+                )
+            {
+                items.insert(id.to_owned(), kind.to_owned());
             }
-            "item/delta" => {
-                let Some(id) = params.get("itemId").and_then(Value::as_str) else {
-                    return;
-                };
-                let Some(delta) = params
-                    .get("delta")
-                    .and_then(Value::as_str)
-                    .filter(|text| !text.is_empty())
-                else {
-                    return;
-                };
-                let field = params.get("field").and_then(Value::as_str);
-                match self.items.get(id).map(String::as_str) {
-                    Some("agentMessage") if field.is_none() || field == Some("text") => {
-                        let _ = self.events.send(Event::Text(delta.to_owned()));
-                    }
-                    Some("reasoning") => {
-                        let _ = self.events.send(Event::Reasoning(delta.to_owned()));
-                    }
-                    _ => {}
-                }
-            }
-            "item/completed" => {
-                if let Some(id) = params.pointer("/item/itemId").and_then(Value::as_str) {
-                    self.items.remove(id);
-                }
-            }
-            "turn/modelAttemptStarted" => {
-                let _ = self.events.send(Event::Began);
-            }
-            "session/tokenUsage" => {
-                if let Some(usage) = token_usage(params) {
-                    let _ = self.events.send(Event::Usage(usage));
-                }
-            }
-            "turn/completed" => {
-                self.items.clear();
-                let outcome = match params.get("terminal").and_then(Value::as_str) {
-                    Some("completed") => Ok(FinishReason::Stop),
-                    Some("maxTokens" | "max_tokens" | "length") => Ok(FinishReason::Length),
-                    Some("cancelled") => Err("the turn was cancelled".to_owned()),
-                    _ => {
-                        let why = params
-                            .pointer("/error/message")
-                            .or_else(|| params.get("reason"))
-                            .and_then(Value::as_str)
-                            .unwrap_or("the turn failed");
-                        Err(why.to_owned())
-                    }
-                };
-                self.ended = Some(outcome);
-            }
-            _ => {}
         }
+        "item/delta" => {
+            let Some(id) = params.get("itemId").and_then(Value::as_str) else {
+                return;
+            };
+            let Some(delta) = params
+                .get("delta")
+                .and_then(Value::as_str)
+                .filter(|text| !text.is_empty())
+            else {
+                return;
+            };
+            let field = params.get("field").and_then(Value::as_str);
+            match items.get(id).map(String::as_str) {
+                Some("agentMessage") if field.is_none() || field == Some("text") => {
+                    let _ = events.send(Event::Text(delta.to_owned()));
+                }
+                Some("reasoning") => {
+                    let _ = events.send(Event::Reasoning(delta.to_owned()));
+                }
+                _ => {}
+            }
+        }
+        "item/completed" => {
+            if let Some(id) = params.pointer("/item/itemId").and_then(Value::as_str) {
+                items.remove(id);
+            }
+        }
+        "turn/modelAttemptStarted" => {
+            let _ = events.send(Event::Began);
+        }
+        "session/tokenUsage" => {
+            if let Some(usage) = token_usage(params) {
+                let _ = events.send(Event::Usage(usage));
+            }
+        }
+        "turn/completed" => {
+            items.clear();
+            *ended = Some(match params.get("terminal").and_then(Value::as_str) {
+                Some("completed") => Ok(FinishReason::Stop),
+                Some("maxTokens" | "max_tokens" | "length") => Ok(FinishReason::Length),
+                Some("cancelled") => Err("the turn was cancelled".to_owned()),
+                _ => Err(params
+                    .pointer("/error/message")
+                    .or_else(|| params.get("reason"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("the turn failed")
+                    .to_owned()),
+            });
+        }
+        _ => {}
     }
 }
 
@@ -340,7 +308,7 @@ fn decide(method: &str, params: &Value) -> Value {
                 None => json!({ "error": { "code": -32000, "message": "approval declined" } }),
             }
         }
-        _ => json!({ "error": { "code": -32601, "message": format!("no method `{method}`") } }),
+        _ => method_not_found(method),
     }
 }
 
@@ -442,7 +410,7 @@ where
         let prompt = loop {
             tokio::select! {
                 prompt = prompts.recv() => break prompt,
-                msg = wire.next_message() => drop(wire.handle(msg?, None).await?),
+                msg = wire.next_message() => wire.handle(msg?).await?,
             }
         };
         let Some(prompt) = prompt else {
@@ -466,7 +434,7 @@ where
             "input": input,
         });
         if let (Some(effort), Some(obj)) = (prompt.effort, params.as_object_mut()) {
-            obj.insert("reasoningEffort".to_owned(), level(effort).into());
+            obj.insert("reasoningEffort".to_owned(), effort.as_str().into());
         }
         wire.ended = None;
         wire.request("turn/start", params)
@@ -477,7 +445,7 @@ where
                 break done;
             }
             let msg = wire.next_message().await?;
-            wire.handle(msg, None).await?;
+            wire.handle(msg).await?;
         };
         if wire.events.send(Event::Done(done)).is_err() {
             return Ok(());
