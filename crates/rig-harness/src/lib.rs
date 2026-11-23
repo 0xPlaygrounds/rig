@@ -44,6 +44,7 @@ pub mod clock;
 pub mod commands;
 pub mod describe;
 pub mod host;
+pub mod links;
 mod load;
 pub mod main_agent;
 pub mod per_call;
@@ -127,6 +128,7 @@ pub mod prelude {
         StoreOpener, rewrite_stopped,
     };
     pub use crate::host::signals::{self, ExitWhenUnread};
+    pub use crate::links::SessionLink;
     pub use crate::main_agent::{
         CurrentAgent, CurrentAgentPlugin, CurrentAgentSystems, MainAgentQuery, ShownAgent,
         main_agent,

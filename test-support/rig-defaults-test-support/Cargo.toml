@@ -32,6 +32,7 @@ rig-fold = { path = "../../plugins/rig-fold" }
 rig-bridge = { path = "../../plugins/rig-bridge" }
 rig-mcp-client = { path = "../../plugins/rig-mcp-client" }
 rig-acp = { path = "../../plugins/rig-acp" }
+rig-linear = { path = "../../plugins/rig-linear" }
 serde_json = { workspace = true }
 # Named by the derives of the plugin `rig plugin new` writes.
 bevy_reflect = { workspace = true }

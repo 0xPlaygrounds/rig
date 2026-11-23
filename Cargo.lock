@@ -14171,6 +14171,7 @@ dependencies = [
  "rig-harness",
  "rig-harness-test-support",
  "rig-inspect",
+ "rig-linear",
  "rig-mcp-client",
  "rig-traffic",
  "rig-tui",
@@ -14392,6 +14393,25 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "rig-linear"
+version = "0.47.0"
+dependencies = [
+ "async-channel",
+ "bevy_ecs",
+ "bevy_log",
+ "rig-core",
+ "rig-harness",
+ "rig-reqwest",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+ "toml",
+ "url",
 ]
 
 [[package]]
