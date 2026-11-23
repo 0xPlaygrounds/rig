@@ -74,17 +74,21 @@ fn generate_content_reasoning_follows_the_models_thinking() {
         body["generationConfig"]["thinkingConfig"],
         json!({"thinkingLevel": "low"})
     );
-    let body = sent(
-        &rest("gemini-4-hydrogen"),
-        with(GenerationOptions::default().reasoning(Effort::XHigh)),
-    )
-    .expect("4 Hydrogen takes `xhigh`");
-    assert_eq!(
-        body["generationConfig"]["thinkingConfig"],
-        json!({"thinkingLevel": "xhigh"})
-    );
+    for model in ["gemini-4-hydrogen", "gemini-4-neon"] {
+        let body = sent(
+            &rest(model),
+            with(GenerationOptions::default().reasoning(Effort::XHigh)),
+        )
+        .expect("model takes `xhigh`");
+        assert_eq!(
+            body["generationConfig"]["thinkingConfig"],
+            json!({"thinkingLevel": "xhigh"}),
+            "{model}"
+        );
+    }
     for (model, reasoning) in [
         ("gemini-4-hydrogen", Reasoning::Effort(Effort::Max)),
+        ("gemini-4-neon", Reasoning::Effort(Effort::Max)),
         ("gemini-4-carbon", Reasoning::Effort(Effort::XHigh)),
         ("gemini-5-unlisted", Reasoning::Effort(Effort::XHigh)),
         ("gemini-3.8-flash", Reasoning::Effort(Effort::Minimal)),

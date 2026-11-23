@@ -47,7 +47,7 @@ fn enrich_limits_populates_context_windows_across_bridge_vendors() {
     assert_eq!(check(Vendor::Muse, "muse-wonder-full-1.0"), Some(1_048_576));
     assert_eq!(check(Vendor::Copilot, "gpt-6.1-terra"), Some(922_000));
     assert_eq!(check(Vendor::Copilot, "claude-sonnet-5.5"), Some(1_000_000));
-    assert_eq!(check(Vendor::Copilot, "mai-code-2"), Some(200_000));
+    assert_eq!(check(Vendor::Copilot, "mai-code-2"), Some(922_000));
     assert_eq!(check(Vendor::Copilot, "auto"), None);
 }
 

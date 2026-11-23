@@ -1551,7 +1551,22 @@ fn the_builtin_catalog_lists_gemini_4_argon_and_gpt_6_input_limits() {
             argon.reasoning.supported() && argon.pricing.is_some(),
             "{vendor}"
         );
+        let neon = spec(catalog, vendor, "gemini-4-neon");
+        assert_eq!(neon.display_name, "Gemini 4 Neon", "{vendor}");
+        assert!(
+            neon.reasoning.supported() && neon.pricing.is_some(),
+            "{vendor}"
+        );
     }
+    assert_eq!(
+        spec(catalog, "gcp.gemini", "gemini-4-neon")
+            .reasoning
+            .default_effort(),
+        Some(Effort::High)
+    );
+    let grok_build = spec(catalog, "xai", "grok-build-0.1");
+    assert_eq!(grok_build.context_window, Some(500_000));
+    assert_eq!(grok_build.reasoning.default_effort(), Some(Effort::High));
     let astra = spec(catalog, "chatgpt", "gpt-6-astra");
     assert_eq!(astra.context_window, Some(1_050_000));
     assert_eq!(astra.input_limit(), Some(922_000));
