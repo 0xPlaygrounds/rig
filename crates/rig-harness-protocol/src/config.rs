@@ -268,7 +268,7 @@ the editor names, and /mcp.";
             off rig_bridge::BridgePlugin, "rig-bridge", "Other agents' CLIs",
                 ["linux", "macos"], None,
                 "Bridge: `claude-code/*`, `grok-build/*`, `antigravity/*`, `codex/*`, `muse/*` \
-and `copilot/*` models answered by the `claude`, `grok`, `agy`, `codex`, `muse` and `copilot` \
+and `copilot-cli/*` models answered by the `claude`, `grok`, `agy`, `codex`, `muse` and `copilot` \
 programs with their own sign-ins, each run for inference alone: none of its tools, instructions \
 or memory, and rig's tools over MCP.";
         }

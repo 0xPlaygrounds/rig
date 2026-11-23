@@ -939,7 +939,7 @@ uses rig's models, tools, sessions and slash commands: `rig plugin enable
 rig_acp::AcpPlugin`. Its README has the editor's settings.
 
 The optional [`rig-bridge`](../plugins/rig-bridge) plugin adds `claude-code/*`,
-`grok-build/*`, `antigravity/*`, `codex/*`, `muse/*` and `copilot/*` models,
+`grok-build/*`, `antigravity/*`, `codex/*`, `muse/*` and `copilot-cli/*` models,
 answered by the Claude Code, Grok Build, Antigravity, Codex, Meta AI Muse and
 GitHub Copilot programs with the sign-ins those programs already have:
 `rig plugin enable rig_bridge::BridgePlugin`. Each program is run for
