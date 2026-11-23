@@ -139,3 +139,19 @@ Follow [DEVELOPING.md](DEVELOPING.md) for check selection, independent review,
 and authorized publication. Run the smallest useful local check; docs-only
 edits get diff and link review, not Rust builds. Keep progress reports outside
 the repository and never claim merge readiness with required checks pending.
+
+## Merging
+
+`main` merges through a merge queue, and `gh pr merge` is refused here with
+or without `--squash`, `--auto` or `--delete-branch`. When the owner has
+approved merging that PR and its required checks have passed, add it to the
+queue:
+
+```bash
+gh api graphql \
+  -f query='mutation($id: ID!) { enqueuePullRequest(input: {pullRequestId: $id}) { mergeQueueEntry { position state } } }' \
+  -f id="$(gh pr view <number> --json id -q .id)"
+```
+
+The queue runs its own checks and squash-merges some minutes later. Confirm
+with `gh pr view <number> --json state,mergedAt` before reporting it merged.
