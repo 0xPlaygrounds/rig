@@ -296,6 +296,10 @@ impl Connected {
                     })
                     .collect(),
             ),
+            Job::Plan(mut plan) => {
+                self.redactor.json(&mut plan);
+                Job::Plan(plan)
+            }
             job => job,
         };
         let mut tries = 0;

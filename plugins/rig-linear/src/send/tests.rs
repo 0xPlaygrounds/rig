@@ -382,3 +382,23 @@ fn what_is_sent_is_redacted_and_the_token_never_shows() {
         ))
     );
 }
+
+#[test]
+fn the_plan_is_redacted_too() {
+    let linear = StandIn::start();
+    let mut config = config(
+        &linear.url,
+        Credentials::Token("lin_api_key_of_the_test".to_owned()),
+        Target::Session(SESSION_ID.to_owned()),
+    );
+    config.plan = Some(json!([{ "content": "use lin_api_key_of_the_test", "status": "pending" }]));
+    run_with(config, Vec::new());
+    let plan = linear
+        .bodies()
+        .get(1)
+        .and_then(|body| body.pointer("/variables/plan").cloned());
+    assert_eq!(
+        plan,
+        Some(json!([{ "content": "use [REDACTED]", "status": "pending" }]))
+    );
+}

@@ -166,6 +166,16 @@ impl Redactor {
         text
     }
 
+    /// Every string in `value` redacted.
+    pub(crate) fn json(&self, value: &mut Value) {
+        match value {
+            Value::String(text) => *text = self.text(text),
+            Value::Array(items) => items.iter_mut().for_each(|item| self.json(item)),
+            Value::Object(fields) => fields.values_mut().for_each(|field| self.json(field)),
+            _ => {}
+        }
+    }
+
     /// Every string of `activity` redacted.
     pub(crate) fn activity(&self, activity: Activity) -> Activity {
         let content = match activity.content {
