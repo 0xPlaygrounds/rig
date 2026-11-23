@@ -105,6 +105,12 @@ pub(crate) trait Agent: Send + Sync + 'static {
         false
     }
 
+    /// Whether `session/prompt`'s `result.usage` is cumulative across the
+    /// whole session instead of reset for each prompt turn.
+    fn cumulative_usage(&self) -> bool {
+        false
+    }
+
     /// The `_meta` of `initialize`, for an agent that reads one.
     fn initialize_meta(&self) -> Option<Value> {
         None
@@ -456,6 +462,7 @@ where
 {
     let agent = peer.agent.clone();
     let mut current_effort = opening.effort;
+    let mut prev_usage = Usage::new();
     let (session, mut system, effort_config) =
         tokio::time::timeout(HANDSHAKE_TIMEOUT, handshake(peer, &opening))
             .await
@@ -519,8 +526,17 @@ where
             Ok(result) => {
                 // The turn's totals, unless each inference was counted.
                 let cache_apart = agent.input_leaves_out_cache();
-                if let Some(usage) = usage(&result, cache_apart).filter(|_| !was_counted) {
-                    let _ = peer.events.send(Event::Usage(usage));
+                if let Some(reported) = usage(&result, cache_apart).filter(|_| !was_counted) {
+                    let turn_usage = if agent.cumulative_usage() {
+                        let delta = usage_delta(&prev_usage, reported);
+                        prev_usage = reported;
+                        delta
+                    } else {
+                        reported
+                    };
+                    if turn_usage.is_reported() {
+                        let _ = peer.events.send(Event::Usage(turn_usage));
+                    }
                 }
                 match result.get("stopReason").and_then(Value::as_str) {
                     Some("max_tokens") => Ok(FinishReason::Length),
@@ -713,4 +729,34 @@ fn usage(result: &Value, cache_apart: bool) -> Option<Usage> {
         .map(|(input, output)| input + output)
         .or_else(|| count(&["totalTokens", "total_tokens"]));
     usage.is_reported().then_some(usage)
+}
+
+/// Subtracts the prior session-cumulative [`Usage`] from `current` to obtain
+/// this turn's delta. If the primary counters decreased (for example after a
+/// backend reset or a CLI change to per-turn reporting), returns `current`
+/// unchanged instead of clamping to zero.
+fn usage_delta(prev: &Usage, current: Usage) -> Usage {
+    let decreased =
+        |cur: Option<u64>, old: Option<u64>| matches!((cur, old), (Some(c), Some(o)) if c < o);
+    if decreased(current.input_tokens, prev.input_tokens)
+        || decreased(current.output_tokens, prev.output_tokens)
+    {
+        return current;
+    }
+    let sub = |cur: Option<u64>, old: Option<u64>| cur.map(|c| c.saturating_sub(old.unwrap_or(0)));
+    let mut delta = Usage::new();
+    delta.input_tokens = sub(current.input_tokens, prev.input_tokens);
+    delta.output_tokens = sub(current.output_tokens, prev.output_tokens);
+    delta.cached_input_tokens = sub(current.cached_input_tokens, prev.cached_input_tokens);
+    delta.cache_creation_input_tokens = sub(
+        current.cache_creation_input_tokens,
+        prev.cache_creation_input_tokens,
+    );
+    delta.reasoning_tokens = sub(current.reasoning_tokens, prev.reasoning_tokens);
+    delta.total_tokens = delta
+        .input_tokens
+        .zip(delta.output_tokens)
+        .map(|(input, output)| input + output)
+        .or_else(|| sub(current.total_tokens, prev.total_tokens));
+    delta
 }

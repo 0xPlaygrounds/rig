@@ -578,10 +578,8 @@ fn probe_cli_json(
     for (key, value) in crate::harness::PROBE_ENV.iter().chain(extra_env) {
         command.env(key, value);
     }
-    if let (Ok(cwd), Some(tmpdir)) = (std::env::current_dir(), std::env::var_os("TMPDIR"))
-        && Path::new(&tmpdir).starts_with(&cwd)
-    {
-        command.env_remove("TMPDIR");
+    if let Ok(cwd) = std::env::current_dir() {
+        crate::harness::clear_nested_tmpdir(&mut command, &cwd);
     }
     let process = match Process::start(command, Spawn::default()) {
         Ok(process) => process,

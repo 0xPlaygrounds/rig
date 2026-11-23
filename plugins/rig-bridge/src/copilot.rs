@@ -136,6 +136,10 @@ impl Agent for Copilot {
         Some(effort_wire(effort, true))
     }
 
+    fn cumulative_usage(&self) -> bool {
+        true
+    }
+
     fn sign_in(&self, _: &Value) -> Option<String> {
         None
     }

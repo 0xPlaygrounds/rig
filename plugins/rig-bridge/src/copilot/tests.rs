@@ -128,4 +128,5 @@ fn copilot_accepts_only_rig_prefixed_tool_titles() {
     assert!(!Copilot.is_rig_tool(&stripped, None));
     assert!(Copilot.is_rig_tool(&prefixed, None));
     assert!(!Copilot.is_rig_tool(&other, None));
+    assert!(Copilot.cumulative_usage());
 }
