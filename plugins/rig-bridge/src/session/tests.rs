@@ -4,8 +4,8 @@ use std::sync::{Arc, Mutex, PoisonError};
 use futures::StreamExt;
 use rig_harness::prelude::Processes;
 use rig_harness::rig_core::completion::{
-    AssistantContent, CompletionRequest, CompletionResponse, FinishReason, Message, ToolDefinition,
-    Usage,
+    AssistantContent, CompletionRequest, CompletionResponse, Effort, FinishReason, Message,
+    Reasoning, ToolDefinition, Usage,
 };
 use rig_harness::rig_core::effect::{Answered, EffectId, EffectKind};
 use rig_harness::rig_core::message::{
@@ -16,7 +16,7 @@ use serde_json::{Value, json};
 use tokio::sync::{Notify, mpsc};
 
 use super::{Bridge, Model, apply_context, budgeted_opening};
-use crate::harness::{Event, Harness, Launch, Part, Running, Vendor};
+use crate::harness::{Event, Harness, Launch, Part, Prompt, Running, Vendor};
 use crate::mcp::tests::{post, request};
 
 /// What the scripted harness saw: each start's system prompt and prompts.
@@ -122,7 +122,7 @@ impl Harness for Scripted {
     }
 
     fn start(&self, launch: Launch<'_>) -> Result<Running, String> {
-        let (prompts, mut prompted) = mpsc::unbounded_channel::<Vec<Part>>();
+        let (prompts, mut prompted) = mpsc::unbounded_channel::<Prompt>();
         let (events, reported) = mpsc::unbounded_channel();
         let seen = self.seen.clone();
         let index = {
@@ -143,6 +143,7 @@ impl Harness for Scripted {
         tokio::spawn(async move {
             while let Some(prompt) = prompted.recv().await {
                 let text: String = prompt
+                    .parts
                     .iter()
                     .map(|part| match part {
                         Part::Text(text) => text.as_str(),
@@ -792,7 +793,7 @@ async fn counting_tool_call_without_usage_settles_on_watchdog() {
             String::new()
         }
         fn start(&self, launch: Launch<'_>) -> Result<Running, String> {
-            let (prompts, mut prompted) = mpsc::unbounded_channel::<Vec<Part>>();
+            let (prompts, mut prompted) = mpsc::unbounded_channel::<Prompt>();
             let (events, reported) = mpsc::unbounded_channel();
             let (url, token) = (launch.mcp.url().to_owned(), launch.mcp.token().to_owned());
             tokio::spawn(async move {
@@ -857,7 +858,7 @@ async fn idle_crashed_session_is_pruned_and_restarts_cleanly() {
         }
         fn start(&self, _: Launch<'_>) -> Result<Running, String> {
             let run = self.starts.fetch_add(1, Ordering::SeqCst);
-            let (prompts, mut prompted) = mpsc::unbounded_channel::<Vec<Part>>();
+            let (prompts, mut prompted) = mpsc::unbounded_channel::<Prompt>();
             let (events, reported) = mpsc::unbounded_channel();
             tokio::spawn(async move {
                 if prompted.recv().await.is_some() {
@@ -929,12 +930,13 @@ async fn warm_prompt_failing_before_output_recovers_on_fresh_session() {
         fn start(&self, _: Launch<'_>) -> Result<Running, String> {
             let run = self.starts.fetch_add(1, Ordering::SeqCst);
             let prompts_seen = self.prompts_seen.clone();
-            let (prompts, mut prompted) = mpsc::unbounded_channel::<Vec<Part>>();
+            let (prompts, mut prompted) = mpsc::unbounded_channel::<Prompt>();
             let (events, reported) = mpsc::unbounded_channel();
             tokio::spawn(async move {
                 let mut turn = 0;
-                while let Some(parts) = prompted.recv().await {
-                    let text: String = parts
+                while let Some(prompt) = prompted.recv().await {
+                    let text: String = prompt
+                        .parts
                         .into_iter()
                         .filter_map(|p| match p {
                             Part::Text(t) => Some(t),
@@ -1037,7 +1039,7 @@ async fn warm_prompt_does_not_retry_after_partial_output_or_tool_call() {
             let mode = self.mode;
             let url = launch.mcp.url().to_owned();
             let token = launch.mcp.token().to_owned();
-            let (prompts, mut prompted) = mpsc::unbounded_channel::<Vec<Part>>();
+            let (prompts, mut prompted) = mpsc::unbounded_channel::<Prompt>();
             let (events, reported) = mpsc::unbounded_channel();
             tokio::spawn(async move {
                 let mut turn = 0;
@@ -1140,7 +1142,7 @@ async fn warm_prompt_retries_at_most_once_and_skips_non_recoverable_errors() {
         fn start(&self, _: Launch<'_>) -> Result<Running, String> {
             let run = self.starts.fetch_add(1, Ordering::SeqCst);
             let error = self.error;
-            let (prompts, mut prompted) = mpsc::unbounded_channel::<Vec<Part>>();
+            let (prompts, mut prompted) = mpsc::unbounded_channel::<Prompt>();
             let (events, reported) = mpsc::unbounded_channel();
             tokio::spawn(async move {
                 let mut turn = 0;
@@ -1200,5 +1202,124 @@ async fn warm_prompt_retries_at_most_once_and_skips_non_recoverable_errors() {
         let outcome = reply(&model, asks("", &h2)).await.into_outcome().await;
         assert!(outcome.is_err());
         assert_eq!(starts.load(Ordering::SeqCst), expected_starts);
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn warm_session_reuses_harness_across_effort_changes_only_when_supported() {
+    struct EffortRecorder {
+        dynamic: bool,
+        starts: Arc<AtomicUsize>,
+        efforts: Arc<Mutex<Vec<Option<Effort>>>>,
+    }
+    impl Harness for EffortRecorder {
+        fn note(&self, _: Option<&std::path::Path>) -> String {
+            String::new()
+        }
+        fn changes_effort(&self) -> bool {
+            self.dynamic
+        }
+        fn start(&self, _: Launch<'_>) -> Result<Running, String> {
+            self.starts.fetch_add(1, Ordering::SeqCst);
+            let efforts = self.efforts.clone();
+            let (prompts, mut prompted) = mpsc::unbounded_channel::<Prompt>();
+            let (events, reported) = mpsc::unbounded_channel();
+            tokio::spawn(async move {
+                while let Some(prompt) = prompted.recv().await {
+                    efforts
+                        .lock()
+                        .unwrap_or_else(PoisonError::into_inner)
+                        .push(prompt.effort);
+                    let label = prompt.effort.map_or("default", |e| e.as_str());
+                    let _ = events.send(Event::Text(format!("ok-{label}")));
+                    let _ = events.send(Event::Done(Ok(FinishReason::Stop)));
+                }
+            });
+            Ok(Running {
+                prompts,
+                events: reported,
+                _alive: Box::new(()),
+            })
+        }
+    }
+
+    for (dynamic, expected_starts, expected_warm) in [(true, 1, 1), (false, 3, 2)] {
+        let starts = Arc::new(AtomicUsize::new(0));
+        let efforts = Arc::new(Mutex::new(Vec::new()));
+        let scratch =
+            std::env::temp_dir().join(format!("rig-bridge-test-{}", uuid::Uuid::new_v4().simple()));
+        let bridge = Arc::new(Bridge::new(
+            tokio::runtime::Handle::current(),
+            Processes::default(),
+            2,
+            None,
+            scratch,
+        ));
+        let model = Model {
+            bridge: bridge.clone(),
+            harness: Arc::new(EffortRecorder {
+                dynamic,
+                starts: starts.clone(),
+                efforts: efforts.clone(),
+            }),
+            program: "effort-test".into(),
+            vendor: Vendor::Codex,
+            model: "gpt-6.2-sol".to_owned(),
+            context_limit: Some(475_000),
+        };
+
+        let ask_effort = |history: &[Message], effort: Option<Effort>| {
+            let mut req = asks("", history);
+            req.options.reasoning = effort.map(Reasoning::Effort);
+            req
+        };
+
+        let h1 = vec![Message::user("t1")];
+        assert_eq!(
+            said(answer(&model, ask_effort(&h1, None)).await.as_ref()).0,
+            "ok-default"
+        );
+
+        let h2 = vec![
+            Message::user("t1"),
+            Message::assistant("ok-default"),
+            Message::user("t2"),
+        ];
+        assert_eq!(
+            said(
+                answer(&model, ask_effort(&h2, Some(Effort::Low)))
+                    .await
+                    .as_ref()
+            )
+            .0,
+            "ok-low"
+        );
+
+        let h3 = vec![
+            Message::user("t1"),
+            Message::assistant("ok-default"),
+            Message::user("t2"),
+            Message::assistant("ok-low"),
+            Message::user("t3"),
+        ];
+        assert_eq!(
+            said(
+                answer(&model, ask_effort(&h3, Some(Effort::High)))
+                    .await
+                    .as_ref()
+            )
+            .0,
+            "ok-high"
+        );
+
+        assert_eq!(starts.load(Ordering::SeqCst), expected_starts);
+        let seen = efforts
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone();
+        assert_eq!(seen, vec![None, Some(Effort::Low), Some(Effort::High)]);
+        let snap = bridge.snapshot();
+        assert_eq!(snap.warm.len(), expected_warm);
+        assert_eq!(snap.warm.last().and_then(|w| w.effort), Some(Effort::High));
     }
 }

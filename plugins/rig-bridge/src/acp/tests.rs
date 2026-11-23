@@ -2,13 +2,13 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use rig_harness::rig_core::completion::FinishReason;
+use rig_harness::rig_core::completion::{Effort, FinishReason};
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, DuplexStream};
 use tokio::sync::mpsc;
 
 use super::{Agent, Opening, Peer, converse};
-use crate::harness::{ContextSnapshot, Event, Part};
+use crate::harness::{ContextSnapshot, Event, Part, Prompt};
 
 /// An agent with no system prompt channel, one sign-in and a model request.
 struct Plain;
@@ -142,8 +142,14 @@ async fn conversation() -> (Vec<Event>, Vec<Value>) {
         mcp_token: "secret".to_owned(),
         tools: vec!["read".to_owned()],
     };
-    let _ = prompts.send(vec![Part::Text("one".to_owned())]);
-    let _ = prompts.send(vec![Part::Text("two".to_owned())]);
+    let _ = prompts.send(Prompt {
+        parts: vec![Part::Text("one".to_owned())],
+        effort: None,
+    });
+    let _ = prompts.send(Prompt {
+        parts: vec![Part::Text("two".to_owned())],
+        effort: None,
+    });
     drop(prompts);
     let ended = converse(&mut peer, opening, prompted).await;
     drop(peer);
@@ -362,7 +368,10 @@ async fn usage_update_session_window_and_max_tokens_are_emitted_cleanly() {
     let (events_tx, mut events_rx) = mpsc::unbounded_channel();
     let (prompts_tx, prompts_rx) = mpsc::unbounded_channel();
     let mut peer = Peer::new(reader, writer, events_tx, Arc::new(Plain));
-    let _ = prompts_tx.send(vec![Part::Text("go".to_owned())]);
+    let _ = prompts_tx.send(Prompt {
+        parts: vec![Part::Text("go".to_owned())],
+        effort: None,
+    });
     drop(prompts_tx);
     let ended = converse(
         &mut peer,
@@ -414,4 +423,137 @@ async fn usage_update_session_window_and_max_tokens_are_emitted_cleanly() {
     assert_eq!(usage.and_then(|u| u.input_tokens), Some(3_500_000));
     assert_eq!(usage.and_then(|u| u.output_tokens), Some(40_000));
     assert_eq!(events.last(), Some(&Event::Done(Ok(FinishReason::Length))));
+}
+
+#[tokio::test]
+async fn acp_updates_reasoning_effort_mid_session_and_restores_default() {
+    struct EffortAgent;
+    impl Agent for EffortAgent {
+        fn name(&self) -> &'static str {
+            "effort"
+        }
+        fn prepare(&self, _: &mut Command, _: &Opening) -> Result<(), String> {
+            Ok(())
+        }
+        fn session_meta(&self, _: &Value, _: &str) -> Option<Value> {
+            Some(json!({}))
+        }
+        fn choose(&self, _: &str, _: &Value, _: &Opening) -> Vec<(&'static str, Value)> {
+            Vec::new()
+        }
+        fn sign_in(&self, _: &Value) -> Option<String> {
+            None
+        }
+        fn note(&self, _: Option<&std::path::Path>) -> String {
+            String::new()
+        }
+        fn login_hint(&self) -> &'static str {
+            "effort login"
+        }
+        fn is_rig_tool(&self, _: &Value, _: Option<&str>) -> bool {
+            true
+        }
+        fn changes_effort(&self) -> bool {
+            true
+        }
+        fn set_effort(&self, session: &str, effort: Effort) -> Option<(&'static str, Value)> {
+            Some((
+                "session/set_config_option",
+                json!({
+                    "sessionId": session,
+                    "configId": "reasoning_effort",
+                    "value": effort.as_str(),
+                }),
+            ))
+        }
+    }
+
+    let (client, server) = tokio::io::duplex(1 << 16);
+    let received = Received::default();
+    let seen = received.clone();
+    let task = tokio::spawn(async move {
+        let (reader, mut writer) = tokio::io::split(server);
+        let mut lines = BufReader::new(reader).lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            let Ok(msg) = serde_json::from_str::<Value>(&line) else {
+                continue;
+            };
+            seen.lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .push(msg.clone());
+            let id = msg.get("id").cloned().unwrap_or(Value::Null);
+            let out = match msg.get("method").and_then(Value::as_str) {
+                Some("initialize") => json!({ "id": id, "result": {} }),
+                Some("session/new") => json!({
+                    "id": id,
+                    "result": {
+                        "sessionId": "s1",
+                        "configOptions": [{
+                            "id": "reasoning_effort",
+                            "currentValue": "medium",
+                        }]
+                    }
+                }),
+                Some("session/set_config_option") => json!({ "id": id, "result": {} }),
+                Some("session/prompt") => {
+                    json!({ "id": id, "result": { "stopReason": "end_turn" } })
+                }
+                _ => continue,
+            };
+            let mut text = out.to_string();
+            text.push('\n');
+            let _ = writer.write_all(text.as_bytes()).await;
+        }
+    });
+
+    let (reader, writer) = tokio::io::split(client);
+    let (events_tx, _events_rx) = mpsc::unbounded_channel();
+    let (prompts_tx, prompts_rx) = mpsc::unbounded_channel();
+    let mut peer = Peer::new(reader, writer, events_tx, Arc::new(EffortAgent));
+    let _ = prompts_tx.send(Prompt {
+        parts: vec![Part::Text("first".to_owned())],
+        effort: None,
+    });
+    let _ = prompts_tx.send(Prompt {
+        parts: vec![Part::Text("second".to_owned())],
+        effort: Some(Effort::Low),
+    });
+    let _ = prompts_tx.send(Prompt {
+        parts: vec![Part::Text("third".to_owned())],
+        effort: Some(Effort::Low),
+    });
+    let _ = prompts_tx.send(Prompt {
+        parts: vec![Part::Text("fourth".to_owned())],
+        effort: None,
+    });
+    drop(prompts_tx);
+
+    let ended = converse(
+        &mut peer,
+        Opening {
+            dir: PathBuf::from("/work"),
+            system: String::new(),
+            model: "model-1".to_owned(),
+            effort: None,
+            mcp_url: "http://127.0.0.1:1/mcp".to_owned(),
+            mcp_token: "secret".to_owned(),
+            tools: Vec::new(),
+        },
+        prompts_rx,
+    )
+    .await;
+    drop(peer);
+    let _ = task.await;
+    assert_eq!(ended, Ok(()));
+
+    let received = received
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clone();
+    let updates: Vec<&str> = sent(&received, "session/set_config_option")
+        .into_iter()
+        .filter_map(|msg| msg.pointer("/params/value").and_then(Value::as_str))
+        .collect();
+    // Turn 1: default (no-op), Turn 2: low, Turn 3: low (deduped), Turn 4: default -> restored to medium.
+    assert_eq!(updates, vec!["low", "medium"]);
 }

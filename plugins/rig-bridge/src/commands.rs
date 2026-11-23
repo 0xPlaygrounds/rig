@@ -289,9 +289,13 @@ fn format_status(handle: &BridgeHandle) -> String {
             } else {
                 "fixed-tools"
             };
+            let effort = warm
+                .effort
+                .map(|effort| format!(" [{}]", effort.as_str()))
+                .unwrap_or_default();
             let ctx = format_ctx(warm.context_tokens, warm.context_limit);
             lines.push(format!(
-                "- {}/{} ({} turn(s){ctx}, {relist})",
+                "- {}/{}{effort} ({} turn(s){ctx}, {relist})",
                 warm.vendor, warm.model, warm.turns
             ));
         }

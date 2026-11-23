@@ -81,6 +81,26 @@ pub(crate) enum Part {
     },
 }
 
+/// One prompt sent to a running harness, with its requested reasoning effort.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Prompt {
+    pub parts: Vec<Part>,
+    pub effort: Option<Effort>,
+}
+
+/// Parses a lower-case reasoning effort wire word into [`Effort`].
+pub(crate) fn parse_effort(word: &str) -> Option<Effort> {
+    match word {
+        "minimal" => Some(Effort::Minimal),
+        "low" => Some(Effort::Low),
+        "medium" => Some(Effort::Medium),
+        "high" => Some(Effort::High),
+        "xhigh" => Some(Effort::XHigh),
+        "max" => Some(Effort::Max),
+        _ => None,
+    }
+}
+
 /// What a harness reports while it answers a prompt.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Event {
@@ -123,7 +143,7 @@ pub(crate) struct Launch<'a> {
 /// program started.
 pub(crate) struct Running {
     /// Takes each prompt. The harness answers them in order.
-    pub prompts: mpsc::UnboundedSender<Vec<Part>>,
+    pub prompts: mpsc::UnboundedSender<Prompt>,
     /// What the harness reports. It closes when the program is gone.
     pub events: mpsc::UnboundedReceiver<Event>,
     /// What keeps the program alive: dropping it kills the program.
@@ -147,6 +167,12 @@ pub(crate) trait Harness: Send + Sync + 'static {
     /// again. One that fixes its tools as it starts says no.
     fn relists(&self) -> bool {
         true
+    }
+
+    /// Whether the running program can apply a different reasoning effort on
+    /// the next prompt without restarting the session.
+    fn changes_effort(&self) -> bool {
+        false
     }
 }
 

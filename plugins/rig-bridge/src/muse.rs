@@ -15,7 +15,7 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::mpsc;
 
 use crate::harness::{
-    Event, HANDSHAKE_TIMEOUT, Harness, Launch, Part, Running, Stderr, link, note, spawn,
+    Event, HANDSHAKE_TIMEOUT, Harness, Launch, Part, Prompt, Running, Stderr, link, note, spawn,
 };
 use crate::rpc::Transport;
 
@@ -51,13 +51,17 @@ impl Harness for Muse {
         note(&format!("mcp__{SERVER}.read"), "", Some(project))
     }
 
+    fn changes_effort(&self) -> bool {
+        true
+    }
+
     fn start(&self, launch: Launch<'_>) -> Result<Running, String> {
         let Launch {
             mut command,
             dir,
             system,
             model,
-            effort,
+            effort: _,
             mcp,
             tools: _,
         } = launch;
@@ -100,7 +104,6 @@ impl Harness for Muse {
         let opening = Opening {
             system: system.to_owned(),
             model: model.to_owned(),
-            effort,
             mcp_url: mcp.url().to_owned(),
             mcp_token: mcp.token().to_owned(),
         };
@@ -123,7 +126,6 @@ impl Harness for Muse {
 pub(crate) struct Opening {
     pub system: String,
     pub model: String,
-    pub effort: Option<Effort>,
     pub mcp_url: String,
     pub mcp_token: String,
 }
@@ -366,7 +368,7 @@ pub(crate) fn token_usage(params: &Value) -> Option<Usage> {
 pub(crate) async fn converse<R, W>(
     wire: &mut Wire<R, W>,
     opening: Opening,
-    mut prompts: mpsc::UnboundedReceiver<Vec<Part>>,
+    mut prompts: mpsc::UnboundedReceiver<Prompt>,
 ) -> Result<(), String>
 where
     R: AsyncRead + Unpin,
@@ -447,6 +449,7 @@ where
             return Ok(());
         };
         let input: Vec<Value> = prompt
+            .parts
             .iter()
             .map(|part| match part {
                 Part::Text(text) => json!({ "type": "text", "text": text }),
@@ -462,7 +465,7 @@ where
             "sessionId": session_id,
             "input": input,
         });
-        if let (Some(effort), Some(obj)) = (opening.effort, params.as_object_mut()) {
+        if let (Some(effort), Some(obj)) = (prompt.effort, params.as_object_mut()) {
             obj.insert("reasoningEffort".to_owned(), level(effort).into());
         }
         wire.ended = None;

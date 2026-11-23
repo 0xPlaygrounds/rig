@@ -9,14 +9,15 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use base64::Engine;
+use rig_harness::rig_core::catalog::ReasoningSupport;
 use rig_harness::rig_core::completion::{Effort, FinishReason, Usage};
 use serde_json::{Value, json};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::mpsc;
 
 use crate::harness::{
-    ContextSnapshot, Event, HANDSHAKE_TIMEOUT, Harness, Launch, Part, Running, Stderr, link, note,
-    spawn,
+    ContextSnapshot, Event, HANDSHAKE_TIMEOUT, Harness, Launch, Part, Prompt, Running, Stderr,
+    link, note, parse_effort, spawn,
 };
 use crate::rpc::Transport;
 
@@ -96,6 +97,8 @@ pub(crate) struct Listed {
     pub name: String,
     /// Its context window, in tokens.
     pub context_window: Option<u32>,
+    /// The reasoning effort levels the model advertises.
+    pub reasoning: ReasoningSupport,
 }
 
 /// Codex, with its model catalog rewritten so that no model brings tools.
@@ -134,10 +137,38 @@ impl Codex {
                             _ => raw,
                         }
                     });
+                let mut levels = Vec::new();
+                if let Some(supported) = model
+                    .get("supported_reasoning_levels")
+                    .and_then(Value::as_array)
+                {
+                    for entry in supported {
+                        if let Some(effort) = entry
+                            .get("effort")
+                            .and_then(Value::as_str)
+                            .and_then(parse_effort)
+                            && !levels.contains(&effort)
+                        {
+                            levels.push(effort);
+                        }
+                    }
+                }
+                let default = text("default_reasoning_level").and_then(parse_effort);
+                let reasoning = if levels.is_empty() {
+                    ReasoningSupport::Unknown { default }
+                } else {
+                    ReasoningSupport::Listed {
+                        levels,
+                        budget: None,
+                        can_disable: false,
+                        default,
+                    }
+                };
                 listed.push(Listed {
                     id: id.to_owned(),
                     name: text("display_name").unwrap_or(id).to_owned(),
                     context_window: window.and_then(|tokens| u32::try_from(tokens).ok()),
+                    reasoning,
                 });
             }
         }
@@ -167,13 +198,17 @@ impl Harness for Codex {
         false
     }
 
+    fn changes_effort(&self) -> bool {
+        true
+    }
+
     fn start(&self, launch: Launch<'_>) -> Result<Running, String> {
         let Launch {
             mut command,
             dir,
             system,
             model,
-            effort,
+            effort: _,
             mcp,
             tools: _,
         } = launch;
@@ -218,7 +253,6 @@ impl Harness for Codex {
             dir: dir.to_path_buf(),
             system: system.to_owned(),
             model: model.to_owned(),
-            effort,
         };
         tokio::spawn(async move {
             let mut wire = Wire::new(pipes.stdout, pipes.stdin, events.clone());
@@ -243,8 +277,6 @@ pub(crate) struct Opening {
     pub system: String,
     /// The model's id.
     pub model: String,
-    /// The effort asked for.
-    pub effort: Option<Effort>,
 }
 
 /// An effort as a turn names it.
@@ -476,7 +508,7 @@ fn input(prompt: &[Part], dir: &Path, images: &mut usize) -> Result<Vec<Value>, 
 pub(crate) async fn converse<R, W>(
     wire: &mut Wire<R, W>,
     opening: Opening,
-    mut prompts: mpsc::UnboundedReceiver<Vec<Part>>,
+    mut prompts: mpsc::UnboundedReceiver<Prompt>,
 ) -> Result<(), String>
 where
     R: AsyncRead + Unpin,
@@ -542,10 +574,10 @@ where
         };
         let mut turn = json!({
             "threadId": thread,
-            "input": input(&prompt, &opening.dir, &mut images)?,
+            "input": input(&prompt.parts, &opening.dir, &mut images)?,
             "summary": "auto",
         });
-        if let (Some(effort), Some(turn)) = (opening.effort, turn.as_object_mut()) {
+        if let (Some(effort), Some(turn)) = (prompt.effort, turn.as_object_mut()) {
             turn.insert("effort".to_owned(), level(effort).into());
         }
         wire.ended = None;

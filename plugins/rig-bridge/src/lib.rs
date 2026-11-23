@@ -62,6 +62,7 @@ mod plugin {
 
     use rig_harness::prelude::*;
     use rig_harness::rig_core::catalog::{Catalog, ModelSpec, ReasoningSupport, Transport};
+    use rig_harness::rig_core::completion::Effort;
     use rig_harness::rig_core::providers::anthropic;
     use rig_harness::rig_core::providers::registry::{ConnectError, ProviderId};
     use rig_harness::rig_core::serve::ErasedHandler;
@@ -219,21 +220,28 @@ mod plugin {
                                     .map(|mut spec| {
                                         spec.provider = pid;
                                         spec.pricing = None;
+                                        spec.reasoning =
+                                            enrich_reasoning(vendor, &spec.id, spec.reasoning);
                                         spec
                                     })
                                     .collect(),
                                 Ids::Described(listed) => listed
                                     .into_iter()
-                                    .map(|(id, name, window)| {
-                                        let mut spec = ModelSpec::new(pid, id)
-                                            .with_tools(true)
-                                            .with_reasoning(ReasoningSupport::Unknown {
+                                    .map(|item| {
+                                        let reasoning = enrich_reasoning(
+                                            vendor,
+                                            &item.id,
+                                            item.reasoning.unwrap_or(ReasoningSupport::Unknown {
                                                 default: None,
-                                            });
-                                        if let Some(name) = name {
+                                            }),
+                                        );
+                                        let mut spec = ModelSpec::new(pid, item.id)
+                                            .with_tools(true)
+                                            .with_reasoning(reasoning);
+                                        if let Some(name) = item.name {
                                             spec = spec.with_display_name(name);
                                         }
-                                        if let Some(tokens) = window {
+                                        if let Some(tokens) = item.context_window {
                                             spec = spec.with_context_window(tokens);
                                         }
                                         enrich_limits(models.0.catalog(), vendor, spec)
@@ -265,7 +273,16 @@ mod plugin {
                     }
                 };
                 let listed = |ids: Vec<String>| {
-                    Ids::Described(ids.into_iter().map(|id| (id, None, None)).collect())
+                    Ids::Described(
+                        ids.into_iter()
+                            .map(|id| Described {
+                                id,
+                                name: None,
+                                context_window: None,
+                                reasoning: None,
+                            })
+                            .collect(),
+                    )
                 };
 
                 // Claude Code takes the ids of Anthropic's API.
@@ -288,7 +305,12 @@ mod plugin {
                     Ids::Described(
                         crate::antigravity::models(&agy_out)
                             .into_iter()
-                            .map(|(id, name)| (id, Some(name), None))
+                            .map(|(id, name)| Described {
+                                id,
+                                name: Some(name),
+                                context_window: None,
+                                reasoning: None,
+                            })
                             .collect(),
                     ),
                 );
@@ -301,7 +323,12 @@ mod plugin {
                             Ids::Described(
                                 models_list
                                     .into_iter()
-                                    .map(|m| (m.id, Some(m.name), m.context_window))
+                                    .map(|m| Described {
+                                        id: m.id,
+                                        name: Some(m.name),
+                                        context_window: m.context_window,
+                                        reasoning: Some(m.reasoning),
+                                    })
                                     .collect(),
                             ),
                         )
@@ -325,7 +352,12 @@ mod plugin {
                     Ids::Described(
                         copilot_models
                             .into_iter()
-                            .map(|m| (m.id, Some(m.name), None))
+                            .map(|m| Described {
+                                id: m.id,
+                                name: Some(m.name),
+                                context_window: None,
+                                reasoning: Some(m.reasoning),
+                            })
                             .collect(),
                     ),
                 );
@@ -350,12 +382,20 @@ mod plugin {
         }
     }
 
+    /// One model reported by a harness's listing command.
+    struct Described {
+        id: String,
+        name: Option<String>,
+        context_window: Option<u32>,
+        reasoning: Option<ReasoningSupport>,
+    }
+
     /// Where a harness's model ids come from.
     enum Ids {
         /// Another vendor's models in the catalog, under the same ids.
         Of(&'static str),
-        /// `(id, display_name, context_window)` tuples reported by the program.
-        Described(Vec<(String, Option<String>, Option<u32>)>),
+        /// Models reported by the program.
+        Described(Vec<Described>),
     }
 
     /// What `program` prints when run with `args`; nothing when it is not
@@ -433,6 +473,81 @@ mod plugin {
                 context_window: Some(tokens),
                 max_input_tokens: None,
                 max_output_tokens: None,
+            }
+        }
+    }
+
+    /// Normalizes or populates reasoning effort capabilities for bridged
+    /// models so `/effort` offers the levels each harness actually takes.
+    pub(super) fn enrich_reasoning(
+        vendor: Vendor,
+        id: &str,
+        current: ReasoningSupport,
+    ) -> ReasoningSupport {
+        match vendor {
+            Vendor::ClaudeCode => {
+                // `claude --effort` accepts effort levels only (no budgets or `off`).
+                let default = current.default_effort();
+                let levels = match current {
+                    ReasoningSupport::Listed { levels, .. } if !levels.is_empty() => levels,
+                    _ => vec![
+                        Effort::Low,
+                        Effort::Medium,
+                        Effort::High,
+                        Effort::XHigh,
+                        Effort::Max,
+                    ],
+                };
+                ReasoningSupport::Listed {
+                    levels,
+                    budget: None,
+                    can_disable: false,
+                    default,
+                }
+            }
+            Vendor::Codex | Vendor::Copilot => current,
+            Vendor::GrokBuild => {
+                let levels = if id == "grok-4.5" {
+                    vec![Effort::Low, Effort::Medium, Effort::High]
+                } else {
+                    vec![Effort::Low, Effort::Medium, Effort::High, Effort::XHigh]
+                };
+                ReasoningSupport::Listed {
+                    levels,
+                    budget: None,
+                    can_disable: false,
+                    default: Some(Effort::High),
+                }
+            }
+            Vendor::Muse => ReasoningSupport::Listed {
+                levels: vec![
+                    Effort::Minimal,
+                    Effort::Low,
+                    Effort::Medium,
+                    Effort::High,
+                    Effort::XHigh,
+                    Effort::Max,
+                ],
+                budget: None,
+                can_disable: false,
+                default: Some(Effort::High),
+            },
+            Vendor::Antigravity => {
+                // Antigravity encodes effort in the model id itself (`-low`, `-high`, ...).
+                let default = [
+                    ("-xhigh", Effort::XHigh),
+                    ("-high", Effort::High),
+                    ("-medium", Effort::Medium),
+                    ("-low", Effort::Low),
+                ]
+                .into_iter()
+                .find_map(|(suffix, effort)| id.ends_with(suffix).then_some(effort));
+                ReasoningSupport::Listed {
+                    levels: Vec::new(),
+                    budget: None,
+                    can_disable: false,
+                    default,
+                }
             }
         }
     }

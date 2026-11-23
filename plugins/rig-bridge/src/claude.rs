@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::mpsc;
 
-use crate::harness::{Event, Harness, Launch, Part, Running, Stderr, note, spawn};
+use crate::harness::{Event, Harness, Launch, Part, Prompt, Running, Stderr, note, spawn};
 
 #[cfg(test)]
 mod tests;
@@ -111,7 +111,7 @@ impl Harness for Claude {
             command.env_remove(name);
         }
         let (process, pipes) = spawn(command)?;
-        let (prompts, mut prompted) = mpsc::unbounded_channel::<Vec<Part>>();
+        let (prompts, mut prompted) = mpsc::unbounded_channel::<Prompt>();
         let (events, reported) = mpsc::unbounded_channel();
         let stderr = Stderr::follow(pipes.stderr);
         tokio::spawn(async move {
@@ -124,7 +124,7 @@ impl Harness for Claude {
                         let Some(prompt) = prompt else {
                             return;
                         };
-                        let mut line = user_message(&prompt).to_string();
+                        let mut line = user_message(&prompt.parts).to_string();
                         line.push('\n');
                         if stdin.write_all(line.as_bytes()).await.is_err() {
                             break;

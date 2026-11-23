@@ -11,10 +11,12 @@ use std::process::Command;
 use std::time::Duration;
 
 use rig_harness::prelude::Processes;
+use rig_harness::rig_core::catalog::ReasoningSupport;
 use rig_harness::rig_core::completion::Effort;
 use serde_json::{Value, json};
 
 use crate::acp::{Agent, Opening, SERVER};
+use crate::harness::parse_effort;
 use crate::rpc;
 use crate::session::Dir;
 
@@ -29,6 +31,7 @@ const AGENT: &str = "rig";
 pub(crate) struct Listed {
     pub id: String,
     pub name: String,
+    pub reasoning: ReasoningSupport,
 }
 
 /// GitHub Copilot CLI.
@@ -97,9 +100,6 @@ impl Agent for Copilot {
             .env("COPILOT_MCP_TOOL_CACHE", "false")
             .env("COPILOT_DISABLE_DESKTOP_NOTIFICATIONS", "1")
             .env("COPILOT_DISABLE_LOGIN_SHELL_ENV", "1");
-        if let Some(effort) = opening.effort {
-            command.args(["--reasoning-effort", level(effort)]);
-        }
         Ok(())
     }
 
@@ -114,16 +114,41 @@ impl Agent for Copilot {
         opened: &Value,
         opening: &Opening,
     ) -> Vec<(&'static str, Value)> {
+        let mut requests = Vec::new();
         let current = opened
             .pointer("/models/currentModelId")
             .and_then(Value::as_str);
-        if current == Some(opening.model.as_str()) {
-            return Vec::new();
+        if current != Some(opening.model.as_str()) {
+            requests.push((
+                "session/set_model",
+                json!({ "sessionId": session, "modelId": opening.model }),
+            ));
         }
-        vec![(
-            "session/set_model",
-            json!({ "sessionId": session, "modelId": opening.model }),
-        )]
+        // Apply startup effort via ACP config option (rather than CLI flag) so
+        // `session/new` reports the model's unmodified default effort and models
+        // without `reasoning_effort` skip it cleanly.
+        if let Some(effort) = opening.effort
+            && has_reasoning_option(opened)
+            && let Some(req) = self.set_effort(session, effort)
+        {
+            requests.push(req);
+        }
+        requests
+    }
+
+    fn changes_effort(&self) -> bool {
+        true
+    }
+
+    fn set_effort(&self, session: &str, effort: Effort) -> Option<(&'static str, Value)> {
+        Some((
+            "session/set_config_option",
+            json!({
+                "sessionId": session,
+                "configId": "reasoning_effort",
+                "value": level(effort),
+            }),
+        ))
     }
 
     fn sign_in(&self, _: &Value) -> Option<String> {
@@ -159,6 +184,59 @@ fn is_rig_title(title: &str) -> bool {
         .is_some_and(|rest| rest.starts_with('-') || rest.starts_with("__"))
 }
 
+fn has_reasoning_option(opened: &Value) -> bool {
+    opened
+        .get("configOptions")
+        .and_then(Value::as_array)
+        .is_none_or(|options| {
+            options
+                .iter()
+                .any(|opt| opt.get("id").and_then(Value::as_str) == Some("reasoning_effort"))
+        })
+}
+
+/// Extracts reasoning effort levels advertised in `session/new` `configOptions`.
+fn session_reasoning(result: &Value) -> ReasoningSupport {
+    let Some(option) = result
+        .get("configOptions")
+        .and_then(Value::as_array)
+        .and_then(|options| {
+            options
+                .iter()
+                .find(|opt| opt.get("id").and_then(Value::as_str) == Some("reasoning_effort"))
+        })
+    else {
+        return ReasoningSupport::Unknown { default: None };
+    };
+    let mut levels = Vec::new();
+    if let Some(items) = option.get("options").and_then(Value::as_array) {
+        for item in items {
+            if let Some(effort) = item
+                .get("value")
+                .and_then(Value::as_str)
+                .and_then(parse_effort)
+                && !levels.contains(&effort)
+            {
+                levels.push(effort);
+            }
+        }
+    }
+    let default = option
+        .get("currentValue")
+        .and_then(Value::as_str)
+        .and_then(parse_effort);
+    if levels.is_empty() {
+        ReasoningSupport::Unknown { default }
+    } else {
+        ReasoningSupport::Listed {
+            levels,
+            budget: None,
+            can_disable: false,
+            default,
+        }
+    }
+}
+
 /// Extracts deduplicated models from a Copilot `session/new` response.
 pub(crate) fn models_from_session(result: &Value) -> Vec<Listed> {
     let Some(entries) = result
@@ -167,6 +245,7 @@ pub(crate) fn models_from_session(result: &Value) -> Vec<Listed> {
     else {
         return Vec::new();
     };
+    let base_reasoning = session_reasoning(result);
     let mut seen = HashSet::new();
     let mut listed = Vec::new();
     for entry in entries {
@@ -182,9 +261,20 @@ pub(crate) fn models_from_session(result: &Value) -> Vec<Listed> {
             .filter(|name| !name.is_empty())
             .unwrap_or(id)
             .to_owned();
+        let reasoning = if id == "auto" {
+            ReasoningSupport::Listed {
+                levels: Vec::new(),
+                budget: None,
+                can_disable: false,
+                default: None,
+            }
+        } else {
+            base_reasoning.clone()
+        };
         listed.push(Listed {
             id: id.to_owned(),
             name,
+            reasoning,
         });
     }
     listed

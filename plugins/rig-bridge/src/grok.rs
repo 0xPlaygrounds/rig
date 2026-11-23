@@ -212,6 +212,21 @@ impl Agent for Grok {
             .then(|| json!({ "stopReason": stopped.unwrap_or_else(|| "end_turn".to_owned()) }))
     }
 
+    fn changes_effort(&self) -> bool {
+        true
+    }
+
+    fn set_effort(&self, session: &str, effort: Effort) -> Option<(&'static str, Value)> {
+        Some((
+            "session/set_config_option",
+            json!({
+                "sessionId": session,
+                "configId": "reasoning_effort",
+                "value": level(effort),
+            }),
+        ))
+    }
+
     fn sign_in(&self, initialized: &Value) -> Option<String> {
         let methods = initialized.get("authMethods")?.as_array()?;
         ["cached_token", "xai.api_key"]
