@@ -11,6 +11,7 @@ use rig_harness::rig_core::completion::{Effort, Usage};
 use serde_json::{Value, json};
 
 use crate::acp::{Agent, Opening, SERVER};
+use crate::harness::{effort_wire, env_path};
 
 #[cfg(test)]
 mod tests;
@@ -85,21 +86,10 @@ pub(crate) struct Grok;
 
 /// Where the user's Grok sign-in file lives.
 pub(crate) fn signed_in() -> Option<PathBuf> {
-    std::env::var_os("GROK_AUTH_PATH")
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-        .or_else(|| {
-            let home = std::env::var_os("GROK_HOME")
-                .filter(|value| !value.is_empty())
-                .map(PathBuf::from)
-                .or_else(|| {
-                    Some(
-                        PathBuf::from(std::env::var_os("HOME").filter(|value| !value.is_empty())?)
-                            .join(".grok"),
-                    )
-                })?;
-            Some(home.join("auth.json"))
-        })
+    env_path("GROK_AUTH_PATH").or_else(|| {
+        let home = env_path("GROK_HOME").or_else(|| Some(env_path("HOME")?.join(".grok")))?;
+        Some(home.join("auth.json"))
+    })
 }
 
 impl Agent for Grok {
@@ -132,7 +122,7 @@ impl Agent for Grok {
             .env_remove("XAI_API_KEY")
             .args(["agent", "--no-leader"]);
         if let Some(effort) = opening.effort {
-            command.args(["--reasoning-effort", level(effort)]);
+            command.args(["--reasoning-effort", effort_wire(effort, false)]);
         }
         if let Some(signed_in) = signed_in {
             command.env("GROK_AUTH_PATH", signed_in);
@@ -168,7 +158,7 @@ impl Agent for Grok {
         if let (Some(effort), Some(chosen)) = (opening.effort, chosen.as_object_mut()) {
             chosen.insert(
                 "_meta".to_owned(),
-                json!({ "reasoningEffort": level(effort) }),
+                json!({ "reasoningEffort": effort_wire(effort, false) }),
             );
         }
         vec![("session/set_model", chosen)]
@@ -210,6 +200,10 @@ impl Agent for Grok {
         };
         (named.as_deref() == Some(prompt))
             .then(|| json!({ "stopReason": stopped.unwrap_or_else(|| "end_turn".to_owned()) }))
+    }
+
+    fn effort_value(&self, effort: Effort) -> Option<&'static str> {
+        Some(effort_wire(effort, false))
     }
 
     fn sign_in(&self, initialized: &Value) -> Option<String> {
@@ -283,16 +277,6 @@ impl Agent for Grok {
 
 /// The update in which Grok reports one inference's token counters.
 const COUNTED: &str = "response_completed";
-
-/// An effort as `--reasoning-effort` names it.
-fn level(effort: Effort) -> &'static str {
-    match effort {
-        Effort::Minimal | Effort::Low => "low",
-        Effort::Medium => "medium",
-        Effort::High => "high",
-        _ => "xhigh",
-    }
-}
 
 /// The model ids `grok models` lists, the default first.
 pub(crate) fn models(listing: &str) -> Vec<String> {

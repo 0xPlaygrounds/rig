@@ -77,6 +77,84 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Transport<R, W> {
             }
         }
     }
+
+    /// Reads the next JSON object, returning a human-readable exit error on EOF.
+    pub(crate) async fn next_message(&mut self) -> Result<Value, String> {
+        self.next_object()
+            .await
+            .map_err(|()| "the program exited".to_owned())
+    }
+
+    /// Handles one incoming JSON-RPC message; returns `Some(msg)` if it answers `awaiting`.
+    pub(crate) async fn dispatch(
+        &mut self,
+        message: Value,
+        awaiting: Option<u64>,
+        versioned: bool,
+        decide: impl FnOnce(&str, &Value) -> Value,
+        notified: impl FnOnce(&str, &Value),
+    ) -> Result<Option<Value>, String> {
+        let Some(method) = message.get("method").and_then(Value::as_str) else {
+            let answers =
+                awaiting.is_some() && message.get("id").and_then(Value::as_u64) == awaiting;
+            return Ok(answers.then_some(message));
+        };
+        let params = message.get("params").unwrap_or(&Value::Null);
+        match message.get("id").filter(|id| !id.is_null()) {
+            Some(asked) => self
+                .reply(asked, decide(method, params), versioned)
+                .await
+                .map_err(|()| "the program exited".to_owned())?,
+            None => notified(method, params),
+        }
+        Ok(None)
+    }
+
+    /// Sends one JSON-RPC request and waits for its response, dispatching any
+    /// interleaved server requests and notifications.
+    pub(crate) async fn request(
+        &mut self,
+        method: &str,
+        params: Value,
+        versioned: bool,
+        mut decide: impl FnMut(&str, &Value) -> Value,
+        mut notified: impl FnMut(&str, &Value),
+    ) -> Result<Value, String> {
+        let id = self
+            .send_request(method, params, versioned)
+            .await
+            .map_err(|()| "the program exited".to_owned())?;
+        loop {
+            let msg = self.next_message().await?;
+            let Some(message) = self
+                .dispatch(msg, Some(id), versioned, &mut decide, &mut notified)
+                .await?
+            else {
+                continue;
+            };
+            return match message.get("error") {
+                Some(error) => Err(error
+                    .get("message")
+                    .and_then(Value::as_str)
+                    .unwrap_or("the request failed")
+                    .to_owned()),
+                None => Ok(message.get("result").cloned().unwrap_or(Value::Null)),
+            };
+        }
+    }
+}
+
+/// Standard JSON-RPC `-32601` error for an unhandled server request method.
+pub(crate) fn method_not_found(method: &str) -> Value {
+    json!({ "error": { "code": -32601, "message": format!("no method `{method}`") } })
+}
+
+/// Parses a positive JSON integer into `u32` (used for context window sizes).
+pub(crate) fn positive_u32(value: Option<&Value>) -> Option<u32> {
+    value
+        .and_then(Value::as_u64)
+        .filter(|tokens| *tokens > 0)
+        .and_then(|tokens| u32::try_from(tokens).ok())
 }
 
 /// Starts `command`, sends `requests` as NDJSON, and returns the first stdout

@@ -62,6 +62,7 @@ mod plugin {
 
     use rig_harness::prelude::*;
     use rig_harness::rig_core::catalog::{Catalog, ModelSpec, ReasoningSupport, Transport};
+    use rig_harness::rig_core::completion::Effort;
     use rig_harness::rig_core::providers::anthropic;
     use rig_harness::rig_core::providers::registry::{ConnectError, ProviderId};
     use rig_harness::rig_core::serve::ErasedHandler;
@@ -219,21 +220,28 @@ mod plugin {
                                     .map(|mut spec| {
                                         spec.provider = pid;
                                         spec.pricing = None;
+                                        spec.reasoning =
+                                            enrich_reasoning(vendor, &spec.id, spec.reasoning);
                                         spec
                                     })
                                     .collect(),
                                 Ids::Described(listed) => listed
                                     .into_iter()
-                                    .map(|(id, name, window)| {
-                                        let mut spec = ModelSpec::new(pid, id)
-                                            .with_tools(true)
-                                            .with_reasoning(ReasoningSupport::Unknown {
+                                    .map(|item| {
+                                        let reasoning = enrich_reasoning(
+                                            vendor,
+                                            &item.id,
+                                            item.reasoning.unwrap_or(ReasoningSupport::Unknown {
                                                 default: None,
-                                            });
-                                        if let Some(name) = name {
+                                            }),
+                                        );
+                                        let mut spec = ModelSpec::new(pid, item.id)
+                                            .with_tools(true)
+                                            .with_reasoning(reasoning);
+                                        if let Some(name) = item.name {
                                             spec = spec.with_display_name(name);
                                         }
-                                        if let Some(tokens) = window {
+                                        if let Some(tokens) = item.context_window {
                                             spec = spec.with_context_window(tokens);
                                         }
                                         enrich_limits(models.0.catalog(), vendor, spec)
@@ -264,35 +272,43 @@ mod plugin {
                         model_count: count,
                     }
                 };
-                let listed = |ids: Vec<String>| {
-                    Ids::Described(ids.into_iter().map(|id| (id, None, None)).collect())
-                };
-
-                // Claude Code takes the ids of Anthropic's API.
-                let claude_entry = file(
-                    Vendor::ClaudeCode,
-                    &settings.claude,
-                    Arc::new(crate::claude::Claude),
-                    Ids::Of(anthropic::PROVIDER_NAME),
-                );
-                let grok_entry = file(
-                    Vendor::GrokBuild,
-                    &settings.grok,
-                    Arc::new(Acp(Arc::new(crate::grok::Grok))),
-                    listed(crate::grok::models(&grok_out)),
-                );
-                let agy_entry = file(
-                    Vendor::Antigravity,
-                    &settings.antigravity,
-                    Arc::new(Acp(Arc::new(crate::antigravity::Antigravity))),
-                    Ids::Described(
-                        crate::antigravity::models(&agy_out)
-                            .into_iter()
-                            .map(|(id, name)| (id, Some(name), None))
-                            .collect(),
+                let listed =
+                    |ids: Vec<String>| Ids::Described(ids.into_iter().map(Described::id).collect());
+                let agy_models = crate::antigravity::models(&agy_out)
+                    .into_iter()
+                    .map(|(id, name)| Described {
+                        name: Some(name),
+                        ..Described::id(id)
+                    })
+                    .collect();
+                let copilot_list = copilot_models
+                    .into_iter()
+                    .map(|m| Described {
+                        name: Some(m.name),
+                        reasoning: Some(m.reasoning),
+                        ..Described::id(m.id)
+                    })
+                    .collect();
+                let entries = vec![
+                    // Claude Code takes the ids of Anthropic's API.
+                    file(
+                        Vendor::ClaudeCode,
+                        &settings.claude,
+                        Arc::new(crate::claude::Claude),
+                        Ids::Of(anthropic::PROVIDER_NAME),
                     ),
-                );
-                let codex_entry =
+                    file(
+                        Vendor::GrokBuild,
+                        &settings.grok,
+                        Arc::new(Acp(Arc::new(crate::grok::Grok))),
+                        listed(crate::grok::models(&grok_out)),
+                    ),
+                    file(
+                        Vendor::Antigravity,
+                        &settings.antigravity,
+                        Arc::new(Acp(Arc::new(crate::antigravity::Antigravity))),
+                        Ids::Described(agy_models),
+                    ),
                     if let Some((codex, models_list)) = crate::codex::Codex::new(&codex_out) {
                         file(
                             Vendor::Codex,
@@ -301,7 +317,12 @@ mod plugin {
                             Ids::Described(
                                 models_list
                                     .into_iter()
-                                    .map(|m| (m.id, Some(m.name), m.context_window))
+                                    .map(|m| Described {
+                                        name: Some(m.name),
+                                        context_window: m.context_window,
+                                        reasoning: Some(m.reasoning),
+                                        ..Described::id(m.id)
+                                    })
                                     .collect(),
                             ),
                         )
@@ -311,31 +332,19 @@ mod plugin {
                             program: installed(&settings.codex),
                             model_count: 0,
                         }
-                    };
-                let muse_entry = file(
-                    Vendor::Muse,
-                    &settings.muse,
-                    Arc::new(crate::muse::Muse),
-                    listed(crate::muse::models(&muse_out)),
-                );
-                let copilot_entry = file(
-                    Vendor::Copilot,
-                    &settings.copilot,
-                    Arc::new(Acp(Arc::new(crate::copilot::Copilot))),
-                    Ids::Described(
-                        copilot_models
-                            .into_iter()
-                            .map(|m| (m.id, Some(m.name), None))
-                            .collect(),
+                    },
+                    file(
+                        Vendor::Muse,
+                        &settings.muse,
+                        Arc::new(crate::muse::Muse),
+                        listed(crate::muse::models(&muse_out)),
                     ),
-                );
-                let entries = vec![
-                    claude_entry,
-                    grok_entry,
-                    agy_entry,
-                    codex_entry,
-                    muse_entry,
-                    copilot_entry,
+                    file(
+                        Vendor::Copilot,
+                        &settings.copilot,
+                        Arc::new(Acp(Arc::new(crate::copilot::Copilot))),
+                        Ids::Described(copilot_list),
+                    ),
                 ];
                 (bridge, processes, entries, signal_tx, signal_rx)
             };
@@ -350,12 +359,31 @@ mod plugin {
         }
     }
 
+    /// One model reported by a harness's listing command.
+    struct Described {
+        id: String,
+        name: Option<String>,
+        context_window: Option<u32>,
+        reasoning: Option<ReasoningSupport>,
+    }
+
+    impl Described {
+        fn id(id: String) -> Self {
+            Self {
+                id,
+                name: None,
+                context_window: None,
+                reasoning: None,
+            }
+        }
+    }
+
     /// Where a harness's model ids come from.
     enum Ids {
         /// Another vendor's models in the catalog, under the same ids.
         Of(&'static str),
-        /// `(id, display_name, context_window)` tuples reported by the program.
-        Described(Vec<(String, Option<String>, Option<u32>)>),
+        /// Models reported by the program.
+        Described(Vec<Described>),
     }
 
     /// What `program` prints when run with `args`; nothing when it is not
@@ -421,18 +449,80 @@ mod plugin {
         }
     }
 
-    struct Limits {
-        context_window: Option<u32>,
-        max_input_tokens: Option<u32>,
-        max_output_tokens: Option<u32>,
-    }
+    /// `(context_window, max_input_tokens, max_output_tokens)`.
+    type Limits = (Option<u32>, Option<u32>, Option<u32>);
 
-    impl Limits {
-        const fn window(tokens: u32) -> Self {
-            Self {
-                context_window: Some(tokens),
-                max_input_tokens: None,
-                max_output_tokens: None,
+    /// Normalizes or populates reasoning effort capabilities for bridged
+    /// models so `/effort` offers the levels each harness actually takes.
+    pub(super) fn enrich_reasoning(
+        vendor: Vendor,
+        id: &str,
+        current: ReasoningSupport,
+    ) -> ReasoningSupport {
+        match vendor {
+            Vendor::ClaudeCode => {
+                // `claude --effort` accepts effort levels only (no budgets or `off`).
+                let default = current.default_effort();
+                let levels = match current {
+                    ReasoningSupport::Listed { levels, .. } if !levels.is_empty() => levels,
+                    _ => vec![
+                        Effort::Low,
+                        Effort::Medium,
+                        Effort::High,
+                        Effort::XHigh,
+                        Effort::Max,
+                    ],
+                };
+                ReasoningSupport::Listed {
+                    levels,
+                    budget: None,
+                    can_disable: false,
+                    default,
+                }
+            }
+            Vendor::Codex | Vendor::Copilot => current,
+            Vendor::GrokBuild => {
+                let levels = if id == "grok-4.5" {
+                    vec![Effort::Low, Effort::Medium, Effort::High]
+                } else {
+                    vec![Effort::Low, Effort::Medium, Effort::High, Effort::XHigh]
+                };
+                ReasoningSupport::Listed {
+                    levels,
+                    budget: None,
+                    can_disable: false,
+                    default: Some(Effort::High),
+                }
+            }
+            Vendor::Muse => ReasoningSupport::Listed {
+                levels: vec![
+                    Effort::Minimal,
+                    Effort::Low,
+                    Effort::Medium,
+                    Effort::High,
+                    Effort::XHigh,
+                    Effort::Max,
+                ],
+                budget: None,
+                can_disable: false,
+                default: Some(Effort::High),
+            },
+            Vendor::Antigravity => {
+                // Antigravity encodes effort in the model id itself (`-low`, `-high`, ...).
+                let default = [
+                    ("-xhigh", Effort::XHigh),
+                    ("-high", Effort::High),
+                    ("-medium", Effort::Medium),
+                    ("-low", Effort::Low),
+                ]
+                .into_iter()
+                .find_map(|(suffix, effort)| id.ends_with(suffix).then_some(effort));
+                ReasoningSupport::Listed {
+                    levels: Vec::new(),
+                    budget: None,
+                    can_disable: false,
+                    default,
+                }
             }
         }
     }
@@ -449,12 +539,11 @@ mod plugin {
         if spec.input_limit().is_some() {
             return spec;
         }
-        let Some(limits) = lookup_limits(catalog, vendor, &spec.id) else {
-            return spec;
-        };
-        spec.context_window = spec.context_window.or(limits.context_window);
-        spec.max_input_tokens = spec.max_input_tokens.or(limits.max_input_tokens);
-        spec.max_output_tokens = spec.max_output_tokens.or(limits.max_output_tokens);
+        if let Some((window, max_in, max_out)) = lookup_limits(catalog, vendor, &spec.id) {
+            spec.context_window = spec.context_window.or(window);
+            spec.max_input_tokens = spec.max_input_tokens.or(max_in);
+            spec.max_output_tokens = spec.max_output_tokens.or(max_out);
+        }
         spec
     }
 
@@ -462,18 +551,22 @@ mod plugin {
         let found = catalog
             .iter()
             .find(|spec| spec.provider.vendor() == vendor && spec.id == id)?;
-        (found.context_window.is_some() || found.max_input_tokens.is_some()).then_some(Limits {
-            context_window: found.context_window,
-            max_input_tokens: found.max_input_tokens,
-            max_output_tokens: found.max_output_tokens,
-        })
+        (found.context_window.is_some() || found.max_input_tokens.is_some()).then_some((
+            found.context_window,
+            found.max_input_tokens,
+            found.max_output_tokens,
+        ))
     }
 
     fn lookup_limits(catalog: &Catalog, vendor: Vendor, id: &str) -> Option<Limits> {
         match vendor {
             Vendor::ClaudeCode | Vendor::Codex => None,
             Vendor::Copilot => catalog_limits(catalog, "copilot", id).or_else(|| {
-                matches!(id, "mai-code-2" | "mai-code-2-flash").then_some(Limits::window(200_000))
+                matches!(id, "mai-code-2" | "mai-code-2-flash").then_some((
+                    Some(200_000),
+                    None,
+                    None,
+                ))
             }),
             Vendor::GrokBuild => {
                 let mut prefix = id;
@@ -481,8 +574,7 @@ mod plugin {
                     if let Some(limits) = catalog_limits(catalog, "xai", prefix) {
                         return Some(limits);
                     }
-                    let (head, _) = prefix.rsplit_once('-')?;
-                    prefix = head;
+                    prefix = prefix.rsplit_once('-')?.0;
                 }
             }
             Vendor::Antigravity => {
@@ -497,7 +589,7 @@ mod plugin {
                     .or_else(|| {
                         (base.starts_with("gemini-4-neon")
                             || base.starts_with("gemini-pro-orchestrator"))
-                        .then_some(Limits::window(1_048_576))
+                        .then_some((Some(1_048_576), None, None))
                     })
             }
             Vendor::Muse => ["opencode", "venice", "ollama"]

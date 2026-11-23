@@ -2,16 +2,26 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use rig_harness::rig_core::completion::FinishReason;
+use rig_harness::rig_core::completion::{Effort, FinishReason};
 use serde_json::{Value, json};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, DuplexStream};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::mpsc;
 
 use super::{Agent, Opening, Peer, converse};
-use crate::harness::{ContextSnapshot, Event, Part};
+use crate::harness::{ContextSnapshot, Event, Part, Prompt};
 
 /// An agent with no system prompt channel, one sign-in and a model request.
-struct Plain;
+struct Plain {
+    dynamic_effort: bool,
+}
+
+impl Plain {
+    const fn basic() -> Self {
+        Self {
+            dynamic_effort: false,
+        }
+    }
+}
 
 impl Agent for Plain {
     fn name(&self) -> &'static str {
@@ -48,108 +58,73 @@ impl Agent for Plain {
     fn is_rig_tool(&self, tool_call: &Value, _: Option<&str>) -> bool {
         tool_call.get("title").and_then(Value::as_str) == Some("rig")
     }
+
+    fn effort_value(&self, effort: Effort) -> Option<&'static str> {
+        self.dynamic_effort.then(|| effort.as_str())
+    }
 }
 
 /// What the scripted agent was sent, in order.
 type Received = Arc<Mutex<Vec<Value>>>;
 
-/// A scripted ACP agent on the other end of `stream`: it refuses the first
-/// `session/new` until signed in, and answers a prompt with a thought, a
-/// sentence and two permission requests, one for a tool of Rig's.
-async fn agent(stream: DuplexStream, received: Received) {
-    let (reader, mut writer) = tokio::io::split(stream);
-    let mut lines = BufReader::new(reader).lines();
-    let mut signed_in = false;
-    let mut asked = 100;
-    while let Ok(Some(line)) = lines.next_line().await {
-        let Ok(message) = serde_json::from_str::<Value>(&line) else {
-            continue;
-        };
-        received
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .push(message.clone());
-        let id = message.get("id").cloned().unwrap_or(Value::Null);
-        let mut out = Vec::new();
-        match message.get("method").and_then(Value::as_str) {
-            Some("initialize") => out.push(json!({ "id": id, "result": { "protocolVersion": 1 } })),
-            Some("session/new") if !signed_in => out.push(json!({ "id": id,
-                "error": { "code": -32000, "message": "Authentication required" } })),
-            Some("authenticate") => {
-                signed_in = true;
-                out.push(json!({ "id": id, "result": {} }));
-            }
-            Some("session/new") => out.push(json!({ "id": id, "result": { "sessionId": "s1" } })),
-            Some("session/set_model") => out.push(json!({ "id": id, "result": {} })),
-            Some("session/prompt") => {
-                let update = |kind: &str, text: &str| {
-                    json!({ "method": "session/update", "params": {
-                    "sessionId": "s1",
-                    "update": { "sessionUpdate": kind, "content": { "type": "text", "text": text } },
-                } })
-                };
-                let options = json!([
-                    { "optionId": "no", "kind": "reject_once" },
-                    { "optionId": "yes", "kind": "allow_once" },
-                ]);
-                out.push(update("agent_thought_chunk", "thinking"));
-                out.push(update("agent_message_chunk", "Hello"));
-                out.push(update("tool_call", "ignored"));
-                for title in ["rig", "terminal"] {
-                    asked += 1;
-                    out.push(
-                        json!({ "id": asked, "method": "session/request_permission", "params": {
-                        "sessionId": "s1", "toolCall": { "title": title }, "options": options,
-                    } }),
-                    );
-                }
-                out.push(json!({ "id": 999, "method": "fs/read_text_file", "params": {} }));
-                out.push(json!({ "id": id, "result": {
-                    "stopReason": "end_turn",
-                    "usage": { "inputTokens": 10, "outputTokens": 5, "cachedReadTokens": 4 },
-                } }));
-            }
-            _ => {}
-        }
-        for mut message in out {
-            if let Some(message) = message.as_object_mut() {
-                message.insert("jsonrpc".to_owned(), "2.0".into());
-            }
-            let line = format!("not json\n{message}\n");
-            if writer.write_all(line.as_bytes()).await.is_err() {
-                return;
-            }
-        }
-    }
-}
-
-/// Runs two prompts against the scripted agent: the events reported and
-/// what the agent received.
-async fn conversation() -> (Vec<Event>, Vec<Value>) {
-    let (ours, theirs) = tokio::io::duplex(1 << 16);
+/// Runs `prompts` against a scripted ACP duplex responder, returning `(events, received)`.
+async fn run_acp(
+    agent: Arc<dyn Agent>,
+    system: &str,
+    prompts: Vec<Prompt>,
+    mut responder: impl FnMut(&Value) -> Vec<Value> + Send + 'static,
+) -> (Vec<Event>, Vec<Value>) {
+    let (client, server) = tokio::io::duplex(1 << 16);
     let received = Received::default();
-    let scripted = tokio::spawn(agent(theirs, received.clone()));
-    let (reader, writer) = tokio::io::split(ours);
-    let (events, mut reported) = mpsc::unbounded_channel();
-    let mut peer = Peer::new(reader, writer, events, Arc::new(Plain));
-    let (prompts, prompted) = mpsc::unbounded_channel();
-    let opening = Opening {
-        dir: "/work".into(),
-        system: "Be brief.".to_owned(),
-        model: "model-1".to_owned(),
-        effort: None,
-        mcp_url: "http://127.0.0.1:1/mcp".to_owned(),
-        mcp_token: "secret".to_owned(),
-        tools: vec!["read".to_owned()],
-    };
-    let _ = prompts.send(vec![Part::Text("one".to_owned())]);
-    let _ = prompts.send(vec![Part::Text("two".to_owned())]);
-    drop(prompts);
-    let ended = converse(&mut peer, opening, prompted).await;
+    let seen = received.clone();
+    let task = tokio::spawn(async move {
+        let (reader, mut writer) = tokio::io::split(server);
+        let mut lines = BufReader::new(reader).lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            let Ok(msg) = serde_json::from_str::<Value>(&line) else {
+                continue;
+            };
+            seen.lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .push(msg.clone());
+            for mut out in responder(&msg) {
+                if let Some(obj) = out.as_object_mut() {
+                    obj.entry("jsonrpc".to_owned()).or_insert("2.0".into());
+                }
+                let line = format!("not json\n{out}\n");
+                if writer.write_all(line.as_bytes()).await.is_err() {
+                    return;
+                }
+            }
+        }
+    });
+
+    let (reader, writer) = tokio::io::split(client);
+    let (events_tx, mut events_rx) = mpsc::unbounded_channel();
+    let (prompts_tx, prompts_rx) = mpsc::unbounded_channel();
+    for prompt in prompts {
+        let _ = prompts_tx.send(prompt);
+    }
+    drop(prompts_tx);
+    let mut peer = Peer::new(reader, writer, events_tx, agent);
+    let ended = converse(
+        &mut peer,
+        Opening {
+            dir: PathBuf::from("/work"),
+            system: system.to_owned(),
+            model: "model-1".to_owned(),
+            effort: None,
+            mcp_url: "http://127.0.0.1:1/mcp".to_owned(),
+            mcp_token: "secret".to_owned(),
+            tools: vec!["read".to_owned()],
+        },
+        prompts_rx,
+    )
+    .await;
     drop(peer);
-    let _ = scripted.await;
+    let _ = task.await;
     let mut events = Vec::new();
-    while let Ok(event) = reported.try_recv() {
+    while let Ok(event) = events_rx.try_recv() {
         events.push(event);
     }
     if let Err(why) = ended {
@@ -160,6 +135,67 @@ async fn conversation() -> (Vec<Event>, Vec<Value>) {
         .unwrap_or_else(PoisonError::into_inner)
         .clone();
     (events, received)
+}
+
+/// Runs two prompts against a scripted agent that requires sign-in and sends
+/// thoughts, text, and permission requests.
+async fn conversation() -> (Vec<Event>, Vec<Value>) {
+    let mut signed_in = false;
+    let mut asked = 100u64;
+    let prompt = |text: &str| Prompt {
+        parts: vec![Part::Text(text.to_owned())],
+        effort: None,
+    };
+    run_acp(
+        Arc::new(Plain::basic()),
+        "Be brief.",
+        vec![prompt("one"), prompt("two")],
+        move |message| {
+            let id = message.get("id").cloned().unwrap_or(Value::Null);
+            match message.get("method").and_then(Value::as_str) {
+                Some("initialize") => vec![json!({ "id": id, "result": { "protocolVersion": 1 } })],
+                Some("session/new") if !signed_in => vec![json!({ "id": id,
+                    "error": { "code": -32000, "message": "Authentication required" } })],
+                Some("authenticate") => {
+                    signed_in = true;
+                    vec![json!({ "id": id, "result": {} })]
+                }
+                Some("session/new") => vec![json!({ "id": id, "result": { "sessionId": "s1" } })],
+                Some("session/set_model") => vec![json!({ "id": id, "result": {} })],
+                Some("session/prompt") => {
+                    let update = |kind: &str, text: &str| {
+                        json!({ "method": "session/update", "params": {
+                            "sessionId": "s1",
+                            "update": { "sessionUpdate": kind, "content": { "type": "text", "text": text } },
+                        } })
+                    };
+                    let options = json!([
+                        { "optionId": "no", "kind": "reject_once" },
+                        { "optionId": "yes", "kind": "allow_once" },
+                    ]);
+                    let mut out = vec![
+                        update("agent_thought_chunk", "thinking"),
+                        update("agent_message_chunk", "Hello"),
+                        update("tool_call", "ignored"),
+                    ];
+                    for title in ["rig", "terminal"] {
+                        asked += 1;
+                        out.push(json!({ "id": asked, "method": "session/request_permission", "params": {
+                            "sessionId": "s1", "toolCall": { "title": title }, "options": options,
+                        } }));
+                    }
+                    out.push(json!({ "id": 999, "method": "fs/read_text_file", "params": {} }));
+                    out.push(json!({ "id": id, "result": {
+                        "stopReason": "end_turn",
+                        "usage": { "inputTokens": 10, "outputTokens": 5, "cachedReadTokens": 4 },
+                    } }));
+                    out
+                }
+                _ => vec![],
+            }
+        },
+    )
+    .await
 }
 
 fn sent<'a>(received: &'a [Value], method: &str) -> Vec<&'a Value> {
@@ -290,20 +326,18 @@ async fn only_rig_s_tools_are_permitted_and_other_requests_refused() {
 
 #[tokio::test]
 async fn usage_update_session_window_and_max_tokens_are_emitted_cleanly() {
-    let (client, server_stream) = tokio::io::duplex(16 * 1024);
-    let task = tokio::spawn(async move {
-        let (reader, mut writer) = tokio::io::split(server_stream);
-        let mut lines = BufReader::new(reader).lines();
-        while let Ok(Some(line)) = lines.next_line().await {
-            let Ok(message) = serde_json::from_str::<Value>(&line) else {
-                continue;
-            };
+    let (events, _) = run_acp(
+        Arc::new(Plain::basic()),
+        "",
+        vec![Prompt {
+            parts: vec![Part::Text("go".to_owned())],
+            effort: None,
+        }],
+        |message| {
             let id = message.get("id").cloned().unwrap_or(Value::Null);
-            let method = message.get("method").and_then(Value::as_str);
-            let out: Vec<Value> = match method {
-                Some("initialize") => vec![json!({ "jsonrpc": "2.0", "id": id, "result": {} })],
+            match message.get("method").and_then(Value::as_str) {
+                Some("initialize" | "session/set_model") => vec![json!({ "id": id, "result": {} })],
                 Some("session/new") => vec![json!({
-                    "jsonrpc": "2.0",
                     "id": id,
                     "result": {
                         "sessionId": "s1",
@@ -315,27 +349,20 @@ async fn usage_update_session_window_and_max_tokens_are_emitted_cleanly() {
                         }
                     }
                 })],
-                Some("session/set_model") => {
-                    vec![json!({ "jsonrpc": "2.0", "id": id, "result": {} })]
-                }
                 Some("session/prompt") => vec![
                     json!({
-                        "jsonrpc": "2.0",
                         "method": "session/update",
                         "params": { "update": { "sessionUpdate": "usage_update", "used": 0, "size": 1048576 } }
                     }),
                     json!({
-                        "jsonrpc": "2.0",
                         "method": "session/update",
                         "params": { "update": { "sessionUpdate": "usage_update", "used": 100000, "size": 1048576 } }
                     }),
                     json!({
-                        "jsonrpc": "2.0",
                         "method": "session/update",
                         "params": { "update": { "sessionUpdate": "usage_update", "used": 105000, "size": 1048576 } }
                     }),
                     json!({
-                        "jsonrpc": "2.0",
                         "id": id,
                         "result": {
                             "stopReason": "max_tokens",
@@ -349,43 +376,11 @@ async fn usage_update_session_window_and_max_tokens_are_emitted_cleanly() {
                     }),
                 ],
                 _ => vec![],
-            };
-            for msg in out {
-                let mut line = msg.to_string();
-                line.push('\n');
-                let _ = writer.write_all(line.as_bytes()).await;
             }
-        }
-    });
-
-    let (reader, writer) = tokio::io::split(client);
-    let (events_tx, mut events_rx) = mpsc::unbounded_channel();
-    let (prompts_tx, prompts_rx) = mpsc::unbounded_channel();
-    let mut peer = Peer::new(reader, writer, events_tx, Arc::new(Plain));
-    let _ = prompts_tx.send(vec![Part::Text("go".to_owned())]);
-    drop(prompts_tx);
-    let ended = converse(
-        &mut peer,
-        Opening {
-            dir: PathBuf::from("/work"),
-            system: String::new(),
-            model: "model-1".to_owned(),
-            effort: None,
-            mcp_url: "http://127.0.0.1:1/mcp".to_owned(),
-            mcp_token: "secret".to_owned(),
-            tools: Vec::new(),
         },
-        prompts_rx,
     )
     .await;
-    drop(peer);
-    let _ = task.await;
-    assert_eq!(ended, Ok(()));
 
-    let mut events = Vec::new();
-    while let Ok(event) = events_rx.try_recv() {
-        events.push(event);
-    }
     let contexts: Vec<ContextSnapshot> = events
         .iter()
         .filter_map(|event| match event {
@@ -414,4 +409,51 @@ async fn usage_update_session_window_and_max_tokens_are_emitted_cleanly() {
     assert_eq!(usage.and_then(|u| u.input_tokens), Some(3_500_000));
     assert_eq!(usage.and_then(|u| u.output_tokens), Some(40_000));
     assert_eq!(events.last(), Some(&Event::Done(Ok(FinishReason::Length))));
+}
+
+#[tokio::test]
+async fn acp_updates_reasoning_effort_mid_session_and_restores_default() {
+    let prompt = |text: &str, effort: Option<Effort>| Prompt {
+        parts: vec![Part::Text(text.to_owned())],
+        effort,
+    };
+    let (_, received) = run_acp(
+        Arc::new(Plain {
+            dynamic_effort: true,
+        }),
+        "",
+        vec![
+            prompt("first", None),
+            prompt("second", Some(Effort::Low)),
+            prompt("third", Some(Effort::Low)),
+            prompt("fourth", None),
+        ],
+        |msg| {
+            let id = msg.get("id").cloned().unwrap_or(Value::Null);
+            match msg.get("method").and_then(Value::as_str) {
+                Some("initialize" | "session/set_model" | "session/set_config_option") => {
+                    vec![json!({ "id": id, "result": {} })]
+                }
+                Some("session/new") => vec![json!({
+                    "id": id,
+                    "result": {
+                        "sessionId": "s1",
+                        "configOptions": [{ "id": "reasoning_effort", "currentValue": "medium" }]
+                    }
+                })],
+                Some("session/prompt") => {
+                    vec![json!({ "id": id, "result": { "stopReason": "end_turn" } })]
+                }
+                _ => vec![],
+            }
+        },
+    )
+    .await;
+
+    let updates: Vec<&str> = sent(&received, "session/set_config_option")
+        .into_iter()
+        .filter_map(|msg| msg.pointer("/params/value").and_then(Value::as_str))
+        .collect();
+    // Turn 1: default (no-op), Turn 2: low, Turn 3: low (deduped), Turn 4: default -> restored to medium.
+    assert_eq!(updates, vec!["low", "medium"]);
 }

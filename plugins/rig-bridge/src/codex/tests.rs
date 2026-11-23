@@ -1,17 +1,22 @@
 use std::sync::{Arc, Mutex, PoisonError};
 
-use rig_harness::rig_core::completion::FinishReason;
+use rig_harness::rig_core::catalog::ReasoningSupport;
+use rig_harness::rig_core::completion::{Effort, FinishReason};
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, DuplexStream};
 use tokio::sync::mpsc;
 
-use super::{Codex, Listed, Opening, Wire, converse, image_extension};
-use crate::harness::{ContextSnapshot, Event, Part};
+use super::{Codex, Listed, Opening, Wire, converse, image_extension, notify};
+use crate::harness::{ContextSnapshot, Event, Part, Prompt};
 
 #[test]
 fn the_catalog_lists_the_shown_models_and_gives_none_of_them_tools() {
     let listing = json!({ "models": [
         { "slug": "gpt-a", "display_name": "GPT A", "visibility": "list", "context_window": 500000,
+          "default_reasoning_level": "medium",
+          "supported_reasoning_levels": [
+              { "effort": "low" }, { "effort": "medium" }, { "effort": "high" }, { "effort": "xhigh" }
+          ],
           "tool_mode": "code_mode_only", "multi_agent_version": "v2", "supports_search_tool": true,
           "experimental_supported_tools": ["clock"], "apply_patch_tool_type": "freeform", "kept": 1 },
         { "slug": "gpt-hidden", "display_name": "Hidden", "visibility": "hide", "tool_mode": "code_mode_only" },
@@ -26,7 +31,13 @@ fn the_catalog_lists_the_shown_models_and_gives_none_of_them_tools() {
         Some(vec![Listed {
             id: "gpt-a".to_owned(),
             name: "GPT A".to_owned(),
-            context_window: Some(500_000)
+            context_window: Some(500_000),
+            reasoning: ReasoningSupport::Listed {
+                levels: vec![Effort::Low, Effort::Medium, Effort::High, Effort::XHigh],
+                budget: None,
+                can_disable: false,
+                default: Some(Effort::Medium),
+            },
         }]),
     );
     assert_eq!(
@@ -35,6 +46,10 @@ fn the_catalog_lists_the_shown_models_and_gives_none_of_them_tools() {
             .and_then(|catalog| catalog.pointer("/models/0")),
         Some(&json!({
             "slug": "gpt-a", "display_name": "GPT A", "visibility": "list", "context_window": 500000,
+            "default_reasoning_level": "medium",
+            "supported_reasoning_levels": [
+                { "effort": "low" }, { "effort": "medium" }, { "effort": "high" }, { "effort": "xhigh" }
+            ],
             "tool_mode": "direct", "multi_agent_version": null, "supports_search_tool": false,
             "experimental_supported_tools": [], "apply_patch_tool_type": null, "kept": 1,
         })),
@@ -160,14 +175,16 @@ async fn conversation(prompts: &[&str], signed_in: bool) -> (Vec<Event>, Vec<Val
     let mut wire = Wire::new(reader, writer, events);
     let (sender, prompted) = mpsc::unbounded_channel();
     for prompt in prompts {
-        let _ = sender.send(vec![Part::Text((*prompt).to_owned())]);
+        let _ = sender.send(Prompt {
+            parts: vec![Part::Text((*prompt).to_owned())],
+            effort: Some(Effort::High),
+        });
     }
     drop(sender);
     let opening = Opening {
         dir: "/session".into(),
         system: "Be brief.".to_owned(),
         model: "gpt-a".to_owned(),
-        effort: Some(rig_harness::rig_core::completion::Effort::High),
     };
     let ended = converse(&mut wire, opening, prompted).await;
     drop(wire);
@@ -306,11 +323,12 @@ fn effective_context_window_percent_and_image_extension_are_handled() {
 
 #[test]
 fn token_usage_update_emits_runtime_model_context_window() {
-    let (client, _server) = tokio::io::duplex(64);
-    let (reader, writer) = tokio::io::split(client);
     let (tx, mut rx) = mpsc::unbounded_channel();
-    let mut wire = Wire::new(reader, writer, tx);
-    wire.notified(
+    let (mut server, mut ended) = (None, None);
+    notify(
+        &tx,
+        &mut server,
+        &mut ended,
         "thread/tokenUsage/updated",
         &json!({
             "tokenUsage": {

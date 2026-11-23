@@ -32,7 +32,7 @@ use serde_json::{Value, json};
 use tokio::sync::{OnceCell, mpsc, oneshot};
 
 use crate::commands::BridgeSignal;
-use crate::harness::{ContextSnapshot, Event, Harness, Launch, Part, Running, Vendor};
+use crate::harness::{ContextSnapshot, Event, Harness, Launch, Part, Prompt, Running, Vendor};
 use crate::mcp::{Call, Entry, Outcome, Server};
 
 #[cfg(test)]
@@ -84,6 +84,7 @@ pub(crate) struct VendorStats {
 pub(crate) struct WarmSession {
     pub vendor: Vendor,
     pub model: String,
+    pub effort: Option<Effort>,
     pub turns: u32,
     pub relists: bool,
     pub context_tokens: Option<u64>,
@@ -180,6 +181,7 @@ impl Bridge {
                 .map(|session| WarmSession {
                     vendor: session.vendor,
                     model: session.setup.model.clone(),
+                    effort: session.setup.effort,
                     turns: session.turns,
                     relists: session.relists,
                     context_tokens: session.last_context_tokens,
@@ -256,10 +258,12 @@ impl Bridge {
                 .enumerate()
                 .rev()
                 .find_map(|(index, session)| {
-                    (session.setup.fits(setup))
-                        .then(|| session.next(history))
-                        .flatten()
-                        .map(|next| (index, next))
+                    (session
+                        .setup
+                        .fits(setup, session.changes_effort && session.open.is_empty()))
+                    .then(|| session.next(history))
+                    .flatten()
+                    .map(|next| (index, next))
                 })
                 .and_then(|(index, next)| waiting.remove(index).map(|session| (session, next)));
             (found, dead)
@@ -293,10 +297,11 @@ struct Setup {
 
 impl Setup {
     /// Whether a session with this setup can serve `other`: the same in
-    /// all but the tools, which a running harness can be given anew.
-    fn fits(&self, other: &Self) -> bool {
-        (&self.program, &self.model, self.effort, &self.system)
-            == (&other.program, &other.model, other.effort, &other.system)
+    /// all but the tools (which a running harness can be given anew) and,
+    /// when `changes_effort` is true, the reasoning effort.
+    fn fits(&self, other: &Self, changes_effort: bool) -> bool {
+        (&self.program, &self.model, &self.system) == (&other.program, &other.model, &other.system)
+            && (changes_effort || self.effort == other.effort)
     }
 }
 
@@ -449,6 +454,9 @@ impl Model {
             // ended when it cannot take them.
             Some((mut session, next)) => {
                 let is_prompt = matches!(next, Next::Prompt(_));
+                if is_prompt {
+                    session.setup.effort = setup.effort;
+                }
                 (session.retool(&setup.tools).await && session.send(next).is_ok())
                     .then_some((session, is_prompt))
             }
@@ -547,6 +555,7 @@ impl Model {
             vendor: self.vendor,
             setup,
             relists: self.harness.relists(),
+            changes_effort: self.harness.changes_effort(),
             turns: 0,
             prompts: 1,
             consecutive_zero_cache: 0,
@@ -734,6 +743,8 @@ struct Session {
     setup: Setup,
     /// Whether the harness takes a changed tool list while it runs.
     relists: bool,
+    /// Whether the harness can change reasoning effort between prompts.
+    changes_effort: bool,
     /// How many steps this process has completed.
     turns: u32,
     /// How many user prompts (`Next::Prompt`) have been sent to this process.
@@ -851,10 +862,13 @@ impl Session {
 
     fn send(&mut self, next: Next) -> Result<(), String> {
         match next {
-            Next::Prompt(prompt) => self
+            Next::Prompt(parts) => self
                 .running
                 .prompts
-                .send(prompt)
+                .send(Prompt {
+                    parts,
+                    effort: self.setup.effort,
+                })
                 .map_err(|_| "the harness is gone".to_owned()),
             Next::Results(outcomes) => {
                 let mut given_up = false;
@@ -889,12 +903,6 @@ impl Session {
         // harness may call a tool before it finishes reading the message.
         let mut counting = false;
         loop {
-            let wait_until = |at: Option<tokio::time::Instant>| async move {
-                match at {
-                    Some(at) => tokio::time::sleep_until(at).await,
-                    None => std::future::pending().await,
-                }
-            };
             tokio::select! {
                 event = self.running.events.recv() => match event {
                     Some(Event::Text(text)) => {
@@ -955,13 +963,12 @@ impl Session {
                         count_deadline.get_or_insert(now + COUNT_SETTLE);
                     }
                 }
-                () = wait_until(settled), if !counting => {
-                    return Ok(finish(
-                        apply_context(usage, context_used, last_inference_context, usage_reports),
-                        FinishReason::ToolCalls,
-                    ));
-                }
-                () = wait_until(count_deadline), if counting => {
+                () = async {
+                    match if counting { count_deadline } else { settled } {
+                        Some(at) => tokio::time::sleep_until(at).await,
+                        None => std::future::pending().await,
+                    }
+                } => {
                     return Ok(finish(
                         apply_context(usage, context_used, last_inference_context, usage_reports),
                         FinishReason::ToolCalls,
@@ -1285,22 +1292,21 @@ pub(crate) fn budgeted_opening(
         }
 
         let mut text = String::from(header);
-        if kept_summary && let Some(summary) = units.first() {
-            for (piece, _) in &summary.0 {
-                text.push_str(piece);
+        let push_unit = |out: &mut String, unit: &ReplayUnit| {
+            for (piece, _) in &unit.0 {
+                out.push_str(piece);
             }
+        };
+        if kept_summary && let Some(summary) = units.first() {
+            push_unit(&mut text, summary);
         }
         if omitted_turns > 0 {
             text.push_str(&format!(
                 "[{omitted_turns} earlier turn(s) omitted due to replay budget]\n\n"
             ));
         }
-        if let Some(kept) = units.get(start..) {
-            for unit in kept {
-                for (piece, _) in &unit.0 {
-                    text.push_str(piece);
-                }
-            }
+        for unit in units.get(start..).unwrap_or_default() {
+            push_unit(&mut text, unit);
         }
         text.push_str(footer);
         prompt.push(Part::Text(text));

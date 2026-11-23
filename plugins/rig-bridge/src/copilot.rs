@@ -11,10 +11,12 @@ use std::process::Command;
 use std::time::Duration;
 
 use rig_harness::prelude::Processes;
+use rig_harness::rig_core::catalog::ReasoningSupport;
 use rig_harness::rig_core::completion::Effort;
 use serde_json::{Value, json};
 
-use crate::acp::{Agent, Opening, SERVER};
+use crate::acp::{Agent, Opening, SERVER, config_option, set_effort_request};
+use crate::harness::{effort_wire, parse_effort};
 use crate::rpc;
 use crate::session::Dir;
 
@@ -29,6 +31,7 @@ const AGENT: &str = "rig";
 pub(crate) struct Listed {
     pub id: String,
     pub name: String,
+    pub reasoning: ReasoningSupport,
 }
 
 /// GitHub Copilot CLI.
@@ -47,15 +50,26 @@ fn agent_definition(system: &str) -> String {
     text
 }
 
-/// An effort level as `copilot --reasoning-effort` names it.
-fn level(effort: Effort) -> &'static str {
-    match effort {
-        Effort::Minimal | Effort::Low => "low",
-        Effort::Medium => "medium",
-        Effort::High => "high",
-        Effort::XHigh => "xhigh",
-        _ => "max",
-    }
+/// Applies the isolation flags and environment shared by Copilot sessions and
+/// model-discovery probes.
+fn configure_command(command: &mut Command, copilot_home: &Path) {
+    command
+        .args([
+            "--acp",
+            "--stdio",
+            "--disable-builtin-mcps",
+            "--no-custom-instructions",
+            "--no-auto-update",
+            "--no-ask-user",
+            "--no-bash-env",
+            "--disable-client-telemetry",
+        ])
+        .env("COPILOT_HOME", copilot_home)
+        .env("COPILOT_AUTO_UPDATE", "false")
+        .env("COPILOT_PLUGIN_DIR_ONLY", "true")
+        .env("COPILOT_MCP_TOOL_CACHE", "false")
+        .env("COPILOT_DISABLE_DESKTOP_NOTIFICATIONS", "1")
+        .env("COPILOT_DISABLE_LOGIN_SHELL_ENV", "1");
 }
 
 impl Agent for Copilot {
@@ -74,32 +88,15 @@ impl Agent for Copilot {
                 )
             })
             .map_err(|why| format!("could not write the session's files: {why}"))?;
-        command
-            .args([
-                "--acp",
-                "--stdio",
-                "--disable-builtin-mcps",
-                "--no-custom-instructions",
-                "--no-auto-update",
-                "--no-ask-user",
-                "--no-bash-env",
-                "--disable-client-telemetry",
-                "--available-tools",
-                SERVER,
-                "--agent",
-                AGENT,
-                "--model",
-                &opening.model,
-            ])
-            .env("COPILOT_HOME", &copilot_home)
-            .env("COPILOT_AUTO_UPDATE", "false")
-            .env("COPILOT_PLUGIN_DIR_ONLY", "true")
-            .env("COPILOT_MCP_TOOL_CACHE", "false")
-            .env("COPILOT_DISABLE_DESKTOP_NOTIFICATIONS", "1")
-            .env("COPILOT_DISABLE_LOGIN_SHELL_ENV", "1");
-        if let Some(effort) = opening.effort {
-            command.args(["--reasoning-effort", level(effort)]);
-        }
+        configure_command(command, &copilot_home);
+        command.args([
+            "--available-tools",
+            SERVER,
+            "--agent",
+            AGENT,
+            "--model",
+            &opening.model,
+        ]);
         Ok(())
     }
 
@@ -114,16 +111,29 @@ impl Agent for Copilot {
         opened: &Value,
         opening: &Opening,
     ) -> Vec<(&'static str, Value)> {
+        let mut requests = Vec::new();
         let current = opened
             .pointer("/models/currentModelId")
             .and_then(Value::as_str);
-        if current == Some(opening.model.as_str()) {
-            return Vec::new();
+        if current != Some(opening.model.as_str()) {
+            requests.push((
+                "session/set_model",
+                json!({ "sessionId": session, "modelId": opening.model }),
+            ));
         }
-        vec![(
-            "session/set_model",
-            json!({ "sessionId": session, "modelId": opening.model }),
-        )]
+        // Apply startup effort via ACP config option (rather than CLI flag) so
+        // `session/new` reports the model's unmodified default effort and models
+        // without `reasoning_effort` skip it cleanly.
+        if let Some(effort) = opening.effort
+            && has_reasoning_option(opened)
+        {
+            requests.push(set_effort_request(session, effort_wire(effort, true)));
+        }
+        requests
+    }
+
+    fn effort_value(&self, effort: Effort) -> Option<&'static str> {
+        Some(effort_wire(effort, true))
     }
 
     fn sign_in(&self, _: &Value) -> Option<String> {
@@ -159,6 +169,48 @@ fn is_rig_title(title: &str) -> bool {
         .is_some_and(|rest| rest.starts_with('-') || rest.starts_with("__"))
 }
 
+fn has_reasoning_option(opened: &Value) -> bool {
+    opened
+        .get("configOptions")
+        .and_then(Value::as_array)
+        .is_none()
+        || config_option(opened, "reasoning_effort").is_some()
+}
+
+/// Extracts reasoning effort levels advertised in `session/new` `configOptions`.
+fn session_reasoning(result: &Value) -> ReasoningSupport {
+    let Some(option) = config_option(result, "reasoning_effort") else {
+        return ReasoningSupport::Unknown { default: None };
+    };
+    let mut levels = Vec::new();
+    if let Some(items) = option.get("options").and_then(Value::as_array) {
+        for item in items {
+            if let Some(effort) = item
+                .get("value")
+                .and_then(Value::as_str)
+                .and_then(parse_effort)
+                && !levels.contains(&effort)
+            {
+                levels.push(effort);
+            }
+        }
+    }
+    let default = option
+        .get("currentValue")
+        .and_then(Value::as_str)
+        .and_then(parse_effort);
+    if levels.is_empty() {
+        ReasoningSupport::Unknown { default }
+    } else {
+        ReasoningSupport::Listed {
+            levels,
+            budget: None,
+            can_disable: false,
+            default,
+        }
+    }
+}
+
 /// Extracts deduplicated models from a Copilot `session/new` response.
 pub(crate) fn models_from_session(result: &Value) -> Vec<Listed> {
     let Some(entries) = result
@@ -167,6 +219,7 @@ pub(crate) fn models_from_session(result: &Value) -> Vec<Listed> {
     else {
         return Vec::new();
     };
+    let base_reasoning = session_reasoning(result);
     let mut seen = HashSet::new();
     let mut listed = Vec::new();
     for entry in entries {
@@ -182,9 +235,20 @@ pub(crate) fn models_from_session(result: &Value) -> Vec<Listed> {
             .filter(|name| !name.is_empty())
             .unwrap_or(id)
             .to_owned();
+        let reasoning = if id == "auto" {
+            ReasoningSupport::Listed {
+                levels: Vec::new(),
+                budget: None,
+                can_disable: false,
+                default: None,
+            }
+        } else {
+            base_reasoning.clone()
+        };
         listed.push(Listed {
             id: id.to_owned(),
             name,
+            reasoning,
         });
     }
     listed
@@ -206,24 +270,8 @@ pub(crate) fn discover_models(
         return Vec::new();
     }
     let mut command = processes.launcher().command(program);
-    command
-        .current_dir(dir.path())
-        .args([
-            "--acp",
-            "--stdio",
-            "--disable-builtin-mcps",
-            "--no-custom-instructions",
-            "--no-auto-update",
-            "--no-ask-user",
-            "--no-bash-env",
-            "--disable-client-telemetry",
-        ])
-        .env("COPILOT_HOME", &copilot_home)
-        .env("COPILOT_AUTO_UPDATE", "false")
-        .env("COPILOT_PLUGIN_DIR_ONLY", "true")
-        .env("COPILOT_MCP_TOOL_CACHE", "false")
-        .env("COPILOT_DISABLE_DESKTOP_NOTIFICATIONS", "1")
-        .env("COPILOT_DISABLE_LOGIN_SHELL_ENV", "1");
+    command.current_dir(dir.path());
+    configure_command(&mut command, &copilot_home);
     let requests = vec![
         json!({
             "jsonrpc": "2.0",
