@@ -286,14 +286,13 @@ impl Call<'_> {
             .map(str::to_owned)
     }
 
-    /// The output it answered with, as text: its error's message when it
-    /// failed without output.
+    /// The output it answered with, as text: its error's or refusal's
+    /// message when it has no output.
     pub(crate) fn output(&self) -> String {
         match self.outcome {
             Ok(Answered::ToolResult { result }) => match result.output().as_text() {
                 Some(text) if !text.is_empty() => text.to_owned(),
-                _ => result
-                    .error()
+                _ => (result.error().or(result.refusal()))
                     .map(|error| error.message().to_owned())
                     .unwrap_or_default(),
             },
@@ -310,6 +309,7 @@ impl Call<'_> {
             .and_then(|published| published.get::<ExitStatus>().ok().flatten());
         let why = match (self.outcome, status) {
             (Err(_), _) => "failed".to_owned(),
+            (Ok(Answered::ToolResult { result }), _) if result.is_refused() => "refused".to_owned(),
             (Ok(Answered::ToolResult { result }), _) if result.is_error() => result
                 .error()
                 .map_or("failed", |error| error.kind().as_str())

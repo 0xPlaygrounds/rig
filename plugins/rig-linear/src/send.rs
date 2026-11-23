@@ -89,10 +89,8 @@ pub(crate) fn coalesce(queue: &mut VecDeque<Job>) {
     for (at, job) in queue.iter().enumerate().rev() {
         match job {
             Job::Activity(activity) if activity.ephemeral => {
-                if replaced {
-                    if let Some(keep) = keep.get_mut(at) {
-                        *keep = false;
-                    }
+                if replaced && let Some(keep) = keep.get_mut(at) {
+                    *keep = false;
                 }
                 replaced = true;
             }

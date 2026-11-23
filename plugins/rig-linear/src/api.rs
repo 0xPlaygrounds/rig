@@ -256,8 +256,10 @@ impl Api {
             })
             .collect::<Vec<_>>()
             .join(", ");
+        let mut declared = "$id: String!";
         let mut input = Vec::new();
         if plan.is_some() {
+            declared = "$id: String!, $plan: JSONObject";
             input.push("plan: $plan".to_owned());
         }
         if !links.is_empty() {
@@ -267,7 +269,7 @@ impl Api {
             return Ok(());
         }
         let query = format!(
-            "mutation UpdateSession($id: String!, $plan: JSONObject) {{ \
+            "mutation UpdateSession({declared}) {{ \
              agentSessionUpdate(id: $id, input: {{ {} }}) {{ success }} }}",
             input.join(", ")
         );
