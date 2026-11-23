@@ -1839,6 +1839,12 @@
           "reasoning_default": "high"
         }
       },
+      "gemini-4-neon": {
+        "source": "https://ai.google.dev/gemini-api/docs/thinking",
+        "rig": {
+          "reasoning_default": "high"
+        }
+      },
       "gemini-nano-banana-2.1": {
         "source": "https://ai.google.dev/gemini-api/docs/models/gemini-nano-banana-2.1 https://ai.google.dev/gemini-api/docs/pricing",
         "note": "not on models.dev; output is the image price, text and thinking output is $7.50",
@@ -4662,10 +4668,52 @@
       },
       "grok-build-0.1": {
         "source": "https://docs.x.ai/docs/models",
+        "note": "not on models.dev; still listed on docs.x.ai/docs/models",
+        "name": "Grok Build 0.1",
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          }
+        ],
+        "tool_call": true,
+        "structured_output": true,
+        "temperature": true,
+        "modalities": {
+          "input": [
+            "text",
+            "image",
+            "pdf"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "limit": {
+          "context": 500000,
+          "output": 500000
+        },
+        "cost": {
+          "input": 1,
+          "output": 2,
+          "cache_read": 0.2,
+          "context_over_200k": {
+            "input": 2,
+            "output": 4,
+            "cache_read": 0.4
+          }
+        },
         "rig": {
           "cache": [
             "short"
-          ]
+          ],
+          "reasoning_default": "high"
         }
       },
       "grok-imagine-image-pro": {

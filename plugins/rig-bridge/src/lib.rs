@@ -557,13 +557,7 @@ mod plugin {
     fn lookup_limits(catalog: &Catalog, vendor: Vendor, id: &str) -> Option<Limits> {
         match vendor {
             Vendor::ClaudeCode | Vendor::Codex => None,
-            Vendor::Copilot => catalog_limits(catalog, "copilot", id).or_else(|| {
-                matches!(id, "mai-code-2" | "mai-code-2-flash").then_some((
-                    Some(200_000),
-                    None,
-                    None,
-                ))
-            }),
+            Vendor::Copilot => catalog_limits(catalog, "copilot", id),
             Vendor::GrokBuild => {
                 let mut prefix = id;
                 loop {
@@ -583,9 +577,11 @@ mod plugin {
                     .find_map(|source| catalog_limits(catalog, source, base))
                     .or_else(|| catalog_limits(catalog, "openrouter", &format!("openai/{base}")))
                     .or_else(|| {
-                        (base.starts_with("gemini-4-neon")
-                            || base.starts_with("gemini-pro-orchestrator"))
-                        .then_some((Some(1_048_576), None, None))
+                        base.starts_with("gemini-pro-orchestrator").then_some((
+                            Some(1_048_576),
+                            None,
+                            None,
+                        ))
                     })
             }
             Vendor::Muse => ["opencode", "venice", "ollama"]
